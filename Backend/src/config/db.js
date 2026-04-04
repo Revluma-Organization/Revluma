@@ -7,7 +7,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const isProduction = process.env.NODE_ENV === 'production';
-const hasDbUrl = process.env.DATABASE_URL && process.env.DATABASE_URL.startsWith('postgresql');
+const hasDbUrl = process.env.DATABASE_URL && (process.env.DATABASE_URL.startsWith('postgresql') || process.env.DATABASE_URL.startsWith('postgres'));
 
 // Only create pool if DATABASE_URL is set
 const pool = hasDbUrl ? new Pool({
@@ -92,15 +92,6 @@ async function query(text, params = [], tenantId = null) {
   });
 }
 
-// Export
-module.exports = {
-  query,
-  pool,
-  checkConnection,
-  withTenantContext,
-  systemQuery // for operations outside tenant RLS (password reset, etc.)
-};
-
 // Non-tenant query for system operations
 async function systemQuery(text, params = []) {
   if (!pool) {
@@ -114,6 +105,15 @@ async function systemQuery(text, params = []) {
     throw err;
   }
 }
+
+// Export
+module.exports = {
+  query,
+  pool,
+  checkConnection,
+  withTenantContext,
+  systemQuery
+};
 
 // Startup health check (call once on server start)
 (async () => {

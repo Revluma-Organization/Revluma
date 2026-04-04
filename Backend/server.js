@@ -111,6 +111,7 @@ app.use(errorHandler);
         const fs = require('fs');
         const path = require('path');
         const schemas = [
+          'schema-base.sql',
           'schema-recovery.sql',
           'schema-onboarding.sql',
           'schema-email-verification.sql',
