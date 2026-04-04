@@ -31,6 +31,19 @@
       background: var(--bg);
       color: var(--text);
       -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    @media (max-width: 480px) {
+      .form-container {
+        padding: 1rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .verification-section {
+        transform: scale(0.85);
+        transform-origin: top center;
+      }
     }
 
     /* Custom scrollbar */
@@ -456,8 +469,8 @@
     </div>
 
     <!-- Content Area -->
-    <div class="flex-1 flex items-center justify-center px-4 py-8">
-      <div class="w-full max-w-lg">
+    <div class="flex-1 flex items-center justify-center px-2 sm:px-4 py-8">
+      <div class="w-full max-w-lg px-2 sm:px-0">
         <!-- Step 1: Basic Account Setup -->
         <div id="step1" class="step-container">
           <div class="text-center mb-8">
@@ -467,7 +480,7 @@
 
           <form id="step1Form" class="space-y-5">
             <!-- First Name & Last Name -->
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label for="firstName" class="block text-sm font-medium mb-2" style="color: var(--muted);">First Name</label>
                 <input 
@@ -523,30 +536,30 @@
             </div>
 
             <!-- Email Verification Code (Hidden by default) -->
-            <div id="verificationSection" class="hidden">
+            <div id="verificationSection" class="hidden verification-section">
               <label for="verificationCode" class="block text-sm font-medium mb-2" style="color: var(--muted);">Verification Code</label>
-              <div class="flex gap-2">
+              <div class="flex gap-2 flex-wrap sm:flex-nowrap">
                 <input 
                   type="text" 
                   id="verificationCode" 
                   name="verificationCode"
                   maxlength="6"
-                  class="input-field code-input flex-1 px-4 py-3 rounded-lg text-white placeholder-gray-500 focus:outline-none"
-                  style="background: var(--surface); border: 1px solid var(--border);"
+                  class="input-field code-input flex-1 px-3 py-2.5 rounded-lg text-white placeholder-gray-500 focus:outline-none text-center text-lg tracking-widest"
+                  style="background: var(--surface); border: 1px solid var(--border); min-width: 120px;"
                   placeholder="000000"
                 >
                 <button 
                   type="button" 
                   id="submitCodeBtn"
-                  class="px-4 py-3 rounded-lg font-semibold whitespace-nowrap"
+                  class="px-3 py-2.5 rounded-lg font-semibold whitespace-nowrap text-sm"
                   style="background: var(--text); color: var(--bg);"
                 >
                   Verify
                 </button>
               </div>
               <p id="codeError" class="text-sm mt-1 hidden" style="color: var(--red);"></p>
-              <div class="flex items-center justify-between mt-2">
-                <p class="text-xs" style="color: var(--muted2);">Code expires in 15 minutes</p>
+              <div class="flex items-center justify-between mt-2 gap-2 flex-wrap">
+                <p class="text-xs" style="color: var(--muted2);">Expires in 15 min</p>
                 <button 
                   type="button" 
                   id="resendCodeBtn"
