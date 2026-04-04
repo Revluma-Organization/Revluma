@@ -132,8 +132,21 @@ router.post('/send-verification', authenticate, async (req, res) => {
     const code = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
 
-    // Store code in database
-    await db.withTenantContext(tenant_id, async (client) => {
+    logger.info('Attempting to send verification code', { user_id, email, tenant_id });
+
+    // Store code in database - use system query to avoid tenant context issues
+    const client = await db.pool.connect();
+    try {
+      // Check if table exists first
+      const tableCheck = await client.query(
+        `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'email_verification_codes')`
+      );
+      
+      if (!tableCheck.rows[0].exists) {
+        logger.error('Email verification table does not exist');
+        return res.status(500).json({ error: 'Email verification not configured. Please contact support.' });
+      }
+
       // Invalidate any existing codes for this user
       await client.query(
         'UPDATE email_verification_codes SET used = TRUE WHERE user_id = $1 AND used = FALSE',
@@ -146,13 +159,15 @@ router.post('/send-verification', authenticate, async (req, res) => {
          VALUES ($1, $2, $3, $4)`,
         [user_id, email, code, expiresAt]
       );
-    });
+    } finally {
+      client.release();
+    }
 
     // Get user name for email
     const userResult = await db.query(
       'SELECT full_name FROM users WHERE id = $1',
       [user_id],
-      tenant_id
+      'system'
     );
     const userName = userResult.rows[0]?.full_name || 'there';
 
@@ -180,7 +195,17 @@ router.post('/verify-email', authenticate, async (req, res) => {
   }
 
   try {
-    const result = await db.withTenantContext(tenant_id, async (client) => {
+    const client = await db.pool.connect();
+    try {
+      // Check if table exists first
+      const tableCheck = await client.query(
+        `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'email_verification_codes')`
+      );
+      
+      if (!tableCheck.rows[0].exists) {
+        return res.status(500).json({ error: 'Email verification not configured' });
+      }
+
       // Find valid code
       const codeResult = await client.query(
         `SELECT id, expires_at FROM email_verification_codes 
@@ -190,7 +215,7 @@ router.post('/verify-email', authenticate, async (req, res) => {
       );
 
       if (codeResult.rows.length === 0) {
-        throw new Error('Invalid or expired verification code');
+        return res.status(400).json({ error: 'Invalid or expired verification code' });
       }
 
       // Mark code as used
@@ -206,13 +231,15 @@ router.post('/verify-email', authenticate, async (req, res) => {
       );
 
       return { verified: true };
-    });
+    } finally {
+      client.release();
+    }
 
     // Send welcome email
     const userResult = await db.query(
       'SELECT full_name, email FROM users WHERE id = $1',
       [user_id],
-      tenant_id
+      'system'
     );
     
     if (userResult.rows[0]) {

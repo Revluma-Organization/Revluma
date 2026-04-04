@@ -1343,8 +1343,7 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            first_name: state.formData.firstName,
-            last_name: state.formData.lastName,
+            full_name: `${state.formData.firstName} ${state.formData.lastName}`.trim(),
             email: state.formData.email,
             password: state.formData.password
           })
@@ -1353,15 +1352,16 @@
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || 'Registration failed');
+          console.error('Registration error:', response.status, data);
+          throw new Error(data.error || `Registration failed (${response.status})`);
         }
 
         state.token = data.token;
         state.user = data.user;
 
         // Store token securely
-        localStorage.setItem('splendor_token', data.token);
-        localStorage.setItem('splendor_user', JSON.stringify(data.user));
+        localStorage.setItem('revluma_token', data.token);
+        localStorage.setItem('revluma_user', JSON.stringify(data.user));
 
         return data;
       } catch (error) {
@@ -1968,7 +1968,7 @@
 
     // ====================== INITIALIZATION ======================
     // Check if user is already logged in
-    const existingToken = localStorage.getItem('splendor_token');
+    const existingToken = localStorage.getItem('revluma_token');
     if (existingToken) {
       // Verify token and redirect if valid
       fetch(`${API_BASE}/auth/me`, {
@@ -2004,8 +2004,8 @@
       })
       .catch(() => {
         // Token invalid, clear it
-        localStorage.removeItem('splendor_token');
-        localStorage.removeItem('splendor_user');
+        localStorage.removeItem('revluma_token');
+        localStorage.removeItem('revluma_user');
       });
     }
 
