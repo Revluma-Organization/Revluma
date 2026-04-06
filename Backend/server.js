@@ -1,77 +1,96 @@
+// ============================================================
+// Revluma Backend - Production Server
+// ============================================================
+
 const express = require('express');
-const dotenv = require('dotenv');
 const path = require('path');
-
-// Load env FIRST, before any other imports
-dotenv.config({ path: path.resolve(__dirname, '.env') });
-dotenv.config(); // Also load default
-
 const cors = require('cors');
 const helmet = require('helmet');
-const logger = require('./src/utils/logger');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const authenticate = require('./src/middleware/auth');
-const { triggerIngest } = require('./src/pipeline/ingestionPipeline');
-const { checkRedisHealth } = require('./src/queue/redis');
+
+// Import custom modules
+const logger = require('./src/utils/logger');
 const db = require('./src/config/db');
+const errorHandler = require('./src/middleware/errorHandler');
+const authenticate = require('./src/middleware/auth');
+const { checkRedisHealth } = require('./src/queue/redis');
+const { triggerIngest } = require('./src/pipeline/ingestionPipeline');
+
+// ============================================================
+// Express App Setup
+// ============================================================
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === 'production';
 
-console.log("FULL ENV CHECK:", process.env);
-console.log("DB ONLY:", process.env.DATABASE_URL);
-// Debug: Log env vars at startup
-console.log('=== SERVER STARTUP DEBUG ===');
-console.log('DATABASE_URL from process.env:', process.env.DATABASE_URL ? 'SET (' + process.env.DATABASE_URL.substring(0,30) + '...)' : 'NOT SET');
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('Working dir:', process.cwd());
-console.log('================================');
+// ============================================================
+// Security & Middleware
+// ============================================================
 
-// ====================== SECURITY & MIDDLEWARE ======================
+// Helmet for security headers
 app.use(helmet({
-  contentSecurityPolicy: isProduction ? undefined : false // relax in dev
+  contentSecurityPolicy: isProduction ? undefined : false
 }));
-app.use(express.json({ limit: '1mb' })); // prevent large payloads
+
+// Body parsing with size limits
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// CORS – restrict to frontend in production
+// CORS - restrict origins in production
 app.use(cors({
-  origin: isProduction ? ['https://revluma.vercel.app', 'https://revluma.onrender.com'] : true,
+  origin: isProduction 
+    ? ['https://revluma.vercel.app', 'https://revluma.onrender.com'] 
+    : true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
-// Logging
+// HTTP logging
 app.use(morgan(isProduction ? 'combined' : 'dev', {
   stream: { write: msg => logger.info(msg.trim()) }
 }));
 
-// Global rate limit (light – override per-route if needed)
+// Global rate limiting
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
-  max: 300, // 300 req/15min
-  message: { error: 'Too many requests – please slow down' },
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 300, // 300 requests per window
+  message: { error: 'Too many requests - please slow down' },
   standardHeaders: true,
   legacyHeaders: false
 });
 app.use(globalLimiter);
+
+// Serve static frontend files
 app.use(express.static(path.join(__dirname, '..', 'Frontend')));
 
-// ====================== ROUTES ======================
-app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }), require('./src/routes/auth'));
-app.use('/api/webhook', rateLimit({ windowMs: 60 * 1000, max: 50 }), require('./src/routes/webhook'));
+// ============================================================
+// Routes
+// ============================================================
+
+// Auth routes with rate limiting
+app.use('/api/auth', rateLimit({ 
+  windowMs: 15 * 60 * 1000, 
+  max: 20 
+}), require('./src/routes/auth'));
+
+// Other API routes
+app.use('/api/webhook', rateLimit({ 
+  windowMs: 60 * 1000, 
+  max: 50 
+}), require('./src/routes/webhook'));
+
 app.use('/api/trending', require('./src/routes/trending'));
 app.use('/api/watchlist', require('./src/routes/watchlist'));
 app.use('/api/shopify', require('./src/routes/shopify'));
 app.use('/api/newsletter', require('./src/routes/newsletter'));
 
-// Admin ingest (protect with auth + role later)
+// Admin endpoint (protected)
 app.post('/api/admin/ingest', authenticate, async (req, res) => {
   try {
-    const result = await require('./src/pipeline/ingestionPipeline').triggerIngest(req.body.sourceName);
+    const result = await triggerIngest(req.body.sourceName);
     res.json({ message: result });
   } catch (err) {
     logger.error('Admin ingest failed', { error: err.message });
@@ -79,20 +98,22 @@ app.post('/api/admin/ingest', authenticate, async (req, res) => {
   }
 });
 
-// Landing page
+// Root endpoint - serve frontend
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'Frontend', 'index.html'));
 });
 
-// Health check (detailed)
+// Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    await db.checkConnection(); // from db.js
+    const dbHealthy = await db.checkConnection();
     const redisHealthy = await checkRedisHealth();
+    
     res.json({
-      status: 'healthy',
+      status: dbHealthy && redisHealthy ? 'healthy' : 'degraded',
       uptime: process.uptime(),
-      redis: redisHealthy ? 'connected' : 'error',
+      database: dbHealthy ? 'connected' : 'disconnected',
+      redis: redisHealthy ? 'connected' : 'disconnected',
       environment: process.env.NODE_ENV,
       timestamp: new Date().toISOString()
     });
@@ -102,101 +123,145 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// 404 fallback
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Error handler (last)
-const errorHandler = require('./src/middleware/errorHandler');
+// Centralized error handler
 app.use(errorHandler);
 
-// ====================== STARTUP ======================
-(async () => {
-  try {
-    // Health checks (non-fatal in dev)
-    const dbHealthy = await db.checkConnection();
-    const redisHealthy = await checkRedisHealth();
+// ============================================================
+// Server Startup
+// ============================================================
 
-    // Auto-run schema setup on startup (idempotent - uses IF NOT EXISTS)
-    if (dbHealthy) {
-      try {
-        const fs = require('fs');
-        const path = require('path');
-        const schemas = [
-          'schema-base.sql',
-          'schema-recovery.sql',
-          'schema-onboarding.sql',
-          'schema-email-verification.sql',
-          'schema-password-reset.sql',
-          'schema-newsletter.sql',
-          'schema-splendor.sql'
-        ];
-        
-        logger.info('Checking/setting up database schemas...');
-        const client = await db.pool.connect();
-        
-        for (const schema of schemas) {
-          try {
-            const content = fs.readFileSync(path.join(__dirname, schema), 'utf8');
-            await client.query(content);
-            logger.info(`Schema ${schema} applied`);
-          } catch (schemaErr) {
-            logger.warn(`Schema ${schema}: ${schemaErr.message}`);
-          }
-        }
-        
-        client.release();
-        logger.info('Database schemas ready');
-      } catch (setupErr) {
-        logger.warn('Schema setup warning:', setupErr.message);
+async function startServer() {
+  try {
+    // Verify database connection
+    const dbHealthy = await db.checkConnection();
+    
+    if (!dbHealthy) {
+      logger.error('Database connection failed - cannot start server');
+      if (isProduction) {
+        process.exit(1); // Fail fast in production
       }
     }
 
-    if (!isProduction && (!dbHealthy || !redisHealthy)) {
-      logger.warn('Startup health check has warnings — continuing in dev mode', {
-        db: dbHealthy ? 'healthy' : 'unavailable',
-        redis: redisHealthy ? 'healthy' : 'unavailable'
-      });
-    } else if (isProduction && (!dbHealthy || !redisHealthy)) {
-      logger.warn('Startup health check has warnings — continuing in production (limited mode)', {
-        db: dbHealthy ? 'healthy' : 'unavailable',
-        redis: redisHealthy ? 'healthy' : 'unavailable'
-      });
+    // Check Redis (non-blocking)
+    let redisHealthy = false;
+    try {
+      redisHealthy = await checkRedisHealth();
+    } catch (err) {
+      logger.warn('Redis check failed:', err.message);
     }
 
-    logger.info(`Revluma Backend starting`, {
-      port: PORT,
-      env: process.env.NODE_ENV,
-      db: dbHealthy ? 'healthy' : 'unavailable',
-      redis: redisHealthy ? 'healthy' : 'unavailable'
-    });
+    // Run database migrations if healthy
+    if (dbHealthy) {
+      await runMigrations();
+    }
 
-    // Listen
+    // Start listening
     const server = app.listen(PORT, () => {
-      logger.info(`Server running at http://localhost:${PORT} (env: ${process.env.NODE_ENV})`);
-      logger.info("AI-powered cart recovery and product intelligence built to grow your eCommerce business automatically");
+      logger.info(`Server started on port ${PORT}`, {
+        environment: process.env.NODE_ENV,
+        database: dbHealthy ? 'connected' : 'disconnected',
+        redis: redisHealthy ? 'connected' : 'disconnected'
+      });
     });
 
-    // Graceful shutdown
-    const shutdown = async (signal) => {
-      logger.info(`Received ${signal} – shutting down gracefully`);
-      server.close(() => {
+    // Graceful shutdown handlers
+    const gracefulShutdown = async (signal) => {
+      logger.info(`Received ${signal} - starting graceful shutdown`);
+      
+      server.close(async () => {
         logger.info('HTTP server closed');
+        
+        try {
+          await db.closePool();
+          logger.info('Database pool closed');
+        } catch (err) {
+          logger.error('Error closing database pool:', err.message);
+        }
+        
         process.exit(0);
       });
 
-      // Force exit after 10s
+      // Force exit after 10 seconds
       setTimeout(() => {
-        logger.error('Graceful shutdown timeout – forcing exit');
+        logger.error('Graceful shutdown timeout - forcing exit');
         process.exit(1);
       }, 10000);
     };
 
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
   } catch (err) {
-    logger.error('Startup failed', { error: err.message, stack: err.stack });
+    logger.error('Server startup failed', { error: err.message, stack: err.stack });
     process.exit(1);
   }
-})();
+}
+
+// ============================================================
+// Database Migrations
+// ============================================================
+
+async function runMigrations() {
+  const fs = require('fs');
+  const migrationPath = path.join(__dirname);
+  
+  const migrations = [
+    'schema-base.sql',
+    'schema-recovery.sql',
+    'schema-onboarding.sql',
+    'schema-email-verification.sql',
+    'schema-password-reset.sql',
+    'schema-newsletter.sql',
+    'schema-splendor.sql'
+  ];
+
+  logger.info('Running database migrations...');
+  
+  try {
+    const client = await db.getClient();
+    
+    for (const migration of migrations) {
+      const filePath = path.join(migrationPath, migration);
+      
+      if (!fs.existsSync(filePath)) {
+        logger.warn(`Migration file not found: ${migration}`);
+        continue;
+      }
+      
+      try {
+        const sql = fs.readFileSync(filePath, 'utf8');
+        await client.query(sql);
+        logger.info(`Migration applied: ${migration}`);
+      } catch (err) {
+        logger.warn(`Migration ${migration}:`, err.message);
+      }
+    }
+    
+    client.release();
+    logger.info('Migrations complete');
+  } catch (err) {
+    logger.error('Migration error:', err.message);
+  }
+}
+
+// ============================================================
+// Process Error Handlers
+// ============================================================
+
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception:', { error: err.message, stack: err.stack });
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled rejection:', { reason: String(reason) });
+  process.exit(1);
+});
+
+// Start the server
+startServer();

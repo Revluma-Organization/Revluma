@@ -1,189 +1,235 @@
-// Production-ready PostgreSQL connection pool with tenant-aware RLS support
+// ============================================================
+// Database Configuration Module
+// Production-ready PostgreSQL connection with proper validation
+// ============================================================
 
 const { Pool } = require('pg');
-const dotenv = require('dotenv');
-const path = require('path');
-const fs = require('fs');
 
-// FIRST: Check if we're in production (by checking NODE_ENV)
-// In production, we should NOT load local .env - use platform env vars
-const isProduction = process.env.NODE_ENV === 'production';
+// ============================================================
+// Environment Validation - Fail Fast
+// ============================================================
 
-console.log('[DB] Initial NODE_ENV:', process.env.NODE_ENV);
+function validateEnvironment() {
+  const errors = [];
+  
+  // Check DATABASE_URL
+  const dbUrl = process.env.DATABASE_URL;
+  
+  if (!dbUrl) {
+    errors.push('DATABASE_URL is not set');
+  } else {
+    // Trim and validate format
+    const trimmedUrl = dbUrl.trim();
+    const validPrefix = /^postgres(ql)?:\/\//i;
+    
+    if (!validPrefix.test(trimmedUrl)) {
+      errors.push(`DATABASE_URL must start with "postgres://" or "postgresql://". Got: "${trimmedUrl.substring(0, 20)}..."`);
+    }
+  }
+  
+  return errors;
+}
 
-// Only load local .env in development
-if (!isProduction) {
-  const envPath = path.resolve(__dirname, '..', '..', '.env');
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-    console.log('[DB] Loaded local .env for development');
+// Run validation immediately
+const validationErrors = validateEnvironment();
+if (validationErrors.length > 0) {
+  console.error('=== DATABASE CONFIGURATION ERROR ===');
+  validationErrors.forEach(err => console.error('  - ' + err));
+  console.error('======================================');
+  console.error('Please set DATABASE_URL in your environment variables.');
+  console.error('For local dev, create a .env file with DATABASE_URL=postgres://...');
+  console.error('For Render, add DATABASE_URL in your service\'s Environment Variables.');
+  console.error('');
+  // In production, we exit. In dev, we continue but DB won't work.
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1);
   }
 }
 
-console.log('[DB] After config, DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
+// ============================================================
+// Database Connection Setup
+// ============================================================
 
-// Use isProduction consistently
-console.log('[DB] NODE_ENV after dotenv:', isProduction ? 'production' : 'development');
+const dbUrl = process.env.DATABASE_URL ? process.env.DATABASE_URL.trim() : null;
+const isProduction = process.env.NODE_ENV === 'production';
 
-let pool = null;
-
-// ── Pool initialisation ──────────────────────────────────────────
-let dbUrl = process.env.DATABASE_URL;
-
-console.log('[DB] Final DATABASE_URL:', dbUrl ? `SET (${dbUrl.substring(0, 25)}...)` : 'NOT SET');
-
-// Accept both postgres:// AND postgresql:// (pg supports both)
-// Trim whitespace from the URL
-const urlStr = dbUrl ? dbUrl.trim() : '';
-const validUrl = urlStr && /^postgres(ql)?s?:\/\//i.test(urlStr);
-
-// SSL configuration for production
+// SSL Configuration for Production
 const getSslConfig = () => {
-  if (!isProduction) return false;
-  if (dbUrl && dbUrl.includes('sslmode=disable')) return false;
+  // No SSL in development
+  if (!isProduction) {
+    return false;
+  }
   
-  // For Render and most cloud providers, we need to allow self-signed certs
+  // Check if user explicitly disabled SSL
+  if (dbUrl && dbUrl.includes('sslmode=disable')) {
+    return false;
+  }
+  
+  // For Render and cloud providers - allow self-signed certs
   return {
-    rejectUnauthorized: false,
-    ca: undefined,
-    servername: undefined
+    rejectUnauthorized: false
   };
 };
 
-if (!dbUrl) {
-  console.error('⚠️  DATABASE_URL is NOT SET in environment');
-} else if (!validUrl) {
-  console.error('⚠️  DATABASE_URL format invalid. Must start with postgres:// or postgresql://');
-  console.error('    Current value starts with:', urlStr ? urlStr.substring(0, 20) : 'N/A');
-  console.error('    Full value:', dbUrl);
-} else {
-  try {
-    pool = new Pool({
-      connectionString: dbUrl,
-      ssl: getSslConfig(),
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000, // Increased from 5000
-      allowExitOnIdle: false,
-    });
+// Create connection pool
+let pool = null;
 
-    // Test connection immediately
-    pool.on('connect', () => {
-      console.log('[DB] New client connected');
-    });
-
-    pool.on('error', (err) => {
-      console.error('[DB] Idle client error:', err.message);
-      if (isProduction) process.exit(-1);
-    });
-
-    console.log('[DB] Pool created successfully');
-    
-    // Try a test query immediately
-    pool.query('SELECT 1')
-      .then(() => console.log('[DB] ✅ Test query passed'))
-      .catch(err => console.error('[DB] ❌ Test query failed:', err.message));
-      
-  } catch (err) {
-    console.error('[DB] Pool creation threw:', err.message);
-    pool = null;
-  }
+if (dbUrl) {
+  const poolConfig = {
+    connectionString: dbUrl,
+    ssl: getSslConfig(),
+    max: 20,                    // Max connections in pool
+    idleTimeoutMillis: 30000,   // Close idle clients after 30s
+    connectionTimeoutMillis: 10000, // Return error after 10s if can't connect
+    allowExitOnIdle: false
+  };
+  
+  pool = new Pool(poolConfig);
+  
+  // Handle pool errors
+  pool.on('error', (err, client) => {
+    console.error('[DB] Unexpected pool error:', err.message);
+  });
+  
+  console.log('[DB] Connection pool created');
+  console.log('[DB] SSL enabled:', !!getSslConfig());
 }
 
-// ── Safe pool getter ─────────────────────────────────────────────
+// ============================================================
+// Exported Functions
+// ============================================================
+
+/**
+ * Get the pool instance
+ * Throws if pool not initialized
+ */
 function getPool() {
   if (!pool) {
-    const dbUrl = process.env.DATABASE_URL;
-    let errorMsg = 'Database not configured. ';
-    
-    if (!dbUrl) {
-      errorMsg += 'Please add DATABASE_URL environment variable in your hosting dashboard (e.g., Render).';
-    } else if (!/^postgres/i.test(dbUrl)) {
-      errorMsg += 'DATABASE_URL must start with "postgres://" or "postgresql://".';
-    } else {
-      errorMsg += 'Please contact support.';
-    }
-    
-    throw new Error(errorMsg);
+    throw new Error('Database connection pool not initialized. Check DATABASE_URL.');
   }
   return pool;
 }
 
-// ── Health check ─────────────────────────────────────────────────
+/**
+ * Execute a query with parameters
+ * @param {string} text - SQL query
+ * @param {Array} params - Query parameters
+ * @returns {Promise} Query result
+ */
+async function query(text, params = []) {
+  const p = getPool();
+  try {
+    const result = await p.query(text, params);
+    return result;
+  } catch (err) {
+    console.error('[DB] Query error:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Execute a query and return just the rows
+ * @param {string} text - SQL query
+ * @param {Array} params - Query parameters
+ * @returns {Promise<Array>} Array of rows
+ */
+async function queryRows(text, params = []) {
+  const result = await query(text, params);
+  return result.rows;
+}
+
+/**
+ * Execute a query and return a single row
+ * @param {string} text - SQL query
+ * @param {Array} params - Query parameters
+ * @returns {Promise<Object|null>} Single row or null
+ */
+async function queryOne(text, params = []) {
+  const result = await query(text, params);
+  return result.rows[0] || null;
+}
+
+/**
+ * System query - for operations that don't need tenant context (auth, migrations, etc.)
+ * @param {string} text - SQL query
+ * @param {Array} params - Query parameters
+ * @returns {Promise} Query result
+ */
+async function systemQuery(text, params = []) {
+  return await query(text, params);
+}
+
+/**
+ * Get a client from the pool for transactions
+ * IMPORTANT: Always release the client after use!
+ * @returns {Promise<Object>} Connected client
+ */
+async function getClient() {
+  const p = getPool();
+  return await p.connect();
+}
+
+/**
+ * Health check - verify database connection
+ * @returns {Promise<boolean>} True if connected
+ */
 async function checkConnection() {
   if (!pool) {
-    console.warn('[DB] checkConnection: pool is null — skipping');
+    console.error('[DB] Cannot check connection - pool not initialized');
     return false;
   }
+  
   try {
     const client = await pool.connect();
     try {
       await client.query('SELECT 1');
-      console.log('[DB] ✅  Health check passed');
+      console.log('[DB] ✓ Health check passed');
       return true;
     } finally {
       client.release();
     }
   } catch (err) {
-    console.error('[DB] ❌  Health check failed:', err.message);
+    console.error('[DB] ✗ Health check failed:', err.message);
     return false;
   }
 }
 
-// ── Tenant context (RLS) ─────────────────────────────────────────
-async function withTenantContext(tenantId, callback) {
-  if (!tenantId) throw new Error('tenantId required for RLS');
-
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (tenantId !== 'system' && !uuidRegex.test(tenantId)) {
-    throw new Error('Invalid tenant ID format');
-  }
-
-  const client = await getPool().connect();
-  try {
-    await client.query(`SET app.current_tenant_id = '${tenantId}'`);
-    return await callback(client);
-  } finally {
-    client.release();
+/**
+ * Close the pool (for graceful shutdown)
+ */
+async function closePool() {
+  if (pool) {
+    await pool.end();
+    console.log('[DB] Pool closed');
   }
 }
 
-// ── Tenant query (RLS enforced) ──────────────────────────────────
-async function query(text, params = [], tenantId = null) {
-  if (!tenantId) {
-    throw new Error('tenantId is required for all queries (RLS enforcement)');
-  }
-  return withTenantContext(tenantId, async (client) => {
-    try {
-      return await client.query(text, params);
-    } catch (err) {
-      console.error('[DB] Query failed:', { text, error: err.message });
-      throw err;
-    }
-  });
+// ============================================================
+// Exports
+// ============================================================
+
+module.exports = {
+  pool: pool,            // Raw pool (for direct access if needed)
+  getPool,
+  query,
+  queryRows,
+  queryOne,
+  getClient,
+  checkConnection,
+  closePool
+};
+
+// ============================================================
+// Initial Connection Test (non-blocking)
+// ============================================================
+
+if (pool) {
+  // Try to connect but don't block startup
+  pool.query('SELECT 1')
+    .then(() => {
+      console.log('[DB] ✓ Initial connection successful');
+    })
+    .catch(err => {
+      console.error('[DB] ✗ Initial connection failed:', err.message);
+    });
 }
-
-// ── System query (no RLS — use for auth, migrations, health) ─────
-async function systemQuery(text, params = []) {
-  const p = getPool(); // throws clearly if pool is null
-  try {
-    return await p.query(text, params);
-  } catch (err) {
-    console.error('[DB] System query failed:', { text, error: err.message });
-    throw err;
-  }
-}
-
-// ── Exports ──────────────────────────────────────────────────────
-module.exports = { query, systemQuery, checkConnection, withTenantContext, getPool, pool };
-
-// ── Startup check ────────────────────────────────────────────────
-(async () => {
-  if (!pool) return; // warnings already printed above
-  try {
-    const ok = await checkConnection();
-    if (!ok) console.warn('⚠️  Server starting without a working database connection');
-  } catch (err) {
-    console.warn('⚠️  Startup DB check error:', err.message);
-  }
-})();

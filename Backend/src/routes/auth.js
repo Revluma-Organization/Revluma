@@ -8,9 +8,6 @@ const authenticate = require('../middleware/auth');
 const { sendVerificationEmail, sendWelcomeEmail, sendPasswordResetEmail } = require('../utils/messaging');
 const router = express.Router();
 
-// Add systemQuery for password reset operations (no tenant RLS)
-const { systemQuery } = require('../config/db');
-
 // Email verification code length
 const VERIFICATION_CODE_LENGTH = 6;
 const VERIFICATION_CODE_EXPIRY_MINUTES = 15;
@@ -32,43 +29,11 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Invalid email format' });
   }
 
+  let client = null;
+  
   try {
-    // Debug: Log environment info
-    console.log('[AUTH] Register attempt - db.pool exists:', !!db.pool);
-    console.log('[AUTH] DATABASE_URL in env:', !!process.env.DATABASE_URL);
-    console.log('[AUTH] NODE_ENV:', process.env.NODE_ENV);
-    
-    // Check database connection first
-    if (!db.pool) {
-      const dbUrl = process.env.DATABASE_URL;
-      console.error('=== DB CONFIG ERROR ===');
-      console.error('DATABASE_URL set:', !!dbUrl);
-      console.error('DATABASE_URL value:', dbUrl ? dbUrl.substring(0, 30) + '...' : 'undefined');
-      console.error('NODE_ENV:', process.env.NODE_ENV);
-      console.error('========================');
-      
-      let helpMsg = 'Database not configured. ';
-      if (!dbUrl) {
-        helpMsg += 'Please add DATABASE_URL environment variable in your hosting dashboard (e.g., Render).';
-      } else if (!/^postgres/i.test(dbUrl.trim())) {
-        helpMsg += 'DATABASE_URL must start with "postgres://" or "postgresql://"';
-      } else {
-        helpMsg += 'Please contact support.';
-      }
-      return res.status(503).json({ error: helpMsg });
-    }
-    
-    let client;
-    try {
-      client = await db.pool.connect();
-    } catch (connErr) {
-      console.error('Failed to connect to database:', connErr.message);
-      return res.status(503).json({ error: 'Database connection failed. Please try again later.' });
-    }
-    
-    if (!client) {
-      return res.status(503).json({ error: 'Database connection failed. Please try again later.' });
-    }
+    // Get client from pool for transaction
+    client = await db.getClient();
     
     try {
       await client.query('BEGIN');
@@ -98,6 +63,69 @@ router.post('/register', async (req, res) => {
 
       // Create tenant profile with defaults
       await client.query(
+        `INSERT INTO tenant_profiles (
+          tenant_id, 
+          onboarding_status,
+          preferred_channel,
+          touch1_delay,
+          touch2_delay,
+          discount_threshold
+        ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tenant_id, 'started', 'whatsapp', 15, 90, 0.1]
+      );
+
+      await client.query('COMMIT');
+      
+      const result = { tenant_id, user: userRes.rows[0] };
+      
+      // Generate JWT
+      const token = jwt.sign(
+        { id: result.user.id, email: result.user.email, tenant_id: result.tenant_id },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d', algorithm: 'HS256' }
+      );
+
+      logger.info('New user registered', { tenant_id: result.tenant_id, email });
+
+      res.status(201).json({
+        message: 'Account created successfully! Welcome to Revluma',
+        token,
+        user: {
+          id: result.user.id,
+          email: result.user.email,
+          tenant_id: result.tenant_id,
+          email_verified: false
+        }
+      });
+      
+    } catch (txErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txErr;
+    }
+    
+  } catch (err) {
+    logger.error('Registration failed', { error: err.message, email });
+
+    let status = 500;
+    let message = 'Registration failed';
+
+    if (err.message.includes('already registered')) {
+      status = 409;
+      message = 'Email already in use';
+    } else if (err.message.includes('database') || err.message.includes('relation') || err.message.includes('table')) {
+      message = 'Database setup incomplete – please contact support';
+    } else if (err.message.includes('connection') || err.message.includes('pool')) {
+      status = 503;
+      message = 'Database temporarily unavailable';
+    }
+
+    res.status(status).json({ error: message });
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
+});
         `INSERT INTO tenant_profiles (
           tenant_id, 
           onboarding_status,
