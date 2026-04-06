@@ -20,8 +20,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const isProduction = process.env.NODE_ENV === 'production';
 
-console.log("ENV CHECK →", process.env.DATABASE_URL);
-console.log("DATABASE_URL VALUE:", process.env.DATABASE_URL);
+console.log("FULL ENV CHECK:", process.env);
+console.log("DB ONLY:", process.env.DATABASE_URL);
 // Debug: Log env vars at startup
 console.log('=== SERVER STARTUP DEBUG ===');
 console.log('DATABASE_URL from process.env:', process.env.DATABASE_URL ? 'SET (' + process.env.DATABASE_URL.substring(0,30) + '...)' : 'NOT SET');
