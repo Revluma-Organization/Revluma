@@ -8,3 +8,9 @@ node_modules/
 # Build
 Frontend/dist/
 Backend/dist/
+
+# Large video files
+*.MOV
+*.mov
+*.mp4
+*.webm
