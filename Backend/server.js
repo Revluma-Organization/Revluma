@@ -7,7 +7,7 @@ const rateLimit = require('express-rate-limit');
 
 // Import custom modules
 const logger = require('./src/utils/logger');
-const db = require('./src/config/db');
+const { checkConnection, closeConnection } = require('./src/services/prisma');
 const errorHandler = require('./src/middleware/errorHandler');
 const authenticate = require('./src/middleware/auth');
 const { checkRedisHealth } = require('./src/queue/redis');
@@ -102,7 +102,7 @@ app.get('/', (req, res) => {
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    const dbHealthy = await db.checkConnection();
+    const dbHealthy = await checkConnection();
     const redisHealthy = await checkRedisHealth();
     
     res.json({
@@ -134,7 +134,7 @@ app.use(errorHandler);
 async function startServer() {
   try {
     // Verify database connection
-    const dbHealthy = await db.checkConnection();
+    const dbHealthy = await checkConnection();
     
     if (!dbHealthy) {
       logger.error('Database connection failed - cannot start server');
@@ -149,11 +149,6 @@ async function startServer() {
       redisHealthy = await checkRedisHealth();
     } catch (err) {
       logger.warn('Redis check failed:', err.message);
-    }
-
-    // Run database migrations if healthy
-    if (dbHealthy) {
-      await runMigrations();
     }
 
     // Start listening
@@ -173,10 +168,10 @@ async function startServer() {
         logger.info('HTTP server closed');
         
         try {
-          await db.closePool();
-          logger.info('Database pool closed');
+          await closeConnection();
+          logger.info('Database connection closed');
         } catch (err) {
-          logger.error('Error closing database pool:', err.message);
+          logger.error('Error closing database connection:', err.message);
         }
         
         process.exit(0);
@@ -195,53 +190,6 @@ async function startServer() {
   } catch (err) {
     logger.error('Server startup failed', { error: err.message, stack: err.stack });
     process.exit(1);
-  }
-}
-
-// ============================================================
-// Database Migrations
-// ============================================================
-
-async function runMigrations() {
-  const fs = require('fs');
-  const migrationPath = path.join(__dirname);
-  
-  const migrations = [
-    'schema-base.sql',
-    'schema-recovery.sql',
-    'schema-onboarding.sql',
-    'schema-email-verification.sql',
-    'schema-password-reset.sql',
-    'schema-newsletter.sql',
-    'schema-splendor.sql'
-  ];
-
-  logger.info('Running database migrations...');
-  
-  try {
-    const client = await db.getClient();
-    
-    for (const migration of migrations) {
-      const filePath = path.join(migrationPath, migration);
-      
-      if (!fs.existsSync(filePath)) {
-        logger.warn(`Migration file not found: ${migration}`);
-        continue;
-      }
-      
-      try {
-        const sql = fs.readFileSync(filePath, 'utf8');
-        await client.query(sql);
-        logger.info(`Migration applied: ${migration}`);
-      } catch (err) {
-        logger.warn(`Migration ${migration}:`, err.message);
-      }
-    }
-    
-    client.release();
-    logger.info('Migrations complete');
-  } catch (err) {
-    logger.error('Migration error:', err.message);
   }
 }
 

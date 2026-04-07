@@ -1,3 +1,10 @@
 .env
 .env.*
 node_modules/
+
+# Prisma - don't commit migration snapshots
+# prisma/migrations/ - keep this! Commit migrations to git
+
+# Build
+Frontend/dist/
+Backend/dist/

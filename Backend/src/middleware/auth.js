@@ -1,5 +1,4 @@
 const jwt = require('jsonwebtoken');
-const db = require('../config/db');
 const logger = require('../utils/logger');
 
 const authenticate = async (req, res, next) => {
@@ -29,16 +28,14 @@ const authenticate = async (req, res, next) => {
       throw new Error('Invalid token claims');
     }
 
-    // Set tenant context for ALL subsequent queries in this request
-    // Uses the safe withTenantContext wrapper from db.js
+    // Set user for all subsequent requests
     req.user = {
       id: decoded.id,
       email: decoded.email,
       tenant_id: decoded.tenant_id,
-      role: decoded.role || 'user' // optional
+      role: decoded.role || 'user'
     };
 
-    // Optional: refresh token expiry or add short-lived access token logic later
     next();
   } catch (err) {
     let status = 401;

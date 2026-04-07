@@ -645,13 +645,16 @@
             position: absolute;
             inset: 0;
             background: rgba(0,0,0,0.5);
-            display: none;
+            opacity: 0;
+            display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            transition: opacity 0.2s ease;
         }
-        .feat-card:hover .upload-overlay {
-            display: flex;
+        .feat-card:hover .upload-overlay,
+        div:hover > .upload-overlay {
+            opacity: 1;
         }
         .upload-overlay::after {
             content: 'Click to change';
@@ -667,6 +670,58 @@
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
+
+        /* Logo name styles */
+        .logo-name-wrap { display: flex; align-items: center; }
+        .logo-name {
+            font-family: 'Satoshi', sans-serif;
+            font-weight: 700;
+            font-size: 1.1rem;
+            letter-spacing: -0.02em;
+            color: #fff;
+        }
+
+        /* Integration pill */
+        .int-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.03);
+            font-size: 11px;
+            font-weight: 500;
+            color: #A1A1AA;
+            white-space: nowrap;
+        }
+        .int-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: rgba(80,210,120,0.8);
+            flex-shrink: 0;
+        }
+        .beta-tag {
+            font-size: 8px;
+            font-weight: 700;
+            color: #555;
+            background: rgba(255,255,255,0.05);
+            padding: 1px 5px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .int-track {
+            display: flex;
+            gap: 10px;
+            animation: marquee 40s linear infinite;
+        }
+        .int-track:hover { animation-play-state: paused; }
     </style>
 </head>
 
@@ -783,6 +838,20 @@
             &nbsp;·&nbsp; Cancel anytime</p>
     </section>
 
+    <!-- ── Trusted By Logos Bar ── -->
+    <section class="py-10 px-6 border-y border-[#161616] overflow-hidden" style="background: linear-gradient(180deg, rgba(255,255,255,0.015) 0%, transparent 100%);">
+        <div class="max-w-7xl mx-auto">
+            <p class="text-center text-[10px] uppercase tracking-[0.22em] text-[#3a3a3a] font-semibold mb-6">Powering growth for stores on</p>
+            <div class="flex flex-wrap items-center justify-center gap-x-10 gap-y-5 opacity-40">
+                <img src="assets/images/shopifyLoog.png"        alt="Shopify"       class="h-6 w-auto object-contain filter brightness-0 invert">
+                <img src="assets/images/wooCommerce-icon.png"   alt="WooCommerce"    class="h-5 w-auto object-contain filter brightness-0 invert">
+                <img src="assets/images/bigCommerce-icon.png"    alt="BigCommerce"          class="h-5 w-auto object-contain filter brightness-0 invert">
+                <img src="assets/images/meta-logo.png"           alt="Meta"          class="h-5 w-auto object-contain filter brightness-0 invert">
+                <img src="assets/images/tiktok-icon.png"         alt="TikTok Shop"   class="h-5 w-auto object-contain filter brightness-0 invert">
+            </div>
+        </div>
+    </section>
+
     <!-- ── Split Promo Section ── -->
     <section class="video-promo-section -mt-4">
         <div class="split-promo-wrapper">
@@ -790,7 +859,7 @@
             <div class="split-left">
                 <div class="laptop-container">
                     <video class="laptop-img" autoplay muted loop playsinline>
-                        <source src="assets/videos/dashboard_video.mp4" type="video/mp4">
+                        <source src="assets/videos/dashboard_video.MOV" type="video/mp4">
                     </video>
                 </div>
             </div>
@@ -869,23 +938,20 @@
 
                 <!-- Card 1 -->
                 <div
-                    class="rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden reveal group hover:border-white/10 transition-all duration-300 flex flex-col">
+                    class="rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden reveal group hover:border-white/10 transition-all duration-300 flex flex-col feat-card">
                     <!-- Image placeholder with upload -->
-                    <div class="w-full h-40 bg-[#111] relative overflow-hidden flex-shrink-0 group">
-                        <label class="absolute inset-0 cursor-pointer z-10 upload-overlay">
-                            <input type="file" accept="image/*" class="hidden" onchange="loadImage(this, 'feature-img-1')">
-                        </label>
-                        <img id="feature-img-1" src="./assets/images/cart-recovery-icon.png" alt="AI Cart Recovery"
-                            class="w-full h-full object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition-all duration-500"
-                            onerror="this.style.display='none'">
-                        <!-- Fallback gradient placeholder -->
+                    <div class="w-full h-40 bg-[#111] relative overflow-hidden flex-shrink-0">
+                        <!-- Fallback gradient placeholder (z-0, always behind) -->
                         <div
-                            class="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f0f23] flex items-center justify-center pointer-events-none">
+                            class="absolute inset-0 z-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f0f23] flex items-center justify-center pointer-events-none">
                             <svg class="w-10 h-10 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
                             </svg>
                         </div>
-                        <div class="absolute bottom-3 left-3">
+                        <img id="feature-img-1" src="./assets/images/cart-recovery-icon.png" alt="AI Cart Recovery"
+                            class="absolute inset-0 z-[1] w-full h-full object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition-all duration-500"
+                            onerror="this.style.display='none'">
+                        <div class="absolute bottom-3 left-3 z-[3]">
                             <span
                                 class="text-[10px] uppercase tracking-widest font-bold text-white/50 bg-black/40 px-2 py-1 rounded-md backdrop-blur-sm">Cart
                                 Recovery</span>
@@ -902,21 +968,18 @@
 
                 <!-- Card 2 -->
                 <div
-                    class="rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden reveal group hover:border-white/10 transition-all duration-300 flex flex-col">
-                    <div class="w-full h-40 bg-[#111] relative overflow-hidden flex-shrink-0 group">
-                        <label class="absolute inset-0 cursor-pointer z-10 upload-overlay">
-                            <input type="file" accept="image/*" class="hidden" onchange="loadImage(this, 'feature-img-2')">
-                        </label>
-                        <img id="feature-img-2" src="./assets/images/feature-product.jpg" alt="Product Intelligence"
-                            class="w-full h-full object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition-all duration-500"
-                            onerror="this.style.display='none'">
+                    class="rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden reveal group hover:border-white/10 transition-all duration-300 flex flex-col feat-card">
+                    <div class="w-full h-40 bg-[#111] relative overflow-hidden flex-shrink-0">
                         <div
-                            class="absolute inset-0 bg-gradient-to-br from-[#0d1b0d] via-[#122212] to-[#0a1a0a] flex items-center justify-center pointer-events-none">
+                            class="absolute inset-0 z-0 bg-gradient-to-br from-[#0d1b0d] via-[#122212] to-[#0a1a0a] flex items-center justify-center pointer-events-none">
                             <svg class="w-10 h-10 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                             </svg>
                         </div>
-                        <div class="absolute bottom-3 left-3">
+                        <img id="feature-img-2" src="./assets/images/product-intelligence.png" alt="Product Intelligence"
+                            class="absolute inset-0 z-[1] w-full h-full object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition-all duration-500"
+                            onerror="this.style.display='none'">
+                        <div class="absolute bottom-3 left-3 z-[3]">
                             <span
                                 class="text-[10px] uppercase tracking-widest font-bold text-white/50 bg-black/40 px-2 py-1 rounded-md backdrop-blur-sm">Product
                                 Intel</span>
@@ -933,34 +996,31 @@
 
                 <!-- Card 3 -->
                 <div
-                    class="rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden reveal group hover:border-white/10 transition-all duration-300 flex flex-col">
-                    <div class="w-full h-40 bg-[#111] relative overflow-hidden flex-shrink-0 group">
-                        <label class="absolute inset-0 cursor-pointer z-10 upload-overlay">
-                            <input type="file" accept="image/*" class="hidden" onchange="loadImage(this, 'feature-img-3')">
-                        </label>
-                        <img id="feature-img-3" src="assets/images/feature-roas.jpg" alt="Opportunity Scoring"
-                            class="w-full h-full object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition-all duration-500"
-                            onerror="this.style.display='none'">
+                    class="rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden reveal group hover:border-white/10 transition-all duration-300 flex flex-col feat-card">
+                    <div class="w-full h-40 bg-[#111] relative overflow-hidden flex-shrink-0">
                         <div
-                            class="absolute inset-0 bg-gradient-to-br from-[#1a0d0d] via-[#221212] to-[#1a0a0a] flex items-center justify-center pointer-events-none">
+                            class="absolute inset-0 z-0 bg-gradient-to-br from-[#1a0d0d] via-[#221212] to-[#1a0a0a] flex items-center justify-center pointer-events-none">
                             <svg class="w-10 h-10 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path
                                     d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                             </svg>
                         </div>
-                        <div class="absolute bottom-3 left-3 flex items-center gap-2">
+                        <img id="feature-img-3" src="assets/images/crm-database.webp" alt="B2C CRM Database"
+                            class="absolute inset-0 z-[1] w-full h-full object-cover opacity-70 group-hover:opacity-90 group-hover:scale-105 transition-all duration-500"
+                            onerror="this.style.display='none'">
+                        <div class="absolute bottom-3 left-3 z-[3] flex items-center gap-2">
                             <span
-                                class="text-[10px] uppercase tracking-widest font-bold text-white/50 bg-black/40 px-2 py-1 rounded-md backdrop-blur-sm">Opportunity
-                                Scoring</span>
+                                class="text-[10px] uppercase tracking-widest font-bold text-white/50 bg-black/40 px-2 py-1 rounded-md backdrop-blur-sm">B2C CRM Database
+                                </span>
                             <span
                                 class="text-[9px] uppercase font-black text-white bg-white/15 px-1.5 py-0.5 rounded">Beta</span>
                         </div>
                     </div>
                     <div class="p-5 flex flex-col flex-1">
-                        <h3 class="text-base font-bold mb-2">Opportunity Scoring</h3>
-                        <p class="text-[#A1A1AA] text-xs leading-relaxed mb-3 flex-1">Know your ROAS potential before
-                            you spend a single dollar on ads. Score every product opportunity with predictive AI.</p>
-                        <p class="text-xs text-green-400 font-semibold">↑ Avg. 34% reduction in wasted ad spend</p>
+                        <h3 class="text-base font-bold mb-2">B2C CRM Database</h3>
+                        <p class="text-[#A1A1AA] text-xs leading-relaxed mb-3 flex-1">Own your customer data. Turn every interaction into repeat revenue.
+                            Segment, automate, and recover the lost slaes all from one intelligence system</p>
+                        <p class="text-xs text-green-400 font-semibold">↑ Avg. 40% more revenue from existing customers</p>
                     </div>
                 </div>
 
@@ -978,6 +1038,272 @@
                 </a>
             </div>
         </div>
+    </section>
+
+    <!-- ── How It Works ── -->
+    <section id="how-it-works" class="py-28 px-6 border-t border-[#1F1F1F]" style="background: linear-gradient(180deg, #0a0a0a 0%, #0d0d0d 100%);">
+        <style>
+            /* ── Animated Steps ── */
+            .hiw-track {
+                position: relative;
+                display: flex;
+                align-items: flex-start;
+                gap: 0;
+            }
+
+            /* The full-width baseline rail */
+            .hiw-rail {
+                position: absolute;
+                top: 28px;
+                left: calc(16.666% + 0px);
+                right: calc(16.666% + 0px);
+                height: 1px;
+                background: rgba(255,255,255,0.07);
+                overflow: hidden;
+            }
+
+            /* The animated fill bar that sweeps left→right */
+            .hiw-rail-fill {
+                height: 100%;
+                width: 0%;
+                background: linear-gradient(90deg, rgba(80,210,120,0.6), rgba(80,210,120,0.3));
+                transition: width 1.4s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+            .hiw-rail-fill.animated { width: 100%; }
+
+            /* Step column */
+            .hiw-step {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                position: relative;
+                opacity: 0;
+                transform: translateY(22px);
+                transition: opacity 0.6s cubic-bezier(0.16,1,0.3,1), transform 0.6s cubic-bezier(0.16,1,0.3,1);
+            }
+            .hiw-step.step-visible { opacity: 1; transform: translateY(0); }
+            .hiw-step:nth-child(2) { transition-delay: 0.18s; }
+            .hiw-step:nth-child(3) { transition-delay: 0.36s; }
+
+            /* Node circle */
+            .hiw-node {
+                width: 56px;
+                height: 56px;
+                border-radius: 50%;
+                border: 1px solid rgba(255,255,255,0.1);
+                background: #111213;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                z-index: 2;
+                transition: border-color 0.4s ease, background 0.4s ease, box-shadow 0.4s ease;
+                flex-shrink: 0;
+            }
+            .hiw-step.step-visible .hiw-node {
+                border-color: rgba(80,210,120,0.35);
+                background: rgba(80,210,120,0.06);
+                box-shadow: 0 0 0 6px rgba(80,210,120,0.04), 0 0 24px rgba(80,210,120,0.08);
+            }
+            .hiw-node-num {
+                font-size: 11px;
+                font-weight: 800;
+                letter-spacing: 0.04em;
+                color: rgba(255,255,255,0.25);
+                transition: color 0.4s ease;
+                font-family: 'Satoshi', sans-serif;
+            }
+            .hiw-step.step-visible .hiw-node-num { color: rgba(80,210,120,0.9); }
+
+            /* Connector tick below node */
+            .hiw-tick {
+                width: 1px;
+                height: 28px;
+                background: rgba(255,255,255,0.06);
+                margin: 0 auto;
+                transition: background 0.4s ease;
+            }
+            .hiw-step.step-visible .hiw-tick { background: rgba(80,210,120,0.2); }
+
+            /* Content card */
+            .hiw-card {
+                width: 100%;
+                max-width: 320px;
+                padding: 20px 22px 22px;
+                border-radius: 16px;
+                border: 1px solid rgba(255,255,255,0.06);
+                background: rgba(255,255,255,0.02);
+                text-align: left;
+                transition: border-color 0.35s ease, background 0.35s ease, transform 0.35s ease;
+            }
+            .hiw-step:hover .hiw-card {
+                border-color: rgba(255,255,255,0.1);
+                background: rgba(255,255,255,0.035);
+                transform: translateY(-3px);
+            }
+
+            /* Step label pill */
+            .hiw-label {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                font-size: 9px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                color: rgba(255,255,255,0.28);
+                margin-bottom: 10px;
+            }
+            .hiw-step.step-visible .hiw-label { color: rgba(80,210,120,0.7); }
+            .hiw-label-dot {
+                width: 5px; height: 5px;
+                border-radius: 50%;
+                background: rgba(255,255,255,0.15);
+                transition: background 0.4s;
+            }
+            .hiw-step.step-visible .hiw-label-dot { background: rgba(80,210,120,0.8); }
+
+            .hiw-title {
+                font-size: 15px;
+                font-weight: 700;
+                color: rgba(255,255,255,0.88);
+                margin-bottom: 7px;
+                line-height: 1.35;
+                letter-spacing: -0.02em;
+            }
+            .hiw-desc {
+                font-size: 12px;
+                line-height: 1.7;
+                color: rgba(255,255,255,0.38);
+            }
+
+            /* Icon area */
+            .hiw-icon-wrap {
+                width: 36px;
+                height: 36px;
+                border-radius: 10px;
+                background: rgba(255,255,255,0.04);
+                border: 1px solid rgba(255,255,255,0.07);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-bottom: 14px;
+                transition: background 0.35s, border-color 0.35s;
+            }
+            .hiw-step.step-visible .hiw-icon-wrap {
+                background: rgba(80,210,120,0.08);
+                border-color: rgba(80,210,120,0.18);
+            }
+            .hiw-icon-wrap svg { transition: stroke 0.35s; stroke: rgba(255,255,255,0.3); }
+            .hiw-step.step-visible .hiw-icon-wrap svg { stroke: rgba(80,210,120,0.85); }
+
+            /* Mobile stacked layout */
+            @media (max-width: 767px) {
+                .hiw-track { flex-direction: column; align-items: center; gap: 0; }
+                .hiw-rail { display: none; }
+                .hiw-step { width: 100%; max-width: 420px; align-items: flex-start; flex-direction: row; gap: 16px; padding: 0 0 28px 0; }
+                .hiw-tick { display: none; }
+                .hiw-node { flex-shrink: 0; margin-top: 2px; }
+                .hiw-card { max-width: 100%; }
+            }
+        </style>
+
+        <div class="max-w-6xl mx-auto">
+            <!-- Header -->
+            <div class="mb-16 text-center reveal">
+                <p class="text-[11px] uppercase tracking-widest text-[#555] font-semibold mb-3">Setup in minutes</p>
+                <h2 class="text-3xl md:text-4xl font-bold tracking-tighter mb-3">From zero to revenue recovery<br class="hidden md:block"> in three steps.</h2>
+                <p class="text-[#A1A1AA] max-w-md mx-auto text-sm">No developers. No complex workflows. Just connect, configure, and watch revenue pour back in.</p>
+            </div>
+
+            <!-- Steps track -->
+            <div class="hiw-track" id="hiwTrack">
+
+                <!-- Animated rail sits inside the track -->
+                <div class="hiw-rail hidden md:block">
+                    <div class="hiw-rail-fill" id="hiwRailFill"></div>
+                </div>
+
+                <!-- Step 1 -->
+                <div class="hiw-step" data-hiw-step>
+                    <div class="hiw-node"><span class="hiw-node-num">01</span></div>
+                    <div class="hiw-tick"></div>
+                    <div class="hiw-card">
+                        <div class="hiw-icon-wrap">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+                                <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+                            </svg>
+                        </div>
+                        <div class="hiw-label"><span class="hiw-label-dot"></span>Step 01</div>
+                        <p class="hiw-title">Connect your store</p>
+                        <p class="hiw-desc">Plug Revluma into Shopify, WooCommerce, or any major platform in under 4 minutes. No developer required — just install and authorize.</p>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="hiw-step" data-hiw-step>
+                    <div class="hiw-node"><span class="hiw-node-num">02</span></div>
+                    <div class="hiw-tick"></div>
+                    <div class="hiw-card">
+                        <div class="hiw-icon-wrap">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+                            </svg>
+                        </div>
+                        <div class="hiw-label"><span class="hiw-label-dot"></span>Step 02</div>
+                        <p class="hiw-title">AI analyzes your data</p>
+                        <p class="hiw-desc">Revluma's AI scans your orders, cart events, and customer behavior — identifying abandoned carts, underperforming SKUs, and revenue gaps in real time.</p>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="hiw-step" data-hiw-step>
+                    <div class="hiw-node"><span class="hiw-node-num">03</span></div>
+                    <div class="hiw-tick"></div>
+                    <div class="hiw-card">
+                        <div class="hiw-icon-wrap">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                        </div>
+                        <div class="hiw-label"><span class="hiw-label-dot"></span>Step 03</div>
+                        <p class="hiw-title">Automations fire & revenue returns</p>
+                        <p class="hiw-desc">Precision sequences go out over email, SMS, and WhatsApp. Shoppers come back, carts complete, and revenue lands in your account — automatically.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <script>
+            (function() {
+                const track = document.getElementById('hiwTrack');
+                const railFill = document.getElementById('hiwRailFill');
+                const steps = document.querySelectorAll('[data-hiw-step]');
+                let fired = false;
+
+                const hiwObserver = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting && !fired) {
+                            fired = true;
+                            // Animate rail fill
+                            setTimeout(() => { if (railFill) railFill.classList.add('animated'); }, 80);
+                            // Stagger each step in
+                            steps.forEach((step, i) => {
+                                setTimeout(() => step.classList.add('step-visible'), 120 + i * 200);
+                            });
+                            hiwObserver.disconnect();
+                        }
+                    });
+                }, { threshold: 0.25 });
+
+                if (track) hiwObserver.observe(track);
+            })();
+        </script>
     </section>
 
     <!-- ── Stats ── -->
@@ -1236,6 +1562,478 @@
                         See Revluma in action →
                     </button>
                 </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Automation Flow Visual ── -->
+    <section class="py-24 px-6 border-t border-[#1F1F1F] overflow-hidden">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+                <!-- Left text -->
+                <div class="reveal">
+                    <p class="text-[11px] uppercase tracking-widest text-[#555] font-semibold mb-4">Automation Engine</p>
+                    <h2 class="text-3xl md:text-4xl font-bold tracking-tighter mb-6 leading-tight">The brain behind<br>every recovered sale.</h2>
+                    <p class="text-[#777] text-sm leading-relaxed mb-8">Most tools blast the same email to everyone. Revluma's AI reads your customer's intent, what they viewed, how long they spent, what they skipped, then sends exactly the right message at exactly the right time.</p>
+                    <div class="space-y-4">
+                        <div class="flex items-start gap-4">
+                            <div class="w-8 h-8 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <img src="assets/images/check-green.png" alt="check" class="w-5 h-5 object-contain" onerror="this.style.display='none'; this.parentElement.innerHTML='<span class=\'text-green-400 text-xs font-bold\'>✓</span>'">
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold mb-0.5">Behavior-triggered sequences</p>
+                                <p class="text-[#666] text-xs">Fires based on cart value, product category, time-on-site, and purchase history, not just "they abandoned checkout."</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-4">
+                            <div class="w-8 h-8 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <img src="assets/images/check-green.png" alt="check" class="w-5 h-5 object-contain" onerror="this.style.display='none'; this.parentElement.innerHTML='<span class=\'text-green-400 text-xs font-bold\'>✓</span>'">
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold mb-0.5">Multi-channel orchestration</p>
+                                <p class="text-[#666] text-xs">Email, SMS, and WhatsApp work in concert, each channel fires at the optimal moment in the recovery sequence.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-4">
+                            <div class="w-8 h-8 rounded-full bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center flex-shrink-0 mt-0.5">
+                                <img src="assets/images/check-green.png" alt="check" class="w-5 h-5 object-contain" onerror="this.style.display='none'; this.parentElement.innerHTML='<span class=\'text-green-400 text-xs font-bold\'>✓</span>'">
+                            </div>
+                            <div>
+                                <p class="text-sm font-semibold mb-0.5">Self-optimizing over time</p>
+                                <p class="text-[#666] text-xs">Every send improves the model. Revluma benchmarks your results against 2,400+ stores and adjusts automatically.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Automation flow diagram -->
+                <div class="reveal" style="transition-delay: 0.15s;">
+                    <!-- App window chrome -->
+                    <div class="relative rounded-xl overflow-hidden shadow-2xl" style="border: 1px solid rgba(255,255,255,0.07); background: #111213;">
+                        <!-- Titlebar -->
+                        <div class="flex items-center justify-between px-4 py-2.5" style="background: #1a1b1e; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                            <div class="flex items-center gap-1.5">
+                                <div class="w-2.5 h-2.5 rounded-full" style="background:#ff5f57;"></div>
+                                <div class="w-2.5 h-2.5 rounded-full" style="background:#febc2e;"></div>
+                                <div class="w-2.5 h-2.5 rounded-full" style="background:#28c840;"></div>
+                            </div>
+                            <div class="flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-medium" style="background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.35); border: 1px solid rgba(255,255,255,0.06);">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                revluma.io/automations/cart-recovery
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-5 h-5 rounded flex items-center justify-center" style="background: rgba(255,255,255,0.04);">
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- App layout: sidebar + main -->
+                        <div class="flex" style="min-height: 420px;">
+
+                            <!-- Sidebar -->
+                            <div class="flex-shrink-0 py-4 flex flex-col gap-1" style="width: 44px; background: #16171a; border-right: 1px solid rgba(255,255,255,0.05);">
+                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto mb-2" style="background: rgba(80,210,120,0.15);">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(80,210,120,0.9)" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+                                </div>
+                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto" style="background: rgba(255,255,255,0.06);">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
+                                </div>
+                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto" style="">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M4.93 4.93a10 10 0 000 14.14"/></svg>
+                                </div>
+                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                                </div>
+                                <div class="flex-1"></div>
+                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                                </div>
+                            </div>
+
+                            <!-- Main content -->
+                            <div class="flex-1 flex flex-col" style="background: #111213;">
+                                <!-- Top bar -->
+                                <div class="flex items-center justify-between px-4 py-2.5" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[11px] font-semibold" style="color: rgba(255,255,255,0.7);">Automation</span>
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="2.5"><polyline points="9,18 15,12 9,6"/></svg>
+                                        <span class="text-[11px] font-semibold" style="color: rgba(255,255,255,0.9);">Cart Recovery Flow</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <div class="flex items-center gap-1.5 px-2 py-0.5 rounded" style="background: rgba(80,210,120,0.1); border: 1px solid rgba(80,210,120,0.2);">
+                                            <div class="w-1.5 h-1.5 rounded-full animate-pulse" style="background: rgba(80,210,120,0.9);"></div>
+                                            <span class="text-[9px] font-bold uppercase tracking-wide" style="color: rgba(80,210,120,0.9);">Live</span>
+                                        </div>
+                                        <button class="flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-semibold" style="background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.08);">
+                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                                            Edit
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Flow canvas -->
+                                <div class="flex-1 px-5 py-4 overflow-hidden">
+                                    <!-- Stats bar at top -->
+                                    <div class="flex items-center gap-4 mb-4 pb-3" style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                                        <div>
+                                            <span class="text-[9px] uppercase tracking-wider font-semibold" style="color: rgba(255,255,255,0.3);">Recovery Rate</span>
+                                            <p class="text-sm font-bold mt-0.5" style="color: rgba(80,210,120,0.95);">26.4%</p>
+                                        </div>
+                                        <div class="w-px h-6" style="background: rgba(255,255,255,0.07);"></div>
+                                        <div>
+                                            <span class="text-[9px] uppercase tracking-wider font-semibold" style="color: rgba(255,255,255,0.3);">Avg Order Value</span>
+                                            <p class="text-sm font-bold mt-0.5" style="color: rgba(255,255,255,0.85);">$143.20</p>
+                                        </div>
+                                        <div class="w-px h-6" style="background: rgba(255,255,255,0.07);"></div>
+                                        <div>
+                                            <span class="text-[9px] uppercase tracking-wider font-semibold" style="color: rgba(255,255,255,0.3);">Triggered today</span>
+                                            <p class="text-sm font-bold mt-0.5" style="color: rgba(255,255,255,0.85);">48</p>
+                                        </div>
+                                        <div class="flex-1"></div>
+                                        <div class="text-[9px] font-medium" style="color: rgba(255,255,255,0.2);">Last run: 2m ago</div>
+                                    </div>
+
+                                    <!-- Flow nodes -->
+                                    <div class="space-y-1.5">
+
+                                        <!-- Trigger node -->
+                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg" style="background: rgba(99,130,255,0.06); border: 1px solid rgba(99,130,255,0.2);">
+                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style="background: rgba(99,130,255,0.15);">
+                                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(140,160,255,0.9)" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-[11px] font-semibold" style="color: rgba(255,255,255,0.85);">Cart Abandoned</span>
+                                                    <span class="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider" style="background: rgba(99,130,255,0.15); color: rgba(140,160,255,0.9);">Trigger</span>
+                                                </div>
+                                                <p class="text-[9px] mt-0.5 truncate" style="color: rgba(255,255,255,0.35);">Filter: cart value ≥ $120 · session duration &gt; 45s</p>
+                                            </div>
+                                            <div class="text-[9px] font-semibold tabular-nums" style="color: rgba(255,255,255,0.4);">48 <span style="color:rgba(255,255,255,0.2)">today</span></div>
+                                        </div>
+
+                                        <!-- Connector -->
+                                        <div class="flex items-center gap-0 ml-5">
+                                            <div class="w-px h-3" style="background: rgba(255,255,255,0.1);"></div>
+                                        </div>
+
+                                        <!-- Email node -->
+                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg ml-4" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);">
+                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style="background: rgba(251,146,60,0.12); border: 1px solid rgba(251,146,60,0.15);">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(251,146,60,0.9)" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-[11px] font-semibold" style="color: rgba(255,255,255,0.8);">Email — 30 min delay</span>
+                                                    <span class="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider" style="background: rgba(251,146,60,0.1); color: rgba(251,146,60,0.85);">Email</span>
+                                                </div>
+                                                <p class="text-[9px] mt-0.5 truncate" style="color: rgba(255,255,255,0.3);">"Your cart is waiting" · product image · 1-click checkout</p>
+                                            </div>
+                                            <div class="flex flex-col items-end gap-0.5">
+                                                <span class="text-[9px] font-semibold tabular-nums" style="color: rgba(255,255,255,0.4);">38 <span style="color:rgba(255,255,255,0.2)">sent</span></span>
+                                                <div class="flex items-center gap-1">
+                                                    <div class="h-1 rounded-full" style="width: 32px; background: rgba(255,255,255,0.07);">
+                                                        <div class="h-1 rounded-full" style="width: 65%; background: rgba(251,146,60,0.6);"></div>
+                                                    </div>
+                                                    <span class="text-[8px]" style="color: rgba(255,255,255,0.2);">65%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Connector -->
+                                        <div class="flex items-center gap-0 ml-9">
+                                            <div class="w-px h-3" style="background: rgba(255,255,255,0.08);"></div>
+                                        </div>
+
+                                        <!-- SMS node -->
+                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg ml-4" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);">
+                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style="background: rgba(80,210,120,0.1); border: 1px solid rgba(80,210,120,0.15);">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(80,210,120,0.9)" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-[11px] font-semibold" style="color: rgba(255,255,255,0.8);">SMS — 2 hour delay</span>
+                                                    <span class="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider" style="background: rgba(80,210,120,0.1); color: rgba(80,210,120,0.85);">SMS</span>
+                                                </div>
+                                                <p class="text-[9px] mt-0.5 truncate" style="color: rgba(255,255,255,0.3);">Short reminder · direct checkout link · auto-unsubscribe</p>
+                                            </div>
+                                            <div class="flex flex-col items-end gap-0.5">
+                                                <span class="text-[9px] font-semibold tabular-nums" style="color: rgba(255,255,255,0.4);">19 <span style="color:rgba(255,255,255,0.2)">sent</span></span>
+                                                <div class="flex items-center gap-1">
+                                                    <div class="h-1 rounded-full" style="width: 32px; background: rgba(255,255,255,0.07);">
+                                                        <div class="h-1 rounded-full" style="width: 42%; background: rgba(80,210,120,0.6);"></div>
+                                                    </div>
+                                                    <span class="text-[8px]" style="color: rgba(255,255,255,0.2);">42%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Connector -->
+                                        <div class="flex items-center gap-0 ml-9">
+                                            <div class="w-px h-3" style="background: rgba(255,255,255,0.08);"></div>
+                                        </div>
+
+                                        <!-- WhatsApp node -->
+                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg ml-4" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);">
+                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style="background: rgba(37,211,102,0.1); border: 1px solid rgba(37,211,102,0.15);">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="rgba(37,211,102,0.9)"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.533 5.86L.054 23.25a.75.75 0 00.916.916l5.39-1.479A11.954 11.954 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.722 9.722 0 01-4.93-1.342l-.354-.21-3.668 1.007 1.007-3.668-.21-.354A9.722 9.722 0 012.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z"/></svg>
+                                            </div>
+                                            <div class="flex-1 min-w-0">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-[11px] font-semibold" style="color: rgba(255,255,255,0.8);">WhatsApp — 24 hr delay</span>
+                                                    <span class="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider" style="background: rgba(37,211,102,0.1); color: rgba(37,211,102,0.85);">WA</span>
+                                                </div>
+                                                <p class="text-[9px] mt-0.5 truncate" style="color: rgba(255,255,255,0.3);">Personalized offer with time-limited discount · FOMO trigger</p>
+                                            </div>
+                                            <div class="flex flex-col items-end gap-0.5">
+                                                <span class="text-[9px] font-semibold tabular-nums" style="color: rgba(255,255,255,0.4);">9 <span style="color:rgba(255,255,255,0.2)">sent</span></span>
+                                                <div class="flex items-center gap-1">
+                                                    <div class="h-1 rounded-full" style="width: 32px; background: rgba(255,255,255,0.07);">
+                                                        <div class="h-1 rounded-full" style="width: 78%; background: rgba(37,211,102,0.6);"></div>
+                                                    </div>
+                                                    <span class="text-[8px]" style="color: rgba(255,255,255,0.2);">78%</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Connector -->
+                                        <div class="flex items-center gap-0 ml-9">
+                                            <div class="w-px h-3" style="background: rgba(80,210,120,0.2);"></div>
+                                        </div>
+
+                                        <!-- Result node -->
+                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg" style="background: rgba(80,210,120,0.05); border: 1px solid rgba(80,210,120,0.18);">
+                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style="background: rgba(80,210,120,0.15);">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(80,210,120,0.95)" stroke-width="2.5"><polyline points="20,6 9,17 4,12"/></svg>
+                                            </div>
+                                            <div class="flex-1">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-[11px] font-semibold" style="color: rgba(80,210,120,0.95);">Order Recovered</span>
+                                                </div>
+                                                <p class="text-[9px] mt-0.5" style="color: rgba(255,255,255,0.35);">26% of sequences convert · avg $143 recovered per order</p>
+                                            </div>
+                                            <div class="text-right">
+                                                <p class="text-[11px] font-bold" style="color: rgba(80,210,120,0.9);">+$$$</p>
+                                                <p class="text-[8px]" style="color: rgba(80,210,120,0.5);">12 today</p>
+                                            </div>
+                                        </div>
+
+                                    </div>
+
+                                    <!-- Bottom stats bar -->
+                                    <div class="flex gap-0 mt-4 pt-3" style="border-top: 1px solid rgba(255,255,255,0.05);">
+                                        <div class="flex-1 text-center">
+                                            <p class="text-sm font-bold tabular-nums" style="color: rgba(255,255,255,0.9);">26%</p>
+                                            <p class="text-[8px] uppercase tracking-wider mt-0.5" style="color: rgba(255,255,255,0.25);">Recovery Rate</p>
+                                        </div>
+                                        <div class="w-px" style="background: rgba(255,255,255,0.06);"></div>
+                                        <div class="flex-1 text-center">
+                                            <p class="text-sm font-bold tabular-nums" style="color: rgba(255,255,255,0.9);">4 min</p>
+                                            <p class="text-[8px] uppercase tracking-wider mt-0.5" style="color: rgba(255,255,255,0.25);">Avg Setup</p>
+                                        </div>
+                                        <div class="w-px" style="background: rgba(255,255,255,0.06);"></div>
+                                        <div class="flex-1 text-center">
+                                            <p class="text-sm font-bold tabular-nums" style="color: rgba(255,255,255,0.9);">3 ch</p>
+                                            <p class="text-[8px] uppercase tracking-wider mt-0.5" style="color: rgba(255,255,255,0.25);">Channels</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Use Case Bento Grid ── -->
+    <section class="py-24 px-6 border-t border-[#1F1F1F]">
+        <div class="max-w-7xl mx-auto">
+            <div class="mb-14 text-center reveal">
+                <p class="text-[11px] uppercase tracking-widest text-[#555] font-semibold mb-3">Built For Your Business Type</p>
+                <h2 class="text-3xl md:text-4xl font-bold tracking-tighter mb-3">Every store wins differently.</h2>
+                <p class="text-[#A1A1AA] max-w-md mx-auto text-sm">Whether you're running dropshipping, DTC, or a growing brand, Revluma adapts to how you sell.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 reveal">
+                <!-- Dropshipping card -->
+                <div class="relative rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden p-6 hover:border-white/10 transition-all duration-300 group">
+                    <div class="absolute top-0 right-0 w-40 h-40 rounded-full opacity-10 pointer-events-none" style="background: radial-gradient(circle, #4080ff, transparent 70%); transform: translate(30%, -30%);"></div>
+                    <div class="w-10 h-10 rounded-xl overflow-hidden bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
+                        <img src="assets/images/dropshipping.webp" alt="Dropshipping"
+                            class="w-full h-full object-cover"
+                            onerror="this.style.display='none'; this.parentElement.style.background='rgba(59,130,246,0.1)'">
+                    </div>
+                    <p class="text-[10px] uppercase tracking-widest text-blue-400/70 font-semibold mb-2">Dropshipping</p>
+                    <h3 class="text-base font-bold mb-2">Win before your competitors restock</h3>
+                    <p class="text-[#666] text-xs leading-relaxed">Spot trending products weeks before they peak. Revluma scans 12+ marketplaces and signals when to source before everyone else does.</p>
+                    <div class="mt-5 pt-4 border-t border-[#1a1a1a]">
+                        <p class="text-xs text-green-400 font-semibold">↑ 3–6 week market lead time</p>
+                    </div>
+                </div>
+
+                <!-- DTC Brands card — tall / featured -->
+                <div class="relative rounded-2xl border border-white/10 bg-gradient-to-b from-[#111] to-[#0D0D0D] overflow-hidden p-6 hover:border-white/20 transition-all duration-300 group md:row-span-1">
+                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-32 opacity-20 pointer-events-none" style="background: radial-gradient(ellipse, rgba(255,255,255,0.3), transparent 70%);"></div>
+                    <div class="w-10 h-10 rounded-xl overflow-hidden bg-white/5 border border-white/15 flex items-center justify-center mb-4">
+                        <img src="assets/images/dtc.jpg" alt="DTC Brands"
+                            class="w-full h-full object-cover"
+                            onerror="this.style.display='none'">
+                    </div>
+                    <p class="text-[10px] uppercase tracking-widest text-[#777] font-semibold mb-2">DTC Brands</p>
+                    <h3 class="text-base font-bold mb-2">Turn one-time buyers into loyal customers</h3>
+                    <p class="text-[#666] text-xs leading-relaxed">Post-purchase flows, win-back sequences, and LTV optimization. Revluma converts first-time purchasers into repeat buyers on autopilot.</p>
+                    <div class="mt-5 pt-4 border-t border-[#1a1a1a]">
+                        <p class="text-xs text-green-400 font-semibold">↑ Avg. 38% revenue lift in 90 days</p>
+                    </div>
+                </div>
+
+                <!-- High Volume stores card -->
+                <div class="relative rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden p-6 hover:border-white/10 transition-all duration-300 group">
+                    <div class="absolute top-0 right-0 w-40 h-40 rounded-full opacity-10 pointer-events-none" style="background: radial-gradient(circle, #40ffaa, transparent 70%); transform: translate(30%, -30%);"></div>
+                    <div class="w-10 h-10 rounded-xl overflow-hidden bg-green-500/10 border border-green-500/20 flex items-center justify-center mb-4">
+                        <img src="assets/images/sale-recovery.png" alt="High Volume Stores"
+                            class="w-full h-full object-cover"
+                            onerror="this.style.display='none'">
+                    </div>
+                    <p class="text-[10px] uppercase tracking-widest text-green-400/70 font-semibold mb-2">High-Volume Stores</p>
+                    <h3 class="text-base font-bold mb-2">Scale recovery without scaling headcount</h3>
+                    <p class="text-[#666] text-xs leading-relaxed">Process thousands of abandoned events daily. Revluma handles the volume so your team doesn't have to touch a single follow-up manually.</p>
+                    <div class="mt-5 pt-4 border-t border-[#1a1a1a]">
+                        <p class="text-xs text-green-400 font-semibold">↑ Unlimited automations, flat pricing</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Case Study Spotlight ── -->
+    <section class="py-24 px-6 border-t border-[#1F1F1F]" style="background: linear-gradient(180deg, #0a0a0a 0%, #0d0d0d 100%);">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+                <!-- Image/visual side -->
+                <div class="reveal order-2 md:order-1">
+                    <div class="relative rounded-2xl border border-[#1F1F1F] bg-[#0A0A0A] overflow-hidden" style="min-height: 340px;">
+                        <!-- Abstract revenue chart illustration -->
+                        <svg class="absolute inset-0 w-full h-full" viewBox="0 0 560 340" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+                            <!-- Background grid -->
+                            <line x1="0" y1="280" x2="560" y2="280" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+                            <line x1="0" y1="220" x2="560" y2="220" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+                            <line x1="0" y1="160" x2="560" y2="160" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+                            <line x1="0" y1="100" x2="560" y2="100" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+                            <!-- Revenue area chart -->
+                            <path d="M0 280 L40 270 L80 265 L120 260 L160 240 L200 230 L240 210 L260 160 L300 140 L340 120 L380 95 L420 80 L460 65 L500 50 L540 38 L560 32 L560 340 L0 340 Z" fill="url(#greenGrad)" opacity="0.15"/>
+                            <path d="M0 280 L40 270 L80 265 L120 260 L160 240 L200 230 L240 210 L260 160 L300 140 L340 120 L380 95 L420 80 L460 65 L500 50 L540 38 L560 32" stroke="url(#greenLine)" stroke-width="2.5" fill="none"/>
+                            <!-- Before/after divider -->
+                            <line x1="240" y1="40" x2="240" y2="300" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="4 4"/>
+                            <rect x="210" y="44" width="60" height="18" rx="4" fill="rgba(255,255,255,0.05)"/>
+                            <text x="240" y="57" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-family="sans-serif" font-size="8" font-weight="600">Revluma ON</text>
+                            <!-- Glow dot at current point -->
+                            <circle cx="540" cy="38" r="6" fill="rgba(80,210,120,0.4)"/>
+                            <circle cx="540" cy="38" r="3" fill="rgba(80,210,120,0.9)"/>
+                            <!-- Labels -->
+                            <text x="20" y="296" fill="rgba(255,255,255,0.25)" font-family="sans-serif" font-size="9">Month 1</text>
+                            <text x="240" y="296" fill="rgba(255,255,255,0.25)" font-family="sans-serif" font-size="9">Month 4</text>
+                            <text x="500" y="296" fill="rgba(255,255,255,0.25)" font-family="sans-serif" font-size="9">Month 8</text>
+                            <defs>
+                                <linearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stop-color="rgba(80,210,120,1)"/>
+                                    <stop offset="100%" stop-color="rgba(80,210,120,0)"/>
+                                </linearGradient>
+                                <linearGradient id="greenLine" x1="0" y1="0" x2="1" y2="0">
+                                    <stop offset="0%" stop-color="rgba(80,210,120,0.3)"/>
+                                    <stop offset="50%" stop-color="rgba(80,210,120,0.8)"/>
+                                    <stop offset="100%" stop-color="rgba(80,210,120,1)"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <!-- Stat cards overlay -->
+                        <div class="absolute bottom-5 left-5 right-5 flex gap-3">
+                            <div class="flex-1 bg-black/60 backdrop-blur-sm border border-white/8 rounded-xl p-3">
+                                <p class="text-[10px] text-[#555] uppercase tracking-wide mb-1">Revenue recovered</p>
+                                <p class="text-xl font-bold text-white">$42,800</p>
+                                <p class="text-[10px] text-green-400 font-semibold">in 6 months</p>
+                            </div>
+                            <div class="flex-1 bg-black/60 backdrop-blur-sm border border-white/8 rounded-xl p-3">
+                                <p class="text-[10px] text-[#555] uppercase tracking-wide mb-1">Cart recovery rate</p>
+                                <p class="text-xl font-bold text-white">31%</p>
+                                <p class="text-[10px] text-green-400 font-semibold">↑ from 8% baseline</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Text side -->
+                <div class="reveal order-1 md:order-2" style="transition-delay: 0.15s;">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-[#A1A1AA] mb-5 font-semibold">
+                        <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block"></span>
+                        Customer spotlight
+                    </div>
+                    <h2 class="text-3xl md:text-4xl font-bold tracking-tighter mb-4 leading-tight">"We recovered $42K<br>in 4 months without<br>touching a thing."</h2>
+                    <p class="text-[#777] text-sm leading-relaxed mb-6">Kira Neveah connected Revluma to her fashion dropshipping store in 4 minutes. Within the first week, her AI cart recovery sequences were live. She didn't write a single email, Revluma handled everything, personalized to each shopper.</p>
+                    <div class="flex items-center gap-4 mb-8">
+                        <div class="w-11 h-11 rounded-full bg-gradient-to-br from-pink-500/30 to-purple-500/30 border border-white/10 flex items-center justify-center text-sm font-bold">KN</div>
+                        <div>
+                            <p class="text-sm font-semibold">Kira Neveah</p>
+                            <p class="text-[11px] text-[#555]">Founder, NovaNoir Fashion — Shopify store</p>
+                        </div>
+                    </div>
+                    <a href="./auth/signUp.html">
+                        <button class="glass-btn text-sm font-bold hover:scale-[1.03] transition-all">Start your free trial →</button>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── Trust & Security Section ── -->
+    <section class="py-20 px-6 border-t border-[#1F1F1F]">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-12 reveal">
+                <p class="text-[11px] uppercase tracking-widest text-[#555] font-semibold mb-3">Built to last</p>
+                <h2 class="text-2xl md:text-3xl font-bold tracking-tighter">Enterprise-grade. Startup-friendly.</h2>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 reveal">
+                <!-- Security -->
+                <div class="text-center p-6 rounded-2xl border border-[#1F1F1F] bg-[#0A0A0A] hover:border-white/10 transition-all">
+                    <div class="w-12 h-12 rounded-xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center mx-auto mb-4">
+                        <img src="assets/images/data-security.jpg" alt="SOC 2 Security"
+                            class="w-full h-full object-cover"
+                            onerror="this.style.display='none'; this.parentElement.classList.add('p-3')">
+                    </div>
+                    <p class="text-sm font-bold mb-1">SOC 2 Ready</p>
+                    <p class="text-[11px] text-[#555] leading-relaxed">Your data is encrypted at rest and in transit. Enterprise-grade security standards.</p>
+                </div>
+                <!-- GDPR -->
+                <div class="text-center p-6 rounded-2xl border border-[#1F1F1F] bg-[#0A0A0A] hover:border-white/10 transition-all">
+                    <div class="w-12 h-12 rounded-xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center mx-auto mb-4">
+                        <img src="assets/images/verification.png" alt="GDPR Compliant"
+                            class="w-full h-full object-cover"
+                            onerror="this.style.display='none'">
+                    </div>
+                    <p class="text-sm font-bold mb-1">GDPR Compliant</p>
+                    <p class="text-[11px] text-[#555] leading-relaxed">Full compliance with global privacy regulations. Works seamlessly for EU stores.</p>
+                </div>
+                <!-- Uptime -->
+                <div class="text-center p-6 rounded-2xl border border-[#1F1F1F] bg-[#0A0A0A] hover:border-white/10 transition-all">
+                    <div class="w-12 h-12 rounded-xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center mx-auto mb-4">
+                        <img src="assets/images/always-running.png" alt="99.9% Uptime"
+                            class="w-full h-full object-cover"
+                            onerror="this.style.display='none'">
+                    </div>
+                    <p class="text-sm font-bold mb-1">99.9% Uptime</p>
+                    <p class="text-[11px] text-[#555] leading-relaxed">Automations never sleep. Revluma runs 24/7 so you never miss an abandoned cart.</p>
+                </div>
+                <!-- Support -->
+                <div class="text-center p-6 rounded-2xl border border-[#1F1F1F] bg-[#0A0A0A] hover:border-white/10 transition-all">
+                    <div class="w-12 h-12 rounded-xl bg-white/5 border border-white/10 overflow-hidden flex items-center justify-center mx-auto mb-4">
+                        <img src="assets/images/support.png" alt="24/7 Support"
+                            class="w-full h-full object-cover"
+                            onerror="this.style.display='none'">
+                    </div>
+                    <p class="text-sm font-bold mb-1">24/7 Support</p>
+                    <p class="text-[11px] text-[#555] leading-relaxed">Live chat + email support. Real humans, fast responses — not just a help center.</p>
+                </div>
             </div>
         </div>
     </section>
@@ -1710,10 +2508,21 @@
         const bounceLogo = document.getElementById('bounceLogo');
         const bounceLogoImg = document.getElementById('bounceLogoImg');
 
+        // ── BOUNCE LOGOS CONFIG ──────────────────────────────────────────────
+        // To add more logos: just push another object into this array.
+        // { src: 'path/to/image.png', alt: 'Name' }
+        // The animation will automatically include them in the rotation cycle.
+        // ────────────────────────────────────────────────────────────────────
         const logos = [
-            { src: 'assets/images/shopifyLoog.png', alt: 'Shopify Logo' },
-            { src: 'assets/images/woocomrceLogo.webp', alt: 'WooCommerce Logo' },
-            { src: 'assets/images/cart-recovery-icon.png', alt: 'Cart Recovery Icon' }
+            { src: 'assets/images/shopifyLoog.png',         alt: 'Shopify' },
+            { src: 'assets/images/woocomrceLogo.webp',      alt: 'WooCommerce' },
+            { src: 'assets/images/meta-logo.png',            alt: 'Meta' },
+            { src: 'assets/images/google-ads-logo.webp',          alt: 'Google Ads' },
+            { src: 'assets/images/tiktok-logo.png',          alt: 'TikTok Shop' },
+            { src: 'assets/images/bigCommerce-logo.png',      alt: 'BigCommerce' },
+
+            // ── ADD MORE LOGOS BELOW THIS LINE ──
+            // { src: 'assets/images/your-logo.png', alt: 'Your Platform' },
         ];
         let logoIndex = 0;
 
@@ -1801,6 +2610,8 @@
                     const img = document.getElementById(imgId);
                     img.src = e.target.result;
                     img.style.display = 'block';
+                    img.style.removeProperty('display');
+                    img.style.opacity = '0.9';
                 };
                 reader.readAsDataURL(file);
             }
