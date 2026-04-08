@@ -1,0 +1,11 @@
+{
+  "checksum": "b2c3d4e5f6g7h8i9j0k1",
+  "finishedAt": "2026-04-09T00:00:00.000Z",
+  "migrationName": "_add_pending_registration",
+  "logs": [],
+  "rolledBackAt": null,
+  "startedAt": "2026-04-09T00:00:00.000Z",
+  "appliedStepsCount": 1,
+  "finished": true,
+  "migration": "_add_pending_registration"
+}

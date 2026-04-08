@@ -142,24 +142,33 @@ router.post('/register', async (req, res) => {
 
   const normalizedEmail = String(email).trim().toLowerCase();
 
+  logger.info('Starting registration process', { email: normalizedEmail, correlationId: req.headers['x-correlation-id'] });
+
   try {
+    logger.info('Step 1: Cleaning up unverified users', { email: normalizedEmail });
     await cleanupUnverifiedUser(normalizedEmail);
 
+    logger.info('Step 2: Checking for existing user', { email: normalizedEmail });
     const existingUser = await prisma.user.findUnique({
       where: { email: normalizedEmail }
     });
 
     if (existingUser) {
+      logger.warn('User already exists', { email: normalizedEmail });
       return res.status(409).json({ error: 'Email already in use' });
     }
 
+    logger.info('Step 3: Hashing password', { email: normalizedEmail });
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
+
+    logger.info('Step 4: Generating verification code', { email: normalizedEmail });
     const otp = crypto.randomInt(100000, 999999).toString();
     const verificationCodeHash = await bcrypt.hash(otp, 12);
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
     const expiresAt = new Date(Date.now() + PENDING_REGISTRATION_TTL_HOURS * 60 * 60 * 1000);
 
+    logger.info('Step 5: Creating pending registration', { email: normalizedEmail });
     const pendingRegistration = await prisma.pendingRegistration.upsert({
       where: { email: normalizedEmail },
       update: {
@@ -188,11 +197,12 @@ router.post('/register', async (req, res) => {
       }
     });
 
+    logger.info('Step 6: Sending verification email', { email: normalizedEmail, pendingId: pendingRegistration.id });
     await sendVerificationEmail(normalizedEmail, otp, resolvedFirstName);
 
     const pendingToken = createPendingToken(pendingRegistration.id, normalizedEmail);
 
-    logger.info('Pending registration created', { email: normalizedEmail, pendingRegistrationId: pendingRegistration.id });
+    logger.info('Registration completed successfully', { email: normalizedEmail, pendingRegistrationId: pendingRegistration.id });
 
     res.status(201).json({
       message: 'Verification code sent. Please check your email.',
@@ -206,7 +216,9 @@ router.post('/register', async (req, res) => {
       error: err.message,
       stack: err.stack,
       email: normalizedEmail,
-      correlationId
+      correlationId,
+      code: err.code,
+      meta: err.meta
     };
 
     // Handle specific database errors
@@ -231,7 +243,7 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    logger.error('Pending registration failed', errorContext);
+    logger.error('Pending registration failed with unknown error', errorContext);
     res.status(500).json({
       error: 'Registration failed. Please try again later.',
       correlationId
