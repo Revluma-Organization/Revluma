@@ -13,6 +13,38 @@ const router = express.Router();
 const VERIFICATION_CODE_EXPIRY_MINUTES = 15;
 const PENDING_REGISTRATION_TTL_HOURS = 24;
 
+// Health check endpoint for debugging
+router.get('/health', async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'healthy', database: 'connected' });
+  } catch (err) {
+    res.status(500).json({ status: 'unhealthy', database: 'disconnected', error: err.message });
+  }
+});
+
+// Diagnostic endpoint for production debugging
+router.get('/diagnostics', async (req, res) => {
+  const diagnostics = {
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    database_url: process.env.DATABASE_URL ? 'set' : 'not set',
+    sendgrid_key: process.env.SENDGRID_API_KEY ? 'set' : 'not set',
+    jwt_secret: process.env.JWT_SECRET ? 'set' : 'not set',
+    port: process.env.PORT || 'not set'
+  };
+
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    diagnostics.database_connection = 'successful';
+  } catch (dbErr) {
+    diagnostics.database_connection = 'failed';
+    diagnostics.database_error = dbErr.message;
+  }
+
+  res.json(diagnostics);
+});
+
 function isEmailValid(email) {
   return typeof email === 'string' && email.includes('@');
 }
@@ -177,9 +209,26 @@ router.post('/register', async (req, res) => {
       correlationId
     };
 
+    // Handle specific database errors
     if (err.code === 'P2002' || err.code === '23505') {
       logger.warn('Pending registration email conflict', errorContext);
       return res.status(409).json({ error: 'Email already in use', correlationId });
+    }
+
+    if (err.code === 'P1001' || err.message.includes('connect')) {
+      logger.error('Database connection failed during registration', errorContext);
+      return res.status(503).json({
+        error: 'Service temporarily unavailable. Please try again later.',
+        correlationId
+      });
+    }
+
+    if (err.code === 'P2028' || err.message.includes('migration')) {
+      logger.error('Database schema issue during registration', errorContext);
+      return res.status(503).json({
+        error: 'Service configuration issue. Please contact support.',
+        correlationId
+      });
     }
 
     logger.error('Pending registration failed', errorContext);

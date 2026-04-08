@@ -3,9 +3,11 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 
-// Load .env from root directory
+// Load .env from root directory only in development
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+}
 dotenv.config();
 
 import { defineConfig } from "prisma/config";
