@@ -12,20 +12,16 @@ function runCommand(command) {
 }
 
 async function tableExists(tableName) {
-    const result = await prisma.$queryRawUnsafe(
-        `SELECT to_regclass($1) AS table_exists`,
-        tableName
-    );
-
-    return Array.isArray(result) && result[0] && result[0].table_exists !== null;
-}
+  const result = await prisma.$queryRaw`
+    SELECT to_regclass(${tableName})::text AS table_exists
+  `;
+  return result?.[0]?.table_exists !== null;
 
 async function countPublicTables() {
-    const result = await prisma.$queryRawUnsafe(
-        `SELECT COUNT(*)::int AS count FROM pg_tables WHERE schemaname = 'public'`
-    );
-    return Array.isArray(result) && result[0] ? result[0].count : 0;
-}
+  const result = await prisma.$queryRaw`
+    SELECT COUNT(*)::int AS count FROM pg_tables WHERE schemaname = 'public'
+  `;
+  return result?.[0]?.count ?? 0;
 
 function getInitialMigrationName() {
     if (!fs.existsSync(migrationsPath)) {
