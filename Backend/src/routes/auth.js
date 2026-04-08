@@ -62,18 +62,39 @@ async function cleanupUnverifiedUser(email) {
 
 // REGISTER - Step 1: Deferred account creation in pending registration
 router.post('/register', async (req, res) => {
-  const { email, password, first_name, last_name } = req.body;
+  const { email, password, first_name, last_name, full_name } = req.body;
 
-  if (!email || !password || !first_name || !last_name) {
-    return res.status(400).json({ error: 'All fields required: email, password, first_name, last_name' });
+  let resolvedFirstName = first_name;
+  let resolvedLastName = last_name;
+
+  if ((!resolvedFirstName || !resolvedLastName) && typeof full_name === 'string') {
+    const nameParts = full_name.trim().split(/\s+/);
+    if (nameParts.length >= 2) {
+      resolvedFirstName = resolvedFirstName || nameParts[0];
+      resolvedLastName = resolvedLastName || nameParts.slice(1).join(' ');
+    }
+  }
+
+  const missingFields = [];
+  if (!email) missingFields.push('email address');
+  if (!password) missingFields.push('password');
+  if (!resolvedFirstName) missingFields.push('first name');
+  if (!resolvedLastName) missingFields.push('last name');
+
+  if (missingFields.length > 0) {
+    const fieldText = missingFields.length === 1
+      ? missingFields[0]
+      : `${missingFields.slice(0, -1).join(', ')} and ${missingFields.slice(-1)}`;
+
+    return res.status(400).json({ error: `Please provide ${fieldText}.` });
   }
 
   if (!isEmailValid(email)) {
-    return res.status(400).json({ error: 'Invalid email format' });
+    return res.status(400).json({ error: 'Please provide a valid email address.' });
   }
 
   if (password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
   }
 
   const normalizedEmail = String(email).trim().toLowerCase();
@@ -99,8 +120,8 @@ router.post('/register', async (req, res) => {
     const pendingRegistration = await prisma.pendingRegistration.upsert({
       where: { email: normalizedEmail },
       update: {
-        firstName: first_name,
-        lastName: last_name,
+        firstName: resolvedFirstName,
+        lastName: resolvedLastName,
         passwordHash,
         verificationCodeHash,
         verificationExpiresAt,
@@ -113,8 +134,8 @@ router.post('/register', async (req, res) => {
       },
       create: {
         email: normalizedEmail,
-        firstName: first_name,
-        lastName: last_name,
+        firstName: resolvedFirstName,
+        lastName: resolvedLastName,
         passwordHash,
         verificationCodeHash,
         verificationExpiresAt,
@@ -124,7 +145,7 @@ router.post('/register', async (req, res) => {
       }
     });
 
-    await sendVerificationEmail(normalizedEmail, otp, first_name);
+    await sendVerificationEmail(normalizedEmail, otp, resolvedFirstName);
 
     const pendingToken = createPendingToken(pendingRegistration.id, normalizedEmail);
 
