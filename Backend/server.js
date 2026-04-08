@@ -82,6 +82,7 @@ app.use('/api/trending', require('./src/routes/trending'));
 app.use('/api/watchlist', require('./src/routes/watchlist'));
 app.use('/api/shopify', require('./src/routes/shopify'));
 app.use('/api/newsletter', require('./src/routes/newsletter'));
+app.use('/api/videos', require('./src/routes/videos'));
 
 // Admin endpoint (protected)
 app.post('/api/admin/ingest', authenticate, async (req, res) => {
