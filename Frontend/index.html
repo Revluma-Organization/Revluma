@@ -324,9 +324,14 @@
             max-width: 85vw;
             margin-left: 0;
             margin-right: auto;
+            opacity: 1;
+            transform: translateX(-15%) scale(1);
+            transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .laptop-container.laptop-animate {
             opacity: 0;
             transform: translateX(-60px) scale(0.96);
-            transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
         .laptop-container.laptop-visible {
@@ -2468,8 +2473,24 @@
             });
         }, { threshold: 0.15 });
 
-        if (laptop) promoObserver.observe(laptop);
+        if (laptop) {
+            const rect = laptop.getBoundingClientRect();
+            const inView = rect.top < window.innerHeight && rect.bottom > 0;
+            if (!inView) {
+                laptop.classList.add('laptop-animate');
+            } else {
+                laptop.classList.add('laptop-visible');
+            }
+            promoObserver.observe(laptop);
+        }
         promoItems.forEach(item => promoObserver.observe(item));
+
+        // Safety fallback — if laptop never becomes visible within 1.5s, force it
+        setTimeout(() => {
+            if (laptop && !laptop.classList.contains('laptop-visible')) {
+                laptop.classList.add('laptop-visible');
+            }
+        }, 1500);
 
         // Animated counters
         const counters = document.querySelectorAll('.counter');
