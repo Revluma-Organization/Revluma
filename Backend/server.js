@@ -68,11 +68,8 @@ app.use(express.static(path.join(__dirname, '..', 'Frontend')));
 // Routes
 // ============================================================
 
-// Auth routes with rate limiting
-app.use('/api/auth', rateLimit({ 
-  windowMs: 15 * 60 * 1000, 
-  max: 20 
-}), require('./src/routes/auth'));
+// Auth routes - temporarily disabled rate limiting for debugging
+app.use('/api/auth', require('./src/routes/auth'));
 
 // Other API routes
 app.use('/api/webhook', rateLimit({ 
