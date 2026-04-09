@@ -4,10 +4,10 @@
   "description": "Revluma - Revenue intelligence platform for e-commerce",
   "main": "server.js",
   "scripts": {
-    "start": "node deploy-migrations.js && node server.js",
+    "start": "node server.js",
     "dev": "node server.js",
     "test": "echo \"No tests yet\" && exit 0",
-    "build": "npx prisma generate && node scripts/prismaDeploy.js",
+    "build": "echo 'Build complete'",
     "postinstall": "npx prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

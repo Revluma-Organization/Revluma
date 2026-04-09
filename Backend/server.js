@@ -68,8 +68,13 @@ app.use(express.static(path.join(__dirname, '..', 'Frontend')));
 // Routes
 // ============================================================
 
-// Auth routes - temporarily disabled rate limiting for debugging
-app.use('/api/auth', require('./src/routes/auth'));
+// Auth routes with rate limiting
+const authLimiter = rateLimit({ 
+  windowMs: 15 * 60 * 1000, 
+  max: 50,
+  message: { error: 'Too many registration attempts' }
+});
+app.use('/api/auth', authLimiter, require('./src/routes/auth'));
 
 // Other API routes
 app.use('/api/webhook', rateLimit({ 
