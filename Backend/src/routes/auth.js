@@ -423,11 +423,9 @@ router.post('/register', async (req, res) => {
     });
 
     res.status(500).json({
-      error: process.env.NODE_ENV === 'development' 
-        ? `Registration failed: ${err.message}` 
-        : 'Registration failed. Please try again later.',
+      error: `Registration failed: ${err.message}`,
       correlationId,
-      details: process.env.NODE_ENV === 'development' ? { code: err.code } : undefined
+      details: { code: err.code, stack: err.stack?.substring(0, 500) }
     });
   }
 });
