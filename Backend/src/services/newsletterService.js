@@ -282,37 +282,6 @@ async function subscribe(email, meta = {}) {
     logger.error('Newsletter subscription error', { error: err.message, email: sanitizedEmail });
     return { status: 500, message: 'Failed to process subscription. Please try again.' };
   }
-
-        return { status: 200, message: 'Verification email already sent. Check your inbox.' };
-      }
-    }
-
-    // New subscription
-    const token = generateToken();
-    const expires = new Date(Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000);
-
-    await db.query(
-      `INSERT INTO newsletter_subscribers (email, verify_token, verify_expires, source, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        sanitizedEmail,
-        token,
-        expires,
-        meta.source || 'website',
-        meta.ip || null,
-        meta.userAgent || null
-      ],
-      'system'
-    );
-
-    await sendVerificationEmail(sanitizedEmail, token);
-    logger.info('New subscription created, verification sent', { email: sanitizedEmail });
-    return { status: 201, message: 'Check your email to confirm your subscription' };
-
-  } catch (err) {
-    logger.error('Subscribe failed', { email: sanitizedEmail, error: err.message, stack: err.stack });
-    return { status: 500, message: 'Subscription failed. Please try again later.' };
-  }
 }
 
 /**
@@ -372,50 +341,6 @@ async function verify(token) {
   } catch (err) {
     logger.error('Verification failed', { error: err.message, stack: err.stack });
     return { status: 500, message: 'Verification failed. Please try again.' };
-  }
-}
-
-/**
- * Unsubscribe a user by token
- * @param {string} token - Unsubscribe token
- * @returns {object} Result with status, message, and HTML
- */
-async function unsubscribe(token) {
-  if (!token || typeof token !== 'string' || token.length < 10) {
-    return { status: 400, message: 'Invalid or missing unsubscribe token' };
-  }
-
-  try {
-    const result = await db.query(
-      `UPDATE newsletter_subscribers
-       SET is_unsubscribed = TRUE,
-           unsubscribed_at = NOW(),
-           is_verified = FALSE,
-           verify_token = NULL,
-           verify_expires = NULL
-       WHERE unsub_token = $1
-         AND is_unsubscribed = FALSE
-       RETURNING id, email`,
-      [token],
-      'system'
-    );
-
-    if (result.rowCount === 0) {
-      return { status: 400, message: 'Invalid unsubscribe token or already unsubscribed' };
-    }
-
-    const subscriber = result.rows[0];
-    logger.info('User unsubscribed', { email: subscriber.email, id: subscriber.id });
-    return {
-      status: 200,
-      message: 'Successfully unsubscribed',
-      email: subscriber.email,
-      html: buildUnsubscribeConfirmationHTML(subscriber.email)
-    };
-
-  } catch (err) {
-    logger.error('Unsubscribe failed', { error: err.message, stack: err.stack });
-    return { status: 500, message: 'Unsubscribe failed. Please try again.' };
   }
 }
 
