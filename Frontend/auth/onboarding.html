@@ -523,6 +523,13 @@
           5</div>
         <span class="text-sm text-gray-400 hidden sm:inline">Recovery</span>
       </div>
+      <div class="w-8 h-px bg-dark-600"></div>
+      <div class="step-indicator flex items-center gap-2">
+        <div id="step6Indicator"
+          class="w-8 h-8 rounded-full bg-dark-600 text-gray-400 flex items-center justify-center text-sm font-semibold">
+          6</div>
+        <span class="text-sm text-gray-400 hidden sm:inline">Verify</span>
+      </div>
     </div>
 
     <!-- Content Area -->
@@ -560,45 +567,11 @@
             <div>
               <label for="email" class="block text-sm font-medium mb-2" style="color: var(--muted);">Email
                 Address</label>
-              <div class="flex gap-2">
-                <input type="email" id="email" name="email"
-                  class="input-field flex-1 px-4 py-3 rounded-lg text-white placeholder-gray-500 focus:outline-none"
-                  style="background: var(--surface); border: 1px solid var(--border);" placeholder="john@example.com"
-                  required>
-                <button type="button" id="verifyEmailBtn"
-                  class="px-4 py-3 rounded-lg font-semibold whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  style="background: var(--surface); border: 1px solid var(--border); color: var(--text);">
-                  Verify Email
-                </button>
-              </div>
+              <input type="email" id="email" name="email"
+                class="input-field w-full px-4 py-3 rounded-lg text-white placeholder-gray-500 focus:outline-none"
+                style="background: var(--surface); border: 1px solid var(--border);" placeholder="john@example.com"
+                required>
               <p id="emailError" class="text-sm mt-1 hidden" style="color: var(--red);"></p>
-              <p id="emailStatus" class="text-sm mt-1 hidden"></p>
-            </div>
-
-            <!-- Email Verification Code (Hidden by default) -->
-            <div id="verificationSection" class="hidden verification-section">
-              <label for="verificationCode" class="block text-sm font-medium mb-2"
-                style="color: var(--muted);">Verification Code</label>
-              <div class="flex gap-2 flex-wrap sm:flex-nowrap">
-                <input type="text" id="verificationCode" name="verificationCode" maxlength="6"
-                  class="input-field code-input flex-1 px-3 py-2.5 rounded-lg text-white placeholder-gray-500 focus:outline-none text-center text-lg tracking-widest"
-                  style="background: var(--surface); border: 1px solid var(--border); min-width: 120px;"
-                  placeholder="000000">
-                <button type="button" id="submitCodeBtn"
-                  class="px-3 py-2.5 rounded-lg font-semibold whitespace-nowrap text-sm"
-                  style="background: var(--text); color: var(--bg);">
-                  Verify
-                </button>
-              </div>
-              <p id="codeError" class="text-sm mt-1 hidden" style="color: var(--red);"></p>
-              <div class="flex items-center justify-between mt-2 gap-2 flex-wrap">
-                <p class="text-xs" style="color: var(--muted2);">Expires in 15 min</p>
-                <button type="button" id="resendCodeBtn"
-                  class="text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  style="color: var(--muted);" disabled>
-                  Resend code (<span id="countdown" class="countdown">60</span>s)
-                </button>
-              </div>
             </div>
 
             <!-- Password -->
@@ -700,16 +673,22 @@
             <div>
               <label class="block text-sm font-medium text-gray-300 mb-3">Which platform are you using?</label>
               <div class="grid grid-cols-3 gap-3">
-                <button type="button" data-platform="shopify"
+<button type="button" data-platform="shopify"
                   class="selection-card p-4 bg-dark-700 border border-dark-600 rounded-lg flex flex-col items-center gap-2 hover:bg-dark-600">
-                  <img src="../assets/images/shopifyLoog.png" alt="Shopify" class="w-8 h-8 object-contain">
+                  <div style="width:48px;height:48px;border-radius:8px;background:#2a2a2a;border:1.5px dashed #555;display:flex;align-items:center;justify-content:center;">
+                    <img src="assets/images/shopifyLoog.png" alt="Shopify" style="width:32px;height:32px;object-contain;">
+                  </div>
                   <span class="text-sm font-medium">Shopify</span>
                 </button>
+
                 <button type="button" data-platform="woocommerce"
                   class="selection-card p-4 bg-dark-700 border border-dark-600 rounded-lg flex flex-col items-center gap-2 hover:bg-dark-600">
-                  <img src="../assets/images/woocomrceLogo.webp" alt="WooCommerce" class="w-8 h-8 object-contain">
+                  <div style="width:48px;height:48px;border-radius:8px;background:#2a2a2a;border:1.5px dashed #555;display:flex;align-items:center;justify-content:center;">
+                    <img src="assets/images/woocomrceLogo.webp" alt="WooCommerce" style="width:32px;height:32px;object-contain;">
+                  </div>
                   <span class="text-sm font-medium">WooCommerce</span>
                 </button>
+
                 <button type="button" data-platform="other"
                   class="selection-card p-4 bg-dark-700 border border-dark-600 rounded-lg flex flex-col items-center gap-2 hover:bg-dark-600">
                   <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1041,6 +1020,49 @@
                 </svg>
               </button>
             </div>
+            </form>
+        </div>
+
+        <!-- Step 6: Email Verification -->
+        <div id="step6" class="step-container hidden">
+          <div class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold mb-3">Verify your email</h1>
+            <p class="text-gray-400 text-lg">We've sent a verification code to your email</p>
+          </div>
+
+          <form id="step6Form" class="space-y-5">
+            <!-- Email Verification Code -->
+            <div>
+              <label for="verificationCode" class="block text-sm font-medium mb-2" style="color: var(--muted);">Verification Code</label>
+              <div class="flex gap-2 flex-wrap sm:flex-nowrap">
+                <input type="text" id="verificationCode" name="verificationCode" maxlength="6"
+                  class="input-field code-input flex-1 px-3 py-2.5 rounded-lg text-white placeholder-gray-500 focus:outline-none text-center text-lg tracking-widest"
+                  style="background: var(--surface); border: 1px solid var(--border); min-width: 120px;"
+                  placeholder="000000">
+                <button type="button" id="submitCodeBtn"
+                  class="px-3 py-2.5 rounded-lg font-semibold whitespace-nowrap text-sm"
+                  style="background: var(--text); color: var(--bg);">
+                  Verify
+                </button>
+              </div>
+              <p id="codeError" class="text-sm mt-1 hidden" style="color: var(--red);"></p>
+              <div class="flex items-center justify-between mt-2 gap-2 flex-wrap">
+                <p class="text-xs" style="color: var(--muted2);">Expires in 15 min</p>
+                <button type="button" id="resendCodeBtn"
+                  class="text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style="color: var(--muted);" disabled>
+                  Resend code (<span id="countdown" class="countdown">60</span>s)
+                </button>
+              </div>
+            </div>
+
+            <!-- Navigation Buttons -->
+            <div class="flex gap-3 pt-4">
+              <button type="button" id="step6Back"
+                class="flex-1 py-3 bg-dark-700 text-white font-semibold rounded-lg border border-dark-600 hover:bg-dark-600 transition-colors">
+                Back
+              </button>
+            </div>
           </form>
         </div>
 
@@ -1056,7 +1078,7 @@
             <p class="text-gray-400 text-lg">Your account is ready. Let's start recovering those carts.</p>
           </div>
 
-          <a href="../index.html"
+          <a href="../Dashboard/overview.html"
             class="inline-flex items-center gap-2 px-8 py-3 bg-white text-dark-900 font-semibold rounded-lg hover:bg-gray-100 transition-colors">
             Go to Dashboard
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1130,14 +1152,16 @@
         2: document.getElementById('step2'),
         3: document.getElementById('step3'),
         4: document.getElementById('step4'),
-        5: document.getElementById('step5')
+        5: document.getElementById('step5'),
+        6: document.getElementById('step6')
       },
       indicators: {
         1: document.getElementById('step1Indicator'),
         2: document.getElementById('step2Indicator'),
         3: document.getElementById('step3Indicator'),
         4: document.getElementById('step4Indicator'),
-        5: document.getElementById('step5Indicator')
+        5: document.getElementById('step5Indicator'),
+        6: document.getElementById('step6Indicator')
       },
       progressBar: document.getElementById('progressBar'),
       successScreen: document.getElementById('successScreen'),
@@ -1243,7 +1267,7 @@
       elements.successScreen.classList.add('hidden');
 
       // Show current step
-      if (step <= 5) {
+      if (step <= 6) {
         elements.steps[step].classList.remove('hidden');
         elements.steps[step].classList.add('slide-in');
       } else {
@@ -1361,6 +1385,9 @@
         if (!response.ok) {
           throw new Error(data.error || 'Failed to send verification code');
         }
+
+        // Start countdown for resend button
+        startCountdown();
 
         return data;
       } catch (error) {
@@ -1641,48 +1668,43 @@
       }
     });
 
-    // Verify email button
-    elements.verifyEmailBtn.addEventListener('click', async () => {
-      const email = document.getElementById('email').value.trim();
+    // Verify email button - No longer used (verification moved to step 6)
+    if (elements.verifyEmailBtn) {
+      elements.verifyEmailBtn.addEventListener('click', async () => {
+        const email = document.getElementById('email').value.trim();
 
-      if (!email) {
-        showFieldError('email', 'Please enter your email first');
-        return;
-      }
-
-      if (!validateEmail(email)) {
-        showFieldError('email', 'Please enter a valid email');
-        return;
-      }
-
-      // First, register the user if not already registered
-      if (!state.token) {
-        showLoading('Creating your account...');
-        try {
-          await registerUser();
-          hideLoading();
-
-          // Subscribe to newsletter if opted in
-          const newsletterCheckbox = document.getElementById('newsletterOptIn');
-          if (newsletterCheckbox && newsletterCheckbox.checked) {
-            fetch(`${API_BASE}/newsletter/subscribe`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: state.formData.email })
-            }).catch(() => { }); // Fire-and-forget; newsletter is optional
-          }
-        } catch (error) {
-          hideLoading();
-          showError(error.message);
+        if (!email) {
+          showFieldError('email', 'Please enter your email first');
           return;
         }
-      }
 
-      // Send verification code
-      showLoading('Sending verification code...');
-      try {
-        const result = await sendVerificationCode();
-        hideLoading();
+        if (!validateEmail(email)) {
+          showFieldError('email', 'Please enter a valid email');
+          return;
+        }
+
+        // First, register the user if not already registered
+        if (!state.token) {
+          showLoading('Creating your account...');
+          try {
+            await registerUser();
+            hideLoading();
+
+            // Subscribe to newsletter if opted in
+            const newsletterCheckbox = document.getElementById('newsletterOptIn');
+            if (newsletterCheckbox && newsletterCheckbox.checked) {
+              fetch(`${API_BASE}/newsletter/subscribe`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: state.formData.email })
+              }).catch(() => { }); // Fire-and-forget; newsletter is optional
+            }
+          } catch (error) {
+            hideLoading();
+            showError(error.message);
+            return;
+          }
+        }
 
         // Show verification section
         elements.verificationSection.classList.remove('hidden');
@@ -1693,11 +1715,8 @@
         startCountdown();
 
         showSuccess('Verification code sent to your email');
-      } catch (error) {
-        hideLoading();
-        showError(error.message);
-      }
-    });
+      });
+    }
 
     // Submit verification code
     elements.submitCodeBtn.addEventListener('click', async () => {
@@ -1719,8 +1738,10 @@
       try {
         await verifyEmailCode(code);
         hideLoading();
-        updateEmailStatus(true);
+        state.emailVerified = true;
         showSuccess('Email verified successfully!');
+        // Show success screen after successful verification
+        showStep(7);
       } catch (error) {
         hideLoading();
         document.getElementById('codeError').textContent = error.message;
@@ -1898,8 +1919,12 @@
         await updateOnboarding(5, {
           preferred_recovery_channel: state.formData.recoveryChannel
         });
+        
+        // Send verification email after completing setup
+        await sendVerificationCode();
+        
         hideLoading();
-        showStep(6); // Success screen
+        showStep(6); // Go to verification step
       } catch (error) {
         hideLoading();
         showError(error.message);
@@ -1911,6 +1936,7 @@
     document.getElementById('step3Back').addEventListener('click', () => showStep(2));
     document.getElementById('step4Back').addEventListener('click', () => showStep(3));
     document.getElementById('step5Back').addEventListener('click', () => showStep(4));
+    document.getElementById('step6Back').addEventListener('click', () => showStep(5));
 
     // Input focus effects
     document.querySelectorAll('.input-field').forEach(input => {

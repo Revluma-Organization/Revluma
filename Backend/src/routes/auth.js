@@ -532,7 +532,7 @@ router.post('/verify-email', authenticatePending, async (req, res) => {
       data: {
         emailVerified: true,
         emailVerifiedAt: new Date(),
-        step: 2,
+        step: 6,
         updatedAt: new Date()
       }
     });
@@ -555,7 +555,7 @@ router.patch('/pending-registration', authenticatePending, async (req, res) => {
     return res.status(400).json({ error: 'Step and data are required' });
   }
 
-  const allowedSteps = [2, 3, 4, 5];
+  const allowedSteps = [2, 3, 4, 5, 6];
   if (!allowedSteps.includes(step)) {
     return res.status(400).json({ error: 'Invalid onboarding step' });
   }
