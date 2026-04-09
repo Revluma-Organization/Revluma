@@ -435,39 +435,52 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// SEND EMAIL VERIFICATION CODE
-router.post('/send-verification', authenticate, async (req, res) => {
-  const { id: user_id, email, tenant_id } = req.user;
+// SEND EMAIL VERIFICATION CODE - Public endpoint
+router.post('/send-verification', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email address is required' });
+  }
+
+  const normalizedEmail = String(email).trim().toLowerCase();
 
   try {
+    // Find user by email
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!user) {
+      // For security, don't reveal if email exists
+      return res.status(200).json({ message: 'If that email exists, a verification code has been sent' });
+    }
+
     const code = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
 
     // Invalidate existing codes
     await prisma.emailVerificationCode.updateMany({
-      where: { userId: user_id, used: false },
+      where: { userId: user.id, used: false },
       data: { used: true }
     });
 
     await prisma.emailVerificationCode.create({
       data: {
-        userId: user_id,
-        email,
+        userId: user.id,
+        email: normalizedEmail,
         code,
         expiresAt
       }
     });
 
-    const user = await prisma.user.findUnique({ where: { id: user_id } });
-    const userName = user?.fullName || 'there';
+    await sendVerificationEmail(normalizedEmail, code, user.fullName || 'there');
 
-    await sendVerificationEmail(email, code, userName);
-
-    logger.info('Verification code sent', { user_id, email });
+    logger.info('Verification code sent', { email: normalizedEmail, userId: user.id });
 
     res.status(200).json({ message: 'Verification code sent to your email' });
   } catch (err) {
-    logger.error('Failed to send verification code', { error: err.message, user_id });
+    logger.error('Failed to send verification code', { error: err.message, email: normalizedEmail, stack: err.stack });
     res.status(500).json({ error: 'Failed to send verification code' });
   }
 });

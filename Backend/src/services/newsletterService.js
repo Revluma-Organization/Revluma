@@ -188,79 +188,28 @@ async function subscribe(email, meta = {}) {
   // Validate email format
   const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
   if (!sanitizedEmail || !emailRegex.test(sanitizedEmail) || sanitizedEmail.length > 254) {
+    console.error('Invalid email format submitted', { email: sanitizedEmail });
     return { status: 400, message: 'Invalid email address format' };
   }
 
   try {
-    // Check if already subscribed - use Prisma
-    const existing = await prisma.newsletterSubscriber.findFirst({
-      where: {
-        email: sanitizedEmail,
-        tenantId: 'system' // Use system tenant for global newsletter
-      }
-    });
-
-    if (existing) {
-      // Already verified and active
-      if (existing.verified && existing.status === 'active') {
-        return { status: 200, message: 'Email already subscribed' };
-      }
-
-      // Unsubscribed — allow resubscription
-      if (existing.status === 'unsubscribed') {
-        const token = generateToken();
-        const expires = new Date(Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000);
-
-        await prisma.newsletterSubscriber.update({
-          where: { id: existing.id },
-          data: {
-            status: 'active',
-            verified: false,
-            verifiedAt: null,
-            verifyToken: token,
-            verifyExpires: expires,
-            unsubToken: generateToken(16), // Generate new unsub token
-            updatedAt: new Date()
-          }
-        });
-
-        await sendVerificationEmail(sanitizedEmail, token);
-        logger.info('Resubscription verification sent', { email: sanitizedEmail });
-        return { status: 200, message: 'Check your email to confirm your subscription' };
-      }
-
-      // Not verified — resend verification if token expired
-      if (!existing.verified) {
-        const tokenExpired = !existing.verifyExpires || new Date(existing.verifyExpires) < new Date();
-        if (tokenExpired) {
-          const token = generateToken();
-          const expires = new Date(Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000);
-
-          await prisma.newsletterSubscriber.update({
-            where: { id: existing.id },
-            data: {
-              verifyToken: token,
-              verifyExpires: expires,
-              updatedAt: new Date()
-            }
-          });
-
-          await sendVerificationEmail(sanitizedEmail, token);
-          logger.info('Verification re-sent', { email: sanitizedEmail });
-          return { status: 200, message: 'Check your email to confirm your subscription' };
-        } else {
-          // Token still valid
-          return { status: 200, message: 'Check your email to confirm your subscription' };
-        }
-      }
-    }
-
-    // Create new subscriber
     const token = generateToken();
     const expires = new Date(Date.now() + VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000);
 
-    await prisma.newsletterSubscriber.create({
-      data: {
+    // Use upsert to handle both new and existing subscribers
+    const subscriber = await prisma.newsletterSubscriber.upsert({
+      where: {
+        email: sanitizedEmail
+      },
+      update: {
+        status: 'active',
+        verified: false,
+        verifyToken: token,
+        verifyExpires: expires,
+        unsubToken: generateToken(16),
+        updatedAt: new Date()
+      },
+      create: {
         tenantId: 'system',
         email: sanitizedEmail,
         name: meta.name || null,
@@ -274,12 +223,14 @@ async function subscribe(email, meta = {}) {
     });
 
     await sendVerificationEmail(sanitizedEmail, token);
-    logger.info('New subscription created', { email: sanitizedEmail, source: meta.source });
+    logger.info('Subscription processed', { email: sanitizedEmail, source: meta.source, subscriberId: subscriber.id });
+    console.log('Newsletter subscribe successful', { email: sanitizedEmail, subscriberId: subscriber.id });
 
     return { status: 200, message: 'Check your email to confirm your subscription' };
 
   } catch (err) {
-    logger.error('Newsletter subscription error', { error: err.message, email: sanitizedEmail });
+    console.error('Newsletter subscription error:', err.message, { email: sanitizedEmail, stack: err.stack });
+    logger.error('Newsletter subscription error', { error: err.message, email: sanitizedEmail, stack: err.stack });
     return { status: 500, message: 'Failed to process subscription. Please try again.' };
   }
 }
