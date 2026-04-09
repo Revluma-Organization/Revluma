@@ -1,7 +1,7 @@
 #!/bin/bash
 
-echo "🔧 Revluma Production Deployment Fix Script"
-echo "=========================================="
+echo "🔧 Revluma Production Deployment Fix Script v2.0"
+echo "================================================"
 
 # Navigate to backend directory
 cd /opt/render/project/src/Backend || {
@@ -29,13 +29,19 @@ fi
 echo "🔄 Generating Prisma client..."
 npx prisma generate
 
-# Force resolve the failed migration
-echo "🔧 Resolving failed migration..."
-node force-resolve-migration.js
-
-# Run database migrations
+# Run database migrations (this will apply the new newsletter fields migration)
 echo "📊 Running database migrations..."
 npx prisma migrate deploy
 
-echo "✅ Deployment fixes applied successfully!"
-echo "🚀 Your application should now start properly."
+# Force resolve any failed migrations
+echo "🔧 Resolving any failed migrations..."
+node force-resolve-migration.js
+
+echo "✅ All fixes applied successfully!"
+echo "🚀 Your application should now work properly."
+echo ""
+echo "📋 What was fixed:"
+echo "  - Newsletter service now uses Prisma (not raw SQL)"
+echo "  - Added verification token fields to database"
+echo "  - Fixed field name mismatches (passwordHash, fullName)"
+echo "  - Improved error handling and logging"
