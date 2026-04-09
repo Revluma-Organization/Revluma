@@ -78,23 +78,53 @@ function buildPendingProfileData(onboardingData) {
 }
 
 async function cleanupUnverifiedUser(email) {
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      email: { equals: email.trim().toLowerCase(), mode: 'insensitive' },
-      emailVerified: false
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Find unverified user - no need for mode: 'insensitive' since we already normalize
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email: normalizedEmail,
+        emailVerified: false
+      }
+    });
+
+    if (!existingUser) {
+      return;
     }
-  });
 
-  if (!existingUser) {
-    return;
+    // Delete associated tenant first (due to foreign key constraints)
+    try {
+      await prisma.tenant.delete({ where: { id: existingUser.tenantId } });
+      logger.info('Removed stale unverified user and tenant', {
+        email: normalizedEmail,
+        userId: existingUser.id,
+        tenantId: existingUser.tenantId
+      });
+    } catch (tenantErr) {
+      // If tenant deletion fails, just warn - it might be in use
+      logger.warn('Could not delete tenant during cleanup', {
+        email: normalizedEmail,
+        tenantId: existingUser.tenantId,
+        error: tenantErr.message
+      });
+    }
+  } catch (err) {
+    // Don't throw - cleanup is best-effort
+    logger.warn('Error during unverified user cleanup', {
+      email: email.trim().toLowerCase(),
+      error: err.message
+    });
   }
-
-  await prisma.tenant.delete({ where: { id: existingUser.tenantId } });
-  logger.info('Removed stale unverified user and tenant', { email, userId: existingUser.id, tenantId: existingUser.tenantId });
 }
 
 // REGISTER - Step 1: Deferred account creation in pending registration
 router.post('/register', async (req, res) => {
+  const correlationId = req.headers['x-correlation-id'] || uuidv4().slice(0, 8);
+
+  // Set correlation ID in response headers for tracing
+  res.setHeader('X-Correlation-ID', correlationId);
+
   const {
     email,
     password,
@@ -106,20 +136,26 @@ router.post('/register', async (req, res) => {
     fullName
   } = req.body;
 
-  let resolvedFirstName = first_name || firstName;
-  let resolvedLastName = last_name || lastName;
-  const fullNameValue = full_name || fullName;
+  // Input sanitization and normalization
+  let resolvedFirstName = (first_name || firstName || '').trim();
+  let resolvedLastName = (last_name || lastName || '').trim();
+  const fullNameValue = (full_name || fullName || '').trim();
+  const rawEmail = (email || '').trim();
 
-  if ((!resolvedFirstName || !resolvedLastName) && typeof fullNameValue === 'string') {
-    const nameParts = fullNameValue.trim().split(/\s+/);
+  // Parse full name if first/last names not provided
+  if ((!resolvedFirstName || !resolvedLastName) && fullNameValue.length > 0) {
+    const nameParts = fullNameValue.split(/\s+/).filter(p => p.length > 0);
     if (nameParts.length >= 2) {
       resolvedFirstName = resolvedFirstName || nameParts[0];
       resolvedLastName = resolvedLastName || nameParts.slice(1).join(' ');
+    } else if (nameParts.length === 1) {
+      resolvedFirstName = resolvedFirstName || nameParts[0];
     }
   }
 
+  // Validate required fields
   const missingFields = [];
-  if (!email) missingFields.push('email address');
+  if (!rawEmail) missingFields.push('email address');
   if (!password) missingFields.push('password');
   if (!resolvedFirstName) missingFields.push('first name');
   if (!resolvedLastName) missingFields.push('last name');
@@ -129,46 +165,149 @@ router.post('/register', async (req, res) => {
       ? missingFields[0]
       : `${missingFields.slice(0, -1).join(', ')} and ${missingFields.slice(-1)}`;
 
-    return res.status(400).json({ error: `Please provide ${fieldText}.` });
+    return res.status(400).json({
+      error: `Please provide ${fieldText}.`,
+      correlationId
+    });
   }
 
-  if (!isEmailValid(email)) {
-    return res.status(400).json({ error: 'Please provide a valid email address.' });
+  // Email validation
+  if (!isEmailValid(rawEmail) || rawEmail.length > 255) {
+    return res.status(400).json({
+      error: 'Please provide a valid email address.',
+      correlationId
+    });
+  }
+
+  // Password validation
+  if (!password || typeof password !== 'string') {
+    return res.status(400).json({
+      error: 'Password is required.',
+      correlationId
+    });
   }
 
   if (password.length < 8) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+    return res.status(400).json({
+      error: 'Password must be at least 8 characters long.',
+      correlationId
+    });
   }
 
-  const normalizedEmail = String(email).trim().toLowerCase();
+  if (password.length > 128) {
+    return res.status(400).json({
+      error: 'Password is too long (max 128 characters).',
+      correlationId
+    });
+  }
 
-  logger.info('Starting registration process', { email: normalizedEmail, correlationId: req.headers['x-correlation-id'] });
+  // Name validation
+  if (resolvedFirstName.length > 100 || resolvedLastName.length > 100) {
+    return res.status(400).json({
+      error: 'Name is too long.',
+      correlationId
+    });
+  }
+
+  const normalizedEmail = rawEmail.toLowerCase();
+
+  logger.info('Starting registration process', {
+    email: normalizedEmail,
+    correlationId,
+    firstName: resolvedFirstName
+  });
 
   try {
-    logger.info('Step 1: Cleaning up unverified users', { email: normalizedEmail });
+    logger.debug('Step 1: Cleaning up stale unverified users', {
+      email: normalizedEmail,
+      correlationId
+    });
     await cleanupUnverifiedUser(normalizedEmail);
 
-    logger.info('Step 2: Checking for existing user', { email: normalizedEmail });
+    logger.debug('Step 2: Checking for existing user', {
+      email: normalizedEmail,
+      correlationId
+    });
     const existingUser = await prisma.user.findUnique({
       where: { email: normalizedEmail }
     });
 
     if (existingUser) {
-      logger.warn('User already exists', { email: normalizedEmail });
-      return res.status(409).json({ error: 'Email already in use' });
+      logger.warn('Registration attempt with existing email', {
+        email: normalizedEmail,
+        correlationId
+      });
+      return res.status(409).json({
+        error: 'Email already in use',
+        correlationId
+      });
     }
 
-    logger.info('Step 3: Hashing password', { email: normalizedEmail });
+    // Check for existing pending registration
+    const existingPending = await prisma.pendingRegistration.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (existingPending && !existingPending.emailVerified && new Date(existingPending.expiresAt) > new Date()) {
+      logger.info('Existing valid pending registration found, resending code', {
+        email: normalizedEmail,
+        correlationId
+      });
+      // Resend verification instead of creating duplicate
+      try {
+        const otp = crypto.randomInt(100000, 999999).toString();
+        const verificationCodeHash = await bcrypt.hash(otp, 12);
+        const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
+
+        await prisma.pendingRegistration.update({
+          where: { email: normalizedEmail },
+          data: {
+            verificationCodeHash,
+            verificationExpiresAt,
+            updatedAt: new Date()
+          }
+        });
+
+        await sendVerificationEmail(normalizedEmail, otp, resolvedFirstName);
+
+        const pendingToken = createPendingToken(existingPending.id, normalizedEmail);
+
+        return res.status(201).json({
+          message: 'Verification code sent. Please check your email.',
+          pendingRegistrationId: existingPending.id,
+          pendingToken,
+          expiresAt: existingPending.expiresAt,
+          correlationId
+        });
+      } catch (emailErr) {
+        logger.error('Failed to resend verification email', {
+          error: emailErr.message,
+          email: normalizedEmail,
+          correlationId
+        });
+      }
+    }
+
+    logger.debug('Step 3: Hashing password', {
+      email: normalizedEmail,
+      correlationId
+    });
     const salt = await bcrypt.genSalt(12);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    logger.info('Step 4: Generating verification code', { email: normalizedEmail });
+    logger.debug('Step 4: Generating verification code', {
+      email: normalizedEmail,
+      correlationId
+    });
     const otp = crypto.randomInt(100000, 999999).toString();
     const verificationCodeHash = await bcrypt.hash(otp, 12);
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
     const expiresAt = new Date(Date.now() + PENDING_REGISTRATION_TTL_HOURS * 60 * 60 * 1000);
 
-    logger.info('Step 5: Creating pending registration', { email: normalizedEmail });
+    logger.debug('Step 5: Creating/updating pending registration', {
+      email: normalizedEmail,
+      correlationId
+    });
     const pendingRegistration = await prisma.pendingRegistration.upsert({
       where: { email: normalizedEmail },
       update: {
@@ -197,26 +336,37 @@ router.post('/register', async (req, res) => {
       }
     });
 
-    logger.info('Step 6: Sending verification email', { email: normalizedEmail, pendingId: pendingRegistration.id });
-    
+    logger.debug('Step 6: Sending verification email', {
+      email: normalizedEmail,
+      pendingId: pendingRegistration.id,
+      correlationId
+    });
+
     try {
       await sendVerificationEmail(normalizedEmail, otp, resolvedFirstName);
     } catch (emailErr) {
-      logger.error('Failed to send verification email, but registration continues', { 
-        error: emailErr.message, 
-        email: normalizedEmail 
+      logger.error('Failed to send verification email, but registration continues', {
+        error: emailErr.message,
+        email: normalizedEmail,
+        correlationId
       });
+      // Don't fail registration if email send fails - user can request resend
     }
 
     const pendingToken = createPendingToken(pendingRegistration.id, normalizedEmail);
 
-    logger.info('Registration completed successfully', { email: normalizedEmail, pendingRegistrationId: pendingRegistration.id });
+    logger.info('Registration completed successfully', {
+      email: normalizedEmail,
+      pendingRegistrationId: pendingRegistration.id,
+      correlationId
+    });
 
     res.status(201).json({
       message: 'Verification code sent. Please check your email.',
       pendingRegistrationId: pendingRegistration.id,
       pendingToken,
-      expiresAt: pendingRegistration.expiresAt
+      expiresAt: pendingRegistration.expiresAt,
+      correlationId
     });
   } catch (err) {
     const correlationId = req.headers['x-correlation-id'] || uuidv4().slice(0, 8);
@@ -226,32 +376,52 @@ router.post('/register', async (req, res) => {
       email: normalizedEmail,
       correlationId,
       code: err.code,
-      meta: err.meta
+      meta: err.meta,
+      timestamp: new Date().toISOString()
     };
 
     // Handle specific database errors
     if (err.code === 'P2002' || err.code === '23505') {
       logger.warn('Pending registration email conflict', errorContext);
-      return res.status(409).json({ error: 'Email already in use', correlationId });
+      return res.status(409).json({
+        error: 'Email already in use',
+        correlationId
+      });
     }
 
-    if (err.code === 'P1001' || err.message.includes('connect')) {
+    // Handle connection errors
+    if (err.code === 'P1001' || err.code === 'ECONNREFUSED' || err.message.includes('connect') || err.message.includes('ECONNREFUSED')) {
       logger.error('Database connection failed during registration', errorContext);
       return res.status(503).json({
-        error: 'Service temporarily unavailable. Please try again later.',
+        error: 'Service temporarily unavailable. Please try again in a moment.',
         correlationId
       });
     }
 
-    if (err.code === 'P2028' || err.message.includes('migration')) {
-      logger.error('Database schema issue during registration', errorContext);
+    // Handle schema/migration errors
+    if (err.code === 'P2028' || err.message.includes('migration') || err.message.includes('syntax error')) {
+      logger.error('Database schema or query error during registration', errorContext);
       return res.status(503).json({
-        error: 'Service configuration issue. Please contact support.',
+        error: 'Service temporarily unavailable. Please contact support.',
         correlationId
       });
     }
 
-    logger.error('Pending registration failed with unknown error', errorContext);
+    // Handle timeout
+    if (err.code === 'ETIMEDOUT' || err.message.includes('timeout')) {
+      logger.error('Database timeout during registration', errorContext);
+      return res.status(504).json({
+        error: 'Request timeout. Please try again.',
+        correlationId
+      });
+    }
+
+    // Generic 500 error with correlation ID for debugging
+    logger.error('Pending registration failed with unknown error', {
+      ...errorContext,
+      requestBody: { email: normalizedEmail } // Don't log password
+    });
+
     res.status(500).json({
       error: 'Registration failed. Please try again later.',
       correlationId
