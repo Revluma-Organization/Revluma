@@ -1416,11 +1416,11 @@
 
     async function updateOnboarding(step, data) {
       try {
-        const response = await fetch(`${API_BASE}/auth/onboarding`, {
+        const response = await fetch(`${API_BASE}/auth/pending-registration`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${state.token}`
+            'Authorization': `Bearer ${state.pendingToken}`
           },
           body: JSON.stringify({ step, data })
         });
