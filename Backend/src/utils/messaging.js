@@ -23,6 +23,7 @@ async function sendVerificationEmail(toEmail, code, userName) {
         email: FROM_EMAIL,
         name: FROM_NAME
       },
+      replyTo: FROM_EMAIL,
       subject: 'Verify your email address - Revluma',
       text: `Hi ${userName},\n\nYour verification code is: ${code}\n\nThis code will expire in 15 minutes.\n\nIf you didn't request this code, please ignore this email.\n\nBest regards,\nRevluma Team`,
       html: `
@@ -66,7 +67,7 @@ async function sendVerificationEmail(toEmail, code, userName) {
                       <p style="margin: 0; color: #666666; font-size: 14px; line-height: 1.5;">If you didn't request this code, please ignore this email.</p>
                     </td>
                   </tr>
-                  
+                   
                   <!-- Footer -->
                   <tr>
                     <td style="padding: 30px 40px; background-color: #0a0a0a; border-top: 1px solid #222222;">
@@ -83,14 +84,24 @@ async function sendVerificationEmail(toEmail, code, userName) {
       `
     };
 
-    await sgMail.send(msg);
-    logger.info('Verification email sent successfully', { toEmail });
-    return true;
-  } catch (error) {
-    logger.error('Failed to send verification email', { 
-      error: error.message, 
+    logger.info('Sending verification email via SendGrid', { toEmail, fromEmail: FROM_EMAIL });
+    const [response] = await sgMail.send(msg);
+    const messageId = response?.headers?.['x-message-id'] || response?.headers?.['X-Message-Id'] || null;
+    logger.info('Verification email queued', {
       toEmail,
-      code: error.code 
+      statusCode: response?.statusCode,
+      statusMessage: response?.statusMessage,
+      messageId
+    });
+
+    return response?.statusCode === 202 || response?.statusCode === 200;
+  } catch (error) {
+    const sendgridDetails = error.response?.body || error.response || null;
+    logger.error('Failed to send verification email', {
+      error: error.message,
+      toEmail,
+      code: error.code,
+      sendgridDetails
     });
     throw new Error('Failed to send verification email');
   }

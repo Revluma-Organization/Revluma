@@ -475,7 +475,10 @@ router.post('/send-verification', async (req, res) => {
       }
     });
 
-    await sendVerificationEmail(normalizedEmail, code, user.fullName || 'there');
+    const emailSent = await sendVerificationEmail(normalizedEmail, code, user.fullName || 'there');
+    if (!emailSent) {
+      throw new Error('SendGrid did not accept the verification email');
+    }
 
     logger.info('Verification code sent', { email: normalizedEmail, userId: user.id });
 
