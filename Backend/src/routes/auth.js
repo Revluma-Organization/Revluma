@@ -604,7 +604,7 @@ router.post('/complete-registration', authenticatePending, async (req, res) => {
       return res.status(400).json({ error: 'Email must be verified before completing registration' });
     }
 
-    if (pending.step < 5) {
+    if (pending.step < 6) {
       return res.status(400).json({ error: 'Complete all onboarding steps before finalizing registration' });
     }
 
