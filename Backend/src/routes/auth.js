@@ -308,6 +308,7 @@ router.post('/register', async (req, res) => {
       email: normalizedEmail,
       correlationId
     });
+    console.log('[DEBUG] About to upsert pendingRegistration for:', normalizedEmail);
     const pendingRegistration = await prisma.pendingRegistration.upsert({
       where: { email: normalizedEmail },
       update: {
