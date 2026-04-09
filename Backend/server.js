@@ -38,8 +38,8 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // CORS - restrict origins in production
 app.use(cors({
-  origin: isProduction 
-    ? ['https://revluma.vercel.app', 'https://revluma.onrender.com'] 
+  origin: isProduction
+    ? ['https://revluma.vercel.app', 'https://revluma.onrender.com']
     : true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -69,17 +69,17 @@ app.use(express.static(path.join(__dirname, '..', 'Frontend')));
 // ============================================================
 
 // Auth routes with rate limiting
-const authLimiter = rateLimit({ 
-  windowMs: 15 * 60 * 1000, 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
   max: 50,
   message: { error: 'Too many registration attempts' }
 });
 app.use('/api/auth', authLimiter, require('./src/routes/auth'));
 
 // Other API routes
-app.use('/api/webhook', rateLimit({ 
-  windowMs: 60 * 1000, 
-  max: 50 
+app.use('/api/webhook', rateLimit({
+  windowMs: 60 * 1000,
+  max: 50
 }), require('./src/routes/webhook'));
 
 app.use('/api/trending', require('./src/routes/trending'));
@@ -109,7 +109,7 @@ app.get('/health', async (req, res) => {
   try {
     const dbHealthy = await checkConnection();
     const redisHealthy = await checkRedisHealth();
-    
+
     res.json({
       status: dbHealthy && redisHealthy ? 'healthy' : 'degraded',
       uptime: process.uptime(),
@@ -140,7 +140,7 @@ async function startServer() {
   try {
     // Verify database connection
     const dbHealthy = await checkConnection();
-    
+
     if (!dbHealthy) {
       logger.error('Database connection failed - cannot start server');
       if (isProduction) {
@@ -168,17 +168,17 @@ async function startServer() {
     // Graceful shutdown handlers
     const gracefulShutdown = async (signal) => {
       logger.info(`Received ${signal} - starting graceful shutdown`);
-      
+
       server.close(async () => {
         logger.info('HTTP server closed');
-        
+
         try {
           await closeConnection();
           logger.info('Database connection closed');
         } catch (err) {
           logger.error('Error closing database connection:', err.message);
         }
-        
+
         process.exit(0);
       });
 

@@ -1,14 +1,14 @@
 const { PrismaClient } = require('@prisma/client');
 
 async function forceResolveMigration() {
-  const prisma = new PrismaClient();
+    const prisma = new PrismaClient();
 
-  try {
-    console.log('🔧 Force resolving failed migration...');
+    try {
+        console.log('🔧 Force resolving failed migration...');
 
-    // Mark the migration as completed in the _prisma_migrations table
-    // This tells Prisma that the migration has been applied successfully
-    await prisma.$executeRaw`
+        // Mark the migration as completed in the _prisma_migrations table
+        // This tells Prisma that the migration has been applied successfully
+        await prisma.$executeRaw`
       UPDATE _prisma_migrations
       SET finished_at = NOW(),
           logs = 'Migration force-resolved - made idempotent and redeployed',
@@ -17,20 +17,20 @@ async function forceResolveMigration() {
       AND finished_at IS NULL
     `;
 
-    console.log('✅ Migration marked as completed');
-    console.log('🚀 You can now redeploy your application');
+        console.log('✅ Migration marked as completed');
+        console.log('🚀 You can now redeploy your application');
 
-  } catch (error) {
-    console.error('❌ Force resolution failed:', error.message);
-    console.error('Stack:', error.stack);
-  } finally {
-    await prisma.$disconnect();
-  }
+    } catch (error) {
+        console.error('❌ Force resolution failed:', error.message);
+        console.error('Stack:', error.stack);
+    } finally {
+        await prisma.$disconnect();
+    }
 }
 
 // Run if called directly
 if (require.main === module) {
-  forceResolveMigration();
+    forceResolveMigration();
 }
 
 module.exports = { forceResolveMigration };
