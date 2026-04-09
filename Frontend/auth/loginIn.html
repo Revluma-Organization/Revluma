@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="../assets/images/Revluma-icon.png" />
-  <title>Revluma — Login</title>
+  <title>Revluma — Sign In</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,16 +12,20 @@
 
   <style>
     :root {
-      --bg:       #060608;
-      --surface:  rgba(255,255,255,0.028);
-      --border:   rgba(255,255,255,0.07);
+      --bg:           #060608;
+      --surface:      rgba(255,255,255,0.028);
+      --surface-md:   rgba(255,255,255,0.045);
+      --border:       rgba(255,255,255,0.07);
       --border-focus: rgba(255,255,255,0.22);
-      --text:     #f0f0f5;
-      --muted:    #5a5a72;
-      --muted2:   #3a3a50;
-      --accent:   #7c6fff;
-      --red:      #f87171;
-      --green:    #34d399;
+      --text:         #f0f0f5;
+      --muted:        #5a5a72;
+      --muted2:       #3a3a50;
+      --accent:       #7c6fff;
+      --red:          #f87171;
+      --red-bg:       rgba(248,113,113,0.08);
+      --red-border:   rgba(248,113,113,0.25);
+      --green:        #34d399;
+      --yellow:       #fbbf24;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -34,166 +38,151 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* ── Subtle grain ── */
+    /* Grain overlay */
     body::before {
       content: '';
       position: fixed; inset: 0; z-index: 0;
-      pointer-events: none;
-      opacity: 0.018;
+      pointer-events: none; opacity: 0.018;
       background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
       background-size: 128px;
     }
 
-    /* ── Ambient glow ── */
+    /* Ambient glows */
     .glow {
-      position: fixed;
-      border-radius: 50%;
-      filter: blur(100px);
-      pointer-events: none;
-      z-index: 0;
+      position: fixed; border-radius: 50%;
+      filter: blur(100px); pointer-events: none; z-index: 0;
     }
     .glow-1 {
-      width: 500px; height: 500px;
-      top: -160px; left: -160px;
+      width: 500px; height: 500px; top: -160px; left: -160px;
       background: radial-gradient(circle, rgba(124,111,255,0.055) 0%, transparent 70%);
     }
     .glow-2 {
-      width: 400px; height: 400px;
-      bottom: -100px; right: -100px;
+      width: 400px; height: 400px; bottom: -100px; right: -100px;
       background: radial-gradient(circle, rgba(255,255,255,0.025) 0%, transparent 70%);
     }
 
-    /* ── Page layout ── */
+    /* Layout */
     .page {
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
       padding: 32px 16px;
-      position: relative;
-      z-index: 1;
+      position: relative; z-index: 1;
     }
 
-    /* ── Logo above card ── */
+    /* Logo */
     .logo-lockup {
-      display: flex;
-      align-items: center;
-      gap: 0;
-      margin-bottom: 44px;
-      text-decoration: none;
-      position: relative;
+      display: flex; align-items: center; gap: 0;
+      margin-bottom: 40px; text-decoration: none;
     }
-
-    /* ── Logo mark — large, bare, no container ── */
     .logo-img {
-      width: 72px;
-      height: 72px;
-      border-radius: 18px;
-      object-fit: contain;
-      flex-shrink: 0;
-      position: relative;
-      z-index: 2;
+      width: 68px; height: 68px; border-radius: 17px;
+      object-fit: contain; flex-shrink: 0; position: relative; z-index: 2;
       animation: logoFloat 5s ease-in-out infinite;
       filter: drop-shadow(0 6px 20px rgba(0,0,0,0.55));
     }
     @keyframes logoFloat {
-      0%, 100% { transform: translateY(0); }
-      50%       { transform: translateY(-5px); }
+      0%,100% { transform: translateY(0); }
+      50%      { transform: translateY(-5px); }
     }
-
-    /* ── Clip wrapper — masks the name so it emerges from the logo edge ── */
     .logo-name-clip {
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      /* starts collapsed so the name is hidden behind the logo */
+      overflow: hidden; display: flex; align-items: center;
       max-width: 0;
-      animation: clipExpand 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.3s forwards;
+      animation: clipExpand 0.7s cubic-bezier(0.22,1,0.36,1) 0.3s forwards;
     }
-    @keyframes clipExpand {
-      to { max-width: 260px; }
-    }
-
+    @keyframes clipExpand { to { max-width: 260px; } }
     .logo-wordmark {
-      font-family: 'DM Sans', sans-serif;
-      font-size: 26px;
-      font-weight: 700;
-      letter-spacing: -0.04em;
-      color: var(--text);
-      white-space: nowrap;
-      padding-left: 14px;
-      /* starts behind the logo, slides right into position */
-      opacity: 0;
-      transform: translateX(-72px);
-      animation: nameSlideOut 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.3s forwards;
+      font-size: 25px; font-weight: 700; letter-spacing: -0.04em;
+      color: var(--text); white-space: nowrap; padding-left: 13px;
+      opacity: 0; transform: translateX(-68px);
+      animation: nameSlide 0.7s cubic-bezier(0.22,1,0.36,1) 0.3s forwards;
     }
-    @keyframes nameSlideOut {
-      to {
-        opacity: 1;
-        transform: translateX(0);
-      }
-    }
+    @keyframes nameSlide { to { opacity: 1; transform: translateX(0); } }
 
-    /* ── Heading above card ── */
-    .page-heading {
-      text-align: center;
-      margin-bottom: 32px;
-    }
+    /* Page heading */
+    .page-heading { text-align: center; margin-bottom: 30px; }
     .page-heading h1 {
       font-family: 'DM Serif Display', Georgia, serif;
-      font-size: clamp(1.7rem, 4vw, 2.2rem);
-      letter-spacing: -0.03em;
-      color: var(--text);
-      line-height: 1.15;
-      margin-bottom: 8px;
+      font-size: clamp(1.65rem, 4vw, 2.1rem);
+      letter-spacing: -0.03em; color: var(--text);
+      line-height: 1.15; margin-bottom: 7px;
     }
-    .page-heading p {
-      font-size: 14px;
-      color: var(--muted);
-      font-weight: 400;
-    }
+    .page-heading p { font-size: 14px; color: var(--muted); font-weight: 400; }
 
-    /* ── Card ── */
+    /* Card */
     .card {
-      width: 100%;
-      max-width: 400px;
+      width: 100%; max-width: 400px;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 36px 32px;
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
+      border-radius: 20px; padding: 34px 30px;
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
       box-shadow: 0 24px 64px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04);
-      animation: cardIn 0.6s cubic-bezier(0.16,1,0.3,1) forwards;
-      opacity: 0;
-      transform: translateY(16px);
+      animation: cardIn 0.55s cubic-bezier(0.16,1,0.3,1) forwards;
+      opacity: 0; transform: translateY(16px);
     }
-    @keyframes cardIn {
-      to { opacity: 1; transform: translateY(0); }
-    }
+    @keyframes cardIn { to { opacity: 1; transform: translateY(0); } }
 
-    /* ── Form fields ── */
-    .field { margin-bottom: 20px; }
+    /* Banner — inline error block above the form */
+    .error-banner {
+      display: none;
+      align-items: flex-start; gap: 10px;
+      background: var(--red-bg);
+      border: 1px solid var(--red-border);
+      border-radius: 10px; padding: 12px 14px;
+      margin-bottom: 20px;
+      animation: bannerIn 0.25s ease-out;
+    }
+    .error-banner.show { display: flex; }
+    @keyframes bannerIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .error-banner svg { flex-shrink: 0; margin-top: 1px; }
+    .banner-body { flex: 1; }
+    .banner-title {
+      font-size: 13px; font-weight: 600; color: var(--red);
+      line-height: 1.3; margin-bottom: 2px;
+    }
+    .banner-detail {
+      font-size: 12px; color: rgba(248,113,113,0.75);
+      line-height: 1.45;
+    }
+    .banner-action {
+      font-size: 12px; font-weight: 600; color: var(--red);
+      text-decoration: underline; text-underline-offset: 2px;
+      cursor: pointer; background: none; border: none;
+      padding: 0; margin-top: 4px; display: inline-block;
+    }
+    .banner-action:hover { opacity: 0.8; }
+
+    /* Info banner (e.g. unverified) */
+    .info-banner {
+      display: none;
+      align-items: flex-start; gap: 10px;
+      background: rgba(251,191,36,0.07);
+      border: 1px solid rgba(251,191,36,0.22);
+      border-radius: 10px; padding: 12px 14px;
+      margin-bottom: 20px;
+      animation: bannerIn 0.25s ease-out;
+    }
+    .info-banner.show { display: flex; }
+    .info-banner .banner-title { color: var(--yellow); }
+    .info-banner .banner-detail { color: rgba(251,191,36,0.7); }
+    .info-banner .banner-action { color: var(--yellow); }
+
+    /* Form field */
+    .field { margin-bottom: 18px; }
     .field label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 8px;
+      display: block; font-size: 11.5px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 7px;
     }
     .field-wrap { position: relative; }
     .field input {
-      width: 100%;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 11px 14px;
-      font-size: 14px;
-      font-family: 'DM Sans', sans-serif;
-      color: var(--text);
+      width: 100%; background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 11px 14px; font-size: 14px;
+      font-family: 'DM Sans', sans-serif; color: var(--text);
       outline: none;
       transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
     }
@@ -204,184 +193,131 @@
       box-shadow: 0 0 0 3px rgba(255,255,255,0.04);
     }
     .field input.has-error {
-      border-color: rgba(248,113,113,0.5);
+      border-color: rgba(248,113,113,0.45);
+      background: rgba(248,113,113,0.04);
+    }
+    .field input.has-success {
+      border-color: rgba(52,211,153,0.4);
     }
     .field-error {
-      font-size: 12px;
-      color: var(--red);
-      margin-top: 5px;
-      display: none;
+      font-size: 11.5px; color: var(--red); margin-top: 5px;
+      display: none; line-height: 1.4;
     }
     .field-error.visible { display: block; }
 
     /* Password toggle */
     .pw-toggle {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--muted2);
-      padding: 2px;
-      display: flex;
-      align-items: center;
-      transition: color 0.2s;
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer;
+      color: var(--muted2); padding: 2px;
+      display: flex; align-items: center; transition: color 0.2s;
     }
     .pw-toggle:hover { color: var(--muted); }
 
-    /* ── Row (remember + forgot) ── */
+    /* Aux row */
     .row-aux {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 24px;
+      display: flex; align-items: center;
+      justify-content: space-between; margin-bottom: 22px;
     }
     .remember-label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      font-size: 13px;
-      color: var(--muted);
-      user-select: none;
+      display: flex; align-items: center; gap: 8px;
+      cursor: pointer; font-size: 13px; color: var(--muted); user-select: none;
     }
     .remember-label input[type="checkbox"] {
-      appearance: none;
-      -webkit-appearance: none;
+      appearance: none; -webkit-appearance: none;
       width: 16px; height: 16px;
-      border: 1px solid var(--border-focus);
-      border-radius: 4px;
-      background: rgba(255,255,255,0.04);
-      cursor: pointer;
-      transition: all 0.15s ease;
-      flex-shrink: 0;
-      position: relative;
+      border: 1px solid var(--border-focus); border-radius: 4px;
+      background: rgba(255,255,255,0.04); cursor: pointer;
+      transition: all 0.15s ease; flex-shrink: 0; position: relative;
     }
     .remember-label input[type="checkbox"]:checked {
-      background: rgba(255,255,255,0.88);
-      border-color: rgba(255,255,255,0.88);
+      background: rgba(255,255,255,0.88); border-color: rgba(255,255,255,0.88);
     }
     .remember-label input[type="checkbox"]:checked::after {
-      content: '';
-      position: absolute;
-      top: 2px; left: 5px;
+      content: ''; position: absolute; top: 2px; left: 5px;
       width: 4px; height: 8px;
-      border: 2px solid #060608;
-      border-top: none; border-left: none;
+      border: 2px solid #060608; border-top: none; border-left: none;
       transform: rotate(45deg);
     }
     .forgot-link {
-      font-size: 13px;
-      color: var(--muted);
-      text-decoration: none;
-      transition: color 0.2s;
+      font-size: 13px; color: var(--muted); text-decoration: none; transition: color 0.2s;
     }
     .forgot-link:hover { color: var(--text); }
 
-    /* ── Submit button ── */
+    /* Submit */
     .btn-submit {
-      width: 100%;
-      padding: 12px;
-      border-radius: 10px;
-      border: none;
-      background: var(--text);
-      color: var(--bg);
-      font-family: 'DM Sans', sans-serif;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
+      width: 100%; padding: 12px; border-radius: 10px; border: none;
+      background: var(--text); color: var(--bg);
+      font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 700;
+      letter-spacing: -0.01em; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
       transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s;
     }
     .btn-submit:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 28px rgba(255,255,255,0.1);
+      transform: translateY(-2px); box-shadow: 0 8px 28px rgba(255,255,255,0.1);
     }
     .btn-submit:active:not(:disabled) { transform: translateY(0); }
-    .btn-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-submit:disabled { opacity: 0.42; cursor: not-allowed; }
 
-    .spinner {
-      animation: spin 0.8s linear infinite;
+    /* Secondary button (resend etc.) */
+    .btn-secondary-sm {
+      width: 100%; padding: 11px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--text); font-family: 'DM Sans', sans-serif;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      transition: border-color 0.2s, background 0.2s;
+      margin-top: 10px;
     }
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to   { transform: rotate(360deg); }
-    }
+    .btn-secondary-sm:hover { border-color: rgba(255,255,255,0.15); background: var(--surface-md); }
+    .btn-secondary-sm:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    /* ── Divider + sign up ── */
+    /* Spinner */
+    .spinner { animation: spin 0.8s linear infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    /* Divider */
     .divider {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin: 24px 0 20px;
+      display: flex; align-items: center; gap: 12px; margin: 22px 0 18px;
     }
     .divider::before, .divider::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--border);
+      content: ''; flex: 1; height: 1px; background: var(--border);
     }
     .divider span {
-      font-size: 11px;
-      color: var(--muted2);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      font-size: 11px; color: var(--muted2);
+      letter-spacing: 0.08em; text-transform: uppercase;
     }
-    .signup-row {
-      text-align: center;
-      font-size: 13px;
-      color: var(--muted);
-    }
+
+    /* Sign up row */
+    .signup-row { text-align: center; font-size: 13px; color: var(--muted); }
     .signup-row a {
-      color: var(--text);
-      text-decoration: none;
-      font-weight: 600;
-      transition: opacity 0.2s;
+      color: var(--text); text-decoration: none;
+      font-weight: 600; transition: opacity 0.2s;
     }
     .signup-row a:hover { opacity: 0.75; }
 
-    /* ── Toast ── */
+    /* Toast */
     .toast {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%) translateY(16px);
-      opacity: 0;
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(16px); opacity: 0;
       transition: transform 0.3s ease, opacity 0.3s ease;
-      z-index: 100;
-      pointer-events: none;
-      white-space: nowrap;
-      font-size: 13px;
-      font-weight: 500;
-      padding: 10px 18px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      backdrop-filter: blur(12px);
+      z-index: 100; pointer-events: none; white-space: nowrap;
+      font-size: 13px; font-weight: 500; padding: 10px 18px;
+      border-radius: 10px; display: flex; align-items: center;
+      gap: 8px; backdrop-filter: blur(12px);
     }
-    .toast.show {
-      transform: translateX(-50%) translateY(0);
-      opacity: 1;
-    }
+    .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
     .toast-error {
-      background: rgba(239,68,68,0.15);
-      border: 1px solid rgba(239,68,68,0.3);
-      color: #fca5a5;
+      background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5;
     }
     .toast-success {
-      background: rgba(52,211,153,0.12);
-      border: 1px solid rgba(52,211,153,0.25);
-      color: #6ee7b7;
+      background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.25); color: #6ee7b7;
+    }
+    .toast-info {
+      background: rgba(124,111,255,0.15); border: 1px solid rgba(124,111,255,0.28); color: #c4bbff;
     }
 
-    /* ── Shake ── */
+    /* Shake */
     @keyframes shake {
       0%,100% { transform: translateX(0); }
       20%      { transform: translateX(-5px); }
@@ -389,7 +325,70 @@
     }
     .shake { animation: shake 0.3s ease; }
 
-    /* ── Scrollbar ── */
+    /* Verify section (shown when email not verified) */
+    .verify-section {
+      display: none; margin-top: 18px;
+      padding: 16px; border-radius: 12px;
+      border: 1px solid rgba(251,191,36,0.2);
+      background: rgba(251,191,36,0.05);
+    }
+    .verify-section.show { display: block; }
+    .verify-section label {
+      display: block; font-size: 11.5px; font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 7px;
+    }
+    .verify-input-row { display: flex; gap: 8px; }
+    .verify-input-row input {
+      flex: 1; background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 14px; font-size: 14px; font-weight: 600;
+      text-align: center; letter-spacing: 0.3em;
+      font-family: 'DM Sans', sans-serif; color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .verify-input-row input:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px rgba(255,255,255,0.04);
+    }
+    .verify-input-row button {
+      padding: 10px 16px; border-radius: 10px; border: none;
+      background: var(--text); color: var(--bg); font-size: 13px;
+      font-family: 'DM Sans', sans-serif; font-weight: 700; cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s; white-space: nowrap;
+    }
+    .verify-input-row button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(255,255,255,0.1); }
+    .verify-input-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #verifyError { font-size: 11.5px; color: var(--red); margin-top: 5px; display: none; }
+    #verifyError.visible { display: block; }
+    .resend-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 8px;
+    }
+    .resend-hint { font-size: 11.5px; color: var(--muted2); }
+    .resend-btn {
+      font-size: 12px; color: var(--muted); background: none; border: none;
+      cursor: pointer; transition: color 0.2s; font-family: 'DM Sans', sans-serif;
+      font-weight: 600;
+    }
+    .resend-btn:hover:not(:disabled) { color: var(--text); }
+    .resend-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .countdown { font-variant-numeric: tabular-nums; }
+
+    /* Rate limit lockout bar */
+    .lockout-bar {
+      display: none;
+      background: rgba(248,113,113,0.06);
+      border: 1px solid rgba(248,113,113,0.18);
+      border-radius: 10px; padding: 11px 14px;
+      margin-bottom: 18px; text-align: center;
+    }
+    .lockout-bar.show { display: block; }
+    .lockout-bar p { font-size: 12.5px; color: rgba(248,113,113,0.8); }
+    .lockout-bar strong { color: var(--red); }
+
+    /* Scrollbar */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: #222230; border-radius: 4px; }
@@ -397,13 +396,12 @@
 </head>
 
 <body>
-  <!-- Ambient glows -->
   <div class="glow glow-1"></div>
   <div class="glow glow-2"></div>
 
   <div class="page">
 
-    <!-- Logo — outside the card -->
+    <!-- Logo -->
     <a href="../index.html" class="logo-lockup">
       <img src="../assets/images/Revluma-logo.png" alt="Revluma" class="logo-img" />
       <div class="logo-name-clip">
@@ -411,47 +409,69 @@
       </div>
     </a>
 
-    <!-- Heading — outside the card -->
+    <!-- Heading -->
     <div class="page-heading">
       <h1>Welcome back</h1>
-      <p>Sign in to your account to continue</p>
+      <p>Sign in to your Revluma account</p>
     </div>
 
-    <!-- Card — form only, clean -->
+    <!-- Card -->
     <div class="card">
 
       <form id="loginForm" novalidate>
 
-        <!-- Email -->
+        <!-- ── Error banner (inline, contextual) ── -->
+        <div id="errorBanner" class="error-banner" role="alert" aria-live="polite">
+          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--red);">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <div class="banner-body">
+            <div id="bannerTitle" class="banner-title"></div>
+            <div id="bannerDetail" class="banner-detail"></div>
+            <button type="button" id="bannerAction" class="banner-action" style="display:none;"></button>
+          </div>
+        </div>
+
+        <!-- ── Info/warning banner (unverified email etc.) ── -->
+        <div id="infoBanner" class="info-banner" role="alert" aria-live="polite">
+          <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--yellow); flex-shrink:0; margin-top:1px;">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <div class="banner-body">
+            <div id="infoBannerTitle" class="banner-title" style="color: var(--yellow);"></div>
+            <div id="infoBannerDetail" class="banner-detail" style="color: rgba(251,191,36,0.7);"></div>
+            <button type="button" id="infoBannerAction" class="banner-action" style="display:none; color: var(--yellow);"></button>
+          </div>
+        </div>
+
+        <!-- ── Lockout bar (rate limit) ── -->
+        <div id="lockoutBar" class="lockout-bar" role="alert">
+          <p>Too many failed attempts. Try again in <strong id="lockoutTimer">--</strong>.</p>
+        </div>
+
+        <!-- Email field -->
         <div class="field">
-          <label for="email">Email</label>
+          <label for="email">Email address</label>
           <div class="field-wrap">
             <input
-              type="email"
-              id="email"
-              name="email"
-              placeholder="you@example.com"
-              autocomplete="email"
-              required
-            />
+              type="email" id="email" name="email"
+              placeholder="you@yourstore.com"
+              autocomplete="email" spellcheck="false"
+              inputmode="email" required />
           </div>
           <div id="emailError" class="field-error"></div>
         </div>
 
-        <!-- Password -->
+        <!-- Password field -->
         <div class="field">
           <label for="password">Password</label>
           <div class="field-wrap">
             <input
-              type="password"
-              id="password"
-              name="password"
+              type="password" id="password" name="password"
               placeholder="••••••••"
               autocomplete="current-password"
-              style="padding-right: 42px;"
-              required
-            />
-            <button type="button" id="togglePassword" class="pw-toggle" aria-label="Toggle password">
+              style="padding-right: 42px;" required />
+            <button type="button" id="togglePassword" class="pw-toggle" aria-label="Toggle password visibility">
               <svg id="eyeIcon" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
@@ -481,206 +501,801 @@
           </svg>
         </button>
 
-        <!-- Divider -->
-        <div class="divider"><span>or</span></div>
+        <!-- ── Email verification section (shown when account not verified) ── -->
+        <div id="verifySection" class="verify-section">
+          <label>Enter verification code</label>
+          <div class="verify-input-row">
+            <input type="text" id="verifyCode" maxlength="6" inputmode="numeric"
+              autocomplete="one-time-code" placeholder="000000" />
+            <button type="button" id="verifyBtn">Verify</button>
+          </div>
+          <div id="verifyError" class="field-error"></div>
+          <div class="resend-row">
+            <span class="resend-hint" id="resendHint">Code expires in 15 min</span>
+            <button type="button" id="resendBtn" class="resend-btn" disabled>
+              Resend (<span id="resendCountdown" class="countdown">60</span>s)
+            </button>
+          </div>
+        </div>
 
-        <!-- Sign up -->
+        <!-- Divider + Sign up -->
+        <div class="divider"><span>or</span></div>
         <div class="signup-row">
-          No account? <a href="onboarding.html">Create one free</a>
+          No account? <a href="onboarding.html">Create one free →</a>
         </div>
 
       </form>
     </div>
 
-    <!-- Footer note -->
-    <p style="margin-top: 28px; font-size: 11px; color: var(--muted2); text-align: center; letter-spacing: 0.02em;">
-      Protected by Revluma &nbsp;·&nbsp; <a href="#" style="color: inherit; text-decoration: none;">Privacy</a> &nbsp;·&nbsp; <a href="#" style="color: inherit; text-decoration: none;">Terms</a>
+    <!-- Footer -->
+    <p style="margin-top: 26px; font-size: 11px; color: var(--muted2); text-align: center; letter-spacing: 0.02em;">
+      Protected by Revluma &nbsp;·&nbsp;
+      <a href="#" style="color: inherit; text-decoration: none;">Privacy</a> &nbsp;·&nbsp;
+      <a href="#" style="color: inherit; text-decoration: none;">Terms</a>
     </p>
-
   </div>
 
-  <!-- Error Toast -->
+  <!-- Toasts -->
   <div id="errorToast" class="toast toast-error">
     <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
     </svg>
-    <span id="errorMessage">An error occurred</span>
+    <span id="errorMessage"></span>
   </div>
-
-  <!-- Success Toast -->
   <div id="successToast" class="toast toast-success">
     <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
     </svg>
-    <span id="successMessage">Success!</span>
+    <span id="successMessage"></span>
+  </div>
+  <div id="infoToast" class="toast toast-info">
+    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <span id="infoMessage"></span>
   </div>
 
   <script>
-    // ====================== STATE ======================
-    const state = { isLoading: false, rememberMe: false };
-
-    // ====================== DOM ======================
-    const el = {
-      form:          document.getElementById('loginForm'),
-      email:         document.getElementById('email'),
-      password:      document.getElementById('password'),
-      togglePw:      document.getElementById('togglePassword'),
-      eyeIcon:       document.getElementById('eyeIcon'),
-      eyeOffIcon:    document.getElementById('eyeOffIcon'),
-      rememberMe:    document.getElementById('rememberMe'),
-      loginBtn:      document.getElementById('loginBtn'),
-      btnText:       document.getElementById('btnText'),
-      btnSpinner:    document.getElementById('btnSpinner'),
-      emailError:    document.getElementById('emailError'),
-      passwordError: document.getElementById('passwordError'),
-      errorToast:    document.getElementById('errorToast'),
-      errorMessage:  document.getElementById('errorMessage'),
-      successToast:  document.getElementById('successToast'),
-      successMessage:document.getElementById('successMessage'),
-    };
-
-    // ====================== API ======================
+    // ================================================================
+    //  CONFIGURATION
+    // ================================================================
     const isLocalDev = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-    const API_BASE = isLocalDev
+    const API_BASE   = isLocalDev
       ? 'http://localhost:5000/api'
       : 'https://revluma.onrender.com/api';
 
-    // ====================== TOASTS ======================
+    // Client-side rate-limit tracking
+    const RATE_LIMIT = { max: 5, windowMs: 15 * 60 * 1000 };
+    const RL_KEY     = 'revluma_login_attempts';
+
+    // ================================================================
+    //  STATE
+    // ================================================================
+    const state = {
+      isLoading:        false,
+      rememberMe:       false,
+      verifyEmail:      null,   // email of unverified account awaiting code
+      pendingToken:     null,   // token for pending-registration verify flow
+      countdownTimer:   null,
+      lockoutTimer:     null,
+    };
+
+    // ================================================================
+    //  DOM REFERENCES
+    // ================================================================
+    const el = {
+      form:             document.getElementById('loginForm'),
+      email:            document.getElementById('email'),
+      password:         document.getElementById('password'),
+      togglePw:         document.getElementById('togglePassword'),
+      eyeIcon:          document.getElementById('eyeIcon'),
+      eyeOffIcon:       document.getElementById('eyeOffIcon'),
+      rememberMe:       document.getElementById('rememberMe'),
+      loginBtn:         document.getElementById('loginBtn'),
+      btnText:          document.getElementById('btnText'),
+      btnSpinner:       document.getElementById('btnSpinner'),
+      emailError:       document.getElementById('emailError'),
+      passwordError:    document.getElementById('passwordError'),
+      // Banners
+      errorBanner:      document.getElementById('errorBanner'),
+      bannerTitle:      document.getElementById('bannerTitle'),
+      bannerDetail:     document.getElementById('bannerDetail'),
+      bannerAction:     document.getElementById('bannerAction'),
+      infoBanner:       document.getElementById('infoBanner'),
+      infoBannerTitle:  document.getElementById('infoBannerTitle'),
+      infoBannerDetail: document.getElementById('infoBannerDetail'),
+      infoBannerAction: document.getElementById('infoBannerAction'),
+      lockoutBar:       document.getElementById('lockoutBar'),
+      lockoutTimer:     document.getElementById('lockoutTimer'),
+      // Verify section
+      verifySection:    document.getElementById('verifySection'),
+      verifyCode:       document.getElementById('verifyCode'),
+      verifyBtn:        document.getElementById('verifyBtn'),
+      verifyError:      document.getElementById('verifyError'),
+      resendBtn:        document.getElementById('resendBtn'),
+      resendCountdown:  document.getElementById('resendCountdown'),
+      // Toasts
+      errorToast:       document.getElementById('errorToast'),
+      errorMessage:     document.getElementById('errorMessage'),
+      successToast:     document.getElementById('successToast'),
+      successMessage:   document.getElementById('successMessage'),
+      infoToast:        document.getElementById('infoToast'),
+      infoMessage:      document.getElementById('infoMessage'),
+    };
+
+    // ================================================================
+    //  TOAST HELPERS
+    // ================================================================
     function showToast(toastEl, msgEl, message, duration = 4000) {
       msgEl.textContent = message;
       toastEl.classList.add('show');
       setTimeout(() => toastEl.classList.remove('show'), duration);
     }
-    const showError   = msg => showToast(el.errorToast,   el.errorMessage,   msg, 4500);
+    const showError   = msg => showToast(el.errorToast,   el.errorMessage,   msg, 5000);
     const showSuccess = msg => showToast(el.successToast, el.successMessage, msg, 3000);
+    const showInfo    = msg => showToast(el.infoToast,    el.infoMessage,    msg, 4000);
 
-    // ====================== FIELD ERRORS ======================
+    // ================================================================
+    //  BANNER HELPERS
+    // ================================================================
+    function showErrorBanner(title, detail = '', actionLabel = '', actionFn = null) {
+      hideAllBanners();
+      el.bannerTitle.textContent  = title;
+      el.bannerDetail.textContent = detail;
+      if (actionLabel && actionFn) {
+        el.bannerAction.textContent = actionLabel;
+        el.bannerAction.onclick     = actionFn;
+        el.bannerAction.style.display = 'inline-block';
+      } else {
+        el.bannerAction.style.display = 'none';
+      }
+      el.errorBanner.classList.add('show');
+    }
+
+    function showInfoBanner(title, detail = '', actionLabel = '', actionFn = null) {
+      hideAllBanners();
+      el.infoBannerTitle.textContent  = title;
+      el.infoBannerDetail.textContent = detail;
+      if (actionLabel && actionFn) {
+        el.infoBannerAction.textContent = actionLabel;
+        el.infoBannerAction.onclick     = actionFn;
+        el.infoBannerAction.style.display = 'inline-block';
+      } else {
+        el.infoBannerAction.style.display = 'none';
+      }
+      el.infoBanner.classList.add('show');
+    }
+
+    function hideAllBanners() {
+      el.errorBanner.classList.remove('show');
+      el.infoBanner.classList.remove('show');
+    }
+
+    // ================================================================
+    //  FIELD ERROR HELPERS
+    // ================================================================
     function setFieldError(id, message) {
       const errEl = document.getElementById(id + 'Error');
       const input = document.getElementById(id);
       if (errEl) { errEl.textContent = message; errEl.classList.add('visible'); }
-      if (input)  { input.classList.add('has-error'); input.classList.add('shake'); setTimeout(() => input.classList.remove('shake'), 300); }
+      if (input)  {
+        input.classList.add('has-error');
+        input.classList.remove('has-success');
+        input.classList.add('shake');
+        setTimeout(() => input.classList.remove('shake'), 350);
+      }
     }
     function clearFieldError(id) {
       const errEl = document.getElementById(id + 'Error');
       const input = document.getElementById(id);
       if (errEl) errEl.classList.remove('visible');
-      if (input)  input.classList.remove('has-error');
+      if (input)  { input.classList.remove('has-error'); }
+    }
+    function markFieldSuccess(id) {
+      clearFieldError(id);
+      const input = document.getElementById(id);
+      if (input) input.classList.add('has-success');
     }
 
-    // ====================== LOADING ======================
+    // ================================================================
+    //  LOADING STATE
+    // ================================================================
     function setLoading(on) {
-      state.isLoading = on;
-      el.loginBtn.disabled = on;
+      state.isLoading        = on;
+      el.loginBtn.disabled   = on;
       el.btnText.textContent = on ? 'Signing in…' : 'Sign in';
       el.btnSpinner.style.display = on ? 'block' : 'none';
     }
 
-    // ====================== VALIDATION ======================
-    function validateEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+    // ================================================================
+    //  VALIDATION
+    // ================================================================
+    function validateEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()); }
     function validateForm() {
-      let ok = true;
-      const email = el.email.value.trim();
-      const pw    = el.password.value;
-      if (!email)               { setFieldError('email', 'Email is required'); ok = false; }
-      else if (!validateEmail(email)) { setFieldError('email', 'Enter a valid email address'); ok = false; }
-      else clearFieldError('email');
-      if (!pw) { setFieldError('password', 'Password is required'); ok = false; }
-      else     clearFieldError('password');
+      let ok    = true;
+      const em  = el.email.value.trim();
+      const pw  = el.password.value;
+
+      if (!em) {
+        setFieldError('email', 'Email address is required');
+        ok = false;
+      } else if (!validateEmail(em)) {
+        setFieldError('email', 'Enter a valid email address (e.g. you@store.com)');
+        ok = false;
+      } else {
+        clearFieldError('email');
+      }
+
+      if (!pw) {
+        setFieldError('password', 'Password is required');
+        ok = false;
+      } else if (pw.length < 6) {
+        setFieldError('password', 'Password is too short');
+        ok = false;
+      } else {
+        clearFieldError('password');
+      }
+
       return ok;
     }
 
-    // ====================== API CALL ======================
-    async function loginUser(email, password) {
-      const res  = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
-      return data;
+    // ================================================================
+    //  CLIENT-SIDE RATE LIMITING (prevents brute-force UX flooding)
+    // ================================================================
+    function getRateData() {
+      try {
+        return JSON.parse(localStorage.getItem(RL_KEY)) || { count: 0, windowStart: Date.now() };
+      } catch { return { count: 0, windowStart: Date.now() }; }
+    }
+    function recordAttempt() {
+      const d = getRateData();
+      const now = Date.now();
+      if (now - d.windowStart > RATE_LIMIT.windowMs) {
+        localStorage.setItem(RL_KEY, JSON.stringify({ count: 1, windowStart: now }));
+        return 1;
+      }
+      d.count++;
+      localStorage.setItem(RL_KEY, JSON.stringify(d));
+      return d.count;
+    }
+    function isLockedOut() {
+      const d = getRateData();
+      const now = Date.now();
+      if (now - d.windowStart > RATE_LIMIT.windowMs) return false;
+      return d.count >= RATE_LIMIT.max;
+    }
+    function getLockoutRemaining() {
+      const d = getRateData();
+      const remaining = RATE_LIMIT.windowMs - (Date.now() - d.windowStart);
+      return Math.max(0, remaining);
+    }
+    function clearRateLimit() { localStorage.removeItem(RL_KEY); }
+
+    function startLockoutCountdown() {
+      el.lockoutBar.classList.add('show');
+      el.loginBtn.disabled = true;
+      clearInterval(state.lockoutTimer);
+
+      function tick() {
+        const ms = getLockoutRemaining();
+        if (ms <= 0) {
+          clearRateLimit();
+          el.lockoutBar.classList.remove('show');
+          el.loginBtn.disabled = false;
+          el.lockoutTimer = null;
+          return;
+        }
+        const mins = Math.floor(ms / 60000);
+        const secs = Math.floor((ms % 60000) / 1000);
+        el.lockoutTimer.textContent = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        state.lockoutTimer = setTimeout(tick, 1000);
+      }
+      tick();
     }
 
-    // ====================== SESSION ======================
+    // ================================================================
+    //  SESSION MANAGEMENT
+    // ================================================================
     function storeSession(token, user, remember) {
       const store = remember ? localStorage : sessionStorage;
       store.setItem('revluma_token', token);
-      store.setItem('revluma_user', JSON.stringify(user));
+      store.setItem('revluma_user',  JSON.stringify(user));
+      // Mirror to localStorage so other pages can find it
+      if (!remember) {
+        // sessionStorage only — remove from localStorage to avoid stale tokens
+        localStorage.removeItem('revluma_token');
+        localStorage.removeItem('revluma_user');
+      }
     }
+
     function clearSession() {
-      ['revluma_token','revluma_user'].forEach(k => {
+      ['revluma_token', 'revluma_user', 'revluma_pending_token'].forEach(k => {
         localStorage.removeItem(k);
         sessionStorage.removeItem(k);
       });
     }
+
     function getStoredToken() {
-      return localStorage.getItem('revluma_token') || sessionStorage.getItem('revluma_token');
+      return localStorage.getItem('revluma_token')
+          || sessionStorage.getItem('revluma_token')
+          || null;
     }
+
     async function checkAutoLogin() {
       const token = getStoredToken();
-      if (!token) return;
+      if (!token || token === 'undefined' || token === 'null') return;
       try {
-        const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-        if (res.ok) { const d = await res.json(); if (d.user) window.location.href = '../index.html'; }
-        else clearSession();
-      } catch { clearSession(); }
+        const res = await fetch(`${API_BASE}/auth/me`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: AbortSignal.timeout(6000)
+        });
+        if (res.ok) {
+          const d = await res.json();
+          if (d.user) {
+            redirectAfterLogin(d.user);
+          } else {
+            clearSession();
+          }
+        } else {
+          clearSession();
+        }
+      } catch {
+        clearSession();
+      }
     }
 
-    // ====================== EVENTS ======================
-    el.togglePw.addEventListener('click', () => {
-      const isPw = el.password.type === 'password';
-      el.password.type = isPw ? 'text' : 'password';
-      el.eyeIcon.style.display    = isPw ? 'none'  : 'block';
-      el.eyeOffIcon.style.display = isPw ? 'block' : 'none';
-    });
+    function redirectAfterLogin(user) {
+      const dest = (user.onboarding_status === 'completed')
+        ? '../index.html'
+        : 'onboarding.html';
+      window.location.replace(dest);
+    }
 
-    el.rememberMe.addEventListener('change', e => { state.rememberMe = e.target.checked; });
+    // ================================================================
+    //  API CALLS
+    // ================================================================
 
-    el.form.addEventListener('submit', async e => {
-      e.preventDefault();
-      if (state.isLoading || !validateForm()) return;
-      const email = el.email.value.trim();
-      const pw    = el.password.value;
-      setLoading(true);
+    /**
+     * Primary login — calls /auth/login with email + password.
+     * Returns { token, user } on success.
+     * Throws a structured error object: { code, message, detail }
+     */
+    async function apiLogin(email, password) {
+      let res, data;
       try {
-        const data = await loginUser(email, pw);
-        storeSession(data.token, data.user, state.rememberMe);
-        showSuccess('Login successful — redirecting…');
-        setTimeout(() => {
-          window.location.href = data.user.onboarding_status === 'completed'
-            ? '../index.html'
-            : 'onboarding.html';
-        }, 1000);
+        res = await fetch(`${API_BASE}/auth/login`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ email: email.trim().toLowerCase(), password }),
+          signal:  AbortSignal.timeout(12000)
+        });
+        data = await res.json();
       } catch (err) {
-        setLoading(false);
-        let msg = 'Login failed. Please try again.';
-        if (err.message.includes('Invalid email or password')) msg = 'Invalid email or password.';
-        else if (err.message.includes('Too many'))             msg = 'Too many attempts. Try again later.';
-        else if (err.message.includes('Network') || err.name === 'TypeError') msg = 'Network error. Check your connection.';
-        showError(msg);
+        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+          throw { code: 'TIMEOUT', message: 'Request timed out', detail: 'The server took too long to respond. Please try again.' };
+        }
+        throw { code: 'NETWORK', message: 'Network error', detail: 'Check your internet connection and try again.' };
+      }
+
+      if (res.ok) return data;
+
+      // ── Parse the error response into structured codes ──
+      const raw    = (data?.error || data?.message || '').toLowerCase();
+      const status = res.status;
+
+      // Account not found / no user with that email
+      if (status === 404 || raw.includes('not found') || raw.includes('no user') || raw.includes('does not exist')) {
+        throw { code: 'USER_NOT_FOUND', message: 'No account found', detail: `We couldn't find an account for ${email}. Check for typos or create a new account.` };
+      }
+
+      // Wrong password
+      if (status === 401 && (raw.includes('invalid') || raw.includes('password') || raw.includes('credentials') || raw.includes('incorrect'))) {
+        throw { code: 'WRONG_PASSWORD', message: 'Incorrect password', detail: 'The password you entered is wrong. Try again or reset your password.' };
+      }
+
+      // Account exists but email not verified
+      if (raw.includes('not verified') || raw.includes('unverified') || raw.includes('verify') || raw.includes('email_not_verified') || status === 403) {
+        throw { code: 'EMAIL_NOT_VERIFIED', message: 'Email not verified', detail: 'You need to verify your email before signing in.' };
+      }
+
+      // Account is pending (in pending_registrations, not yet finalized)
+      if (raw.includes('pending') || raw.includes('incomplete') || raw.includes('onboarding')) {
+        throw { code: 'PENDING_ACCOUNT', message: 'Account setup incomplete', detail: 'Your account setup isn\'t finished yet. Complete it to sign in.' };
+      }
+
+      // Account suspended / banned
+      if (raw.includes('suspended') || raw.includes('banned') || raw.includes('disabled') || raw.includes('locked') || status === 423) {
+        throw { code: 'ACCOUNT_SUSPENDED', message: 'Account suspended', detail: 'Your account has been suspended. Contact support at support@revluma.com.' };
+      }
+
+      // Rate limited by server
+      if (status === 429 || raw.includes('too many') || raw.includes('rate limit')) {
+        throw { code: 'RATE_LIMITED', message: 'Too many attempts', detail: 'You\'ve made too many login attempts. Please wait a few minutes and try again.' };
+      }
+
+      // Generic 401 fallback (covers the "Invalid email or password" pattern from the existing backend)
+      if (status === 401) {
+        throw { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password', detail: 'Double-check your email and password and try again.' };
+      }
+
+      // Server error
+      if (status >= 500) {
+        throw { code: 'SERVER_ERROR', message: 'Server error', detail: 'Something went wrong on our end. Please try again in a moment.' };
+      }
+
+      // Unknown
+      throw { code: 'UNKNOWN', message: data?.error || 'Login failed', detail: 'An unexpected error occurred. Please try again.' };
+    }
+
+    /**
+     * Send a new verification code for unverified accounts
+     */
+    async function apiResendVerification(email) {
+      const res  = await fetch(`${API_BASE}/auth/send-verification`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email }),
+        signal:  AbortSignal.timeout(10000)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to send verification code');
+      return data;
+    }
+
+    /**
+     * Verify email code (works for both pending-registration and post-login flows)
+     */
+    async function apiVerifyCode(code, email) {
+      // Try the pending-registration token first (if the user just signed up)
+      const pendingToken = state.pendingToken
+        || localStorage.getItem('revluma_pending_token')
+        || null;
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (pendingToken) headers['Authorization'] = `Bearer ${pendingToken}`;
+
+      const res  = await fetch(`${API_BASE}/auth/verify-email`, {
+        method:  'POST',
+        headers,
+        body:    JSON.stringify({ code, email }),
+        signal:  AbortSignal.timeout(10000)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Verification failed');
+      return data; // should contain { token, user } for the verified session
+    }
+
+    // ================================================================
+    //  VERIFICATION SECTION
+    // ================================================================
+    function startVerifyCountdown(secs = 60) {
+      clearInterval(state.countdownTimer);
+      el.resendBtn.disabled = true;
+      let remaining = secs;
+      el.resendCountdown.textContent = remaining;
+
+      function tick() {
+        remaining--;
+        el.resendCountdown.textContent = remaining;
+        if (remaining <= 0) {
+          clearInterval(state.countdownTimer);
+          el.resendBtn.disabled  = false;
+          el.resendBtn.innerHTML = 'Resend code';
+        }
+      }
+      state.countdownTimer = setInterval(tick, 1000);
+    }
+
+    function showVerifySection(email) {
+      state.verifyEmail = email;
+      el.verifySection.classList.add('show');
+      el.verifyCode.value = '';
+      el.verifyError.classList.remove('visible');
+      el.verifyCode.focus();
+      startVerifyCountdown(60);
+    }
+
+    function hideVerifySection() {
+      el.verifySection.classList.remove('show');
+      clearInterval(state.countdownTimer);
+    }
+
+    el.verifyBtn.addEventListener('click', async () => {
+      const code = el.verifyCode.value.trim();
+      el.verifyError.classList.remove('visible');
+
+      if (!code) {
+        el.verifyError.textContent = 'Enter the 6-digit code from your email';
+        el.verifyError.classList.add('visible');
+        return;
+      }
+      if (!/^\d{6}$/.test(code)) {
+        el.verifyError.textContent = 'Code must be exactly 6 digits';
+        el.verifyError.classList.add('visible');
+        return;
+      }
+
+      el.verifyBtn.disabled = true;
+      el.verifyBtn.textContent = '…';
+
+      try {
+        const data = await apiVerifyCode(code, state.verifyEmail);
+        clearRateLimit();
+        localStorage.removeItem('revluma_pending_token');
+        hideVerifySection();
+        hideAllBanners();
+
+        if (data.token && data.user) {
+          storeSession(data.token, data.user, state.rememberMe);
+          showSuccess('Email verified — signing you in…');
+          setTimeout(() => redirectAfterLogin(data.user), 1000);
+        } else {
+          // Verified but no token returned — prompt to log in again
+          showInfoBanner(
+            'Email verified!',
+            'Your account is confirmed. Please sign in now.',
+          );
+        }
+      } catch (err) {
+        el.verifyError.textContent = err.message || 'Invalid or expired code';
+        el.verifyError.classList.add('visible');
+        el.verifyBtn.disabled    = false;
+        el.verifyBtn.textContent = 'Verify';
       }
     });
 
-    el.email.addEventListener('blur', function() {
-      if (this.value && !validateEmail(this.value)) setFieldError('email', 'Enter a valid email address');
-      else if (this.value) clearFieldError('email');
-    });
-    el.password.addEventListener('input', () => { if (el.password.value) clearFieldError('password'); });
-
-    // Remember email
-    const remembered = localStorage.getItem('splendor_remembered_email');
-    if (remembered) { el.email.value = remembered; el.rememberMe.checked = true; state.rememberMe = true; }
-    el.rememberMe.addEventListener('change', function() {
-      if (this.checked && el.email.value) localStorage.setItem('splendor_remembered_email', el.email.value);
-      else localStorage.removeItem('splendor_remembered_email');
-    });
-    el.email.addEventListener('blur', function() {
-      if (state.rememberMe && this.value) localStorage.setItem('splendor_remembered_email', this.value);
+    el.resendBtn.addEventListener('click', async () => {
+      if (!state.verifyEmail) return;
+      el.resendBtn.disabled = true;
+      try {
+        await apiResendVerification(state.verifyEmail);
+        startVerifyCountdown(60);
+        showInfo('A new code has been sent to ' + state.verifyEmail);
+      } catch (err) {
+        showError(err.message || 'Could not resend code — try again');
+        el.resendBtn.disabled = false;
+      }
     });
 
-    // ====================== INIT ======================
+    // Only allow numeric input in code box
+    el.verifyCode.addEventListener('input', function() {
+      this.value = this.value.replace(/\D/g, '').slice(0, 6);
+    });
+
+    // ================================================================
+    //  SUBMIT HANDLER
+    // ================================================================
+    el.form.addEventListener('submit', async e => {
+      e.preventDefault();
+      hideAllBanners();
+
+      if (state.isLoading) return;
+
+      // Client-side rate limit check
+      if (isLockedOut()) {
+        startLockoutCountdown();
+        return;
+      }
+
+      if (!validateForm()) return;
+
+      const email    = el.email.value.trim().toLowerCase();
+      const password = el.password.value;
+
+      setLoading(true);
+
+      try {
+        const data = await apiLogin(email, password);
+
+        // ── SUCCESS ──
+        clearRateLimit();
+        clearFieldError('email');
+        clearFieldError('password');
+        storeSession(data.token, data.user, state.rememberMe);
+
+        // Save remembered email (use Revluma's own key)
+        if (state.rememberMe) {
+          localStorage.setItem('revluma_remembered_email', email);
+        } else {
+          localStorage.removeItem('revluma_remembered_email');
+        }
+
+        showSuccess('Signed in — redirecting…');
+        setTimeout(() => redirectAfterLogin(data.user), 900);
+
+      } catch (err) {
+        setLoading(false);
+        recordAttempt();
+
+        if (isLockedOut()) {
+          startLockoutCountdown();
+          return;
+        }
+
+        switch (err.code) {
+          case 'USER_NOT_FOUND':
+            clearFieldError('password');
+            setFieldError('email', 'No account found with this email');
+            showErrorBanner(
+              err.message,
+              err.detail,
+              'Create a free account',
+              () => window.location.href = 'onboarding.html'
+            );
+            break;
+
+          case 'WRONG_PASSWORD':
+          case 'INVALID_CREDENTIALS':
+            clearFieldError('email');
+            setFieldError('password', 'Incorrect password');
+            el.password.value = '';
+            el.password.focus();
+            showErrorBanner(
+              err.message,
+              err.detail,
+              'Reset password',
+              () => window.location.href = 'forgottenPassword.html'
+            );
+            break;
+
+          case 'EMAIL_NOT_VERIFIED':
+            hideVerifySection();
+            showInfoBanner(
+              'Email not verified',
+              'We sent a verification code to ' + email + '. Enter it below to verify and sign in.',
+              'Resend code',
+              async () => {
+                try {
+                  await apiResendVerification(email);
+                  showVerifySection(email);
+                  showInfo('Verification code sent to ' + email);
+                  hideAllBanners();
+                } catch (resendErr) {
+                  showError(resendErr.message || 'Could not send code');
+                }
+              }
+            );
+            // Also try to auto-send the code and show the input
+            try {
+              await apiResendVerification(email);
+              showVerifySection(email);
+            } catch {
+              // Show the resend button in the banner instead
+            }
+            break;
+
+          case 'PENDING_ACCOUNT':
+            showInfoBanner(
+              'Account setup not complete',
+              'It looks like you started signing up but didn\'t finish. Continue where you left off.',
+              'Continue setup',
+              () => {
+                // Restore email for onboarding context
+                sessionStorage.setItem('revluma_resume_email', email);
+                window.location.href = 'onboarding.html';
+              }
+            );
+            break;
+
+          case 'ACCOUNT_SUSPENDED':
+            showErrorBanner(
+              err.message,
+              err.detail
+            );
+            el.loginBtn.disabled = true;
+            break;
+
+          case 'RATE_LIMITED':
+            showErrorBanner(err.message, err.detail);
+            startLockoutCountdown();
+            break;
+
+          case 'TIMEOUT':
+            showErrorBanner('Request timed out', err.detail);
+            break;
+
+          case 'NETWORK':
+            showErrorBanner('Connection error', err.detail);
+            break;
+
+          case 'SERVER_ERROR':
+            showErrorBanner('Server error', err.detail);
+            break;
+
+          default:
+            showErrorBanner(
+              err.message || 'Sign in failed',
+              err.detail  || 'Please try again. If the problem persists, contact support.'
+            );
+        }
+      }
+    });
+
+    // ================================================================
+    //  REAL-TIME FIELD VALIDATION
+    // ================================================================
+    el.email.addEventListener('blur', function() {
+      const v = this.value.trim();
+      if (!v) return;
+      if (!validateEmail(v)) {
+        setFieldError('email', 'Enter a valid email address');
+      } else {
+        clearFieldError('email');
+      }
+    });
+
+    el.email.addEventListener('input', function() {
+      if (this.classList.contains('has-error') && validateEmail(this.value.trim())) {
+        clearFieldError('email');
+      }
+      hideAllBanners();
+    });
+
+    el.password.addEventListener('input', function() {
+      if (this.value) clearFieldError('password');
+      hideAllBanners();
+    });
+
+    // ================================================================
+    //  PASSWORD TOGGLE
+    // ================================================================
+    el.togglePw.addEventListener('click', () => {
+      const isPw = el.password.type === 'password';
+      el.password.type              = isPw ? 'text' : 'password';
+      el.eyeIcon.style.display      = isPw ? 'none'  : 'block';
+      el.eyeOffIcon.style.display   = isPw ? 'block' : 'none';
+    });
+
+    // ================================================================
+    //  REMEMBER ME
+    // ================================================================
+    el.rememberMe.addEventListener('change', e => {
+      state.rememberMe = e.target.checked;
+    });
+
+    // Restore remembered email (using correct Revluma key)
+    const rememberedEmail = localStorage.getItem('revluma_remembered_email');
+    if (rememberedEmail) {
+      el.email.value          = rememberedEmail;
+      el.rememberMe.checked   = true;
+      state.rememberMe        = true;
+    }
+
+    // ================================================================
+    //  INIT — CHECK FOR EXISTING SESSION + PRE-FILL FROM ONBOARDING
+    // ================================================================
+
+    // If user just came from onboarding (verified there), grab their pending token
+    const pendingToken = localStorage.getItem('revluma_pending_token');
+    if (pendingToken && pendingToken !== 'undefined') {
+      state.pendingToken = pendingToken;
+    }
+
+    // Check for URL params (e.g. ?verified=1 from a link)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verified') === '1') {
+      showInfoBanner('Email verified ✓', 'Your email is confirmed. Sign in to get started.');
+    }
+    if (params.get('reset') === '1') {
+      showInfoBanner('Password reset', 'Your password has been updated. Sign in with your new password.');
+    }
+
+    // Check if redirected from onboarding with a context email
+    const resumeEmail = sessionStorage.getItem('revluma_resume_email');
+    if (resumeEmail && !el.email.value) {
+      el.email.value = resumeEmail;
+      sessionStorage.removeItem('revluma_resume_email');
+    }
+
+    // Auto-login check
     checkAutoLogin();
+
+    // ================================================================
+    //  INITIAL LOCKOUT CHECK (page reload during lockout period)
+    // ================================================================
+    if (isLockedOut()) {
+      startLockoutCountdown();
+    }
   </script>
 </body>
 </html>
