@@ -3093,27 +3093,6 @@
                 reader.readAsDataURL(file);
             }
         }
-        
-        // Check for existing session on page load - redirect if logged in
-        (function() {
-            const token = localStorage.getItem('revluma_token') || sessionStorage.getItem('revluma_token');
-            if (token && token !== 'undefined' && token !== 'null') {
-                // Token exists - check if valid and redirect to dashboard
-                const isLocalDev = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-                const API_BASE = isLocalDev ? 'http://localhost:5000/api' : 'https://revluma.onrender.com/api';
-                
-                fetch(API_BASE + '/auth/me', {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.user && data.user.onboarding_status === 'completed') {
-                        window.location.href = './Dashboard/overview.html';
-                    }
-                })
-                .catch(() => {});
-            }
-        })();
     </script>
 </body>
 
