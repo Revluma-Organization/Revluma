@@ -1496,6 +1496,7 @@
               else if (s === 'step2') showStep(3);
               else if (s === 'step3') showStep(4);
               else if (s === 'step4') showStep(5);
+              else if (s === 'step5') showStep(6);
               else showStep(1);
             }
           }
@@ -1506,7 +1507,15 @@
         });
     }
 
-    showStep(1);
+    // Check for pending token - user needs to complete email verification
+    const pendingToken = localStorage.getItem('revluma_pending_token');
+    if (pendingToken && pendingToken !== 'undefined' && pendingToken !== 'null' && !existingToken) {
+      state.pendingToken = pendingToken;
+      // Show step 6 for email verification
+      showStep(6);
+    } else {
+      showStep(1);
+    }
   </script>
 </body>
 </html>
