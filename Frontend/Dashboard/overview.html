@@ -1104,8 +1104,8 @@ body.has-data .s-active{display:block}
     <div class="user-trigger" onclick="toggleDropdown()">
       <div class="user-avatar" id="userAvatar" onclick="event.stopPropagation(); openProfileModal()">AJ</div>
       <div class="user-info">
-        <div class="user-name" id="userName">Alex Johnson</div>
-        <div class="user-email" id="userEmail">alex@mystore.com</div>
+        <div class="user-name" id="userName">Loading...</div>
+        <div class="user-email" id="userEmail">Loading...</div>
       </div>
       <div class="user-chevron"><svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg></div>
     </div>
@@ -1247,7 +1247,7 @@ body.has-data .s-active{display:block}
 
     <!-- Welcome -->
     <div class="welcome anim-1">
-      <h1 class="welcome-title">Welcome back, <span id="firstName">Alex</span> <span class="wave">👋</span></h1>
+      <h1 class="welcome-title">Welcome back, <span id="firstName">User</span> <span class="wave">👋</span></h1>
       <p class="welcome-sub" id="welcomeSub">Here's what's happening with your store today</p>
     </div>
 
@@ -2098,6 +2098,8 @@ document.addEventListener('keydown',e=>{
 async function initializeApp() {
   const token = localStorage.getItem('rvToken');
   
+  console.log('Initializing app, token exists:', !!token);
+  
   if (token) {
     try {
       // Fetch real user data
@@ -2108,40 +2110,57 @@ async function initializeApp() {
         }
       });
       
+      console.log('Auth me response:', response.status);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log('User data:', data);
         const user = data.user;
         
         // Apply user data to UI
-        const firstName = user.full_name ? user.full_name.split(' ')[0] : 'User';
+        const firstName = user.full_name ? user.full_name.split(' ')[0] : (user.store_name || 'User');
         const initials = user.full_name 
           ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)
           : user.email[0].toUpperCase();
         
         document.getElementById('userAvatar').textContent = initials;
-        document.getElementById('userName').textContent = user.full_name || firstName;
+        document.getElementById('userName').textContent = user.full_name || user.store_name || firstName;
         document.getElementById('userEmail').textContent = user.email;
         document.getElementById('firstName').textContent = firstName;
         
         // Update welcome title
-        document.querySelector('.welcome-title').innerHTML = `Welcome back, <span id="firstName">${firstName}</span> <span class="wave">👋</span>`;
+        const welcomeEl = document.querySelector('.welcome-title');
+        if (welcomeEl) {
+          welcomeEl.innerHTML = `Welcome back, <span id="firstName">${firstName}</span> <span class="wave">👋</span>`;
+        }
         
         // Update state
         AppState.user = user;
         
         // Fetch dashboard data
-        await fetchDashboardData(window._currentPeriod || '30d');
-        renderDashboardData();
+        try {
+          await fetchDashboardData(window._currentPeriod || '30d');
+          renderDashboardData();
+        } catch (e) {
+          console.error('Dashboard data error:', e);
+        }
         
         // Connect WebSocket for real-time updates
-        RevlumaAPI.ws.connect();
+        if (window.RevlumaAPI) {
+          RevlumaAPI.ws.connect();
+        }
         
         // Show onboarding tour if first visit
         if (checkFirstVisit()) {
           showOnboardingTour();
         }
         
+        console.log('App initialized with user:', firstName);
         return;
+      } else if (response.status === 401) {
+        // Token expired - clear it
+        localStorage.removeItem('rvToken');
+        localStorage.removeItem('rvRefresh');
       }
     } catch (error) {
       console.error('Failed to initialize app:', error);
@@ -2149,6 +2168,7 @@ async function initializeApp() {
   }
   
   // Not authenticated - show guest state
+  console.log('No token - showing guest state');
   document.getElementById('userAvatar').textContent = 'G';
   document.getElementById('userName').textContent = 'Guest User';
   document.getElementById('userEmail').textContent = '';
