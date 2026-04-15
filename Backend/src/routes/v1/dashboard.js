@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const authenticate = require('../../middleware/auth');
-const { prisma } = require('../../services/prisma');
-const logger = require('../../utils/logger');
+const authenticate = require('../middleware/auth');
+const { prisma } = require('../services/prisma');
+const logger = require('../utils/logger');
 
 // ============================================================
 // Unified Dashboard API

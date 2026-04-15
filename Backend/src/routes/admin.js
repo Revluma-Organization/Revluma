@@ -1,13 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { prisma } = require('../../services/prisma');
-const logger = require('../../utils/logger');
+const { prisma } = require('../services/prisma');
+const logger = require('../utils/logger');
 
 // POST /api/admin/migrate
 // Run database migrations
 router.post('/migrate', async (req, res) => {
   try {
-    // Add avatarUrl column if not exists
     await prisma.$executeRawUnsafe(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS "avatarUrl" TEXT;
     `);
