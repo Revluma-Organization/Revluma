@@ -95,9 +95,6 @@ app.use('/api/v1/insights', authenticate, require('./src/routes/v1/insights'));
 app.use('/api/v1/customers', authenticate, require('./src/routes/v1/customers'));
 app.use('/api/v1/user', authenticate, require('./src/routes/v1/user'));
 
-// Admin endpoints
-app.use('/api/admin', require('./src/routes/admin'));
-
 // Admin endpoint (protected)
 app.post('/api/admin/ingest', authenticate, async (req, res) => {
   try {
