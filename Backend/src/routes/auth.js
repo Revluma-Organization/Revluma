@@ -738,6 +738,13 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { id: user.id, email: user.email, tenant_id: user.tenantId, emailVerified: user.emailVerified },
       process.env.JWT_SECRET,
+      { expiresIn: '15m', algorithm: 'HS256' }
+    );
+
+    // Generate refresh token (longer-lived)
+    const refreshToken = jwt.sign(
+      { id: user.id, type: 'refresh' },
+      process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
       { expiresIn: '7d', algorithm: 'HS256' }
     );
 
@@ -746,6 +753,7 @@ router.post('/login', async (req, res) => {
     res.status(200).json({
       message: 'Login successful',
       token,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -757,6 +765,63 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     logger.error('Login error', { error: err.message, email });
     res.status(500).json({ error: 'Login failed – please try again' });
+  }
+});
+
+// REFRESH TOKEN
+router.post('/refresh', async (req, res) => {
+  const { refreshToken } = req.body;
+
+  if (!refreshToken) {
+    return res.status(400).json({ error: 'Refresh token required' });
+  }
+
+  try {
+    // Verify refresh token
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET, {
+      algorithms: ['HS256']
+    });
+
+    if (decoded.type !== 'refresh') {
+      return res.status(401).json({ error: 'Invalid refresh token' });
+    }
+
+    // Get user
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id }
+    });
+
+    if (!user || !user.emailVerified) {
+      return res.status(401).json({ error: 'User not found or not verified' });
+    }
+
+    // Generate new access token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, tenant_id: user.tenantId, emailVerified: user.emailVerified },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m', algorithm: 'HS256' }
+    );
+
+    // Generate new refresh token
+    const newRefreshToken = jwt.sign(
+      { id: user.id, type: 'refresh' },
+      process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
+      { expiresIn: '7d', algorithm: 'HS256' }
+    );
+
+    res.status(200).json({
+      token,
+      refreshToken: newRefreshToken
+    });
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Refresh token expired' });
+    }
+    if (err.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Invalid refresh token' });
+    }
+    logger.error('Token refresh error', { error: err.message });
+    res.status(500).json({ error: 'Token refresh failed' });
   }
 });
 

@@ -88,6 +88,16 @@ app.use('/api/shopify', require('./src/routes/shopify'));
 app.use('/api/newsletter', require('./src/routes/newsletter'));
 app.use('/api/videos', require('./src/routes/videos'));
 
+// API v1 routes (protected)
+app.use('/api/v1/dashboard', authenticate, require('./src/routes/v1/dashboard'));
+app.use('/api/v1/metrics', authenticate, require('./src/routes/v1/metrics'));
+app.use('/api/v1/insights', authenticate, require('./src/routes/v1/insights'));
+app.use('/api/v1/customers', authenticate, require('./src/routes/v1/customers'));
+app.use('/api/v1/user', authenticate, require('./src/routes/v1/user'));
+
+// Admin endpoints
+app.use('/api/admin', require('./src/routes/admin'));
+
 // Admin endpoint (protected)
 app.post('/api/admin/ingest', authenticate, async (req, res) => {
   try {
