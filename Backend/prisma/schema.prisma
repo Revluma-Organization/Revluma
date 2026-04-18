@@ -470,3 +470,278 @@ model NewsletterSendEvent {
   @@index([sendId, createdAt])
   @@map("newsletter_send_events")
 }
+
+// ============================================================
+// CUSTOMER IDENTITY (Identity Resolution)
+// ============================================================
+
+model Customer {
+  id          String   @id @default(uuid())
+  tenantId    String   // Using String to match existing schema (TEXT in SQL)
+  externalId  String?
+  status      String   @default("unknown") // unknown, identified, verified, churned, merged
+  mergedInto String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  identities  CustomerIdentity[]
+  events      CustomerEvent[]
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, status])
+  @@map("customers")
+}
+
+model CustomerIdentity {
+  id            String   @id @default(uuid())
+  tenantId      String   // Using String to match existing schema (TEXT in SQL)
+  customerId    String
+  identityType  String   // anonymous_cookie, email, phone, device_fingerprint, shopify_customer_id, klaviyo_profile_id
+  identityValue String
+  confidence    Decimal  @default(0.5) @db.Decimal(3, 2)
+  createdAt     DateTime @default(now())
+
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, identityType, identityValue])
+  @@index([tenantId, customerId])
+  @@map("customer_identities")
+}
+
+// ============================================================
+// EVENT STORE (Append-only event log)
+// ============================================================
+
+model CustomerEvent {
+  id            String   @id @default(uuid())
+  tenantId      String   // Using String to match existing schema (TEXT in SQL)
+  customerId    String?
+  eventType     String   // cart_created, cart_abandoned, checkout_completed, email_opened, etc.
+  eventSource   String   @default("internal") // shopify, tracking_script, klaviyo, internal
+  payload       Json
+  sessionId     String?
+  anonymousId   String?
+  createdAt     DateTime @default(now())
+
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, eventType, createdAt])
+  @@index([tenantId, customerId, createdAt])
+  @@map("customer_events")
+}
+
+// Dead letter queue for failed events
+model EventDlq {
+  id          String   @id @default(uuid())
+  eventData   Json
+  errorMessage String
+  failedAt    DateTime @default(now())
+
+  @@index([failedAt])
+  @@map("event_dlq")
+}
+
+// ============================================================
+// STORE CONFIG (E-commerce Platform Integration)
+// ============================================================
+
+model StoreConfig {
+  id                      String    @id @default(uuid())
+  tenantId                String
+  platform                Platform
+  storeName               String
+  storeUrl                String
+  callbackUrl             String?
+  credentialsEncrypted    String
+  cartTrackingMode        String    @default("plugin")
+  abandonmentWindowMinutes Int       @default(60)
+  status                  String    @default("pending")
+  lastSyncAt              DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  syncCursors             SyncCursor[]
+  syncJobs                SyncJob[]
+  webhookRegistrations    WebhookRegistration[]
+  webhooks                WebhookEvent[]
+  checkouts               Checkout[]
+  credentials             PlatformCredential?
+
+  @@unique([tenantId, platform, storeUrl])
+  @@index([tenantId])
+  @@index([status])
+  @@map("store_configs")
+}
+
+model SyncCursor {
+  id              String   @id @default(uuid())
+  storeId         String
+  resource        String
+  cursor          String
+  timestamp       DateTime
+  processedCount  Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  store           StoreConfig @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, resource])
+  @@index([storeId])
+  @@map("sync_cursors")
+}
+
+enum SyncResource {
+  CUSTOMERS
+  ORDERS
+  PRODUCTS
+  CHECKOUTS
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETE
+  FAILED
+}
+
+model SyncJob {
+  id                String       @id @default(uuid())
+  storeId           String
+  platform          Platform
+  resource          SyncResource
+  status            SyncStatus   @default(PENDING)
+  cursor            Json?
+  recordsProcessed  Int          @default(0)
+  recordsFailed     Int          @default(0)
+  lastError         String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  store             StoreConfig  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, resource, status])
+  @@index([status, createdAt])
+  @@map("sync_jobs")
+}
+
+model WebhookRegistration {
+  id            String   @id @default(uuid())
+  storeId       String
+  topic         String
+  webhookId     String
+  callbackUrl   String
+  secret        String?
+  secretIv      String?
+  secretAuthTag String?
+  active        Boolean  @default(true)
+  registeredAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  store         StoreConfig @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, topic])
+  @@index([storeId])
+  @@map("webhook_registrations")
+}
+
+enum Platform {
+  SHOPIFY
+  WOOCOMMERCE
+  BIGCOMMERCE
+}
+
+enum CredentialStatus {
+  ACTIVE
+  INVALID
+  REVOKED
+  PENDING_VERIFICATION
+}
+
+model PlatformCredential {
+  id                 String           @id @default(uuid())
+  storeId            String           @unique
+  platform           Platform
+  encryptedPayload   String
+  iv                 String
+  authTag            String
+  status             CredentialStatus @default(ACTIVE)
+  lastVerifiedAt     DateTime?
+  failureReason      String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  store              StoreConfig      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([platform, status])
+  @@map("platform_credentials")
+}
+
+enum WebhookEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  DUPLICATE
+  REJECTED
+}
+
+model WebhookEvent {
+  id                String             @id @default(uuid())
+  storeId           String
+  platform          Platform
+  topic             String
+  externalEventId   String?
+  status            WebhookEventStatus @default(RECEIVED)
+  processingError   String?
+  rawPayload        Json?
+  receivedAt        DateTime           @default(now())
+  processedAt       DateTime?
+
+  store             StoreConfig        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, storeId, externalEventId])
+  @@index([storeId, status, receivedAt])
+  @@index([status, receivedAt])
+  @@map("webhook_events")
+}
+
+enum CheckoutStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+  UNKNOWN
+}
+
+model Checkout {
+  id                    String         @id @default(uuid())
+  storeId               String
+  platform              Platform
+  externalId            String
+  customerId            String?
+  email                 String?
+  phone                 String?
+  status                CheckoutStatus @default(ACTIVE)
+  lineItems             Json
+  totalPrice            Float
+  currency              String         @db.VarChar(3)
+  checkoutUrl           String?
+  lastActivityAt        DateTime
+  completedAt           DateTime?
+  abandonedAt           DateTime?
+  recoveryTriggeredAt  DateTime?
+  recoveredAt           DateTime?
+  recoveredOrderId     String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  store                 StoreConfig    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([platform, storeId, externalId])
+  @@index([storeId, status, lastActivityAt])
+  @@index([storeId, abandonedAt])
+  @@map("checkouts")
+}

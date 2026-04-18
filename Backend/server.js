@@ -6,6 +6,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const cookieParser = require('cookie-parser');
 
 // Import custom modules
 const logger = require('./src/utils/logger');
@@ -35,6 +36,9 @@ app.use(helmet({
 // Body parsing with size limits
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Cookie parser for session-based authentication
+app.use(cookieParser());
 
 // CORS - restrict origins in production
 app.use(cors({
@@ -76,6 +80,9 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth', authLimiter, require('./src/routes/auth'));
 
+// Session-based auth routes (with cookies)
+app.use('/api/session', require('./src/routes/authSession'));
+
 // Other API routes
 app.use('/api/webhook', rateLimit({
   windowMs: 60 * 1000,
@@ -85,6 +92,20 @@ app.use('/api/webhook', rateLimit({
 app.use('/api/trending', require('./src/routes/trending'));
 app.use('/api/watchlist', require('./src/routes/watchlist'));
 app.use('/api/shopify', require('./src/routes/shopify'));
+app.use('/api/stores', require('./src/routes/stores'));
+
+// Webhook endpoints for each platform
+const { createWebhookRouter } = require('./src/routes/webhooks');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+app.use('/api/webhooks/shopify', createWebhookRouter('shopify', prisma));
+app.use('/api/webhooks/woocommerce', createWebhookRouter('woocommerce', prisma));
+app.use('/api/webhooks/bigcommerce', createWebhookRouter('bigcommerce', prisma));
+
+// WooCommerce tracking pixel (public, no auth)
+const { createTrackingPixelRouter } = require('./src/routes/tracking');
+app.use('/api/tracking', createTrackingPixelRouter(prisma));
 app.use('/api/newsletter', require('./src/routes/newsletter'));
 app.use('/api/videos', require('./src/routes/videos'));
 
