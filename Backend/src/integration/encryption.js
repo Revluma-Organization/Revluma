@@ -1,17 +1,10 @@
-// ============================================================
-// ENCRYPTION UTILITIES
-// ============================================================
-// AES-256-GCM encryption for platform credentials
-// Key derived from master secret + storeId (HKDF)
-
 const crypto = require('crypto');
 
 const ENCRYPTION_ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 12; // 96 bits for GCM
+const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 
-// Master key from environment - MUST be set
-function getMasterKey(): Buffer {
+function getMasterKey() {
   const key = process.env.CREDENTIALS_MASTER_KEY;
   if (!key) {
     throw new Error('CREDENTIALS_MASTER_KEY environment variable not set');
@@ -19,16 +12,14 @@ function getMasterKey(): Buffer {
   return Buffer.from(key, 'hex');
 }
 
-// Derive store-specific key using HKDF
-function deriveStoreKey(storeId: string): Buffer {
+function deriveStoreKey(storeId) {
   const masterKey = getMasterKey();
   const hkdf = crypto.createHmac('sha256', masterKey);
   hkdf.update(storeId);
   return hkdf.digest();
 }
 
-// Encrypt credentials
-function encryptCredentials(credentials: object, storeId: string): string {
+function encryptCredentials(credentials, storeId) {
   const storeKey = deriveStoreKey(storeId);
   const iv = crypto.randomBytes(IV_LENGTH);
   
@@ -44,7 +35,6 @@ function encryptCredentials(credentials: object, storeId: string): string {
   
   const authTag = cipher.getAuthTag();
   
-  // Format: iv:authTag:encrypted (all base64)
   return [
     iv.toString('base64'),
     authTag.toString('base64'),
@@ -52,8 +42,7 @@ function encryptCredentials(credentials: object, storeId: string): string {
   ].join(':');
 }
 
-// Decrypt credentials
-function decryptCredentials(encryptedData: string, storeId: string): object {
+function decryptCredentials(encryptedData, storeId) {
   const storeKey = deriveStoreKey(storeId);
   const parts = encryptedData.split(':');
   
@@ -79,8 +68,7 @@ function decryptCredentials(encryptedData: string, storeId: string): object {
   return JSON.parse(decrypted.toString('utf8'));
 }
 
-// Mask credentials for logging
-function maskCredentials(credentials: object): object {
+function maskCredentials(credentials) {
   const masked = { ...credentials };
   
   for (const key of Object.keys(masked)) {
