@@ -342,7 +342,7 @@ class ShopifyAdapter extends BaseAdapter {
     return registered;
   }
 
-  verifyWebhookSignature(headers, rawBody) {
+  async verifyWebhookSignature(headers, rawBody) {
     const hmacHeader = headers['x-shopify-hmac-sha256'];
     const shopDomain = headers['x-shopify-shop-domain'];
 
