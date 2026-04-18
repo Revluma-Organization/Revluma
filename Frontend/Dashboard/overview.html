@@ -2593,8 +2593,7 @@ async function connectBigCommerce() {
   
   // Initiate OAuth flow with backend
   initiateShopifyOAuth(storeUrl);
-}
-
+  
 async function initiateShopifyOAuth(storeName) {
   try {
     const token = localStorage.getItem('revluma_token') || sessionStorage.getItem('revluma_token');
