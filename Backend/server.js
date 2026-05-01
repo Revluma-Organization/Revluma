@@ -40,15 +40,41 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // Cookie parser for session-based authentication
 app.use(cookieParser());
 
-// CORS - restrict origins in production
+// CORS - allow configured frontend origins and same-origin requests
+const parseOrigins = value => (typeof value === 'string'
+  ? value.split(',').map(entry => entry.trim()).filter(Boolean)
+  : []);
+
+const configuredOrigins = new Set([
+  ...parseOrigins(process.env.CORS_ORIGINS),
+  ...parseOrigins(process.env.ALLOWED_ORIGINS),
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : [])
+].map(origin => origin.replace(/\/$/, '')));
+
+if (configuredOrigins.size === 0 && isProduction) {
+  configuredOrigins.add('https://revluman.vercel.app');
+  configuredOrigins.add('https://www.revluman.vercel.app');
+  configuredOrigins.add('https://revluma.onrender.com');
+}
+
 app.use(cors({
-  origin: isProduction
-    ? ['https://revluma.vercel.app', 'https://revluma.onrender.com']
-    : true,
+  origin: (origin, callback) => {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const normalized = origin.replace(/\/$/, '');
+    if (configuredOrigins.has(normalized)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS origin denied: ${normalized}`), false);
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   credentials: true
 }));
+app.options('*', cors());
 
 // HTTP logging
 app.use(morgan(isProduction ? 'combined' : 'dev', {

@@ -12,6 +12,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap"
     rel="stylesheet" />
+  <script src="../assets/js/apiConfig.js"></script>
 
   <style>
     :root {
@@ -971,10 +972,12 @@
     // ================================================================
     //  CONFIGURATION
     // ================================================================
-    const isLocalDev = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-    const API_BASE = isLocalDev
-      ? 'http://localhost:5000/api'
-      : 'https://revluma.onrender.com/api';
+    const API_BASE = window.APP_API_BASE?.replace(/\/$/, '') || (() => {
+      if (window.location.protocol === 'file:' || !window.location.origin) {
+        return 'http://localhost:5000/api';
+      }
+      return `${window.location.origin}/api`;
+    })();
 
     // Client-side rate-limit tracking
     const RATE_LIMIT = { max: 5, windowMs: 15 * 60 * 1000 };
