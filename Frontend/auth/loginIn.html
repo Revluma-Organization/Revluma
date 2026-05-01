@@ -1269,6 +1269,12 @@
     }
 
     function redirectAfterLogin(user) {
+      if (!user) {
+        console.warn('redirectAfterLogin called without user, falling back to login page');
+        window.location.replace('/auth/loginIn.html');
+        return;
+      }
+
       const dest = (user.onboarding_status === 'completed')
         ? '/dashboard/overview'
         : 'onboarding.html';
@@ -1308,7 +1314,7 @@
         if (data?.csrfToken) {
           sessionStorage.setItem('csrf_token', data.csrfToken);
         }
-        return { success: true };
+        return data;
       }
 
       // ── Parse the error response into structured codes ──
