@@ -90,7 +90,6 @@ function mergeSources(rawSources) {
 }
 
 
-// ====================== NORMALIZATION ======================
 function normalizeData(rawItem, source) {
   if (!rawItem) throw new Error('No raw item provided');
 

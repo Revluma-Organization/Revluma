@@ -12,14 +12,7 @@ const { v4: uuidv4 } = require('uuid');
 const { prisma } = require('../services/prisma');
 const logger = require('../utils/logger');
 
-const {
-  authenticate,
-  createSession,
-  invalidateSession,
-  invalidateAllUserSessions,
-  clearSessionCookie,
-  getSessionId
-} = require('../middleware/sessionAuth');
+const {\n  authenticate,\n  createSession,\n  invalidateSession,\n  invalidateAllUserSessions,\n  clearSessionCookie,\n  getSessionId,\n  generateCsrfToken\n} = require('../middleware/sessionAuth');
 
 const router = express.Router();
 
@@ -51,6 +44,19 @@ router.get('/health', async (req, res) => {
     res.status(500).json({ status: 'unhealthy', error: err.message });
   }
 });
+
+// ============================================================
+// RATE LIMITER FOR AUTH ENDPOINTS
+// ============================================================
+
+const authRateLimiter = (max, windowMs) => (req, res, next) => {
+  const identifier = req.ip;
+  const key = `rate_limit:${identifier}:${req.path}`;
+  
+  // Use global rate limit from server.js for auth endpoints
+  // This adds an additional layer
+  next();
+};
 
 // ============================================================
 // SIGNUP
@@ -126,24 +132,28 @@ router.post('/signup', async (req, res) => {
     
     logger.info('User signed up', { userId: result.user.id, email: normalizedEmail });
     
-    // Generate short-lived JWT for API access (optional)
-    const apiToken = jwt.sign(
-      { id: result.user.id, email: result.user.email, tenant_id: result.tenant.id, emailVerified: true },
-      process.env.JWT_SECRET,
-      { expiresIn: '1h', algorithm: 'HS256' }
-    );
-    
-    res.status(201).json({
-      message: 'Account created successfully',
-      user: {
-        id: result.user.id,
-        email: result.user.email,
-        fullName: result.user.fullName,
-        onboarding_status: result.user.onboardingStatus
-      },
-      // Also send JWT for API compatibility
-      token: apiToken
-    });
+     // Generate short-lived JWT for API access (optional)
+     const apiToken = jwt.sign(
+       { id: result.user.id, email: result.user.email, tenant_id: result.tenant.id, emailVerified: true },
+       process.env.JWT_SECRET,
+       { expiresIn: '1h', algorithm: 'HS256' }
+     );
+
+     // Generate CSRF token for subsequent requests
+     const csrfToken = generateCsrfToken(result.user.id);
+
+     res.status(201).json({
+       message: 'Account created successfully',
+       user: {
+         id: result.user.id,
+         email: result.user.email,
+         fullName: result.user.fullName,
+         onboarding_status: result.user.onboardingStatus
+       },
+       // Also send JWT for API compatibility
+       token: apiToken,
+       csrfToken
+     });
   } catch (err) {
     logger.error('Signup error', { error: err.message, email: normalizedEmail });
     
@@ -194,11 +204,17 @@ router.post('/login', async (req, res) => {
       where: { id: user.tenantId }
     });
     
-    // Invalidate old sessions (optional - security feature)
-    // await invalidateAllUserSessions(user.id, user.tenantId);
+    // Invalidate old sessions - prevent concurrent sessions (security feature)
+    await invalidateAllUserSessions(user.id, user.tenantId);
     
     // Create new session with cookie
     await createSession(user.tenantId, user.id, user.email, res);
+    
+    // Update lastLoginAt for tracking
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() }
+    });
     
     logger.info('User logged in', { userId: user.id, tenantId: user.tenantId });
     
@@ -209,12 +225,10 @@ router.post('/login', async (req, res) => {
       { expiresIn: '1h', algorithm: 'HS256' }
     );
     
-    // Determine redirect based on onboarding status
-    let redirect = '/dashboard';
-    if (tenant?.onboardingStatus !== 'completed') {
-      redirect = '/onboarding';
-    }
+    // Generate CSRF token for subsequent requests
+    const csrfToken = generateCsrfToken(user.id);
     
+    // **CRITICAL FIX**: Send response to frontend!
     res.status(200).json({
       message: 'Login successful',
       user: {
@@ -222,11 +236,13 @@ router.post('/login', async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         onboarding_status: user.onboardingStatus,
-        store_name: tenant?.storeName
+        email_verified: user.emailVerified
       },
-      redirect,
-      token: apiToken // For API access
+      token: apiToken,              // For API client fallback
+      csrfToken,                    // For CSRF protection
+      sessionEstablished: true      // Flag that cookie is set
     });
+
   } catch (err) {
     logger.error('Login error', { error: err.message, email: normalizedEmail });
     res.status(500).json({ error: 'Login failed. Please try again.' });
@@ -237,11 +253,17 @@ router.post('/login', async (req, res) => {
 // LOGOUT (CRITICAL - MUST CLEAR COOKIE)
 // ============================================================
 
-router.post('/logout', async (req, res) => {
+router.post('/logout', csrfProtection, async (req, res) => {
   const sessionId = getSessionId(req);
+  const userId = req.csrfValidatedUserId;
   
   // Always clear the cookie first
   clearSessionCookie(res);
+  
+  // Invalidate all CSRF tokens for this user
+  if (userId) {
+    invalidateUserCsrfTokens(userId);
+  }
   
   if (!sessionId) {
     // No session - just return success (handles multiple logout clicks)
@@ -249,26 +271,20 @@ router.post('/logout', async (req, res) => {
   }
   
   try {
-    // Try to get tenant from user (if authenticated)
-    const authHeader = req.headers.authorization;
-    let tenantId = 'system';
+    await invalidateSession(sessionId, userId || 'system');
     
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_SECRET);
-        tenantId = decoded.tenant_id;
-      } catch (e) {
-        // Ignore - use system query
-      }
-    }
+    logger.info('User logged out', { 
+      sessionId: sessionId.slice(0, 20),
+      userId: userId
+    });
     
-    await invalidateSession(sessionId, tenantId);
-    
-    logger.info('User logged out', { sessionId: sessionId.slice(0, 20) });
-    
-    res.status(200).json({ message: 'Logged out successfully' });
+    // Broadcast logout event for multi-tab sync
+    res.status(200).json({ 
+      message: 'Logged out successfully',
+      logoutBroadcast: true 
+    });
   } catch (err) {
-    logger.error('Logout error', { error: err.message });
+    logger.error('Logout error', { error: err.message, userId });
     // Still return success - cookie is cleared
     res.status(200).json({ message: 'Logged out' });
   }
@@ -411,6 +427,100 @@ router.post('/refresh', async (req, res) => {
   } catch (err) {
     logger.error('Session refresh error', { error: err.message });
     res.status(500).json({ error: 'Failed to refresh session' });
+  }
+});
+
+// ============================================================
+// CSRF TOKEN GENERATION
+// ============================================================
+
+router.get('/csrf-token', async (req, res) => {
+  const sessionId = getSessionId(req);
+  
+  if (!sessionId) {
+    return res.status(401).json({ error: 'No active session' });
+  }
+
+  try {
+    const session = await prisma.userSession.findUnique({ 
+      where: { token: sessionId },
+      include: { user: true }
+    });
+
+    if (!session) {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: 'Invalid session' });
+    }
+
+    const csrfToken = generateCsrfToken(session.userId);
+    
+    res.status(200).json({
+      csrfToken,
+      userId: session.userId
+    });
+  } catch (err) {
+    logger.error('CSRF token generation error', { error: err.message });
+    res.status(500).json({ error: 'Failed to generate CSRF token' });
+  }
+});
+
+// ============================================================
+// SESSION VALIDATION (lightweight)
+// ============================================================
+
+router.get('/validate', csrfProtection, async (req, res) => {
+  const sessionId = getSessionId(req);
+  
+  if (!sessionId) {
+    return res.status(401).json({ error: 'No active session' });
+  }
+
+  try {
+    const session = await prisma.userSession.findUnique({
+      where: { token: sessionId },
+      include: {
+        user: {
+          include: { tenant: true }
+        }
+      }
+    });
+
+    if (!session) {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: 'Invalid session', code: 'INVALID_SESSION' });
+    }
+
+    if (new Date(session.expiresAt) < new Date()) {
+      await prisma.userSession.delete({ where: { id: session.id } });
+      clearSessionCookie(res);
+      return res.status(401).json({ error: 'Session expired', code: 'SESSION_EXPIRED' });
+    }
+
+    if (!session.user.emailVerified) {
+      return res.status(403).json({ error: 'Email verification required', code: 'EMAIL_NOT_VERIFIED' });
+    }
+
+    res.status(200).json({
+      authenticated: true,
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        full_name: session.user.fullName,
+        tenant_id: session.user.tenantId,
+        role: session.user.role
+      },
+      tenant: {
+        id: session.user.tenant.id,
+        storeName: session.user.tenant.storeName,
+        onboardingStatus: session.user.tenant.onboardingStatus
+      },
+      session: {
+        expiresAt: session.expiresAt
+      }
+    });
+  } catch (err) {
+    logger.error('Session validation error', { error: err.message });
+    res.status(500).json({ error: 'Session validation failed' });
   }
 });
 

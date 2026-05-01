@@ -1,16 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="../assets/images/Revluma-icon.png"></link>
+  <link rel="icon" href="../assets/images/Revluma-icon.png">
+  </link>
   <title>Revluma - Sign Up</title>
-  <script>
-    // Redirect to onboarding page
-    window.location.href = 'onboarding.html';
-  </script>
 </head>
+
 <body>
-  <p>Redirecting to signup...</p>
+  <!-- This page now serves as a redirect to onboarding -->
+  <script>
+    // Check if user is already authenticated
+    async function checkAuthAndRedirect() {
+      try {
+        const response = await fetch('/api/session/me', {
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          // User is already logged in, redirect to dashboard
+          window.location.href = '/dashboard/overview';
+        } else {
+          // User is not logged in, proceed to onboarding
+          window.location.href = 'onboarding.html';
+        }
+      } catch (error) {
+        // On error, default to onboarding
+        window.location.href = 'onboarding.html';
+      }
+    }
+
+    checkAuthAndRedirect();
+  </script>
 </body>
+
 </html>

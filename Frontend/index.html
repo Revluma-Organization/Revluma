@@ -775,7 +775,7 @@
                 </div>
             </a>
 
-                <div
+            <div
                 class="hidden md:flex items-center gap-5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#CCCCCC]">
                 <a href="#features" class="group relative hover:text-white transition-colors">Features
                     <span
@@ -796,12 +796,16 @@
             </div>
 
             <div class="hidden md:flex items-center gap-2" id="auth-nav">
-                    <a href="./Dashboard/overview.html" id="dashboard-link" class="hidden px-4 py-1.5 rounded-full bg-white text-black/95 font-bold text-xs uppercase tracking-wide shadow-sm hover:shadow-md hover:scale-[1.02] hover:bg-white/90 transition-all duration-300 whitespace-nowrap text-[11px]">
-                        Go to Dashboard
-                    </a>
-                <a href="./auth/loginIn.html" target="_blank" id="login-link" class="text-[11px] font-semibold text-[#CCCCCC] hover:text-white transition-colors">Login</a>
+                <a href="/dashboard/overview" id="dashboard-link"
+                    class="hidden px-4 py-1.5 rounded-full bg-white text-black/95 font-bold text-xs uppercase tracking-wide shadow-sm hover:shadow-md hover:scale-[1.02] hover:bg-white/90 transition-all duration-300 whitespace-nowrap text-[11px]">
+                    Go to Dashboard
+                </a>
+                <a href="./auth/loginIn.html" target="_blank" id="login-link"
+                    class="text-[11px] font-semibold text-[#CCCCCC] hover:text-white transition-colors">Login</a>
                 <a href="./auth/onboarding.html" target="_blank" id="signup-link">
-                    <button class="bg-white text-black px-3 py-1.5 rounded-full text-[11px] font-bold hover:-translate-y-0.5 transition-transform">Get Started</button>
+                    <button
+                        class="bg-white text-black px-3 py-1.5 rounded-full text-[11px] font-bold hover:-translate-y-0.5 transition-transform">Get
+                        Started</button>
                 </a>
             </div>
 
@@ -827,10 +831,15 @@
             <a href="#pricing" @click="mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Pricing</a>
             <a href="#integrations" @click="mobileMenu=false"
                 class="hover:text-[#A1A1AA] transition-colors">Integrations</a>
-            <a href="./Dashboard/overview.html" id="mobile-dashboard-link" class="hidden py-3 px-6 rounded-2xl bg-white text-black font-bold hover:scale-[1.01] hover:bg-white/90 shadow-sm transition-all block w-full text-left">Dashboard</a>
-            <a href="./auth/loginIn.html" id="mobile-login-link" @click="mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Login</a>
-            <a href="./auth/onboarding.html" id="mobile-signup-link" @click="mobileMenu=false" target="_blank" class="hover:text-[#A1A1AA] transition-colors">
-                <button class="mt-2 bg-white text-black py-4 rounded-2xl font-bold hover:-translate-y-0.5 transition-transform block w-full text-left p-0">Get Started</button>
+            <a href="/dashboard/overview" id="mobile-dashboard-link"
+                class="hidden py-3 px-6 rounded-2xl bg-white text-black font-bold hover:scale-[1.01] hover:bg-white/90 shadow-sm transition-all block w-full text-left">Dashboard</a>
+            <a href="./auth/loginIn.html" id="mobile-login-link" @click="mobileMenu=false"
+                class="hover:text-[#A1A1AA] transition-colors">Login</a>
+            <a href="./auth/onboarding.html" id="mobile-signup-link" @click="mobileMenu=false" target="_blank"
+                class="hover:text-[#A1A1AA] transition-colors">
+                <button
+                    class="mt-2 bg-white text-black py-4 rounded-2xl font-bold hover:-translate-y-0.5 transition-transform block w-full text-left p-0">Get
+                    Started</button>
             </a>
         </div>
     </div>
@@ -864,11 +873,12 @@
             </h1>
 
             <p class="text-[#A1A1AA] text-lg md:text-xl max-w-2xl mx-auto mb-8 font-light leading-relaxed">
-                Revluma analyzes your business, find hidden revenue opportunities and automatically executes the strategies that drives growth automatically.
+                Revluma analyzes your business, find hidden revenue opportunities and automatically executes the
+                strategies that drives growth automatically.
             </p>
 
             <div class="flex flex-row items-center justify-center gap-6">
-                <a href="./auth/onboarding.html" target="_blank" >
+                <a href="./auth/onboarding.html" target="_blank">
                     <div
                         class="glass-btn text-sm font-bold uppercase tracking-wide text-white hover:scale-[1.02] transition-all duration-300">
                         Get Started Free
@@ -1389,7 +1399,8 @@
                         <div class="hiw-label"><span class="hiw-label-dot"></span>Step 02</div>
                         <p class="hiw-title">AI analyzes your data</p>
                         <p class="hiw-desc">Revluma's AI scans your orders, cart events, and customer behavior,
-                            identifying abandoned carts, underperforming SKUs, and revenue leakage gaps in real time.</p>
+                            identifying abandoned carts, underperforming SKUs, and revenue leakage gaps in real time.
+                        </p>
                     </div>
                 </div>
 
@@ -1406,7 +1417,8 @@
                         </div>
                         <div class="hiw-label"><span class="hiw-label-dot"></span>Step 03</div>
                         <p class="hiw-title">Automations fire & revenue returns</p>
-                        <p class="hiw-desc">Precision sequences go out over email, SMS, WhatsApp and Social media platforms. Shoppers come
+                        <p class="hiw-desc">Precision sequences go out over email, SMS, WhatsApp and Social media
+                            platforms. Shoppers come
                             back, carts complete, and revenue lands in your account automatically.</p>
                     </div>
                 </div>
@@ -2300,8 +2312,12 @@
                     </p>
                     <div class="flex items-center gap-4 mb-8">
                         <div
-                            class="w-11 h-11 rounded-full bg-gradient-to-br from-pink-500/30 to-purple-500/30 border border-white/10 flex items-center justify-center text-sm font-bold">
-                            KN</div>
+                            class="w-11 h-11 rounded-full border border-white/10 overflow-hidden bg-white/5 flex items-center justify-center">
+                            <img src="assets/images/profile1.jpg" alt="Kira Neveah" class="w-full h-full object-cover"
+                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
+                            <div class="w-full h-full hidden items-center justify-center text-sm font-bold text-white">
+                                KN</div>
+                        </div>
                         <div>
                             <p class="text-sm font-semibold">Kira Neveah</p>
                             <p class="text-[11px] text-[#555]">Founder, NovaNoir Fashion — Shopify store</p>
@@ -2394,8 +2410,12 @@
                         when someone is actually going to buy."</p>
                     <div class="flex items-center gap-3">
                         <div
-                            class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">
-                            BF</div>
+                            class="w-9 h-9 rounded-full border border-white/10 overflow-hidden bg-white/10 flex items-center justify-center">
+                            <img src="assets/images/profile2.jpg" alt="Benjamin F." class="w-full h-full object-cover"
+                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
+                            <div class="w-full h-full hidden items-center justify-center text-xs font-bold text-white">
+                                BF</div>
+                        </div>
                         <div>
                             <p class="text-sm font-semibold">Benjamin F.</p>
                             <p class="text-[10px] text-[#555]">Founder, LuxeBeauty</p>
@@ -2411,8 +2431,12 @@
                         Competitors were scrambling."</p>
                     <div class="flex items-center gap-3">
                         <div
-                            class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">
-                            KM</div>
+                            class="w-9 h-9 rounded-full border border-white/10 overflow-hidden bg-white/10 flex items-center justify-center">
+                            <img src="assets/images/profile3.jpg" alt="Kimberly M." class="w-full h-full object-cover"
+                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
+                            <div class="w-full h-full hidden items-center justify-center text-xs font-bold text-white">
+                                KM</div>
+                        </div>
                         <div>
                             <p class="text-sm font-semibold">Kimberly M.</p>
                             <p class="text-[10px] text-[#555]">CEO, Drip Streetwear</p>
@@ -2428,8 +2452,12 @@
                         integration is a game changer for our market."</p>
                     <div class="flex items-center gap-3">
                         <div
-                            class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold">
-                            JE</div>
+                            class="w-9 h-9 rounded-full border border-white/10 overflow-hidden bg-white/10 flex items-center justify-center">
+                            <img src="assets/images/profile4.jpg" alt="Jonathan E." class="w-full h-full object-cover"
+                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
+                            <div class="w-full h-full hidden items-center justify-center text-xs font-bold text-white">
+                                JE</div>
+                        </div>
                         <div>
                             <p class="text-sm font-semibold">Jonathan E.</p>
                             <p class="text-[10px] text-[#555]">Head of Growth, Konga Seller</p>
@@ -2873,10 +2901,13 @@
                         class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">About</a>
                     <a href="#"
                         class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Blog</a>
+                </div>
+
+                <!-- Careers    -->
+                <div class="space-y-2.5">
+                    <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Careers</p>
                     <a href="#"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Careers</a>
-                    <a href="#"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Contact</a>
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Affiliate</a>
                 </div>
 
                 <!-- Social -->
