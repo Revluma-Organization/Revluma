@@ -1,6 +1,7 @@
 {
   "buildCommand": "cd Frontend/Dashboard && npm install && npm run build",
   "outputDirectory": "Frontend",
+  "installCommand": "echo 'skip root install'",
   "headers": [
     {
       "source": "/assets/videos/(.*)\\.mp4",
