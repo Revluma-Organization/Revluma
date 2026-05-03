@@ -34,23 +34,19 @@
   "rewrites": [
     {
       "source": "/dashboard/apiConfig.js",
-      "destination": "/Dashboard/apiConfig.js"
-    },
-    {
-      "source": "/dashboard/src/:path*",
-      "destination": "/Dashboard/src/:path*"
+      "destination": "/Dashboard/dist/apiConfig.js"
     },
     {
       "source": "/dashboard/assets/:path*",
-      "destination": "/assets/:path*"
+      "destination": "/Dashboard/dist/assets/:path*"
     },
     {
       "source": "/dashboard/:path*",
-      "destination": "/Dashboard/index.html"
+      "destination": "/Dashboard/dist/index.html"
     },
     {
       "source": "/dashboard",
-      "destination": "/Dashboard/index.html"
+      "destination": "/Dashboard/dist/index.html"
     }
   ]
 }
