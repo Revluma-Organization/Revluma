@@ -180,43 +180,51 @@ router.post('/signup', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
+  console.log('[SESSION/LOGIN] Login attempt', { email, timestamp: new Date().toISOString() });
 
   if (!email || !password) {
+    console.warn('[SESSION/LOGIN] Missing email or password');
     return res.status(400).json({ error: 'Email and password required' });
   }
 
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
+    console.log('[SESSION/LOGIN] Looking up user by email');
     const user = await prisma.user.findUnique({
       where: { email: normalizedEmail }
     });
 
     if (!user) {
-      logger.warn('Login failed - user not found', { email: normalizedEmail });
+      console.warn('[SESSION/LOGIN] User not found', { email: normalizedEmail });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    console.log('[SESSION/LOGIN] User found, comparing password');
     const validPassword = await bcrypt.compare(password, user.passwordHash);
 
     if (!validPassword) {
-      logger.warn('Login failed - invalid password', { email: normalizedEmail });
+      console.warn('[SESSION/LOGIN] Invalid password', { email: normalizedEmail });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     if (!user.emailVerified) {
+      console.warn('[SESSION/LOGIN] Email not verified', { userId: user.id });
       return res.status(403).json({ error: 'Email verification required' });
     }
 
     // Get tenant for session
+    console.log('[SESSION/LOGIN] Getting tenant info');
     const tenant = await prisma.tenant.findUnique({
       where: { id: user.tenantId }
     });
 
     // Invalidate old sessions - prevent concurrent sessions (security feature)
+    console.log('[SESSION/LOGIN] Invalidating previous sessions');
     await invalidateAllUserSessions(user.id, user.tenantId);
 
     // Create new session with cookie
+    console.log('[SESSION/LOGIN] Creating new session');
     await createSession(user.tenantId, user.id, user.email, res);
 
     // Update lastLoginAt for tracking
@@ -225,7 +233,7 @@ router.post('/login', async (req, res) => {
       data: { lastLoginAt: new Date() }
     });
 
-    logger.info('User logged in', { userId: user.id, tenantId: user.tenantId });
+    console.log('[SESSION/LOGIN] Session created successfully', { userId: user.id, tenantId: user.tenantId });
 
     // Generate API token for API clients
     const apiToken = jwt.sign(
@@ -237,6 +245,7 @@ router.post('/login', async (req, res) => {
     // Generate CSRF token for subsequent requests
     const csrfToken = generateCsrfToken(user.id);
 
+    console.log('[SESSION/LOGIN] Sending successful response with user data');
     // **CRITICAL FIX**: Send response to frontend!
     res.status(200).json({
       message: 'Login successful',
@@ -253,7 +262,7 @@ router.post('/login', async (req, res) => {
     });
 
   } catch (err) {
-    logger.error('Login error', { error: err.message, email: normalizedEmail });
+    console.error('[SESSION/LOGIN] Login error', { error: err.message, email: normalizedEmail, stack: err.stack });
     res.status(500).json({ error: 'Login failed. Please try again.' });
   }
 });
@@ -305,10 +314,12 @@ router.post('/logout', csrfProtection, async (req, res) => {
 
 router.get('/me', async (req, res) => {
   const sessionId = getSessionId(req);
+  console.log('[SESSION/ME] Endpoint called', { hasSessionId: !!sessionId, timestamp: new Date().toISOString() });
 
   // Try session-based auth first
   if (sessionId) {
     try {
+      console.log('[SESSION/ME] Querying session from database');
       const result = await prisma.$queryRaw`
         SELECT us.id, us."userId", us."expiresAt", u.email, u."tenantId", u."emailVerified", u.role, u."fullName", t."onboardingStatus" as tenant_status
         FROM "user_sessions" us
@@ -317,18 +328,24 @@ router.get('/me', async (req, res) => {
         WHERE us.token = ${sessionId}
       `;
 
+      console.log('[SESSION/ME] Query result', { found: result.length > 0 });
+
       if (result.length > 0) {
         const session = result[0];
 
         // Check expiration
         if (new Date(session.expiresAt) < new Date()) {
+          console.warn('[SESSION/ME] Session expired', { expiresAt: session.expiresAt });
           clearSessionCookie(res);
           return res.status(401).json({ error: 'Session expired', code: 'SESSION_EXPIRED' });
         }
 
         if (!session.emailVerified) {
+          console.warn('[SESSION/ME] Email not verified', { userId: session.userId });
           return res.status(403).json({ error: 'Email verification required' });
         }
+
+        console.log('[SESSION/ME] Session valid, user authenticated', { userId: session.userId, email: session.email });
 
         // Return user data
         // Get connected platforms for this tenant
@@ -358,22 +375,27 @@ router.get('/me', async (req, res) => {
         });
       }
     } catch (err) {
-      logger.error('Session validation error', { error: err.message });
+      console.error('[SESSION/ME] Session query error', { error: err.message });
     }
   }
 
   // Fall back to JWT auth
   const authHeader = req.headers.authorization;
+  console.log('[SESSION/ME] Attempting JWT auth fallback', { hasAuthHeader: !!authHeader });
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
 
     try {
+      console.log('[SESSION/ME] Verifying JWT token');
       const decoded = jwt.verify(token, process.env.JWT_SECRET, {
         algorithms: ['HS256']
       });
 
+      console.log('[SESSION/ME] JWT verified', { userId: decoded.id, email: decoded.email });
+
       if (!decoded.emailVerified) {
+        console.warn('[SESSION/ME] JWT token email not verified', { userId: decoded.id });
         return res.status(403).json({ error: 'Email verification required' });
       }
 
@@ -383,6 +405,7 @@ router.get('/me', async (req, res) => {
         onboarding_status: 'completed' // JWT users are verified
       });
     } catch (err) {
+      console.warn('[SESSION/ME] JWT verification failed', { error: err.message, name: err.name });
       if (err.name === 'TokenExpiredError') {
         return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
       }
@@ -391,6 +414,7 @@ router.get('/me', async (req, res) => {
   }
 
   // Not authenticated
+  console.warn('[SESSION/ME] No valid auth method found, returning 401');
   return res.status(401).json({
     authenticated: false,
     error: 'Not authenticated',

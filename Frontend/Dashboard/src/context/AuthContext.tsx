@@ -37,22 +37,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Validate current session with backend
   const checkSession = useCallback(async () => {
+    console.log('[DASHBOARD AUTH] Starting session validation', { timestamp: new Date().toISOString() });
     try {
+      console.log('[DASHBOARD AUTH] Calling /session/me endpoint');
       const response = await api.get('/session/me', {
         withCredentials: true,
         timeout: SESSION_VALIDATION_TIMEOUT
       });
 
+      console.log('[DASHBOARD AUTH] Session validation response received', { 
+        status: response.status,
+        hasData: !!response.data,
+        authenticated: response.data?.authenticated
+      });
+
       if (response.data && response.data.authenticated) {
+        console.log('[DASHBOARD AUTH] User authenticated', { 
+          userId: response.data.user?.id,
+          email: response.data.user?.email
+        });
         setUser(response.data.user);
         setError(null);
       } else {
+        console.warn('[DASHBOARD AUTH] Response not authenticated');
         setUser(null);
       }
     } catch (error) {
-      console.error('Session validation error:', error);
+      console.error('[DASHBOARD AUTH] Session validation error:', {
+        message: error instanceof Error ? error.message : String(error),
+        status: (error as any)?.response?.status
+      });
       setUser(null);
     } finally {
+      console.log('[DASHBOARD AUTH] Session validation complete');
       setLoading(false);
     }
   }, []);
@@ -145,16 +162,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Set up session polling
   useEffect(() => {
+    console.log('[DASHBOARD AUTH] AuthProvider mounted, starting initial session check');
     checkSession();
 
     // Poll session every 5 minutes to catch externally-invalidated sessions
     pollIntervalRef.current = setInterval(() => {
+      console.log('[DASHBOARD AUTH] Polling session (5-minute interval)');
       checkSession();
     }, SESSION_POLL_INTERVAL);
 
     // Listen for storage events from other tabs (logout sync)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'auth_logout_signal') {
+        console.log('[DASHBOARD AUTH] Logout signal detected from another tab');
         // Another tab logged out, clear local state
         setUser(null);
         setCsrfToken(null);
@@ -165,6 +185,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
+      console.log('[DASHBOARD AUTH] AuthProvider unmounting, cleaning up');
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
       }

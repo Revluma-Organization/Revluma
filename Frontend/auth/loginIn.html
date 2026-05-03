@@ -1212,75 +1212,99 @@
     //  SESSION MANAGEMENT
     // ================================================================
     function storeSession(token, user, remember) {
+      console.log('[AUTH STEP 6] Storing session locally', { 
+        remember, 
+        userId: user?.id,
+        userEmail: user?.email,
+        hasToken: !!token
+      });
       const store = remember ? localStorage : sessionStorage;
       store.setItem('revluma_token', token);
       store.setItem('revluma_user', JSON.stringify(user));
+      console.log('[AUTH STEP 7] Session stored in ' + (remember ? 'localStorage' : 'sessionStorage'));
       // Mirror to localStorage so other pages can find it
       if (!remember) {
         // sessionStorage only — remove from localStorage to avoid stale tokens
         localStorage.removeItem('revluma_token');
         localStorage.removeItem('revluma_user');
+        console.log('[AUTH STEP 8] Cleared localStorage to use sessionStorage only');
       }
     }
 
     function clearSession() {
+      console.log('[AUTH] Clearing all session data');
       ['revluma_token', 'revluma_user', 'revluma_pending_token'].forEach(k => {
         localStorage.removeItem(k);
         sessionStorage.removeItem(k);
       });
+      console.log('[AUTH] Session cleared');
     }
 
     function getStoredToken() {
-      return localStorage.getItem('revluma_token')
+      const token = localStorage.getItem('revluma_token')
         || sessionStorage.getItem('revluma_token')
         || null;
+      console.log('[AUTH] Retrieved stored token', { hasToken: !!token, source: token ? (localStorage.getItem('revluma_token') ? 'localStorage' : 'sessionStorage') : 'none' });
+      return token;
     }
 
     async function checkAutoLogin() {
       const token = getStoredToken();
-      console.log('Auto-login check, token exists:', !!token);
+      console.log('[AUTH] Auto-login check started', { hasToken: !!token, timestamp: new Date().toISOString() });
       if (!token || token === 'undefined' || token === 'null') {
-        console.log('No token found, showing login form');
+        console.log('[AUTH] No valid token found, showing login form');
         return;
       }
       try {
+        console.log('[AUTH] Token found, validating with /auth/me endpoint');
         const res = await fetch(`${API_BASE}/auth/me`, {
           headers: { 'Authorization': `Bearer ${token}` },
           signal: AbortSignal.timeout(15000)
         });
-        console.log('Auto-login check response:', res.status);
+        console.log('[AUTH] Auto-login check response:', { status: res.status, statusText: res.statusText });
         if (res.ok) {
           const d = await res.json();
-          console.log('Auto-login user data:', d);
+          console.log('[AUTH] Auto-login user data received:', { userId: d.user?.id, email: d.user?.email });
           if (d.user) {
             // Store token and redirect
             localStorage.setItem('revluma_token', token);
             const dest = (d.user.onboarding_status === 'completed')
               ? '/dashboard/overview'
               : 'onboarding.html';
-            console.log('Redirecting to:', dest);
+            console.log('[AUTH] Auto-login successful, redirecting to:', { destination: dest });
             window.location.href = dest;
             return;
           }
         }
-        console.log('Auto-login failed, clearing session');
+        console.log('[AUTH] Auto-login check failed - no user data or invalid response');
         clearSession();
       } catch (e) {
-        console.log('Auto-login error:', e);
+        console.warn('[AUTH] Auto-login error:', { error: e.message, name: e.name });
         clearSession();
       }
     }
 
     function redirectAfterLogin(user) {
       if (!user) {
-        console.warn('redirectAfterLogin called without user, falling back to login page');
+        console.warn('[AUTH ERROR] redirectAfterLogin called without user object');
+        console.log('[AUTH] Falling back to login page');
         window.location.replace('/auth/loginIn.html');
         return;
       }
 
-      const dest = (user.onboarding_status === 'completed')
+      const onboarding_status = user.onboarding_status;
+      console.log('[AUTH STEP 9] Determining redirect destination', { 
+        userId: user.id,
+        email: user.email,
+        onboarding_status,
+        isCompleted: onboarding_status === 'completed'
+      });
+
+      const dest = (onboarding_status === 'completed')
         ? '/dashboard/overview'
         : 'onboarding.html';
+      
+      console.log('[AUTH STEP 10] Redirecting to:', { destination: dest, reason: onboarding_status === 'completed' ? 'onboarding complete' : 'onboarding required' });
       window.location.replace(dest);
     }
 
@@ -1297,6 +1321,7 @@
     async function apiLogin(email, password) {
       let res, data;
       try {
+        console.log('[AUTH STEP 1] Sending login request to /session/login', { email, timestamp: new Date().toISOString() });
         res = await fetch(`${API_BASE}/session/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1304,8 +1329,16 @@
           credentials: 'include', // Important for cookies
           signal: AbortSignal.timeout(30000)
         });
+        console.log('[AUTH STEP 2] Login response received', { status: res.status, statusText: res.statusText });
         data = await res.json();
+        console.log('[AUTH STEP 3] Login response data parsed', { 
+          hasToken: !!data.token, 
+          hasUser: !!data.user,
+          csrfToken: !!data.csrfToken,
+          sessionEstablished: data.sessionEstablished
+        });
       } catch (err) {
+        console.error('[AUTH ERROR] Login request failed', { error: err.message, name: err.name });
         if (err.name === 'TimeoutError' || err.name === 'AbortError') {
           throw { code: 'TIMEOUT', message: 'Request timed out', detail: 'The server took too long to respond. Please try again.' };
         }
@@ -1315,8 +1348,10 @@
       if (res.ok) {
         // Store CSRF token for subsequent requests (logout, etc.)
         if (data?.csrfToken) {
+          console.log('[AUTH STEP 4] Storing CSRF token in sessionStorage');
           sessionStorage.setItem('csrf_token', data.csrfToken);
         }
+        console.log('[AUTH STEP 5] Login API call successful, returning user data');
         return data;
       }
 
@@ -1508,17 +1543,25 @@
     // ================================================================
     el.form.addEventListener('submit', async e => {
       e.preventDefault();
+      console.log('[AUTH] Login form submitted', { timestamp: new Date().toISOString() });
       hideAllBanners();
 
-      if (state.isLoading) return;
+      if (state.isLoading) {
+        console.log('[AUTH] Already processing login, ignoring duplicate submit');
+        return;
+      }
 
       // Client-side rate limit check
       if (isLockedOut()) {
+        console.warn('[AUTH] Rate limit lockout active, starting countdown');
         startLockoutCountdown();
         return;
       }
 
-      if (!validateForm()) return;
+      if (!validateForm()) {
+        console.warn('[AUTH] Form validation failed');
+        return;
+      }
 
       const email = el.email.value.trim().toLowerCase();
       const password = el.password.value;
@@ -1526,29 +1569,43 @@
       setLoading(true);
 
       try {
+        console.log('[AUTH] Calling apiLogin function');
         const data = await apiLogin(email, password);
 
         // ── SUCCESS ──
+        console.log('[AUTH] API login successful, processing response');
         clearRateLimit();
         clearFieldError('email');
         clearFieldError('password');
+        console.log('[AUTH STEP 11] About to store session', { hasToken: !!data.token, hasUser: !!data.user });
         storeSession(data.token, data.user, state.rememberMe);
 
         // Save remembered email (use Revluma's own key)
         if (state.rememberMe) {
           localStorage.setItem('revluma_remembered_email', email);
+          console.log('[AUTH] Saved remembered email');
         } else {
           localStorage.removeItem('revluma_remembered_email');
         }
 
+        console.log('[AUTH STEP 12] Login successful, showing success message and preparing redirect');
         showSuccess('Signed in — redirecting…');
-        setTimeout(() => redirectAfterLogin(data.user), 900);
+        setTimeout(() => {
+          console.log('[AUTH STEP 13] Timeout complete, calling redirectAfterLogin');
+          redirectAfterLogin(data.user);
+        }, 900);
 
       } catch (err) {
+        console.error('[AUTH] Login failed', { 
+          code: err.code, 
+          message: err.message,
+          detail: err.detail
+        });
         setLoading(false);
         recordAttempt();
 
         if (isLockedOut()) {
+          console.warn('[AUTH] Rate limit exceeded after error');
           startLockoutCountdown();
           return;
         }

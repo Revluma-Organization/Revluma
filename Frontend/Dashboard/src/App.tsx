@@ -6,17 +6,22 @@ import LoadingSpinner from "./components/LoadingSpinner";
 function App() {
   const { user, loading } = useAuth();
 
+  console.log('[DASHBOARD APP] Render state', { loading, hasUser: !!user, userId: user?.id });
+
   // While checking authentication, show loading spinner
   if (loading) {
+    console.log('[DASHBOARD APP] Still loading auth state, showing spinner');
     return <LoadingSpinner />;
   }
 
   // If not authenticated, redirect to login
   if (!user) {
+    console.error('[DASHBOARD APP] No user authenticated, redirecting to login');
     window.location.href = '/loginIn.html';
     return null;
   }
 
+  console.log('[DASHBOARD APP] User authenticated, rendering dashboard routes');
   // User is authenticated, render dashboard routes
   return (
     <Routes>
