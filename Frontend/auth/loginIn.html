@@ -1246,7 +1246,7 @@
       try {
         const res = await fetch(`${API_BASE}/auth/me`, {
           headers: { 'Authorization': `Bearer ${token}` },
-          signal: AbortSignal.timeout(6000)
+          signal: AbortSignal.timeout(15000)
         });
         console.log('Auto-login check response:', res.status);
         if (res.ok) {
@@ -1302,7 +1302,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
           credentials: 'include', // Important for cookies
-          signal: AbortSignal.timeout(12000)
+          signal: AbortSignal.timeout(30000)
         });
         data = await res.json();
       } catch (err) {
@@ -1376,7 +1376,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(20000)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to send verification code');
@@ -1399,7 +1399,7 @@
         method: 'POST',
         headers,
         body: JSON.stringify({ code, email }),
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(20000)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Verification failed');

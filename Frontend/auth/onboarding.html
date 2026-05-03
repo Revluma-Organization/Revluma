@@ -1527,51 +1527,83 @@
     // ====================== API CALLS ======================
     async function registerUser() {
       const { firstName, lastName, email, password } = state.formData;
-      const response = await fetch(`${API_BASE}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full_name: `${firstName} ${lastName}`.trim(), email, password })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.details || data.error || `Registration failed (${response.status})`);
-      state.pendingToken = data.pendingToken;
-      if (data.pendingToken) localStorage.setItem('revluma_pending_token', data.pendingToken);
-      return data;
+      try {
+        const response = await fetch(`${API_BASE}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ full_name: `${firstName} ${lastName}`.trim(), email, password }),
+          signal: AbortSignal.timeout(30000)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.details || data.error || `Registration failed (${response.status})`);
+        state.pendingToken = data.pendingToken;
+        if (data.pendingToken) localStorage.setItem('revluma_pending_token', data.pendingToken);
+        return data;
+      } catch (err) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+          throw new Error('Request timed out. The server took too long to respond. Please check your internet and try again.');
+        }
+        throw err;
+      }
     }
 
     async function sendVerificationCode() {
-      const response = await fetch(`${API_BASE}/auth/send-verification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: state.formData.email })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to send verification code');
-      startCountdown();
-      return data;
+      try {
+        const response = await fetch(`${API_BASE}/auth/send-verification`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: state.formData.email }),
+          signal: AbortSignal.timeout(20000)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to send verification code');
+        startCountdown();
+        return data;
+      } catch (err) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+          throw new Error('Request timed out. Unable to send verification code. Please try again.');
+        }
+        throw err;
+      }
     }
 
     async function verifyEmailCode(code) {
       if (!state.pendingToken) throw new Error('Missing token. Please refresh and try again.');
-      const response = await fetch(`${API_BASE}/auth/verify-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.pendingToken}` },
-        body: JSON.stringify({ code })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Verification failed');
-      return data;
+      try {
+        const response = await fetch(`${API_BASE}/auth/verify-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.pendingToken}` },
+          body: JSON.stringify({ code }),
+          signal: AbortSignal.timeout(20000)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Verification failed');
+        return data;
+      } catch (err) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+          throw new Error('Verification request timed out. Please try again.');
+        }
+        throw err;
+      }
     }
 
     async function updateOnboarding(step, payload) {
-      const response = await fetch(`${API_BASE}/auth/pending-registration`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.pendingToken}` },
-        body: JSON.stringify({ step, data: payload })
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Failed to update onboarding');
-      return result;
+      try {
+        const response = await fetch(`${API_BASE}/auth/pending-registration`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.pendingToken}` },
+          body: JSON.stringify({ step, data: payload }),
+          signal: AbortSignal.timeout(20000)
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to update onboarding');
+        return result;
+      } catch (err) {
+        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+          throw new Error('Request timed out. Please check your connection and try again.');
+        }
+        throw err;
+      }
     }
 
     // ====================== SELECTION HANDLERS ======================
@@ -1718,13 +1750,22 @@
         await verifyEmailCode(code);
 
         // Complete registration - create user in database
-        const response = await fetch(`${API_BASE}/auth/complete-registration`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${state.pendingToken}`
+        let response;
+        try {
+          response = await fetch(`${API_BASE}/auth/complete-registration`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${state.pendingToken}`
+            },
+            signal: AbortSignal.timeout(20000)
+          });
+        } catch (err) {
+          if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+            throw new Error('Registration completion timed out. Please try again.');
           }
-        });
+          throw err;
+        }
 
         const data = await response.json();
 
