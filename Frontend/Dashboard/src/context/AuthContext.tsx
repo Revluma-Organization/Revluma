@@ -81,12 +81,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setError(null);
 
     try {
-      const response = await api.post('/session/login', {
+      const response = await api.post('/api/session/login', {
         email: email.toLowerCase().trim(),
         password
       }, {
         withCredentials: true
       });
+
+
 
       // Backend returns user data + CSRF token
       if (response.data) {
