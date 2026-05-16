@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 
@@ -975,8 +974,18 @@
     //  CONFIGURATION
     // ================================================================
     const API_BASE = window.APP_API_BASE?.replace(/\/$/, '') || (() => {
+      const hostname = (window.location.hostname || '').toLowerCase();
+      const isVercelHost = hostname.endsWith('.vercel.app') || hostname.endsWith('.vercel.sh');
+      const isRenderHost = hostname === 'revluma.onrender.com' || hostname.endsWith('.revluma.onrender.com');
+      const isCustomDomain = hostname === 'revluma.com' || hostname.endsWith('.revluma.com');
+      const isRevlumaHost = hostname.includes('revluma');
+      const isProduction = isRenderHost || (isVercelHost && isRevlumaHost) || isCustomDomain;
+
       if (window.location.protocol === 'file:' || !window.location.origin) {
         return 'http://localhost:5000/api';
+      }
+      if (isProduction) {
+        return 'https://revluma.onrender.com/api';
       }
       return `${window.location.origin}/api`;
     })();
@@ -1531,7 +1540,7 @@
               err.message,
               err.detail,
               'Create a free account',
-() => window.location.href = 'onboarding.html'
+              () => window.location.href = 'onboarding.html'
             );
             break;
 
@@ -1545,7 +1554,7 @@
               err.message,
               err.detail,
               'Reset password',
-() => window.location.replace('forgottenPassword.html')
+              () => window.location.replace('forgottenPassword.html')
             );
             break;
 

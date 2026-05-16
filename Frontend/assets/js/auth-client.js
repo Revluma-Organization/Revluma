@@ -9,7 +9,19 @@
 
 class RevlumaAuth {
     constructor(config = {}) {
-        const appApiBase = window.APP_API_BASE || '/api';
+        const prodBackendUrl = 'https://revluma.onrender.com/api';
+        const hostname = (window.location.hostname || '').toLowerCase();
+        const isVercelHost = hostname.endsWith('.vercel.app') || hostname.endsWith('.vercel.sh');
+        const isRenderHost = hostname === 'revluma.onrender.com' || hostname.endsWith('.revluma.onrender.com');
+        const isCustomDomain = hostname === 'revluma.com' || hostname.endsWith('.revluma.com');
+        const isRevlumaHost = hostname.includes('revluma');
+        const isProduction = isRenderHost || (isVercelHost && isRevlumaHost) || isCustomDomain;
+        const appApiBase = window.APP_API_BASE || (isProduction ? prodBackendUrl : '/api');
+
+        if (!window.APP_API_BASE) {
+            window.APP_API_BASE = appApiBase;
+        }
+
         this.baseUrl = config.baseUrl || `${appApiBase}/session`;
         this.fallbackBaseUrl = config.fallbackBaseUrl || `${appApiBase}/auth`;
         this.sessionCookie = 'revluma_session';

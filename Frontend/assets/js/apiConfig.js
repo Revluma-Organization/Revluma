@@ -29,7 +29,16 @@
     window.REVLUMA_CONFIG.apiBase = apiBase;
     window.REVLUMA_CONFIG.mode = envOverride ? 'override' : (isProduction ? 'production' : 'development');
 
-    // Always log API base in production to confirm which backend is targeted.
+    console.info('Revluma API runtime config:', {
+        host: window.location.hostname,
+        protocol: window.location.protocol,
+        appApiBase: window.APP_API_BASE,
+        envOverride: !!envOverride,
+        mode: window.REVLUMA_CONFIG.mode,
+        productionHost: isProduction,
+        prodBackendUrl
+    });
+
     if (envOverride) {
         console.info('Revluma API base overridden:', apiBase);
     } else if (isProduction) {

@@ -26,6 +26,16 @@
     window.REVLUMA_CONFIG.apiBase = apiBase;
     window.REVLUMA_CONFIG.mode = envOverride ? 'override' : (isProduction ? 'production' : 'development');
 
+    console.info('Revluma Dashboard API runtime config:', {
+        host: window.location.hostname,
+        protocol: window.location.protocol,
+        appApiBase: window.APP_API_BASE,
+        envOverride: !!envOverride,
+        mode: window.REVLUMA_CONFIG.mode,
+        productionHost: isProduction,
+        prodBackendUrl
+    });
+
     if (envOverride) {
         console.info('Revluma Dashboard API base overridden:', apiBase);
     } else if (isProduction) {
