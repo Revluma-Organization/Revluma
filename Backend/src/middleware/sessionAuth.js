@@ -174,8 +174,7 @@ async function validateSession(req, res) {
     await prisma.userSession.update({
       where: { tokenHash },
       data: {
-        expiresAt: newExpiresAt,
-        lastSeenAt: new Date()
+        expiresAt: newExpiresAt
       }
     });
 

@@ -8,6 +8,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
 const { prisma } = require('../services/prisma');
 const logger = require('../utils/logger');
 
@@ -456,15 +457,11 @@ router.post('/refresh', refreshLimiter, async (req, res) => {
   }
 });
 
-// CSRF TOKEN GENERATION
-router.get('/csrf-token', async (req, res) => {
-  const sessionAuth = await validateSession(req, res);
-  if (!sessionAuth) {
-    return sendErrorResponse(res, 401, 'No active session', 'SESSION_EXPIRED');
-  }
-
-  const csrfToken = generateCsrfToken(sessionAuth.user.id);
-  res.status(200).json({ csrfToken, userId: sessionAuth.user.id });
+// CSRF TOKEN GENERATION — public endpoint, no session required
+router.get('/csrf-token', (req, res) => {
+  const tempUserId = `temp_${crypto.randomBytes(8).toString('hex')}`;
+  const csrfToken = generateCsrfToken(tempUserId);
+  res.status(200).json({ csrfToken, userId: tempUserId, authenticated: false });
 });
 
 // DEBUG: return server-side session info for current cookie (useful for client validation)
@@ -535,7 +532,7 @@ router.post('/verify-email', csrfProtection, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: sessionAuth.user.id },
-      select: { id, email, emailVerified }
+      select: { id: true, email: true, emailVerified: true }
     });
 
     if (!user) {
