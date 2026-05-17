@@ -35,6 +35,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const checkSessionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const userRef = useRef<User | null>(null);
+
+  // Keep userRef in sync with user state so interceptor can access current value
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   // Validate current session with backend
   const checkSession = useCallback(async () => {
@@ -68,6 +74,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         message: error instanceof Error ? error.message : String(error),
         status: (error as AxiosError<{ authenticated?: boolean }>)?.response?.status
       });
+      // Only clear user on session check failure — don't redirect here
+      // App.tsx handles the redirect when user is null after loading completes
       setUser(null);
     } finally {
       console.log('[DASHBOARD AUTH] Session validation complete');
@@ -88,22 +96,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         withCredentials: true
       });
 
-
-
       // Backend returns user data + CSRF token
       if (response.data) {
         if (response.data.csrfToken) {
           setCsrfToken(response.data.csrfToken);
-          // Store CSRF token in memory for subsequent requests
           sessionStorage.setItem('csrf_token', response.data.csrfToken);
         }
 
         if (response.data.user) {
           setUser(response.data.user);
+          userRef.current = response.data.user;
         }
-
-        // Validate session is actually set
-        await checkSession();
 
         // Redirect to dashboard on successful login
         setTimeout(() => {
@@ -119,48 +122,46 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
       throw error;
     }
-  }, [checkSession]);
+  }, []);
 
   // Enhanced logout with proper cleanup
   const logout = useCallback(async () => {
     setLoading(true);
 
     try {
-      // Get CSRF token for logout request
       const token = csrfToken || sessionStorage.getItem('csrf_token');
-      const headers: any = { withCredentials: true };
+      const headers: Record<string, string> = {};
 
       if (token) {
         headers['X-CSRF-Token'] = token;
       }
 
-      // Call backend logout endpoint
-      await api.post('/session/logout', {}, headers);
+      await api.post('/session/logout', {}, {
+        withCredentials: true,
+        headers
+      });
     } catch (error) {
       console.error('Logout error:', error);
       // Continue with local cleanup even if server logout fails
     } finally {
-      // Always perform local cleanup
       setUser(null);
+      userRef.current = null;
       setCsrfToken(null);
       sessionStorage.removeItem('csrf_token');
-
-      // Clear any stored auth data
       sessionStorage.clear();
 
       // Broadcast logout to other tabs
       localStorage.setItem('auth_logout_signal', Date.now().toString());
       localStorage.removeItem('auth_logout_signal');
 
-      // Stop polling before redirecting
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
       }
 
       setLoading(false);
 
-      // Redirect to login page
-      window.location.href = '/loginIn.html';
+      // ✅ Fixed redirect path
+      window.location.href = '/auth/loginIn.html';
     }
   }, [csrfToken]);
 
@@ -169,25 +170,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setError(null);
   }, []);
 
-  // Set up session polling
+  // Set up session polling on mount
   useEffect(() => {
     console.log('[DASHBOARD AUTH] AuthProvider mounted, starting initial session check');
     checkSession();
 
-    // Poll session every 5 minutes to catch externally-invalidated sessions
     pollIntervalRef.current = setInterval(() => {
       console.log('[DASHBOARD AUTH] Polling session (5-minute interval)');
       checkSession();
     }, SESSION_POLL_INTERVAL);
 
-    // Listen for storage events from other tabs (logout sync)
+    // Listen for logout signals from other tabs
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'auth_logout_signal') {
         console.log('[DASHBOARD AUTH] Logout signal detected from another tab');
-        // Another tab logged out, clear local state
         setUser(null);
+        userRef.current = null;
         setCsrfToken(null);
-        window.location.href = '/loginIn.html';
+        // ✅ Fixed redirect path
+        window.location.href = '/auth/loginIn.html';
       }
     };
 
@@ -205,9 +206,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [checkSession]);
 
-  // Add CSRF token to all API requests
+  // Add CSRF token to all API requests + handle auth errors
   useEffect(() => {
-    const interceptor = api.interceptors.request.use((config) => {
+    const requestInterceptor = api.interceptors.request.use((config) => {
       const token = csrfToken || sessionStorage.getItem('csrf_token');
       if (token) {
         config.headers['X-CSRF-Token'] = token;
@@ -215,23 +216,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       return config;
     });
 
-    // Handle 401/403 responses (session expired, CSRF token invalid)
     const errorInterceptor = api.interceptors.response.use(
       (response) => response,
       (error) => {
         if (error.response?.status === 401 || error.response?.status === 403) {
-          // Session is invalid, clear local state
-          setUser(null);
-          setCsrfToken(null);
-          sessionStorage.removeItem('csrf_token');
-          window.location.href = '/loginIn.html';
+          // ✅ Only redirect if user was previously authenticated (session expired mid-session)
+          // Don't redirect on initial load check when user is null
+          if (userRef.current) {
+            console.warn('[DASHBOARD AUTH] Session expired or unauthorized, redirecting to login');
+            setUser(null);
+            userRef.current = null;
+            setCsrfToken(null);
+            sessionStorage.removeItem('csrf_token');
+            // ✅ Fixed redirect path
+            window.location.href = '/auth/loginIn.html';
+          }
         }
         return Promise.reject(error);
       }
     );
 
     return () => {
-      api.interceptors.request.eject(interceptor);
+      api.interceptors.request.eject(requestInterceptor);
       api.interceptors.response.eject(errorInterceptor);
     };
   }, [csrfToken]);

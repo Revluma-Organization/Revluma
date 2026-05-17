@@ -1320,6 +1320,7 @@
         ? '/dashboard/overview'
         : '/auth/onboarding.html';
 
+
       console.log('[AUTH STEP 10] Redirecting to:', { destination: dest, reason: onboarding_status === 'completed' ? 'onboarding complete' : 'onboarding required' });
       try {
         const abs = new URL(dest, window.location.origin).href;
@@ -1585,7 +1586,6 @@
         setTimeout(() => {
         redirectAfterLogin(data.user);
       }, 900);
-
       } catch (err) {
         console.error('[AUTH] Login failed', {
           code: err.code,
