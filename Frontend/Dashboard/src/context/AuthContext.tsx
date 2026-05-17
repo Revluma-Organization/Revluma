@@ -59,11 +59,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       });
 
       if (response.data && response.data.authenticated) {
+        // ✅ Merge tenant-level onboarding_status (top-level field) into user object
+        // /session/me returns onboarding_status as a top-level field, not inside user
+        const authenticatedUser: User = {
+          ...response.data.user,
+          onboarding_status: response.data.onboarding_status ?? response.data.user?.onboarding_status ?? 'pending'
+        };
+
         console.log('[DASHBOARD AUTH] User authenticated', {
-          userId: response.data.user?.id,
-          email: response.data.user?.email
+          userId: authenticatedUser.id,
+          email: authenticatedUser.email,
+          onboarding_status: authenticatedUser.onboarding_status
         });
-        setUser(response.data.user);
+
+        setUser(authenticatedUser);
         setError(null);
       } else {
         console.warn('[DASHBOARD AUTH] Response not authenticated');
@@ -74,7 +83,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         message: error instanceof Error ? error.message : String(error),
         status: (error as AxiosError<{ authenticated?: boolean }>)?.response?.status
       });
-      // Only clear user on session check failure — don't redirect here
+      // Only clear user — don't redirect here
       // App.tsx handles the redirect when user is null after loading completes
       setUser(null);
     } finally {
@@ -104,8 +113,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         if (response.data.user) {
-          setUser(response.data.user);
-          userRef.current = response.data.user;
+          // ✅ Also merge onboarding_status on login response
+          const loggedInUser: User = {
+            ...response.data.user,
+            onboarding_status: response.data.onboarding_status ?? response.data.user?.onboarding_status ?? 'pending'
+          };
+          setUser(loggedInUser);
+          userRef.current = loggedInUser;
         }
 
         // Redirect to dashboard on successful login
