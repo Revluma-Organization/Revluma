@@ -26,15 +26,15 @@
     },
     {
       "source": "/dashboard/assets/:path*",
-      "destination": "/Dashboard/dist/assets/:path*"
+      "destination": "/Frontend/Dashboard/dist/assets/:path*"
     },
     {
       "source": "/dashboard/:path*",
-      "destination": "/Dashboard/dist/index.html"
+      "destination": "/Frontend/Dashboard/dist/index.html"
     },
     {
       "source": "/dashboard",
-      "destination": "/Dashboard/dist/index.html"
+      "destination": "/Frontend/Dashboard/dist/index.html"
     }
   ]
 }

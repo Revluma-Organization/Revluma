@@ -9,14 +9,16 @@ import { useEffect } from "react";
 import { useUI } from "@/store/ui";
 
 const SECTION_TITLES: Record<string, string> = {
-  "/": "Overview",
-  "/intelligence": "Intelligence",
-  "/cart-recovery": "Cart Recovery",
-  "/campaigns": "Campaigns",
-  "/customers": "Customers",
-  "/analytics": "Analytics",
-  "/integrations": "Integrations",
-  "/beta": "Beta Features",
+  "/dashboard/": "Overview",
+  "/dashboard/intelligence": "Intelligence",
+  "/dashboard/cart-recovery": "Cart Recovery",
+  "/dashboard/campaigns": "Campaigns",
+  "/dashboard/customers": "Customers",
+  "/dashboard/analytics": "Analytics",
+  "/dashboard/settings": "Settings",
+  "/dashboard/billing": "Billing",
+  "/dashboard/integrations": "Integrations",
+  "/dashboard/beta": "Beta Features",
 };
 
 export function DashboardLayout() {
