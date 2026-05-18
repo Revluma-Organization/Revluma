@@ -1,36 +1,21 @@
 {
   "buildCommand": "cd Frontend/Dashboard && npm install && npm run build",
-  "outputDirectory": "Frontend/Dashboard/dist",
+  "outputDirectory": "Frontend",
   "installCommand": "echo 'skip root install'",
   "headers": [
     {
       "source": "/assets/videos/(.*)\\.mp4",
       "headers": [
-        {
-          "key": "Content-Type",
-          "value": "video/mp4"
-        },
-        {
-          "key": "Accept-Ranges",
-          "value": "bytes"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
-        }
+        { "key": "Content-Type", "value": "video/mp4" },
+        { "key": "Accept-Ranges", "value": "bytes" },
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
       "source": "/assets/videos/(.*)\\.MOV",
       "headers": [
-        {
-          "key": "Content-Type",
-          "value": "video/quicktime"
-        },
-        {
-          "key": "Accept-Ranges",
-          "value": "bytes"
-        }
+        { "key": "Content-Type", "value": "video/quicktime" },
+        { "key": "Accept-Ranges", "value": "bytes" }
       ]
     }
   ],
@@ -41,15 +26,15 @@
     },
     {
       "source": "/dashboard/assets/:path*",
-      "destination": "/assets/:path*"
+      "destination": "/Dashboard/dist/assets/:path*"
     },
     {
       "source": "/dashboard/:path*",
-      "destination": "/index.html"
+      "destination": "/Dashboard/dist/index.html"
     },
     {
       "source": "/dashboard",
-      "destination": "/index.html"
+      "destination": "/Dashboard/dist/index.html"
     }
   ]
 }
