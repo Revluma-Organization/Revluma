@@ -9,7 +9,8 @@ export function DashboardRoutes() {
   return (
     <Routes>
       <Route element={<DashboardLayout />}>
-        <Route index element={<Navigate to="overview" replace />} />
+        {/* Index: /dashboard/ → /dashboard/overview */}
+        <Route index element={<Navigate to="/dashboard/overview" replace />} />
         <Route path="overview" element={<Overview />} />
         <Route path="intelligence" element={<Intelligence />} />
         <Route path="cart-recovery" element={<PlaceholderPage title="Cart Recovery" description="Recover abandoned carts and win back lost revenue" />} />

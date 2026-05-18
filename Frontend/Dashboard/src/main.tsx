@@ -11,7 +11,12 @@ import { AuthProvider } from "./context/AuthContext";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-      <BrowserRouter basename={import.meta.env.BASE_URL}>
+      {/*
+        No basename — React Router sees the full path including /dashboard/.
+        Routes in App.tsx and DashboardRoutes use absolute paths like
+        "/dashboard/overview", "/dashboard/intelligence" etc.
+      */}
+      <BrowserRouter>
         <AuthProvider>
           <ErrorBoundary>
             <App />

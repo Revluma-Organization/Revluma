@@ -16,7 +16,6 @@ function App() {
   console.log('[DASHBOARD APP] Render state', { loading, hasUser: !!user, userId: user?.id });
 
   if (loading) {
-    console.log('[DASHBOARD APP] Still loading auth state, showing spinner');
     return <LoadingSpinner />;
   }
 
@@ -43,20 +42,16 @@ function App() {
     return null;
   }
 
-  console.log('[DASHBOARD APP] User authenticated, rendering dashboard routes');
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
         <Sonner />
         <Routes>
-          {/*
-            BrowserRouter has basename="/dashboard/" (from import.meta.env.BASE_URL).
-            React Router strips the basename, so it sees "" or "overview" — no leading slash.
-            Use "*" to catch all routes and pass to DashboardRoutes.
-          */}
-          <Route path="*" element={<DashboardRoutes />} />
+          {/* No basename — use full absolute paths */}
+          <Route path="/dashboard/*" element={<DashboardRoutes />} />
+          <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard/overview" replace />} />
         </Routes>
       </TooltipProvider>
     </QueryClientProvider>
