@@ -8,18 +8,16 @@ import PlaceholderPage from "../pages/PlaceholderPage";
 export function DashboardRoutes() {
   return (
     <Routes>
-      {/*
-        BrowserRouter basename="/dashboard/" strips the base.
-        React Router sees "" (root) or "overview", "settings" etc — no leading slashes.
-        All paths here are relative to the basename.
-      */}
       <Route element={<DashboardLayout />}>
-        {/* Index route — matches "" (i.e. /dashboard/ or /dashboard) */}
         <Route index element={<Navigate to="overview" replace />} />
         <Route path="overview" element={<Overview />} />
         <Route path="intelligence" element={<Intelligence />} />
-        <Route path="settings" element={<PlaceholderPage title="Settings" description="Manage your account settings" />} />
-        <Route path="billing" element={<PlaceholderPage title="Billing" description="View and manage your subscription" />} />
+        <Route path="cart-recovery" element={<PlaceholderPage title="Cart Recovery" description="Recover abandoned carts and win back lost revenue" />} />
+        <Route path="campaigns" element={<PlaceholderPage title="Campaigns" description="Create and manage your marketing campaigns" />} />
+        <Route path="customers" element={<PlaceholderPage title="Customers" description="View and manage your customer base" />} />
+        <Route path="analytics" element={<PlaceholderPage title="Analytics" description="Deep dive into your store performance" />} />
+        <Route path="integrations" element={<PlaceholderPage title="Integrations" description="Connect your store and third-party tools" />} />
+        <Route path="beta" element={<PlaceholderPage title="Beta Features" description="Early access to new Revluma features" />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
