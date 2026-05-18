@@ -1,6 +1,7 @@
 import { Route, Routes, Navigate } from "react-router-dom";
 import { DashboardLayout } from "../components/layout/DashboardLayout";
 import Overview from "../pages/Overview";
+import Intelligence from "../pages/Intelligence";
 import NotFound from "../pages/NotFound";
 import PlaceholderPage from "../pages/PlaceholderPage";
 
@@ -16,6 +17,7 @@ export function DashboardRoutes() {
         {/* Index route — matches "" (i.e. /dashboard/ or /dashboard) */}
         <Route index element={<Navigate to="overview" replace />} />
         <Route path="overview" element={<Overview />} />
+        <Route path="intelligence" element={<Intelligence />} />
         <Route path="settings" element={<PlaceholderPage title="Settings" description="Manage your account settings" />} />
         <Route path="billing" element={<PlaceholderPage title="Billing" description="View and manage your subscription" />} />
       </Route>
