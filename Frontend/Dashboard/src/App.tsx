@@ -56,8 +56,8 @@ function App() {
         <Sonner />
         <Routes>
           <Route path="/*" element={<DashboardRoutes />} />
-          <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard/overview" replace />} />
+          <Route path="/" element={<Navigate to="/overview" replace />} />
+          <Route path="*" element={<Navigate to="/overview" replace />} />
         </Routes>
       </TooltipProvider>
     </QueryClientProvider>

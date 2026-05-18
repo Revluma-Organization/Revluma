@@ -10,10 +10,10 @@ import { AuthProvider } from "./context/AuthContext";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-      <BrowserRouter basename="/dashboard">
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <AuthProvider>
           <ErrorBoundary>
-              <App />
+            <App />
           </ErrorBoundary>
         </AuthProvider>
       </BrowserRouter>

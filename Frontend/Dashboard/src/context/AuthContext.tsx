@@ -117,7 +117,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         setTimeout(() => {
-          window.location.href = '/dashboard/overview';
+          window.location.href = `${import.meta.env.BASE_URL}overview`;
         }, 100);
       }
     } catch (err) {
