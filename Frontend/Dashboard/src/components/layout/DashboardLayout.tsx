@@ -9,22 +9,22 @@ import { useEffect } from "react";
 import { useUI } from "@/store/ui";
 
 const SECTION_TITLES: Record<string, string> = {
-  "/": "Overview",
-  "/overview": "Overview",
-  "/intelligence": "Intelligence",
-  "/cart-recovery": "Cart Recovery",
-  "/campaigns": "Campaigns",
-  "/customers": "Customers",
-  "/analytics": "Analytics",
-  "/settings": "Settings",
-  "/billing": "Billing",
-  "/integrations": "Integrations",
-  "/beta": "Beta Features",
+  "overview":      "Overview",
+  "intelligence":  "Intelligence",
+  "cart-recovery": "Cart Recovery",
+  "campaigns":     "Campaigns",
+  "customers":     "Customers",
+  "analytics":     "Analytics",
+  "integrations":  "Integrations",
+  "beta":          "Beta Features",
 };
 
 export function DashboardLayout() {
   const { theme, startTour } = useUI();
   const { pathname } = useLocation();
+
+  // Strip leading slash so "overview" matches SECTION_TITLES keys
+  const page = pathname.replace(/^\//, "");
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", theme === "light");
@@ -32,18 +32,18 @@ export function DashboardLayout() {
 
   // Auto-start tour for first-time visitors on the Overview page
   useEffect(() => {
-    if (pathname !== "/") return;
+    if (page !== "overview") return;
     if (typeof window === "undefined") return;
     if (localStorage.getItem("rv_tour_done") === "true") return;
     const t = window.setTimeout(() => startTour(), 700);
     return () => window.clearTimeout(t);
-  }, [pathname, startTour]);
+  }, [page, startTour]);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-bg">
       <Sidebar />
       <main className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-bg">
-        <Topbar section={SECTION_TITLES[pathname] ?? "Overview"} />
+        <Topbar section={SECTION_TITLES[page] ?? "Overview"} />
         <div className="px-4 py-5 sm:px-6 sm:py-6">
           <Outlet />
         </div>
