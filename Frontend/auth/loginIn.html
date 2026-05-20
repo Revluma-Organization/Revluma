@@ -1277,6 +1277,20 @@
 
     async function checkAutoLogin() {
       try {
+        // Check if logout signal was recently set (within last 10 seconds)
+        // This prevents auto-redirect bounce after logout
+        const logoutSignal = localStorage.getItem('auth_logout_signal');
+        if (logoutSignal) {
+          const logoutTime = parseInt(logoutSignal, 10);
+          const timeSinceLogout = Date.now() - logoutTime;
+          if (timeSinceLogout < 10000) {
+            console.log('[AUTH] Recent logout detected, showing login form instead of auto-redirecting');
+            // Clear the signal so future visits auto-login normally
+            localStorage.removeItem('auth_logout_signal');
+            return; // Exit early, don't auto-redirect
+          }
+        }
+
         const user = await revlumaAuth.checkAutoLogin();
         if (user && user.id) {
           const dest = (user.onboarding_status === 'completed')

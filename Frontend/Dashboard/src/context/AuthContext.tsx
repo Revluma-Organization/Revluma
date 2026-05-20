@@ -201,6 +201,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         sessionStorage.clear();
       } catch (e) { }
 
+      // Comprehensive localStorage cleanup to prevent stale session resurrection
+      try {
+        const authKeys = [
+          'revluma_token',
+          'revluma_user',
+          'revluma_pending_token',
+          'revluma_remembered_email',
+          'csrf_token',
+          'auth_bridge'
+        ];
+        authKeys.forEach(key => {
+          try {
+            localStorage.removeItem(key);
+          } catch (e) { }
+        });
+      } catch (e) { }
+
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       setLoading(false);
       // Redirect to login page

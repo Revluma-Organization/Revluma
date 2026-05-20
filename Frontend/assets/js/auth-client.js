@@ -259,7 +259,7 @@ class RevlumaAuth {
     }
 
     /**
-     * Logout: Clear session and tokens
+     * Logout: Clear session and tokens — comprehensive cleanup
      */
     async logout() {
         try {
@@ -282,7 +282,30 @@ class RevlumaAuth {
             this.user = null;
             this.isAuthenticated = false;
             this.csrfToken = null;
+            this.csrfTokenExpiry = null;
             this.clearStoredToken();
+
+            // Comprehensive cleanup of all auth-related keys
+            try {
+                const authKeys = [
+                    'revluma_token',
+                    'revluma_user',
+                    'revluma_pending_token',
+                    'revluma_remembered_email',
+                    'csrf_token',
+                    'auth_bridge'
+                ];
+                authKeys.forEach(key => {
+                    try {
+                        localStorage.removeItem(key);
+                        sessionStorage.removeItem(key);
+                    } catch (e) { }
+                });
+            } catch (error) {
+                if (this.debug) {
+                    console.warn('[RevlumaAuth] Comprehensive logout cleanup failed:', error);
+                }
+            }
         }
 
         return { success: true };
