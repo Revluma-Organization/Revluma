@@ -168,26 +168,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, []);
 
-  const logout = useCallback(async () => {
+  // logout(allSessions = false) -> if allSessions true, request server to invalidate all user sessions
+  const logout = useCallback(async (allSessions = false) => {
     setLoading(true);
 
     try {
       const token = csrfToken || sessionStorage.getItem('csrf_token');
       const headers: Record<string, string> = {};
       if (token) headers['X-CSRF-Token'] = token;
-      await api.post('/session/logout', {}, { withCredentials: true, headers });
+
+      const body = { allSessions };
+
+      const response = await api.post('/session/logout', body, { withCredentials: true, headers });
+
+      // If server asks clients to broadcast logout, set a persistent signal in localStorage
+      if (response.data?.logoutBroadcast) {
+        try {
+          localStorage.setItem('auth_logout_signal', Date.now().toString());
+        } catch (e) {
+          // ignore storage errors
+        }
+      }
     } catch (err) {
       console.error('Logout error:', err);
     } finally {
+      // Clear client state (best-effort). Server clears HTTP-only cookie.
       setUser(null);
       userRef.current = null;
       setCsrfToken(null);
-      sessionStorage.removeItem('csrf_token');
-      sessionStorage.clear();
-      localStorage.setItem('auth_logout_signal', Date.now().toString());
-      localStorage.removeItem('auth_logout_signal');
+      try {
+        sessionStorage.removeItem('csrf_token');
+        sessionStorage.clear();
+      } catch (e) { }
+
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       setLoading(false);
+      // Redirect to login page
       window.location.href = '/auth/loginIn.html';
     }
   }, [csrfToken]);

@@ -368,22 +368,51 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 });
 
-// LOGOUT
+// LOGOUT — supports single-session logout or global logout across all user sessions
 router.post('/logout', csrfProtection, async (req, res) => {
-  const sessionId = getSessionId(req);
-  clearSessionCookie(res);
+  // Accept { allSessions: boolean } in the body to invalidate all sessions for the user
+  const { allSessions = false } = req.body || {};
 
-  if (!sessionId) {
-    return res.status(200).json({ message: 'Logged out' });
-  }
-
+  // Try to validate the current session (if any)
   try {
-    await invalidateSession(sessionId, req.csrfValidatedUserId || 'system');
-    logger.info('User logged out', { sessionId: sessionId.slice(0, 20), userId: req.csrfValidatedUserId });
-    return res.status(200).json({ message: 'Logged out successfully', logoutBroadcast: true });
+    const sessionAuth = await validateSession(req, res);
+
+    // Always clear the cookie on the response so client no longer has a session cookie
+    clearSessionCookie(res);
+
+    if (!sessionAuth) {
+      // Idempotent: already logged out
+      return res.status(200).json({ message: 'Logged out', logoutBroadcast: true, global: false });
+    }
+
+    if (allSessions) {
+      const count = await invalidateAllUserSessions(sessionAuth.user.id, sessionAuth.user.tenantId);
+      logger.info('User global logout', { userId: sessionAuth.user.id, tenantId: sessionAuth.user.tenantId, invalidated: count });
+      // Signal clients to clear local state and redirect
+      if (process.env.NODE_ENV === 'production') {
+        // Prompt browsers to clear site data where supported
+        res.setHeader('Clear-Site-Data', '"cache", "cookies", "storage", "executionContexts"');
+      }
+      return res.status(200).json({ message: 'Logged out from all devices', logoutBroadcast: true, global: true });
+    }
+
+    // Single session invalidation
+    const sessionId = getSessionId(req);
+    if (sessionId) {
+      await invalidateSession(sessionId, sessionAuth.user.id);
+      logger.info('User logged out', { sessionId: sessionId.slice(0, 20), userId: sessionAuth.user.id });
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      res.setHeader('Clear-Site-Data', '"cache", "cookies", "storage", "executionContexts"');
+    }
+
+    return res.status(200).json({ message: 'Logged out successfully', logoutBroadcast: true, global: false });
   } catch (err) {
-    logger.error('Logout error', { error: err.message });
-    return res.status(200).json({ message: 'Logged out successfully' });
+    // Best-effort: clear the cookie and respond success (idempotent)
+    clearSessionCookie(res);
+    logger.warn('Logout encountered error', { error: err.message });
+    return res.status(200).json({ message: 'Logged out', logoutBroadcast: true, global: false });
   }
 });
 
