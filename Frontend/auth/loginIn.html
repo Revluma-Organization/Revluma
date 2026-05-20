@@ -1282,12 +1282,49 @@
           const dest = (user.onboarding_status === 'completed')
             ? '/dashboard/overview'
             : '/auth/onboarding.html';
+
+          // Instead of forcing an immediate redirect, show a gentle prompt so users
+          // who intentionally opened the login page can choose to continue or sign out.
           try {
             const abs = new URL(dest, window.location.origin).href;
-            console.info('[AUTH] Auto-login redirect to', abs);
-            window.location.replace(abs);
+            console.info('[AUTH] Auto-login detected for user, showing prompt ->', abs);
+            hideAllBanners();
+            showInfoBanner(
+              'You are already signed in',
+              `Signed in as ${user.email}. Click Continue to go to the app or use Sign out to switch accounts.`,
+              'Continue',
+              () => { try { window.location.replace(abs); } catch (e) { console.error(e); } }
+            );
+
+            // Create a secondary Sign out button (best-effort client-side) so user can switch accounts
+            try {
+              // Remove any existing signout helper
+              const existing = document.getElementById('signoutHelper');
+              if (existing) existing.remove();
+
+              const btn = document.createElement('button');
+              btn.id = 'signoutHelper';
+              btn.textContent = 'Sign out';
+              btn.className = 'banner-secondary-btn';
+              btn.style.marginLeft = '12px';
+              btn.addEventListener('click', () => {
+                // Best-effort: clear client-side session and reload to show login form
+                try {
+                  ['revluma_token', 'revluma_user', 'revluma_pending_token'].forEach(k => { localStorage.removeItem(k); sessionStorage.removeItem(k); });
+                } catch (e) { }
+                // Try to call server logout (best-effort)
+                fetch(`${API_BASE}/session/logout`, { method: 'POST', credentials: 'include' }).finally(() => {
+                  window.location.replace('/auth/loginIn.html');
+                });
+              });
+
+              el.infoBanner.appendChild(btn);
+            } catch (e) {
+              console.warn('Could not render sign out helper', e);
+            }
+
           } catch (err) {
-            console.error('[AUTH ERROR] Auto-login redirect failed', err, { dest });
+            console.error('[AUTH ERROR] Auto-login prompt failed', err, { dest });
           }
         }
       } catch (error) {
@@ -1584,8 +1621,8 @@
         console.log('[AUTH STEP 12] Login successful, showing success message and preparing redirect');
         showSuccess('Signed in — redirecting…');
         setTimeout(() => {
-        redirectAfterLogin(data.user);
-      }, 900);
+          redirectAfterLogin(data.user);
+        }, 900);
       } catch (err) {
         console.error('[AUTH] Login failed', {
           code: err.code,
