@@ -1828,21 +1828,43 @@
     });
 
     // ====================== INIT ======================
-    // On load: clear any stale JWT tokens — session is now cookie-based
-const staleKeys = ['revluma_token', 'revluma_user'];
-staleKeys.forEach(k => {
-  localStorage.removeItem(k);
-  sessionStorage.removeItem(k);
-});
+    const existingToken = localStorage.getItem('revluma_token');
+    if (existingToken && existingToken !== 'undefined' && existingToken !== 'null') {
+      fetch(`${API_BASE}/session/me`, { headers: { 'Authorization': `Bearer ${existingToken}` } })
+        .then(r => r.json())
+        .then(data => {
+          if (data.user) {
+            if (data.user.onboarding_status === 'completed') {
+              window.location.href = '../index.html';
+            } else {
+              state.token = existingToken;
+              state.user = data.user;
+              const s = data.user.onboarding_status;
+              if (s === 'started') showStep(1);
+              else if (s === 'step1') showStep(2);
+              else if (s === 'step2') showStep(3);
+              else if (s === 'step3') showStep(4);
+              else if (s === 'step4') showStep(5);
+              else if (s === 'step5') showStep(6);
+              else showStep(1);
+            }
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem('revluma_token');
+          localStorage.removeItem('revluma_user');
+        });
+    }
 
-// Check for pending token - user needs to complete email verification
-const pendingToken = localStorage.getItem('revluma_pending_token');
-if (pendingToken && pendingToken !== 'undefined' && pendingToken !== 'null') {
-  state.pendingToken = pendingToken;
-  showStep(6); // email verification step
-} else {
-  showStep(1);
-}
+    // Check for pending token - user needs to complete email verification
+    const pendingToken = localStorage.getItem('revluma_pending_token');
+    if (pendingToken && pendingToken !== 'undefined' && pendingToken !== 'null' && !existingToken) {
+      state.pendingToken = pendingToken;
+      // Show step 6 for email verification
+      showStep(6);
+    } else {
+      showStep(1);
+    }
   </script>
 </body>
 

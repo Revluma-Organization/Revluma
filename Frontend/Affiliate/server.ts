@@ -1,0 +1,264 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import express from "express";
+import path from "path";
+import dotenv from "dotenv";
+import crypto from "crypto";
+import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
+
+// Load environment variables
+dotenv.config();
+
+// Ensure double-checking port binding defaults
+const PORT = 3000;
+const isProd = process.env.NODE_ENV === "production";
+
+// Lazy-initialize Gemini API to prevent app crash if GEMINI_API_KEY is not initially established.
+let aiClient: GoogleGenAI | null = null;
+
+function getAiClient(): GoogleGenAI {
+  if (!aiClient) {
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+      console.warn("⚠️ Warning: GEMINI_API_KEY is not configured or left as placeholder, AI Assistant will operate in rich-simulation fallback mode.");
+    }
+    aiClient = new GoogleGenAI({
+      apiKey: apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+  }
+  return aiClient;
+}
+
+// In-memory webhooks audit ledger for premium visualization in development portals
+const webhookLogs: Array<{
+  id: string;
+  timestamp: string;
+  eventName: string;
+  payload: any;
+  status: 'verified' | 'simulation' | 'failed_signature';
+  details: string;
+}> = [];
+
+// Helper to verify Lemon Squeezy Webhook Cryptographic Signatures
+function verifyLemonSqueezySignature(rawBody: string, xSignature: string): boolean {
+  const webhookSecret = process.env.LEMON_SQUEEZY_WEBHOOK_SECRET || "rev_luma_secret_bypass_dev_mode";
+  if (!xSignature) return false;
+  
+  const hmac = crypto.createHmac("sha256", webhookSecret);
+  const digest = hmac.update(rawBody).digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(digest, "utf-8"), Buffer.from(xSignature, "utf-8"));
+}
+
+async function startServer() {
+  const app = express();
+  
+  // Use a raw body parser for the webhook route to verify signatures properly
+  app.post("/api/webhooks/lemon-squeezy", express.raw({ type: "application/json" }), (req, res) => {
+    try {
+      const rawPayload = req.body.toString("utf-8");
+      const signature = req.headers["x-signature"] as string || "";
+      
+      const parsedPayload = JSON.parse(rawPayload);
+      const eventName = parsedPayload.meta?.event_name || "unknown";
+      
+      // Verification logic: audit signature, handle sandbox dev bypass gracefully
+      const isVerified = verifyLemonSqueezySignature(rawPayload, signature);
+      const isSandboxTesting = parsedPayload.meta?.custom_data?.sandbox === true || !signature;
+      
+      let status: 'verified' | 'simulation' | 'failed_signature' = 'verified';
+      let details = "Cryptographically verified signatures match master webhook key.";
+      
+      if (!isVerified) {
+        if (isSandboxTesting) {
+          status = 'simulation';
+          details = "Sandbox integration simulation payload allowed with local bypass.";
+        } else {
+          status = 'failed_signature';
+          details = "CRITICAL: Signature mismatch detected on incoming webhook!";
+          console.error("❌ Cryptographic signature verification failed on Lemon Squeezy webhook!");
+          res.status(401).json({ error: "Cryptographic signature validation failed.", secure_lock: "active" });
+          return;
+        }
+      }
+      
+      // Store event in audit logs
+      webhookLogs.unshift({
+        id: `wh_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        eventName,
+        payload: parsedPayload,
+        status,
+        details
+      });
+      
+      // Retain max 40 logs in memory
+      if (webhookLogs.length > 40) webhookLogs.pop();
+      
+      // Respond to payment gateway instantly per enterprise specs 
+      res.status(200).json({ status: "processed", verified: isVerified || isSandboxTesting, logCount: webhookLogs.length });
+    } catch (error: any) {
+      console.error("Webhook endpoint crashed parsing request:", error);
+      res.status(400).json({ error: "Malformed payload format.", raw: error.message });
+    }
+  });
+
+  // Standard JSON requests parsing for regular API routes
+  app.use(express.json());
+
+  // 1. API: Health Check
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "healthy", timestamp: new Date().toISOString(), logsPending: webhookLogs.length });
+  });
+
+  // 2. Fetch Lemon Squeezy Webhook auditing log streams
+  app.get("/api/lemon-squeezy/logs", (_req, res) => {
+    res.json({ logs: webhookLogs });
+  });
+
+  // 3. Clear audit logs console for debug purposes
+  app.post("/api/lemon-squeezy/clear-logs", (_req, res) => {
+    webhookLogs.length = 0;
+    res.json({ status: "cleared" });
+  });
+
+  // 4. API Simulation Endpoint to programmatic test from frontend
+  app.post("/api/lemon-squeezy/simulate", (req, res) => {
+    const { eventName, userEmail, planName, customValues } = req.body;
+    
+    // Simulate event generation with high-fidelity structures
+    const fakePayload = {
+      meta: {
+        event_name: eventName || "subscription_payment_success",
+        custom_data: {
+          sandbox: true,
+          affiliate_referrer_code: customValues?.partner_id || "partner_growth",
+          campaign_tag: customValues?.campaign_tag || "default_organic"
+        }
+      },
+      data: {
+        id: `sub_sim_${Math.random().toString(36).substring(2, 9)}`,
+        type: "subscriptions",
+        attributes: {
+          user_email: userEmail || "customer@revluma.io",
+          product_name: planName || "Growth Plan",
+          total_price_cents: planName === "Growth Plan" ? 9900 : 4900,
+          currency: "USD",
+          status: customValues?.status || "active",
+          trial_ends_at: customValues?.trial ? new Date(Date.now() + 864500000).toISOString() : null,
+          ends_at: customValues?.churn ? new Date().toISOString() : null,
+          created_at: new Date().toISOString()
+        }
+      }
+    };
+    
+    webhookLogs.unshift({
+      id: `wh_sim_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      eventName: eventName || "subscription_payment_success",
+      payload: fakePayload,
+      status: 'simulation',
+      details: "Simulated sandbox recurring event successfully triggered and recorded."
+    });
+    
+    res.json({ success: true, payload: fakePayload, currentLogs: webhookLogs.length });
+  });
+
+  // 2. API: AI Marketing Agent Copywriter (Gemini API server-proxy)
+  app.post("/api/gemini/generate", async (req, res) => {
+    try {
+      const { channel, targetAudience, coreFeatures, tone } = req.body;
+      
+      if (!channel || !targetAudience || !coreFeatures) {
+         res.status(400).json({ error: "Missing required generation fields." });
+         return;
+      }
+
+      const promptTemplate = `
+      You are the Elite Chief Marketing Officer and Head Copywriter for Revluma (by Luminor Terminal).
+      Revluma is an AI-powered operational commerce intelligence platform that helps brands recover revenue, improve customer retention, automate behavioral analysis, and optimize customer lifecycles.
+      
+      Generate a premium, high-converting promotional post for the following configuration:
+      - Marketing Channel: ${channel} (e.g. Twitter/X, Reddit, LinkedIn, Email Newsletter, or Short-Form Video script)
+      - Target Audience: ${targetAudience} (e.g. Shopify Store Owners, SaaS Founders, D2C Growth Leads, Solopreneurs)
+      - Highlighted Features: ${coreFeatures}
+      - Messaging Tone: ${tone || 'futuristic and premium'}
+
+      Include:
+      1. A striking, high-contrast hook or subject line.
+      2. 2-3 bullet points structured with psychological urgency (focus in on revenue recovery, retention, or predictive growth operations).
+      3. A high-converting call-to-action incorporating their custom partner referral link placeholder [Your Partner Link].
+      4. Aesthetic, minimalist styling. No cartoonish elements, no rainbow slang, keep it exceptionally professional and intelligent.
+      `;
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+        // High fidelity, highly-realistic deterministic simulated fallback responses if keys are not ready
+        console.log("Serving rich simulated marketing response (No Gemini Key Found)");
+        const templates: Record<string, string> = {
+          x: `⚡ **The era of manual customer analytics is officially over.**\n\nHow much revenue did your checkout lose this week? D2C brands leaking 15%+ to silent churn just unlocked the solution.\n\nIntroducing **Revluma** (built of @LuminorTerminal core AI technology).\n\n• **Autonomous Revenue Recovery**: Auto-heals broken checkout signals.\n• **Hyper-Segmented Intelligence**: Predicts churn 14 days before it triggers.\n• **Automated Operations**: Zero engineering required.\n\nStop guessing. Start optimizing.\n\nGet exclusive operational access: **[Your Partner Link]** 👈`,
+          reddit: `### [D2C Analytics] Stop staring at standard dashboards. Why Shopify store owners are switching to Revluma.\n\nIf you're running a store over $50k/mo, you know that standard cohort analysis is basically useless for predicting actual individual subscriber churn. Most ESPs trigger recovery *after* they already left.\n\nWe spent the last year building **Revluma** to solve this. Supported by **Luminor Terminal**, Revluma sits directly on top of your customer dataset to auto-recover checkout drops and forecast subscriber degradation.\n\n**What's under the hood:**\n1. **Autonomous Recovery Loops**: Active conversion optimization.\n2. **Behavioral AI Triggers**: Targets clients based on silent telemetry signals.\n\nWe are looking for eCommerce growth leaders to join our exclusive affiliate ecosystem (which pays a compounding **30%+ lifetime recurring commission**).\n\nDeploy smart tech on your audience segment: **[Your Partner Link]**`,
+          linkedin: `💼 **Operational Intelligence for the Future of Enterprise Commerce.**\n\nI am thrilled to announce my partnership and integration with **Revluma**, the premiere AI operations layer built by high-performance automation house **Luminor Terminal**.\n\nIn eCommerce, standard dashboards are backward-looking. True scale requires predictive systems. Revluma transforms silent customer data vectors into real-time growth decisions:\n\n🚀 **Convert Intelligently**: Auto-heals high-value cart drops in real-time.\n🔄 **Automated Retention**: Pinpoints and triggers lifecycle campaigns autonomously.\n🛡️ **Enterprise Security**: Backed by high-security Supabase/PostgreSQL infrastructure.\n\nAs a founding partner in the Revluma Growth Ecosystem, I'm extending early integration invites to our digital brands. Secure your operational advantage below:\n\nJoin the commerce future: **[Your Partner Link]**`,
+          email: `Subject: Revluma AI - The Next Gen Operational Commerce Layer\n\nDear Partner,\n\nIn modern commerce, standard retention strategies are failing. Traditional tools trigger re-engagement campaigns AFTER a subscriber has checked out or cancelled. That's backward-looking science.\n\n**Revluma**, designed by parent infrastructure house **Luminor Terminal**, turns your database into an active, predictive revenue recovery machine. Revluma utilizes advanced predictive machine models to discover friction and automate behavioral segment retention.\n\nHere's what this secures for your operations:\n- **$0 to Hero Automation**: Auto-detects and triggers conversion healing lines.\n- **Compound Revenue Recovery**: Increases customer lifetime value (LTV) by up to 22%.\n- **30% Compounding Affiliate Commission**: Since Revluma is premium recurring software, our growth partners earn massive ongoing rev-share.\n\nSecure your brand's growth credentials today using our ecosystem dashboard invite:\n\n 👉 **[Your Partner Link]**\n\nTo your scalable future,\n[Your Name]`
+        };
+        const chanKey = (channel as string).toLowerCase();
+        const output = templates[chanKey] || templates['x'];
+        setTimeout(() => {
+          res.json({ text: output, simulated: true });
+        }, 800);
+        return;
+      }
+
+      // Real Gemini API client call
+      const ai = getAiClient();
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: promptTemplate,
+        config: {
+          temperature: 0.7,
+        }
+      });
+
+      res.json({ text: response.text || "Failed to generate copywriting.", simulated: false });
+    } catch (error: any) {
+      console.error("Gemini copywriter proxy failed:", error);
+      res.status(500).json({ error: error.message || "Internal server error in copywriter agent." });
+    }
+  });
+
+  // 3. Serve Frontend Vite assets or configure dev live server
+  if (!isProd) {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    
+    // Serve static frontend files
+    app.use(express.static(distPath));
+    
+    // Fallback everything else to SPA index.html
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Revluma Custom Server fully active on http://0.0.0.0:${PORT} [NODE_ENV=${process.env.NODE_ENV || 'development'}]`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error("❌ Critical server startup failed:", err);
+  process.exit(1);
+});
