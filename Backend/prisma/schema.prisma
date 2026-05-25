@@ -130,6 +130,7 @@ model AffiliateProfile {
   referrals           AffiliateReferral[]
   earnings            AffiliateEarning[]
   notifications       AffiliateNotification[]
+  withdrawals         AffiliateWithdrawal[]
 
   @@index([userId])
   @@index([status])
@@ -140,6 +141,7 @@ model AffiliateProfile {
 model AffiliateCampaign {
   id          String   @id @default(uuid())
   partnerId   String
+  name        String
   tag         String
   source      String
   clicks      Int      @default(0)
@@ -191,6 +193,35 @@ model AffiliateEarning {
   @@index([status])
   @@index([createdAt])
   @@map("affiliate_earnings")
+}
+
+model AffiliateWithdrawal {
+  id            String    @id @default(uuid())
+  partnerId     String
+  amountUsd     Decimal   @db.Decimal(10, 2)
+  payoutMethod  String
+  payoutEmail   String?
+  legalName     String
+  country       String
+  currency      String
+  bankName      String?
+  accountName   String?
+  accountNumber String?
+  iban          String?
+  swiftBic      String?
+  routingNumber String?
+  branchName    String?
+  additionalNotes String?
+  status        String    @default("Pending Review")
+  adminNotes    String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  partner       AffiliateProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([status])
+  @@map("affiliate_withdrawals")
 }
 
 model AffiliateBroadcast {

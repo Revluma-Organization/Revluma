@@ -3,10 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type PartnerRole = 'user' | 'admin';
+export type PartnerRole = 'affiliate' | 'admin';
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
 
+/**
+ * PartnerProfile represents the data returned from the backend about an
+ * authenticated affiliate user. It must never include credentials — passwords
+ * and verification codes are server-only and must not travel to the client.
+ */
 export interface PartnerProfile {
   id: string;
   fullName: string;
@@ -26,16 +31,14 @@ export interface PartnerProfile {
   role: PartnerRole;
   createdAt: string;
   tier: 'Affiliate' | 'Growth' | 'Elite' | 'Founding Ambassador';
-  commissionRate: number; // e.g. 0.20 = 20%
+  commissionRate: number;
   avatarUrl?: string;
-  password?: string;
   termsAccepted?: boolean;
   marketingConsent?: boolean;
   emailVerified?: boolean;
-  emailVerificationCode?: string;
 }
 
-export type ReferralStatus = 
+export type ReferralStatus =
   | 'Waitlist Joined'
   | 'Account Created'
   | 'Trial Started'
@@ -103,13 +106,13 @@ export interface NotificationItem {
   type: 'commission' | 'signup' | 'badge' | 'payout' | 'broadcast';
 }
 
-export type WithdrawalRequestStatus = 
-  | 'Pending Review' 
-  | 'Under Verification' 
-  | 'Approved' 
-  | 'Processing' 
-  | 'Paid' 
-  | 'Rejected' 
+export type WithdrawalRequestStatus =
+  | 'Pending Review'
+  | 'Under Verification'
+  | 'Approved'
+  | 'Processing'
+  | 'Paid'
+  | 'Rejected'
   | 'Cancelled';
 
 export interface WithdrawalRequest {
@@ -135,4 +138,3 @@ export interface WithdrawalRequest {
   processedAt?: string;
   updatedAt: string;
 }
-

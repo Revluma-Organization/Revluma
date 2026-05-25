@@ -8,17 +8,12 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 
-// Import custom modules
 const logger = require('./src/utils/logger');
 const { checkConnection, closeConnection } = require('./src/services/prisma');
 const errorHandler = require('./src/middleware/errorHandler');
-const authenticate = require('./src/middleware/auth');
+const { authenticate } = require('./src/middleware/sessionAuth'); // single auth middleware
 const { checkRedisHealth } = require('./src/queue/redis');
 const { triggerIngest } = require('./src/pipeline/ingestionPipeline');
-
-// ============================================================
-// Express App Setup
-// ============================================================
 
 const app = express();
 app.set('trust proxy', 1);
@@ -29,22 +24,19 @@ const isProduction = process.env.NODE_ENV === 'production';
 // Security & Middleware
 // ============================================================
 
-// Helmet for security headers
 app.use(helmet({
   contentSecurityPolicy: isProduction ? undefined : false
 }));
 
-// Body parsing with size limits
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-
-// Cookie parser for session-based authentication
 app.use(cookieParser());
 
-// CORS - allow configured frontend origins and same-origin requests
-const parseOrigins = value => (typeof value === 'string'
-  ? value.split(',').map(entry => entry.trim()).filter(Boolean)
-  : []);
+// CORS
+const parseOrigins = value =>
+  typeof value === 'string'
+    ? value.split(',').map(entry => entry.trim()).filter(Boolean)
+    : [];
 
 const configuredOrigins = new Set([
   ...parseOrigins(process.env.CORS_ORIGINS),
@@ -60,15 +52,9 @@ if (configuredOrigins.size === 0 && isProduction) {
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin) {
-      return callback(null, true);
-    }
-
+    if (!origin) return callback(null, true);
     const normalized = origin.replace(/\/$/, '');
-    if (configuredOrigins.has(normalized)) {
-      return callback(null, true);
-    }
-
+    if (configuredOrigins.has(normalized)) return callback(null, true);
     return callback(new Error(`CORS origin denied: ${normalized}`), false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -78,29 +64,27 @@ app.use(cors({
 }));
 app.options('*', cors());
 
-// HTTP logging
 app.use(morgan(isProduction ? 'combined' : 'dev', {
   stream: { write: msg => logger.info(msg.trim()) }
 }));
 
 // Global rate limiting
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // 300 requests per window
+  windowMs: 15 * 60 * 1000,
+  max: 300,
   message: { error: 'Too many requests - please slow down' },
   standardHeaders: true,
   legacyHeaders: false
 });
 app.use(globalLimiter);
 
-// Serve static frontend files
+// Static frontend
 app.use(express.static(path.join(__dirname, '..', 'Frontend')));
 
 // ============================================================
 // Routes
 // ============================================================
 
-// Auth routes with rate limiting
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 50,
@@ -117,51 +101,50 @@ const sessionLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
-
-// Session-based auth routes (with cookies)
 app.use('/api/session', sessionLimiter, require('./src/routes/authSession'));
 
-// Other API routes
-app.use('/api/webhook', rateLimit({
-  windowMs: 60 * 1000,
-  max: 50
-}), require('./src/routes/webhook'));
-
+app.use('/api/webhook', rateLimit({ windowMs: 60 * 1000, max: 50 }), require('./src/routes/webhook'));
 app.use('/api/trending', require('./src/routes/trending'));
 app.use('/api/watchlist', require('./src/routes/watchlist'));
 app.use('/api/shopify', require('./src/routes/shopify'));
+app.use('/api/newsletter', require('./src/routes/newsletter'));
+app.use('/api/videos', require('./src/routes/videos'));
 
-// Debug routes (server-side session inspection)
-app.use('/api/debug', require('./src/routes/debug'));
-
-// Store routes need prisma instance
+// Store routes
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { createStoreRoutes } = require('./src/routes/stores');
 app.use('/api/stores', createStoreRoutes(prisma));
 
-// Webhook endpoints for each platform
+// Webhook endpoints per platform
 const { createWebhookRouter } = require('./src/routes/webhooks');
 app.use('/api/webhooks/shopify', createWebhookRouter('shopify', prisma));
 app.use('/api/webhooks/woocommerce', createWebhookRouter('woocommerce', prisma));
 app.use('/api/webhooks/bigcommerce', createWebhookRouter('bigcommerce', prisma));
 
-// WooCommerce tracking pixel (public, no auth)
+// Tracking pixel (public, no auth)
 const { createTrackingPixelRouter } = require('./src/routes/tracking');
 app.use('/api/tracking', createTrackingPixelRouter(prisma));
-app.use('/api/newsletter', require('./src/routes/newsletter'));
-app.use('/api/videos', require('./src/routes/videos'));
 
-// API v1 routes (protected)
-app.use('/api/v1/dashboard', authenticate, require('./src/routes/v1/dashboard'));
-app.use('/api/v1/metrics', authenticate, require('./src/routes/v1/metrics'));
-app.use('/api/v1/insights', authenticate, require('./src/routes/v1/insights'));
-app.use('/api/v1/customers', authenticate, require('./src/routes/v1/customers'));
-app.use('/api/v1/user', authenticate, require('./src/routes/v1/user'));
+// ============================================================
+// Protected API routes — all use the unified session authenticate
+// ============================================================
+
+app.use('/api/v1/dashboard',     authenticate, require('./src/routes/v1/dashboard'));
+app.use('/api/v1/metrics',       authenticate, require('./src/routes/v1/metrics'));
+app.use('/api/v1/insights',      authenticate, require('./src/routes/v1/insights'));
+app.use('/api/v1/customers',     authenticate, require('./src/routes/v1/customers'));
+app.use('/api/v1/user',          authenticate, require('./src/routes/v1/user'));
 app.use('/api/v1/notifications', authenticate, require('./src/routes/v1/notifications'));
 
-// Admin endpoint (protected)
+// Affiliate routes (role check enforced inside the router)
+app.use('/api/affiliate', authenticate, require('./src/routes/v1/affiliate'));
+
+// Admin endpoints
 app.post('/api/admin/ingest', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
   try {
     const result = await triggerIngest(req.body.sourceName);
     res.json({ message: result });
@@ -171,17 +154,16 @@ app.post('/api/admin/ingest', authenticate, async (req, res) => {
   }
 });
 
-// Root endpoint - serve frontend
+// Root
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'Frontend', 'index.html'));
 });
 
-// Health check endpoint
+// Health check
 app.get('/health', async (req, res) => {
   try {
     const dbHealthy = await checkConnection();
     const redisHealthy = await checkRedisHealth();
-
     res.json({
       status: dbHealthy && redisHealthy ? 'healthy' : 'degraded',
       uptime: process.uptime(),
@@ -196,17 +178,16 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Dashboard SPA fallback - serve for all /dashboard/* routes (safety net if Vercel rewrites don't apply)
+// Dashboard SPA fallback
 app.get(/^\/dashboard/, (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'Frontend', 'Dashboard', 'index.html'));
 });
 
-// 404 handler
+// 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-// Centralized error handler
 app.use(errorHandler);
 
 // ============================================================
@@ -215,51 +196,40 @@ app.use(errorHandler);
 
 async function startServer() {
   try {
-    // Verify database connection
     const dbHealthy = await checkConnection();
-
     if (!dbHealthy) {
       logger.error('Database connection failed - cannot start server');
-      if (isProduction) {
-        process.exit(1); // Fail fast in production
-      }
+      if (isProduction) process.exit(1);
     }
 
-    // Check Redis (non-blocking)
     let redisHealthy = false;
     try {
       redisHealthy = await checkRedisHealth();
     } catch (err) {
-      logger.warn('Redis check failed:', err.message);
+      logger.warn('Redis check failed', { error: err.message });
     }
 
-    // Start listening
     const server = app.listen(PORT, () => {
-      logger.info(`Server started on port ${PORT}`, {
+      logger.info('Server started', {
+        port: PORT,
         environment: process.env.NODE_ENV,
         database: dbHealthy ? 'connected' : 'disconnected',
         redis: redisHealthy ? 'connected' : 'disconnected'
       });
     });
 
-    // Graceful shutdown handlers
     const gracefulShutdown = async (signal) => {
       logger.info(`Received ${signal} - starting graceful shutdown`);
-
       server.close(async () => {
         logger.info('HTTP server closed');
-
         try {
           await closeConnection();
           logger.info('Database connection closed');
         } catch (err) {
-          logger.error('Error closing database connection:', err.message);
+          logger.error('Error closing database connection', { error: err.message });
         }
-
         process.exit(0);
       });
-
-      // Force exit after 10 seconds
       setTimeout(() => {
         logger.error('Graceful shutdown timeout - forcing exit');
         process.exit(1);
@@ -267,27 +237,21 @@ async function startServer() {
     };
 
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
+    process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
   } catch (err) {
     logger.error('Server startup failed', { error: err.message, stack: err.stack });
     process.exit(1);
   }
 }
 
-// ============================================================
-// Process Error Handlers
-// ============================================================
-
 process.on('uncaughtException', (err) => {
-  logger.error('Uncaught exception:', { error: err.message, stack: err.stack });
+  logger.error('Uncaught exception', { error: err.message, stack: err.stack });
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled rejection:', { reason: String(reason) });
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled rejection', { reason: String(reason) });
   process.exit(1);
 });
 
-// Start the server
 startServer();
