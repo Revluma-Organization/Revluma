@@ -125,20 +125,88 @@ model AffiliateProfile {
   approvedAt          DateTime?
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
-  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  campaigns           AffiliateCampaign[]
-  referrals           AffiliateReferral[]
-  earnings            AffiliateEarning[]
-  notifications       AffiliateNotification[]
-  withdrawals         AffiliateWithdrawal[]
+user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+   campaigns           AffiliateCampaign[]
+   referrals           AffiliateReferral[]
+   earnings            AffiliateEarning[]
+   notifications       AffiliateNotification[]
+   withdrawals         AffiliateWithdrawal[]
+   referralLinks       ReferralLink[]
+   referralClicks      ReferralClick[]
+   waitlistSubmissions WaitlistSubmission[]
 
-  @@index([userId])
+   @@index([userId])
   @@index([status])
   @@index([username])
   @@map("affiliate_profiles")
 }
 
-model AffiliateCampaign {
+// ADD THESE MODELS TO Backend/prisma/schema.prisma
+
+model ReferralLink {
+  id               String                @id @default(uuid())
+  affiliateId      String
+  username         String
+  uniqueId         String                @unique
+  referralCode     String                @unique
+  clicksCount      Int                   @default(0)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  affiliate        AffiliateProfile      @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  clicks           ReferralClick[]
+
+  @@index([affiliateId])
+  @@index([referralCode])
+  @@map("affiliate_referral_links")
+}
+
+model ReferralClick {
+  id               String                @id @default(uuid())
+  referralLinkId   String
+  affiliateId      String
+  ipAddress        String?
+  userAgent        String?
+  referrer         String?
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  createdAt        DateTime              @default(now())
+  referralLink     ReferralLink          @relation(fields: [referralLinkId], references: [id], onDelete: Cascade)
+  affiliate        AffiliateProfile      @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+
+  @@index([referralLinkId])
+  @@index([affiliateId])
+  @@index([createdAt])
+  @@map("affiliate_referral_clicks")
+}
+
+model WaitlistSubmission {
+  id                  String                @id @default(uuid())
+  fullName            String
+  email               String                @unique
+  phoneNumber         String?
+  monthlyRevenueRange String?
+  primaryPlatform     String?
+  referralCode        String?
+  affiliateId         String?
+  biggestRevenueLeak  String?
+  xHandle             String?
+  tiktokHandle        String?
+  instagramHandle     String?
+  status              String                @default("PENDING")
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  affiliate           AffiliateProfile?     @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+  referral            AffiliateReferral?
+
+  @@index([email])
+  @@index([referralCode])
+  @@index([affiliateId])
+  @@index([status])
+  @@map("waitlist_submissions")
+}
+
+ model AffiliateCampaign {
   id          String   @id @default(uuid())
   partnerId   String
   name        String
@@ -154,19 +222,20 @@ model AffiliateCampaign {
 }
 
 model AffiliateReferral {
-  id            String         @id @default(uuid())
-  partnerId     String
-  customerEmail String         // Masked for privacy
-  customerId    String?        // If customer creates account
-  status        ReferralStatus @default(WAITLIST_JOINED)
-  planName      String         @default("None")
-  monthlyValue  Decimal        @default(0) @db.Decimal(10, 2)
-  lifetimeValue Decimal        @default(0) @db.Decimal(10, 2)
-  campaignTag   String?
-  lastActiveAt  DateTime       @default(now())
-  convertedAt   DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+id            String         @id @default(uuid())
+   partnerId     String
+   customerEmail String         // Masked for privacy
+   customerId    String?        // If customer creates account
+   status        ReferralStatus @default(WAITLIST_JOINED)
+   planName      String         @default("None")
+   monthlyValue  Decimal        @default(0) @db.Decimal(10, 2)
+   lifetimeValue Decimal        @default(0) @db.Decimal(10, 2)
+   campaignTag   String?
+   ipAddress     String?        // For tracking referral source
+   lastActiveAt  DateTime       @default(now())
+   convertedAt   DateTime?
+   createdAt     DateTime       @default(now())
+   updatedAt     DateTime       @updatedAt
   partner       AffiliateProfile @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   earnings      AffiliateEarning[]
 
@@ -175,6 +244,8 @@ model AffiliateReferral {
   @@index([customerEmail])
   @@map("affiliate_referrals")
 }
+
+
 
 model AffiliateEarning {
   id          String        @id @default(uuid())

@@ -526,13 +526,13 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               </p>
               <div>
                 <h5 className="text-sm font-semibold text-white">Alistair Voss</h5>
-                <span className="text-xs text-zinc-500">Chief Executive Architect, Luminor Terminal</span>
+                <span className="text-xs text-zinc-500">Founder & CEO , Luminor Terminal</span>
               </div>
               {/* Fake Social Profiles */}
               <div className="flex gap-4 text-xs font-mono text-zinc-400 pt-2">
-                <span className="cursor-pointer hover:text-white">@alistair_voss_lt</span>
+                <span className="cursor-pointer hover:text-white">Splendor Benjamin</span>
                 <span className="text-zinc-700">|</span>
-                <span className="cursor-pointer hover:text-white">linkedin/in/alistairvoss</span>
+                <span className="cursor-pointer hover:text-white">x.com/@SplendorBen</span>
               </div>
             </div>
           </div>

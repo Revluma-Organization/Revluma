@@ -127,6 +127,16 @@ const { createTrackingPixelRouter } = require('./src/routes/tracking');
 app.use('/api/tracking', createTrackingPixelRouter(prisma));
 
 // ============================================================
+// Public API routes (no authentication required)
+// ============================================================
+
+// Partner referral redirect (public) - /partner/username-uniqueid
+app.get('/partner/:code', require('./src/routes/v1/affiliate-tracking'));
+
+// Waitlist API (public)
+app.use('/api/waitlist', require('./src/routes/v1/waitlist'));
+
+// ============================================================
 // Protected API routes — all use the unified session authenticate
 // ============================================================
 
@@ -137,8 +147,18 @@ app.use('/api/v1/customers',     authenticate, require('./src/routes/v1/customer
 app.use('/api/v1/user',          authenticate, require('./src/routes/v1/user'));
 app.use('/api/v1/notifications', authenticate, require('./src/routes/v1/notifications'));
 
-// Affiliate routes (role check enforced inside the router)
+// Affiliate routes (authenticated)
 app.use('/api/affiliate', authenticate, require('./src/routes/v1/affiliate'));
+
+// Affiliate portal SPA fallback
+app.get('/affiliate', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'Frontend', 'Affiliate', 'index.html'));
+});
+
+// Waitlist page (served as static HTML for public waitlist form)
+app.get('/waitlist', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'Frontend', 'Affiliate', 'index.html'));
+});
 
 // Admin endpoints
 app.post('/api/admin/ingest', authenticate, async (req, res) => {

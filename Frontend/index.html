@@ -885,14 +885,58 @@
                         Get Started Free
                     </div>
                 </a>
-                <div class="glass w-12 h-12 rounded-full flex items-center justify-center hover:scale-[1.02] transition-all duration-300 cursor-pointer"
-                    onclick="window.location.href='./auth/onboarding.html'">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M7 7h10v10">
-                        </path>
-                    </svg>
-                </div>
-            </div>
+<a href="#" @click="waitlistModal = true" x-data="{waitlistModal: false}" x-show="waitlistModal = false" style="display:none;"></a>
+                 <div x-data="{waitlistModal: false}" x-cloak>
+                     <button @click="waitlistModal = true"
+                         class="glass-btn text-sm font-bold uppercase tracking-wide text-white hover:scale-[1.02] transition-all duration-300">
+                         Join Waitlist
+                     </button>
+                     
+                     <div x-show="waitlistModal" x-transition.opacity class="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 backdrop-blur-sm">
+                         <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 max-w-md w-full relative space-y-6 shadow-2xl">
+                             <div class="flex justify-between items-center pb-3 border-b border-zinc-850">
+                                 <span class="font-display font-semibold text-zinc-100">Join the Waitlist</span>
+                                 <button @click="waitlistModal = false" class="text-zinc-500 hover:text-white">
+                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                     </svg>
+                                 </button>
+                             </div>
+                             <form id="waitlist-form" class="space-y-4">
+                                 <div>
+                                     <input type="text" name="fullName" placeholder="Full Name" required
+                                         class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500/50" />
+                                 </div>
+                                 <div>
+                                     <input type="email" name="email" placeholder="Email Address" required
+                                         class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500/50" />
+                                 </div>
+                                 <div>
+                                     <select name="primaryPlatform" required
+                                         class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-orange-500/50 appearance-none">
+                                         <option value="" class="bg-zinc-900">Select Platform</option>
+                                         <option value="Shopify" class="bg-zinc-900">Shopify</option>
+                                         <option value="WooCommerce" class="bg-zinc-900">WooCommerce</option>
+                                         <option value="BigCommerce" class="bg-zinc-900">BigCommerce</option>
+                                         <option value="Custom Store" class="bg-zinc-900">Custom Store</option>
+                                     </select>
+                                 </div>
+                                 <button type="submit"
+                                     class="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-all">
+                                     Join the Waitlist
+                                 </button>
+                             </form>
+                         </div>
+                     </div>
+                 </div>
+                 <div class="glass w-12 h-12 rounded-full flex items-center justify-center hover:scale-[1.02] transition-all duration-300 cursor-pointer"
+                     onclick="window.location.href='./auth/onboarding.html'">
+                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17L17 7M7 7h10v10">
+                         </path>
+                     </svg>
+                 </div>
+             </div>
         </div>
         <!-- Micro trust line -->
         <p class="mt-5 text-[11px] text-[#555] tracking-wide">No credit card required &nbsp;·&nbsp; Setup in 4 minutes

@@ -30,6 +30,80 @@ function requireRole(roles) {
 const affiliateOrAdmin = requireRole(['affiliate', 'admin']);
 const adminOnly        = requireRole(['admin']);
 
+// GET /api/affiliate/dashboard-summary
+router.get('/dashboard-summary', affiliateOrAdmin, async (req, res) => {
+  try {
+    const profile = await prisma.affiliateProfile.findUnique({ where: { userId: req.user.id } });
+    if (!profile) return res.status(404).json({ error: 'Affiliate profile not found' });
+
+    const [referrals, earnings, clicksResult] = await Promise.all([
+      prisma.affiliateReferral.findMany({ where: { partnerId: profile.id } }),
+      prisma.affiliateEarning.findMany({ where: { partnerId: profile.id } }),
+      prisma.referralClick.count({ where: { affiliateId: profile.id } })
+    ]);
+
+    const activeReferrals = referrals.filter(r => r.status === 'ACTIVE_SUBSCRIBER').length;
+    const trialReferrals = referrals.filter(r => r.status === 'TRIAL_STARTED').length;
+    const waitlistReferrals = referrals.filter(r => r.status === 'WAITLIST_JOINED').length;
+    const grossLtv = referrals.reduce((acc, r) => Number(acc) + Number(r.lifetimeValue || 0), 0);
+    const monthlyCommission = referrals
+      .filter(r => r.status === 'ACTIVE_SUBSCRIBER')
+      .reduce((acc, r) => Number(acc) + Number(r.monthlyValue || 0), 0) * Number(profile.commissionRate);
+    const pendingCommission = referrals
+      .filter(r => r.status === 'TRIAL_STARTED')
+      .reduce((acc, r) => Number(acc) + Number(r.monthlyValue || 0), 0) * Number(profile.commissionRate);
+
+    res.json({
+      totalClicks: clicksResult,
+      activeReferrals,
+      trialReferrals,
+      waitlistReferrals,
+      grossLtvRevenue: grossLtv,
+      monthlyCommissionEarnings: monthlyCommission,
+      pendingCommissionsBalance: pendingCommission,
+      totalEarned: Number(profile.totalEarned || 0),
+      tier: profile.tier,
+      commissionRate: Number(profile.commissionRate || 0.20)
+    });
+  } catch (err) {
+    logger.error('Dashboard summary failed', { error: err.message, userId: req.user.id });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/affiliate/invite - Invite a candidate to bypass vetting queue
+router.post('/invite', affiliateOrAdmin, async (req, res) => {
+  const { email, campaignTag } = req.body;
+
+  if (!email || !email.includes('@')) {
+    return res.status(400).json({ error: 'Valid email is required' });
+  }
+
+  try {
+    const profile = await prisma.affiliateProfile.findUnique({ where: { userId: req.user.id } });
+    if (!profile) return res.status(404).json({ error: 'Affiliate profile not found' });
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const maskedEmail = normalizedEmail.substring(0, 3) + '***@' + normalizedEmail.split('@')[1];
+
+    const referral = await prisma.affiliateReferral.create({
+      data: {
+        partnerId: profile.id,
+        customerEmail: maskedEmail,
+        status: 'PENDING',
+        campaignTag: campaignTag || 'manual_invite',
+        ipAddress: req.ip
+      }
+    });
+
+    logger.info('Manual referral invite created', { email: maskedEmail, affiliateId: profile.id });
+    res.status(201).json({ referral });
+  } catch (err) {
+    logger.error('Invite referral failed', { error: err.message, userId: req.user.id });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ============================================================
 // Affiliate Profile
 // ============================================================
