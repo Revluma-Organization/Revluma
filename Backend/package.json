@@ -11,7 +11,7 @@
     "postinstall": "npx prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy",
+    "db:deploy": "node scripts/prismaDeploy.js",
     "db:reset": "prisma migrate reset",
     "db:studio": "prisma studio"
   },

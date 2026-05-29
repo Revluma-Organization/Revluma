@@ -368,4 +368,8 @@ class EmailService {
 }
 
 // Export singleton
+<<<<<<< HEAD
 module.exports = new EmailService();
+=======
+module.exports = new EmailService();
+>>>>>>> 771ee70 (007015d - Production implementation: affiliate system, email service, centralized config)

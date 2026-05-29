@@ -176,4 +176,8 @@ module.exports = {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, '');
     return `${baseUrl}${path}`;
   },
+<<<<<<< HEAD
 };
+=======
+};
+>>>>>>> 771ee70 (007015d - Production implementation: affiliate system, email service, centralized config)

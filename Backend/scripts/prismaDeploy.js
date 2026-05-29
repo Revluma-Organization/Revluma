@@ -1,6 +1,31 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
+
+const rootDir = path.join(__dirname, '..');
+const envFile = path.join(rootDir, '.env');
+const envExampleFile = path.join(rootDir, '.env.example');
+
+function loadEnvironment() {
+  let loaded = dotenv.config({ path: envFile });
+
+  if (loaded.error) {
+    console.warn('⚠️  .env not found; falling back to .env.example for local migration environment.');
+    loaded = dotenv.config({ path: envExampleFile });
+  }
+
+  if (loaded.error) {
+    throw new Error('Environment file not found. Create a Backend/.env file or add DATABASE_URL and other vars to your environment.');
+  }
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not defined after loading environment configuration.');
+  }
+}
+
+loadEnvironment();
+
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient({
