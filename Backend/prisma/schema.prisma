@@ -72,6 +72,7 @@ enum AffiliateTier {
 
 enum AffiliateStatus {
   PENDING
+  UNDER_REVIEW
   APPROVED
   REJECTED
   SUSPENDED

@@ -36,12 +36,12 @@ END $$;
 -- 2.1 REFERRAL TRACKING (Enriched Referral Attribution)
 CREATE TABLE IF NOT EXISTS public.referral_attribution (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    partner_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-    referred_user_id TEXT UNIQUE NOT NULL, -- Permanent, unique customer ref/email identifier
+    partner_id TEXT REFERENCES public.affiliate_profiles(id) ON DELETE CASCADE,
+    referred_user_id TEXT UNIQUE NOT NULL,
     email_masked TEXT NOT NULL,
     affiliate_code TEXT NOT NULL,
     campaign_tag TEXT,
-    attribution_window_ends TIMESTAMP WITH TIME ZONE NOT NULL, -- e.g. 90 Days Attribution Window
+    attribution_window_ends TIMESTAMP WITH TIME ZONE NOT NULL,
     first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     converted_at TIMESTAMP WITH TIME ZONE,
     is_active BOOLEAN DEFAULT TRUE,
@@ -51,12 +51,12 @@ CREATE TABLE IF NOT EXISTS public.referral_attribution (
 -- 2.2 LEMON SQUEEZY SUBSCRIPTIONS (Referred Subscriptions Ledger)
 CREATE TABLE IF NOT EXISTS public.customer_subscriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    lemon_squeezy_id TEXT UNIQUE NOT NULL, -- Lemon Squeezy ID: e.g. "sub_123456"
+    lemon_squeezy_id TEXT UNIQUE NOT NULL,
     referral_id UUID REFERENCES public.referral_attribution(id) ON DELETE SET NULL,
-    partner_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL, -- Cache referring partner directly
+    partner_id TEXT REFERENCES public.affiliate_profiles(id) ON DELETE SET NULL,
     customer_email TEXT NOT NULL,
-    plan_name TEXT NOT NULL, -- 'Starter Plan' | 'Growth Plan'
-    status TEXT NOT NULL, -- 'active' | 'trial' | 'past_due' | 'unpaid' | 'cancelled' | 'paused'
+    plan_name TEXT NOT NULL,
+    status TEXT NOT NULL,
     billing_interval billing_interval NOT NULL DEFAULT 'monthly',
     amount_paid_cents INTEGER NOT NULL DEFAULT 0,
     subscription_created_at TIMESTAMP WITH TIME ZONE NOT NULL,
@@ -69,15 +69,15 @@ CREATE TABLE IF NOT EXISTS public.customer_subscriptions (
 -- 2.3 RECURRING FIRST 12 MONTHS COMMISSIONS ENGINE RECORDS
 CREATE TABLE IF NOT EXISTS public.partner_commissions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    partner_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    partner_id TEXT REFERENCES public.affiliate_profiles(id) ON DELETE CASCADE,
     subscription_id UUID REFERENCES public.customer_subscriptions(id) ON DELETE SET NULL,
     referred_user_id TEXT NOT NULL,
-    transaction_id TEXT UNIQUE, -- Unique Lemon Squeezy event/pay identifier
-    base_billing_amount_cents INTEGER NOT NULL, -- In USD cents
-    commission_rate NUMERIC(4,3) NOT NULL, -- e.g. 0.200 (20%) | 0.350 (35%)
-    commission_earned_cents INTEGER NOT NULL, -- In USD cents
+    transaction_id TEXT UNIQUE,
+    base_billing_amount_cents INTEGER NOT NULL,
+    commission_rate NUMERIC(4,3) NOT NULL,
+    commission_earned_cents INTEGER NOT NULL,
     is_recurring BOOLEAN DEFAULT TRUE,
-    delay_payout_until TIMESTAMP WITH TIME ZONE NOT NULL, -- 30-Day Escrow Buffer (Fraud defense)
+    delay_payout_until TIMESTAMP WITH TIME ZONE NOT NULL,
     payout_status payout_status DEFAULT 'pending'::payout_status,
     ref_flagged BOOLEAN DEFAULT FALSE,
     flagged_reasons TEXT[],
@@ -87,23 +87,23 @@ CREATE TABLE IF NOT EXISTS public.partner_commissions (
 -- 2.4 PAYOUT SETTLEMENT LEDGER
 CREATE TABLE IF NOT EXISTS public.payout_settlements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    partner_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-    amount_cents INTEGER NOT NULL, -- Total amount cleared
+    partner_id TEXT REFERENCES public.affiliate_profiles(id) ON DELETE CASCADE,
+    amount_cents INTEGER NOT NULL,
     payout_gateway payout_method DEFAULT 'paypal'::payout_method,
     payout_recipient_account TEXT NOT NULL,
     status payout_status DEFAULT 'pending'::payout_status,
     cleared_at TIMESTAMP WITH TIME ZONE,
-    payout_reference TEXT, -- Transaction/Bank transaction tracking ID
-    admin_reviewer_id UUID REFERENCES public.profiles(id),
+    payout_reference TEXT,
+    admin_reviewer_id TEXT REFERENCES public.users(id),
     rejection_details TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2.5 WEBHOOK AUDIT SYSTEM (Lemon Squeezy Webhook Events Logging)
+-- 2.5 WEBHOOK AUDIT SYSTEM
 CREATE TABLE IF NOT EXISTS public.lemon_squeezy_webhooks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    event_id TEXT UNIQUE, -- Lemon Squeezy unique event identifier
-    event_name TEXT NOT NULL, -- e.g. 'subscription_created', 'subscription_payment_success'
+    event_id TEXT UNIQUE,
+    event_name TEXT NOT NULL,
     payload JSONB NOT NULL,
     status webhook_status DEFAULT 'received'::webhook_status,
     error_log TEXT,
@@ -114,9 +114,9 @@ CREATE TABLE IF NOT EXISTS public.lemon_squeezy_webhooks (
 -- 2.6 ANTI-FRAUD AUDIT TELEMETRY LOGS
 CREATE TABLE IF NOT EXISTS public.anti_fraud_audits (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    partner_id UUID REFERENCES public.profiles(id),
+    partner_id TEXT REFERENCES public.affiliate_profiles(id),
     referral_id UUID REFERENCES public.referral_attribution(id),
-    fraud_risk_score INTEGER NOT NULL DEFAULT 0, -- 0 to 100 Risk Index
+    fraud_risk_score INTEGER NOT NULL DEFAULT 0,
     is_flagged BOOLEAN DEFAULT FALSE,
     reason TEXT NOT NULL,
     ip_geolocation_placeholder TEXT,
@@ -152,55 +152,54 @@ ALTER TABLE public.anti_fraud_audits ENABLE ROW LEVEL SECURITY;
 
 -- 4.1 referral_attribution policies
 CREATE POLICY "Users can select own referrals" ON public.referral_attribution
-    FOR SELECT USING (auth.uid() = partner_id);
+    FOR SELECT USING (auth.uid()::TEXT = partner_id);
 
 CREATE POLICY "Admin full rights referral_attribution" ON public.referral_attribution
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+        EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid()::TEXT AND role = 'admin')
     );
 
 -- 4.2 customer_subscriptions policies
 CREATE POLICY "Users can select referred subscriptions" ON public.customer_subscriptions
-    FOR SELECT USING (auth.uid() = partner_id);
+    FOR SELECT USING (auth.uid()::TEXT = partner_id);
 
 CREATE POLICY "Admin full rights customer_subscriptions" ON public.customer_subscriptions
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+        EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid()::TEXT AND role = 'admin')
     );
 
 -- 4.3 partner_commissions policies
 CREATE POLICY "Users can view own ledger balances" ON public.partner_commissions
-    FOR SELECT USING (auth.uid() = partner_id);
+    FOR SELECT USING (auth.uid()::TEXT = partner_id);
 
 CREATE POLICY "Admin full rights partner_commissions" ON public.partner_commissions
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+        EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid()::TEXT AND role = 'admin')
     );
 
 -- 4.4 payout_settlements policies
 CREATE POLICY "Users can verify own payouts history" ON public.payout_settlements
-    FOR SELECT USING (auth.uid() = partner_id);
+    FOR SELECT USING (auth.uid()::TEXT = partner_id);
 
 CREATE POLICY "Users can insert payout request" ON public.payout_settlements
-    FOR INSERT WITH CHECK (auth.uid() = partner_id);
+    FOR INSERT WITH CHECK (auth.uid()::TEXT = partner_id);
 
 CREATE POLICY "Admin full rights payout_settlements" ON public.payout_settlements
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+        EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid()::TEXT AND role = 'admin')
     );
 
--- 4.5 lemon_squeezy_webhooks policies (Protected system-only table)
+-- 4.5 lemon_squeezy_webhooks policies
 CREATE POLICY "Admin inspect webhooks history" ON public.lemon_squeezy_webhooks
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+        EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid()::TEXT AND role = 'admin')
     );
 
 -- 4.6 anti_fraud_audits policies
 CREATE POLICY "Admin inspect fraud incidents" ON public.anti_fraud_audits
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+        EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid()::TEXT AND role = 'admin')
     );
-
 
 -- ====================================================================
 -- 5. ENGINE TRIGGERS / BUSINESS RULE AUTOMATION
@@ -211,34 +210,31 @@ CREATE OR REPLACE FUNCTION public.recalculate_partner_growth_tier()
 RETURNS TRIGGER AS $$
 DECLARE
     total_accrued_recurring_revenue INTEGER;
-    current_partner_id UUID;
-    target_tier public.partner_tier;
+    current_partner_id TEXT;
+    target_tier TEXT;
     target_rate NUMERIC(4,2);
 BEGIN
     current_partner_id := NEW.partner_id;
 
-    -- Aggregate active subscription volumes inside system database
     SELECT COALESCE(SUM(amount_paid_cents), 0) INTO total_accrued_recurring_revenue
     FROM public.customer_subscriptions
     WHERE partner_id = current_partner_id AND status = 'active';
 
-    -- Progression thresholds: Tier 1 ($0), Tier 2 ($1k/mo), Tier 3 ($5k/mo), Tier 4 ($15k/mo)
     IF total_accrued_recurring_revenue >= 1500000 THEN
-        target_tier := 'Founding Ambassador'::public.partner_tier;
+        target_tier := 'FOUNDING_AMBASSADOR';
         target_rate := 0.35;
     ELSIF total_accrued_recurring_revenue >= 500000 THEN
-        target_tier := 'Elite'::public.partner_tier;
+        target_tier := 'ELITE';
         target_rate := 0.30;
     ELSIF total_accrued_recurring_revenue >= 100000 THEN
-        target_tier := 'Growth'::public.partner_tier;
+        target_tier := 'GROWTH';
         target_rate := 0.25;
     ELSE
-        target_tier := 'Affiliate'::public.partner_tier;
+        target_tier := 'AFFILIATE';
         target_rate := 0.20;
     END IF;
 
-    -- Update partner profile values dynamically
-    UPDATE public.profiles
+    UPDATE public.affiliate_profiles
     SET tier = target_tier,
         commission_rate = target_rate,
         updated_at = NOW()
@@ -248,7 +244,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger binding to subscription updates
 CREATE OR REPLACE TRIGGER on_customer_subscription_changed
     AFTER INSERT OR UPDATE ON public.customer_subscriptions
     FOR EACH ROW EXECUTE PROCEDURE public.recalculate_partner_growth_tier();

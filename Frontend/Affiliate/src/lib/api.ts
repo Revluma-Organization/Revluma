@@ -15,13 +15,15 @@ const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : `${window.location.ori
 async function request<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
-  body?: unknown
+  body?: unknown,
+  affiliatePortal = false
 ): Promise<T> {
   const csrfToken = sessionStorage.getItem('csrf_token') ?? '';
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {})
+    ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+    ...(affiliatePortal ? { 'X-Affiliate-Portal': 'true' } : {})
   };
 
   const response = await fetch(`${API_BASE}${path}`, {
@@ -59,23 +61,55 @@ export async function login(email: string, password: string) {
   return data;
 }
 
-export async function signup(payload: {
-  email: string;
-  password: string;
-  firstName: string;
-  lastName: string;
+export async function affiliateRegister(payload: {
+  email: string; password: string;
+  firstName: string; lastName: string;
+  username: string; phoneNumber: string; country: string;
+  twitterHandle?: string; instagramHandle?: string;
+  linkedinProfile?: string; youtubeChannel?: string;
+  tiktokHandle?: string; facebookProfile?: string;
+  website?: string; newsletterUrl?: string;
+  communityUrl?: string; otherPlatform1?: string;
+  otherPlatform2?: string;
+  audienceNiche: string; audienceSize: string;
+  affiliateExperience: string; whyJoin: string;
+  referralSource?: string;
 }) {
-  const data = await request<{
-    user: { id: string; email: string; full_name: string; role: string };
-    csrfToken?: string;
-    pendingRegistrationId?: string;
-  }>('POST', '/session/signup', payload);
+  return request<{
+    message: string;
+    pendingRegistrationId: string;
+    email: string;
+    expiresAt: string;
+  }>('POST', '/affiliate-auth/register', payload, true);
+}
 
-  if (data.csrfToken) {
-    sessionStorage.setItem('csrf_token', data.csrfToken);
-  }
+export async function affiliateVerifyEmail(payload: {
+  pendingRegistrationId: string;
+  code: string;
+}) {
+  return request<{ message: string; verified: boolean }>(
+    'POST', '/affiliate-auth/verify-email', payload, true
+  );
+}
 
-  return data;
+export async function affiliateValidateToken(payload: {
+  pendingRegistrationId: string;
+  token: string;
+}) {
+  return request<{ message: string; valid: boolean; tokenId: string }>(
+    'POST', '/affiliate-auth/validate-access-token', payload, true
+  );
+}
+
+export async function affiliateCompleteRegistration(payload: {
+  pendingRegistrationId: string;
+}) {
+  return request<{
+    message: string;
+    userId: string;
+    affiliateProfileId: string;
+    status: string;
+  }>('POST', '/affiliate-auth/complete-registration', payload, true);
 }
 
 export async function logout() {

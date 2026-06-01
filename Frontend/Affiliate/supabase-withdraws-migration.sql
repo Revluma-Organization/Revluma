@@ -25,7 +25,7 @@ END $$;
 -- 2. WITHDRAWAL REQUESTS TRANSACTION LEDGER
 CREATE TABLE IF NOT EXISTS public.withdrawal_requests (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    partner_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    partner_id TEXT REFERENCES public.affiliate_profiles(id) ON DELETE CASCADE,
     amount_usd_cents INTEGER NOT NULL CHECK (amount_usd_cents >= 5000), -- enforced $50.00 minimum
     payout_method TEXT NOT NULL, -- 'paypal' | 'bank_transfer'
     payout_email TEXT, -- For PayPal
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS public.withdrawal_requests (
     branch_name TEXT,
     
     additional_notes TEXT,
-    ip_address_logged TEXT_IP_STUB, -- Security telemetry logging
+    ip_address_logged TEXT,
     status withdrawal_status DEFAULT 'Pending Review'::withdrawal_status,
     admin_notes TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -67,7 +67,7 @@ ON CONFLICT (key) DO UPDATE SET value = '5000'::jsonb;
 CREATE TABLE IF NOT EXISTS public.withdrawal_audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     request_id UUID REFERENCES public.withdrawal_requests(id) ON DELETE CASCADE,
-    actor_id UUID REFERENCES public.profiles(id),
+    actor_id TEXT REFERENCES public.users(id),
     action_taken TEXT NOT NULL, -- e.g. "STATUS_TRANSITION_PAID", "FRAUD_SUSPICION"
     previous_status TEXT,
     new_status TEXT,
@@ -87,20 +87,20 @@ ALTER TABLE public.withdrawal_audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- 6.1 Only self-partners can query or insert their requests
 CREATE POLICY "Users can insert own manual withdrawal" ON public.withdrawal_requests
-    FOR INSERT WITH CHECK (auth.uid() = partner_id);
+    FOR INSERT WITH CHECK (auth.uid()::TEXT = partner_id);
 
 CREATE POLICY "Users can view own withdrawal history" ON public.withdrawal_requests
-    FOR SELECT USING (auth.uid() = partner_id);
+    FOR SELECT USING (auth.uid()::TEXT = partner_id);
 
 CREATE POLICY "Admin full rights manual withdrawal" ON public.withdrawal_requests
     FOR ALL USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+        EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid()::TEXT AND role = 'admin')
     );
 
 -- 6.2 Audit Logs visibility policies
 CREATE POLICY "Admin inspect manual withdrawal audit logs" ON public.withdrawal_audit_logs
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+        EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid()::TEXT AND role = 'admin')
     );
 
 COMMIT;

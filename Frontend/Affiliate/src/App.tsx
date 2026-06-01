@@ -90,18 +90,20 @@ function routePath(view: AppView, authSubView: AuthSubView = 'login') {
 
 function resolveAffiliateRoute(pathname: string, user: PartnerProfile | null): RouteState {
   const normalized = pathname.replace(/\/+$|^\/affiliate/, '') || '/';
+  // If user exists but is not approved, always redirect to auth (pending screen)
+  if (user && user.status && user.status !== 'approved') {
+    return { view: 'auth', authSubView: 'login' };
+  }
   switch (normalized.toLowerCase()) {
-    case '/':
-      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'landing' };
-    case '/login':
-    case '/signin':
+    case '/': return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'landing' };
+    case '/login': case '/signin':
       return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'auth', authSubView: 'login' };
-    case '/signup':
-    case '/register':
+    case '/signup': case '/register':
       return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'auth', authSubView: 'register' };
-    case '/dashboard':
-    case '/settings':
-      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'auth', authSubView: 'login' };
+    case '/dashboard': case '/settings':
+      // Hard guard: non-approved users cannot reach /dashboard
+      if (!user || user.status !== 'approved') return { view: 'auth', authSubView: 'login' };
+      return { view: user.role === 'admin' ? 'admin' : 'dashboard' };
     case '/admin':
       return user?.role === 'admin' ? { view: 'admin' } : { view: 'auth', authSubView: 'login' };
     default:
@@ -229,12 +231,15 @@ export default function App() {
   // Auth callbacks
   // ============================================================
 
-  const handleAuthSuccess = useCallback(async (profile: PartnerProfile) => {
-    setCurrentUser(profile);
-    await loadUserData(profile).catch(() => { });
-    setView(profile.role === 'admin' ? 'admin' : 'dashboard');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+ const handleAuthSuccess = useCallback(async (profile: PartnerProfile) => {
+  setCurrentUser(profile);
+  if (profile.status !== 'approved') {
+    // Non-approved: stay on auth (pendingApproval mode handles the display)
+    return;
+  }
+  await loadUserData(profile).catch(() => {});
+  setView(profile.role === 'admin' ? 'admin' : 'dashboard');
+}, []);
 
   const handleLogout = useCallback(async () => {
     try { await api.logout(); } catch { /* best-effort */ }
@@ -363,6 +368,17 @@ export default function App() {
       <AuthInterface
         onAuthSuccess={handleAuthSuccess}
         onBackToLanding={() => setView('landing')}
+      />
+    );
+  }
+
+  // Before rendering Dashboard/Admin, enforce status guard
+  if (currentUser && currentUser.status !== 'approved') {
+    return (
+      <AuthInterface
+        onAuthSuccess={handleAuthSuccess}
+        onBackToLanding={() => setView('landing')}
+        initialMode="pendingApproval"
       />
     );
   }

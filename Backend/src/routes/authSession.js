@@ -90,6 +90,13 @@ router.get('/health', async (req, res) => {
 // SIGNUP — creates account directly with emailVerified=false and sends verification code
 // Use /api/auth/register for the deferred-verification flow
 router.post('/signup', signupLimiter, async (req, res) => {
+  // Block affiliate registrations from using this route
+  // Affiliates must use /api/affiliate-auth/register
+  if (req.headers['x-affiliate-portal'] === 'true') {
+    return sendErrorResponse(res, 400, 
+      'Affiliate registrations must use the RAPP registration endpoint.',
+      'USE_AFFILIATE_AUTH');
+  }
   const { email, password, firstName, lastName } = req.body;
   const normalizedEmail = normalizeEmail(email);
 

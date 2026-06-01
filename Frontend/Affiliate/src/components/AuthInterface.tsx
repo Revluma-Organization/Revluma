@@ -24,12 +24,14 @@ type AuthMode =
   | 'register'
   | 'forgot'
   | 'resetConfirm'
-  | 'verifyEmail'
+  | 'verifyEmail'       // Step: enter 6-digit OTP
+  | 'accessToken'       // NEW: enter RAPP access token
   | 'pendingApproval';
 
 interface AuthInterfaceProps {
   onAuthSuccess: (profile: PartnerProfile) => void;
   onBackToLanding: () => void;
+  initialMode?: AuthMode;
 }
 
 // ============================================================
@@ -85,8 +87,8 @@ function buildPartnerProfile(serverUser: {
 // Component
 // ============================================================
 
-export default function AuthInterface({ onAuthSuccess, onBackToLanding }: AuthInterfaceProps) {
-  const [authMode, setAuthMode] = useState<AuthMode>('login');
+export default function AuthInterface({ onAuthSuccess, onBackToLanding, initialMode }: AuthInterfaceProps) {
+  const [authMode, setAuthMode] = useState<AuthMode>(initialMode ?? 'login');
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState('');
@@ -114,6 +116,13 @@ export default function AuthInterface({ onAuthSuccess, onBackToLanding }: AuthIn
   const [whyJoin, setWhyJoin] = useState('');
   const [termsAgreement, setTermsAgreement] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
+  const [pendingRegistrationId, setPendingRegistrationId] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [youtubeChannel, setYoutubeChannel] = useState('');
+  const [tiktokHandle, setTiktokHandle] = useState('');
+  const [facebookProfile, setFacebookProfile] = useState('');
+  const [newsletterUrl, setNewsletterUrl] = useState('');
+  const [communityUrl, setCommunityUrl] = useState('');
 
   // ---- Login fields ----
   const [loginEmail, setLoginEmail] = useState('');
@@ -227,88 +236,69 @@ export default function AuthInterface({ onAuthSuccess, onBackToLanding }: AuthIn
   // Register
   // ============================================================
 
-  const handleSignUpCompletion = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorText('');
+ const handleSignUpCompletion = async (e: React.FormEvent) => {
+  e.preventDefault();
+  const err = validateStep3();
+  if (err) { setErrorText(err); return; }
 
-    const err = validateStep3();
-    if (err) { setErrorText(err); return; }
+  // Validate min 2 distribution channels on frontend
+  const channels = [twitterHandle, instagramHandle, linkedInProfile,
+    youtubeChannel, tiktokHandle, facebookProfile, website,
+    newsletterUrl, communityUrl].filter(c => c.trim().length > 0);
+  if (channels.length < 2) {
+    setErrorText('Please provide at least 2 distribution channels.');
+    return;
+  }
 
-    setIsLoading(true);
-
-    try {
-      const nameParts = fullName.trim().split(/\s+/);
-      const firstName = nameParts[0] ?? fullName;
-      const lastName = nameParts.slice(1).join(' ') || firstName;
-
-      await api.signup({
-        email: email.toLowerCase().trim(),
-        password,
-        firstName,
-        lastName
-      });
-
-      // After signup, partner-specific onboarding data is submitted as a profile update
-      // (done in the portal after email verification — not during auth)
-      setPendingEmail(email.toLowerCase().trim());
-      setSuccessText(`Verification email sent to ${email}. Please enter the 6-digit code below.`);
-      setAuthMode('verifyEmail');
-      clearForm();
-    } catch (err: unknown) {
-      const message = (err as { body?: { error?: string } })?.body?.error
-        ?? (err instanceof Error ? err.message : 'Registration failed. Please try again.');
-      setErrorText(message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  setIsLoading(true);
+  try {
+    const nameParts = fullName.trim().split(/\s+/);
+    const result = await api.affiliateRegister({
+      email: email.toLowerCase().trim(),
+      password,
+      firstName: nameParts[0],
+      lastName: nameParts.slice(1).join(' ') || nameParts[0],
+      username: username.toLowerCase().trim(),
+      phoneNumber, country,
+      twitterHandle: twitterHandle || undefined,
+      instagramHandle: instagramHandle || undefined,
+      linkedinProfile: linkedInProfile || undefined,
+      youtubeChannel: youtubeChannel || undefined,
+      tiktokHandle: tiktokHandle || undefined,
+      facebookProfile: facebookProfile || undefined,
+      website: website || undefined,
+      newsletterUrl: newsletterUrl || undefined,
+      communityUrl: communityUrl || undefined,
+      audienceNiche, audienceSize, affiliateExperience, whyJoin,
+    });
+    setPendingRegistrationId(result.pendingRegistrationId);
+    setPendingEmail(email.toLowerCase().trim());
+    setSuccessText(`Verification code sent to ${email}.`);
+    setAuthMode('verifyEmail');
+    clearForm();
+  } catch (err: unknown) {
+    setErrorText((err instanceof Error ? err.message : 'Registration failed.'));
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // ============================================================
   // Email verification
   // ============================================================
 
-  const handleVerifyEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorText('');
-
-    if (!verifyCode.trim()) {
-      setErrorText('Please enter the 6-digit code from your email.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    try {
-      await api.me(); // ensures we have a valid session before verifying
-
-      const RAW_BASE = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
-      const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : `${window.location.origin}/api`;
-
-      const csrfToken = sessionStorage.getItem('csrf_token') ?? '';
-      const res = await fetch(`${API_BASE}/session/verify-email`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {})
-        },
-        body: JSON.stringify({ code: verifyCode.trim() })
-      });
-
-      if (!res.ok) {
-        const body = await res.json() as { error?: string };
-        throw new Error(body.error ?? 'Verification failed');
-      }
-
-      setSuccessText('Email verified! Your application has been submitted for review. We\'ll notify you once approved.');
-      setPendingEmail('');
-      setAuthMode('pendingApproval');
-    } catch (err: unknown) {
-      setErrorText(err instanceof Error ? err.message : 'Verification failed. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+const handleVerifyEmail = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!verifyCode.trim()) { setErrorText('Enter the 6-digit code.'); return; }
+  setIsLoading(true);
+  try {
+    await api.affiliateVerifyEmail({ pendingRegistrationId, code: verifyCode.trim() });
+    setSuccessText('Email verified! Please enter your RAPP Access Token.');
+    setAuthMode('accessToken');
+  } catch (err: unknown) {
+    setErrorText(err instanceof Error ? err.message : 'Verification failed.');
+  } finally { setIsLoading(false); }
+};
 
   const handleResendVerificationCode = async () => {
     setErrorText('');
@@ -334,6 +324,27 @@ export default function AuthInterface({ onAuthSuccess, onBackToLanding }: AuthIn
     }
   };
 
+  const handleAccessToken = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!accessToken.trim()) { setErrorText('Access token is required.'); return; }
+  setIsLoading(true);
+  try {
+    await api.affiliateValidateToken({ pendingRegistrationId, token: accessToken.trim() });
+    // Token validated — complete registration
+    await api.affiliateCompleteRegistration({ pendingRegistrationId });
+    setSuccessText('Application submitted for review.');
+    setAuthMode('pendingApproval');
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Invalid token.';
+    // Map error codes to user-friendly messages
+    if (msg.includes('INVALID_ACCESS_TOKEN') || msg.includes('TOKEN_INACTIVE') ||
+        msg.includes('TOKEN_EXPIRED') || msg.includes('TOKEN_MAX_USES_EXCEEDED')) {
+      setErrorText('This access token is invalid, expired, or has already been used.');
+    } else {
+      setErrorText(msg);
+    }
+  } finally { setIsLoading(false); }
+};
   // ============================================================
   // Forgot / reset password
   // ============================================================
@@ -509,6 +520,55 @@ export default function AuthInterface({ onAuthSuccess, onBackToLanding }: AuthIn
             <button onClick={() => { setAuthMode('login'); setErrorText(''); setSuccessText(''); }} className="text-violet-400 hover:underline">
               Log in
             </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Access token screen
+  // ============================================================
+
+  if (authMode === 'accessToken') {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <div className="mx-auto w-14 h-14 rounded-full bg-violet-500/10 border border-violet-500/30 flex items-center justify-center">
+              <Shield className="w-7 h-7 text-violet-400" />
+            </div>
+            <h1 className="text-2xl font-bold text-zinc-100">RAPP Access Token</h1>
+            <p className="text-sm text-zinc-400">
+              Your application is being submitted for review. Please enter your
+              Revluma Affiliate Partnership Program access token to proceed.
+            </p>
+          </div>
+          <form onSubmit={handleAccessToken} className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 space-y-4">
+            {renderAlert(errorText, 'error')}
+            {renderAlert(successText, 'success')}
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500 uppercase tracking-widest">Access Token</label>
+              <input
+                className={inputClass}
+                placeholder="xxxxxxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx"
+                value={accessToken}
+                onChange={e => setAccessToken(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <p className="text-xs text-zinc-600">
+                Format: dklfnwe9-njS37DSD-SNKL23Y-SNWG3SWE4
+              </p>
+            </div>
+            <button type="submit" disabled={isLoading} className={btnPrimary}>
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+              {isLoading ? 'Validating…' : 'Submit Application'}
+            </button>
+          </form>
+          <p className="text-center text-xs text-zinc-500">
+            Don't have a token?{' '}
+            <a href="mailto:support@revluma.app" className="text-violet-400 hover:underline">Contact us</a>
           </p>
         </div>
       </div>
@@ -700,6 +760,13 @@ export default function AuthInterface({ onAuthSuccess, onBackToLanding }: AuthIn
                   <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                   <input className={`${inputClass} pl-10`} placeholder="Website URL (optional)" value={website} onChange={e => setWebsite(e.target.value)} />
                 </div>
+                <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-3 py-2">
+                  At least 2 distribution channels are required.
+                </p>
+                <input className={inputClass} placeholder="YouTube channel URL (optional)" value={youtubeChannel} onChange={e => setYoutubeChannel(e.target.value)} />
+                <input className={inputClass} placeholder="TikTok handle (optional)" value={tiktokHandle} onChange={e => setTiktokHandle(e.target.value)} />
+                <input className={inputClass} placeholder="Newsletter URL (optional)" value={newsletterUrl} onChange={e => setNewsletterUrl(e.target.value)} />
+                <input className={inputClass} placeholder="Community URL (optional)" value={communityUrl} onChange={e => setCommunityUrl(e.target.value)} />
                 <div className="relative">
                   <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                   <select className={`${inputClass} pl-10`} value={audienceNiche} onChange={e => setAudienceNiche(e.target.value)}>
