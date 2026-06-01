@@ -132,10 +132,14 @@ app.use('/api/tracking', createTrackingPixelRouter(prisma));
 // Public API routes (no authentication required)
 // ============================================================
 
-// Partner referral redirect (public) - /partner/username-uniqueid
+// Public referral redirect route (serves main Revluma, not affiliate portal) - ISSUE #2
+// Format: /r/splendor-48us
+app.use('/r', require('./src/routes/v1/referral-redirect'));
+
+// Partner referral redirect (public) - /partner/username-uniqueid (backward compatibility)
 app.get('/partner/:code', require('./src/routes/v1/affiliate-tracking'));
 
-// Also support /affiliate/:code as a public friendly alias for referral links
+// Also support /affiliate/:code as a public friendly alias for referral links (backward compatibility)
 app.get('/affiliate/:code', require('./src/routes/v1/affiliate-tracking'));
 
 // Waitlist API (public)
@@ -155,7 +159,21 @@ app.use('/api/v1/notifications', authenticate, require('./src/routes/v1/notifica
 // Affiliate routes (authenticated)
 app.use('/api/affiliate', authenticate, require('./src/routes/v1/affiliate'));
 
-// Affiliate portal SPA fallback
+// ============================================================
+// SPA Fallback Routes (ISSUE #1 FIX)
+// ============================================================
+
+// Affiliate portal SPA fallback — serve index.html for all /affiliate/* routes
+// This prevents refresh redirects by serving the SPA shell for all nested routes
+app.use(/^\/affiliate\//, (req, res, next) => {
+  // Don't intercept API routes
+  if (req.path.startsWith('/affiliate/api/')) {
+    return next();
+  }
+  res.sendFile(path.join(__dirname, '..', 'Frontend', 'Affiliate', 'index.html'));
+});
+
+// Affiliate SPA base route
 app.get('/affiliate', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'Frontend', 'Affiliate', 'index.html'));
 });
