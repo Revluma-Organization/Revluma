@@ -89,6 +89,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               <a href="#about" className="hover:text-white transition-colors">About</a>
               <a href="#revluma" className="hover:text-white transition-colors">Revluma</a>
               <a href="#program" className="hover:text-white transition-colors">Program</a>
+              <a href="#partner-requirements" className="hover:text-white transition-colors">Requirements</a>
               <a href="#benefits" className="hover:text-white transition-colors">Benefits</a>
               <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
             </div>
@@ -141,7 +142,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           </h1>
 
           <p className="text-base sm:text-lg text-zinc-400 mb-10 leading-relaxed max-w-2xl mx-auto">
-            Welcome to the <strong>Revluma Affiliate Partnership Program (RAPP)</strong>.Help modern ecommerce brands recover lost revenue, automate retention workflows, and scale customer growth with AI-powered commerce intelligence. Earn recurring first 12 months commissions while introducing businesses to the future of ecommerce operations.
+            Welcome to the <strong>Revluma Affiliate Partnership Program (RAPP)</strong>. Help modern ecommerce brands recover lost revenue, automate retention workflows, and scale customer growth with AI-powered commerce intelligence. Earn recurring first 12 months commissions while introducing businesses to the future of ecommerce operations.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -348,9 +349,9 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                   </div>
                   <input
                     type="range"
-                    min="199"
-                    max="40"
-                    step="50"
+                    min="20"
+                    max="999"
+                    step="10"
                     value={avgTicketPrice}
                     onChange={(e) => setAvgTicketPrice(Number(e.target.value))}
                     className="w-full h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-zinc-200"
@@ -364,13 +365,117 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                   <span className="text-[10px] text-zinc-500 font-mono block uppercase">ESTIMATED ACTIVE REFERRALS</span>
                   <span className="text-2xl font-display font-medium text-white">{estimatedReferrals} active brands</span>
                 </div>
-                <div className="py-4 border-y border-zinc-900 bg-zinc-900/45 rounded-lg border border-zinc-850">
+                <div className="py-4 border-y border-zinc-900 bg-zinc-900/45 rounded-lg border-zinc-850">
                   <span className="text-[10px] text-zinc-400 font-mono block uppercase">MONTHLY RECURRING FIRST 12 MONTHS REVENUE (MRR)</span>
                   <span className="text-4xl font-display font-bold text-white">${estimatedMrr.toLocaleString()}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-zinc-500 font-mono block uppercase">ANNUAL REVENUE YIELD</span>
                   <span className="text-lg font-mono font-medium text-white">${estimatedAnnualPayout.toLocaleString()} / year</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* SECTION: PARTNER REQUIREMENTS & ONBOARDING */}
+        <section id="partner-requirements" className="py-20 border-t border-zinc-900">
+          <div className="text-center max-w-3xl mx-auto mb-16">
+            <span className="text-xs text-zinc-500 font-mono tracking-widest block uppercase mb-3">Program Standards</span>
+            <h2 className="text-3xl sm:text-4xl font-display font-semibold text-white">
+              Partner Requirements &amp; Onboarding
+            </h2>
+            <p className="text-sm text-zinc-400 mt-3 leading-relaxed max-w-2xl mx-auto">
+              To maintain the quality of the Revluma Affiliate Partnership Program (RAPP), all applicants go through a structured onboarding process.
+            </p>
+          </div>
+
+          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Card 1 */}
+            <div className="group p-6 bg-zinc-900/30 border border-zinc-800/60 rounded-2xl hover:border-zinc-700 hover:bg-zinc-900/50 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-8 h-8 bg-zinc-900 border border-zinc-700 rounded-lg flex items-center justify-center font-mono text-[10px] text-zinc-300 group-hover:border-zinc-600 transition-colors">01</div>
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-display font-semibold text-white">Account Review &amp; Vetting</h4>
+                  <p className="text-xs text-zinc-400 leading-relaxed">Every application is manually reviewed to ensure alignment with the Revluma brand and partner standards.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2 */}
+            <div className="group p-6 bg-zinc-900/30 border border-zinc-800/60 rounded-2xl hover:border-zinc-700 hover:bg-zinc-900/50 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-8 h-8 bg-zinc-900 border border-zinc-700 rounded-lg flex items-center justify-center font-mono text-[10px] text-zinc-300 group-hover:border-zinc-600 transition-colors">02</div>
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-display font-semibold text-white">1-Week Partner Orientation</h4>
+                  <p className="text-xs text-zinc-400 leading-relaxed">Approved partners complete a short orientation program covering Revluma, ecommerce intelligence, positioning, and promotion best practices.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3 */}
+            <div className="group p-6 bg-zinc-900/30 border border-zinc-800/60 rounded-2xl hover:border-zinc-700 hover:bg-zinc-900/50 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-8 h-8 bg-zinc-900 border border-zinc-700 rounded-lg flex items-center justify-center font-mono text-[10px] text-zinc-300 group-hover:border-zinc-600 transition-colors">03</div>
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-display font-semibold text-white">Access to Partner Resources</h4>
+                  <p className="text-xs text-zinc-400 leading-relaxed">Receive marketing assets, product guides, referral tools, and campaign resources designed to help you succeed.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4 */}
+            <div className="group p-6 bg-zinc-900/30 border border-zinc-800/60 rounded-2xl hover:border-zinc-700 hover:bg-zinc-900/50 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-8 h-8 bg-zinc-900 border border-zinc-700 rounded-lg flex items-center justify-center font-mono text-[10px] text-zinc-300 group-hover:border-zinc-600 transition-colors">04</div>
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-display font-semibold text-white">Professional Conduct</h4>
+                  <p className="text-xs text-zinc-400 leading-relaxed">Partners are expected to represent Revluma professionally and promote the platform accurately and ethically.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 5 */}
+            <div className="group p-6 bg-zinc-900/30 border border-zinc-800/60 rounded-2xl hover:border-zinc-700 hover:bg-zinc-900/50 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-8 h-8 bg-zinc-900 border border-zinc-700 rounded-lg flex items-center justify-center font-mono text-[10px] text-zinc-300 group-hover:border-zinc-600 transition-colors">05</div>
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-display font-semibold text-white">Performance-Based Growth</h4>
+                  <p className="text-xs text-zinc-400 leading-relaxed">Top-performing partners may receive higher commission tiers, exclusive incentives, priority support, and early access to new products and features.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 6 */}
+            <div className="group p-6 bg-zinc-900/30 border border-zinc-800/60 rounded-2xl hover:border-zinc-700 hover:bg-zinc-900/50 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-8 h-8 bg-zinc-900 border border-zinc-700 rounded-lg flex items-center justify-center font-mono text-[10px] text-zinc-300 group-hover:border-zinc-600 transition-colors">06</div>
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-display font-semibold text-white">Ongoing Support</h4>
+                  <p className="text-xs text-zinc-400 leading-relaxed">Our team provides continuous guidance, product updates, and partner assistance to help maximize results.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 7 */}
+            <div className="group p-6 bg-zinc-900/30 border border-zinc-800/60 rounded-2xl hover:border-zinc-700 hover:bg-zinc-900/50 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-8 h-8 bg-zinc-900 border border-zinc-700 rounded-lg flex items-center justify-center font-mono text-[10px] text-zinc-300 group-hover:border-zinc-600 transition-colors">07</div>
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-display font-semibold text-white">Commission Eligibility</h4>
+                  <p className="text-xs text-zinc-400 leading-relaxed">Commissions are earned on verified referrals that meet program requirements and remain in good standing.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 8 — full width */}
+            <div className="group p-6 bg-zinc-900/30 border border-zinc-700 rounded-2xl hover:border-zinc-600 hover:bg-zinc-900/60 transition-all duration-300 md:col-span-2 relative overflow-hidden">
+              <div className="absolute top-0 right-0 py-1 px-3 bg-white text-[8.5px] font-mono text-zinc-950 rounded-bl border-b border-l border-zinc-800 uppercase tracking-widest font-bold">Long-Term Vision</div>
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-8 h-8 bg-zinc-900 border border-zinc-600 rounded-lg flex items-center justify-center font-mono text-[10px] text-zinc-200 group-hover:border-zinc-500 transition-colors">08</div>
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-display font-semibold text-white">Long-Term Partnership</h4>
+                  <p className="text-xs text-zinc-400 leading-relaxed max-w-2xl">We're building a network of growth partners committed to helping ecommerce brands scale through AI-powered commerce intelligence. This is a relationship built to last — with shared success as the foundation.</p>
                 </div>
               </div>
             </div>
@@ -437,7 +542,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           <div className="text-center max-w-3xl mx-auto mb-16">
             <span className="text-xs text-zinc-500 font-mono tracking-widest block uppercase mb-3">Loyalty Progress Framework</span>
             <h2 className="text-3xl sm:text-4xl font-display font-semibold text-white">
-              Ecosystem Tiers & commission Tiers
+              Ecosystem Tiers &amp; Commission Tiers
             </h2>
           </div>
 
