@@ -36,6 +36,17 @@ interface AuthInterfaceProps {
 // Helpers
 // ============================================================
 
+function convertBackendTierToDisplay(backendTier: unknown): PartnerProfile['tier'] {
+  const tier = (backendTier as string)?.toUpperCase() ?? 'AFFILIATE';
+  const tierMap: Record<string, PartnerProfile['tier']> = {
+    'AFFILIATE': 'Affiliate',
+    'GROWTH': 'Growth',
+    'ELITE': 'Elite',
+    'FOUNDING_AMBASSADOR': 'Founding Ambassador'
+  };
+  return tierMap[tier] ?? 'Affiliate';
+}
+
 function buildPartnerProfile(serverUser: {
   id: string;
   email: string;
@@ -44,29 +55,29 @@ function buildPartnerProfile(serverUser: {
 }, profile?: Record<string, unknown>): PartnerProfile {
   const nameParts = (serverUser.full_name ?? '').split(' ');
   return {
-    id:                  serverUser.id,
-    fullName:            serverUser.full_name ?? '',
-    username:            (profile?.username as string) ?? serverUser.email.split('@')[0],
-    email:               serverUser.email,
-    phoneNumber:         (profile?.phoneNumber as string) ?? '',
-    country:             (profile?.country as string) ?? '',
-    twitterHandle:       (profile?.twitterHandle as string) ?? undefined,
-    instagramHandle:     (profile?.instagramHandle as string) ?? undefined,
-    linkedInProfile:     (profile?.linkedInUrl as string) ?? undefined,
-    website:             (profile?.websiteUrl as string) ?? undefined,
-    audienceNiche:       (profile?.audienceNiche as string) ?? '',
-    audienceSize:        (profile?.audienceSize as string) ?? '',
+    id: serverUser.id,
+    fullName: serverUser.full_name ?? '',
+    username: (profile?.username as string) ?? serverUser.email.split('@')[0],
+    email: serverUser.email,
+    phoneNumber: (profile?.phoneNumber as string) ?? '',
+    country: (profile?.country as string) ?? '',
+    twitterHandle: (profile?.twitterHandle as string) ?? undefined,
+    instagramHandle: (profile?.instagramHandle as string) ?? undefined,
+    linkedInProfile: (profile?.linkedInUrl as string) ?? undefined,
+    website: (profile?.websiteUrl as string) ?? undefined,
+    audienceNiche: (profile?.audienceNiche as string) ?? '',
+    audienceSize: (profile?.audienceSize as string) ?? '',
     affiliateExperience: (profile?.affiliateExperience as string) ?? '',
-    whyJoin:             (profile?.whyJoin as string) ?? '',
-    status:              (profile?.status as PartnerProfile['status']) ?? 'pending',
-    role:                (serverUser.role === 'admin' ? 'admin' : 'affiliate') as PartnerProfile['role'],
-    createdAt:           (profile?.createdAt as string) ?? new Date().toISOString(),
-    tier:                (profile?.tier as PartnerProfile['tier']) ?? 'Affiliate',
-    commissionRate:      (profile?.commissionRate as number) ?? 0.20,
-    avatarUrl:           (profile?.avatarUrl as string) ?? undefined,
-    termsAccepted:       (profile?.termsAccepted as boolean) ?? false,
-    marketingConsent:    (profile?.marketingConsent as boolean) ?? false,
-    emailVerified:       true
+    whyJoin: (profile?.whyJoin as string) ?? '',
+    status: (profile?.status as PartnerProfile['status']) ?? 'pending',
+    role: (serverUser.role === 'admin' ? 'admin' : 'affiliate') as PartnerProfile['role'],
+    createdAt: (profile?.createdAt as string) ?? new Date().toISOString(),
+    tier: convertBackendTierToDisplay(profile?.tier),
+    commissionRate: (profile?.commissionRate as number) ?? 0.20,
+    avatarUrl: (profile?.avatarUrl as string) ?? undefined,
+    termsAccepted: (profile?.termsAccepted as boolean) ?? false,
+    marketingConsent: (profile?.marketingConsent as boolean) ?? false,
+    emailVerified: true
   };
 }
 
@@ -75,61 +86,61 @@ function buildPartnerProfile(serverUser: {
 // ============================================================
 
 export default function AuthInterface({ onAuthSuccess, onBackToLanding }: AuthInterfaceProps) {
-  const [authMode,     setAuthMode]     = useState<AuthMode>('login');
-  const [step,         setStep]         = useState(1);
-  const [isLoading,    setIsLoading]    = useState(false);
-  const [errorText,    setErrorText]    = useState('');
-  const [successText,  setSuccessText]  = useState('');
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [step, setStep] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorText, setErrorText] = useState('');
+  const [successText, setSuccessText] = useState('');
 
   // Pending state (after signup, awaiting email verification or admin approval)
   const [pendingUserId, setPendingUserId] = useState('');
-  const [pendingEmail,  setPendingEmail]  = useState('');
-  const [verifyCode,    setVerifyCode]    = useState('');
+  const [pendingEmail, setPendingEmail] = useState('');
+  const [verifyCode, setVerifyCode] = useState('');
 
   // ---- Registration fields ----
-  const [fullName,             setFullName]             = useState('');
-  const [username,             setUsername]             = useState('');
-  const [email,                setEmail]                = useState('');
-  const [phoneNumber,          setPhoneNumber]          = useState('');
-  const [country,              setCountry]              = useState('US');
-  const [password,             setPassword]             = useState('');
-  const [twitterHandle,        setTwitterHandle]        = useState('');
-  const [instagramHandle,      setInstagramHandle]      = useState('');
-  const [linkedInProfile,      setLinkedInProfile]      = useState('');
-  const [website,              setWebsite]              = useState('');
-  const [audienceNiche,        setAudienceNiche]        = useState('Shopify Growth');
-  const [audienceSize,         setAudienceSize]         = useState('5,000 - 10,000');
-  const [affiliateExperience,  setAffiliateExperience]  = useState('Intermediate');
-  const [whyJoin,              setWhyJoin]              = useState('');
-  const [termsAgreement,       setTermsAgreement]       = useState(false);
-  const [marketingConsent,     setMarketingConsent]     = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [country, setCountry] = useState('US');
+  const [password, setPassword] = useState('');
+  const [twitterHandle, setTwitterHandle] = useState('');
+  const [instagramHandle, setInstagramHandle] = useState('');
+  const [linkedInProfile, setLinkedInProfile] = useState('');
+  const [website, setWebsite] = useState('');
+  const [audienceNiche, setAudienceNiche] = useState('Shopify Growth');
+  const [audienceSize, setAudienceSize] = useState('5,000 - 10,000');
+  const [affiliateExperience, setAffiliateExperience] = useState('Intermediate');
+  const [whyJoin, setWhyJoin] = useState('');
+  const [termsAgreement, setTermsAgreement] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
 
   // ---- Login fields ----
-  const [loginEmail,    setLoginEmail]    = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
   // ---- Forgot password fields ----
-  const [forgotEmail,   setForgotEmail]   = useState('');
-  const [resetToken,    setResetToken]    = useState('');
-  const [resetCode,     setResetCode]     = useState('');
-  const [newPassword,   setNewPassword]   = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
 
   // ============================================================
   // Validation
   // ============================================================
 
   const validateStep1 = (): string | null => {
-    if (!fullName.trim())                         return 'Full name is required.';
-    if (!username.trim() || username.length < 3)  return 'Username must be at least 3 characters.';
-    if (!email.trim() || !email.includes('@'))    return 'Enter a valid email address.';
-    if (!phoneNumber.trim())                      return 'Phone number is required.';
-    if (!password || password.length < 8)         return 'Password must be at least 8 characters.';
+    if (!fullName.trim()) return 'Full name is required.';
+    if (!username.trim() || username.length < 3) return 'Username must be at least 3 characters.';
+    if (!email.trim() || !email.includes('@')) return 'Enter a valid email address.';
+    if (!phoneNumber.trim()) return 'Phone number is required.';
+    if (!password || password.length < 8) return 'Password must be at least 8 characters.';
     return null;
   };
 
   const validateStep2 = (): string | null => {
     if (!audienceNiche.trim()) return 'Please specify your audience niche.';
-    if (!audienceSize)         return 'Please choose your audience size.';
+    if (!audienceSize) return 'Please choose your audience size.';
     return null;
   };
 
@@ -228,10 +239,10 @@ export default function AuthInterface({ onAuthSuccess, onBackToLanding }: AuthIn
     try {
       const nameParts = fullName.trim().split(/\s+/);
       const firstName = nameParts[0] ?? fullName;
-      const lastName  = nameParts.slice(1).join(' ') || firstName;
+      const lastName = nameParts.slice(1).join(' ') || firstName;
 
       await api.signup({
-        email:     email.toLowerCase().trim(),
+        email: email.toLowerCase().trim(),
         password,
         firstName,
         lastName
@@ -404,11 +415,10 @@ export default function AuthInterface({ onAuthSuccess, onBackToLanding }: AuthIn
 
   const renderAlert = (text: string, type: 'error' | 'success') =>
     text ? (
-      <div className={`flex items-start gap-2 p-3 rounded-md text-sm ${
-        type === 'error'
+      <div className={`flex items-start gap-2 p-3 rounded-md text-sm ${type === 'error'
           ? 'bg-red-500/10 border border-red-500/30 text-red-400'
           : 'bg-green-500/10 border border-green-500/30 text-green-400'
-      }`}>
+        }`}>
         {type === 'error'
           ? <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
           : <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />}

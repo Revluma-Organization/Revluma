@@ -23,8 +23,8 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
   // Calculator state for compounding partner incentives
   const [activeAudience, setActiveAudience] = useState(5000);
   const [conversionRate, setConversionRate] = useState(1); // percent
-  const [avgTicketPrice, setAvgTicketPrice] = useState(199); // Monthly recurring first 12 months plan
-  const partnerCommission = 0.30; // 30% recurring first 12 months
+  const [avgTicketPrice, setAvgTicketPrice] = useState(20); // Monthly recurring first 12 months plan
+  const partnerCommission = 0.40; // 30% recurring first 12 months
 
   // FAQ Active State
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
@@ -49,19 +49,19 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
     },
     {
       q: "Is this recurring first 12 months commission based?",
-      a: "Yes. Unlike transactional static referral codes, all Revluma agreements operate on a lifetime subscription structure. As long as your referred brands remain active on their AI operations plan, your commission continues monthly."
+      a: "Yes. Unlike transactional static referral codes, all Revluma agreements operate on a recurring subscription structure. As long as your referred brands remain active on their AI operations plan, if they upgrade to a higher plan, you commission increases and vice versa, your commission continues monthly for the first 12 months."
     },
     {
       q: "What tools are provided for creators and partners?",
-      a: "We configure an enterprise-grade Growth Operating System dashboard. Inside, you secure custom UTM campaign links, visual telemetry charts, promotional templates (Twitter, Reddit, Email newsletters, ads), an active server-side AI Content Assistant powered by Gemini, and real-time support alerts."
+      a: "We configure an enterprise-grade Growth Operating System dashboard. Inside, you secure custom UTM campaign links, visual telemetry charts, promotional templates (Twitter, Reddit, Email newsletters, ads), an active server-side AI Content Assistant powered by Grok, and real-time support alerts."
     },
     {
       q: "Who can apply, and how does the selective approval work?",
-      a: "We seek high-quality operators, e-commerce consultants, SaaS developers, and marketing experts. Every application undergoes strict manual review by our Luminor Operations Team. Approvals are vetted based on audience alignment, portfolio context, and operational experience."
+      a: "We seek high-quality operators, e-commerce consultants, SaaS developers, and marketing experts. Every application undergoes strict manual review by our Luminor Terminal Operations Team. Approvals are vetted based on audience alignment, portfolio context, and operational experience."
     },
     {
       q: "When and how are partner payouts processed?",
-      a: "Commissions are cleared 15 days following the billing month closure. cleared funds are systematically deposited directly to your bank account or connected Stripe wallet (customizable in your client settings page)."
+      a: "Commissions are cleared within 24 hours following the billing month closure. cleared funds are systematically deposited directly to your bank account or connected Stripe wallet (customizable in your client settings page)."
     }
   ];
 
@@ -130,7 +130,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           {/* Subtle tag indicator */}
           <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 mb-8 font-mono">
             <Sparkles className="w-3 h-3 text-zinc-300" />
-            <span>AI GROWTH INFRASTRUCTURE</span>
+            <span>Revluma Affiliate Partnership Program RAPP</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-display font-bold tracking-tight text-white mb-6 leading-tight">
@@ -348,7 +348,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                   </div>
                   <input
                     type="range"
-                    min="5"
+                    min="199"
                     max="40"
                     step="50"
                     value={avgTicketPrice}

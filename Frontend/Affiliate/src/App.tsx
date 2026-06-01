@@ -30,6 +30,17 @@ type AuthSubView = 'login' | 'register';
 // Helpers
 // ============================================================
 
+function convertBackendTierToDisplay(backendTier: unknown): PartnerProfile['tier'] {
+  const tier = (backendTier as string)?.toUpperCase() ?? 'AFFILIATE';
+  const tierMap: Record<string, PartnerProfile['tier']> = {
+    'AFFILIATE': 'Affiliate',
+    'GROWTH': 'Growth',
+    'ELITE': 'Elite',
+    'FOUNDING_AMBASSADOR': 'Founding Ambassador'
+  };
+  return tierMap[tier] ?? 'Affiliate';
+}
+
 function buildPartnerProfile(
   serverUser: { id: string; email: string; full_name: string; role: string },
   profile?: Record<string, unknown>
@@ -52,7 +63,7 @@ function buildPartnerProfile(
     status: ((profile?.status as string ?? 'pending').toLowerCase()) as ApprovalStatus,
     role: (serverUser.role === 'admin' ? 'admin' : 'affiliate') as PartnerProfile['role'],
     createdAt: (profile?.createdAt as string) ?? new Date().toISOString(),
-    tier: (profile?.tier as PartnerProfile['tier']) ?? 'Affiliate',
+    tier: convertBackendTierToDisplay(profile?.tier),
     commissionRate: (profile?.commissionRate as number) ?? 0.20,
     avatarUrl: (profile?.avatarUrl as string) ?? undefined,
     referralCode: (profile?.referralCode as string) ?? (profile?.referralLinks ? ((profile.referralLinks as Array<Record<string, unknown>>)[0]?.referralCode as string) : undefined),

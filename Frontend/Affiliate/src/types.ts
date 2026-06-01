@@ -10,6 +10,7 @@ export interface PartnerProfile {
     role: 'affiliate' | 'admin' | string;
     status?: string;
     commissionRate: number;
+    referralCode?: string;
     country?: string;
     phoneNumber?: string;
     twitterHandle?: string;
