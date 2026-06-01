@@ -134,14 +134,14 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-display font-bold tracking-tight text-white mb-6 leading-tight">
-            AI Operational Intelligence <br />
+            Revluma Affiliate Partnership Program RAPP<br />
             <span className="bg-gradient-to-r from-white via-zinc-200 to-zinc-500 bg-clip-text text-transparent">
               for the Future of Commerce.
             </span>
           </h1>
 
           <p className="text-base sm:text-lg text-zinc-400 mb-10 leading-relaxed max-w-2xl mx-auto">
-            Welcome to the elite growth partner ecosystem of <strong>Revluma</strong>. Help modern eCommerce brands recover leaked checkout revenues, automate retention logic, and supercharge retention operations with deterministic AI.
+            Welcome to the <strong>Revluma Affiliate Partnership Program RAPP</strong>. Help modern eCommerce brands recover leaked checkout revenues, automate retention logic, and supercharge retention operations with deterministic AI.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
