@@ -1,6 +1,6 @@
 -- ====================================================================
 -- REVLUMA PARTNER ECOSYSTEM (By Luminor Terminal)
--- Enterprise-Grade Recurring Subscription & Affiliate Commission Database Migration
+-- Enterprise-Grade Recurring First 12 Months Subscription & Affiliate Commission Database Migration
 -- Target Platform: PostgreSQL / Supabase Relational Infrastructure
 -- ====================================================================
 
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS public.customer_subscriptions (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2.3 RECURRING COMMISSIONS ENGINE RECORDS
+-- 2.3 RECURRING FIRST 12 MONTHS COMMISSIONS ENGINE RECORDS
 CREATE TABLE IF NOT EXISTS public.partner_commissions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     partner_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,

@@ -23,8 +23,8 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
   // Calculator state for compounding partner incentives
   const [activeAudience, setActiveAudience] = useState(5000);
   const [conversionRate, setConversionRate] = useState(1); // percent
-  const [avgTicketPrice, setAvgTicketPrice] = useState(199); // Monthly recurring plan
-  const partnerCommission = 0.30; // 30% recurring
+  const [avgTicketPrice, setAvgTicketPrice] = useState(199); // Monthly recurring first 12 months plan
+  const partnerCommission = 0.30; // 30% recurring first 12 months
 
   // FAQ Active State
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
@@ -45,10 +45,10 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
     },
     {
       q: "How does the partner program work?",
-      a: "As an approved Revluma Partner, you receive a custom referral ID and campaign console. Every commerce brand or business leader you introduce who registers a paid account unlocks recurring commission streams (starting at 20% and upgrading to 40% on performance tiers)."
+      a: "As an approved Revluma Partner, you receive a custom referral ID and campaign console. Every commerce brand or business leader you introduce who registers a paid account unlocks recurring first 12 months commission streams (starting at 20% and upgrading to 40% on performance tiers)."
     },
     {
-      q: "Is this recurring commission based?",
+      q: "Is this recurring first 12 months commission based?",
       a: "Yes. Unlike transactional static referral codes, all Revluma agreements operate on a lifetime subscription structure. As long as your referred brands remain active on their AI operations plan, your commission continues monthly."
     },
     {
@@ -141,8 +141,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           </h1>
 
           <p className="text-base sm:text-lg text-zinc-400 mb-10 leading-relaxed max-w-2xl mx-auto">
-            Welcome to the <strong>Revluma Affiliate Partnership Program (RAPP)</strong>.Help modern ecommerce brands recover lost revenue, automate retention workflows, and scale customer growth with AI-powered commerce intelligence. Earn recurring commissions while introducing businesses to the future of ecommerce operations.
-
+            Welcome to the <strong>Revluma Affiliate Partnership Program (RAPP)</strong>.Help modern ecommerce brands recover lost revenue, automate retention workflows, and scale customer growth with AI-powered commerce intelligence. Earn recurring first 12 months commissions while introducing businesses to the future of ecommerce operations.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -173,7 +172,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                   Compound Revenue Recovery Live Sandbox
                 </h3>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Toggle target audience details below to evaluate how your referral tier compounds. Revluma pays recurring Monthly SaaS yields on all active operations accounts.
+                  Toggle target audience details below to evaluate how your referral tier compounds. Revluma pays recurring first 12 months Monthly SaaS yields on all active operations accounts.
                 </p>
               </div>
               <div className="w-full md:w-auto grid grid-cols-2 md:flex gap-4 md:space-x-8">
@@ -301,7 +300,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               <div className="font-mono text-[10px] text-zinc-450 uppercase tracking-widest mb-1">INTERACTIVE INCENTIVES CALCULATOR</div>
               <h3 className="text-2xl font-display font-semibold text-white mb-2">Estimate Your Co-Founder Payouts</h3>
               <p className="text-xs text-zinc-400 max-w-xl mx-auto">
-                Discover the recurring revenue scaling metrics backed by Revluma's generous 30% founding partner incentive rates.
+                Discover the recurring first 12 months revenue scaling metrics backed by Revluma's generous 30% founding partner incentive rates.
               </p>
             </div>
 
@@ -366,7 +365,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                   <span className="text-2xl font-display font-medium text-white">{estimatedReferrals} active brands</span>
                 </div>
                 <div className="py-4 border-y border-zinc-900 bg-zinc-900/45 rounded-lg border border-zinc-850">
-                  <span className="text-[10px] text-zinc-400 font-mono block uppercase">MONTHLY RECURRING REVENUE (MRR)</span>
+                  <span className="text-[10px] text-zinc-400 font-mono block uppercase">MONTHLY RECURRING FIRST 12 MONTHS REVENUE (MRR)</span>
                   <span className="text-4xl font-display font-bold text-white">${estimatedMrr.toLocaleString()}</span>
                 </div>
                 <div>
@@ -425,7 +424,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
             <div className="relative pl-8">
               <div className="absolute -left-3 top-1.5 w-6 h-6 rounded-full bg-zinc-950 border-2 border-zinc-800 flex items-center justify-center font-mono text-[10px] text-zinc-400">4</div>
               <div className="absolute -left-36 top-1 hidden md:block text-right w-28 font-mono text-xs text-zinc-500">PHASE 04 // COMMAND</div>
-              <h4 className="text-lg font-display font-semibold text-white">Compounding Recurring Payouts</h4>
+              <h4 className="text-lg font-display font-semibold text-white">Compounding Recurring First 12 Months Payouts</h4>
               <p className="text-xs text-zinc-400 mt-1 max-w-xl">
                 Clear customer referrals shift into the billing cycle. Review monthly commission clearances, retained accounts, and watch your margins expand.
               </p>
@@ -448,7 +447,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               <div>
                 <span className="text-[10px] font-mono text-zinc-500">TIER 01</span>
                 <h4 className="text-lg font-display font-semibold text-white uppercase mt-1">Affiliate</h4>
-                <div className="text-2xl font-bold text-zinc-300 my-3">20% <span className="text-xs text-zinc-500 font-normal">Recurring</span></div>
+                <div className="text-2xl font-bold text-zinc-300 my-3">20% <span className="text-xs text-zinc-500 font-normal">Recurring First 12 Months</span></div>
                 <ul className="space-y-2 mt-4 text-xs text-zinc-400">
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" /> Basic Campaign Dashboard</li>
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" /> standard Copy Center</li>
@@ -463,7 +462,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               <div>
                 <span className="text-[10px] font-mono text-zinc-500">TIER 02</span>
                 <h4 className="text-lg font-display font-semibold text-white uppercase mt-1 font-sans">Growth</h4>
-                <div className="text-2xl font-bold text-zinc-300 my-3">30% <span className="text-xs text-zinc-500 font-normal">Recurring</span></div>
+                <div className="text-2xl font-bold text-zinc-300 my-3">30% <span className="text-xs text-zinc-500 font-normal">Recurring First 12 Months</span></div>
                 <ul className="space-y-2 mt-4 text-xs text-zinc-400">
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" /> Advanced Campaign UTMs</li>
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" /> Gemini Copy Assistant access</li>
@@ -479,7 +478,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               <div>
                 <span className="text-[10px] font-mono text-zinc-550">TIER 03</span>
                 <h4 className="text-lg font-display font-semibold text-white uppercase mt-1">Elite</h4>
-                <div className="text-2xl font-bold text-white my-3">35% <span className="text-xs text-zinc-500 font-normal">Recurring</span></div>
+                <div className="text-2xl font-bold text-white my-3">35% <span className="text-xs text-zinc-500 font-normal">Recurring First 12 Months</span></div>
                 <ul className="space-y-2 mt-4 text-xs text-zinc-400">
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-300" /> Multi-attribution campaign channels</li>
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-300" /> Priority 24-hr payout clearance</li>
@@ -495,7 +494,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               <div>
                 <span className="text-[10px] font-mono text-zinc-550">TIER 04</span>
                 <h4 className="text-lg font-display font-semibold text-white uppercase mt-1">Ambassador</h4>
-                <div className="text-2xl font-bold text-zinc-300 my-3">40% <span className="text-xs text-zinc-500 font-normal">Recurring</span></div>
+                <div className="text-2xl font-bold text-zinc-300 my-3">40% <span className="text-xs text-zinc-500 font-normal">Recurring First 12 Months</span></div>
                 <ul className="space-y-2 mt-4 text-xs text-zinc-400">
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" /> Direct access to founder syncs</li>
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" /> Customized sign-up landing codes</li>

@@ -53,7 +53,7 @@ const webhookLogs: Array<{
 function verifyLemonSqueezySignature(rawBody: string, xSignature: string): boolean {
   const webhookSecret = process.env.LEMON_SQUEEZY_WEBHOOK_SECRET || "rev_luma_secret_bypass_dev_mode";
   if (!xSignature) return false;
-  
+
   const hmac = crypto.createHmac("sha256", webhookSecret);
   const digest = hmac.update(rawBody).digest("hex");
   return crypto.timingSafeEqual(Buffer.from(digest, "utf-8"), Buffer.from(xSignature, "utf-8"));
@@ -61,23 +61,23 @@ function verifyLemonSqueezySignature(rawBody: string, xSignature: string): boole
 
 async function startServer() {
   const app = express();
-  
+
   // Use a raw body parser for the webhook route to verify signatures properly
   app.post("/api/webhooks/lemon-squeezy", express.raw({ type: "application/json" }), (req, res) => {
     try {
       const rawPayload = req.body.toString("utf-8");
       const signature = req.headers["x-signature"] as string || "";
-      
+
       const parsedPayload = JSON.parse(rawPayload);
       const eventName = parsedPayload.meta?.event_name || "unknown";
-      
+
       // Verification logic: audit signature, handle sandbox dev bypass gracefully
       const isVerified = verifyLemonSqueezySignature(rawPayload, signature);
       const isSandboxTesting = parsedPayload.meta?.custom_data?.sandbox === true || !signature;
-      
+
       let status: 'verified' | 'simulation' | 'failed_signature' = 'verified';
       let details = "Cryptographically verified signatures match master webhook key.";
-      
+
       if (!isVerified) {
         if (isSandboxTesting) {
           status = 'simulation';
@@ -90,7 +90,7 @@ async function startServer() {
           return;
         }
       }
-      
+
       // Store event in audit logs
       webhookLogs.unshift({
         id: `wh_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -100,10 +100,10 @@ async function startServer() {
         status,
         details
       });
-      
+
       // Retain max 40 logs in memory
       if (webhookLogs.length > 40) webhookLogs.pop();
-      
+
       // Respond to payment gateway instantly per enterprise specs 
       res.status(200).json({ status: "processed", verified: isVerified || isSandboxTesting, logCount: webhookLogs.length });
     } catch (error: any) {
@@ -125,20 +125,20 @@ async function startServer() {
     try {
       const { to, subject, body } = req.body;
       const apiKey = process.env.RESEND_API_KEY;
-      
+
       if (!apiKey || apiKey === "MY_RESEND_API_KEY" || apiKey.trim() === "") {
         console.warn("⚠️ Warning: RESEND_API_KEY environment variable is not configured. Email logged to local terminal only.");
-        res.json({ 
-          success: true, 
-          simulated: true, 
-          message: "Email queued in sandbox terminal simulation because RESEND_API_KEY is not set." 
+        res.json({
+          success: true,
+          simulated: true,
+          message: "Email queued in sandbox terminal simulation because RESEND_API_KEY is not set."
         });
         return;
       }
-      
+
       const resendObj = new Resend(apiKey);
       const fromAddress = process.env.RESEND_FROM_EMAIL || "Luminor Terminal <onboarding@resend.dev>";
-      
+
       // We convert newline into html linebreaks to ensure perfect typography
       const formattedHtml = `
         <div style="font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #0c0a09; border: 1px solid #1c1917; border-radius: 16px; color: #e4e4e7;">
@@ -152,7 +152,7 @@ async function startServer() {
           </p>
         </div>
       `;
-      
+
       const response = await resendObj.emails.send({
         from: fromAddress,
         to: [to],
@@ -160,13 +160,13 @@ async function startServer() {
         html: formattedHtml,
         text: body
       });
-      
+
       if (response.error) {
-         console.error("❌ Resend API returned error:", response.error);
-         res.status(400).json({ success: false, error: response.error });
-         return;
+        console.error("❌ Resend API returned error:", response.error);
+        res.status(400).json({ success: false, error: response.error });
+        return;
       }
-      
+
       console.log(`✉️ Email successfully delivered to ${to} via Resend. ID:`, response.data?.id);
       res.json({ success: true, simulated: false, id: response.data?.id });
     } catch (err: any) {
@@ -189,7 +189,7 @@ async function startServer() {
   // 4. API Simulation Endpoint to programmatic test from frontend
   app.post("/api/lemon-squeezy/simulate", (req, res) => {
     const { eventName, userEmail, planName, customValues } = req.body;
-    
+
     // Simulate event generation with high-fidelity structures
     const fakePayload = {
       meta: {
@@ -215,16 +215,16 @@ async function startServer() {
         }
       }
     };
-    
+
     webhookLogs.unshift({
       id: `wh_sim_${Date.now()}`,
       timestamp: new Date().toISOString(),
       eventName: eventName || "subscription_payment_success",
       payload: fakePayload,
       status: 'simulation',
-      details: "Simulated sandbox recurring event successfully triggered and recorded."
+      details: "Simulated sandbox recurring first 12 months event successfully triggered and recorded."
     });
-    
+
     res.json({ success: true, payload: fakePayload, currentLogs: webhookLogs.length });
   });
 
@@ -232,10 +232,10 @@ async function startServer() {
   app.post("/api/gemini/generate", async (req, res) => {
     try {
       const { channel, targetAudience, coreFeatures, tone } = req.body;
-      
+
       if (!channel || !targetAudience || !coreFeatures) {
-         res.status(400).json({ error: "Missing required generation fields." });
-         return;
+        res.status(400).json({ error: "Missing required generation fields." });
+        return;
       }
 
       const promptTemplate = `
@@ -261,9 +261,9 @@ async function startServer() {
         console.log("Serving rich simulated marketing response (No Gemini Key Found)");
         const templates: Record<string, string> = {
           x: `⚡ **The era of manual customer analytics is officially over.**\n\nHow much revenue did your checkout lose this week? D2C brands leaking 15%+ to silent churn just unlocked the solution.\n\nIntroducing **Revluma** (built of @LuminorTerminal core AI technology).\n\n• **Autonomous Revenue Recovery**: Auto-heals broken checkout signals.\n• **Hyper-Segmented Intelligence**: Predicts churn 14 days before it triggers.\n• **Automated Operations**: Zero engineering required.\n\nStop guessing. Start optimizing.\n\nGet exclusive operational access: **[Your Partner Link]** 👈`,
-          reddit: `### [D2C Analytics] Stop staring at standard dashboards. Why Shopify store owners are switching to Revluma.\n\nIf you're running a store over $50k/mo, you know that standard cohort analysis is basically useless for predicting actual individual subscriber churn. Most ESPs trigger recovery *after* they already left.\n\nWe spent the last year building **Revluma** to solve this. Supported by **Luminor Terminal**, Revluma sits directly on top of your customer dataset to auto-recover checkout drops and forecast subscriber degradation.\n\n**What's under the hood:**\n1. **Autonomous Recovery Loops**: Active conversion optimization.\n2. **Behavioral AI Triggers**: Targets clients based on silent telemetry signals.\n\nWe are looking for eCommerce growth leaders to join our exclusive affiliate ecosystem (which pays a compounding **30%+ lifetime recurring commission**).\n\nDeploy smart tech on your audience segment: **[Your Partner Link]**`,
+          reddit: `### [D2C Analytics] Stop staring at standard dashboards. Why Shopify store owners are switching to Revluma.\n\nIf you're running a store over $50k/mo, you know that standard cohort analysis is basically useless for predicting actual individual subscriber churn. Most ESPs trigger recovery *after* they already left.\n\nWe spent the last year building **Revluma** to solve this. Supported by **Luminor Terminal**, Revluma sits directly on top of your customer dataset to auto-recover checkout drops and forecast subscriber degradation.\n\n**What's under the hood:**\n1. **Autonomous Recovery Loops**: Active conversion optimization.\n2. **Behavioral AI Triggers**: Targets clients based on silent telemetry signals.\n\nWe are looking for eCommerce growth leaders to join our exclusive affiliate ecosystem (which pays a compounding **30%+ recurring first 12 months commission**).\n\nDeploy smart tech on your audience segment: **[Your Partner Link]**`,
           linkedin: `💼 **Operational Intelligence for the Future of Enterprise Commerce.**\n\nI am thrilled to announce my partnership and integration with **Revluma**, the premiere AI operations layer built by high-performance automation house **Luminor Terminal**.\n\nIn eCommerce, standard dashboards are backward-looking. True scale requires predictive systems. Revluma transforms silent customer data vectors into real-time growth decisions:\n\n🚀 **Convert Intelligently**: Auto-heals high-value cart drops in real-time.\n🔄 **Automated Retention**: Pinpoints and triggers lifecycle campaigns autonomously.\n🛡️ **Enterprise Security**: Backed by high-security Supabase/PostgreSQL infrastructure.\n\nAs a founding partner in the Revluma Growth Ecosystem, I'm extending early integration invites to our digital brands. Secure your operational advantage below:\n\nJoin the commerce future: **[Your Partner Link]**`,
-          email: `Subject: Revluma AI - The Next Gen Operational Commerce Layer\n\nDear Partner,\n\nIn modern commerce, standard retention strategies are failing. Traditional tools trigger re-engagement campaigns AFTER a subscriber has checked out or cancelled. That's backward-looking science.\n\n**Revluma**, designed by parent infrastructure house **Luminor Terminal**, turns your database into an active, predictive revenue recovery machine. Revluma utilizes advanced predictive machine models to discover friction and automate behavioral segment retention.\n\nHere's what this secures for your operations:\n- **$0 to Hero Automation**: Auto-detects and triggers conversion healing lines.\n- **Compound Revenue Recovery**: Increases customer lifetime value (LTV) by up to 22%.\n- **30% Compounding Affiliate Commission**: Since Revluma is premium recurring software, our growth partners earn massive ongoing rev-share.\n\nSecure your brand's growth credentials today using our ecosystem dashboard invite:\n\n 👉 **[Your Partner Link]**\n\nTo your scalable future,\n[Your Name]`
+          email: `Subject: Revluma AI - The Next Gen Operational Commerce Layer\n\nDear Partner,\n\nIn modern commerce, standard retention strategies are failing. Traditional tools trigger re-engagement campaigns AFTER a subscriber has checked out or cancelled. That's backward-looking science.\n\n**Revluma**, designed by parent infrastructure house **Luminor Terminal**, turns your database into an active, predictive revenue recovery machine. Revluma utilizes advanced predictive machine models to discover friction and automate behavioral segment retention.\n\nHere's what this secures for your operations:\n- **$0 to Hero Automation**: Auto-detects and triggers conversion healing lines.\n- **Compound Revenue Recovery**: Increases customer lifetime value (LTV) by up to 22%.\n- **30% Compounding Affiliate Commission**: Since Revluma is premium software with recurring first 12 months payouts, our growth partners earn massive ongoing rev-share.\n\nSecure your brand's growth credentials today using our ecosystem dashboard invite:\n\n 👉 **[Your Partner Link]**\n\nTo your scalable future,\n[Your Name]`
         };
         const chanKey = (channel as string).toLowerCase();
         const output = templates[chanKey] || templates['x'];
@@ -299,10 +299,10 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    
+
     // Serve static frontend files
     app.use(express.static(distPath));
-    
+
     // Fallback everything else to SPA index.html
     app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));

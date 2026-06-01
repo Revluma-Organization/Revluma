@@ -720,7 +720,7 @@ export default function Dashboard({
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold text-white">Dynamic KPI Center</h4>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  Analyze your overall referred conversions, clicks, annual recurring projections, and live dashboard rank vectors in real-time. Experience Stripe-like pixel transparency.
+                  Analyze your overall referred conversions, clicks, annual recurring first 12 months projections, and live dashboard rank vectors in real-time. Experience Stripe-like pixel transparency.
                 </p>
               </div>
             )}
@@ -1932,7 +1932,7 @@ export default function Dashboard({
                     💎 LEADERBOARD 💎
                   </h2>
                   <p className="text-xs sm:text-sm text-zinc-400 font-mono max-w-2xl mx-auto leading-relaxed">
-                    Earn referral points and recurring commission yields from global Revluma partner accounts activity. Scale the network node and secure Ambassador tiers.
+                    Earn referral points and recurring first 12 months commission yields from global Revluma partner accounts activity. Scale the network node and secure Ambassador tiers.
                   </p>
 
 
