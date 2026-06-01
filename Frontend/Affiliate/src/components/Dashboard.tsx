@@ -801,7 +801,7 @@ export default function Dashboard({
               <Cpu className="w-4 h-4 text-white" />
             </div>
             <div className="flex flex-col">
-              <span className={`font-display font-bold text-xs tracking-wider uppercase ${isDark ? "text-white" : "text-zinc-900"}`}>REVLUMA GOS</span>
+              <span className={`font-display font-bold text-xs tracking-wider uppercase ${isDark ? "text-white" : "text-zinc-900"}`}>REVLUMA</span>
               <span className="text-[8px] text-zinc-400 dark:text-zinc-500 font-mono tracking-widest font-bold">OPERATIONS CENTER</span>
             </div>
           </div>

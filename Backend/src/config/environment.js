@@ -1,6 +1,7 @@
-/**
+﻿/**
  * Centralized environment configuration
  * Single source of truth for all platform URLs and credentials
+ * UPDATED: Resend removed, SendGrid standardized, RAPP vetting email added
  */
 
 const path = require('path');
@@ -34,13 +35,7 @@ module.exports = {
   // ============================================================
   // BASE URL CONFIGURATION (CRITICAL)
   // ============================================================
-  // This SINGLE VALUE controls:
-  // - Affiliate link generation
-  // - Redirect URLs in emails
-  // - API endpoint construction
-  // - Shared link generation
-  // If domain changes: UPDATE THIS VALUE ONLY, no code changes needed
-  baseUrl: process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, ''), // Remove trailing slash
+  baseUrl: process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, ''),
   frontendUrl: (process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_BASE_URL).replace(/\/$/, ''),
   apiBaseUrl: process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL,
 
@@ -63,17 +58,16 @@ module.exports = {
 
   session: {
     secret: process.env.SESSION_SECRET,
-    expiresIn: parseInt(process.env.SESSION_EXPIRES_IN || '86400000', 10), // 24 hours in ms
+    expiresIn: parseInt(process.env.SESSION_EXPIRES_IN || '86400000', 10),
     cookieMaxAge: parseInt(process.env.COOKIE_MAX_AGE || '86400000', 10),
   },
 
   // ============================================================
-  // EMAIL CONFIGURATION
+  // EMAIL CONFIGURATION (SENDGRID ONLY - RESEND REMOVED)
   // ============================================================
   email: {
-    provider: process.env.EMAIL_PROVIDER || 'resend', // 'resend', 'sendgrid', or 'smtp'
+    provider: process.env.EMAIL_PROVIDER || 'sendgrid', // 'sendgrid' or 'smtp'
     from: process.env.SMTP_FROM || 'noreply@revluma.app',
-    resendApiKey: process.env.RESEND_API_KEY,
     sendgridApiKey: process.env.SENDGRID_API_KEY,
     smtp: {
       host: process.env.SMTP_HOST,
@@ -100,7 +94,7 @@ module.exports = {
   // FILE STORAGE
   // ============================================================
   storage: {
-    provider: process.env.STORAGE_PROVIDER || 'supabase', // 'supabase', 's3', or 'local'
+    provider: process.env.STORAGE_PROVIDER || 'supabase',
     bucket: process.env.STORAGE_BUCKET || 'revluma-uploads',
     supabase: {
       url: process.env.SUPABASE_URL,
@@ -139,39 +133,42 @@ module.exports = {
   },
 
   // ============================================================
-  // AFFILIATE SYSTEM
+  // AFFILIATE SYSTEM & RAPP
   // ============================================================
   affiliate: {
     referralLinkExpiryDays: parseInt(process.env.REFERRAL_LINK_EXPIRY_DAYS || '365', 10),
     defaultCommissionRate: parseFloat(process.env.DEFAULT_COMMISSION_RATE || '0.20'),
     referralCode: {
-      length: 8, // e.g., "abc12def"
-      format: 'alphanumeric', // lowercase alphanumeric
+      length: 8,
+      format: 'alphanumeric',
     },
+  },
+
+  // RAPP Vetting System
+  rapp: {
+    vettingEmail: process.env.RAPP_VETTING_EMAIL, // Operations team email for vetting notifications
+    minimumDistributionChannels: 2, // Minimum required social distribution channels
+    accessTokenExpiryDays: parseInt(process.env.RAPP_ACCESS_TOKEN_EXPIRY_DAYS || '30', 10),
   },
 
   // ============================================================
   // RATE LIMITING
   // ============================================================
   rateLimit: {
-    windowMs: 15 * 60 * 1000, // 15 minutes
+    windowMs: 15 * 60 * 1000,
     maxRequests: 300,
     authWindow: 15 * 60 * 1000,
     authMax: 50,
   },
 
   // ============================================================
-  // GENERATE AFFILIATE LINK
+  // HELPER FUNCTIONS
   // ============================================================
-  // Helper function to generate full affiliate URLs
   getAffiliateLink: (username, uniqueId) => {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, '');
     return `${baseUrl}/r/${username}-${uniqueId}`;
   },
 
-  // ============================================================
-  // EMAIL TEMPLATE BASEURL
-  // ============================================================
   getEmailLink: (path) => {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL.replace(/\/$/, '');
     return `${baseUrl}${path}`;

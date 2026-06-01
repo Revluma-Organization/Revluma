@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -25,7 +25,7 @@ function getAiClient(): GoogleGenAI {
   if (!aiClient) {
     const apiKey = process.env.GEMINI_API_KEY || "";
     if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-      console.warn("⚠️ Warning: GEMINI_API_KEY is not configured or left as placeholder, AI Assistant will operate in rich-simulation fallback mode.");
+      console.warn("âš ï¸ Warning: GEMINI_API_KEY is not configured or left as placeholder, AI Assistant will operate in rich-simulation fallback mode.");
     }
     aiClient = new GoogleGenAI({
       apiKey: apiKey,
@@ -85,7 +85,7 @@ async function startServer() {
         } else {
           status = 'failed_signature';
           details = "CRITICAL: Signature mismatch detected on incoming webhook!";
-          console.error("❌ Cryptographic signature verification failed on Lemon Squeezy webhook!");
+          console.error("âŒ Cryptographic signature verification failed on Lemon Squeezy webhook!");
           res.status(401).json({ error: "Cryptographic signature validation failed.", secure_lock: "active" });
           return;
         }
@@ -127,7 +127,7 @@ async function startServer() {
       const apiKey = process.env.RESEND_API_KEY;
 
       if (!apiKey || apiKey === "MY_RESEND_API_KEY" || apiKey.trim() === "") {
-        console.warn("⚠️ Warning: RESEND_API_KEY environment variable is not configured. Email logged to local terminal only.");
+        console.warn("âš ï¸ Warning: RESEND_API_KEY environment variable is not configured. Email logged to local terminal only.");
         res.json({
           success: true,
           simulated: true,
@@ -162,15 +162,15 @@ async function startServer() {
       });
 
       if (response.error) {
-        console.error("❌ Resend API returned error:", response.error);
+        console.error("âŒ Resend API returned error:", response.error);
         res.status(400).json({ success: false, error: response.error });
         return;
       }
 
-      console.log(`✉️ Email successfully delivered to ${to} via Resend. ID:`, response.data?.id);
+      console.log(`âœ‰ï¸ Email successfully delivered to ${to} via Resend. ID:`, response.data?.id);
       res.json({ success: true, simulated: false, id: response.data?.id });
     } catch (err: any) {
-      console.error("❌ Exception inside /api/send-email:", err);
+      console.error("âŒ Exception inside /api/send-email:", err);
       res.status(500).json({ success: false, error: err.message || err });
     }
   });
@@ -260,10 +260,10 @@ async function startServer() {
         // High fidelity, highly-realistic deterministic simulated fallback responses if keys are not ready
         console.log("Serving rich simulated marketing response (No Gemini Key Found)");
         const templates: Record<string, string> = {
-          x: `⚡ **The era of manual customer analytics is officially over.**\n\nHow much revenue did your checkout lose this week? D2C brands leaking 15%+ to silent churn just unlocked the solution.\n\nIntroducing **Revluma** (built of @LuminorTerminal core AI technology).\n\n• **Autonomous Revenue Recovery**: Auto-heals broken checkout signals.\n• **Hyper-Segmented Intelligence**: Predicts churn 14 days before it triggers.\n• **Automated Operations**: Zero engineering required.\n\nStop guessing. Start optimizing.\n\nGet exclusive operational access: **[Your Partner Link]** 👈`,
+          x: `âš¡ **The era of manual customer analytics is officially over.**\n\nHow much revenue did your checkout lose this week? D2C brands leaking 15%+ to silent churn just unlocked the solution.\n\nIntroducing **Revluma** (built of @LuminorTerminal core AI technology).\n\nâ€¢ **Autonomous Revenue Recovery**: Auto-heals broken checkout signals.\nâ€¢ **Hyper-Segmented Intelligence**: Predicts churn 14 days before it triggers.\nâ€¢ **Automated Operations**: Zero engineering required.\n\nStop guessing. Start optimizing.\n\nGet exclusive operational access: **[Your Partner Link]** ðŸ‘ˆ`,
           reddit: `### [D2C Analytics] Stop staring at standard dashboards. Why Shopify store owners are switching to Revluma.\n\nIf you're running a store over $50k/mo, you know that standard cohort analysis is basically useless for predicting actual individual subscriber churn. Most ESPs trigger recovery *after* they already left.\n\nWe spent the last year building **Revluma** to solve this. Supported by **Luminor Terminal**, Revluma sits directly on top of your customer dataset to auto-recover checkout drops and forecast subscriber degradation.\n\n**What's under the hood:**\n1. **Autonomous Recovery Loops**: Active conversion optimization.\n2. **Behavioral AI Triggers**: Targets clients based on silent telemetry signals.\n\nWe are looking for eCommerce growth leaders to join our exclusive affiliate ecosystem (which pays a compounding **30%+ recurring first 12 months commission**).\n\nDeploy smart tech on your audience segment: **[Your Partner Link]**`,
-          linkedin: `💼 **Operational Intelligence for the Future of Enterprise Commerce.**\n\nI am thrilled to announce my partnership and integration with **Revluma**, the premiere AI operations layer built by high-performance automation house **Luminor Terminal**.\n\nIn eCommerce, standard dashboards are backward-looking. True scale requires predictive systems. Revluma transforms silent customer data vectors into real-time growth decisions:\n\n🚀 **Convert Intelligently**: Auto-heals high-value cart drops in real-time.\n🔄 **Automated Retention**: Pinpoints and triggers lifecycle campaigns autonomously.\n🛡️ **Enterprise Security**: Backed by high-security Supabase/PostgreSQL infrastructure.\n\nAs a founding partner in the Revluma Growth Ecosystem, I'm extending early integration invites to our digital brands. Secure your operational advantage below:\n\nJoin the commerce future: **[Your Partner Link]**`,
-          email: `Subject: Revluma AI - The Next Gen Operational Commerce Layer\n\nDear Partner,\n\nIn modern commerce, standard retention strategies are failing. Traditional tools trigger re-engagement campaigns AFTER a subscriber has checked out or cancelled. That's backward-looking science.\n\n**Revluma**, designed by parent infrastructure house **Luminor Terminal**, turns your database into an active, predictive revenue recovery machine. Revluma utilizes advanced predictive machine models to discover friction and automate behavioral segment retention.\n\nHere's what this secures for your operations:\n- **$0 to Hero Automation**: Auto-detects and triggers conversion healing lines.\n- **Compound Revenue Recovery**: Increases customer lifetime value (LTV) by up to 22%.\n- **30% Compounding Affiliate Commission**: Since Revluma is premium software with recurring first 12 months payouts, our growth partners earn massive ongoing rev-share.\n\nSecure your brand's growth credentials today using our ecosystem dashboard invite:\n\n 👉 **[Your Partner Link]**\n\nTo your scalable future,\n[Your Name]`
+          linkedin: `ðŸ’¼ **Operational Intelligence for the Future of Enterprise Commerce.**\n\nI am thrilled to announce my partnership and integration with **Revluma**, the premiere AI operations layer built by high-performance automation house **Luminor Terminal**.\n\nIn eCommerce, standard dashboards are backward-looking. True scale requires predictive systems. Revluma transforms silent customer data vectors into real-time growth decisions:\n\nðŸš€ **Convert Intelligently**: Auto-heals high-value cart drops in real-time.\nðŸ”„ **Automated Retention**: Pinpoints and triggers lifecycle campaigns autonomously.\nðŸ›¡ï¸ **Enterprise Security**: Backed by high-security Supabase/PostgreSQL infrastructure.\n\nAs a founding partner in the Revluma Growth Ecosystem, I'm extending early integration invites to our digital brands. Secure your operational advantage below:\n\nJoin the commerce future: **[Your Partner Link]**`,
+          email: `Subject: Revluma AI - The Next Gen Operational Commerce Layer\n\nDear Partner,\n\nIn modern commerce, standard retention strategies are failing. Traditional tools trigger re-engagement campaigns AFTER a subscriber has checked out or cancelled. That's backward-looking science.\n\n**Revluma**, designed by parent infrastructure house **Luminor Terminal**, turns your database into an active, predictive revenue recovery machine. Revluma utilizes advanced predictive machine models to discover friction and automate behavioral segment retention.\n\nHere's what this secures for your operations:\n- **$0 to Hero Automation**: Auto-detects and triggers conversion healing lines.\n- **Compound Revenue Recovery**: Increases customer lifetime value (LTV) by up to 22%.\n- **30% Compounding Affiliate Commission**: Since Revluma is premium software with recurring first 12 months payouts, our growth partners earn massive ongoing rev-share.\n\nSecure your brand's growth credentials today using our ecosystem dashboard invite:\n\n ðŸ‘‰ **[Your Partner Link]**\n\nTo your scalable future,\n[Your Name]`
         };
         const chanKey = (channel as string).toLowerCase();
         const output = templates[chanKey] || templates['x'];
@@ -310,11 +310,11 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Revluma Custom Server fully active on http://0.0.0.0:${PORT} [NODE_ENV=${process.env.NODE_ENV || 'development'}]`);
+    console.log(`ðŸš€ Revluma Custom Server fully active on http://0.0.0.0:${PORT} [NODE_ENV=${process.env.NODE_ENV || 'development'}]`);
   });
 }
 
 startServer().catch((err) => {
-  console.error("❌ Critical server startup failed:", err);
+  console.error("âŒ Critical server startup failed:", err);
   process.exit(1);
 });

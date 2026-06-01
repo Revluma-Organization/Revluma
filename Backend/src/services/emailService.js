@@ -1,9 +1,9 @@
-/**
+﻿/**
  * Production Email Service
- * Supports: Resend, SendGrid, and SMTP
+ * Supports: SendGrid and SMTP
+ * RESEND REMOVED - Using SendGrid as primary provider
  */
 
-const { Resend } = require('resend');
 const sgMail = require('@sendgrid/mail');
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
@@ -18,11 +18,6 @@ class EmailService {
 
   initializeProvider() {
     switch (this.provider) {
-      case 'resend':
-        this.resend = new Resend(config.email.resendApiKey);
-        logger.info('Email service initialized with Resend');
-        break;
-
       case 'sendgrid':
         sgMail.setApiKey(config.email.sendgridApiKey);
         logger.info('Email service initialized with SendGrid');
@@ -64,6 +59,28 @@ class EmailService {
       return result;
     } catch (error) {
       logger.error('Failed to send verification email', { email, error: error.message });
+      throw error;
+    }
+  }
+
+  /**
+   * Send RAPP vetting notification to operations team
+   */
+  async sendAffiliateVettingNotification(vettingEmail, affiliateProfile) {
+    try {
+      const subject = 'New RAPP Application Submitted';
+      const html = this.getVettingNotificationTemplate(affiliateProfile);
+
+      const result = await this.send({
+        to: vettingEmail,
+        subject,
+        html,
+      });
+
+      logger.info('Vetting notification sent', { vettingEmail, affiliateId: affiliateProfile.id });
+      return result;
+    } catch (error) {
+      logger.error('Failed to send vetting notification', { vettingEmail, error: error.message });
       throw error;
     }
   }
@@ -139,9 +156,6 @@ class EmailService {
    */
   async send({ to, subject, html }) {
     switch (this.provider) {
-      case 'resend':
-        return await this.sendViaResend(to, subject, html);
-
       case 'sendgrid':
         return await this.sendViaSendGrid(to, subject, html);
 
@@ -150,26 +164,6 @@ class EmailService {
 
       default:
         throw new Error(`Unsupported email provider: ${this.provider}`);
-    }
-  }
-
-  async sendViaResend(to, subject, html) {
-    try {
-      const response = await this.resend.emails.send({
-        from: this.from,
-        to,
-        subject,
-        html,
-      });
-
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
-
-      return response;
-    } catch (error) {
-      logger.error('Resend API error', { error: error.message });
-      throw error;
     }
   }
 
@@ -234,11 +228,130 @@ class EmailService {
             <p>Hi ${fullName},</p>
             <p>Your email verification code is:</p>
             <div class="code-box">${code}</div>
-            <p>This code will expire in 24 hours.</p>
+            <p>This code will expire in 15 minutes.</p>
             <p>If you didn't request this code, please ignore this email.</p>
           </div>
           <div class="footer">
             <p>&copy; 2026 Revluma. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  getVettingNotificationTemplate(affiliateProfile) {
+    const distributionChannels = [
+      affiliateProfile.twitterHandle && `Twitter: ${affiliateProfile.twitterHandle}`,
+      affiliateProfile.instagramHandle && `Instagram: ${affiliateProfile.instagramHandle}`,
+      affiliateProfile.linkedinProfile && `LinkedIn: ${affiliateProfile.linkedinProfile}`,
+      affiliateProfile.youtubeChannel && `YouTube: ${affiliateProfile.youtubeChannel}`,
+      affiliateProfile.tiktokHandle && `TikTok: ${affiliateProfile.tiktokHandle}`,
+      affiliateProfile.facebookProfile && `Facebook: ${affiliateProfile.facebookProfile}`,
+      affiliateProfile.website && `Website: ${affiliateProfile.website}`,
+      affiliateProfile.newsletterUrl && `Newsletter: ${affiliateProfile.newsletterUrl}`,
+      affiliateProfile.communityUrl && `Community: ${affiliateProfile.communityUrl}`,
+      affiliateProfile.otherPlatform1 && `Other: ${affiliateProfile.otherPlatform1}`,
+      affiliateProfile.otherPlatform2 && `Other: ${affiliateProfile.otherPlatform2}`
+    ].filter(Boolean).join('<br>');
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+          .container { max-width: 700px; margin: 0 auto; padding: 20px; }
+          .header { background: #0A0A0A; color: white; padding: 30px; text-align: center; border-radius: 8px; }
+          .content { padding: 20px 0; }
+          .info-box { background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; }
+          .info-row { margin: 10px 0; }
+          .label { font-weight: bold; color: #333; }
+          .value { color: #666; }
+          .cta-button { display: inline-block; background: #000; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; margin: 20px 0; font-weight: bold; }
+          .footer { color: #666; font-size: 12px; margin-top: 20px; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🔔 New RAPP Application Submitted</h1>
+            <p>A new affiliate has requested access to the Revluma Affiliate Partnership Program</p>
+          </div>
+          <div class="content">
+            <div class="info-box">
+              <h2>Applicant Information</h2>
+              <div class="info-row">
+                <span class="label">Full Name:</span>
+                <span class="value">${affiliateProfile.fullName}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Username:</span>
+                <span class="value">${affiliateProfile.username}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">User ID:</span>
+                <span class="value">${affiliateProfile.userId}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Affiliate Profile ID:</span>
+                <span class="value">${affiliateProfile.id}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Phone Number:</span>
+                <span class="value">${affiliateProfile.phoneNumber}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Country:</span>
+                <span class="value">${affiliateProfile.country}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Registration Timestamp:</span>
+                <span class="value">${new Date(affiliateProfile.createdAt).toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div class="info-box">
+              <h2>Distribution Channels (${affiliateProfile.distributionChannelsCount})</h2>
+              <div class="info-row">
+                ${distributionChannels}
+              </div>
+            </div>
+
+            <div class="info-box">
+              <h2>Profile Details</h2>
+              <div class="info-row">
+                <span class="label">Audience Niche:</span>
+                <span class="value">${affiliateProfile.audienceNiche}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Audience Size:</span>
+                <span class="value">${affiliateProfile.audienceSize}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Affiliate Experience:</span>
+                <span class="value">${affiliateProfile.affiliateExperience}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Why Join:</span>
+                <span class="value">${affiliateProfile.whyJoin}</span>
+              </div>
+              ${affiliateProfile.referralSource ? `
+              <div class="info-row">
+                <span class="label">Referral Source:</span>
+                <span class="value">${affiliateProfile.referralSource}</span>
+              </div>
+              ` : ''}
+            </div>
+
+            <p><strong>Action Required:</strong> This user has requested access to the Revluma Affiliate Partnership Program and is awaiting manual review.</p>
+            
+            <p>Please review the application and approve or reject accordingly.</p>
+          </div>
+          <div class="footer">
+            <p>&copy; 2026 Revluma. All rights reserved.</p>
+            <p>This is an automated notification from the RAPP vetting system.</p>
           </div>
         </div>
       </body>
@@ -368,8 +481,4 @@ class EmailService {
 }
 
 // Export singleton
-<<<<<<< HEAD
 module.exports = new EmailService();
-=======
-module.exports = new EmailService();
->>>>>>> 771ee70 (007015d - Production implementation: affiliate system, email service, centralized config)

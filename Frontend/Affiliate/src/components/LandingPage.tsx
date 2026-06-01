@@ -475,7 +475,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                 <div className="shrink-0 w-8 h-8 bg-zinc-900 border border-zinc-600 rounded-lg flex items-center justify-center font-mono text-[10px] text-zinc-200 group-hover:border-zinc-500 transition-colors">08</div>
                 <div className="space-y-1.5">
                   <h4 className="text-sm font-display font-semibold text-white">Long-Term Partnership</h4>
-                  <p className="text-xs text-zinc-400 leading-relaxed max-w-2xl">We're building a network of growth partners committed to helping ecommerce brands scale through AI-powered commerce intelligence. This is a relationship built to last — with shared success as the foundation.</p>
+                  <p className="text-xs text-zinc-400 leading-relaxed max-w-2xl">We're building a network of growth partners committed to helping ecommerce brands scale through AI-powered commerce intelligence. This is a relationship built to last with shared success as the foundation.</p>
                 </div>
               </div>
             </div>

@@ -105,8 +105,21 @@ const sessionLimiter = rateLimit({
 });
 app.use('/api/session', sessionLimiter, require('./src/routes/authSession'));
 
+// ============================================================
+// Affiliate onboarding (RAPP)
+// ============================================================
+const affiliateAuthLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many affiliate registration attempts' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/affiliate-auth', affiliateAuthLimiter, require('./src/routes/affiliateAuth'));
+
 app.use('/api/webhook', rateLimit({ windowMs: 60 * 1000, max: 50 }), require('./src/routes/webhook'));
 app.use('/api/trending', require('./src/routes/trending'));
+
 app.use('/api/watchlist', require('./src/routes/watchlist'));
 app.use('/api/shopify', require('./src/routes/shopify'));
 app.use('/api/newsletter', require('./src/routes/newsletter'));
@@ -184,7 +197,10 @@ app.get('/waitlist', (req, res) => {
 });
 
 // Admin endpoints
+app.use('/api/affiliate/admin', authenticate, require('./src/routes/v1/affiliateAdmin'));
+
 app.post('/api/admin/ingest', authenticate, async (req, res) => {
+
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
