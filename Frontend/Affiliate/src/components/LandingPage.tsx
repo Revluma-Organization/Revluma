@@ -526,7 +526,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                 &ldquo;Revluma helps ecommerce brands discover winning opportunities, track competitors, recover lost revenue, scale with less operational chaos, and grow faster with AI-powered intelligence. As a Revluma Growth Partner, you're helping businesses make smarter decisions and scale with confidence. Promote the future of ecommerce. Earn as you grow.&rdquo;
               </p>
               <div>
-                <h5 className="text-sm font-semibold text-white">Alistair Voss</h5>
+                <h5 className="text-sm font-semibold text-white">Splendor Benjamin</h5>
                 <span className="text-xs text-zinc-500">Founder & CEO , Luminor Terminal</span>
               </div>
               {/* Fake Social Profiles */}
