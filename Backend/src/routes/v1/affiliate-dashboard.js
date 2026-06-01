@@ -173,7 +173,7 @@ router.get('/referral-links', affiliateOrAdmin, async (req, res) => {
           clicksCount: link.clicksCount,
           createdAt: link.createdAt,
           updatedAt: link.updatedAt,
-          url: `${base.replace(/\/$/, '')}/affiliate/${link.referralCode}`
+          url: `${base.replace(/\/$/, '')}/r/${link.referralCode}`
         };
       })
     });

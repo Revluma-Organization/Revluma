@@ -4,11 +4,13 @@
  */
 
 import { useState } from 'react';
-import { 
-  ArrowRight, Shield, Zap, Sparkles, User, Database, Coins, Layers, 
-  HelpCircle, ChevronDown, CheckCircle2, ChevronRight, Globe, TrendingUp, Cpu, Flame, Code
+import {
+  ArrowRight, Shield, Zap, Sparkles, User, Database, Coins, Layers,
+  HelpCircle, ChevronDown, CheckCircle2, ChevronRight, Globe, TrendingUp, Flame, Code
 } from 'lucide-react';
 import { PartnerProfile } from '../types';
+import { FounderImage, getOptimizedImageUrl } from './BrandAssets';
+import revlumaLogo from '../assets/images/Revluma-logo.png';
 
 interface LandingPageProps {
   onNavigateToAuth: (view: 'login' | 'register') => void;
@@ -74,12 +76,10 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           <div className="flex h-16 items-center justify-between">
             {/* Logo/Brand */}
             <div className="flex items-center space-x-3 select-none">
-              <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center border border-zinc-800">
-                <Cpu className="w-4 h-4 text-zinc-950" />
-              </div>
+              <img src={revlumaLogo} alt="Revluma" className="w-14 h-14 object-contain rounded-md" />
               <div className="flex flex-col">
-                <span className="font-display font-semibold tracking-tight text-white text-base">REVLUMA</span>
-                <span className="text-[9px] text-zinc-500 font-mono tracking-wider">BY LUMINOR TERMINAL</span>
+                <span className="font-display font-semibold tracking-tight text-white text-lg">REVLUMA</span>
+                <span className="text-[10px] text-zinc-500 font-mono tracking-wider">BY LUMINOR TERMINAL</span>
               </div>
             </div>
 
@@ -95,7 +95,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
             {/* CTAs */}
             <div className="flex items-center space-x-4">
               {currentProfile ? (
-                <button 
+                <button
                   onClick={onNavigateToDashboard}
                   className="px-4 py-2 text-xs font-semibold rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-200 hover:bg-zinc-800 transition-all flex items-center gap-1.5"
                 >
@@ -104,13 +104,13 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                 </button>
               ) : (
                 <>
-                  <button 
+                  <button
                     onClick={() => onNavigateToAuth('login')}
                     className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
                   >
                     Login
                   </button>
-                  <button 
+                  <button
                     onClick={() => onNavigateToAuth('register')}
                     className="px-4 py-2 rounded-lg text-xs font-semibold bg-white text-zinc-950 hover:bg-zinc-200 transition-all hover:scale-[1.02]"
                   >
@@ -144,14 +144,14 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button 
+            <button
               onClick={() => onNavigateToAuth('register')}
               className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold bg-white text-zinc-950 hover:bg-zinc-100 font-display flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
             >
               Become a Founding Partner
               <ArrowRight className="w-4 h-4 text-zinc-950" />
             </button>
-            <a 
+            <a
               href="#calculator"
               className="w-full sm:w-auto px-6 py-4 rounded-xl font-semibold bg-zinc-900 border border-zinc-850 hover:bg-zinc-800 text-zinc-300 font-display transition-all block text-center"
             >
@@ -227,7 +227,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                 </div>
               </div>
             </div>
-            
+
             <div className="lg:col-span-5 p-6 bg-zinc-900/40 rounded-2xl border border-zinc-800/80 relative overflow-hidden flex flex-col justify-between min-h-[340px]">
               <div className="absolute top-0 right-0 -mr-16 -mt-16 w-38 h-38 bg-zinc-800/10 rounded-full blur-3xl pointer-events-none"></div>
               <div>
@@ -311,10 +311,10 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                     <span>Audience Reach</span>
                     <span className="text-white font-mono font-bold">{activeAudience.toLocaleString()} leads</span>
                   </div>
-                  <input 
-                    type="range" 
-                    min="1000" 
-                    max="50000" 
+                  <input
+                    type="range"
+                    min="1000"
+                    max="50000"
                     step="1000"
                     value={activeAudience}
                     onChange={(e) => setActiveAudience(Number(e.target.value))}
@@ -328,10 +328,10 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                     <span>Assumed Conversion Rate</span>
                     <span className="text-white font-mono font-bold">{conversionRate}%</span>
                   </div>
-                  <input 
-                    type="range" 
-                    min="0.5" 
-                    max="5" 
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="5"
                     step="0.5"
                     value={conversionRate}
                     onChange={(e) => setConversionRate(Number(e.target.value))}
@@ -345,10 +345,10 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                     <span>Average Monthly Contract Value</span>
                     <span className="text-white font-mono font-bold">${avgTicketPrice} / mo</span>
                   </div>
-                  <input 
-                    type="range" 
-                    min="99" 
-                    max="499" 
+                  <input
+                    type="range"
+                    min="99"
+                    max="499"
                     step="50"
                     value={avgTicketPrice}
                     onChange={(e) => setAvgTicketPrice(Number(e.target.value))}
@@ -509,12 +509,17 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
         {/* SECTION: FOUNDER SPOTLIGHT */}
         <section id="founder" className="py-20 border-t border-zinc-900">
           <div className="p-8 bg-zinc-900/30 rounded-2xl border border-zinc-850 max-w-4xl mx-auto flex flex-col md:flex-row gap-8 items-center">
-            {/* Visual placeholder for Founder */}
-            <div className="w-36 h-36 rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-950 flex flex-col items-center justify-center border border-zinc-800 p-2 text-center shrink-0">
-              <User className="w-12 h-12 text-zinc-600 mb-2" />
-              <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">FOUNDER</div>
-              <div className="text-[10px] font-bold text-white uppercase">Vetted Executive</div>
-            </div>
+            <FounderImage
+              src={getOptimizedImageUrl(
+                'https://images.unsplash.com/photo-1544005313-94ddf0286df2',
+                144,
+                144,
+                'high'
+              )}
+              alt="Portrait of Alistair Voss, Founder and CEO of Luminor Terminal"
+              name="Alistair Voss"
+              className="w-36 h-36"
+            />
 
             <div className="space-y-4">
               <div className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-450 uppercase tracking-widest">
@@ -554,11 +559,11 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
             {faqs.map((faq, index) => {
               const isOpen = openFaqIndex === index;
               return (
-                <div 
+                <div
                   key={index}
                   className="bg-zinc-900/20 border border-zinc-850/80 rounded-xl overflow-hidden transition-all"
                 >
-                  <button 
+                  <button
                     onClick={() => setOpenFaqIndex(isOpen ? null : index)}
                     className="w-full text-left p-5 flex justify-between items-center bg-zinc-900/20 hover:bg-zinc-900/40 transition-colors"
                   >
@@ -587,14 +592,14 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               We are offering early partner slots to premium eCommerce consultants, marketing agencies, and niche tech creators prior to general release. Get vetted now.
             </p>
             <div className="flex flex-col sm:flex-row justify-center items-center gap-4">
-              <button 
+              <button
                 onClick={() => onNavigateToAuth('register')}
                 className="w-full sm:w-auto px-8 py-4 rounded-xl text-xs font-semibold bg-white text-zinc-950 hover:bg-zinc-200 transition-all flex items-center justify-center gap-2 font-display uppercase tracking-widest hover:scale-[1.02]"
               >
                 Apply for Vetting Access
                 <ArrowRight className="w-4 h-4 text-zinc-950" />
               </button>
-              <button 
+              <button
                 onClick={() => onNavigateToAuth('login')}
                 className="w-full sm:w-auto px-6 py-4 rounded-xl text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 transition-all"
               >
@@ -609,10 +614,8 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
       <footer className="border-t border-zinc-900 bg-zinc-950 py-12 text-xs text-zinc-400">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-6 h-6 rounded bg-zinc-850 flex items-center justify-center border border-zinc-700">
-                <Cpu className="w-3 text-white" />
-              </div>
+            <div className="flex items-center space-x-3">
+              <img src={revlumaLogo} alt="Revluma" className="w-12 h-12 object-contain rounded-md" />
               <div className="font-display font-bold text-white text-sm">REVLUMA</div>
             </div>
             <p className="text-[11px] text-zinc-500 leading-relaxed">
@@ -646,9 +649,9 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               Subscribe to weekly API deployments, founder notes, and marketing directives.
             </p>
             <div className="flex">
-              <input 
-                type="email" 
-                placeholder="Submit partner email" 
+              <input
+                type="email"
+                placeholder="Submit partner email"
                 className="bg-zinc-900 text-xs text-white border border-zinc-800 rounded-l px-3 py-2 focus:outline-none focus:border-zinc-700 w-full"
               />
               <button className="bg-zinc-800 hover:bg-zinc-700 px-3 py-2 text-white border border-zinc-800 border-l-0 rounded-r font-mono">Join</button>

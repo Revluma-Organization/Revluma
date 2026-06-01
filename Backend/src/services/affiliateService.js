@@ -15,6 +15,7 @@
 const { v4: uuid } = require('uuid');
 const { prisma } = require('./prisma');
 const logger = require('../utils/logger');
+const { getBaseUrl, getAffiliateLink, getAffiliateAliasLink } = require('../config/baseUrl');
 
 /**
  * Generate unique referral code (5 alphanumeric chars)
@@ -66,8 +67,8 @@ async function generateReferralLink(userId, username) {
       }
     });
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://revluma.vercel.app';
-    const url = `${baseUrl}/affiliate/${referralCode}`;
+    const baseUrl = getBaseUrl();
+    const url = getAffiliateLink(username, uniqueId);
 
     logger.info('Referral link created', { affiliateId: affiliate.id, referralCode, url });
 
@@ -313,7 +314,7 @@ async function getAffiliateMetrics(affiliateId, period = 'month') {
       })
     ]);
 
-    const conversions = referrals.filter(r => 
+    const conversions = referrals.filter(r =>
       ['ACCOUNT_CREATED', 'TRIAL_STARTED', 'ACTIVE_SUBSCRIBER'].includes(r.status)
     ).length;
 

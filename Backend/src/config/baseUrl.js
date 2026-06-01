@@ -7,11 +7,11 @@
 const getBaseUrl = () => {
   // Production uses NEXT_PUBLIC_BASE_URL from Render
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.BASE_URL;
-  
+
   if (!baseUrl) {
     throw new Error('NEXT_PUBLIC_BASE_URL or BASE_URL must be configured in Render Dashboard');
   }
-  
+
   return baseUrl.replace(/\/$/, '');
 };
 
@@ -21,6 +21,9 @@ module.exports = {
   BASE_URL,
   getBaseUrl,
   getAffiliateLink: (affiliateUsername, uniqueId) => {
+    return `${BASE_URL}/r/${affiliateUsername}-${uniqueId}`;
+  },
+  getAffiliateAliasLink: (affiliateUsername, uniqueId) => {
     return `${BASE_URL}/affiliate/${affiliateUsername}-${uniqueId}`;
   },
   getWaitlistUrl: () => {

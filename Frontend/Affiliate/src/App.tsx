@@ -35,30 +35,75 @@ function buildPartnerProfile(
   profile?: Record<string, unknown>
 ): PartnerProfile {
   return {
-    id:                  serverUser.id,
-    fullName:            serverUser.full_name ?? '',
-    username:            (profile?.username as string)  ?? serverUser.email.split('@')[0],
-    email:               serverUser.email,
-    phoneNumber:         (profile?.phoneNumber as string)         ?? '',
-    country:             (profile?.country as string)             ?? '',
-    twitterHandle:       (profile?.twitterHandle as string)       ?? undefined,
-    instagramHandle:     (profile?.instagramHandle as string)     ?? undefined,
-    linkedInProfile:     (profile?.linkedinProfile as string)     ?? undefined,
-    website:             (profile?.website as string)             ?? undefined,
-    audienceNiche:       (profile?.audienceNiche as string)       ?? '',
-    audienceSize:        (profile?.audienceSize as string)        ?? '',
+    id: serverUser.id,
+    fullName: serverUser.full_name ?? '',
+    username: (profile?.username as string) ?? serverUser.email.split('@')[0],
+    email: serverUser.email,
+    phoneNumber: (profile?.phoneNumber as string) ?? '',
+    country: (profile?.country as string) ?? '',
+    twitterHandle: (profile?.twitterHandle as string) ?? undefined,
+    instagramHandle: (profile?.instagramHandle as string) ?? undefined,
+    linkedInProfile: (profile?.linkedinProfile as string) ?? undefined,
+    website: (profile?.website as string) ?? undefined,
+    audienceNiche: (profile?.audienceNiche as string) ?? '',
+    audienceSize: (profile?.audienceSize as string) ?? '',
     affiliateExperience: (profile?.affiliateExperience as string) ?? '',
-    whyJoin:             (profile?.whyJoin as string)             ?? '',
-    status:              ((profile?.status as string ?? 'pending').toLowerCase()) as ApprovalStatus,
-    role:                (serverUser.role === 'admin' ? 'admin' : 'affiliate') as PartnerProfile['role'],
-    createdAt:           (profile?.createdAt as string) ?? new Date().toISOString(),
-    tier:                (profile?.tier as PartnerProfile['tier']) ?? 'Affiliate',
-    commissionRate:      (profile?.commissionRate as number) ?? 0.20,
-    avatarUrl:           (profile?.avatarUrl as string) ?? undefined,
-    termsAccepted:       (profile?.termsAccepted as boolean) ?? false,
-    marketingConsent:    (profile?.marketingConsent as boolean) ?? false,
-    emailVerified:       true
+    whyJoin: (profile?.whyJoin as string) ?? '',
+    status: ((profile?.status as string ?? 'pending').toLowerCase()) as ApprovalStatus,
+    role: (serverUser.role === 'admin' ? 'admin' : 'affiliate') as PartnerProfile['role'],
+    createdAt: (profile?.createdAt as string) ?? new Date().toISOString(),
+    tier: (profile?.tier as PartnerProfile['tier']) ?? 'Affiliate',
+    commissionRate: (profile?.commissionRate as number) ?? 0.20,
+    avatarUrl: (profile?.avatarUrl as string) ?? undefined,
+    referralCode: (profile?.referralCode as string) ?? (profile?.referralLinks ? ((profile.referralLinks as Array<Record<string, unknown>>)[0]?.referralCode as string) : undefined),
+    termsAccepted: (profile?.termsAccepted as boolean) ?? false,
+    marketingConsent: (profile?.marketingConsent as boolean) ?? false,
+    emailVerified: true
   };
+}
+
+type RouteState = {
+  view: AppView;
+  authSubView?: AuthSubView;
+};
+
+function routePath(view: AppView, authSubView: AuthSubView = 'login') {
+  switch (view) {
+    case 'landing': return '/affiliate';
+    case 'auth': return authSubView === 'register' ? '/affiliate/signup' : '/affiliate/login';
+    case 'dashboard': return '/affiliate/dashboard';
+    case 'admin': return '/affiliate/admin';
+    default: return '/affiliate';
+  }
+}
+
+function resolveAffiliateRoute(pathname: string, user: PartnerProfile | null): RouteState {
+  const normalized = pathname.replace(/\/+$|^\/affiliate/, '') || '/';
+  switch (normalized.toLowerCase()) {
+    case '/':
+      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'landing' };
+    case '/login':
+    case '/signin':
+      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'auth', authSubView: 'login' };
+    case '/signup':
+    case '/register':
+      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'auth', authSubView: 'register' };
+    case '/dashboard':
+    case '/settings':
+      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'auth', authSubView: 'login' };
+    case '/admin':
+      return user?.role === 'admin' ? { view: 'admin' } : { view: 'auth', authSubView: 'login' };
+    default:
+      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'landing' };
+  }
+}
+
+function syncRoute(view: AppView, authSubView: AuthSubView) {
+  if (typeof window === 'undefined') return;
+  const desiredPath = routePath(view, authSubView);
+  if (window.location.pathname !== desiredPath) {
+    window.history.replaceState({}, '', desiredPath);
+  }
 }
 
 const BASE_URL = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL
@@ -87,19 +132,25 @@ async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // ============================================================
 
 export default function App() {
-  const [view,           setView]           = useState<AppView>('landing');
-  const [authSubView,    setAuthSubView]    = useState<AuthSubView>('login');
-  const [currentUser,    setCurrentUser]    = useState<PartnerProfile | null>(null);
-  const [allProfiles,    setAllProfiles]    = useState<PartnerProfile[]>([]);
-  const [withdrawals,    setWithdrawals]    = useState<WithdrawalRequest[]>([]);
-  const [broadcasts,     setBroadcasts]     = useState<FounderBroadcast[]>([]);
+  const [view, setView] = useState<AppView>('landing');
+  const [authSubView, setAuthSubView] = useState<AuthSubView>('login');
+  const [currentUser, setCurrentUser] = useState<PartnerProfile | null>(null);
+  const [allProfiles, setAllProfiles] = useState<PartnerProfile[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
+  const [broadcasts, setBroadcasts] = useState<FounderBroadcast[]>([]);
   const [isInitializing, setIsInitializing] = useState(true);
 
   // ============================================================
-  // Session restore on mount
+  // Session restore and route initialization on mount
   // ============================================================
 
   useEffect(() => {
+    const initialState = resolveAffiliateRoute(window.location.pathname, null);
+    setView(initialState.view);
+    if (initialState.authSubView) {
+      setAuthSubView(initialState.authSubView);
+    }
+
     api.me()
       .then(async (data) => {
         if (data.authenticated && data.user) {
@@ -108,17 +159,22 @@ export default function App() {
             const profile = profileRes.profile as Record<string, unknown>;
             const restoredUser = buildPartnerProfile(data.user, profile);
             setCurrentUser(restoredUser);
-            setView(restoredUser.role === 'admin' ? 'admin' : 'dashboard');
+            setView(resolveAffiliateRoute(window.location.pathname, restoredUser).view);
+            setAuthSubView(resolveAffiliateRoute(window.location.pathname, restoredUser).authSubView ?? authSubView);
             await loadUserData(restoredUser);
           } catch {
-            // Profile fetch failed — stay on landing
+            // Profile fetch failed — fall back to route state
           }
         }
       })
       .catch(() => { /* no active session */ })
       .finally(() => setIsInitializing(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    syncRoute(view, authSubView);
+  }, [view, authSubView]);
 
   // ============================================================
   // Data loading
@@ -146,10 +202,10 @@ export default function App() {
         setAllProfiles(
           aResult.affiliates.map(a => buildPartnerProfile(
             {
-              id:        (a.user as Record<string, unknown>)?.id as string ?? a.id as string,
-              email:     (a.user as Record<string, unknown>)?.email as string ?? '',
+              id: (a.user as Record<string, unknown>)?.id as string ?? a.id as string,
+              email: (a.user as Record<string, unknown>)?.email as string ?? '',
               full_name: (a.user as Record<string, unknown>)?.fullName as string ?? '',
-              role:      'affiliate'
+              role: 'affiliate'
             },
             a
           ))
@@ -164,9 +220,9 @@ export default function App() {
 
   const handleAuthSuccess = useCallback(async (profile: PartnerProfile) => {
     setCurrentUser(profile);
-    await loadUserData(profile).catch(() => {});
+    await loadUserData(profile).catch(() => { });
     setView(profile.role === 'admin' ? 'admin' : 'dashboard');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLogout = useCallback(async () => {
@@ -187,12 +243,12 @@ export default function App() {
     await backendFetch('/affiliate/profile', {
       method: 'PATCH',
       body: JSON.stringify({
-        websiteUrl:      updated.website,
-        twitterHandle:   updated.twitterHandle,
+        websiteUrl: updated.website,
+        twitterHandle: updated.twitterHandle,
         instagramHandle: updated.instagramHandle,
         linkedinProfile: updated.linkedInProfile,
-        audienceNiche:   updated.audienceNiche,
-        audienceSize:    updated.audienceSize
+        audienceNiche: updated.audienceNiche,
+        audienceSize: updated.audienceSize
       })
     });
     setCurrentUser(updated);
@@ -259,11 +315,11 @@ export default function App() {
 
   const handleAddBroadcast = useCallback(async (title: string, content: string) => {
     const newBroadcast: FounderBroadcast = {
-      id:      `broadcast_${Date.now()}`,
+      id: `broadcast_${Date.now()}`,
       title,
       content,
-      date:    new Date().toISOString(),
-      author:  currentUser?.fullName ?? 'Admin'
+      date: new Date().toISOString(),
+      author: currentUser?.fullName ?? 'Admin'
     };
     // TODO: POST /affiliate/admin/broadcasts to persist
     setBroadcasts(prev => [newBroadcast, ...prev]);
