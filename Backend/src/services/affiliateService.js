@@ -16,6 +16,7 @@ const { v4: uuid } = require('uuid');
 const { prisma } = require('./prisma');
 const logger = require('../utils/logger');
 const { getBaseUrl, getAffiliateLink, getAffiliateAliasLink } = require('../config/baseUrl');
+const { determineTierAndRate } = require('../lib/affiliate-utils');
 
 /**
  * Generate unique referral code (5 alphanumeric chars)
@@ -245,6 +246,29 @@ async function updateReferralStatus(referralId, newStatus) {
     });
 
     logger.info('Referral status updated', { referralId, newStatus });
+
+    // After status change, recalculate affiliate active referrals and adjust tier/commission
+    try {
+      const partnerId = referral.partnerId;
+      const activeCount = await prisma.affiliateReferral.count({
+        where: { partnerId, status: 'ACTIVE_SUBSCRIBER' }
+      });
+
+      const { tier, commissionRate } = determineTierAndRate(activeCount);
+
+      // Update affiliate profile if changed
+      await prisma.affiliateProfile.updateMany({
+        where: { id: partnerId },
+        data: {
+          tier,
+          commissionRate: commissionRate
+        }
+      });
+
+      logger.info('Affiliate tier recalculated', { partnerId, activeCount, tier, commissionRate });
+    } catch (innerErr) {
+      logger.error('Failed to recalculate affiliate tier after referral update', { error: innerErr.message, referralId });
+    }
 
     return { success: true };
   } catch (err) {

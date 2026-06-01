@@ -37,7 +37,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
   const faqs = [
     {
       q: "What is Revluma?",
-      a: "Revluma is an AI-powered operational commerce intelligence platform constructed by parent technology developer Luminor Terminal. It integrates directly with customer transaction systems to autonomously recover lost checkouts, curb churn, automate behavioral segment workflows, and drive higher CLV (Customer Lifetime Value)."
+      a: "Revluma AI is an AI-powered eCommerce operations and revenue intelligence platform focused on helping online brands recover lost revenue, spot winning products, automate retention workflows, analyze customer behavior, and reduce operational inefficiencies. It aims to act as a centralized operational layer instead of businesses relying on disconnected & fragmanted tools and manual processes. The core idea behind Revluma is that most eCommerce stores leak money through abandoned checkouts, spotting winning products before competitors do, weak retention systems, fragmented analytics, bad inventory management, poor customer lifecycle management, and slow decision-making. Revluma is being built to solve those problems through automation, predictive intelligence, and unified business operations."
     },
     {
       q: "What is Luminor Terminal?",
@@ -298,9 +298,9 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           <div className="glass-card rounded-2xl p-8 max-w-4xl mx-auto">
             <div className="text-center mb-10">
               <div className="font-mono text-[10px] text-zinc-450 uppercase tracking-widest mb-1">INTERACTIVE INCENTIVES CALCULATOR</div>
-              <h3 className="text-2xl font-display font-semibold text-white mb-2">Estimate Your Co-Founder Payouts</h3>
+              <h3 className="text-2xl font-display font-semibold text-white mb-2">Estimate Your RAPP Payouts</h3>
               <p className="text-xs text-zinc-400 max-w-xl mx-auto">
-                Discover the recurring first 12 months revenue scaling metrics backed by Revluma's generous 30% founding partner incentive rates.
+                Discover the recurring first 12 months revenue scaling metrics backed by Revluma's generous 40% founding partner incentive rates.
               </p>
             </div>
 
@@ -332,7 +332,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                   <input
                     type="range"
                     min="0.5"
-                    max="5"
+                    max="30"
                     step="0.5"
                     value={conversionRate}
                     onChange={(e) => setConversionRate(Number(e.target.value))}
@@ -348,8 +348,8 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                   </div>
                   <input
                     type="range"
-                    min="99"
-                    max="499"
+                    min="5"
+                    max="40"
                     step="50"
                     value={avgTicketPrice}
                     onChange={(e) => setAvgTicketPrice(Number(e.target.value))}
@@ -486,7 +486,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-300" /> Direct engineering consultation</li>
                 </ul>
               </div>
-              <div className="mt-8 pt-4 border-t border-zinc-850 text-[10px] text-zinc-450 font-mono">UNLOCK // 35 ACTIVE REFERRALS</div>
+              <div className="mt-8 pt-4 border-t border-zinc-850 text-[10px] text-zinc-450 font-mono">UNLOCK // 30 ACTIVE REFERRALS</div>
             </div>
 
             {/* Tier 4 */}
@@ -502,7 +502,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                   <li className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" /> Elite Advisory Board invite</li>
                 </ul>
               </div>
-              <div className="mt-8 pt-4 border-t border-zinc-850 text-[10px] text-zinc-550 font-mono">VETTING // BY REVLUMA COUNCIL</div>
+              <div className="mt-8 pt-4 border-t border-zinc-850 text-[10px] text-zinc-550 font-mono">UNLOCK // 50 ACTIVE REFERRALS</div>
             </div>
           </div>
         </section>
