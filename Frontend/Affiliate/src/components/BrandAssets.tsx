@@ -102,7 +102,7 @@ export const FounderImage: React.FC<FounderImageProps> = ({
   const currentSrc = attempts === 0 ? src : fallbackSources[attempts - 1];
 
   return (
-    <div className={`${className} rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-950 flex items-center justify-center border-2 border-red-500 relative overflow-hidden group flex-shrink-0 shadow-lg`}>
+    <div className={`${className} rounded-2xl bg-gradient-to-br from-zinc-800 to-zinc-950 flex items-center justify-center border border-zinc-800 relative overflow-hidden group flex-shrink-0 shadow-lg`}>
       {/* Placeholder gradient */}
       <div className="absolute inset-0 bg-gradient-to-br from-zinc-700/20 to-zinc-900/20" />
 

@@ -9,8 +9,9 @@ import {
   HelpCircle, ChevronDown, CheckCircle2, ChevronRight, Globe, TrendingUp, Flame, Code
 } from 'lucide-react';
 import { PartnerProfile } from '../types';
-import { FounderImage, getOptimizedImageUrl } from './BrandAssets';
+import { FounderImage } from './BrandAssets';
 import revlumaLogo from '../assets/images/Revluma-logo.png';
+import splendorImg from '../assets/images/Splendor.jpg';
 
 interface LandingPageProps {
   onNavigateToAuth: (view: 'login' | 'register') => void;
@@ -510,14 +511,9 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
         <section id="founder" className="py-20 border-t border-zinc-900">
           <div className="p-8 bg-zinc-900/30 rounded-2xl border border-zinc-850 max-w-4xl mx-auto flex flex-col md:flex-row gap-8 items-center">
             <FounderImage
-              src={getOptimizedImageUrl(
-                'https://images.unsplash.com/photo-1544005313-94ddf0286df2',
-                144,
-                144,
-                'high'
-              )}
-              alt="Portrait of Alistair Voss, Founder and CEO of Luminor Terminal"
-              name="Alistair Voss"
+              src={splendorImg}
+              alt="Portrait of Splendor Benjamin, Founder & CEO of Luminor Terminal"
+              name="Splendor Benjamin"
               className="w-36 h-36"
             />
 
@@ -527,7 +523,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
                 <span>Founder Spotlight & Vision</span>
               </div>
               <p className="font-display font-medium text-white italic text-base leading-relaxed">
-                &ldquo;Commerce architectures are growing too complicated for amateur scripting tools. At Luminor Terminal, we build operations terminals that scale without friction. Revluma acts as an automated conversion optimization team, and our growth partners are the bridge to deploying this globally.&rdquo;
+                &ldquo;Revluma helps ecommerce brands discover winning opportunities, track competitors, recover lost revenue, scale with less operational chaos, and grow faster with AI-powered intelligence. As a Revluma Growth Partner, you're helping businesses make smarter decisions and scale with confidence. Promote the future of ecommerce. Earn as you grow.&rdquo;
               </p>
               <div>
                 <h5 className="text-sm font-semibold text-white">Alistair Voss</h5>
