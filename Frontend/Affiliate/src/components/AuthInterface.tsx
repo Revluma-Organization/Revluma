@@ -143,6 +143,53 @@ function OTPInput({ value, onChange, length = 6 }: {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Sub-components defined OUTSIDE the main component so React never treats
+// them as new component types on re-render. Defining them inside the parent
+// causes remounting on every keystroke (new function reference = new type),
+// which destroys input focus after each character typed.
+// ---------------------------------------------------------------------------
+
+const inputClass =
+  'w-full bg-zinc-900/80 border border-zinc-700/80 text-zinc-100 placeholder-zinc-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition-all duration-150 hover:border-zinc-500';
+
+const btnPrimary =
+  'w-full flex items-center justify-center gap-2.5 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl px-5 py-3 text-sm transition-all duration-150 shadow-lg shadow-violet-500/10 hover:shadow-violet-500/20';
+
+const btnSecondary =
+  'w-full flex items-center justify-center gap-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 font-medium rounded-xl px-5 py-3 text-sm transition-all duration-150';
+
+function LogoHeader({ subtitle }: { subtitle: string }) {
+  return (
+    <div className="text-center space-y-3 mb-2">
+      <div className="flex items-center justify-center mb-2">
+        <img src={revlumaLogo} alt="Revluma" className="h-10 w-auto" />
+      </div>
+      <p className="text-sm text-zinc-500">{subtitle}</p>
+    </div>
+  );
+}
+
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`bg-zinc-900/60 backdrop-blur-sm border border-zinc-800/80 rounded-2xl p-6 md:p-8 space-y-5 shadow-xl ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function PageWrap({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 flex flex-col items-center justify-center px-4 py-12">
+      <div className={`w-full ${wide ? 'max-w-xl' : 'max-w-md'} space-y-6`}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 export default function AuthInterface({
   onAuthSuccess,
   onBackToLanding,
@@ -381,8 +428,8 @@ export default function AuthInterface({
     }
   };
 
-  const handleSignUpCompletion = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSignUpCompletion = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     const err = validateStep3();
     if (err) { setErrorText(err); return; }
 
@@ -558,38 +605,6 @@ export default function AuthInterface({
         <span className="leading-relaxed">{text}</span>
       </div>
     ) : null;
-
-  const inputClass =
-    'w-full bg-zinc-900/80 border border-zinc-700/80 text-zinc-100 placeholder-zinc-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition-all duration-150 hover:border-zinc-500';
-
-  const btnPrimary =
-    'w-full flex items-center justify-center gap-2.5 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl px-5 py-3 text-sm transition-all duration-150 shadow-lg shadow-violet-500/10 hover:shadow-violet-500/20';
-
-  const btnSecondary =
-    'w-full flex items-center justify-center gap-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 font-medium rounded-xl px-5 py-3 text-sm transition-all duration-150';
-
-  const LogoHeader = ({ subtitle }: { subtitle: string }) => (
-    <div className="text-center space-y-3 mb-2">
-      <div className="flex items-center justify-center mb-2">
-        <img src={revlumaLogo} alt="Revluma" className="h-10 w-auto" />
-      </div>
-      <p className="text-sm text-zinc-500">{subtitle}</p>
-    </div>
-  );
-
-  const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-    <div className={`bg-zinc-900/60 backdrop-blur-sm border border-zinc-800/80 rounded-2xl p-6 md:p-8 space-y-5 shadow-xl ${className}`}>
-      {children}
-    </div>
-  );
-
-  const PageWrap = ({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) => (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 flex flex-col items-center justify-center px-4 py-12">
-      <div className={`w-full ${wide ? 'max-w-xl' : 'max-w-md'} space-y-6`}>
-        {children}
-      </div>
-    </div>
-  );
 
   if (authMode === 'rejected') {
     return (

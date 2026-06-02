@@ -3,7 +3,7 @@ pid: 26372
 cwd: "C:\Users\USER\OneDrive\Desktop\Revluma"
 command: "cd \"C:\\Users\\USER\\OneDrive\\Desktop\\Revluma\\Frontend\\Affiliate\"; npm run lint 2>&1"
 started_at: 2026-06-02T12:00:40.132Z
-running_for_ms: 3734826  
+running_for_ms: 12739773 
 ---
 
 > react-example@0.0.0 lint
