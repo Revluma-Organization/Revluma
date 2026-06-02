@@ -71,11 +71,14 @@ enum AffiliateTier {
 }
 
 enum AffiliateStatus {
-  PENDING
+  PENDING_EMAIL_VERIFICATION
+  PENDING_ACCESS_TOKEN
+  PENDING_REVIEW
   UNDER_REVIEW
   APPROVED
   REJECTED
   SUSPENDED
+  PENDING
 }
 
 enum ReferralStatus {
@@ -111,12 +114,27 @@ model AffiliateProfile {
   twitterHandle       String?
   instagramHandle     String?
   linkedinProfile     String?
+  youtubeChannel      String?
+  tiktokHandle        String?
+  facebookProfile     String?
+  newsletterUrl       String?
+  communityUrl        String?
+  otherPlatform1      String?
+  otherPlatform2      String?
   website             String?
+  distributionChannelsCount Int             @default(0)
+  accessTokenId       String?
+  accessTokenUsedAt   DateTime?
+  emailVerificationSentAt DateTime?
+  vettingNotificationSentAt DateTime?
+  referralSource      String?
+  rejectedReason      String?
+  suspendedReason     String?
   audienceNiche       String
   audienceSize        String
   affiliateExperience String
   whyJoin             String
-  status              AffiliateStatus       @default(PENDING)
+  status              AffiliateStatus       @default(PENDING_REVIEW)
   tier                AffiliateTier         @default(AFFILIATE)
   commissionRate      Decimal               @default(0.20) @db.Decimal(4, 2)
   totalEarned         Decimal               @default(0) @db.Decimal(12, 2)
@@ -133,11 +151,13 @@ user                User                  @relation(fields: [userId], references
    withdrawals         AffiliateWithdrawal[]
    referralLinks       ReferralLink[]
    referralClicks      ReferralClick[]
-   waitlistSubmissions WaitlistSubmission[]
+  waitlistSubmissions WaitlistSubmission[]
+  accessToken         RappAccessToken?      @relation(fields: [accessTokenId], references: [id], onDelete: SetNull)
 
-   @@index([userId])
+  @@index([userId])
   @@index([status])
   @@index([username])
+  @@index([accessTokenId])
   @@map("affiliate_profiles")
 }
 
@@ -216,12 +236,12 @@ model RappAccessToken {
   @@index([tokenHash])
   @@index([isActive])
   @@index([expiresAt])
-  @@map(\"rapp_access_tokens\")
+  @@map("rapp_access_tokens")
 }
 
 model RappTokenUsageLog {
   id                 String           @id @default(uuid())
-  tokenId            String
+  tokenId            String?
   email              String
   userId             String?
   affiliateProfileId String?
@@ -230,12 +250,12 @@ model RappTokenUsageLog {
   success            Boolean          @default(true)
   failureReason      String?
   createdAt          DateTime         @default(now())
-  token              RappAccessToken  @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  token              RappAccessToken? @relation(fields: [tokenId], references: [id], onDelete: Cascade)
 
   @@index([tokenId])
   @@index([email])
   @@index([createdAt])
-  @@map(\"rapp_token_usage_log\")
+  @@map("rapp_token_usage_log")
 }
 
 model AffiliateStatusAuditLog {
@@ -251,14 +271,14 @@ model AffiliateStatusAuditLog {
 
   @@index([affiliateProfileId])
   @@index([createdAt])
-  @@map(\"affiliate_status_audit_log\")
+  @@map("affiliate_status_audit_log")
 }
 
 model AffiliateVettingNotification {
   id                 String    @id @default(uuid())
   affiliateProfileId String
   email              String
-  status             String    @default(\"PENDING\")
+  status             String    @default("PENDING")
   sentAt             DateTime?
   failureReason      String?
   retryCount         Int       @default(0)
@@ -267,7 +287,7 @@ model AffiliateVettingNotification {
 
   @@index([status])
   @@index([affiliateProfileId])
-  @@map(\"affiliate_vetting_notifications\")
+  @@map("affiliate_vetting_notifications")
 }
 
 
@@ -288,7 +308,6 @@ model WaitlistSubmission {
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
   affiliate           AffiliateProfile?     @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
-  referral            AffiliateReferral?
 
   @@index([email])
   @@index([referralCode])
@@ -413,22 +432,24 @@ model AffiliateNotification {
 }
 
 model PendingRegistration {
-  id                    String    @id @default(uuid())
-  email                 String    @unique
+  id                    String        @id @default(uuid())
+  email                 String        @unique
   firstName             String
   lastName              String
   passwordHash          String
   verificationCodeHash  String
-  emailVerified         Boolean   @default(false)
+  emailVerified         Boolean       @default(false)
   emailVerifiedAt       DateTime?
   verificationExpiresAt DateTime
-  onboardingData        Json      @default("{}")
-  step                  Int       @default(1)
+  authState             AccountStatus @default(PENDING_EMAIL_VERIFICATION)
+  onboardingData        Json          @default("{}")
+  step                  Int           @default(1)
   expiresAt             DateTime
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
   @@index([expiresAt])
+  @@index([authState])
   @@map("pending_registrations")
 }
 
@@ -992,82 +1013,4 @@ enum CheckoutStatus {
   UNKNOWN
 }
 
-// ============================================================
-// RAPP ACCESS TOKEN SYSTEM - Added for Authentication Upgrade
-// ============================================================
 
-model RappAccessToken {
-  id            String                @id @default(uuid())
-  token         String                @unique
-  tokenHash     String                @unique
-  description   String?
-  maxUses       Int                   @default(1)
-  usedCount     Int                   @default(0)
-  isActive      Boolean               @default(true)
-  expiresAt     DateTime?
-  createdBy     String?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  revokedAt     DateTime?
-  revokedBy     String?
-  revokedReason String?
-  usageLogs     RappTokenUsageLog[]
-  affiliates    AffiliateProfile[]
-
-  @@index([token])
-  @@index([tokenHash])
-  @@index([isActive])
-  @@index([expiresAt])
-  @@map("rapp_access_tokens")
-}
-
-model RappTokenUsageLog {
-  id                 String          @id @default(uuid())
-  tokenId            String
-  email              String
-  userId             String?
-  affiliateProfileId String?
-  ipAddress          String?
-  userAgent          String?
-  success            Boolean         @default(true)
-  failureReason      String?
-  createdAt          DateTime        @default(now())
-  token              RappAccessToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
-
-  @@index([tokenId])
-  @@index([email])
-  @@index([createdAt])
-  @@map("rapp_token_usage_log")
-}
-
-model AffiliateStatusAuditLog {
-  id                 String   @id @default(uuid())
-  affiliateProfileId String
-  previousStatus     String?
-  newStatus          String
-  changedBy          String?
-  reason             String?
-  notes              String?
-  metadata           Json?
-  createdAt          DateTime @default(now())
-
-  @@index([affiliateProfileId])
-  @@index([createdAt])
-  @@map("affiliate_status_audit_log")
-}
-
-model AffiliateVettingNotification {
-  id                 String    @id @default(uuid())
-  affiliateProfileId String
-  email              String
-  status             String    @default("PENDING")
-  sentAt             DateTime?
-  failureReason      String?
-  retryCount         Int       @default(0)
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-
-  @@index([status])
-  @@index([affiliateProfileId])
-  @@map("affiliate_vetting_notifications")
-}

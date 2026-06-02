@@ -61,6 +61,45 @@ export async function login(email: string, password: string) {
   return data;
 }
 
+export async function checkUsername(username: string) {
+  const qs = `username=${encodeURIComponent(username)}`;
+  return request<{ available: boolean; username: string }>(
+    'GET',
+    `/affiliate-auth/check-username?${qs}`,
+    undefined,
+    true
+  );
+}
+
+export async function affiliateResendVerification(payload: {
+  pendingRegistrationId: string;
+  email?: string;
+}) {
+  return request<{ message: string; expiresAt: string }>(
+    'POST',
+    '/affiliate-auth/resend-verification',
+    payload,
+    true
+  );
+}
+
+export async function affiliateApplicationStatus(params: {
+  pendingRegistrationId?: string;
+  userId?: string;
+}) {
+  const qs = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
+  ).toString();
+  return request<{
+    phase: string;
+    authState: string;
+    emailVerified?: boolean;
+    accessTokenValidated?: boolean;
+    step?: number;
+    expiresAt?: string;
+  }>('GET', `/affiliate-auth/application-status${qs ? `?${qs}` : ''}`, undefined, true);
+}
+
 export async function affiliateRegister(payload: {
   email: string; password: string;
   firstName: string; lastName: string;
@@ -87,7 +126,7 @@ export async function affiliateVerifyEmail(payload: {
   pendingRegistrationId: string;
   code: string;
 }) {
-  return request<{ message: string; verified: boolean }>(
+  return request<{ message: string; verified: boolean; authState?: string }>(
     'POST', '/affiliate-auth/verify-email', payload, true
   );
 }
@@ -96,7 +135,7 @@ export async function affiliateValidateToken(payload: {
   pendingRegistrationId: string;
   token: string;
 }) {
-  return request<{ message: string; valid: boolean; tokenId: string }>(
+  return request<{ message: string; valid: boolean; authState?: string }>(
     'POST', '/affiliate-auth/validate-access-token', payload, true
   );
 }

@@ -287,6 +287,10 @@ class EmailService {
                 <span class="value">${affiliateProfile.fullName}</span>
               </div>
               <div class="info-row">
+                <span class="label">Email:</span>
+                <span class="value">${affiliateProfile.applicantEmail || affiliateProfile.user?.email || 'N/A'}</span>
+              </div>
+              <div class="info-row">
                 <span class="label">Username:</span>
                 <span class="value">${affiliateProfile.username}</span>
               </div>

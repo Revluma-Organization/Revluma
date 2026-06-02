@@ -9,7 +9,6 @@ import dotenv from "dotenv";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import { MailService } from "@sendgrid/mail";
 
 // Load environment variables
 dotenv.config();
@@ -120,58 +119,55 @@ async function startServer() {
     res.json({ status: "healthy", timestamp: new Date().toISOString(), logsPending: webhookLogs.length });
   });
 
-  // 1B. API: Dispatches mail via Resend API (if configured)
-  app.post("/api/send-email", async (req, res) => {
+  // Proxy all /api/* requests to the Revluma backend (fixes 404 when VITE_API_URL is unset)
+  const backendOrigin = (
+    process.env.BACKEND_API_URL ||
+    process.env.VITE_API_URL?.replace(/\/api\/?$/, "") ||
+    "http://localhost:5000"
+  ).replace(/\/$/, "");
+
+  app.use("/api", async (req, res) => {
+    const targetUrl = `${backendOrigin}/api${req.url}`;
     try {
-      const { to, subject, body } = req.body;
-      const apiKey = process.env.RESEND_API_KEY;
-
-      if (!apiKey || apiKey === "MY_RESEND_API_KEY" || apiKey.trim() === "") {
-        console.warn("⚠️ Warning: RESEND_API_KEY environment variable is not configured. Email logged to local terminal only.");
-        res.json({
-          success: true,
-          simulated: true,
-          message: "Email queued in sandbox terminal simulation because RESEND_API_KEY is not set."
-        });
-        return;
+      const headers: Record<string, string> = {
+        "Content-Type": req.headers["content-type"] as string || "application/json",
+      };
+      if (req.headers["x-csrf-token"]) {
+        headers["X-CSRF-Token"] = req.headers["x-csrf-token"] as string;
+      }
+      if (req.headers["x-affiliate-portal"]) {
+        headers["X-Affiliate-Portal"] = req.headers["x-affiliate-portal"] as string;
+      }
+      if (req.headers["x-correlation-id"]) {
+        headers["X-Correlation-ID"] = req.headers["x-correlation-id"] as string;
+      }
+      if (req.headers.cookie) {
+        headers.Cookie = req.headers.cookie as string;
       }
 
-      const resendObj = new Resend(apiKey);
-      const fromAddress = process.env.RESEND_FROM_EMAIL || "Luminor Terminal <onboarding@resend.dev>";
+      const init: RequestInit = {
+        method: req.method,
+        headers,
+        redirect: "manual",
+      };
 
-      // We convert newline into html linebreaks to ensure perfect typography
-      const formattedHtml = `
-        <div style="font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background-color: #0c0a09; border: 1px solid #1c1917; border-radius: 16px; color: #e4e4e7;">
-          <h2 style="font-size: 20px; color: #fafafa; border-bottom: 2px solid #27272a; padding-bottom: 12px; font-weight: 600;">LUMINOR TERMINAL GATEWAY</h2>
-          <div style="font-size: 14px; color: #a1a1aa; line-height: 1.6; white-space: pre-line; margin-top: 16px; margin-bottom: 24px;">
-            ${body}
-          </div>
-          <p style="font-size: 11px; color: #52525b; border-top: 1px solid #1c1917; padding-top: 12px; font-family: monospace;">
-            SYSTEM CONTEXT SECURITY ID: c4cd099f-99bf-4b86-b916-fa035ad9fa75<br/>
-            Ref: LUMINOR-SEC-ROUTE-01
-          </p>
-        </div>
-      `;
-
-      const response = await resendObj.emails.send({
-        from: fromAddress,
-        to: [to],
-        subject: subject,
-        html: formattedHtml,
-        text: body
-      });
-
-      if (response.error) {
-        console.error("❌ Resend API returned error:", response.error);
-        res.status(400).json({ success: false, error: response.error });
-        return;
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        init.body = JSON.stringify(req.body ?? {});
       }
 
-      console.log(`✉️ Email successfully delivered to ${to} via Resend. ID:`, response.data?.id);
-      res.json({ success: true, simulated: false, id: response.data?.id });
-    } catch (err: any) {
-      console.error("❌ Exception inside /api/send-email:", err);
-      res.status(500).json({ success: false, error: err.message || err });
+      const upstream = await fetch(targetUrl, init);
+      const body = await upstream.text();
+
+      res.status(upstream.status);
+      const setCookie = upstream.headers.get("set-cookie");
+      if (setCookie) res.setHeader("Set-Cookie", setCookie);
+      const contentType = upstream.headers.get("content-type");
+      if (contentType) res.setHeader("Content-Type", contentType);
+      res.send(body);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Upstream API unavailable";
+      console.error("API proxy error:", message, { targetUrl });
+      res.status(502).json({ error: "Backend API unavailable", detail: message });
     }
   });
 

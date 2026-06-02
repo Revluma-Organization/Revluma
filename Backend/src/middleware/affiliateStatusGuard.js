@@ -77,7 +77,12 @@ function requireAffiliateStatus(allowedStatuses = ['APPROVED']) {
 function getStatusMessage(affiliateProfile) {
   switch (affiliateProfile.status) {
     case 'PENDING':
+    case 'PENDING_REVIEW':
+    case 'PENDING_EMAIL_VERIFICATION':
+    case 'PENDING_ACCESS_TOKEN':
       return 'Your application is under review. You will be notified once approved.';
+    case 'UNDER_REVIEW':
+      return 'Your application is being reviewed by our operations team.';
     case 'REJECTED':
       return affiliateProfile.rejectedReason || 'Your application was not approved.';
     case 'SUSPENDED':

@@ -120,7 +120,13 @@ router.get('/profile', affiliateOrAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Affiliate profile not found' });
     }
 
-    res.json({ profile });
+    const normalizedStatus = String(profile.status || 'PENDING_REVIEW').toLowerCase();
+    res.json({
+      profile: {
+        ...profile,
+        status: normalizedStatus === 'pending' ? 'pending_review' : normalizedStatus
+      }
+    });
   } catch (err) {
     logger.error('Get affiliate profile failed', { error: err.message });
     res.status(500).json({ error: 'Internal server error' });

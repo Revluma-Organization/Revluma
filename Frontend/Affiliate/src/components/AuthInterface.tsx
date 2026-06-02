@@ -267,17 +267,8 @@ export default function AuthInterface({
     usernameDebounceRef.current = setTimeout(async () => {
       setCheckingUsername(true);
       try {
-        const RAW_BASE = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
-        const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : `${window.location.origin}/api`;
-        const res = await fetch(`${API_BASE}/affiliate-auth/check-username?username=${encodeURIComponent(username)}`, {
-          headers: { 'X-Affiliate-Portal': 'true' }
-        });
-        if (res.ok) {
-          const data = await res.json() as { available: boolean };
-          setUsernameAvailable(data.available);
-        } else {
-          setUsernameAvailable(null);
-        }
+        const data = await api.checkUsername(username);
+        setUsernameAvailable(data.available);
       } catch {
         setUsernameAvailable(null);
       } finally {
@@ -526,14 +517,7 @@ export default function AuthInterface({
     setSuccessText('');
     setIsLoading(true);
     try {
-      const RAW_BASE = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
-      const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : `${window.location.origin}/api`;
-      await fetch(`${API_BASE}/affiliate-auth/resend-verification`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'X-Affiliate-Portal': 'true' },
-        body: JSON.stringify({ pendingRegistrationId, email: pendingEmail })
-      });
+      await api.affiliateResendVerification({ pendingRegistrationId, email: pendingEmail });
       setSuccessText(`A new code has been sent to ${pendingEmail}.`);
       setVerifyCode('');
     } catch {

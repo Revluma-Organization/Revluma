@@ -146,8 +146,9 @@ module.exports = {
 
   // RAPP Vetting System
   rapp: {
-    vettingEmail: process.env.RAPP_VETTING_EMAIL, // Operations team email for vetting notifications
-    minimumDistributionChannels: 2, // Minimum required social distribution channels
+    accessToken: process.env.RAPP_ACCESS_TOKEN,
+    vettingEmail: process.env.RAPP_VETTING_EMAIL,
+    minimumDistributionChannels: 2,
     accessTokenExpiryDays: parseInt(process.env.RAPP_ACCESS_TOKEN_EXPIRY_DAYS || '30', 10),
   },
 

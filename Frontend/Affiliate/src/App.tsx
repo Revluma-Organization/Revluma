@@ -117,6 +117,7 @@ function getProtectedRoute(user: PartnerProfile | null, requestedRoute: AppRoute
 
     case 'pending':
     case 'pending_review':
+    case 'under_review':
       return '/affiliate/pending-review';
 
     case 'rejected':

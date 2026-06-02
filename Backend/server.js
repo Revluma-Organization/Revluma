@@ -60,7 +60,7 @@ app.use(cors({
     return callback(new Error(`CORS origin denied: ${normalized}`), false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token', 'X-Request-ID', 'X-Correlation-ID'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token', 'X-Request-ID', 'X-Correlation-ID', 'X-Affiliate-Portal'],
   exposedHeaders: ['X-Correlation-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],
   credentials: true
 }));
