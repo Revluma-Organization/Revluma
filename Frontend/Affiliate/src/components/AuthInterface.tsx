@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { PartnerProfile } from '../types';
 import * as api from '../lib/api';
+import revlumaLogo from '../assets/images/Revluma-logo.png';
 
 // ============================================================
 // Types
@@ -683,10 +684,9 @@ const handleVerifyEmail = async (e: React.FormEvent) => {
         <div className="w-full max-w-lg space-y-6">
           {/* Header */}
           <div className="text-center space-y-1">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Sparkles className="w-5 h-5 text-violet-400" />
-              <span className="text-xs font-semibold tracking-widest text-violet-400 uppercase">Partner Portal</span>
-            </div>
+          <div className="flex items-center justify-center mb-2">
+            <img src={revlumaLogo} alt="Revluma" className="h-8 w-auto" />
+          </div>
             <h1 className="text-2xl font-bold text-zinc-100">Apply to the Affiliate Programme</h1>
             <p className="text-sm text-zinc-400">Step {step} of 3</p>
           </div>
@@ -862,10 +862,8 @@ const handleVerifyEmail = async (e: React.FormEvent) => {
       <div className="w-full max-w-md space-y-6">
         {/* Header */}
         <div className="text-center space-y-1">
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <div className="w-10 h-10 rounded-lg bg-violet-600/20 border border-violet-600/30 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-violet-400" />
-            </div>
+          <div className="flex items-center justify-center mb-3">
+            <img src={revlumaLogo} alt="Revluma" className="h-10 w-auto" />
           </div>
           <h1 className="text-2xl font-bold text-zinc-100">Affiliate Partner Portal</h1>
           <p className="text-sm text-zinc-400">Sign in to your partner account</p>
