@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const logger = require('../utils/logger');
-const authenticate = require('../middleware/sessionAuth');
+const { authenticate } = require('../middleware/sessionAuth');
 const redis = require('../queue/redis').redis; 
 
 const CACHE_TTL = 300; // 5 min
