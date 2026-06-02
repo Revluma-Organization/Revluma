@@ -1,7 +1,7 @@
 {
-"buildCommand": "cd Frontend/Dashboard && npm install && npm run build && cd ../Affiliate && npm install && npm run build",
+  "installCommand": "cd Frontend/Dashboard && npm install --include=dev && cd ../Affiliate && npm install --include=dev",
+  "buildCommand": "cd Frontend/Dashboard && npm run build && cd ../Affiliate && npm run build:vercel",
   "outputDirectory": "Frontend",
-  "installCommand": "echo 'skip root install'",
   "headers": [
     {
       "source": "/assets/videos/(.*)\\.mp4",
