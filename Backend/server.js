@@ -32,39 +32,63 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
-// CORS
+// CORS — single options object (do NOT call cors() again without options on OPTIONS)
 const parseOrigins = value =>
   typeof value === 'string'
     ? value.split(',').map(entry => entry.trim()).filter(Boolean)
     : [];
 
-const configuredOrigins = new Set([
-  ...parseOrigins(process.env.CORS_ORIGINS),
-  ...parseOrigins(process.env.ALLOWED_ORIGINS),
-  ...(process.env.NEXT_PUBLIC_BASE_URL ? [process.env.NEXT_PUBLIC_BASE_URL.trim()] : []),
-  ...(process.env.BASE_URL ? [process.env.BASE_URL.trim()] : []),
-  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.trim()] : [])
-].map(origin => origin.replace(/\/$/, '')));
-
-if (configuredOrigins.size === 0 && isProduction) {
-  configuredOrigins.add('https://revluma.vercel.app');
-  configuredOrigins.add('https://www.revluma.vercel.app');
-  configuredOrigins.add('https://revluma.onrender.com');
+function normalizeOriginUrl(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  let origin = raw.trim().replace(/\/$/, '').replace(/\\n/g, '');
+  if (!origin) return null;
+  if (!/^https?:\/\//i.test(origin)) {
+    origin = `https://${origin}`;
+  }
+  return origin;
 }
 
-app.use(cors({
+const configuredOrigins = new Set(
+  [
+    ...parseOrigins(process.env.CORS_ORIGINS),
+    ...parseOrigins(process.env.ALLOWED_ORIGINS),
+    process.env.NEXT_PUBLIC_BASE_URL,
+    process.env.BASE_URL,
+    process.env.FRONTEND_URL,
+    'https://revluma.vercel.app',
+    'https://www.revluma.vercel.app',
+    'https://revluma.onrender.com'
+  ]
+    .map(normalizeOriginUrl)
+    .filter(Boolean)
+);
+
+const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    const normalized = origin.replace(/\/$/, '');
-    if (configuredOrigins.has(normalized)) return callback(null, true);
+    const normalized = normalizeOriginUrl(origin);
+    if (normalized && configuredOrigins.has(normalized)) return callback(null, true);
+    logger.warn('CORS origin denied', { origin: normalized, allowed: [...configuredOrigins] });
     return callback(new Error(`CORS origin denied: ${normalized}`), false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token', 'X-Request-ID', 'X-Correlation-ID', 'X-Affiliate-Portal'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'X-CSRF-Token',
+    'X-Request-ID',
+    'X-Correlation-ID',
+    'X-Affiliate-Portal',
+    'x-affiliate-portal'
+  ],
   exposedHeaders: ['X-Correlation-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],
-  credentials: true
-}));
-app.options('*', cors());
+  credentials: true,
+  optionsSuccessStatus: 204,
+  preflightContinue: false
+};
+
+app.use(cors(corsOptions));
 
 app.use(morgan(isProduction ? 'combined' : 'dev', {
   stream: { write: msg => logger.info(msg.trim()) }
