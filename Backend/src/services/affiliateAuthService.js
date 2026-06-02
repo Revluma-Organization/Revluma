@@ -1,8 +1,3 @@
-/**
- * RAPP Affiliate Authentication Service
- * Production-grade onboarding: SendGrid email, env-based access token, auth state machine
- */
-
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
@@ -72,9 +67,29 @@ class AffiliateAuthService {
     return channels.filter(c => c && String(c).trim().length > 0).length;
   }
 
-  /**
-   * Register new affiliate — creates pending registration and sends verification email
-   */
+  getActiveDistributionChannels(data) {
+    const channelMap = {
+      twitterHandle: 'X (Twitter)',
+      instagramHandle: 'Instagram',
+      linkedinProfile: 'LinkedIn',
+      youtubeChannel: 'YouTube',
+      tiktokHandle: 'TikTok',
+      facebookProfile: 'Facebook',
+      website: 'Website',
+      newsletterUrl: 'Newsletter',
+      communityUrl: 'Community',
+      otherPlatform1: 'Other Platform 1',
+      otherPlatform2: 'Other Platform 2'
+    };
+    const active = [];
+    for (const [key, label] of Object.entries(channelMap)) {
+      if (data[key] && String(data[key]).trim().length > 0) {
+        active.push({ platform: label, url: String(data[key]).trim() });
+      }
+    }
+    return active;
+  }
+
   async registerAffiliate(data) {
     const normalizedEmail = data.email.toLowerCase().trim();
 
@@ -267,9 +282,6 @@ class AffiliateAuthService {
     };
   }
 
-  /**
-   * Validate RAPP access token against process.env.RAPP_ACCESS_TOKEN (never exposed to client)
-   */
   async validateAccessToken(pendingId, tokenString, auditContext = {}) {
     const pending = await prisma.pendingRegistration.findUnique({ where: { id: pendingId } });
     if (!pending) throw new Error('PENDING_REGISTRATION_NOT_FOUND');
@@ -466,7 +478,7 @@ class AffiliateAuthService {
   }
 
   async sendVettingNotification(affiliateProfile, applicantEmail) {
-    const vettingEmail = process.env.RAPP_VETTING_EMAIL;
+    const vettingEmail = process.env.RAPP_VETTING_EMAIL || 'revluma.ai@gmail.com';
     if (!vettingEmail) {
       logger.warn('RAPP_VETTING_EMAIL not configured - skipping vetting notification');
       return;
@@ -481,9 +493,13 @@ class AffiliateAuthService {
     });
 
     try {
+      const channels = this.getActiveDistributionChannels(affiliateProfile);
+
       await emailService.sendAffiliateVettingNotification(vettingEmail, {
         ...affiliateProfile,
-        applicantEmail
+        applicantEmail,
+        activeChannels: channels,
+        registrationTime: new Date().toISOString()
       });
 
       await prisma.affiliateVettingNotification.update({
@@ -527,7 +543,6 @@ class AffiliateAuthService {
     }
   }
 
-  // Admin token management (optional legacy — not used for onboarding gate)
   async generateAccessToken(description, maxUses = 1, expiresAt = null, createdBy = null) {
     const token = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');

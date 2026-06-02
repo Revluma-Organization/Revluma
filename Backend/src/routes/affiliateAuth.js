@@ -1,8 +1,3 @@
-/**
- * Affiliate Auth Routes (RAPP)
- * SendGrid verification, env-based access token gate, manual review workflow
- */
-
 const express = require('express');
 const crypto = require('crypto');
 const { prisma } = require('../services/prisma');
@@ -28,7 +23,7 @@ function sendError(res, statusCode, error, code = null, correlationId = null) {
 
 function sanitizeString(s, maxLen = 255) {
   if (typeof s !== 'string') return '';
-  return s.trim().slice(0, maxLen);
+  return s.trim().replace(/[<>]/g, '').slice(0, maxLen);
 }
 
 function getAuditContext(req) {
@@ -47,11 +42,7 @@ async function resolveUsernameAvailability(username) {
   return { available: !existing, username: normalized };
 }
 
-/**
- * GET /api/affiliate-auth/check-username/:username
- * GET /api/affiliate-auth/check-username?username=
- */
-async function handleCheckUsername(req, res) {
+router.get('/check-username/:username', async (req, res) => {
   try {
     const username = sanitizeString(req.params.username || req.query.username, 50);
     const result = await resolveUsernameAvailability(username);
@@ -63,10 +54,21 @@ async function handleCheckUsername(req, res) {
     logger.error('check-username failed', { error: err.message });
     return sendError(res, 500, 'Internal server error', 'SERVER_ERROR');
   }
-}
+});
 
-router.get('/check-username/:username', handleCheckUsername);
-router.get('/check-username', handleCheckUsername);
+router.get('/check-username', async (req, res) => {
+  try {
+    const username = sanitizeString(req.params.username || req.query.username, 50);
+    const result = await resolveUsernameAvailability(username);
+    if (result.valid === false) {
+      return sendError(res, 400, result.error, 'VALIDATION_ERROR');
+    }
+    return res.json({ available: result.available, username: result.username });
+  } catch (err) {
+    logger.error('check-username failed', { error: err.message });
+    return sendError(res, 500, 'Internal server error', 'SERVER_ERROR');
+  }
+});
 
 /**
  * POST /api/affiliate-auth/register
@@ -138,7 +140,7 @@ router.post('/register', async (req, res) => {
       return sendError(res, 409, 'That username is already taken.', 'USERNAME_ALREADY_EXISTS', correlationId);
     }
     if (String(err.message).includes('MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED')) {
-      return sendError(res, 400, 'Please provide at least two distribution channels.', 'MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED', correlationId);
+      return sendError(res, 400, 'Please provide at least two distribution channels (e.g., Twitter/X, Instagram, YouTube, TikTok, LinkedIn, etc.).', 'MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED', correlationId);
     }
     if (String(err.message).includes('EMAIL_SEND_FAILED')) {
       return sendError(res, 503, 'Unable to send verification email. Please try again later.', 'EMAIL_SEND_FAILED', correlationId);
@@ -212,8 +214,8 @@ router.post('/verify-email', async (req, res) => {
     });
   } catch (err) {
     const map = {
-      VERIFICATION_CODE_EXPIRED: { status: 400, code: 'VERIFICATION_CODE_EXPIRED', error: 'Verification code expired' },
-      INVALID_VERIFICATION_CODE: { status: 400, code: 'INVALID_VERIFICATION_CODE', error: 'Invalid verification code' },
+      VERIFICATION_CODE_EXPIRED: { status: 400, code: 'VERIFICATION_CODE_EXPIRED', error: 'Verification code expired. Please request a new one.' },
+      INVALID_VERIFICATION_CODE: { status: 400, code: 'INVALID_VERIFICATION_CODE', error: 'Invalid verification code. Please check and try again.' },
       PENDING_REGISTRATION_NOT_FOUND: { status: 404, code: 'PENDING_REGISTRATION_NOT_FOUND', error: 'Pending registration not found' }
     };
 

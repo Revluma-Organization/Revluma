@@ -1,45 +1,22 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- *
- * AuthInterface — production-grade auth component.
- *
- * PHASE 9 CHANGES:
- * - Receives `initialMode` from App (derived from URL) — never manages its own route
- * - Calls `onRouteChange` on EVERY screen transition so App can push the correct URL
- * - Hardened signup: confirm password, password strength meter, rate-limit feedback,
- *   OTP auto-advance, channel count badge, debounced username check
- * - Revluma logo on Login and Signup screens
- */
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Shield, User, Mail, Lock, Phone, Globe, Twitter, Linkedin, Instagram,
   Layers, CheckSquare, Info, ChevronRight, ChevronLeft, Loader2, Link2,
   Send, CheckCircle2, AlertCircle, Eye, EyeOff, Youtube, Hash, Facebook,
-  FileText, Users, RefreshCw, ArrowLeft
+  FileText, Users, RefreshCw, ArrowLeft, X, Clock, AlertTriangle, ExternalLink
 } from 'lucide-react';
 import { PartnerProfile } from '../types';
 import * as api from '../lib/api';
 import revlumaLogo from '../assets/images/Revluma-logo.png';
 import type { AuthMode } from '../App';
 
-// ============================================================
-// Types
-// ============================================================
-
 interface AuthInterfaceProps {
   onAuthSuccess: (profile: PartnerProfile) => void;
   onBackToLanding: () => void;
-  /** Called whenever the user navigates to a different auth screen */
   onRouteChange: (mode: AuthMode) => void;
   initialMode?: AuthMode;
   currentUser?: PartnerProfile | null;
 }
-
-// ============================================================
-// Helpers
-// ============================================================
 
 function convertBackendTierToDisplay(backendTier: unknown): PartnerProfile['tier'] {
   const tier = (backendTier as string)?.toUpperCase() ?? 'AFFILIATE';
@@ -80,10 +57,6 @@ function buildPartnerProfile(serverUser: {
   };
 }
 
-// ============================================================
-// Password strength
-// ============================================================
-
 type StrengthLevel = 0 | 1 | 2 | 3 | 4;
 
 function getPasswordStrength(pwd: string): StrengthLevel {
@@ -101,16 +74,24 @@ const strengthLabels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
 const strengthColors = ['', 'bg-red-500', 'bg-amber-500', 'bg-yellow-400', 'bg-emerald-500'];
 const strengthTextColors = ['', 'text-red-400', 'text-amber-400', 'text-yellow-400', 'text-emerald-400'];
 
-// ============================================================
-// OTP Input component
-// ============================================================
+const SOCIAL_PLATFORMS = [
+  { key: 'twitterHandle', icon: Twitter, label: 'X (Twitter)', placeholder: '@username' },
+  { key: 'instagramHandle', icon: Instagram, label: 'Instagram', placeholder: '@username' },
+  { key: 'linkedInProfile', icon: Linkedin, label: 'LinkedIn', placeholder: 'Profile URL' },
+  { key: 'youtubeChannel', icon: Youtube, label: 'YouTube', placeholder: 'Channel URL' },
+  { key: 'tiktokHandle', icon: Hash, label: 'TikTok', placeholder: '@username' },
+  { key: 'facebookProfile', icon: Facebook, label: 'Facebook', placeholder: 'Profile URL' },
+  { key: 'website', icon: ExternalLink, label: 'Website', placeholder: 'https://...' },
+  { key: 'newsletterUrl', icon: FileText, label: 'Newsletter', placeholder: 'Substack, Beehiiv, etc.' },
+  { key: 'communityUrl', icon: Users, label: 'Community', placeholder: 'Discord, Slack, etc.' },
+] as const;
 
 function OTPInput({ value, onChange, length = 6 }: {
   value: string;
   onChange: (v: string) => void;
   length?: number;
 }) {
-  const refs = Array.from({ length }, () => useRef<HTMLInputElement>(null));
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const digits = value.padEnd(length, '').split('').slice(0, length);
 
@@ -121,13 +102,13 @@ function OTPInput({ value, onChange, length = 6 }: {
     const newVal = next.join('').replace(/ /g, '');
     onChange(newVal);
     if (digit && idx < length - 1) {
-      refs[idx + 1].current?.focus();
+      inputRefs.current[idx + 1]?.focus();
     }
   };
 
   const handleKeyDown = (idx: number, e: React.KeyboardEvent) => {
     if (e.key === 'Backspace' && !digits[idx] && idx > 0) {
-      refs[idx - 1].current?.focus();
+      inputRefs.current[idx - 1]?.focus();
       const next = [...digits];
       next[idx - 1] = '';
       onChange(next.join('').replace(/ /g, ''));
@@ -138,7 +119,7 @@ function OTPInput({ value, onChange, length = 6 }: {
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, length);
     onChange(pasted);
     const focusIdx = Math.min(pasted.length, length - 1);
-    refs[focusIdx].current?.focus();
+    inputRefs.current[focusIdx]?.focus();
     e.preventDefault();
   };
 
@@ -147,24 +128,20 @@ function OTPInput({ value, onChange, length = 6 }: {
       {digits.map((d, idx) => (
         <input
           key={idx}
-          ref={refs[idx]}
+          ref={el => { inputRefs.current[idx] = el; }}
           type="text"
           inputMode="numeric"
           maxLength={1}
           value={d === ' ' ? '' : d}
           onChange={e => handleChange(idx, e.target.value)}
           onKeyDown={e => handleKeyDown(idx, e)}
-          className="w-11 h-12 text-center text-lg font-mono font-bold bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-lg focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/30 transition caret-transparent"
+          className="w-12 h-14 text-center text-xl font-mono font-bold bg-zinc-900 border-2 border-zinc-700 text-zinc-100 rounded-xl focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition-all duration-150 caret-transparent hover:border-zinc-500"
           autoComplete="one-time-code"
         />
       ))}
     </div>
   );
 }
-
-// ============================================================
-// Component
-// ============================================================
 
 export default function AuthInterface({
   onAuthSuccess,
@@ -181,7 +158,6 @@ export default function AuthInterface({
   const [rateLimited, setRateLimited] = useState(false);
   const [rateLimitCountdown, setRateLimitCountdown] = useState(0);
 
-  // Keep mode in sync when App pushes a new URL (e.g. browser back)
   useEffect(() => {
     if (initialMode !== authMode) {
       setAuthModeInternal(initialMode);
@@ -190,21 +166,18 @@ export default function AuthInterface({
     }
   }, [initialMode]);
 
-  // Rate-limit countdown
   useEffect(() => {
     if (rateLimitCountdown <= 0) { setRateLimited(false); return; }
     const t = setTimeout(() => setRateLimitCountdown(c => c - 1), 1000);
     return () => clearTimeout(t);
   }, [rateLimitCountdown]);
 
-  // ---- Pending state ----
   const [pendingUserId, setPendingUserId] = useState('');
   const [pendingEmail, setPendingEmail] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [pendingRegistrationId, setPendingRegistrationId] = useState('');
   const [accessToken, setAccessToken] = useState('');
 
-  // ---- Registration fields ----
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
@@ -232,32 +205,24 @@ export default function AuthInterface({
   const [newsletterUrl, setNewsletterUrl] = useState('');
   const [communityUrl, setCommunityUrl] = useState('');
 
-  // ---- Login fields ----
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
 
-  // ---- Forgot password fields ----
   const [forgotEmail, setForgotEmail] = useState('');
   const [resetToken, setResetToken] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
 
-  // ============================================================
-  // Mode changer — always notifies App for URL sync
-  // ============================================================
-
   const goToMode = useCallback((mode: AuthMode) => {
     setAuthModeInternal(mode);
     setErrorText('');
     setSuccessText('');
-    onRouteChange(mode);
+    if (mode !== 'forgot' && mode !== 'resetConfirm') {
+      onRouteChange(mode);
+    }
   }, [onRouteChange]);
-
-  // ============================================================
-  // Debounced username availability check
-  // ============================================================
 
   const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -277,19 +242,13 @@ export default function AuthInterface({
     }, 500);
   }, [username]);
 
-  // ============================================================
-  // Channel count
-  // ============================================================
-
-  const channelCount = [
+  const socialFieldsMap: Record<string, string> = {
     twitterHandle, instagramHandle, linkedInProfile,
     youtubeChannel, tiktokHandle, facebookProfile, website,
     newsletterUrl, communityUrl
-  ].filter(c => c.trim().length > 0).length;
+  };
 
-  // ============================================================
-  // Validation
-  // ============================================================
+  const channelCount = Object.values(socialFieldsMap).filter(c => c.trim().length > 0).length;
 
   const pwdStrength = getPasswordStrength(password);
 
@@ -315,7 +274,7 @@ export default function AuthInterface({
 
   const validateStep2 = (): string | null => {
     if (channelCount < 2)
-      return `At least 2 distribution channels are required (you've provided ${channelCount}).`;
+      return `At least 2 distribution channels are required (you've provided ${channelCount}). Add social channels like X (Twitter), Instagram, YouTube, LinkedIn, etc.`;
     if (!audienceNiche.trim()) return 'Please specify your audience niche.';
     if (!audienceSize) return 'Please choose your audience size.';
     return null;
@@ -349,10 +308,6 @@ export default function AuthInterface({
     setStep(1);
   }
 
-  // ============================================================
-  // Login
-  // ============================================================
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorText('');
@@ -377,7 +332,7 @@ export default function AuthInterface({
       try {
         const profileRes = await api.getProfile();
         profile = profileRes.profile as Record<string, unknown>;
-      } catch { /* no profile yet */ }
+      } catch { }
 
       const status = (profile?.status as string ?? '').toLowerCase();
 
@@ -425,10 +380,6 @@ export default function AuthInterface({
       setIsLoading(false);
     }
   };
-
-  // ============================================================
-  // Register
-  // ============================================================
 
   const handleSignUpCompletion = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -480,10 +431,6 @@ export default function AuthInterface({
     }
   };
 
-  // ============================================================
-  // Email verification
-  // ============================================================
-
   const handleVerifyEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = verifyCode.trim();
@@ -505,7 +452,6 @@ export default function AuthInterface({
     } finally { setIsLoading(false); }
   };
 
-  // Auto-submit when all 6 digits are entered
   useEffect(() => {
     if (verifyCode.length === 6 && authMode === 'verifyEmail') {
       handleVerifyEmail({ preventDefault: () => {} } as React.FormEvent);
@@ -547,10 +493,6 @@ export default function AuthInterface({
     } finally { setIsLoading(false); }
   };
 
-  // ============================================================
-  // Forgot / reset password
-  // ============================================================
-
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorText('');
@@ -570,7 +512,6 @@ export default function AuthInterface({
       const body = await res.json() as { token?: string };
       if (body.token) setResetToken(body.token);
       setSuccessText('If that email is registered, a reset code has been sent.');
-      // Note: forgot/resetConfirm remain on /affiliate/login URL (no dedicated route needed)
       setAuthModeInternal('resetConfirm');
     } catch {
       setSuccessText('If that email is registered, a reset code has been sent.');
@@ -604,81 +545,71 @@ export default function AuthInterface({
     } finally { setIsLoading(false); }
   };
 
-  // ============================================================
-  // Render helpers
-  // ============================================================
-
   const renderAlert = (text: string, type: 'error' | 'success') =>
     text ? (
-      <div className={`flex items-start gap-2 p-3 rounded-lg text-sm ${type === 'error'
-        ? 'bg-red-500/10 border border-red-500/30 text-red-400'
-        : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+      <div className={`flex items-start gap-3 p-4 rounded-xl text-sm backdrop-blur-sm ${
+        type === 'error'
+          ? 'bg-red-500/10 border border-red-500/25 text-red-300'
+          : 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-300'
       }`}>
         {type === 'error'
-          ? <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-          : <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />}
-        <span>{text}</span>
+          ? <AlertCircle className="w-5 h-5 mt-0.5 shrink-0 text-red-400" />
+          : <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0 text-emerald-400" />}
+        <span className="leading-relaxed">{text}</span>
       </div>
     ) : null;
 
   const inputClass =
-    'w-full bg-zinc-900 border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500/20 transition';
+    'w-full bg-zinc-900/80 border border-zinc-700/80 text-zinc-100 placeholder-zinc-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition-all duration-150 hover:border-zinc-500';
 
   const btnPrimary =
-    'w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-all';
+    'w-full flex items-center justify-center gap-2.5 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl px-5 py-3 text-sm transition-all duration-150 shadow-lg shadow-violet-500/10 hover:shadow-violet-500/20';
 
-  const btnGhost =
-    'w-full flex items-center justify-center gap-2 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 font-medium rounded-lg px-4 py-2.5 text-sm transition-all';
+  const btnSecondary =
+    'w-full flex items-center justify-center gap-2.5 border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 font-medium rounded-xl px-5 py-3 text-sm transition-all duration-150';
 
-  // Shared logo header
   const LogoHeader = ({ subtitle }: { subtitle: string }) => (
-    <div className="text-center space-y-2 mb-2">
-      <div className="flex items-center justify-center mb-3">
-        <img src={revlumaLogo} alt="Revluma" className="h-9 w-auto" />
+    <div className="text-center space-y-3 mb-2">
+      <div className="flex items-center justify-center mb-2">
+        <img src={revlumaLogo} alt="Revluma" className="h-10 w-auto" />
       </div>
-      <p className="text-sm text-zinc-400">{subtitle}</p>
+      <p className="text-sm text-zinc-500">{subtitle}</p>
     </div>
   );
 
-  // Shared card wrapper
   const Card = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-    <div className={`bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4 ${className}`}>
+    <div className={`bg-zinc-900/60 backdrop-blur-sm border border-zinc-800/80 rounded-2xl p-6 md:p-8 space-y-5 shadow-xl ${className}`}>
       {children}
     </div>
   );
 
   const PageWrap = ({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) => (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center px-4 py-12">
-      <div className={`w-full ${wide ? 'max-w-lg' : 'max-w-md'} space-y-5`}>
+    <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 flex flex-col items-center justify-center px-4 py-12">
+      <div className={`w-full ${wide ? 'max-w-xl' : 'max-w-md'} space-y-6`}>
         {children}
       </div>
     </div>
   );
 
-  // ============================================================
-  // SCREENS
-  // ============================================================
-
-  // --- Rejected ---
   if (authMode === 'rejected') {
     return (
       <PageWrap>
         <LogoHeader subtitle="Affiliate Partner Portal" />
         <Card>
-          <div className="flex flex-col items-center text-center space-y-3 py-2">
-            <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
-              <AlertCircle className="w-7 h-7 text-red-400" />
+          <div className="flex flex-col items-center text-center space-y-4 py-4">
+            <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center">
+              <AlertTriangle className="w-8 h-8 text-red-400" />
             </div>
             <h2 className="text-xl font-semibold text-zinc-100">Application Declined</h2>
-            <p className="text-sm text-zinc-400 leading-relaxed">
+            <p className="text-sm text-zinc-400 leading-relaxed max-w-sm mx-auto">
               Unfortunately your affiliate application was not approved at this time.
               If you believe this is an error, please reach out to our support team.
             </p>
-            <a href="mailto:support@revluma.app" className="text-sm text-violet-400 hover:underline">
+            <a href="mailto:support@revluma.app" className="text-sm text-violet-400 hover:text-violet-300 transition-colors font-medium">
               Contact Support →
             </a>
           </div>
-          <button onClick={() => goToMode('login')} className={btnGhost}>
+          <button onClick={() => goToMode('login')} className={btnSecondary}>
             <ArrowLeft className="w-4 h-4" />
             Back to Login
           </button>
@@ -687,28 +618,28 @@ export default function AuthInterface({
     );
   }
 
-  // --- Pending approval ---
   if (authMode === 'pendingApproval') {
     return (
       <PageWrap>
         <LogoHeader subtitle="Affiliate Partner Portal" />
         <Card>
-          <div className="flex flex-col items-center text-center space-y-3 py-2">
-            <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
-              <Shield className="w-7 h-7 text-amber-400" />
+          <div className="flex flex-col items-center text-center space-y-4 py-4">
+            <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+              <Shield className="w-8 h-8 text-amber-400" />
             </div>
             <h2 className="text-xl font-semibold text-zinc-100">Application Under Review</h2>
-            <p className="text-sm text-zinc-400 leading-relaxed">
+            <p className="text-sm text-zinc-400 leading-relaxed max-w-sm mx-auto">
               Your affiliate application has been submitted and is pending admin review.
               You'll receive an email notification once a decision has been made.
             </p>
             {pendingEmail && (
-              <p className="text-xs text-zinc-500 bg-zinc-800 px-3 py-1.5 rounded-md">
-                📧 {pendingEmail}
-              </p>
+              <div className="flex items-center gap-2 text-xs text-zinc-500 bg-zinc-800/50 px-4 py-2 rounded-lg border border-zinc-700/50">
+                <Mail className="w-3.5 h-3.5" />
+                <span>{pendingEmail}</span>
+              </div>
             )}
           </div>
-          <button onClick={() => goToMode('login')} className={btnGhost}>
+          <button onClick={() => goToMode('login')} className={btnSecondary}>
             <ArrowLeft className="w-4 h-4" />
             Back to Login
           </button>
@@ -717,7 +648,6 @@ export default function AuthInterface({
     );
   }
 
-  // --- Email verification ---
   if (authMode === 'verifyEmail') {
     return (
       <PageWrap>
@@ -741,22 +671,22 @@ export default function AuthInterface({
             className={btnPrimary}
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckSquare className="w-4 h-4" />}
-            {isLoading ? 'Verifying…' : 'Verify Email'}
+            {isLoading ? 'Verifying...' : 'Verify Email'}
           </button>
 
           <button
             type="button"
             disabled={isLoading}
             onClick={handleResendVerificationCode}
-            className={btnGhost}
+            className={btnSecondary}
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             Resend Code
           </button>
         </Card>
         <p className="text-center text-xs text-zinc-500">
           Already verified?{' '}
-          <button onClick={() => goToMode('login')} className="text-violet-400 hover:underline">
+          <button onClick={() => goToMode('login')} className="text-violet-400 hover:underline font-medium">
             Log in
           </button>
         </p>
@@ -764,13 +694,12 @@ export default function AuthInterface({
     );
   }
 
-  // --- Access token ---
   if (authMode === 'accessToken') {
     return (
       <PageWrap>
-        <div className="text-center space-y-2">
-          <div className="mx-auto w-14 h-14 rounded-full bg-violet-500/10 border border-violet-500/30 flex items-center justify-center mb-3">
-            <Shield className="w-7 h-7 text-violet-400" />
+        <div className="text-center space-y-3">
+          <div className="mx-auto w-16 h-16 rounded-full bg-violet-500/10 border border-violet-500/30 flex items-center justify-center mb-2">
+            <Shield className="w-8 h-8 text-violet-400" />
           </div>
           <h1 className="text-xl font-bold text-zinc-100">RAPP Access Token</h1>
           <p className="text-sm text-zinc-400 max-w-sm mx-auto">
@@ -780,17 +709,18 @@ export default function AuthInterface({
         <Card>
           {renderAlert(errorText, 'error')}
           {renderAlert(successText, 'success')}
-          <div className="space-y-1">
-            <label className="text-xs text-zinc-500 uppercase tracking-widest">Access Token</label>
+          <div className="space-y-2">
+            <label className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Access Token</label>
             <input
-              className={inputClass}
-              placeholder="xxxxxxxx-xxxxxxxx-xxxxxxxx-xxxxxxxx"
+              className={`${inputClass} font-mono text-sm`}
+              placeholder="Enter your access token..."
               value={accessToken}
               onChange={e => setAccessToken(e.target.value)}
               autoComplete="off"
               spellCheck={false}
+              autoCapitalize="none"
             />
-            <p className="text-xs text-zinc-600">Format: dklfnwe9-njS37DSD-SNKL23Y-SNWG3SWE4</p>
+            <p className="text-xs text-zinc-600">Format: alphanumeric token provided by Revluma</p>
           </div>
           <button
             type="button"
@@ -799,22 +729,24 @@ export default function AuthInterface({
             className={btnPrimary}
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-            {isLoading ? 'Validating…' : 'Submit Application'}
+            {isLoading ? 'Validating...' : 'Submit Application'}
           </button>
         </Card>
         <p className="text-center text-xs text-zinc-500">
           Don't have a token?{' '}
-          <a href="mailto:support@revluma.app" className="text-violet-400 hover:underline">Contact us</a>
+          <a href="mailto:support@revluma.app" className="text-violet-400 hover:underline font-medium">Contact us</a>
         </p>
       </PageWrap>
     );
   }
 
-  // --- Forgot password ---
   if (authMode === 'forgot') {
     return (
       <PageWrap>
-        <div className="text-center space-y-1">
+        <div className="text-center space-y-2">
+          <div className="mx-auto w-14 h-14 rounded-full bg-zinc-800/50 border border-zinc-700/50 flex items-center justify-center mb-2">
+            <Lock className="w-7 h-7 text-zinc-400" />
+          </div>
           <h1 className="text-2xl font-bold text-zinc-100">Reset Password</h1>
           <p className="text-sm text-zinc-400">Enter the email you registered with.</p>
         </div>
@@ -823,9 +755,9 @@ export default function AuthInterface({
           {renderAlert(successText, 'success')}
           <form onSubmit={handleForgotPassword} className="space-y-4">
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
               <input
-                className={`${inputClass} pl-10`}
+                className={`${inputClass} pl-11`}
                 type="email"
                 placeholder="Your email address"
                 value={forgotEmail}
@@ -835,9 +767,9 @@ export default function AuthInterface({
             </div>
             <button type="submit" disabled={isLoading} className={btnPrimary}>
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {isLoading ? 'Sending…' : 'Send Reset Code'}
+              {isLoading ? 'Sending...' : 'Send Reset Code'}
             </button>
-            <button type="button" onClick={() => goToMode('login')} className={btnGhost}>
+            <button type="button" onClick={() => goToMode('login')} className={btnSecondary}>
               <ChevronLeft className="w-4 h-4" />
               Back to Login
             </button>
@@ -847,23 +779,25 @@ export default function AuthInterface({
     );
   }
 
-  // --- Reset confirm ---
   if (authMode === 'resetConfirm') {
     return (
       <PageWrap>
-        <div className="text-center space-y-1">
+        <div className="text-center space-y-2">
+          <div className="mx-auto w-14 h-14 rounded-full bg-zinc-800/50 border border-zinc-700/50 flex items-center justify-center mb-2">
+            <Lock className="w-7 h-7 text-zinc-400" />
+          </div>
           <h1 className="text-2xl font-bold text-zinc-100">Enter Reset Code</h1>
           <p className="text-sm text-zinc-400">Check your email for the 6-digit code.</p>
         </div>
         <Card>
           {renderAlert(errorText, 'error')}
           {renderAlert(successText, 'success')}
-          <form onSubmit={handleConfirmReset} className="space-y-4">
+          <form onSubmit={handleConfirmReset} className="space-y-5">
             <OTPInput value={resetCode} onChange={setResetCode} />
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
               <input
-                className={`${inputClass} pl-10 pr-10`}
+                className={`${inputClass} pl-11 pr-11`}
                 type={showNewPassword ? 'text' : 'password'}
                 placeholder="New password (min 8 characters)"
                 value={newPassword}
@@ -871,15 +805,15 @@ export default function AuthInterface({
                 autoComplete="new-password"
               />
               <button type="button" onClick={() => setShowNewPassword(p => !p)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
                 {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
             <button type="submit" disabled={isLoading} className={btnPrimary}>
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              {isLoading ? 'Resetting…' : 'Reset Password'}
+              {isLoading ? 'Resetting...' : 'Reset Password'}
             </button>
-            <button type="button" onClick={() => goToMode('login')} className={btnGhost}>
+            <button type="button" onClick={() => goToMode('login')} className={btnSecondary}>
               <ChevronLeft className="w-4 h-4" />
               Back to Login
             </button>
@@ -889,76 +823,75 @@ export default function AuthInterface({
     );
   }
 
-  // ============================================================
-  // Register — hardened 3-step form
-  // ============================================================
-
   if (authMode === 'register') {
     return (
       <PageWrap wide>
-        {/* Header with logo */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center mb-2">
-            <img src={revlumaLogo} alt="Revluma" className="h-9 w-auto" />
+            <img src={revlumaLogo} alt="Revluma" className="h-10 w-auto" />
           </div>
-          <h1 className="text-xl font-bold text-zinc-100">Apply to the Revluma Affiliate Partnership Programme</h1>
-          <p className="text-sm text-zinc-400">Step {step} of 3 — {
+          <h1 className="text-xl font-bold text-zinc-100">Apply to the Revluma Affiliate Partnership Program</h1>
+          <p className="text-sm text-zinc-500">Step {step} of 3 — {
             step === 1 ? 'Personal Details' : step === 2 ? 'Channels & Audience' : 'Commitment'
           }</p>
         </div>
 
-        {/* Progress bar */}
         <div className="flex gap-1.5">
           {[1, 2, 3].map(s => (
-            <div key={s} className={`h-1 flex-1 rounded-full transition-all duration-500 ${s < step ? 'bg-violet-500' : s === step ? 'bg-violet-400' : 'bg-zinc-800'}`} />
+            <div key={s} className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${
+              s < step ? 'bg-violet-500' : s === step ? 'bg-violet-400' : 'bg-zinc-800'
+            }`} />
           ))}
         </div>
 
         <Card>
           {renderAlert(errorText, 'error')}
+          {renderAlert(successText, 'success')}
 
-          {/* Step 1 — Personal & Credentials */}
           {step === 1 && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="Full name (first & last)"
-                  value={fullName} onChange={e => setFullName(e.target.value)} />
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input className={`${inputClass} pl-11`} placeholder="Full name (first & last)"
+                  value={fullName} onChange={e => setFullName(e.target.value)} autoComplete="name" />
               </div>
 
-              {/* Username with availability indicator */}
               <div className="relative">
-                <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10 pr-10`} placeholder="Username (min 3 chars)"
-                  value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs">
-                  {checkingUsername && <Loader2 className="w-3.5 h-3.5 text-zinc-500 animate-spin" />}
-                  {!checkingUsername && usernameAvailable === true && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
-                  {!checkingUsername && usernameAvailable === false && <AlertCircle className="w-3.5 h-3.5 text-red-400" />}
+                <Hash className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input className={`${inputClass} pl-11 pr-11`} placeholder="Username (min 3 chars)"
+                  value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoComplete="username" />
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                  {checkingUsername && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
+                  {!checkingUsername && usernameAvailable === true && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                  {!checkingUsername && usernameAvailable === false && <AlertCircle className="w-4 h-4 text-red-400" />}
                 </span>
               </div>
               {usernameAvailable === false && (
-                <p className="text-xs text-red-400 -mt-1">Username taken</p>
+                <p className="text-xs text-red-400 -mt-3 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Username taken
+                </p>
               )}
               {usernameAvailable === true && (
-                <p className="text-xs text-emerald-400 -mt-1">Username available</p>
+                <p className="text-xs text-emerald-400 -mt-3 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Username available
+                </p>
               )}
 
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} type="email" placeholder="Email address"
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input className={`${inputClass} pl-11`} type="email" placeholder="Email address"
                   value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
               </div>
 
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="Phone number (with country code)"
-                  value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} />
+                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input className={`${inputClass} pl-11`} placeholder="Phone number (with country code)"
+                  value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} autoComplete="tel" />
               </div>
 
               <div className="relative">
-                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <select className={`${inputClass} pl-10`} value={country} onChange={e => setCountry(e.target.value)}>
+                <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <select className={`${inputClass} pl-11 appearance-none cursor-pointer`} value={country} onChange={e => setCountry(e.target.value)}>
                   <option value="NG">Nigeria</option>
                   <option value="US">United States</option>
                   <option value="GB">United Kingdom</option>
@@ -972,11 +905,10 @@ export default function AuthInterface({
                 </select>
               </div>
 
-              {/* Password with strength meter */}
               <div>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                  <input className={`${inputClass} pl-10 pr-10`}
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input className={`${inputClass} pl-11 pr-11`}
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Password (min 8 characters)"
                     value={password}
@@ -984,29 +916,30 @@ export default function AuthInterface({
                     autoComplete="new-password"
                   />
                   <button type="button" onClick={() => setShowPassword(p => !p)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
                 {password && (
-                  <div className="mt-1.5 space-y-1">
+                  <div className="mt-2 space-y-1.5">
                     <div className="flex gap-1">
                       {[1, 2, 3, 4].map(i => (
-                        <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= pwdStrength ? strengthColors[pwdStrength] : 'bg-zinc-800'}`} />
+                        <div key={i} className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                          i <= pwdStrength ? strengthColors[pwdStrength] : 'bg-zinc-800'
+                        }`} />
                       ))}
                     </div>
-                    <p className={`text-xs ${strengthTextColors[pwdStrength]}`}>
+                    <p className={`text-xs font-medium ${strengthTextColors[pwdStrength]}`}>
                       {strengthLabels[pwdStrength]}
-                      {pwdStrength < 3 && <span className="text-zinc-600"> — add uppercase, numbers, symbols</span>}
+                      {pwdStrength < 3 && <span className="text-zinc-600 font-normal"> — add uppercase, numbers & symbols</span>}
                     </p>
                   </div>
                 )}
               </div>
 
-              {/* Confirm password */}
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10 pr-10`}
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                <input className={`${inputClass} pl-11 pr-11`}
                   type={showConfirmPassword ? 'text' : 'password'}
                   placeholder="Confirm password"
                   value={confirmPassword}
@@ -1014,89 +947,73 @@ export default function AuthInterface({
                   autoComplete="new-password"
                 />
                 <button type="button" onClick={() => setShowConfirmPassword(p => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
               {confirmPassword && password !== confirmPassword && (
-                <p className="text-xs text-red-400 -mt-1">Passwords do not match</p>
+                <p className="text-xs text-red-400 -mt-2 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Passwords do not match
+                </p>
               )}
               {confirmPassword && password === confirmPassword && password.length >= 8 && (
-                <p className="text-xs text-emerald-400 -mt-1 flex items-center gap-1">
+                <p className="text-xs text-emerald-400 -mt-2 flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" /> Passwords match
                 </p>
               )}
             </div>
           )}
 
-          {/* Step 2 — Social & Audience */}
           {step === 2 && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-xs text-zinc-400">Distribution channels</p>
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${channelCount >= 2 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                  {channelCount}/2 min
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm text-zinc-400 font-medium">Distribution Channels</p>
+                <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                  channelCount >= 2
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
+                    : 'bg-amber-500/15 text-amber-400 border border-amber-500/25'
+                }`}>
+                  {channelCount}/2 minimum
                 </span>
               </div>
+              <p className="text-xs text-zinc-500 -mt-1 mb-3">
+                Provide at least 2 social channels where you create content or have a following.
+              </p>
 
-              <div className="relative">
-                <Twitter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="Twitter/X handle"
-                  value={twitterHandle} onChange={e => setTwitterHandle(e.target.value)} />
-              </div>
-              <div className="relative">
-                <Instagram className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="Instagram handle"
-                  value={instagramHandle} onChange={e => setInstagramHandle(e.target.value)} />
-              </div>
-              <div className="relative">
-                <Linkedin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="LinkedIn URL"
-                  value={linkedInProfile} onChange={e => setLinkedInProfile(e.target.value)} />
-              </div>
-              <div className="relative">
-                <Youtube className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="YouTube channel URL"
-                  value={youtubeChannel} onChange={e => setYoutubeChannel(e.target.value)} />
-              </div>
-              <div className="relative">
-                <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="TikTok handle"
-                  value={tiktokHandle} onChange={e => setTiktokHandle(e.target.value)} />
-              </div>
-              <div className="relative">
-                <Facebook className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="Facebook profile URL"
-                  value={facebookProfile} onChange={e => setFacebookProfile(e.target.value)} />
-              </div>
-              <div className="relative">
-                <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="Website URL"
-                  value={website} onChange={e => setWebsite(e.target.value)} />
-              </div>
-              <div className="relative">
-                <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="Newsletter URL"
-                  value={newsletterUrl} onChange={e => setNewsletterUrl(e.target.value)} />
-              </div>
-              <div className="relative">
-                <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-10`} placeholder="Community URL (Discord, Slack, etc.)"
-                  value={communityUrl} onChange={e => setCommunityUrl(e.target.value)} />
-              </div>
+              {SOCIAL_PLATFORMS.map(({ key, icon: Icon, label, placeholder }) => (
+                <div key={key} className="relative">
+                  <Icon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input
+                    className={`${inputClass} pl-11`}
+                    placeholder={`${label} (${placeholder})`}
+                    value={socialFieldsMap[key]}
+                    onChange={e => {
+                      const setters: Record<string, React.Dispatch<React.SetStateAction<string>>> = {
+                        twitterHandle: setTwitterHandle, instagramHandle: setInstagramHandle,
+                        linkedInProfile: setLinkedInProfile, youtubeChannel: setYoutubeChannel,
+                        tiktokHandle: setTiktokHandle, facebookProfile: setFacebookProfile,
+                        website: setWebsite, newsletterUrl: setNewsletterUrl,
+                        communityUrl: setCommunityUrl
+                      };
+                      setters[key]?.(e.target.value);
+                    }}
+                    autoComplete="off"
+                  />
+                </div>
+              ))}
 
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-2 gap-4 pt-2">
                 <div className="relative">
-                  <Layers className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                  <select className={`${inputClass} pl-10`} value={audienceNiche} onChange={e => setAudienceNiche(e.target.value)}>
+                  <Layers className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <select className={`${inputClass} pl-11 appearance-none cursor-pointer`} value={audienceNiche} onChange={e => setAudienceNiche(e.target.value)}>
                     {['Shopify Growth', 'eCommerce', 'SaaS', 'Marketing', 'Fintech', 'Creator Economy', 'Other'].map(n => (
                       <option key={n} value={n}>{n}</option>
                     ))}
                   </select>
                 </div>
                 <div className="relative">
-                  <Info className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                  <select className={`${inputClass} pl-10`} value={audienceSize} onChange={e => setAudienceSize(e.target.value)}>
+                  <Info className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <select className={`${inputClass} pl-11 appearance-none cursor-pointer`} value={audienceSize} onChange={e => setAudienceSize(e.target.value)}>
                     {['Under 1,000', '1,000 - 5,000', '5,000 - 10,000', '10,000 - 50,000', '50,000+'].map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
@@ -1106,52 +1023,55 @@ export default function AuthInterface({
             </div>
           )}
 
-          {/* Step 3 — Commitment */}
           {step === 3 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
-                <label className="block text-xs text-zinc-400 mb-1.5">Your affiliate experience</label>
-                <select className={inputClass} value={affiliateExperience} onChange={e => setAffiliateExperience(e.target.value)}>
+                <label className="block text-xs text-zinc-400 mb-2 font-medium">Your affiliate experience</label>
+                <select className={`${inputClass} cursor-pointer`} value={affiliateExperience} onChange={e => setAffiliateExperience(e.target.value)}>
                   {['Beginner', 'Intermediate', 'Advanced', 'Expert'].map(v => (
                     <option key={v} value={v}>{v}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-zinc-400 mb-1.5">
+                <label className="block text-xs text-zinc-400 mb-2 font-medium">
                   Why do you want to join?
-                  <span className={`ml-1 ${whyJoin.length < 15 ? 'text-zinc-600' : 'text-emerald-500'}`}>
+                  <span className={`ml-2 font-mono ${whyJoin.length >= 15 ? 'text-emerald-400' : 'text-zinc-600'}`}>
                     ({whyJoin.length} chars)
                   </span>
                 </label>
                 <textarea
-                  className={`${inputClass} resize-none h-28`}
-                  placeholder="Tell us about your audience and how you plan to promote Revluma…"
+                  className={`${inputClass} resize-none h-32 leading-relaxed`}
+                  placeholder="Tell us about your audience and how you plan to promote Revluma..."
                   value={whyJoin}
                   onChange={e => setWhyJoin(e.target.value)}
                 />
+                {whyJoin.length > 0 && whyJoin.length < 15 && (
+                  <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" /> Minimum 15 characters required
+                  </p>
+                )}
               </div>
               <label className="flex items-start gap-3 cursor-pointer group">
                 <input type="checkbox" checked={termsAgreement} onChange={e => setTermsAgreement(e.target.checked)}
-                  className="mt-0.5 accent-violet-500" />
-                <span className="text-xs text-zinc-400 group-hover:text-zinc-300 transition">
-                  I agree to the <span className="text-violet-400">Partnership Terms & Conditions</span> and confirm my information is accurate.
+                  className="mt-0.5 w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-violet-500 focus:ring-violet-500/30 focus:ring-offset-0" />
+                <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors leading-relaxed">
+                  I agree to the <span className="text-violet-400 font-medium">Partnership Terms & Conditions</span> and confirm my information is accurate.
                 </span>
               </label>
               <label className="flex items-start gap-3 cursor-pointer group">
                 <input type="checkbox" checked={marketingConsent} onChange={e => setMarketingConsent(e.target.checked)}
-                  className="mt-0.5 accent-violet-500" />
-                <span className="text-xs text-zinc-400 group-hover:text-zinc-300 transition">
+                  className="mt-0.5 w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-violet-500 focus:ring-violet-500/30 focus:ring-offset-0" />
+                <span className="text-sm text-zinc-400 group-hover:text-zinc-300 transition-colors leading-relaxed">
                   I consent to receiving partner updates and commission notifications.
                 </span>
               </label>
             </div>
           )}
 
-          {/* Navigation */}
-          <div className="flex gap-3 pt-1">
+          <div className="flex gap-3 pt-2">
             {step > 1 && (
-              <button type="button" onClick={handlePrevStep} className={btnGhost}>
+              <button type="button" onClick={handlePrevStep} className={btnSecondary}>
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
             )}
@@ -1162,7 +1082,7 @@ export default function AuthInterface({
             ) : (
               <button type="button" disabled={isLoading} onClick={handleSignUpCompletion} className={btnPrimary}>
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                {isLoading ? 'Submitting…' : 'Submit Application'}
+                {isLoading ? 'Submitting...' : 'Submit Application'}
               </button>
             )}
           </div>
@@ -1170,15 +1090,11 @@ export default function AuthInterface({
 
         <p className="text-center text-xs text-zinc-500">
           Already have an account?{' '}
-          <button onClick={() => goToMode('login')} className="text-violet-400 hover:underline">Log in</button>
+          <button onClick={() => goToMode('login')} className="text-violet-400 hover:underline font-medium">Log in</button>
         </p>
       </PageWrap>
     );
   }
-
-  // ============================================================
-  // Login (default)
-  // ============================================================
 
   return (
     <PageWrap>
@@ -1190,9 +1106,9 @@ export default function AuthInterface({
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
-              className={`${inputClass} pl-10`}
+              className={`${inputClass} pl-11`}
               type="email"
               placeholder="Email address"
               value={loginEmail}
@@ -1202,9 +1118,9 @@ export default function AuthInterface({
           </div>
 
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
             <input
-              className={`${inputClass} pl-10 pr-10`}
+              className={`${inputClass} pl-11 pr-11`}
               type={showLoginPassword ? 'text' : 'password'}
               placeholder="Password"
               value={loginPassword}
@@ -1212,15 +1128,15 @@ export default function AuthInterface({
               autoComplete="current-password"
             />
             <button type="button" onClick={() => setShowLoginPassword(p => !p)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition">
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors">
               {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
 
-          <div className="text-right -mt-1">
+          <div className="flex justify-end -mt-1">
             <button type="button"
               onClick={() => { setAuthModeInternal('forgot'); setErrorText(''); setSuccessText(''); }}
-              className="text-xs text-zinc-500 hover:text-violet-400 transition">
+              className="text-xs text-zinc-500 hover:text-violet-400 transition-colors font-medium">
               Forgot password?
             </button>
           </div>
@@ -1231,19 +1147,19 @@ export default function AuthInterface({
             className={btnPrimary}
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-            {isLoading ? 'Signing in…' : rateLimited ? `Retry in ${rateLimitCountdown}s` : 'Sign In'}
+            {isLoading ? 'Signing in...' : rateLimited ? `Retry in ${rateLimitCountdown}s` : 'Sign In'}
           </button>
         </form>
       </Card>
 
-      <p className="text-center text-xs text-zinc-500">
+      <p className="text-center text-sm text-zinc-500">
         Don't have an account?{' '}
-        <button onClick={() => goToMode('register')} className="text-violet-400 hover:underline">
+        <button onClick={() => goToMode('register')} className="text-violet-400 hover:underline font-medium">
           Apply to join
         </button>
       </p>
-      <p className="text-center text-xs text-zinc-600">
-        <button onClick={onBackToLanding} className="hover:text-zinc-400 transition">← Back to site</button>
+      <p className="text-center -mt-2">
+        <button onClick={onBackToLanding} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">← Back to site</button>
       </p>
     </PageWrap>
   );

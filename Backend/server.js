@@ -11,7 +11,7 @@ const cookieParser = require('cookie-parser');
 const logger = require('./src/utils/logger');
 const { checkConnection, closeConnection } = require('./src/services/prisma');
 const errorHandler = require('./src/middleware/errorHandler');
-const { authenticate } = require('./src/middleware/sessionAuth'); // single auth middleware
+const { authenticate } = require('./src/middleware/sessionAuth');
 const { checkRedisHealth } = require('./src/queue/redis');
 const { triggerIngest } = require('./src/pipeline/ingestionPipeline');
 
@@ -32,7 +32,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
-// CORS — single options object (do NOT call cors() again without options on OPTIONS)
+// CORS — single options object
 const parseOrigins = value =>
   typeof value === 'string'
     ? value.split(',').map(entry => entry.trim()).filter(Boolean)
@@ -40,7 +40,7 @@ const parseOrigins = value =>
 
 function normalizeOriginUrl(raw) {
   if (!raw || typeof raw !== 'string') return null;
-  let origin = raw.trim().replace(/\/$/, '').replace(/\\n/g, '');
+  let origin = raw.trim().replace(/\/$/, '').replace(/\\n/g, '').replace(/^["']|["']$/g, '');
   if (!origin) return null;
   if (!/^https?:\/\//i.test(origin)) {
     origin = `https://${origin}`;
@@ -57,7 +57,9 @@ const configuredOrigins = new Set(
     process.env.FRONTEND_URL,
     'https://revluma.vercel.app',
     'https://www.revluma.vercel.app',
-    'https://revluma.onrender.com'
+    'https://revluma.onrender.com',
+    'http://localhost:5173',
+    'http://localhost:5000'
   ]
     .map(normalizeOriginUrl)
     .filter(Boolean)
@@ -104,11 +106,8 @@ const globalLimiter = rateLimit({
 });
 app.use(globalLimiter);
 
-// Static frontend
-app.use(express.static(path.join(__dirname, '..', 'Frontend')));
-
 // ============================================================
-// Routes
+// Auth Routes
 // ============================================================
 
 const authLimiter = rateLimit({
@@ -169,15 +168,9 @@ app.use('/api/tracking', createTrackingPixelRouter(prisma));
 // Public API routes (no authentication required)
 // ============================================================
 
-// Public referral redirect route (serves main Revluma, not affiliate portal) - ISSUE #2
+// Public referral redirect route
 // Format: /r/splendor-48us
 app.use('/r', require('./src/routes/v1/referral-redirect'));
-
-// Partner referral redirect (public) - /partner/username-uniqueid (backward compatibility)
-app.get('/partner/:code', require('./src/routes/v1/affiliate-tracking'));
-
-// Also support /affiliate/:code as a public friendly alias for referral links (backward compatibility)
-app.get('/affiliate/:code', require('./src/routes/v1/affiliate-tracking'));
 
 // Waitlist API (public)
 app.use('/api/waitlist', require('./src/routes/v1/waitlist'));
@@ -197,34 +190,62 @@ app.use('/api/v1/notifications', authenticate, require('./src/routes/v1/notifica
 app.use('/api/affiliate', authenticate, require('./src/routes/v1/affiliate'));
 
 // ============================================================
-// SPA Fallback Routes (ISSUE #1 FIX)
+// AFFILIATE PORTAL SPA — MUST be BEFORE /affiliate/:code tracking
 // ============================================================
 
 // Affiliate portal SPA fallback — serve index.html for all /affiliate/* routes
-// This prevents refresh redirects by serving the SPA shell for all nested routes
+// This also covers /affiliate/login, /affiliate/signup, etc.
+const affiliateSpaPath = path.join(__dirname, 'Frontend', 'Affiliate', 'index.html');
+
 app.use(/^\/affiliate\//, (req, res, next) => {
-  // Don't intercept API routes
   if (req.path.startsWith('/affiliate/api/')) {
     return next();
   }
-  res.sendFile(path.join(__dirname, '..', 'Frontend', 'Affiliate', 'index.html'));
+  res.sendFile(affiliateSpaPath);
 });
 
-// Affiliate SPA base route
 app.get('/affiliate', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'Frontend', 'Affiliate', 'index.html'));
+  res.sendFile(affiliateSpaPath);
 });
 
-// Waitlist page (served as static HTML for public waitlist form)
+// Waitlist page
 app.get('/waitlist', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'Frontend', 'Affiliate', 'index.html'));
+  res.sendFile(affiliateSpaPath);
 });
+
+// ============================================================
+// Partner referral redirect (backward compatibility)
+// These are AFTER the SPA routes so they don't intercept SPA paths
+// ============================================================
+
+app.get('/partner/:code', (req, res, next) => {
+  const { code } = req.params;
+  const reservedRoutes = ['login', 'signup', 'verify-email', 'access-token', 'pending-review', 'rejected', 'dashboard', 'settings', 'admin', 'api'];
+  if (reservedRoutes.includes(code)) {
+    return next();
+  }
+  require('./src/routes/v1/affiliate-tracking')(req, res, next);
+});
+
+app.get('/affiliate/:code', (req, res, next) => {
+  const { code } = req.params;
+  const reservedRoutes = ['login', 'signup', 'verify-email', 'access-token', 'pending-review', 'rejected', 'dashboard', 'settings', 'admin', 'api'];
+  if (reservedRoutes.includes(code)) {
+    return next();
+  }
+  require('./src/routes/v1/affiliate-tracking')(req, res, next);
+});
+
+// ============================================================
+// Static frontend (after all dynamic routes)
+// ============================================================
+
+app.use(express.static(path.join(__dirname, '..', 'Frontend')));
 
 // Admin endpoints
 app.use('/api/affiliate/admin', authenticate, require('./src/routes/v1/affiliateAdmin'));
 
 app.post('/api/admin/ingest', authenticate, async (req, res) => {
-
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
