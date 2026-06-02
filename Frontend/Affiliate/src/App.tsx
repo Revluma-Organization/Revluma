@@ -4,15 +4,12 @@
  *
  * App.tsx — root of the Affiliate Portal.
  *
- * Auth and data are served by the Express backend via HTTP-only session
- * cookies and the /api/affiliate/* endpoints.
- *
- * The child components (Dashboard, AdminPanel, LandingPage) retain their
- * existing prop interfaces so they do not need to be rewritten all at once.
- * App.tsx hydrates their props from the backend on mount.
+ * PHASE 9: Production-grade authentication routing & URL state management.
+ * Every auth screen has its own dedicated URL. Browser history, back/forward,
+ * deep links, refresh persistence, and route protection all work correctly.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import LandingPage from './components/LandingPage';
 import AuthInterface from './components/AuthInterface';
 import Dashboard from './components/Dashboard';
@@ -23,8 +20,139 @@ import {
 } from './types';
 import * as api from './lib/api';
 
+// ============================================================
+// Route Model
+// ============================================================
+
+/**
+ * Every distinct screen maps to a canonical URL path.
+ * This is the single source of truth for routing.
+ */
+export type AppRoute =
+  | '/affiliate'
+  | '/affiliate/login'
+  | '/affiliate/signup'
+  | '/affiliate/verify-email'
+  | '/affiliate/access-token'
+  | '/affiliate/pending-review'
+  | '/affiliate/rejected'
+  | '/affiliate/dashboard'
+  | '/affiliate/settings'
+  | '/affiliate/admin';
+
 type AppView = 'landing' | 'auth' | 'dashboard' | 'admin';
-type AuthSubView = 'login' | 'register';
+
+// AuthMode is now a direct derivation of the URL — it is NOT independent state
+export type AuthMode =
+  | 'login'
+  | 'register'
+  | 'forgot'
+  | 'resetConfirm'
+  | 'verifyEmail'
+  | 'accessToken'
+  | 'pendingApproval'
+  | 'rejected';
+
+// ============================================================
+// Route ↔ AuthMode mapping
+// ============================================================
+
+function routeToAuthMode(route: AppRoute): AuthMode {
+  switch (route) {
+    case '/affiliate/signup':      return 'register';
+    case '/affiliate/verify-email': return 'verifyEmail';
+    case '/affiliate/access-token': return 'accessToken';
+    case '/affiliate/pending-review': return 'pendingApproval';
+    case '/affiliate/rejected':    return 'rejected';
+    case '/affiliate/login':
+    default:                       return 'login';
+  }
+}
+
+function authModeToRoute(mode: AuthMode): AppRoute {
+  switch (mode) {
+    case 'register':       return '/affiliate/signup';
+    case 'verifyEmail':    return '/affiliate/verify-email';
+    case 'accessToken':    return '/affiliate/access-token';
+    case 'pendingApproval': return '/affiliate/pending-review';
+    case 'rejected':       return '/affiliate/rejected';
+    case 'login':
+    case 'forgot':
+    case 'resetConfirm':
+    default:               return '/affiliate/login';
+  }
+}
+
+function pathToRoute(pathname: string): AppRoute {
+  const p = pathname.replace(/\/+$/, '').toLowerCase();
+  const validRoutes: AppRoute[] = [
+    '/affiliate/login', '/affiliate/signup', '/affiliate/verify-email',
+    '/affiliate/access-token', '/affiliate/pending-review', '/affiliate/rejected',
+    '/affiliate/dashboard', '/affiliate/settings', '/affiliate/admin', '/affiliate'
+  ];
+  return (validRoutes.find(r => p === r || p.startsWith(r + '/')) as AppRoute) ?? '/affiliate';
+}
+
+// ============================================================
+// Route protection: given auth status, what route is allowed?
+// ============================================================
+
+function getProtectedRoute(user: PartnerProfile | null, requestedRoute: AppRoute): AppRoute {
+  if (!user) {
+    // Unauthenticated: only public routes allowed
+    if (['/affiliate', '/affiliate/login', '/affiliate/signup'].includes(requestedRoute)) {
+      return requestedRoute;
+    }
+    return '/affiliate/login';
+  }
+
+  const status = (user.status ?? 'pending').toLowerCase();
+
+  switch (status) {
+    case 'pending_email_verification':
+      return '/affiliate/verify-email';
+
+    case 'pending_access_token':
+      return '/affiliate/access-token';
+
+    case 'pending':
+    case 'pending_review':
+      return '/affiliate/pending-review';
+
+    case 'rejected':
+      return '/affiliate/rejected';
+
+    case 'approved':
+      if (requestedRoute === '/affiliate/admin') {
+        return user.role === 'admin' ? '/affiliate/admin' : '/affiliate/dashboard';
+      }
+      if (['/affiliate/dashboard', '/affiliate/settings'].includes(requestedRoute)) {
+        return requestedRoute;
+      }
+      return user.role === 'admin' ? '/affiliate/admin' : '/affiliate/dashboard';
+
+    default:
+      return '/affiliate/pending-review';
+  }
+}
+
+// ============================================================
+// History management
+// ============================================================
+
+function pushRoute(route: AppRoute) {
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname !== route) {
+    window.history.pushState({ route }, '', route);
+  }
+}
+
+function replaceRoute(route: AppRoute) {
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname !== route) {
+    window.history.replaceState({ route }, '', route);
+  }
+}
 
 // ============================================================
 // Helpers
@@ -73,52 +201,6 @@ function buildPartnerProfile(
   };
 }
 
-type RouteState = {
-  view: AppView;
-  authSubView?: AuthSubView;
-};
-
-function routePath(view: AppView, authSubView: AuthSubView = 'login') {
-  switch (view) {
-    case 'landing': return '/affiliate';
-    case 'auth': return authSubView === 'register' ? '/affiliate/signup' : '/affiliate/login';
-    case 'dashboard': return '/affiliate/dashboard';
-    case 'admin': return '/affiliate/admin';
-    default: return '/affiliate';
-  }
-}
-
-function resolveAffiliateRoute(pathname: string, user: PartnerProfile | null): RouteState {
-  const normalized = pathname.replace(/\/+$|^\/affiliate/, '') || '/';
-  // If user exists but is not approved, always redirect to auth (pending screen)
-  if (user && user.status && user.status !== 'approved') {
-    return { view: 'auth', authSubView: 'login' };
-  }
-  switch (normalized.toLowerCase()) {
-    case '/': return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'landing' };
-    case '/login': case '/signin':
-      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'auth', authSubView: 'login' };
-    case '/signup': case '/register':
-      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'auth', authSubView: 'register' };
-    case '/dashboard': case '/settings':
-      // Hard guard: non-approved users cannot reach /dashboard
-      if (!user || user.status !== 'approved') return { view: 'auth', authSubView: 'login' };
-      return { view: user.role === 'admin' ? 'admin' : 'dashboard' };
-    case '/admin':
-      return user?.role === 'admin' ? { view: 'admin' } : { view: 'auth', authSubView: 'login' };
-    default:
-      return user ? { view: user.role === 'admin' ? 'admin' : 'dashboard' } : { view: 'landing' };
-  }
-}
-
-function syncRoute(view: AppView, authSubView: AuthSubView) {
-  if (typeof window === 'undefined') return;
-  const desiredPath = routePath(view, authSubView);
-  if (window.location.pathname !== desiredPath) {
-    window.history.replaceState({}, '', desiredPath);
-  }
-}
-
 const BASE_URL = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL
   ? (import.meta as { env?: Record<string, string> }).env!.VITE_API_URL.replace(/\/$/, '')
   : `${typeof window !== 'undefined' ? window.location.origin : ''}/api`;
@@ -141,28 +223,81 @@ async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // ============================================================
+// Derive top-level view from route
+// ============================================================
+
+function routeToView(route: AppRoute): AppView {
+  if (route === '/affiliate') return 'landing';
+  if (route === '/affiliate/dashboard' || route === '/affiliate/settings') return 'dashboard';
+  if (route === '/affiliate/admin') return 'admin';
+  return 'auth';
+}
+
+// ============================================================
 // App
 // ============================================================
 
 export default function App() {
-  const [view, setView] = useState<AppView>('landing');
-  const [authSubView, setAuthSubView] = useState<AuthSubView>('login');
+  const [currentRoute, setCurrentRouteState] = useState<AppRoute>(() =>
+    pathToRoute(typeof window !== 'undefined' ? window.location.pathname : '/affiliate')
+  );
   const [currentUser, setCurrentUser] = useState<PartnerProfile | null>(null);
   const [allProfiles, setAllProfiles] = useState<PartnerProfile[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [broadcasts, setBroadcasts] = useState<FounderBroadcast[]>([]);
   const [isInitializing, setIsInitializing] = useState(true);
 
+  // Ref to avoid stale closures in popstate handler
+  const currentUserRef = useRef<PartnerProfile | null>(null);
+  currentUserRef.current = currentUser;
+
   // ============================================================
-  // Session restore and route initialization on mount
+  // Authoritative route setter — always syncs URL
+  // ============================================================
+
+  const navigateTo = useCallback((route: AppRoute, replace = false) => {
+    setCurrentRouteState(route);
+    if (replace) {
+      replaceRoute(route);
+    } else {
+      pushRoute(route);
+    }
+  }, []);
+
+  const protectedNavigate = useCallback((requestedRoute: AppRoute, user: PartnerProfile | null, replace = false) => {
+    const safeRoute = getProtectedRoute(user, requestedRoute);
+    navigateTo(safeRoute, replace);
+    return safeRoute;
+  }, [navigateTo]);
+
+  // ============================================================
+  // Browser back/forward support
   // ============================================================
 
   useEffect(() => {
-    const initialState = resolveAffiliateRoute(window.location.pathname, null);
-    setView(initialState.view);
-    if (initialState.authSubView) {
-      setAuthSubView(initialState.authSubView);
-    }
+    const handlePopState = (event: PopStateEvent) => {
+      const route = pathToRoute(window.location.pathname);
+      const user = currentUserRef.current;
+      const safeRoute = getProtectedRoute(user, route);
+      if (safeRoute !== route) {
+        // Route not allowed — correct it without adding to history
+        replaceRoute(safeRoute);
+        setCurrentRouteState(safeRoute);
+      } else {
+        setCurrentRouteState(route);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // ============================================================
+  // Session restore on mount
+  // ============================================================
+
+  useEffect(() => {
+    const initialRoute = pathToRoute(window.location.pathname);
 
     api.me()
       .then(async (data) => {
@@ -172,22 +307,35 @@ export default function App() {
             const profile = profileRes.profile as Record<string, unknown>;
             const restoredUser = buildPartnerProfile(data.user, profile);
             setCurrentUser(restoredUser);
-            setView(resolveAffiliateRoute(window.location.pathname, restoredUser).view);
-            setAuthSubView(resolveAffiliateRoute(window.location.pathname, restoredUser).authSubView ?? authSubView);
+
+            // Now that we have the user, enforce route protection
+            const safeRoute = getProtectedRoute(restoredUser, initialRoute);
+            // Use replaceState so we don't pollute history on restore
+            replaceRoute(safeRoute);
+            setCurrentRouteState(safeRoute);
+
             await loadUserData(restoredUser);
           } catch {
-            // Profile fetch failed — fall back to route state
+            // Profile fetch failed — protect the route without user
+            const safeRoute = getProtectedRoute(null, initialRoute);
+            replaceRoute(safeRoute);
+            setCurrentRouteState(safeRoute);
           }
+        } else {
+          // No session — protect route
+          const safeRoute = getProtectedRoute(null, initialRoute);
+          replaceRoute(safeRoute);
+          setCurrentRouteState(safeRoute);
         }
       })
-      .catch(() => { /* no active session */ })
+      .catch(() => {
+        const safeRoute = getProtectedRoute(null, initialRoute);
+        replaceRoute(safeRoute);
+        setCurrentRouteState(safeRoute);
+      })
       .finally(() => setIsInitializing(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    syncRoute(view, authSubView);
-  }, [view, authSubView]);
 
   // ============================================================
   // Data loading
@@ -228,18 +376,26 @@ export default function App() {
   }
 
   // ============================================================
-  // Auth callbacks
+  // Auth callbacks — every transition goes through navigateTo
   // ============================================================
 
- const handleAuthSuccess = useCallback(async (profile: PartnerProfile) => {
-  setCurrentUser(profile);
-  if (profile.status !== 'approved') {
-    // Non-approved: stay on auth (pendingApproval mode handles the display)
-    return;
-  }
-  await loadUserData(profile).catch(() => {});
-  setView(profile.role === 'admin' ? 'admin' : 'dashboard');
-}, []);
+  const handleAuthSuccess = useCallback(async (profile: PartnerProfile) => {
+    setCurrentUser(profile);
+    const safeRoute = getProtectedRoute(profile, '/affiliate/dashboard');
+    navigateTo(safeRoute);
+    if (profile.status === 'approved') {
+      await loadUserData(profile).catch(() => {});
+    }
+  }, [navigateTo]);
+
+  /**
+   * Called by AuthInterface when the user transitions between auth screens.
+   * This is the bridge that keeps AuthInterface's internal mode in sync with the URL.
+   */
+  const handleAuthRouteChange = useCallback((mode: AuthMode) => {
+    const route = authModeToRoute(mode);
+    navigateTo(route);
+  }, [navigateTo]);
 
   const handleLogout = useCallback(async () => {
     try { await api.logout(); } catch { /* best-effort */ }
@@ -248,11 +404,11 @@ export default function App() {
     setAllProfiles([]);
     setWithdrawals([]);
     setBroadcasts([]);
-    setView('landing');
-  }, []);
+    navigateTo('/affiliate/login');
+  }, [navigateTo]);
 
   // ============================================================
-  // Profile callbacks (Dashboard → modify profile)
+  // Profile callbacks
   // ============================================================
 
   const handleModifyProfile = useCallback(async (updated: PartnerProfile) => {
@@ -271,7 +427,6 @@ export default function App() {
   }, []);
 
   const handleDeleteAccount = useCallback(() => {
-    // Best effort — log out client side, backend cleanup is a separate admin action
     handleLogout();
   }, [handleLogout]);
 
@@ -304,7 +459,7 @@ export default function App() {
   }, []);
 
   // ============================================================
-  // Admin profile status / role callbacks
+  // Admin callbacks
   // ============================================================
 
   const handleModifyProfileStatus = useCallback(async (userId: string, newStatus: ApprovalStatus) => {
@@ -325,10 +480,6 @@ export default function App() {
     );
   }, []);
 
-  // ============================================================
-  // Broadcast callbacks (admin only)
-  // ============================================================
-
   const handleAddBroadcast = useCallback(async (title: string, content: string) => {
     const newBroadcast: FounderBroadcast = {
       id: `broadcast_${Date.now()}`,
@@ -337,7 +488,6 @@ export default function App() {
       date: new Date().toISOString(),
       author: currentUser?.fullName ?? 'Admin'
     };
-    // TODO: POST /affiliate/admin/broadcasts to persist
     setBroadcasts(prev => [newBroadcast, ...prev]);
   }, [currentUser]);
 
@@ -353,34 +503,51 @@ export default function App() {
     );
   }
 
+  const view = routeToView(currentRoute);
+
+  // Landing
   if (view === 'landing') {
     return (
       <LandingPage
-        onNavigateToAuth={(subView) => { setAuthSubView(subView); setView('auth'); }}
+        onNavigateToAuth={(subView) => navigateTo(subView === 'register' ? '/affiliate/signup' : '/affiliate/login')}
         currentProfile={currentUser}
-        onNavigateToDashboard={() => setView(currentUser?.role === 'admin' ? 'admin' : 'dashboard')}
+        onNavigateToDashboard={() => navigateTo(currentUser?.role === 'admin' ? '/affiliate/admin' : '/affiliate/dashboard')}
       />
     );
   }
 
+  // Auth screens — AuthInterface receives the current mode derived from URL
   if (view === 'auth') {
+    const authMode = routeToAuthMode(currentRoute);
     return (
       <AuthInterface
+        initialMode={authMode}
         onAuthSuccess={handleAuthSuccess}
-        onBackToLanding={() => setView('landing')}
+        onRouteChange={handleAuthRouteChange}
+        onBackToLanding={() => navigateTo('/affiliate')}
+        currentUser={currentUser}
       />
     );
   }
 
-  // Before rendering Dashboard/Admin, enforce status guard
-  if (currentUser && currentUser.status !== 'approved') {
-    return (
-      <AuthInterface
-        onAuthSuccess={handleAuthSuccess}
-        onBackToLanding={() => setView('landing')}
-        initialMode="pendingApproval"
-      />
-    );
+  // Dashboard route guard
+  if (view === 'dashboard' || view === 'admin') {
+    if (!currentUser || currentUser.status !== 'approved') {
+      const safeRoute = getProtectedRoute(currentUser, currentRoute);
+      if (safeRoute !== currentRoute) {
+        replaceRoute(safeRoute);
+        setCurrentRouteState(safeRoute);
+      }
+      return (
+        <AuthInterface
+          initialMode={routeToAuthMode(safeRoute)}
+          onAuthSuccess={handleAuthSuccess}
+          onRouteChange={handleAuthRouteChange}
+          onBackToLanding={() => navigateTo('/affiliate')}
+          currentUser={currentUser}
+        />
+      );
+    }
   }
 
   if (view === 'admin' && currentUser?.role === 'admin') {
@@ -391,7 +558,7 @@ export default function App() {
         onModifyProfileRole={handleModifyProfileRole}
         broadcastsList={broadcasts}
         onAddBroadcast={handleAddBroadcast}
-        onBackToDashboard={() => setView('dashboard')}
+        onBackToDashboard={() => navigateTo('/affiliate/dashboard')}
         withdrawalRequests={withdrawals}
         onUpdateWithdrawalRequestStatus={handleUpdateWithdrawalStatus}
       />
@@ -417,9 +584,9 @@ export default function App() {
 
   return (
     <LandingPage
-      onNavigateToAuth={(subView) => { setAuthSubView(subView); setView('auth'); }}
+      onNavigateToAuth={(subView) => navigateTo(subView === 'register' ? '/affiliate/signup' : '/affiliate/login')}
       currentProfile={null}
-      onNavigateToDashboard={() => setView('landing')}
+      onNavigateToDashboard={() => navigateTo('/affiliate')}
     />
   );
 }
