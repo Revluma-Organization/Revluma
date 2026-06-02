@@ -917,7 +917,7 @@ export default function AuthInterface({
           <div className="flex items-center justify-center mb-2">
             <img src={revlumaLogo} alt="Revluma" className="h-9 w-auto" />
           </div>
-          <h1 className="text-xl font-bold text-zinc-100">Apply to the Affiliate Programme</h1>
+          <h1 className="text-xl font-bold text-zinc-100">Apply to the Revluma Affiliate Partnership Programme</h1>
           <p className="text-sm text-zinc-400">Step {step} of 3 — {
             step === 1 ? 'Personal Details' : step === 2 ? 'Channels & Audience' : 'Commitment'
           }</p>
