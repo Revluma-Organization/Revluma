@@ -33,6 +33,15 @@ function getAuditContext(req) {
   };
 }
 
+/**
+ * GET /api/affiliate-auth/health
+ * Lightweight liveness probe — used by the frontend warm-up ping
+ * so Render wakes up before the user submits their first form.
+ */
+router.get('/health', (_req, res) => {
+  return res.status(200).json({ ok: true, ts: Date.now() });
+});
+
 async function resolveUsernameAvailability(username) {
   const normalized = sanitizeString(username, 50).toLowerCase();
   if (!normalized || normalized.length < 3) {

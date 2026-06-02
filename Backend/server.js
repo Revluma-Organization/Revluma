@@ -193,14 +193,23 @@ app.use('/api/affiliate', authenticate, require('./src/routes/v1/affiliate'));
 // AFFILIATE PORTAL SPA — MUST be BEFORE /affiliate/:code tracking
 // ============================================================
 
-// Affiliate portal SPA fallback — serve index.html for all /affiliate/* routes
-// This also covers /affiliate/login, /affiliate/signup, etc.
-const affiliateSpaPath = path.join(__dirname, 'Frontend', 'Affiliate', 'index.html');
+// ============================================================
+// AFFILIATE PORTAL SPA — static assets + SPA fallback
+// __dirname = Backend/  →  ../Frontend/Affiliate/dist/ has the built app
+// ============================================================
 
-app.use(/^\/affiliate\//, (req, res, next) => {
-  if (req.path.startsWith('/affiliate/api/')) {
-    return next();
-  }
+const affiliateDistPath = path.join(__dirname, '..', 'Frontend', 'Affiliate', 'dist');
+const affiliateSpaPath  = path.join(affiliateDistPath, 'index.html');
+
+// Serve compiled static assets (JS, CSS, images) from the dist folder.
+// These are requests like /affiliate/assets/main-abc123.js
+app.use('/affiliate', express.static(affiliateDistPath));
+
+// SPA fallback — any /affiliate/* path that isn't a static file gets index.html
+// so React Router can handle client-side navigation.
+app.use(/^\/affiliate(\/|$)/, (req, res, next) => {
+  // Let actual API calls pass through
+  if (req.path.startsWith('/api/')) return next();
   res.sendFile(affiliateSpaPath);
 });
 

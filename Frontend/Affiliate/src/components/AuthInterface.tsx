@@ -550,7 +550,7 @@ export default function AuthInterface({
     setIsLoading(true);
     try {
       const RAW_BASE = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
-      const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : `${window.location.origin}/api`;
+      const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : '/api';
       const res = await fetch(`${API_BASE}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -574,7 +574,7 @@ export default function AuthInterface({
     setIsLoading(true);
     try {
       const RAW_BASE = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
-      const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : `${window.location.origin}/api`;
+      const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : '/api';
       const res = await fetch(`${API_BASE}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

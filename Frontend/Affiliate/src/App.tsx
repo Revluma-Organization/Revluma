@@ -204,7 +204,7 @@ function buildPartnerProfile(
 
 const BASE_URL = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL
   ? (import.meta as { env?: Record<string, string> }).env!.VITE_API_URL.replace(/\/$/, '')
-  : `${typeof window !== 'undefined' ? window.location.origin : ''}/api`;
+  : '/api';
 
 async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const csrfToken = sessionStorage.getItem('csrf_token') ?? '';
@@ -299,6 +299,32 @@ export default function App() {
 
   useEffect(() => {
     const initialRoute = pathToRoute(window.location.pathname);
+
+    // These routes are part of the pre-registration flow.
+    // No session exists yet so calling /session/me would always
+    // fail with 401 (or 502 if the backend is cold-starting), flooding
+    // the console with red errors and waking Render unnecessarily.
+    const publicOnlyRoutes: AppRoute[] = [
+      '/affiliate/signup',
+      '/affiliate/verify-email',
+      '/affiliate/access-token',
+      '/affiliate/pending-review',
+      '/affiliate/rejected',
+    ];
+
+    if (publicOnlyRoutes.includes(initialRoute)) {
+      // Warm the backend silently in the background so that when the
+      // user actually submits the form the first real request is fast.
+      // Relative URL works because the SPA is now served directly from
+      // the same Render origin as the backend.
+      fetch('/api/affiliate-auth/health', { method: 'GET', credentials: 'omit' })
+        .catch(() => { /* fire-and-forget warm-up ping */ });
+
+      // Render the page immediately — no session needed
+      setCurrentRouteState(initialRoute);
+      setIsInitializing(false);
+      return;
+    }
 
     api.me()
       .then(async (data) => {

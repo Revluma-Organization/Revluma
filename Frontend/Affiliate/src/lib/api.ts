@@ -10,7 +10,11 @@
  */
 
 const RAW_BASE = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
-const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : `${window.location.origin.replace(/\/+$/, '')}/api`;
+// When VITE_API_URL is not set (production on Render where frontend and backend
+// share the same origin), use a relative path so all API calls go to the same
+// host with no proxy hop. This eliminates 502s caused by Vercel cold-proxying
+// to a sleeping Render instance.
+const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : '/api';
 
 async function request<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
