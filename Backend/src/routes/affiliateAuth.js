@@ -66,29 +66,69 @@ async function resolveUsernameAvailability(username) {
 }
 
 router.get('/check-username/:username', checkUsernameLimiter, async (req, res) => {
+  const start = Date.now();
   try {
     const username = sanitizeString(req.params.username || req.query.username, 50);
     const result = await resolveUsernameAvailability(username);
     if (result.valid === false) {
       return sendError(res, 400, result.error, 'VALIDATION_ERROR');
     }
+    logger.info('check-username completed', { username: result.username, available: result.available, ms: Date.now() - start });
     return res.json({ available: result.available, username: result.username });
   } catch (err) {
-    logger.error('check-username failed', { error: err.message });
+    logger.error('check-username failed', { error: err.message, ms: Date.now() - start });
     return sendError(res, 500, 'Internal server error', 'SERVER_ERROR');
   }
 });
 
 router.get('/check-username', checkUsernameLimiter, async (req, res) => {
+  const start = Date.now();
   try {
     const username = sanitizeString(req.params.username || req.query.username, 50);
     const result = await resolveUsernameAvailability(username);
     if (result.valid === false) {
       return sendError(res, 400, result.error, 'VALIDATION_ERROR');
     }
+    logger.info('check-username completed', { username: result.username, available: result.available, ms: Date.now() - start });
     return res.json({ available: result.available, username: result.username });
   } catch (err) {
-    logger.error('check-username failed', { error: err.message });
+    logger.error('check-username failed', { error: err.message, ms: Date.now() - start });
+    return sendError(res, 500, 'Internal server error', 'SERVER_ERROR');
+  }
+});
+
+/**
+ * GET /api/affiliate-auth/check-email
+ * Check if an email is already registered (in users or pending registrations)
+ */
+const checkEmailLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: 'Too many email checks - please slow down' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+router.get('/check-email', checkEmailLimiter, async (req, res) => {
+  const start = Date.now();
+  try {
+    const raw = req.query.email;
+    if (!raw || typeof raw !== 'string') {
+      return sendError(res, 400, 'Email parameter is required', 'VALIDATION_ERROR');
+    }
+    const email = raw.toLowerCase().trim();
+    if (!validateEmail(email)) {
+      return sendError(res, 400, 'Invalid email format', 'VALIDATION_ERROR');
+    }
+    const [existingUser, existingPending] = await Promise.all([
+      prisma.user.findUnique({ where: { email }, select: { id: true } }),
+      prisma.pendingRegistration.findUnique({ where: { email }, select: { id: true } })
+    ]);
+    const taken = !!(existingUser || existingPending);
+    logger.info('check-email completed', { email, taken, ms: Date.now() - start });
+    return res.json({ available: !taken, email });
+  } catch (err) {
+    logger.error('check-email failed', { error: err.message, ms: Date.now() - start });
     return sendError(res, 500, 'Internal server error', 'SERVER_ERROR');
   }
 });
@@ -98,6 +138,7 @@ router.get('/check-username', checkUsernameLimiter, async (req, res) => {
  */
 router.post('/register', registerLimiter, async (req, res) => {
   const correlationId = getCorrelationId(req);
+  const start = Date.now();
 
   try {
     const body = req.body || {};
@@ -150,7 +191,9 @@ router.post('/register', registerLimiter, async (req, res) => {
       verificationCode
     };
 
+    logger.info('affiliate-auth/register processing', { email: registerData.email, ms: Date.now() - start });
     const result = await affiliateAuthService.registerAffiliate(registerData);
+    logger.info('affiliate-auth/register completed', { email: result.email, ms: Date.now() - start });
 
     // Fire verification email in background — don't block the response
     emailService.sendVerificationEmail(result.email, verificationCode, result.firstName)
@@ -166,6 +209,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       authState: result.authState
     });
   } catch (err) {
+    logger.error('affiliate-auth/register failed', { error: err.message, ms: Date.now() - start, correlationId });
     if (String(err.message).includes('EMAIL_ALREADY_EXISTS')) {
       return sendError(res, 409, 'An account with this email already exists.', 'EMAIL_ALREADY_EXISTS', correlationId);
     }
@@ -176,7 +220,6 @@ router.post('/register', registerLimiter, async (req, res) => {
       return sendError(res, 400, 'Please provide at least two distribution channels (e.g., Twitter/X, Instagram, YouTube, TikTok, LinkedIn, etc.).', 'MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED', correlationId);
     }
 
-    logger.error('affiliate-auth/register failed', { error: err.message, correlationId });
     return sendError(res, 500, 'Internal server error', 'SERVER_ERROR', correlationId);
   }
 });

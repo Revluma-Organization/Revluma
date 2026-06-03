@@ -219,10 +219,35 @@ export default function AuthInterface({
     return () => clearTimeout(t);
   }, [rateLimitCountdown]);
 
-  // No health-check warmup ping — the backend wakes on the first real
-  // API call (register has a 60 s timeout built in). Pinging /health on
-  // Render's free tier causes 502 console errors during cold-start and is
-  // not used anywhere in the main Revluma auth system.
+  // Warm up the backend on mount so Render cold start happens before
+  // the user fills out the form, not on the registration submit.
+  // Retries up to 3 times with backoff.
+  useEffect(() => {
+    let cancelled = false;
+    async function warmUp(attempts = 3) {
+      for (let i = 0; i < attempts; i++) {
+        if (cancelled) return;
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10000);
+          const res = await fetch('/api/affiliate-auth/health', { signal: controller.signal });
+          clearTimeout(timeout);
+          if (res.ok) {
+            console.log(`[WarmUp] Backend ready (attempt ${i + 1})`);
+            return;
+          }
+        } catch {
+          console.log(`[WarmUp] Backend not ready (attempt ${i + 1})`);
+        }
+        if (i < attempts - 1) {
+          await new Promise(r => setTimeout(r, 3000 * (i + 1)));
+        }
+      }
+      console.warn('[WarmUp] Backend did not respond after all attempts');
+    }
+    warmUp();
+    return () => { cancelled = true; };
+  }, []);
 
   const [pendingUserId, setPendingUserId] = useState('');
   const [pendingEmail, setPendingEmail] = useState('');
@@ -257,6 +282,10 @@ export default function AuthInterface({
   const [newsletterUrl, setNewsletterUrl] = useState('');
   const [communityUrl, setCommunityUrl] = useState('');
 
+  const [emailAvailable, setEmailAvailable] = useState<boolean | null>(null);
+  const [emailCheckError, setEmailCheckError] = useState<string | null>(null);
+  const [checkingEmail, setCheckingEmail] = useState(false);
+
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -277,7 +306,9 @@ export default function AuthInterface({
   }, [onRouteChange]);
 
   const latestCheckRef = useRef('');
+  const latestEmailRef = useRef('');
 
+  // Username availability check with debounce
   useEffect(() => {
     if (username.length < 3) {
       setUsernameAvailable(null);
@@ -291,7 +322,9 @@ export default function AuthInterface({
       setCheckingUsername(true);
       setUsernameCheckError(null);
       try {
+        console.log(`[UsernameCheck] Checking "${username}"...`);
         const data = await api.checkUsername(username);
+        console.log(`[UsernameCheck] Done "${username}": available=${data.available}`);
         if (latestCheckRef.current === username) {
           setUsernameAvailable(data.available);
         }
@@ -299,22 +332,67 @@ export default function AuthInterface({
         if (latestCheckRef.current !== username) return;
         setUsernameAvailable(null);
         const e = err as { status?: number; message?: string; timedOut?: boolean };
+        console.error(`[UsernameCheck] Error for "${username}":`, e?.message || err);
         if (e?.status === 429) {
           setUsernameCheckError('Rate limited — please wait');
         } else if (e?.timedOut) {
           setUsernameCheckError('Timed out — try again');
+        } else if (e?.status === 400) {
+          setUsernameCheckError('Invalid username format');
         } else {
-          setUsernameCheckError('Could not verify');
+          setUsernameCheckError('Could not verify — try again');
         }
       } finally {
         if (latestCheckRef.current === username) {
           setCheckingUsername(false);
         }
       }
-    }, 300);
+    }, 400);
 
     return () => { clearTimeout(timer); };
   }, [username]);
+
+  // Email availability check with debounce (only on register mode)
+  useEffect(() => {
+    if (authMode !== 'register' || email.length < 5 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailAvailable(null);
+      setEmailCheckError(null);
+      setCheckingEmail(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      latestEmailRef.current = email;
+      setCheckingEmail(true);
+      setEmailCheckError(null);
+      try {
+        console.log(`[EmailCheck] Checking "${email}"...`);
+        const data = await api.checkEmail(email);
+        console.log(`[EmailCheck] Done "${email}": available=${data.available}`);
+        if (latestEmailRef.current === email) {
+          setEmailAvailable(data.available);
+        }
+      } catch (err: unknown) {
+        if (latestEmailRef.current !== email) return;
+        setEmailAvailable(null);
+        const e = err as { status?: number; message?: string; timedOut?: boolean };
+        console.error(`[EmailCheck] Error for "${email}":`, e?.message || err);
+        if (e?.status === 429) {
+          setEmailCheckError('Rate limited — please wait');
+        } else if (e?.timedOut) {
+          setEmailCheckError('Timed out — try again');
+        } else {
+          setEmailCheckError('Could not verify');
+        }
+      } finally {
+        if (latestEmailRef.current === email) {
+          setCheckingEmail(false);
+        }
+      }
+    }, 500);
+
+    return () => { clearTimeout(timer); };
+  }, [email, authMode]);
 
   const socialFieldsMap: Record<string, string> = {
     twitterHandle, instagramHandle, linkedInProfile,
@@ -335,6 +413,8 @@ export default function AuthInterface({
       return 'That username is already taken. Please choose another.';
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return 'Enter a valid email address.';
+    if (emailAvailable === false)
+      return 'This email is already registered. Please use a different email or log in.';
     if (!phoneNumber.trim())
       return 'Phone number is required.';
     if (!password || password.length < 8)
@@ -372,7 +452,7 @@ export default function AuthInterface({
 
   function clearForm() {
     setFullName(''); setUsername(''); setUsernameAvailable(null); setUsernameCheckError(null);
-    setEmail(''); setPhoneNumber('');
+    setEmail(''); setEmailAvailable(null); setEmailCheckError(null); setPhoneNumber('');
     setTwitterHandle(''); setInstagramHandle('');
     setLinkedInProfile(''); setWebsite(''); setAudienceNiche('Shopify Growth');
     setAudienceSize('5,000 - 10,000'); setAffiliateExperience('Intermediate');
@@ -874,9 +954,33 @@ export default function AuthInterface({
 
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                <input className={`${inputClass} pl-11`} type="email" placeholder="Email address"
+                <input className={`${inputClass} pl-11 pr-11`} type="email" placeholder="Email address"
                   value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
+                <span className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                  {checkingEmail && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
+                  {!checkingEmail && !emailCheckError && emailAvailable === true &&
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                  {!checkingEmail && !emailCheckError && emailAvailable === false &&
+                    <AlertCircle className="w-4 h-4 text-red-400" />}
+                  {!checkingEmail && emailCheckError &&
+                    <AlertCircle className="w-4 h-4 text-amber-400" />}
+                </span>
               </div>
+              {emailCheckError && (
+                <p className="text-xs text-amber-400 -mt-3 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {emailCheckError}
+                </p>
+              )}
+              {!emailCheckError && emailAvailable === false && (
+                <p className="text-xs text-red-400 -mt-3 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Email already registered
+                </p>
+              )}
+              {!emailCheckError && emailAvailable === true && (
+                <p className="text-xs text-emerald-400 -mt-3 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Email available
+                </p>
+              )}
 
               <div className="relative">
                 <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />

@@ -93,7 +93,9 @@ class AffiliateAuthService {
       throw new Error('MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED');
     }
 
-    const passwordHash = await bcrypt.hash(data.password, 12);
+    console.log(`[affiliateAuthService] Hashing password for ${data.email}...`);
+    const passwordHash = await bcrypt.hash(data.password, 10);
+    console.log(`[affiliateAuthService] Password hashed for ${data.email}`);
     const verificationCodeHash = crypto.createHash('sha256').update(data.verificationCode).digest('hex');
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);

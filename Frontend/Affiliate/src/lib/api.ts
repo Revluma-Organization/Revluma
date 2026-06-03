@@ -17,6 +17,7 @@ async function request<T>(
   timeout = 10000
 ): Promise<T> {
   const csrfToken = sessionStorage.getItem('csrf_token') ?? '';
+  const start = Date.now();
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -42,17 +43,22 @@ async function request<T>(
 
     if (!response.ok) {
       const errorBody = await response.json().catch(() => ({})) as { error?: string };
+      console.error(`[API] ${method} ${path} -> ${response.status} (${Date.now() - start}ms)`, errorBody);
       throw Object.assign(new Error(errorBody.error ?? `HTTP ${response.status}`), {
         status: response.status,
         body: errorBody
       });
     }
 
-    return response.json() as Promise<T>;
+    const data = await response.json() as T;
+    console.log(`[API] ${method} ${path} -> ${response.status} (${Date.now() - start}ms)`);
+    return data;
   } catch (err) {
     if (timedOut) {
+      console.error(`[API] ${method} ${path} -> TIMEOUT after ${timeout}ms`);
       throw Object.assign(new Error('Request timed out'), { timedOut: true });
     }
+    console.error(`[API] ${method} ${path} -> ERROR (${Date.now() - start}ms)`, err instanceof Error ? err.message : err);
     throw err;
   } finally {
     clearTimeout(timeoutId);
@@ -82,7 +88,19 @@ export async function checkUsername(username: string) {
     'GET',
     `/affiliate-auth/check-username?${qs}`,
     undefined,
-    true
+    true,
+    15000
+  );
+}
+
+export async function checkEmail(email: string) {
+  const qs = `email=${encodeURIComponent(email)}`;
+  return request<{ available: boolean; email: string }>(
+    'GET',
+    `/affiliate-auth/check-email?${qs}`,
+    undefined,
+    true,
+    15000
   );
 }
 
@@ -109,7 +127,6 @@ export async function affiliateApplicationStatus(params: {
     phase: string;
     authState: string;
     emailVerified?: boolean;
-    accessTokenValidated?: boolean;
     step?: number;
     expiresAt?: string;
   }>('GET', `/affiliate-auth/application-status${qs ? `?${qs}` : ''}`, undefined, true);
