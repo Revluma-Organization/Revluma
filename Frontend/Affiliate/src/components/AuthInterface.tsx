@@ -219,31 +219,10 @@ export default function AuthInterface({
     return () => clearTimeout(t);
   }, [rateLimitCountdown]);
 
-  // Warm up the backend on mount so Render cold start happens before
-  // the user fills out the form, not on the registration submit.
-  // Retries up to 3 times with backoff to ensure the backend is actually awake.
-  useEffect(() => {
-    let cancelled = false;
-    async function warmUp(attempts = 3) {
-      for (let i = 0; i < attempts; i++) {
-        if (cancelled) return;
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 10000);
-          const res = await fetch('/api/affiliate-auth/health', { signal: controller.signal });
-          clearTimeout(timeout);
-          if (res.ok) return;
-        } catch {
-          // Backend not ready yet
-        }
-        if (i < attempts - 1) {
-          await new Promise(r => setTimeout(r, 3000 * (i + 1)));
-        }
-      }
-    }
-    warmUp();
-    return () => { cancelled = true; };
-  }, []);
+  // No health-check warmup ping — the backend wakes on the first real
+  // API call (register has a 60 s timeout built in). Pinging /health on
+  // Render's free tier causes 502 console errors during cold-start and is
+  // not used anywhere in the main Revluma auth system.
 
   const [pendingUserId, setPendingUserId] = useState('');
   const [pendingEmail, setPendingEmail] = useState('');

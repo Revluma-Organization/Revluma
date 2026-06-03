@@ -15,8 +15,6 @@ const {
 
 const router = express.Router();
 
-const VERIFICATION_CODE_EXPIRY_MINUTES = 15;
-
 function getCorrelationId(req) {
   return req.headers['x-correlation-id'] || crypto.randomBytes(4).toString('hex');
 }
@@ -56,15 +54,6 @@ const registerLimiter = rateLimit({
   message: { error: 'Too many registration attempts - please try again later' },
   standardHeaders: true,
   legacyHeaders: false
-});
-
-/**
- * GET /api/affiliate-auth/health
- * Lightweight liveness probe — used by the frontend warm-up ping
- * so Render wakes up before the user submits their first form.
- */
-router.get('/health', (_req, res) => {
-  return res.status(200).json({ ok: true, ts: Date.now() });
 });
 
 async function resolveUsernameAvailability(username) {
