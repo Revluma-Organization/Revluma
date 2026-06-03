@@ -277,51 +277,6 @@ router.post('/verify-email', async (req, res) => {
 });
 
 /**
- * POST /api/affiliate-auth/validate-access-token
- */
-router.post('/validate-access-token', async (req, res) => {
-  const correlationId = getCorrelationId(req);
-
-  try {
-    const { pendingRegistrationId, token } = req.body || {};
-
-    if (!pendingRegistrationId) {
-      return sendError(res, 400, 'pendingRegistrationId is required', 'VALIDATION_ERROR', correlationId);
-    }
-    if (!token || typeof token !== 'string') {
-      return sendError(res, 400, 'Access token is required', 'MISSING_ACCESS_TOKEN', correlationId);
-    }
-
-    const result = await affiliateAuthService.validateAccessToken(
-      pendingRegistrationId,
-      sanitizeString(token, 200),
-      getAuditContext(req)
-    );
-
-    return res.json({
-      message: result.message,
-      valid: true,
-      authState: result.authState
-    });
-  } catch (err) {
-    const map = {
-      EMAIL_NOT_VERIFIED: { status: 403, code: 'EMAIL_NOT_VERIFIED', error: 'Email not verified' },
-      INVALID_ACCESS_TOKEN: { status: 403, code: 'INVALID_ACCESS_TOKEN', error: 'Invalid access token' },
-      RAPP_ACCESS_TOKEN_NOT_CONFIGURED: { status: 503, code: 'SERVER_MISCONFIGURED', error: 'Access token validation unavailable' },
-      PENDING_REGISTRATION_NOT_FOUND: { status: 404, code: 'PENDING_REGISTRATION_NOT_FOUND', error: 'Pending registration not found' }
-    };
-
-    if (map[err.message]) {
-      const m = map[err.message];
-      return sendError(res, m.status, m.error, m.code, correlationId);
-    }
-
-    logger.error('affiliate-auth/validate-access-token failed', { error: err.message, correlationId });
-    return sendError(res, 500, 'Internal server error', 'SERVER_ERROR', correlationId);
-  }
-});
-
-/**
  * POST /api/affiliate-auth/complete-registration
  */
 router.post('/complete-registration', async (req, res) => {

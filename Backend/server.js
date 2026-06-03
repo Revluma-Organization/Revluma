@@ -107,6 +107,15 @@ const globalLimiter = rateLimit({
 app.use(globalLimiter);
 
 // ============================================================
+// API Routes - HEALTH CHECKS MUST BE FIRST (before routes that may fail)
+// ============================================================
+
+// Root health check (lightweight, no DB/Redis dependency)
+app.get('/health', (_req, res) => {
+  res.json({ status: 'healthy', ts: Date.now() });
+});
+
+// ============================================================
 // Auth Routes
 // ============================================================
 
@@ -129,7 +138,7 @@ const sessionLimiter = rateLimit({
 app.use('/api/session', sessionLimiter, require('./src/routes/authSession'));
 
 // ============================================================
-// Affiliate onboarding (RAPP)
+// Affiliate onboarding
 // ============================================================
 // Rate limiting for affiliate-auth is handled inside the route file
 app.use('/api/affiliate-auth', require('./src/routes/affiliateAuth'));
@@ -223,7 +232,7 @@ app.get('/waitlist', (req, res) => {
 
 app.get('/partner/:code', (req, res, next) => {
   const { code } = req.params;
-  const reservedRoutes = ['login', 'signup', 'verify-email', 'access-token', 'pending-review', 'rejected', 'dashboard', 'settings', 'admin', 'api'];
+  const reservedRoutes = ['login', 'signup', 'verify-email', 'pending-review', 'rejected', 'dashboard', 'settings', 'admin', 'api'];
   if (reservedRoutes.includes(code)) {
     return next();
   }
@@ -232,7 +241,7 @@ app.get('/partner/:code', (req, res, next) => {
 
 app.get('/affiliate/:code', (req, res, next) => {
   const { code } = req.params;
-  const reservedRoutes = ['login', 'signup', 'verify-email', 'access-token', 'pending-review', 'rejected', 'dashboard', 'settings', 'admin', 'api'];
+  const reservedRoutes = ['login', 'signup', 'verify-email', 'pending-review', 'rejected', 'dashboard', 'settings', 'admin', 'api'];
   if (reservedRoutes.includes(code)) {
     return next();
   }

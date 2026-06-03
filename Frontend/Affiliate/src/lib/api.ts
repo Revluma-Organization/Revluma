@@ -149,15 +149,6 @@ export async function affiliateVerifyEmail(payload: {
   );
 }
 
-export async function affiliateValidateToken(payload: {
-  pendingRegistrationId: string;
-  token: string;
-}) {
-  return request<{ message: string; valid: boolean; authState?: string }>(
-    'POST', '/affiliate-auth/validate-access-token', payload, true
-  );
-}
-
 export async function affiliateCompleteRegistration(payload: {
   pendingRegistrationId: string;
 }) {

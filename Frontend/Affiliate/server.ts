@@ -111,66 +111,103 @@ async function startServer() {
     }
   });
 
-  // Standard JSON requests parsing for regular API routes
+// Standard JSON requests parsing for regular API routes
   app.use(express.json());
 
-  // 1. API: Health Check
+  // 1. API: Health Check (must be BEFORE /api proxy middleware)
   app.get("/api/health", (_req, res) => {
     res.json({ status: "healthy", timestamp: new Date().toISOString(), logsPending: webhookLogs.length });
   });
 
+  // Health check for affiliate auth (warms up backend proxy) - also BEFORE /api proxy
+  app.get("/api/affiliate-auth/health", async (_req, res) => {
+    const backendOrigin = (
+      process.env.BACKEND_API_URL ||
+      process.env.VITE_API_URL?.replace(/\/api$/, '') ||
+      "http://localhost:5000"
+    ).replace(/\/$/, "");
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const upstream = await fetch(`${backendOrigin}/api/affiliate-auth/health`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      const body = await upstream.json();
+      res.json(body);
+    } catch {
+      res.json({ ok: true, ts: Date.now(), cached: true });
+    }
+  });
+
   // Proxy all /api/* requests to the Revluma backend.
-  // Uses BACKEND_API_URL if set (for staging), otherwise defaults to localhost:5000.
-  // VITE_API_URL is deliberately excluded — it's a build-time hint for the production
-  // bundle, not a runtime proxy target. Using it here would route local requests to
-  // a remote (cold) Render instance, causing 502 errors.
+  // Uses BACKEND_API_URL for production, or falls back to localhost:5000 for local dev.
+  // For Render/Vercel production, set BACKEND_API_URL to the actual backend service URL.
   const backendOrigin = (
     process.env.BACKEND_API_URL ||
+    process.env.VITE_API_URL?.replace(/\/api$/, '') ||
     "http://localhost:5000"
   ).replace(/\/$/, "");
 
   app.use("/api", async (req, res) => {
     const targetUrl = `${backendOrigin}/api${req.url}`;
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": req.headers["content-type"] as string || "application/json",
-      };
-      if (req.headers["x-csrf-token"]) {
-        headers["X-CSRF-Token"] = req.headers["x-csrf-token"] as string;
-      }
-      if (req.headers["x-affiliate-portal"]) {
-        headers["X-Affiliate-Portal"] = req.headers["x-affiliate-portal"] as string;
-      }
-      if (req.headers["x-correlation-id"]) {
-        headers["X-Correlation-ID"] = req.headers["x-correlation-id"] as string;
-      }
-      if (req.headers.cookie) {
-        headers.Cookie = req.headers.cookie as string;
-      }
+    const maxRetries = 1;
+    let lastError: unknown;
 
-      const init: RequestInit = {
-        method: req.method,
-        headers,
-        redirect: "manual",
-      };
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const headers: Record<string, string> = {
+          "Content-Type": req.headers["content-type"] as string || "application/json",
+        };
+        if (req.headers["x-csrf-token"]) {
+          headers["X-CSRF-Token"] = req.headers["x-csrf-token"] as string;
+        }
+        if (req.headers["x-affiliate-portal"]) {
+          headers["X-Affiliate-Portal"] = req.headers["x-affiliate-portal"] as string;
+        }
+        if (req.headers["x-correlation-id"]) {
+          headers["X-Correlation-ID"] = req.headers["x-correlation-id"] as string;
+        }
+        if (req.headers.cookie) {
+          headers.Cookie = req.headers.cookie as string;
+        }
 
-      if (req.method !== "GET" && req.method !== "HEAD") {
-        init.body = JSON.stringify(req.body ?? {});
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 25000);
+
+        const init: RequestInit = {
+          method: req.method,
+          headers,
+          redirect: "manual",
+          signal: controller.signal,
+        };
+
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          init.body = JSON.stringify(req.body ?? {});
+        }
+
+        const upstream = await fetch(targetUrl, init);
+        clearTimeout(timeout);
+        const body = await upstream.text();
+
+        res.status(upstream.status);
+        const setCookie = upstream.headers.get("set-cookie");
+        if (setCookie) res.setHeader("Set-Cookie", setCookie);
+        const contentType = upstream.headers.get("content-type");
+        if (contentType) res.setHeader("Content-Type", contentType);
+        res.send(body);
+        return;
+      } catch (error: unknown) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : "Upstream API unavailable";
+        if (attempt < maxRetries) {
+          console.warn(`API proxy retry ${attempt + 1}/${maxRetries}:`, message, { targetUrl });
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        console.error("API proxy error:", message, { targetUrl });
+        res.status(502).json({ error: "Backend API unavailable", detail: message });
       }
-
-      const upstream = await fetch(targetUrl, init);
-      const body = await upstream.text();
-
-      res.status(upstream.status);
-      const setCookie = upstream.headers.get("set-cookie");
-      if (setCookie) res.setHeader("Set-Cookie", setCookie);
-      const contentType = upstream.headers.get("content-type");
-      if (contentType) res.setHeader("Content-Type", contentType);
-      res.send(body);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Upstream API unavailable";
-      console.error("API proxy error:", message, { targetUrl });
-      res.status(502).json({ error: "Backend API unavailable", detail: message });
     }
   });
 

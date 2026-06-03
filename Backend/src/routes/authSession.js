@@ -94,7 +94,7 @@ router.post('/signup', signupLimiter, async (req, res) => {
   // Affiliates must use /api/affiliate-auth/register
   if (req.headers['x-affiliate-portal'] === 'true') {
     return sendErrorResponse(res, 400, 
-      'Affiliate registrations must use the RAPP registration endpoint.',
+      'Affiliate registrations must use the affiliate registration endpoint.',
       'USE_AFFILIATE_AUTH');
   }
   const { email, password, firstName, lastName } = req.body;

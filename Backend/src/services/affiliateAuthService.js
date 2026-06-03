@@ -4,14 +4,12 @@ const { v4: uuidv4 } = require('uuid');
 const { prisma } = require('./prisma');
 const logger = require('../utils/logger');
 const emailService = require('./emailService');
-const { secureCompareSecret } = require('../lib/affiliate-auth-security');
 
 const VERIFICATION_CODE_EXPIRY_MINUTES = 15;
 const MAX_RESEND_ATTEMPTS = 10;
 
 const AUTH_STATES = {
   PENDING_EMAIL_VERIFICATION: 'PENDING_EMAIL_VERIFICATION',
-  PENDING_ACCESS_TOKEN: 'PENDING_ACCESS_TOKEN',
   PENDING_REVIEW: 'PENDING_REVIEW',
   UNDER_REVIEW: 'UNDER_REVIEW',
   APPROVED: 'APPROVED',
@@ -20,17 +18,6 @@ const AUTH_STATES = {
 };
 
 class AffiliateAuthService {
-  getConfiguredAccessToken() {
-    const token = process.env.RAPP_ACCESS_TOKEN;
-    if (!token || !token.trim()) {
-      if (process.env.NODE_ENV === 'production') {
-        throw new Error('RAPP_ACCESS_TOKEN_NOT_CONFIGURED');
-      }
-      return null;
-    }
-    return token.trim();
-  }
-
   async logAuthEvent(event, payload = {}) {
     logger.info(`affiliate_auth:${event}`, payload);
     try {
@@ -270,57 +257,6 @@ class AffiliateAuthService {
     };
   }
 
-  async validateAccessToken(pendingId, tokenString, auditContext = {}) {
-    const pending = await prisma.pendingRegistration.findUnique({ where: { id: pendingId } });
-    if (!pending) throw new Error('PENDING_REGISTRATION_NOT_FOUND');
-
-    if (!pending.emailVerified) throw new Error('EMAIL_NOT_VERIFIED');
-
-    const configuredToken = this.getConfiguredAccessToken();
-    if (!configuredToken) {
-      throw new Error('RAPP_ACCESS_TOKEN_NOT_CONFIGURED');
-    }
-
-    const isValid = secureCompareSecret(tokenString, configuredToken);
-
-    if (!isValid) {
-      await this.logTokenUsage(null, pending.email, null, null, false, 'INVALID_ACCESS_TOKEN', auditContext);
-      await this.logAuthEvent('access_token_rejected', {
-        newStatus: AUTH_STATES.PENDING_ACCESS_TOKEN,
-        reason: 'INVALID_ACCESS_TOKEN',
-        metadata: { pendingId, email: pending.email, ip: auditContext.ipAddress }
-      });
-      throw new Error('INVALID_ACCESS_TOKEN');
-    }
-
-    await prisma.pendingRegistration.update({
-      where: { id: pendingId },
-      data: {
-        authState: AUTH_STATES.PENDING_REVIEW,
-        step: 3,
-        onboardingData: {
-          ...pending.onboardingData,
-          accessTokenValidated: true,
-          accessTokenValidatedAt: new Date().toISOString()
-        },
-        updatedAt: new Date()
-      }
-    });
-
-    await this.logTokenUsage(null, pending.email, null, null, true, null, auditContext);
-    await this.logAuthEvent('access_token_validated', {
-      previousStatus: AUTH_STATES.PENDING_ACCESS_TOKEN,
-      newStatus: AUTH_STATES.PENDING_REVIEW,
-      metadata: { pendingId, email: pending.email }
-    });
-
-    return {
-      valid: true,
-      message: 'Access token validated successfully',
-      authState: AUTH_STATES.PENDING_REVIEW
-    };
-  }
-
   async getApplicationStatus({ pendingRegistrationId, userId }) {
     if (pendingRegistrationId) {
       const pending = await prisma.pendingRegistration.findUnique({
@@ -332,7 +268,6 @@ class AffiliateAuthService {
         phase: 'onboarding',
         authState: pending.authState,
         emailVerified: pending.emailVerified,
-        accessTokenValidated: Boolean(pending.onboardingData?.accessTokenValidated),
         step: pending.step,
         expiresAt: pending.expiresAt
       };
@@ -462,9 +397,9 @@ class AffiliateAuthService {
   }
 
   async sendVettingNotification(affiliateProfile, applicantEmail) {
-    const vettingEmail = process.env.RAPP_VETTING_EMAIL || 'revluma.ai@gmail.com';
+    const vettingEmail = process.env.AFFILIATE_VETTING_EMAIL || process.env.RAPP_VETTING_EMAIL || 'revluma.ai@gmail.com';
     if (!vettingEmail) {
-      logger.warn('RAPP_VETTING_EMAIL not configured - skipping vetting notification');
+      logger.warn('AFFILIATE_VETTING_EMAIL not configured - skipping vetting notification');
       return;
     }
 
@@ -508,62 +443,6 @@ class AffiliateAuthService {
     }
   }
 
-  async logTokenUsage(tokenId, email, userId, affiliateProfileId, success, failureReason, context = {}) {
-    try {
-      await prisma.rappTokenUsageLog.create({
-        data: {
-          tokenId: tokenId || null,
-          email,
-          userId,
-          affiliateProfileId,
-          success,
-          failureReason,
-          ipAddress: context.ipAddress || null,
-          userAgent: context.userAgent || null
-        }
-      });
-    } catch (error) {
-      logger.error('Failed to log token usage', { error: error.message });
-    }
-  }
-
-  async generateAccessToken(description, maxUses = 1, expiresAt = null, createdBy = null) {
-    const token = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    const accessToken = await prisma.rappAccessToken.create({
-      data: {
-        token,
-        tokenHash,
-        description,
-        maxUses,
-        expiresAt,
-        createdBy,
-        isActive: true
-      }
-    });
-
-    return {
-      id: accessToken.id,
-      token,
-      description,
-      maxUses,
-      expiresAt,
-      createdAt: accessToken.createdAt
-    };
-  }
-
-  async revokeAccessToken(tokenId, revokedBy, reason) {
-    return prisma.rappAccessToken.update({
-      where: { id: tokenId },
-      data: {
-        isActive: false,
-        revokedAt: new Date(),
-        revokedBy,
-        revokedReason: reason
-      }
-    });
-  }
 }
 
 module.exports = new AffiliateAuthService();

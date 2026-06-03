@@ -221,8 +221,28 @@ export default function AuthInterface({
 
   // Warm up the backend on mount so Render cold start happens before
   // the user fills out the form, not on the registration submit.
+  // Retries up to 3 times with backoff to ensure the backend is actually awake.
   useEffect(() => {
-    fetch('/api/affiliate-auth/health').catch(() => {});
+    let cancelled = false;
+    async function warmUp(attempts = 3) {
+      for (let i = 0; i < attempts; i++) {
+        if (cancelled) return;
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 10000);
+          const res = await fetch('/api/affiliate-auth/health', { signal: controller.signal });
+          clearTimeout(timeout);
+          if (res.ok) return;
+        } catch {
+          // Backend not ready yet
+        }
+        if (i < attempts - 1) {
+          await new Promise(r => setTimeout(r, 3000 * (i + 1)));
+        }
+      }
+    }
+    warmUp();
+    return () => { cancelled = true; };
   }, []);
 
   const [pendingUserId, setPendingUserId] = useState('');
@@ -424,7 +444,7 @@ export default function AuthInterface({
         return;
       }
 
-      if (status === 'pending' || status === 'pending_review' || status === 'pending_access_token') {
+      if (status === 'pending' || status === 'pending_review') {
         setPendingEmail(loginEmail);
         setPendingUserId(user.id);
         goToMode('pendingApproval');

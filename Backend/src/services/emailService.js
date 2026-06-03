@@ -57,7 +57,7 @@ class EmailService {
 
   async sendAffiliateVettingNotification(vettingEmail, affiliateProfile) {
     try {
-      const subject = 'New RAPP Application Submitted';
+      const subject = 'New Affiliate Application Submitted';
       const html = this.getVettingNotificationTemplate(affiliateProfile);
 
       return await this.send({ to: vettingEmail, subject, html });
@@ -222,7 +222,7 @@ class EmailService {
         <div class="container">
           <div class="card">
             <div class="header">
-              <h1>New RAPP Application Submitted</h1>
+              <h1>New Affiliate Application Submitted</h1>
               <p>A new affiliate has requested access to the Revluma Affiliate Partnership Program</p>
             </div>
             <div class="content">
@@ -258,7 +258,7 @@ class EmailService {
               </div>
 
               <p style="color: #a0a0a0; font-size: 14px; line-height: 1.6; margin: 24px 0 0;">
-                <strong style="color: #fff;">Action Required:</strong> This user has completed the RAPP onboarding flow and is awaiting manual review by the Revluma Operations Team.
+                <strong style="color: #fff;">Action Required:</strong> This user has completed the affiliate onboarding flow and is awaiting manual review by the Revluma Operations Team.
               </p>
               <p style="color: #a0a0a0; font-size: 14px; line-height: 1.6;">
                 Please review the application and approve or reject accordingly in the admin dashboard.
@@ -266,7 +266,7 @@ class EmailService {
             </div>
             <div class="footer">
               <p>&copy; 2026 Revluma. All rights reserved.</p>
-              <p style="margin-top: 4px;">This is an automated notification from the RAPP vetting system.</p>
+              <p style="margin-top: 4px;">This is an automated notification from the Revluma affiliate system.</p>
             </div>
           </div>
         </div>

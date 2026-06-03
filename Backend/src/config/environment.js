@@ -103,13 +103,6 @@ module.exports = {
     },
   },
 
-  rapp: {
-    accessToken: cleanEnvValue(process.env.RAPP_ACCESS_TOKEN),
-    vettingEmail: cleanEnvValue(process.env.RAPP_VETTING_EMAIL) || 'revluma.ai@gmail.com',
-    minimumDistributionChannels: 2,
-    accessTokenExpiryDays: parseInt(process.env.RAPP_ACCESS_TOKEN_EXPIRY_DAYS || '30', 10),
-  },
-
   rateLimit: {
     windowMs: 15 * 60 * 1000,
     maxRequests: 300,

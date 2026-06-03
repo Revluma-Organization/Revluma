@@ -131,18 +131,18 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           {/* Subtle tag indicator */}
           <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 mb-8 font-mono">
             <Sparkles className="w-3 h-3 text-zinc-300" />
-            <span>Revluma Affiliate Partnership Program RAPP</span>
+            <span>Revluma Affiliate Partnership Program</span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-display font-bold tracking-tight text-white mb-6 leading-tight">
             Revluma Affiliate Partnership<br />
             <span className="bg-gradient-to-r from-white via-zinc-200 to-zinc-500 bg-clip-text text-transparent">
-              Program RAPP.
+              Program.
             </span>
           </h1>
 
           <p className="text-base sm:text-lg text-zinc-400 mb-10 leading-relaxed max-w-2xl mx-auto">
-            Welcome to the <strong>Revluma Affiliate Partnership Program (RAPP)</strong>. Help modern ecommerce brands recover lost revenue, automate retention workflows, and scale customer growth with AI-powered commerce intelligence. Earn recurring first 12 months commissions while introducing businesses to the future of ecommerce operations.
+            Welcome to the <strong>Revluma Affiliate Partnership Program</strong>. Help modern ecommerce brands recover lost revenue, automate retention workflows, and scale customer growth with AI-powered commerce intelligence. Earn recurring first 12 months commissions while introducing businesses to the future of ecommerce operations.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -299,7 +299,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
           <div className="glass-card rounded-2xl p-8 max-w-4xl mx-auto">
             <div className="text-center mb-10">
               <div className="font-mono text-[10px] text-zinc-450 uppercase tracking-widest mb-1">INTERACTIVE INCENTIVES CALCULATOR</div>
-              <h3 className="text-2xl font-display font-semibold text-white mb-2">Estimate Your RAPP Payouts</h3>
+              <h3 className="text-2xl font-display font-semibold text-white mb-2">Estimate Your Affiliate Payouts</h3>
               <p className="text-xs text-zinc-400 max-w-xl mx-auto">
                 Discover the recurring first 12 months revenue scaling metrics backed by Revluma's generous 40% founding partner incentive rates.
               </p>
@@ -386,7 +386,7 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
               Partner Requirements &amp; Onboarding
             </h2>
             <p className="text-sm text-zinc-400 mt-3 leading-relaxed max-w-2xl mx-auto">
-              To maintain the quality of the Revluma Affiliate Partnership Program (RAPP), all applicants go through a structured onboarding process.
+              To maintain the quality of the Revluma Affiliate Partnership Program, all applicants go through a structured onboarding process.
             </p>
           </div>
 
