@@ -146,15 +146,15 @@ export async function affiliateRegister(payload: {
   affiliateExperience: string; whyJoin: string;
   referralSource?: string;
 }) {
-  // Registration includes bcrypt hashing plus a cold-start margin,
-  // so it needs a longer timeout than regular API calls.
+  // Registration includes bcrypt hashing (cost 10) plus potentially a cold
+  // start on Render, so we allow generous time before declaring failure.
   return request<{
     message: string;
     pendingRegistrationId: string;
     email: string;
     expiresAt: string;
     authState?: string;
-  }>('POST', '/affiliate-auth/register', payload, true, 60000);
+  }>('POST', '/affiliate-auth/register', payload, true, 90000);
 }
 
 export async function affiliateVerifyEmail(payload: {

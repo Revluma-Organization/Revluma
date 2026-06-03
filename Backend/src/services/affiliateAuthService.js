@@ -190,16 +190,40 @@ class AffiliateAuthService {
     const verificationCode = crypto.randomInt(100000, 999999).toString();
     const verificationCodeHash = crypto.createHash('sha256').update(verificationCode).digest('hex');
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    await prisma.pendingRegistration.update({
-      where: { id: pendingId },
-      data: {
+    const t0 = Date.now();
+    console.log(`[registerAffiliate] About to upsert pendingRegistration for ${normalizedEmail}...`);
+    const pendingRegistration = await prisma.pendingRegistration.upsert({
+      where: { email: normalizedEmail },
+      update: {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        passwordHash,
         verificationCodeHash,
         verificationExpiresAt,
-        onboardingData: { ...onboardingData, resendAttempts: attempts },
+        emailVerified: false,
+        emailVerifiedAt: null,
+        authState: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
+        expiresAt,
+        onboardingData,
+        step: 1,
         updatedAt: new Date()
+      },
+      create: {
+        email: normalizedEmail,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        passwordHash,
+        verificationCodeHash,
+        verificationExpiresAt,
+        authState: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
+        expiresAt,
+        onboardingData,
+        step: 1
       }
     });
+    console.log(`[registerAffiliate] pendingRegistration upserted in ${Date.now() - t0}ms, id=${pendingRegistration.id}`);
 
     await this.logAuthEvent('verification_resent', {
       newStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,

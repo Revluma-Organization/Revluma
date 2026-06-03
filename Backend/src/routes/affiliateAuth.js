@@ -199,6 +199,7 @@ router.post('/register', registerLimiter, async (req, res) => {
     logger.info('register: validation passed, calling service', { email: emailRaw, correlationId, ms: Date.now() - start });
 
     const verificationCode = crypto.randomInt(100000, 999999).toString();
+    logger.info('register: verification code generated', { email: emailRaw, correlationId, ms: Date.now() - start });
 
     const registerData = {
       email: normalizeEmail(emailRaw),
@@ -227,9 +228,22 @@ router.post('/register', registerLimiter, async (req, res) => {
       verificationCode
     };
 
-    logger.info('affiliate-auth/register processing', { email: registerData.email, correlationId, ms: Date.now() - start });
+    logger.info('register: about to call affiliateAuthService.registerAffiliate', {
+      email: registerData.email,
+      hasPassword: !!registerData.password,
+      correlationId,
+      ms: Date.now() - start
+    });
+    const serviceStart = Date.now();
     const result = await affiliateAuthService.registerAffiliate(registerData);
-    logger.info('affiliate-auth/register service completed', { email: result.email, pendingId: result.pendingRegistrationId, correlationId, ms: Date.now() - start });
+    logger.info('register: affiliateAuthService.registerAffiliate completed', {
+      email: result.email,
+      pendingId: result.pendingRegistrationId,
+      authState: result.authState,
+      serviceMs: Date.now() - serviceStart,
+      totalMs: Date.now() - start,
+      correlationId
+    });
 
     emailService.sendVerificationEmail(result.email, verificationCode, result.firstName)
       .then(() => {

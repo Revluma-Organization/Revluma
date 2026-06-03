@@ -204,24 +204,11 @@ export default function AuthInterface({
   const [successText, setSuccessText] = useState('');
   const [rateLimited, setRateLimited] = useState(false);
   const [rateLimitCountdown, setRateLimitCountdown] = useState(0);
+  const [backendReady, setBackendReady] = useState(false);
 
-  useEffect(() => {
-    if (initialMode !== authMode) {
-      setAuthModeInternal(initialMode);
-      setErrorText('');
-      setSuccessText('');
-    }
-  }, [initialMode]);
-
-  useEffect(() => {
-    if (rateLimitCountdown <= 0) { setRateLimited(false); return; }
-    const t = setTimeout(() => setRateLimitCountdown(c => c - 1), 1000);
-    return () => clearTimeout(t);
-  }, [rateLimitCountdown]);
-
-  // Warm up the backend on mount so Render cold start happens before
-  // the user fills out the form, not on the registration submit.
-  // Retries up to 3 times with backoff.
+  // Attempt backend warmup on mount. Once the health endpoint responds we
+  // consider the backend ready and allow registration submissions to proceed
+  // immediately. If it isn't ready yet we check again right before submit.
   useEffect(() => {
     let cancelled = false;
     async function warmUp(attempts = 3) {
@@ -234,6 +221,7 @@ export default function AuthInterface({
           clearTimeout(timeout);
           if (res.ok) {
             console.log(`[WarmUp] Backend ready (attempt ${i + 1})`);
+            if (!cancelled) setBackendReady(true);
             return;
           }
         } catch {
@@ -244,6 +232,7 @@ export default function AuthInterface({
         }
       }
       console.warn('[WarmUp] Backend did not respond after all attempts');
+      if (!cancelled) setBackendReady(false);
     }
     warmUp();
     return () => { cancelled = true; };
@@ -541,20 +530,43 @@ export default function AuthInterface({
 
   const handleSignUpCompletion = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    console.log('[Register] handleSignUpCompletion called', {
+      step,
+      channelCount,
+      backendReady,
+      rateLimited,
+      rateLimitCountdown,
+      hasFullName: !!fullName.trim(),
+      hasUsername: !!username,
+      usernameAvailable,
+      emailAvailable,
+      hasPassword: !!password,
+      passwordsMatch: password === confirmPassword,
+    });
+
     const err = validateStep3();
-    if (err) { setErrorText(err); return; }
+    if (err) {
+      console.warn('[Register] Step 3 validation failed:', err);
+      setErrorText(err);
+      return;
+    }
+    console.log('[Register] Step 3 validation passed');
 
     if (channelCount < 2) {
-      setErrorText('Please provide at least 2 distribution channels.');
+      const msg = `Please provide at least 2 distribution channels. (found: ${channelCount})`;
+      console.warn('[Register] Channel count check failed:', msg);
+      setErrorText(msg);
       return;
+    }
+    console.log('[Register] Channel count OK:', channelCount);
+
+    if (!backendReady) {
+      console.warn('[Register] Backend not ready — will attempt anyway, may hit cold start');
     }
 
     setIsLoading(true);
-    console.log('[Register] Starting registration', {
-      email: email.toLowerCase().trim(),
-      username: username.toLowerCase().trim(),
-      step, channelCount
-    });
+    setErrorText('');
+    console.log('[Register] Building payload...');
 
     try {
       const nameParts = fullName.trim().split(/\s+/);
@@ -576,35 +588,67 @@ export default function AuthInterface({
         communityUrl: communityUrl || undefined,
         audienceNiche, audienceSize, affiliateExperience, whyJoin,
       };
-      console.log('[Register] Calling api.affiliateRegister...');
-      const result = await api.affiliateRegister(payload);
-      console.log('[Register] affiliateRegister SUCCESS', result);
+      console.log('[Register] Payload built, calling api.affiliateRegister (timeout: 90s)...');
 
+      let result;
+      try {
+        result = await api.affiliateRegister(payload);
+        console.log('[Register] api.affiliateRegister RESPONSE:', result);
+      } catch (firstErr: unknown) {
+        const firstErrObj = firstErr as { timedOut?: boolean; status?: number; body?: { error?: string } };
+        console.error('[Register] First attempt failed:', firstErrObj);
+
+        if (firstErrObj?.timedOut) {
+          console.warn('[Register] First attempt timed out — waiting 3s then auto-retrying once...');
+          await new Promise(r => setTimeout(r, 3000));
+          console.log('[Register] Retry attempt: calling api.affiliateRegister again...');
+          try {
+            result = await api.affiliateRegister(payload);
+            console.log('[Register] Retry SUCCESS:', result);
+          } catch (retryErr: unknown) {
+            const retryErrObj = retryErr as { timedOut?: boolean; status?: number; body?: { error?: string } };
+            console.error('[Register] Retry also failed:', retryErrObj);
+            if (retryErrObj?.timedOut) {
+              throw Object.assign(
+                new Error('Backend did not respond within 90 seconds (2 attempts). The server may be cold-starting or unreachable.'),
+                { timedOut: true, status: retryErrObj.status, body: retryErrObj.body }
+              );
+            }
+            throw retryErr;
+          }
+        } else {
+          throw firstErr;
+        }
+      }
+
+      console.log('[Register] Setting state and navigating to verifyEmail');
       setPendingRegistrationId(result.pendingRegistrationId);
       setPendingEmail(email.toLowerCase().trim());
       setSuccessText(`Verification code sent to ${email}.`);
       clearForm();
+      console.log('[Register] Navigating to verifyEmail mode');
       goToMode('verifyEmail');
     } catch (err: unknown) {
       const errObj = err as { status?: number; timedOut?: boolean; message?: string; body?: { error?: string } };
-      console.error('[Register] affiliateRegister FAILED', errObj);
+      console.error('[Register] FINAL ERROR:', errObj);
       if (errObj?.timedOut) {
-        console.error('[Register] TIMEOUT — backend did not respond within 60s');
-        setErrorText('Registration is taking longer than expected — please try again.');
+        console.error('[Register] TIMEOUT detected in error handler');
+        setErrorText('The server is taking too long to respond — it may be starting up. Please wait a moment and try submitting again.');
       } else if (errObj?.status === 429) {
-        console.warn('[Register] RATE LIMITED', errObj);
+        console.warn('[Register] RATE LIMITED');
         setErrorText('Too many registration attempts. Please try again later.');
       } else if (errObj?.status === 409) {
-        console.warn('[Register] CONFLICT — account exists', errObj);
-        setErrorText('An account with this email or username already exists.');
+        console.warn('[Register] CONFLICT 409:', errObj.body?.error);
+        setErrorText(errObj.body?.error || 'An account with this email or username already exists.');
       } else if (errObj?.body?.error) {
-        console.error('[Register] Backend returned error:', errObj.body.error);
+        console.error('[Register] Backend error response:', errObj.body.error);
         setErrorText(errObj.body.error);
       } else {
-        console.error('[Register] UNKNOWN error', errObj);
+        console.error('[Register] Unknown error, falling back to message:', errObj.message);
         setErrorText(errObj?.message || 'Registration failed. Please try again.');
       }
     } finally {
+      console.log('[Register] handleSignUpCompletion finished, setIsLoading(false)');
       setIsLoading(false);
     }
   };
