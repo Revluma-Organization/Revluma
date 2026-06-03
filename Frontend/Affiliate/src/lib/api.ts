@@ -32,7 +32,11 @@ async function request<T>(
   };
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeout);
 
   try {
     const response = await fetch(`${API_BASE}${path}`, {
@@ -52,6 +56,11 @@ async function request<T>(
     }
 
     return response.json() as Promise<T>;
+  } catch (err) {
+    if (timedOut) {
+      throw Object.assign(new Error('Request timed out'), { timedOut: true });
+    }
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }

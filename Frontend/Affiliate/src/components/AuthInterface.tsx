@@ -272,31 +272,43 @@ export default function AuthInterface({
     }
   }, [onRouteChange]);
 
-  const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestCheckRef = useRef('');
 
   useEffect(() => {
-    if (username.length < 3) { setUsernameAvailable(null); setUsernameCheckError(null); return; }
-    if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
+    if (username.length < 3) {
+      setUsernameAvailable(null);
+      setUsernameCheckError(null);
+      setCheckingUsername(false);
+      return;
+    }
+
     const timer = setTimeout(async () => {
+      latestCheckRef.current = username;
       setCheckingUsername(true);
       setUsernameCheckError(null);
       try {
         const data = await api.checkUsername(username);
-        setUsernameAvailable(data.available);
+        if (latestCheckRef.current === username) {
+          setUsernameAvailable(data.available);
+        }
       } catch (err: unknown) {
+        if (latestCheckRef.current !== username) return;
         setUsernameAvailable(null);
-        const e = err as { status?: number; message?: string };
+        const e = err as { status?: number; message?: string; timedOut?: boolean };
         if (e?.status === 429) {
-          setUsernameCheckError('Rate limited — please wait a moment');
-        } else if (e?.message?.includes('aborted') || e?.message?.includes('timeout')) {
-          setUsernameCheckError('Check timed out — please try again');
+          setUsernameCheckError('Rate limited — please wait');
+        } else if (e?.timedOut) {
+          setUsernameCheckError('Timed out — try again');
         } else {
-          setUsernameCheckError('Could not verify username');
+          setUsernameCheckError('Could not verify');
         }
       } finally {
-        setCheckingUsername(false);
+        if (latestCheckRef.current === username) {
+          setCheckingUsername(false);
+        }
       }
-    }, 500);
+    }, 300);
+
     return () => { clearTimeout(timer); };
   }, [username]);
 
