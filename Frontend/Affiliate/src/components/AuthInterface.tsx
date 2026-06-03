@@ -488,13 +488,15 @@ export default function AuthInterface({
       clearForm();
       goToMode('verifyEmail');
     } catch (err: unknown) {
-      const errObj = err as { status?: number; body?: { error?: string } };
-      if (errObj?.status === 429) {
+      const e = err as { status?: number; timedOut?: boolean; message?: string };
+      if (e?.timedOut) {
+        setErrorText('Registration is taking longer than expected — please try again.');
+      } else if (e?.status === 429) {
         setErrorText('Too many registration attempts. Please try again later.');
-      } else if (errObj?.status === 409) {
+      } else if (e?.status === 409) {
         setErrorText('An account with this email or username already exists.');
       } else {
-        setErrorText((err instanceof Error ? err.message : 'Registration failed. Please try again.'));
+        setErrorText(e?.message || 'Registration failed. Please try again.');
       }
     } finally {
       setIsLoading(false);
