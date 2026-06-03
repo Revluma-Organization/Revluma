@@ -35,7 +35,6 @@ export type AppRoute =
   | '/affiliate/login'
   | '/affiliate/signup'
   | '/affiliate/verify-email'
-  | '/affiliate/access-token'
   | '/affiliate/pending-review'
   | '/affiliate/rejected'
   | '/affiliate/dashboard'
@@ -50,7 +49,6 @@ export type AuthMode =
   | 'forgot'
   | 'resetConfirm'
   | 'verifyEmail'
-  | 'accessToken'
   | 'pendingApproval'
   | 'rejected';
 
@@ -62,7 +60,6 @@ function routeToAuthMode(route: AppRoute): AuthMode {
   switch (route) {
     case '/affiliate/signup':        return 'register';
     case '/affiliate/verify-email':  return 'verifyEmail';
-    case '/affiliate/access-token':  return 'accessToken';
     case '/affiliate/pending-review': return 'pendingApproval';
     case '/affiliate/rejected':      return 'rejected';
     case '/affiliate/login':
@@ -74,7 +71,6 @@ function authModeToRoute(mode: AuthMode): AppRoute {
   switch (mode) {
     case 'register':        return '/affiliate/signup';
     case 'verifyEmail':     return '/affiliate/verify-email';
-    case 'accessToken':     return '/affiliate/access-token';
     case 'pendingApproval': return '/affiliate/pending-review';
     case 'rejected':        return '/affiliate/rejected';
     case 'login':
@@ -88,7 +84,7 @@ function pathToRoute(pathname: string): AppRoute {
   const p = pathname.replace(/\/+$/, '').toLowerCase();
   const validRoutes: AppRoute[] = [
     '/affiliate/login', '/affiliate/signup', '/affiliate/verify-email',
-    '/affiliate/access-token', '/affiliate/pending-review', '/affiliate/rejected',
+    '/affiliate/pending-review', '/affiliate/rejected',
     '/affiliate/dashboard', '/affiliate/settings', '/affiliate/admin', '/affiliate'
   ];
   return (validRoutes.find(r => p === r || p.startsWith(r + '/')) as AppRoute) ?? '/affiliate';
@@ -111,8 +107,6 @@ function getProtectedRoute(user: PartnerProfile | null, requestedRoute: AppRoute
   switch (status) {
     case 'pending_email_verification':
       return '/affiliate/verify-email';
-    case 'pending_access_token':
-      return '/affiliate/access-token';
     case 'pending':
     case 'pending_review':
     case 'under_review':
@@ -334,7 +328,6 @@ function LoadingScreen() {
 const PUBLIC_ONLY_ROUTES: AppRoute[] = [
   '/affiliate/signup',
   '/affiliate/verify-email',
-  '/affiliate/access-token',
   '/affiliate/pending-review',
   '/affiliate/rejected',
 ];

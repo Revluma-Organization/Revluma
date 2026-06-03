@@ -163,9 +163,12 @@ export async function affiliateCompleteRegistration(payload: {
 }) {
   return request<{
     message: string;
+    user: { id: string; email: string; full_name: string; role: string };
     userId: string;
     affiliateProfileId: string;
     status: string;
+    csrfToken?: string;
+    sessionEstablished: boolean;
   }>('POST', '/affiliate-auth/complete-registration', payload, true);
 }
 

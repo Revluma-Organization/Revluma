@@ -119,10 +119,13 @@ async function startServer() {
     res.json({ status: "healthy", timestamp: new Date().toISOString(), logsPending: webhookLogs.length });
   });
 
-  // Proxy all /api/* requests to the Revluma backend (fixes 404 when VITE_API_URL is unset)
+  // Proxy all /api/* requests to the Revluma backend.
+  // Uses BACKEND_API_URL if set (for staging), otherwise defaults to localhost:5000.
+  // VITE_API_URL is deliberately excluded — it's a build-time hint for the production
+  // bundle, not a runtime proxy target. Using it here would route local requests to
+  // a remote (cold) Render instance, causing 502 errors.
   const backendOrigin = (
     process.env.BACKEND_API_URL ||
-    process.env.VITE_API_URL?.replace(/\/api\/?$/, "") ||
     "http://localhost:5000"
   ).replace(/\/$/, "");
 

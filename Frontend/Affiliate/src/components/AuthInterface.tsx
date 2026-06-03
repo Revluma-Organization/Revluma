@@ -229,7 +229,6 @@ export default function AuthInterface({
   const [pendingEmail, setPendingEmail] = useState('');
   const [verifyCode, setVerifyCode] = useState('');
   const [pendingRegistrationId, setPendingRegistrationId] = useState('');
-  const [accessToken, setAccessToken] = useState('');
 
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -425,13 +424,7 @@ export default function AuthInterface({
         return;
       }
 
-      if (status === 'pending_access_token') {
-        goToMode('accessToken');
-        setIsLoading(false);
-        return;
-      }
-
-      if (status === 'pending' || status === 'pending_review') {
+      if (status === 'pending' || status === 'pending_review' || status === 'pending_access_token') {
         setPendingEmail(loginEmail);
         setPendingUserId(user.id);
         goToMode('pendingApproval');
@@ -515,17 +508,40 @@ export default function AuthInterface({
     if (code.length < 6) { setErrorText('Enter the complete 6-digit code.'); return; }
     setIsLoading(true);
     try {
+      // Step 1: Verify the email
       await api.affiliateVerifyEmail({ pendingRegistrationId, code });
-      setSuccessText('Email verified! Please enter your RAPP Access Token.');
-      goToMode('accessToken');
+
+      // Step 2: Complete registration (access token removed — auto-approved)
+      const completeResult = await api.affiliateCompleteRegistration({ pendingRegistrationId });
+
+      // Step 3: Store CSRF token if returned
+      if (completeResult.csrfToken) {
+        sessionStorage.setItem('csrf_token', completeResult.csrfToken);
+      }
+
+      // Step 4: Fetch session and profile, then navigate to dashboard
+      const meData = await api.me();
+      if (meData.authenticated && meData.user) {
+        try {
+          const profileRes = await api.getProfile();
+          const profileData = profileRes.profile as Record<string, unknown>;
+          const profile = buildPartnerProfile(meData.user, profileData);
+          onAuthSuccess(profile);
+          return;
+        } catch { /* fall through to login fallback */ }
+      }
+
+      // Fallback: navigate to login
+      goToMode('login');
+      setSuccessText('Your account is ready! Please log in.');
     } catch (err: unknown) {
-      const errObj = err as { status?: number; body?: { error?: string } };
+      const errObj = err as { status?: number; body?: { error?: string }; message?: string };
       if (errObj?.status === 410) {
-        setErrorText('This code has expired. Please request a new one.');
+        setErrorText('This session has expired. Please register again.');
       } else if (errObj?.status === 400) {
         setErrorText('Invalid code. Please check and try again.');
       } else {
-        setErrorText(err instanceof Error ? err.message : 'Verification failed.');
+        setErrorText(errObj?.body?.error || errObj?.message || 'Verification failed.');
       }
     } finally { setIsLoading(false); }
   };
@@ -546,28 +562,6 @@ export default function AuthInterface({
       setVerifyCode('');
     } catch {
       setErrorText('Failed to resend code. Please try again.');
-    } finally { setIsLoading(false); }
-  };
-
-  const handleAccessToken = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!accessToken.trim()) { setErrorText('Access token is required.'); return; }
-    setIsLoading(true);
-    try {
-      await api.affiliateValidateToken({ pendingRegistrationId, token: accessToken.trim() });
-      await api.affiliateCompleteRegistration({ pendingRegistrationId });
-      setSuccessText('Application submitted for review.');
-      goToMode('pendingApproval');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Invalid token.';
-      if (
-        msg.includes('INVALID_ACCESS_TOKEN') || msg.includes('TOKEN_INACTIVE') ||
-        msg.includes('TOKEN_EXPIRED') || msg.includes('TOKEN_MAX_USES_EXCEEDED')
-      ) {
-        setErrorText('This access token is invalid, expired, or has already been used.');
-      } else {
-        setErrorText(msg);
-      }
     } finally { setIsLoading(false); }
   };
 
@@ -731,52 +725,6 @@ export default function AuthInterface({
           <button onClick={() => goToMode('login')} className="text-violet-400 hover:underline font-medium">
             Log in
           </button>
-        </p>
-      </PageWrap>
-    );
-  }
-
-  if (authMode === 'accessToken') {
-    return (
-      <PageWrap>
-        <div className="text-center space-y-3">
-          <div className="mx-auto w-16 h-16 rounded-full bg-violet-500/10 border border-violet-500/30 flex items-center justify-center mb-2">
-            <Shield className="w-8 h-8 text-violet-400" />
-          </div>
-          <h1 className="text-xl font-bold text-zinc-100">RAPP Access Token</h1>
-          <p className="text-sm text-zinc-400 max-w-sm mx-auto">
-            Enter your Revluma Affiliate Partnership Program access token to proceed.
-          </p>
-        </div>
-        <Card>
-          {renderAlert(errorText, 'error')}
-          {renderAlert(successText, 'success')}
-          <div className="space-y-2">
-            <label className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Access Token</label>
-            <input
-              className={`${inputClass} font-mono text-sm`}
-              placeholder="Enter your access token..."
-              value={accessToken}
-              onChange={e => setAccessToken(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              autoCapitalize="none"
-            />
-            <p className="text-xs text-zinc-600">Format: alphanumeric token provided by Revluma</p>
-          </div>
-          <button
-            type="button"
-            disabled={isLoading || !accessToken.trim()}
-            onClick={handleAccessToken}
-            className={btnPrimary}
-          >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-            {isLoading ? 'Validating...' : 'Submit Application'}
-          </button>
-        </Card>
-        <p className="text-center text-xs text-zinc-500">
-          Don't have a token?{' '}
-          <a href="mailto:support@revluma.app" className="text-violet-400 hover:underline font-medium">Contact us</a>
         </p>
       </PageWrap>
     );

@@ -7,6 +7,11 @@ const emailService = require('../services/emailService');
 const affiliateAuthService = require('../services/affiliateAuthService');
 const { validatePasswordStrength, validateEmail, normalizeEmail } = require('../lib/auth-utils');
 const { normalizeAffiliateStatusForClient } = require('../lib/affiliate-auth-security');
+const {
+  createSession,
+  generateCsrfToken,
+  invalidateAllUserSessions
+} = require('../middleware/sessionAuth');
 
 const router = express.Router();
 
@@ -330,17 +335,27 @@ router.post('/complete-registration', async (req, res) => {
 
     const result = await affiliateAuthService.completeAffiliateRegistration(pendingRegistrationId);
 
+    // Invalidate any existing sessions, then create a new session (auto-login)
+    await invalidateAllUserSessions(result.user.id, result.tenant.id);
+    await createSession(result.tenant.id, result.user.id, res, req);
+    const csrfToken = generateCsrfToken(result.user.id);
+
     return res.status(201).json({
-      message: 'Account created successfully. Your application is submitted for review.',
-      userId: result.user.id,
+      message: 'Account created successfully.',
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        full_name: result.user.fullName,
+        role: result.user.role
+      },
       affiliateProfileId: result.affiliateProfile.id,
       status: normalizeAffiliateStatusForClient(result.affiliateProfile.status),
-      authState: result.affiliateProfile.status
+      csrfToken,
+      sessionEstablished: true
     });
   } catch (err) {
     const map = {
       EMAIL_NOT_VERIFIED: { status: 403, code: 'EMAIL_NOT_VERIFIED', error: 'Email must be verified before completing registration' },
-      ACCESS_TOKEN_NOT_VALIDATED: { status: 403, code: 'ACCESS_TOKEN_NOT_VALIDATED', error: 'A valid RAPP access token must be validated before completing registration' },
       REGISTRATION_EXPIRED: { status: 410, code: 'REGISTRATION_EXPIRED', error: 'Registration session has expired. Please start over.' },
       EMAIL_ALREADY_EXISTS: { status: 409, code: 'EMAIL_ALREADY_EXISTS', error: 'An account with this email already exists.' },
       PENDING_REGISTRATION_NOT_FOUND: { status: 404, code: 'PENDING_REGISTRATION_NOT_FOUND', error: 'Pending registration not found' }

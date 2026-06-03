@@ -228,7 +228,7 @@ class AffiliateAuthService {
       return {
         verified: true,
         message: 'Email already verified',
-        authState: AUTH_STATES.PENDING_ACCESS_TOKEN
+        authState: AUTH_STATES.PENDING_REVIEW
       };
     }
 
@@ -251,7 +251,7 @@ class AffiliateAuthService {
       data: {
         emailVerified: true,
         emailVerifiedAt: new Date(),
-        authState: AUTH_STATES.PENDING_ACCESS_TOKEN,
+        authState: AUTH_STATES.PENDING_REVIEW,
         step: 2,
         updatedAt: new Date()
       }
@@ -259,14 +259,14 @@ class AffiliateAuthService {
 
     await this.logAuthEvent('email_verified', {
       previousStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
-      newStatus: AUTH_STATES.PENDING_ACCESS_TOKEN,
+      newStatus: AUTH_STATES.PENDING_REVIEW,
       metadata: { pendingId, email: pending.email }
     });
 
     return {
       verified: true,
       message: 'Email verified successfully',
-      authState: AUTH_STATES.PENDING_ACCESS_TOKEN
+      authState: AUTH_STATES.PENDING_REVIEW
     };
   }
 
@@ -363,9 +363,6 @@ class AffiliateAuthService {
     if (!pending.emailVerified) throw new Error('EMAIL_NOT_VERIFIED');
 
     const onboardingData = pending.onboardingData || {};
-    if (!onboardingData.accessTokenValidated) {
-      throw new Error('ACCESS_TOKEN_NOT_VALIDATED');
-    }
 
     if (new Date(pending.expiresAt) < new Date()) {
       throw new Error('REGISTRATION_EXPIRED');
@@ -422,9 +419,8 @@ class AffiliateAuthService {
           affiliateExperience: onboardingData.affiliateExperience,
           whyJoin: onboardingData.whyJoin,
           referralSource: onboardingData.referralSource,
-          accessTokenUsedAt: new Date(),
           emailVerificationSentAt: new Date(),
-          status: AUTH_STATES.PENDING_REVIEW,
+          status: AUTH_STATES.APPROVED,
           tier: 'AFFILIATE',
           commissionRate: 0.20
         }
@@ -442,7 +438,7 @@ class AffiliateAuthService {
     await this.logAuthEvent('registration_completed', {
       affiliateProfileId: result.affiliateProfile.id,
       previousStatus: AUTH_STATES.PENDING_REVIEW,
-      newStatus: AUTH_STATES.PENDING_REVIEW,
+      newStatus: AUTH_STATES.APPROVED,
       metadata: { userId: result.user.id, email: result.user.email }
     });
 
