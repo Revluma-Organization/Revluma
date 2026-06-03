@@ -14,7 +14,8 @@ async function request<T>(
   path: string,
   body?: unknown,
   affiliatePortal = false,
-  timeout = 10000
+  timeout = 10000,
+  maxRetries = 0
 ): Promise<T> {
   const csrfToken = sessionStorage.getItem('csrf_token') ?? '';
   const start = Date.now();
@@ -25,55 +26,78 @@ async function request<T>(
     ...(affiliatePortal ? { 'X-Affiliate-Portal': 'true' } : {})
   };
 
-  const controller = new AbortController();
-  let timedOut = false;
-  const timeoutId = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeout);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeout);
 
-  try {
-    const response = await fetch(`${API_BASE}${path}`, {
-      method,
-      credentials: 'include',
-      headers,
-      signal: controller.signal,
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {})
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({})) as { error?: string };
-      console.error(`[API] ${method} ${path} -> ${response.status} (${Date.now() - start}ms)`, errorBody);
-      throw Object.assign(new Error(errorBody.error ?? `HTTP ${response.status}`), {
-        status: response.status,
-        body: errorBody
+    try {
+      const response = await fetch(`${API_BASE}${path}`, {
+        method,
+        credentials: 'include',
+        headers,
+        signal: controller.signal,
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {})
       });
-    }
+      clearTimeout(timeoutId);
 
-    const data = await response.json() as T;
-    console.log(`[API] ${method} ${path} -> ${response.status} (${Date.now() - start}ms)`);
-    return data;
-  } catch (err) {
-    if (timedOut) {
-      console.error(`[API] ${method} ${path} -> TIMEOUT after ${timeout}ms`);
-      throw Object.assign(new Error('Request timed out'), { timedOut: true });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({})) as { error?: string };
+        console.error(`[API] ${method} ${path} -> ${response.status} (${Date.now() - start}ms)`, errorBody);
+        const err = new Error(errorBody.error ?? `HTTP ${response.status}`) as Error & { status?: number; body: { error?: string } };
+        err.status = response.status;
+        err.body = errorBody;
+        throw err;
+      }
+
+      const data = await response.json() as T;
+      console.log(`[API] ${method} ${path} -> ${response.status} (${Date.now() - start}ms)`);
+      return data;
+
+    } catch (err) {
+      clearTimeout(timeoutId);
+
+      const isLastAttempt = attempt >= maxRetries;
+
+      if (timedOut) {
+        console.error(`[API] ${method} ${path} -> TIMEOUT after ${timeout}ms [attempt ${attempt + 1}/${maxRetries + 1}]`);
+        if (!isLastAttempt) {
+          const wait = 2000 * (attempt + 1);
+          console.warn(`[API.retry] ${method} ${path} — timed out, retrying in ${wait}ms...`);
+          await new Promise(r => setTimeout(r, wait));
+          continue;
+        }
+        throw Object.assign(new Error('Request timed out'), { timedOut: true });
+      }
+
+      // Network error (fetch threw) — retry
+      if (!isLastAttempt) {
+        const wait = 1500 * (attempt + 1);
+        console.warn(`[API.retry] ${method} ${path} — network error, retrying in ${wait}ms:`, err instanceof Error ? err.message : err);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+
+      console.error(`[API] ${method} ${path} -> ERROR (${Date.now() - start}ms):`, err instanceof Error ? err.message : err);
+      throw err;
     }
-    console.error(`[API] ${method} ${path} -> ERROR (${Date.now() - start}ms)`, err instanceof Error ? err.message : err);
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  throw new Error('Request failed after all retries');
 }
 
-// ============================================================
+// ============================================
 // Auth
-// ============================================================
+// ============================================
 
 export async function login(email: string, password: string) {
   const data = await request<{
     user: { id: string; email: string; full_name: string; role: string };
     csrfToken?: string;
-  }>('POST', '/session/login', { email: email.toLowerCase().trim(), password });
+  }>('POST', '/session/login', { email: email.toLowerCase().trim(), password }, false, 30000, 3);
 
   if (data.csrfToken) {
     sessionStorage.setItem('csrf_token', data.csrfToken);
@@ -89,7 +113,8 @@ export async function checkUsername(username: string) {
     `/affiliate-auth/check-username?${qs}`,
     undefined,
     true,
-    5000
+    8000,
+    2
   );
 }
 
@@ -100,7 +125,8 @@ export async function checkEmail(email: string) {
     `/affiliate-auth/check-email?${qs}`,
     undefined,
     true,
-    5000
+    8000,
+    2
   );
 }
 
@@ -112,7 +138,9 @@ export async function affiliateResendVerification(payload: {
     'POST',
     '/affiliate-auth/resend-verification',
     payload,
-    true
+    true,
+    30000,
+    2
   );
 }
 
@@ -129,7 +157,7 @@ export async function affiliateApplicationStatus(params: {
     emailVerified?: boolean;
     step?: number;
     expiresAt?: string;
-  }>('GET', `/affiliate-auth/application-status${qs ? `?${qs}` : ''}`, undefined, true);
+  }>('GET', `/affiliate-auth/application-status${qs ? `?${qs}` : ''}`, undefined, true, 15000, 2);
 }
 
 export async function affiliateRegister(payload: {
@@ -146,15 +174,13 @@ export async function affiliateRegister(payload: {
   affiliateExperience: string; whyJoin: string;
   referralSource?: string;
 }) {
-  // Registration includes bcrypt hashing (cost 10) plus potentially a cold
-  // start on Render, so we allow generous time before declaring failure.
   return request<{
     message: string;
     pendingRegistrationId: string;
     email: string;
     expiresAt: string;
     authState?: string;
-  }>('POST', '/affiliate-auth/register', payload, true, 90000);
+  }>('POST', '/affiliate-auth/register', payload, true, 120000, 2);
 }
 
 export async function affiliateVerifyEmail(payload: {
@@ -162,7 +188,7 @@ export async function affiliateVerifyEmail(payload: {
   code: string;
 }) {
   return request<{ message: string; verified: boolean; authState?: string }>(
-    'POST', '/affiliate-auth/verify-email', payload, true
+    'POST', '/affiliate-auth/verify-email', payload, true, 30000, 2
   );
 }
 
@@ -177,23 +203,23 @@ export async function affiliateCompleteRegistration(payload: {
     status: string;
     csrfToken?: string;
     sessionEstablished: boolean;
-  }>('POST', '/affiliate-auth/complete-registration', payload, true);
+  }>('POST', '/affiliate-auth/complete-registration', payload, true, 30000, 2);
 }
 
 export async function logout() {
-  return request<{ message: string }>('POST', '/session/logout', { allSessions: false });
+  return request<{ message: string }>('POST', '/session/logout', { allSessions: false }, false, 15000, 2);
 }
 
 export async function me() {
   return request<{
     authenticated: boolean;
     user?: { id: string; email: string; full_name: string; role: string };
-  }>('GET', '/session/me');
+  }>('GET', '/session/me', undefined, false, 15000, 3);
 }
 
-// ============================================================
+// ============================================
 // Affiliate profile
-// ============================================================
+// ============================================
 
 export async function getProfile() {
   return request<{ profile: Record<string, unknown> }>('GET', '/affiliate/profile');
@@ -203,9 +229,9 @@ export async function updateProfile(data: Record<string, unknown>) {
   return request<{ profile: Record<string, unknown> }>('PATCH', '/affiliate/profile', data);
 }
 
-// ============================================================
+// ============================================
 // Campaigns
-// ============================================================
+// ============================================
 
 export async function getCampaigns() {
   return request<{ campaigns: unknown[] }>('GET', '/affiliate/campaigns');
@@ -215,34 +241,35 @@ export async function createCampaign(payload: { name: string; tag: string; sourc
   return request<{ campaign: unknown }>('POST', '/affiliate/campaigns', payload);
 }
 
-// ============================================================
+// ============================================
 // Referrals & Earnings
-// ============================================================
+// ============================================
 
 export async function getReferrals(params?: { status?: string; page?: number; limit?: number }) {
   const qs = new URLSearchParams(
     Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
   ).toString();
-  return request<{ referrals: unknown[]; pagination: unknown }>('GET', `/affiliate/referrals${qs ? `?${qs}` : ''}`);
+  return request<{ referrals: unknown[]; pagination: unknown }>(`GET`, `/affiliate/referrals${qs ? `?${qs}` : ''}`);
 }
 
 export async function getEarnings(params?: { status?: string; page?: number; limit?: number }) {
   const qs = new URLSearchParams(
     Object.entries(params ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])
   ).toString();
-  return request<{ earnings: unknown[]; pagination: unknown; summary: unknown }>('GET', `/affiliate/earnings${qs ? `?${qs}` : ''}`);
+  return request<{ earnings: unknown[]; summary: unknown }>(`GET`, `/affiliate/earnings${qs ? `?${qs}` : ''}`);
 }
 
-// ============================================================
+// ============================================
 // Referral Links (Dashboard)
-// ============================================================
+// ============================================
+
 export async function getReferralLinks() {
   return request<{ links: Array<{ id: string; referralCode: string; clicksCount: number; url: string }> }>('GET', '/affiliate/dashboard/referral-links');
 }
 
-// ============================================================
+// ============================================
 // Withdrawals
-// ============================================================
+// ============================================
 
 export async function getWithdrawals() {
   return request<{ withdrawals: unknown[] }>('GET', '/affiliate/withdrawals');
@@ -252,9 +279,9 @@ export async function createWithdrawal(payload: Record<string, unknown>) {
   return request<{ withdrawal: unknown }>('POST', '/affiliate/withdrawals', payload);
 }
 
-// ============================================================
+// ============================================
 // Notifications
-// ============================================================
+// ============================================
 
 export async function getNotifications(unreadOnly = false) {
   return request<{ notifications: unknown[]; unreadCount: number }>(
@@ -271,9 +298,9 @@ export async function markAllNotificationsRead() {
   return request<{ message: string }>('POST', '/affiliate/notifications/mark-all-read', {});
 }
 
-// ============================================================
+// ============================================
 // Admin
-// ============================================================
+// ============================================
 
 export async function updateAffiliateStatus(profileId: string, status: string) {
   return request<{ profile: unknown }>('PATCH', `/affiliate/admin/${profileId}/status`, { status });
@@ -287,9 +314,9 @@ export async function updateAffiliateRole(profileId: string, role: 'user' | 'adm
   );
 }
 
-// ============================================================
+// ============================================
 // Leaderboard
-// ============================================================
+// ============================================
 
 export async function getLeaderboard() {
   return request<{ leaderboard: unknown[] }>('GET', '/affiliate/leaderboard');
