@@ -96,10 +96,11 @@ app.use(morgan(isProduction ? 'combined' : 'dev', {
   stream: { write: msg => logger.info(msg.trim()) }
 }));
 
-// Global rate limiting
+// Global rate limiting — kept generous so availability checks and dashboard
+// loads don't trip it. Route-specific limiters still enforce tighter controls.
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 1000,
   message: { error: 'Too many requests - please slow down' },
   standardHeaders: true,
   legacyHeaders: false

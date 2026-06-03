@@ -6,21 +6,38 @@
 const { PrismaClient } = require('@prisma/client');
 const logger = require('../utils/logger');
 
+function getPrismaUrl() {
+  const raw = process.env.DATABASE_URL || process.env.DIRECT_URL || '';
+  if (!raw) return raw;
+  try {
+    const url = new URL(raw);
+    url.searchParams.set('connection_limit', '10');
+    url.searchParams.set('pool_timeout', '30000');
+    url.searchParams.set('connect_timeout', '15000');
+    url.searchParams.set('idle_in_transaction_session_timeout', '30000');
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
+const prismaUrl = getPrismaUrl();
+
 const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  ...(prismaUrl ? { datasources: { db: { url: prismaUrl } } } : {}),
 });
 
-// Warn on queries taking >5s so slow DB calls surface in logs
+// Warn on queries taking >3s so slow DB calls surface in logs immediately
 prisma.$use(async (params, next) => {
   const start = Date.now();
   const result = await next(params);
   const ms = Date.now() - start;
-  if (ms > 5000) {
+  if (ms > 3000) {
     logger.warn('Slow Prisma operation detected', {
       model: params.model,
       action: params.action,
       ms,
-      args: params.args
     });
   }
   return result;
@@ -33,26 +50,6 @@ prisma.$on('error', (e) => {
 prisma.$on('warn', (e) => {
   logger.warn('[Prisma] Runtime warning', { message: e.message });
 });
-
-// Apply connection pooling and timeout settings via URL query params
-const prismaUrl = process.env.DATABASE_URL || process.env.DIRECT_URL;
-if (prismaUrl) {
-  try {
-    const url = new URL(prismaUrl);
-    url.searchParams.set('connection_limit', '10');
-    url.searchParams.set('pool_timeout', '30000');
-    url.searchParams.set('connect_timeout', '15000');
-    url.searchParams.set('idle_in_transaction_session_timeout', '30000');
-    // Override the env var so Prisma picks up the modified URL on connect
-    process.env.DATABASE_URL = url.toString();
-    if (process.env.DIRECT_URL) {
-      process.env.DIRECT_URL = url.toString();
-    }
-    logger.info('[Prisma] Connection timeout params applied', { url: url.toString().replace(/\/\/.*@/, '//***@') });
-  } catch (e) {
-    logger.warn('[Prisma] Could not parse DATABASE_URL for timeout config', { error: e.message });
-  }
-}
 
 // ============================================================
 // Database Health Check
