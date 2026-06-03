@@ -219,6 +219,12 @@ export default function AuthInterface({
     return () => clearTimeout(t);
   }, [rateLimitCountdown]);
 
+  // Warm up the backend on mount so Render cold start happens before
+  // the user fills out the form, not on the registration submit.
+  useEffect(() => {
+    fetch('/api/affiliate-auth/health').catch(() => {});
+  }, []);
+
   const [pendingUserId, setPendingUserId] = useState('');
   const [pendingEmail, setPendingEmail] = useState('');
   const [verifyCode, setVerifyCode] = useState('');

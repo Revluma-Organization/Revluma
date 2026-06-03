@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const { prisma } = require('../services/prisma');
 const logger = require('../utils/logger');
+const emailService = require('../services/emailService');
 const affiliateAuthService = require('../services/affiliateAuthService');
 const { validatePasswordStrength, validateEmail, normalizeEmail } = require('../lib/auth-utils');
 const { normalizeAffiliateStatusForClient } = require('../lib/affiliate-auth-security');
@@ -126,6 +127,8 @@ router.post('/register', registerLimiter, async (req, res) => {
       return sendError(res, 400, pw.error, 'INVALID_PASSWORD', correlationId);
     }
 
+    const verificationCode = crypto.randomInt(100000, 999999).toString();
+
     const registerData = {
       email: normalizeEmail(body.email),
       password: body.password,
@@ -149,10 +152,18 @@ router.post('/register', registerLimiter, async (req, res) => {
       audienceSize: sanitizeString(body.audienceSize, 40),
       affiliateExperience: sanitizeString(body.affiliateExperience, 60),
       whyJoin: sanitizeString(body.whyJoin, 2000),
-      referralSource: sanitizeString(body.referralSource, 250) || null
+      referralSource: sanitizeString(body.referralSource, 250) || null,
+      verificationCode
     };
 
     const result = await affiliateAuthService.registerAffiliate(registerData);
+
+    // Fire verification email in background — don't block the response
+    emailService.sendVerificationEmail(result.email, verificationCode, result.firstName)
+      .catch(err => logger.error('Background verification email failed', {
+        error: err.message, email: result.email
+      }));
+
     return res.status(201).json({
       message: 'Verification code sent. Please check your email.',
       pendingRegistrationId: result.pendingRegistrationId,
@@ -169,9 +180,6 @@ router.post('/register', registerLimiter, async (req, res) => {
     }
     if (String(err.message).includes('MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED')) {
       return sendError(res, 400, 'Please provide at least two distribution channels (e.g., Twitter/X, Instagram, YouTube, TikTok, LinkedIn, etc.).', 'MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED', correlationId);
-    }
-    if (String(err.message).includes('EMAIL_SEND_FAILED')) {
-      return sendError(res, 503, 'Unable to send verification email. Please try again later.', 'EMAIL_SEND_FAILED', correlationId);
     }
 
     logger.error('affiliate-auth/register failed', { error: err.message, correlationId });
@@ -195,6 +203,12 @@ router.post('/resend-verification', async (req, res) => {
       pendingRegistrationId,
       email ? normalizeEmail(email) : null
     );
+
+    // Fire verification email in background
+    emailService.sendVerificationEmail(result.email, result.verificationCode, result.firstName)
+      .catch(err => logger.error('Background resend email failed', {
+        error: err.message, pendingId: pendingRegistrationId, email: result.email
+      }));
 
     return res.json({
       message: result.message,

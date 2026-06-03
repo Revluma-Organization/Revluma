@@ -107,8 +107,7 @@ class AffiliateAuthService {
     }
 
     const passwordHash = await bcrypt.hash(data.password, 12);
-    const verificationCode = crypto.randomInt(100000, 999999).toString();
-    const verificationCodeHash = await bcrypt.hash(verificationCode, 12);
+    const verificationCodeHash = crypto.createHash('sha256').update(data.verificationCode).digest('hex');
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -167,16 +166,6 @@ class AffiliateAuthService {
       }
     });
 
-    try {
-      await emailService.sendVerificationEmail(normalizedEmail, verificationCode, data.firstName);
-    } catch (emailError) {
-      logger.error('Failed to send affiliate verification email', {
-        error: emailError.message,
-        email: normalizedEmail
-      });
-      throw new Error('EMAIL_SEND_FAILED');
-    }
-
     await this.logAuthEvent('registration_started', {
       newStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
       metadata: { email: normalizedEmail, pendingId: pendingRegistration.id }
@@ -185,6 +174,7 @@ class AffiliateAuthService {
     return {
       pendingRegistrationId: pendingRegistration.id,
       email: normalizedEmail,
+      firstName: data.firstName,
       expiresAt: pendingRegistration.expiresAt,
       authState: AUTH_STATES.PENDING_EMAIL_VERIFICATION
     };
@@ -209,7 +199,7 @@ class AffiliateAuthService {
     }
 
     const verificationCode = crypto.randomInt(100000, 999999).toString();
-    const verificationCodeHash = await bcrypt.hash(verificationCode, 12);
+    const verificationCodeHash = crypto.createHash('sha256').update(verificationCode).digest('hex');
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
 
     await prisma.pendingRegistration.update({
@@ -222,14 +212,12 @@ class AffiliateAuthService {
       }
     });
 
-    await emailService.sendVerificationEmail(pending.email, verificationCode, pending.firstName);
-
     await this.logAuthEvent('verification_resent', {
       newStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
       metadata: { pendingId, email: pending.email, attempt: attempts }
     });
 
-    return { message: 'Verification code resent', expiresAt: verificationExpiresAt };
+    return { message: 'Verification code resent', expiresAt: verificationExpiresAt, verificationCode, firstName: pending.firstName, email: pending.email };
   }
 
   async verifyAffiliateEmail(pendingId, code) {
@@ -248,7 +236,7 @@ class AffiliateAuthService {
       throw new Error('VERIFICATION_CODE_EXPIRED');
     }
 
-    const isValidCode = await bcrypt.compare(code, pending.verificationCodeHash);
+    const isValidCode = crypto.createHash('sha256').update(code).digest('hex') === pending.verificationCodeHash;
     if (!isValidCode) {
       await this.logAuthEvent('verification_failed', {
         newStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,

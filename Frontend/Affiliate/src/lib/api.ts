@@ -136,7 +136,7 @@ export async function affiliateRegister(payload: {
   affiliateExperience: string; whyJoin: string;
   referralSource?: string;
 }) {
-  // Registration includes bcrypt hashing (×2) plus a SendGrid email send,
+  // Registration includes bcrypt hashing plus a cold-start margin,
   // so it needs a longer timeout than regular API calls.
   return request<{
     message: string;
@@ -144,7 +144,7 @@ export async function affiliateRegister(payload: {
     email: string;
     expiresAt: string;
     authState?: string;
-  }>('POST', '/affiliate-auth/register', payload, true, 30000);
+  }>('POST', '/affiliate-auth/register', payload, true, 60000);
 }
 
 export async function affiliateVerifyEmail(payload: {
