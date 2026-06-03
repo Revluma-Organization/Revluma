@@ -225,7 +225,16 @@ class AffiliateAuthService {
       throw new Error('VERIFICATION_CODE_EXPIRED');
     }
 
-    const isValidCode = crypto.createHash('sha256').update(code).digest('hex') === pending.verificationCodeHash;
+    const isValidCode = (() => {
+      try {
+        const provided = crypto.createHash('sha256').update(code).digest('hex');
+        const expected = pending.verificationCodeHash;
+        if (provided.length !== expected.length) return false;
+        return crypto.timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(expected, 'hex'));
+      } catch {
+        return false;
+      }
+    })();
     if (!isValidCode) {
       await this.logAuthEvent('verification_failed', {
         newStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,

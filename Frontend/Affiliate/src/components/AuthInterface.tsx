@@ -478,24 +478,31 @@ export default function AuthInterface({
     }
 
     setIsLoading(true);
+    console.log('[Login] Attempt', { email: loginEmail.toLowerCase().trim(), authMode });
 
     try {
       const { user } = await api.login(loginEmail, loginPassword);
+      console.log('[Login] API success', { userId: user.id, email: user.email, role: user.role });
 
       let profile: Record<string, unknown> | undefined;
       try {
         const profileRes = await api.getProfile();
         profile = profileRes.profile as Record<string, unknown>;
-      } catch { }
+        console.log('[Login] Profile fetched', { status: profile?.status });
+      } catch (profileErr) {
+        console.warn('[Login] Profile fetch failed, continuing without', profileErr);
+      }
 
       const status = (profile?.status as string ?? '').toLowerCase();
 
       if (status === 'rejected') {
+        console.log('[Login] User rejected');
         onAuthSuccess(buildPartnerProfile(user, profile));
         return;
       }
 
       if (status === 'pending_email_verification') {
+        console.log('[Login] User needs email verification');
         setPendingEmail(loginEmail);
         setPendingUserId(user.id);
         goToMode('verifyEmail');
@@ -504,6 +511,7 @@ export default function AuthInterface({
       }
 
       if (status === 'pending' || status === 'pending_review') {
+        console.log('[Login] User pending approval');
         setPendingEmail(loginEmail);
         setPendingUserId(user.id);
         goToMode('pendingApproval');
@@ -511,9 +519,11 @@ export default function AuthInterface({
         return;
       }
 
+      console.log('[Login] Approved — navigating to dashboard');
       onAuthSuccess(buildPartnerProfile(user, profile));
     } catch (err: unknown) {
       const errObj = err as { status?: number; body?: { error?: string; retryAfter?: number } };
+      console.error('[Login] FAILED', errObj);
       if (errObj?.status === 429) {
         const wait = errObj.body?.retryAfter ?? 60;
         setRateLimited(true);
@@ -540,9 +550,15 @@ export default function AuthInterface({
     }
 
     setIsLoading(true);
+    console.log('[Register] Starting registration', {
+      email: email.toLowerCase().trim(),
+      username: username.toLowerCase().trim(),
+      step, channelCount
+    });
+
     try {
       const nameParts = fullName.trim().split(/\s+/);
-      const result = await api.affiliateRegister({
+      const payload = {
         email: email.toLowerCase().trim(),
         password,
         firstName: nameParts[0],
@@ -559,22 +575,34 @@ export default function AuthInterface({
         newsletterUrl: newsletterUrl || undefined,
         communityUrl: communityUrl || undefined,
         audienceNiche, audienceSize, affiliateExperience, whyJoin,
-      });
+      };
+      console.log('[Register] Calling api.affiliateRegister...');
+      const result = await api.affiliateRegister(payload);
+      console.log('[Register] affiliateRegister SUCCESS', result);
+
       setPendingRegistrationId(result.pendingRegistrationId);
       setPendingEmail(email.toLowerCase().trim());
       setSuccessText(`Verification code sent to ${email}.`);
       clearForm();
       goToMode('verifyEmail');
     } catch (err: unknown) {
-      const e = err as { status?: number; timedOut?: boolean; message?: string };
-      if (e?.timedOut) {
+      const errObj = err as { status?: number; timedOut?: boolean; message?: string; body?: { error?: string } };
+      console.error('[Register] affiliateRegister FAILED', errObj);
+      if (errObj?.timedOut) {
+        console.error('[Register] TIMEOUT — backend did not respond within 60s');
         setErrorText('Registration is taking longer than expected — please try again.');
-      } else if (e?.status === 429) {
+      } else if (errObj?.status === 429) {
+        console.warn('[Register] RATE LIMITED', errObj);
         setErrorText('Too many registration attempts. Please try again later.');
-      } else if (e?.status === 409) {
+      } else if (errObj?.status === 409) {
+        console.warn('[Register] CONFLICT — account exists', errObj);
         setErrorText('An account with this email or username already exists.');
+      } else if (errObj?.body?.error) {
+        console.error('[Register] Backend returned error:', errObj.body.error);
+        setErrorText(errObj.body.error);
       } else {
-        setErrorText(e?.message || 'Registration failed. Please try again.');
+        console.error('[Register] UNKNOWN error', errObj);
+        setErrorText(errObj?.message || 'Registration failed. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -586,39 +614,54 @@ export default function AuthInterface({
     const code = verifyCode.trim();
     if (code.length < 6) { setErrorText('Enter the complete 6-digit code.'); return; }
     setIsLoading(true);
+    console.log('[VerifyEmail] Starting verification', { pendingRegistrationId, codeLength: code.length });
     try {
-      // Step 1: Verify the email
-      await api.affiliateVerifyEmail({ pendingRegistrationId, code });
+      console.log('[VerifyEmail] Step 1: Calling affiliateVerifyEmail...');
+      const verifyResult = await api.affiliateVerifyEmail({ pendingRegistrationId, code });
+      console.log('[VerifyEmail] Step 1 SUCCESS:', verifyResult);
 
-      // Step 2: Complete registration (access token removed — auto-approved)
+      console.log('[VerifyEmail] Step 2: Calling affiliateCompleteRegistration...');
       const completeResult = await api.affiliateCompleteRegistration({ pendingRegistrationId });
+      console.log('[VerifyEmail] Step 2 SUCCESS:', completeResult);
 
-      // Step 3: Store CSRF token if returned
+      if (completeResult.sessionEstablished) {
+        console.log('[VerifyEmail] Step 3: Session auto-established');
+      }
+
       if (completeResult.csrfToken) {
         sessionStorage.setItem('csrf_token', completeResult.csrfToken);
+        console.log('[VerifyEmail] Step 3: CSRF token stored');
       }
 
-      // Step 4: Fetch session and profile, then navigate to dashboard
+      console.log('[VerifyEmail] Step 4: Calling /session/me...');
       const meData = await api.me();
+      console.log('[VerifyEmail] Step 4 me SUCCESS:', { authenticated: meData.authenticated, hasUser: !!meData.user });
+
       if (meData.authenticated && meData.user) {
         try {
+          console.log('[VerifyEmail] Step 5: Fetching profile...');
           const profileRes = await api.getProfile();
+          console.log('[VerifyEmail] Step 5 profile SUCCESS:', { hasProfile: !!profileRes.profile });
           const profileData = profileRes.profile as Record<string, unknown>;
           const profile = buildPartnerProfile(meData.user, profileData);
+          console.log('[VerifyEmail] All done — navigating to dashboard');
           onAuthSuccess(profile);
           return;
-        } catch { /* fall through to login fallback */ }
+        } catch (profileErr) {
+          console.error('[VerifyEmail] Step 5 profile FAILED, falling back to login:', profileErr);
+        }
       }
 
-      // Fallback: navigate to login
+      console.log('[VerifyEmail] Fallback: navigating to login');
       goToMode('login');
       setSuccessText('Your account is ready! Please log in.');
     } catch (err: unknown) {
       const errObj = err as { status?: number; body?: { error?: string }; message?: string };
+      console.error('[VerifyEmail] FAILED', errObj);
       if (errObj?.status === 410) {
         setErrorText('This session has expired. Please register again.');
       } else if (errObj?.status === 400) {
-        setErrorText('Invalid code. Please check and try again.');
+        setErrorText(errObj?.body?.error || 'Invalid code. Please check and try again.');
       } else {
         setErrorText(errObj?.body?.error || errObj?.message || 'Verification failed.');
       }
@@ -635,18 +678,23 @@ export default function AuthInterface({
     setErrorText('');
     setSuccessText('');
     setIsLoading(true);
+    console.log('[ResendCode] Requesting', { pendingRegistrationId, email: pendingEmail });
     try {
-      await api.affiliateResendVerification({ pendingRegistrationId, email: pendingEmail });
+      const result = await api.affiliateResendVerification({ pendingRegistrationId, email: pendingEmail });
+      console.log('[ResendCode] SUCCESS', result);
       setSuccessText(`A new code has been sent to ${pendingEmail}.`);
       setVerifyCode('');
-    } catch {
-      setErrorText('Failed to resend code. Please try again.');
+    } catch (err: unknown) {
+      const errObj = err as { status?: number; body?: { error?: string }; message?: string };
+      console.error('[ResendCode] FAILED', errObj);
+      setErrorText(errObj?.body?.error || errObj?.message || 'Failed to resend code. Please try again.');
     } finally { setIsLoading(false); }
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorText('');
+    console.log('[ForgotPassword] Requesting', { email: forgotEmail.trim() });
     if (!forgotEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) {
       setErrorText('Enter a valid email address.');
       return;
@@ -658,11 +706,13 @@ export default function AuthInterface({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail.trim() })
       });
-      const body = await res.json() as { token?: string };
+      const body = await res.json().catch(() => ({})) as { token?: string; error?: string };
+      console.log('[ForgotPassword] Response', { status: res.status, hasToken: !!body.token, error: body.error });
       if (body.token) setResetToken(body.token);
       setSuccessText('If that email is registered, a reset code has been sent.');
       setAuthModeInternal('resetConfirm');
-    } catch {
+    } catch (err) {
+      console.error('[ForgotPassword] Network error', err);
       setSuccessText('If that email is registered, a reset code has been sent.');
       setAuthModeInternal('resetConfirm');
     } finally { setIsLoading(false); }

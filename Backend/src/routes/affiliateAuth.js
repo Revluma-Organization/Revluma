@@ -61,39 +61,63 @@ async function resolveUsernameAvailability(username) {
   if (!normalized || normalized.length < 3) {
     return { valid: false, error: 'Username must be at least 3 characters' };
   }
-  const existing = await prisma.affiliateProfile.findUnique({ where: { username: normalized } });
+  const start = Date.now();
+  let existing;
+  try {
+    existing = await prisma.affiliateProfile.findUnique({ where: { username: normalized } });
+  } catch (err) {
+    logger.error('Username availability DB check failed', { error: err.message, username: normalized, ms: Date.now() - start });
+    throw err;
+  }
+  const ms = Date.now() - start;
+  logger.info('Username availability resolved', { username: normalized, available: !existing, ms });
   return { available: !existing, username: normalized };
 }
-
-router.get('/check-username/:username', checkUsernameLimiter, async (req, res) => {
-  const start = Date.now();
-  try {
-    const username = sanitizeString(req.params.username || req.query.username, 50);
-    const result = await resolveUsernameAvailability(username);
-    if (result.valid === false) {
-      return sendError(res, 400, result.error, 'VALIDATION_ERROR');
-    }
-    logger.info('check-username completed', { username: result.username, available: result.available, ms: Date.now() - start });
-    return res.json({ available: result.available, username: result.username });
-  } catch (err) {
-    logger.error('check-username failed', { error: err.message, ms: Date.now() - start });
-    return sendError(res, 500, 'Internal server error', 'SERVER_ERROR');
-  }
-});
 
 router.get('/check-username', checkUsernameLimiter, async (req, res) => {
   const start = Date.now();
   try {
-    const username = sanitizeString(req.params.username || req.query.username, 50);
+    const username = sanitizeString(req.query.username, 50);
     const result = await resolveUsernameAvailability(username);
     if (result.valid === false) {
+      logger.info('Username validation failed', { username, error: result.error, ms: Date.now() - start });
       return sendError(res, 400, result.error, 'VALIDATION_ERROR');
     }
-    logger.info('check-username completed', { username: result.username, available: result.available, ms: Date.now() - start });
     return res.json({ available: result.available, username: result.username });
   } catch (err) {
-    logger.error('check-username failed', { error: err.message, ms: Date.now() - start });
-    return sendError(res, 500, 'Internal server error', 'SERVER_ERROR');
+    logger.error('check-username endpoint error', { error: err.message, ms: Date.now() - start });
+    return sendError(res, 500, 'Could not check username availability. Please try again.', 'SERVER_ERROR');
+  }
+});
+
+// Legacy param-style route for backward compatibility
+router.get('/check-username/:username', checkUsernameLimiter, async (req, res) => {
+  const start = Date.now();
+  try {
+    const username = sanitizeString(req.params.username, 50);
+    const result = await resolveUsernameAvailability(username);
+    if (result.valid === false) {
+      logger.info('Username validation failed', { username, error: result.error, ms: Date.now() - start });
+      return sendError(res, 400, result.error, 'VALIDATION_ERROR');
+    }
+    return res.json({ available: result.available, username: result.username });
+  } catch (err) {
+    logger.error('check-username endpoint error', { error: err.message, ms: Date.now() - start });
+    return sendError(res, 500, 'Could not check username availability. Please try again.', 'SERVER_ERROR');
+  }
+});
+
+/**
+ * GET /api/affiliate-auth/health
+ * Lightweight health check used by frontend warmup pings.
+ */
+router.get('/health', async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok', checkedAt: new Date().toISOString() });
+  } catch (err) {
+    logger.error('affiliate-auth/health failed', { error: err.message });
+    res.status(503).json({ status: 'degraded', error: 'Database unreachable' });
   }
 });
 
@@ -138,6 +162,7 @@ router.get('/check-email', checkEmailLimiter, async (req, res) => {
  */
 router.post('/register', registerLimiter, async (req, res) => {
   const correlationId = getCorrelationId(req);
+  res.setHeader('X-Correlation-ID', correlationId);
   const start = Date.now();
 
   try {
@@ -147,26 +172,37 @@ router.post('/register', registerLimiter, async (req, res) => {
       'country', 'audienceNiche', 'audienceSize', 'affiliateExperience', 'whyJoin'
     ];
 
-    for (const k of required) {
-      if (body[k] === undefined || body[k] === null || (typeof body[k] === 'string' && body[k].trim().length === 0)) {
-        return sendError(res, 400, `Missing field: ${k}`, 'VALIDATION_ERROR', correlationId);
-      }
+    const missing = required.filter(k =>
+      body[k] === undefined || body[k] === null || (typeof body[k] === 'string' && body[k].trim().length === 0)
+    );
+    if (missing.length > 0) {
+      logger.warn('register: missing fields', { missing, correlationId, ms: Date.now() - start });
+      return sendError(res, 400, `Missing field: ${missing[0]}`, 'VALIDATION_ERROR', correlationId);
     }
 
-    if (!validateEmail(body.email)) {
+    const emailRaw = body.email.trim();
+    const pw = body.password;
+
+    logger.info('register: starting validation', { email: emailRaw, username: body.username, correlationId, ms: Date.now() - start });
+
+    if (!validateEmail(emailRaw)) {
+      logger.warn('register: invalid email format', { email: emailRaw, correlationId, ms: Date.now() - start });
       return sendError(res, 400, 'Please provide a valid email address.', 'INVALID_EMAIL', correlationId);
     }
 
-    const pw = validatePasswordStrength(body.password);
-    if (!pw.valid) {
-      return sendError(res, 400, pw.error, 'INVALID_PASSWORD', correlationId);
+    const passwordValidation = validatePasswordStrength(pw);
+    if (!passwordValidation.valid) {
+      logger.warn('register: weak password', { email: emailRaw, correlationId, ms: Date.now() - start });
+      return sendError(res, 400, passwordValidation.error, 'INVALID_PASSWORD', correlationId);
     }
+
+    logger.info('register: validation passed, calling service', { email: emailRaw, correlationId, ms: Date.now() - start });
 
     const verificationCode = crypto.randomInt(100000, 999999).toString();
 
     const registerData = {
-      email: normalizeEmail(body.email),
-      password: body.password,
+      email: normalizeEmail(emailRaw),
+      password: pw,
       firstName: sanitizeString(body.firstName, 100),
       lastName: sanitizeString(body.lastName, 100),
       username: sanitizeString(body.username, 50),
@@ -191,15 +227,20 @@ router.post('/register', registerLimiter, async (req, res) => {
       verificationCode
     };
 
-    logger.info('affiliate-auth/register processing', { email: registerData.email, ms: Date.now() - start });
+    logger.info('affiliate-auth/register processing', { email: registerData.email, correlationId, ms: Date.now() - start });
     const result = await affiliateAuthService.registerAffiliate(registerData);
-    logger.info('affiliate-auth/register completed', { email: result.email, ms: Date.now() - start });
+    logger.info('affiliate-auth/register service completed', { email: result.email, pendingId: result.pendingRegistrationId, correlationId, ms: Date.now() - start });
 
-    // Fire verification email in background — don't block the response
     emailService.sendVerificationEmail(result.email, verificationCode, result.firstName)
-      .catch(err => logger.error('Background verification email failed', {
-        error: err.message, email: result.email
-      }));
+      .then(() => {
+        logger.info('affiliate-auth/register verification email sent', { email: result.email, correlationId, ms: Date.now() - start });
+      })
+      .catch(err => {
+        logger.error('Background verification email failed', {
+          error: err.message, errorCode: err.code, errorStack: err.stack,
+          email: result.email, correlationId, pendingId: result.pendingRegistrationId
+        });
+      });
 
     return res.status(201).json({
       message: 'Verification code sent. Please check your email.',
@@ -209,18 +250,41 @@ router.post('/register', registerLimiter, async (req, res) => {
       authState: result.authState
     });
   } catch (err) {
-    logger.error('affiliate-auth/register failed', { error: err.message, ms: Date.now() - start, correlationId });
-    if (String(err.message).includes('EMAIL_ALREADY_EXISTS')) {
+    const errorMsg = err.message || 'Unknown error';
+    const errorStack = err.stack ? err.stack.split('\n').slice(0, 5).join('\n') : 'no stack';
+    logger.error('affiliate-auth/register FAILED', {
+      error: errorMsg,
+      errorCode: err.code,
+      errorStack,
+      correlationId,
+      ms: Date.now() - start,
+      requestBody: { // redact password
+        email: req.body?.email,
+        username: req.body?.username,
+        firstName: req.body?.firstName,
+        missingFields: required.filter(k =>
+          req.body?.[k] === undefined || req.body?.[k] === null || (typeof req.body?.[k] === 'string' && req.body[k].trim().length === 0)
+        )
+      }
+    });
+
+    if (String(errorMsg).includes('EMAIL_ALREADY_EXISTS')) {
       return sendError(res, 409, 'An account with this email already exists.', 'EMAIL_ALREADY_EXISTS', correlationId);
     }
-    if (String(err.message).includes('USERNAME_ALREADY_EXISTS')) {
+    if (String(errorMsg).includes('USERNAME_ALREADY_EXISTS')) {
       return sendError(res, 409, 'That username is already taken.', 'USERNAME_ALREADY_EXISTS', correlationId);
     }
-    if (String(err.message).includes('MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED')) {
+    if (String(errorMsg).includes('MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED')) {
       return sendError(res, 400, 'Please provide at least two distribution channels (e.g., Twitter/X, Instagram, YouTube, TikTok, LinkedIn, etc.).', 'MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED', correlationId);
     }
+    if (err.code === 'P1001' || String(errorMsg).includes('ECONNREFUSED') || String(errorMsg).includes('database')) {
+      return sendError(res, 503, 'Database is temporarily unavailable. Please try again in a moment.', 'DATABASE_UNAVAILABLE', correlationId);
+    }
+    if (err.code === 'P2025' || String(errorMsg).includes('Record to update not found')) {
+      return sendError(res, 409, 'Record conflict. Please try again.', 'RECORD_NOT_FOUND', correlationId);
+    }
 
-    return sendError(res, 500, 'Internal server error', 'SERVER_ERROR', correlationId);
+    return sendError(res, 500, 'Registration failed. Please try again.', 'SERVER_ERROR', correlationId);
   }
 });
 

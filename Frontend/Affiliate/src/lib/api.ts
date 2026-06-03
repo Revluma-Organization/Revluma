@@ -89,7 +89,7 @@ export async function checkUsername(username: string) {
     `/affiliate-auth/check-username?${qs}`,
     undefined,
     true,
-    15000
+    5000
   );
 }
 
@@ -100,7 +100,7 @@ export async function checkEmail(email: string) {
     `/affiliate-auth/check-email?${qs}`,
     undefined,
     true,
-    15000
+    5000
   );
 }
 
