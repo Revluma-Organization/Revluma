@@ -20,7 +20,8 @@ async function request<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
-  affiliatePortal = false
+  affiliatePortal = false,
+  timeout = 10000
 ): Promise<T> {
   const csrfToken = sessionStorage.getItem('csrf_token') ?? '';
 
@@ -30,22 +31,30 @@ async function request<T>(
     ...(affiliatePortal ? { 'X-Affiliate-Portal': 'true' } : {})
   };
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    method,
-    credentials: 'include',
-    headers,
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {})
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({})) as { error?: string };
-    throw Object.assign(new Error(errorBody.error ?? `HTTP ${response.status}`), {
-      status: response.status,
-      body: errorBody
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      method,
+      credentials: 'include',
+      headers,
+      signal: controller.signal,
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {})
     });
-  }
 
-  return response.json() as Promise<T>;
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({})) as { error?: string };
+      throw Object.assign(new Error(errorBody.error ?? `HTTP ${response.status}`), {
+        status: response.status,
+        body: errorBody
+      });
+    }
+
+    return response.json() as Promise<T>;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // ============================================================

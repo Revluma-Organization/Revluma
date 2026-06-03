@@ -228,6 +228,7 @@ export default function AuthInterface({
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [usernameCheckError, setUsernameCheckError] = useState<string | null>(null);
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -274,19 +275,29 @@ export default function AuthInterface({
   const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (username.length < 3) { setUsernameAvailable(null); return; }
+    if (username.length < 3) { setUsernameAvailable(null); setUsernameCheckError(null); return; }
     if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
-    usernameDebounceRef.current = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       setCheckingUsername(true);
+      setUsernameCheckError(null);
       try {
         const data = await api.checkUsername(username);
         setUsernameAvailable(data.available);
-      } catch {
+      } catch (err: unknown) {
         setUsernameAvailable(null);
+        const e = err as { status?: number; message?: string };
+        if (e?.status === 429) {
+          setUsernameCheckError('Rate limited — please wait a moment');
+        } else if (e?.message?.includes('aborted') || e?.message?.includes('timeout')) {
+          setUsernameCheckError('Check timed out — please try again');
+        } else {
+          setUsernameCheckError('Could not verify username');
+        }
       } finally {
         setCheckingUsername(false);
       }
     }, 500);
+    return () => { clearTimeout(timer); };
   }, [username]);
 
   const socialFieldsMap: Record<string, string> = {
@@ -344,8 +355,8 @@ export default function AuthInterface({
   const handlePrevStep = () => { setErrorText(''); setStep(p => p - 1); };
 
   function clearForm() {
-    setFullName(''); setUsername(''); setEmail(''); setPhoneNumber('');
-    setCountry('NG'); setPassword(''); setConfirmPassword('');
+    setFullName(''); setUsername(''); setUsernameAvailable(null); setUsernameCheckError(null);
+    setEmail(''); setPhoneNumber('');
     setTwitterHandle(''); setInstagramHandle('');
     setLinkedInProfile(''); setWebsite(''); setAudienceNiche('Shopify Growth');
     setAudienceSize('5,000 - 10,000'); setAffiliateExperience('Intermediate');
@@ -877,16 +888,22 @@ export default function AuthInterface({
                   value={username} onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))} autoComplete="username" />
                 <span className="absolute right-3.5 top-1/2 -translate-y-1/2">
                   {checkingUsername && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
-                  {!checkingUsername && usernameAvailable === true && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                  {!checkingUsername && usernameAvailable === false && <AlertCircle className="w-4 h-4 text-red-400" />}
+                  {!checkingUsername && !usernameCheckError && usernameAvailable === true && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                  {!checkingUsername && !usernameCheckError && usernameAvailable === false && <AlertCircle className="w-4 h-4 text-red-400" />}
+                  {!checkingUsername && usernameCheckError && <AlertCircle className="w-4 h-4 text-amber-400" />}
                 </span>
               </div>
-              {usernameAvailable === false && (
+              {usernameCheckError && (
+                <p className="text-xs text-amber-400 -mt-3 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {usernameCheckError}
+                </p>
+              )}
+              {!usernameCheckError && usernameAvailable === false && (
                 <p className="text-xs text-red-400 -mt-3 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" /> Username taken
                 </p>
               )}
-              {usernameAvailable === true && (
+              {!usernameCheckError && usernameAvailable === true && (
                 <p className="text-xs text-emerald-400 -mt-3 flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" /> Username available
                 </p>

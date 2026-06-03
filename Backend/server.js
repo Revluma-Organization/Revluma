@@ -131,14 +131,8 @@ app.use('/api/session', sessionLimiter, require('./src/routes/authSession'));
 // ============================================================
 // Affiliate onboarding (RAPP)
 // ============================================================
-const affiliateAuthLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 10,
-  message: { error: 'Too many affiliate registration attempts' },
-  standardHeaders: true,
-  legacyHeaders: false
-});
-app.use('/api/affiliate-auth', affiliateAuthLimiter, require('./src/routes/affiliateAuth'));
+// Rate limiting for affiliate-auth is handled inside the route file
+app.use('/api/affiliate-auth', require('./src/routes/affiliateAuth'));
 
 app.use('/api/webhook', rateLimit({ windowMs: 60 * 1000, max: 50 }), require('./src/routes/webhook'));
 app.use('/api/trending', require('./src/routes/trending'));

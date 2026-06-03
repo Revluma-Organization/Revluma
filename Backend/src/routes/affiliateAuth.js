@@ -1,4 +1,5 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const { prisma } = require('../services/prisma');
 const logger = require('../utils/logger');
@@ -33,6 +34,24 @@ function getAuditContext(req) {
   };
 }
 
+// Separate rate limiters per route — avoids throttling username checks
+// while keeping strict limits on actual registration.
+const checkUsernameLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: { error: 'Too many username checks - please slow down' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many registration attempts - please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 /**
  * GET /api/affiliate-auth/health
  * Lightweight liveness probe — used by the frontend warm-up ping
@@ -51,7 +70,7 @@ async function resolveUsernameAvailability(username) {
   return { available: !existing, username: normalized };
 }
 
-router.get('/check-username/:username', async (req, res) => {
+router.get('/check-username/:username', checkUsernameLimiter, async (req, res) => {
   try {
     const username = sanitizeString(req.params.username || req.query.username, 50);
     const result = await resolveUsernameAvailability(username);
@@ -65,7 +84,7 @@ router.get('/check-username/:username', async (req, res) => {
   }
 });
 
-router.get('/check-username', async (req, res) => {
+router.get('/check-username', checkUsernameLimiter, async (req, res) => {
   try {
     const username = sanitizeString(req.params.username || req.query.username, 50);
     const result = await resolveUsernameAvailability(username);
@@ -82,7 +101,7 @@ router.get('/check-username', async (req, res) => {
 /**
  * POST /api/affiliate-auth/register
  */
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
   const correlationId = getCorrelationId(req);
 
   try {
