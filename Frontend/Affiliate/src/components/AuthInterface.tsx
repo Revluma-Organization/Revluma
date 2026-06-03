@@ -580,9 +580,7 @@ export default function AuthInterface({
     }
     setIsLoading(true);
     try {
-      const RAW_BASE = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
-      const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : '/api';
-      const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+      const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail.trim() })
@@ -604,9 +602,7 @@ export default function AuthInterface({
     if (!newPassword || newPassword.length < 8) { setErrorText('New password must be at least 8 characters.'); return; }
     setIsLoading(true);
     try {
-      const RAW_BASE = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
-      const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : '/api';
-      const res = await fetch(`${API_BASE}/auth/reset-password`, {
+      const res = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: resetToken, code: resetCode, newPassword })

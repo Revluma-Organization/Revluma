@@ -9,9 +9,9 @@
  * deep links, refresh persistence, and route protection all work correctly.
  *
  * PERF: Cold-start optimizations:
- *  - Backend warm-up ping fires immediately on module load (before React mounts)
  *  - Landing page (/affiliate) renders instantly without waiting for session check
  *  - Public pre-registration routes skip session check entirely
+ *  - AuthInterface mounts with its own backend warm-up ping scoped to component
  *  - Loading screen uses premium circular spinner matching brand design
  */
 
@@ -25,23 +25,6 @@ import {
   WithdrawalRequest, WithdrawalRequestStatus
 } from './types';
 import * as api from './lib/api';
-
-// ============================================================
-// Warm-up ping — fires immediately when this module is imported,
-// before React even mounts. This wakes the Render backend during
-// the JS parse/bundle phase so the actual API call is faster.
-// ============================================================
-
-const BASE_URL_RAW = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL
-  ? (import.meta as { env?: Record<string, string> }).env!.VITE_API_URL.replace(/\/$/, '')
-  : '/api';
-
-fetch(`${BASE_URL_RAW}/affiliate-auth/health`, {
-  method: 'GET',
-  credentials: 'omit',
-  // No cache — we want a real TCP connection to the backend, not a cached response
-  cache: 'no-store',
-}).catch(() => { /* fire-and-forget */ });
 
 // ============================================================
 // Route Model
@@ -214,7 +197,7 @@ function buildPartnerProfile(
   };
 }
 
-const BASE_URL = BASE_URL_RAW;
+const BASE_URL = '/api';
 
 async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const csrfToken = sessionStorage.getItem('csrf_token') ?? '';
@@ -430,8 +413,6 @@ export default function App() {
     const initialRoute = pathToRoute(window.location.pathname);
 
     // Public-only routes: no session needed, render immediately.
-    // The module-level warm-up ping already fired, so the backend
-    // connection is being established in parallel.
     if (PUBLIC_ONLY_ROUTES.includes(initialRoute)) {
       setCurrentRouteState(initialRoute);
       setIsInitializing(false);

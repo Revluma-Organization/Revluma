@@ -1,20 +1,13 @@
 /**
  * Affiliate API client
  *
- * All affiliate frontend → backend communication goes through this module.
- * Configure the backend URL via the VITE_API_URL environment variable.
- *
- * Example .env:
- *   VITE_API_URL=https://revluma.onrender.com/api   # production
- *   VITE_API_URL=http://localhost:5000/api           # local dev
+ * Uses relative path so all API calls go to the same origin — no external
+ * host dependency. On Render (frontend + backend same origin) and Vercel
+ * (separate frontend, relative proxy) this eliminates 502s and env-var
+ * configuration issues.
  */
 
-const RAW_BASE = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
-// When VITE_API_URL is not set (production on Render where frontend and backend
-// share the same origin), use a relative path so all API calls go to the same
-// host with no proxy hop. This eliminates 502s caused by Vercel cold-proxying
-// to a sleeping Render instance.
-const API_BASE = RAW_BASE ? RAW_BASE.replace(/\/$/, '') : '/api';
+const API_BASE = '/api';
 
 async function request<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
