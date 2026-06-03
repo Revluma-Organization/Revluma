@@ -7,6 +7,12 @@
  * PHASE 9: Production-grade authentication routing & URL state management.
  * Every auth screen has its own dedicated URL. Browser history, back/forward,
  * deep links, refresh persistence, and route protection all work correctly.
+ *
+ * PERF: Cold-start optimizations:
+ *  - Backend warm-up ping fires immediately on module load (before React mounts)
+ *  - Landing page (/affiliate) renders instantly without waiting for session check
+ *  - Public pre-registration routes skip session check entirely
+ *  - Loading screen uses premium circular spinner matching brand design
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -21,13 +27,26 @@ import {
 import * as api from './lib/api';
 
 // ============================================================
+// Warm-up ping — fires immediately when this module is imported,
+// before React even mounts. This wakes the Render backend during
+// the JS parse/bundle phase so the actual API call is faster.
+// ============================================================
+
+const BASE_URL_RAW = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL
+  ? (import.meta as { env?: Record<string, string> }).env!.VITE_API_URL.replace(/\/$/, '')
+  : '/api';
+
+fetch(`${BASE_URL_RAW}/affiliate-auth/health`, {
+  method: 'GET',
+  credentials: 'omit',
+  // No cache — we want a real TCP connection to the backend, not a cached response
+  cache: 'no-store',
+}).catch(() => { /* fire-and-forget */ });
+
+// ============================================================
 // Route Model
 // ============================================================
 
-/**
- * Every distinct screen maps to a canonical URL path.
- * This is the single source of truth for routing.
- */
 export type AppRoute =
   | '/affiliate'
   | '/affiliate/login'
@@ -42,7 +61,6 @@ export type AppRoute =
 
 type AppView = 'landing' | 'auth' | 'dashboard' | 'admin';
 
-// AuthMode is now a direct derivation of the URL — it is NOT independent state
 export type AuthMode =
   | 'login'
   | 'register'
@@ -59,27 +77,27 @@ export type AuthMode =
 
 function routeToAuthMode(route: AppRoute): AuthMode {
   switch (route) {
-    case '/affiliate/signup':      return 'register';
-    case '/affiliate/verify-email': return 'verifyEmail';
-    case '/affiliate/access-token': return 'accessToken';
+    case '/affiliate/signup':        return 'register';
+    case '/affiliate/verify-email':  return 'verifyEmail';
+    case '/affiliate/access-token':  return 'accessToken';
     case '/affiliate/pending-review': return 'pendingApproval';
-    case '/affiliate/rejected':    return 'rejected';
+    case '/affiliate/rejected':      return 'rejected';
     case '/affiliate/login':
-    default:                       return 'login';
+    default:                         return 'login';
   }
 }
 
 function authModeToRoute(mode: AuthMode): AppRoute {
   switch (mode) {
-    case 'register':       return '/affiliate/signup';
-    case 'verifyEmail':    return '/affiliate/verify-email';
-    case 'accessToken':    return '/affiliate/access-token';
+    case 'register':        return '/affiliate/signup';
+    case 'verifyEmail':     return '/affiliate/verify-email';
+    case 'accessToken':     return '/affiliate/access-token';
     case 'pendingApproval': return '/affiliate/pending-review';
-    case 'rejected':       return '/affiliate/rejected';
+    case 'rejected':        return '/affiliate/rejected';
     case 'login':
     case 'forgot':
     case 'resetConfirm':
-    default:               return '/affiliate/login';
+    default:                return '/affiliate/login';
   }
 }
 
@@ -94,12 +112,11 @@ function pathToRoute(pathname: string): AppRoute {
 }
 
 // ============================================================
-// Route protection: given auth status, what route is allowed?
+// Route protection
 // ============================================================
 
 function getProtectedRoute(user: PartnerProfile | null, requestedRoute: AppRoute): AppRoute {
   if (!user) {
-    // Unauthenticated: only public routes allowed
     if (['/affiliate', '/affiliate/login', '/affiliate/signup'].includes(requestedRoute)) {
       return requestedRoute;
     }
@@ -111,18 +128,14 @@ function getProtectedRoute(user: PartnerProfile | null, requestedRoute: AppRoute
   switch (status) {
     case 'pending_email_verification':
       return '/affiliate/verify-email';
-
     case 'pending_access_token':
       return '/affiliate/access-token';
-
     case 'pending':
     case 'pending_review':
     case 'under_review':
       return '/affiliate/pending-review';
-
     case 'rejected':
       return '/affiliate/rejected';
-
     case 'approved':
       if (requestedRoute === '/affiliate/admin') {
         return user.role === 'admin' ? '/affiliate/admin' : '/affiliate/dashboard';
@@ -131,7 +144,6 @@ function getProtectedRoute(user: PartnerProfile | null, requestedRoute: AppRoute
         return requestedRoute;
       }
       return user.role === 'admin' ? '/affiliate/admin' : '/affiliate/dashboard';
-
     default:
       return '/affiliate/pending-review';
   }
@@ -202,9 +214,7 @@ function buildPartnerProfile(
   };
 }
 
-const BASE_URL = (import.meta as { env?: Record<string, string> }).env?.VITE_API_URL
-  ? (import.meta as { env?: Record<string, string> }).env!.VITE_API_URL.replace(/\/$/, '')
-  : '/api';
+const BASE_URL = BASE_URL_RAW;
 
 async function backendFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const csrfToken = sessionStorage.getItem('csrf_token') ?? '';
@@ -235,6 +245,124 @@ function routeToView(route: AppRoute): AppView {
 }
 
 // ============================================================
+// Premium Loading Screen Component
+// Matches the circular gradient spinner in the brand reference image.
+// ============================================================
+
+function LoadingScreen() {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#09090b',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '1.5rem',
+      }}
+    >
+      <style>{`
+        @keyframes revluma-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes revluma-fade-pulse {
+          0%, 100% { opacity: 0.5; }
+          50%       { opacity: 1; }
+        }
+      `}</style>
+
+      {/* Circular gradient spinner — matches the reference image */}
+      <div
+        style={{
+          position: 'relative',
+          width: 72,
+          height: 72,
+          animation: 'revluma-spin 1s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite',
+        }}
+      >
+        {/* Ring with conic-gradient fade */}
+        <svg
+          viewBox="0 0 72 72"
+          width="72"
+          height="72"
+          style={{ position: 'absolute', inset: 0 }}
+        >
+          <defs>
+            <linearGradient id="rl-spinner-grad" x1="1" y1="0" x2="0" y2="0">
+              <stop offset="0%"   stopColor="#ffffff" stopOpacity="1" />
+              <stop offset="40%"  stopColor="#a1a1aa" stopOpacity="0.7" />
+              <stop offset="75%"  stopColor="#52525b" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="#27272a" stopOpacity="0.04" />
+            </linearGradient>
+          </defs>
+          <circle
+            cx="36"
+            cy="36"
+            r="28"
+            fill="none"
+            stroke="url(#rl-spinner-grad)"
+            strokeWidth="9"
+            strokeLinecap="round"
+            strokeDasharray="155 20"
+          />
+        </svg>
+
+        {/* Bright leading dot */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 4,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 11,
+            height: 11,
+            borderRadius: '50%',
+            background: '#ffffff',
+            boxShadow: '0 0 10px 3px rgba(255,255,255,0.6)',
+          }}
+        />
+      </div>
+
+      {/* Label */}
+      <span
+        style={{
+          fontFamily: 'ui-monospace, "SF Mono", Consolas, monospace',
+          fontSize: 11,
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.45)',
+          fontWeight: 500,
+          animation: 'revluma-fade-pulse 2s ease-in-out infinite',
+        }}
+      >
+        Loading...
+      </span>
+    </div>
+  );
+}
+
+// ============================================================
+// Routes that never need a session check
+// ============================================================
+
+/** Public-only routes: render immediately, skip session fetch entirely */
+const PUBLIC_ONLY_ROUTES: AppRoute[] = [
+  '/affiliate/signup',
+  '/affiliate/verify-email',
+  '/affiliate/access-token',
+  '/affiliate/pending-review',
+  '/affiliate/rejected',
+];
+
+/** Landing page renders instantly — session check runs in the background */
+const INSTANT_RENDER_ROUTES: AppRoute[] = [
+  '/affiliate',
+  ...PUBLIC_ONLY_ROUTES,
+];
+
+// ============================================================
 // App
 // ============================================================
 
@@ -246,23 +374,26 @@ export default function App() {
   const [allProfiles, setAllProfiles] = useState<PartnerProfile[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [broadcasts, setBroadcasts] = useState<FounderBroadcast[]>([]);
-  const [isInitializing, setIsInitializing] = useState(true);
 
-  // Ref to avoid stale closures in popstate handler
+  // isInitializing is false from the start for instant-render routes so the
+  // landing page / public screens appear immediately without any spinner.
+  const [isInitializing, setIsInitializing] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const route = pathToRoute(window.location.pathname);
+    return !INSTANT_RENDER_ROUTES.includes(route);
+  });
+
   const currentUserRef = useRef<PartnerProfile | null>(null);
   currentUserRef.current = currentUser;
 
   // ============================================================
-  // Authoritative route setter — always syncs URL
+  // Authoritative route setter
   // ============================================================
 
   const navigateTo = useCallback((route: AppRoute, replace = false) => {
     setCurrentRouteState(route);
-    if (replace) {
-      replaceRoute(route);
-    } else {
-      pushRoute(route);
-    }
+    if (replace) replaceRoute(route);
+    else pushRoute(route);
   }, []);
 
   const protectedNavigate = useCallback((requestedRoute: AppRoute, user: PartnerProfile | null, replace = false) => {
@@ -272,23 +403,21 @@ export default function App() {
   }, [navigateTo]);
 
   // ============================================================
-  // Browser back/forward support
+  // Browser back/forward
   // ============================================================
 
   useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
+    const handlePopState = () => {
       const route = pathToRoute(window.location.pathname);
       const user = currentUserRef.current;
       const safeRoute = getProtectedRoute(user, route);
       if (safeRoute !== route) {
-        // Route not allowed — correct it without adding to history
         replaceRoute(safeRoute);
         setCurrentRouteState(safeRoute);
       } else {
         setCurrentRouteState(route);
       }
     };
-
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
@@ -300,32 +429,44 @@ export default function App() {
   useEffect(() => {
     const initialRoute = pathToRoute(window.location.pathname);
 
-    // These routes are part of the pre-registration flow.
-    // No session exists yet so calling /session/me would always
-    // fail with 401 (or 502 if the backend is cold-starting), flooding
-    // the console with red errors and waking Render unnecessarily.
-    const publicOnlyRoutes: AppRoute[] = [
-      '/affiliate/signup',
-      '/affiliate/verify-email',
-      '/affiliate/access-token',
-      '/affiliate/pending-review',
-      '/affiliate/rejected',
-    ];
-
-    if (publicOnlyRoutes.includes(initialRoute)) {
-      // Warm the backend silently in the background so that when the
-      // user actually submits the form the first real request is fast.
-      // Relative URL works because the SPA is now served directly from
-      // the same Render origin as the backend.
-      fetch('/api/affiliate-auth/health', { method: 'GET', credentials: 'omit' })
-        .catch(() => { /* fire-and-forget warm-up ping */ });
-
-      // Render the page immediately — no session needed
+    // Public-only routes: no session needed, render immediately.
+    // The module-level warm-up ping already fired, so the backend
+    // connection is being established in parallel.
+    if (PUBLIC_ONLY_ROUTES.includes(initialRoute)) {
       setCurrentRouteState(initialRoute);
       setIsInitializing(false);
       return;
     }
 
+    // Landing page: render immediately, then silently check session
+    // to see if we should redirect an already-logged-in user.
+    if (initialRoute === '/affiliate') {
+      setCurrentRouteState(initialRoute);
+      setIsInitializing(false);
+      // Background session check — if the user is already logged in
+      // we'll redirect them to the dashboard without showing the landing.
+      api.me()
+        .then(async (data) => {
+          if (data.authenticated && data.user) {
+            try {
+              const profileRes = await api.getProfile();
+              const profile = profileRes.profile as Record<string, unknown>;
+              const restoredUser = buildPartnerProfile(data.user, profile);
+              setCurrentUser(restoredUser);
+              const safeRoute = getProtectedRoute(restoredUser, initialRoute);
+              if (safeRoute !== initialRoute) {
+                replaceRoute(safeRoute);
+                setCurrentRouteState(safeRoute);
+                await loadUserData(restoredUser);
+              }
+            } catch { /* profile fetch failed — stay on landing */ }
+          }
+        })
+        .catch(() => { /* no session — stay on landing */ });
+      return;
+    }
+
+    // All other routes (dashboard, auth screens): check session first.
     api.me()
       .then(async (data) => {
         if (data.authenticated && data.user) {
@@ -334,22 +475,16 @@ export default function App() {
             const profile = profileRes.profile as Record<string, unknown>;
             const restoredUser = buildPartnerProfile(data.user, profile);
             setCurrentUser(restoredUser);
-
-            // Now that we have the user, enforce route protection
             const safeRoute = getProtectedRoute(restoredUser, initialRoute);
-            // Use replaceState so we don't pollute history on restore
             replaceRoute(safeRoute);
             setCurrentRouteState(safeRoute);
-
             await loadUserData(restoredUser);
           } catch {
-            // Profile fetch failed — protect the route without user
             const safeRoute = getProtectedRoute(null, initialRoute);
             replaceRoute(safeRoute);
             setCurrentRouteState(safeRoute);
           }
         } else {
-          // No session — protect route
           const safeRoute = getProtectedRoute(null, initialRoute);
           replaceRoute(safeRoute);
           setCurrentRouteState(safeRoute);
@@ -403,7 +538,7 @@ export default function App() {
   }
 
   // ============================================================
-  // Auth callbacks — every transition goes through navigateTo
+  // Auth callbacks
   // ============================================================
 
   const handleAuthSuccess = useCallback(async (profile: PartnerProfile) => {
@@ -415,10 +550,6 @@ export default function App() {
     }
   }, [navigateTo]);
 
-  /**
-   * Called by AuthInterface when the user transitions between auth screens.
-   * This is the bridge that keeps AuthInterface's internal mode in sync with the URL.
-   */
   const handleAuthRouteChange = useCallback((mode: AuthMode) => {
     const route = authModeToRoute(mode);
     navigateTo(route);
@@ -523,11 +654,7 @@ export default function App() {
   // ============================================================
 
   if (isInitializing) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="w-6 h-6 rounded-full border-2 border-violet-500 border-t-transparent animate-spin" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   const view = routeToView(currentRoute);
@@ -543,7 +670,7 @@ export default function App() {
     );
   }
 
-  // Auth screens — AuthInterface receives the current mode derived from URL
+  // Auth screens
   if (view === 'auth') {
     const authMode = routeToAuthMode(currentRoute);
     return (
@@ -557,7 +684,7 @@ export default function App() {
     );
   }
 
-  // Dashboard route guard
+  // Dashboard / admin route guard
   if (view === 'dashboard' || view === 'admin') {
     if (!currentUser || currentUser.status !== 'approved') {
       const safeRoute = getProtectedRoute(currentUser, currentRoute);
