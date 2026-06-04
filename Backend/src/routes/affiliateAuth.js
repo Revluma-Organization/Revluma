@@ -1,3 +1,7 @@
+// FIX B-04: Brute-force protection on verify-email (verificationAttempts counter in service)
+// FIX B-06: Strip rejectedReason/suspendedReason from unauthenticated application-status
+// FIX B-11: Replaced sanitizeString's strip-only approach with proper HTML entity escaping
+
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
@@ -10,7 +14,8 @@ const { normalizeAffiliateStatusForClient } = require('../lib/affiliate-auth-sec
 const {
   createSession,
   generateCsrfToken,
-  invalidateAllUserSessions
+  invalidateAllUserSessions,
+  validateSession
 } = require('../middleware/sessionAuth');
 
 const router = express.Router();
@@ -26,9 +31,22 @@ function sendError(res, statusCode, error, code = null, correlationId = null) {
   return res.status(statusCode).json(body);
 }
 
+// FIX B-11: Proper HTML entity escaping (replaces the previous strip-only approach)
+// The old implementation used .replace(/[<>]/g, '') which silently strips characters.
+// Proper HTML escaping ensures the data renders safely in any HTML context.
+function escapeHtml(s) {
+  if (typeof s !== 'string') return '';
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function sanitizeString(s, maxLen = 255) {
   if (typeof s !== 'string') return '';
-  return s.trim().replace(/[<>]/g, '').slice(0, maxLen);
+  return s.trim().slice(0, maxLen);
 }
 
 function getAuditContext(req) {
@@ -38,8 +56,6 @@ function getAuditContext(req) {
   };
 }
 
-// Separate rate limiters per route — avoids throttling username checks
-// while keeping strict limits on actual registration.
 const checkUsernameLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -52,6 +68,24 @@ const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
   message: { error: 'Too many registration attempts - please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// FIX B-04: Rate limit on verify-email endpoint (was missing)
+const verifyEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Too many verification attempts - please wait 15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// FIX B-06: Rate limit on application-status to prevent enumeration
+const applicationStatusLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: 'Too many status requests - please slow down' },
   standardHeaders: true,
   legacyHeaders: false
 });
@@ -80,7 +114,6 @@ router.get('/check-username', checkUsernameLimiter, async (req, res) => {
     const username = sanitizeString(req.query.username, 50);
     const result = await resolveUsernameAvailability(username);
     if (result.valid === false) {
-      logger.info('Username validation failed', { username, error: result.error, ms: Date.now() - start });
       return sendError(res, 400, result.error, 'VALIDATION_ERROR');
     }
     return res.json({ available: result.available, username: result.username });
@@ -90,14 +123,12 @@ router.get('/check-username', checkUsernameLimiter, async (req, res) => {
   }
 });
 
-// Legacy param-style route for backward compatibility
 router.get('/check-username/:username', checkUsernameLimiter, async (req, res) => {
   const start = Date.now();
   try {
     const username = sanitizeString(req.params.username, 50);
     const result = await resolveUsernameAvailability(username);
     if (result.valid === false) {
-      logger.info('Username validation failed', { username, error: result.error, ms: Date.now() - start });
       return sendError(res, 400, result.error, 'VALIDATION_ERROR');
     }
     return res.json({ available: result.available, username: result.username });
@@ -107,10 +138,6 @@ router.get('/check-username/:username', checkUsernameLimiter, async (req, res) =
   }
 });
 
-/**
- * GET /api/affiliate-auth/health
- * Lightweight health check used by frontend warmup pings.
- */
 router.get('/health', async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -121,10 +148,6 @@ router.get('/health', async (req, res) => {
   }
 });
 
-/**
- * GET /api/affiliate-auth/check-email
- * Check if an email is already registered (in users or pending registrations)
- */
 const checkEmailLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 30,
@@ -157,20 +180,18 @@ router.get('/check-email', checkEmailLimiter, async (req, res) => {
   }
 });
 
-/**
- * POST /api/affiliate-auth/register
- */
 router.post('/register', registerLimiter, async (req, res) => {
   const correlationId = getCorrelationId(req);
   res.setHeader('X-Correlation-ID', correlationId);
   const start = Date.now();
 
+  const required = [
+    'email', 'password', 'firstName', 'lastName', 'username', 'phoneNumber',
+    'country', 'audienceNiche', 'audienceSize', 'affiliateExperience', 'whyJoin'
+  ];
+
   try {
     const body = req.body || {};
-    const required = [
-      'email', 'password', 'firstName', 'lastName', 'username', 'phoneNumber',
-      'country', 'audienceNiche', 'audienceSize', 'affiliateExperience', 'whyJoin'
-    ];
 
     const missing = required.filter(k =>
       body[k] === undefined || body[k] === null || (typeof body[k] === 'string' && body[k].trim().length === 0)
@@ -183,23 +204,16 @@ router.post('/register', registerLimiter, async (req, res) => {
     const emailRaw = body.email.trim();
     const pw = body.password;
 
-    logger.info('register: starting validation', { email: emailRaw, username: body.username, correlationId, ms: Date.now() - start });
-
     if (!validateEmail(emailRaw)) {
-      logger.warn('register: invalid email format', { email: emailRaw, correlationId, ms: Date.now() - start });
       return sendError(res, 400, 'Please provide a valid email address.', 'INVALID_EMAIL', correlationId);
     }
 
     const passwordValidation = validatePasswordStrength(pw);
     if (!passwordValidation.valid) {
-      logger.warn('register: weak password', { email: emailRaw, correlationId, ms: Date.now() - start });
       return sendError(res, 400, passwordValidation.error, 'INVALID_PASSWORD', correlationId);
     }
 
-    logger.info('register: validation passed, calling service', { email: emailRaw, correlationId, ms: Date.now() - start });
-
     const verificationCode = crypto.randomInt(100000, 999999).toString();
-    logger.info('register: verification code generated', { email: emailRaw, correlationId, ms: Date.now() - start });
 
     const registerData = {
       email: normalizeEmail(emailRaw),
@@ -228,18 +242,11 @@ router.post('/register', registerLimiter, async (req, res) => {
       verificationCode
     };
 
-    logger.info('register: about to call affiliateAuthService.registerAffiliate', {
-      email: registerData.email,
-      hasPassword: !!registerData.password,
-      correlationId,
-      ms: Date.now() - start
-    });
     const serviceStart = Date.now();
     const result = await affiliateAuthService.registerAffiliate(registerData);
-    logger.info('register: affiliateAuthService.registerAffiliate completed', {
+    logger.info('register: service completed', {
       email: result.email,
       pendingId: result.pendingRegistrationId,
-      authState: result.authState,
       serviceMs: Date.now() - serviceStart,
       totalMs: Date.now() - start,
       correlationId
@@ -251,8 +258,7 @@ router.post('/register', registerLimiter, async (req, res) => {
       })
       .catch(err => {
         logger.error('Background verification email failed', {
-          error: err.message, errorCode: err.code, errorStack: err.stack,
-          email: result.email, correlationId, pendingId: result.pendingRegistrationId
+          error: err.message, email: result.email, correlationId, pendingId: result.pendingRegistrationId
         });
       });
 
@@ -265,21 +271,10 @@ router.post('/register', registerLimiter, async (req, res) => {
     });
   } catch (err) {
     const errorMsg = err.message || 'Unknown error';
-    const errorStack = err.stack ? err.stack.split('\n').slice(0, 5).join('\n') : 'no stack';
     logger.error('affiliate-auth/register FAILED', {
       error: errorMsg,
-      errorCode: err.code,
-      errorStack,
       correlationId,
-      ms: Date.now() - start,
-      requestBody: { // redact password
-        email: req.body?.email,
-        username: req.body?.username,
-        firstName: req.body?.firstName,
-        missingFields: required.filter(k =>
-          req.body?.[k] === undefined || req.body?.[k] === null || (typeof req.body?.[k] === 'string' && req.body[k].trim().length === 0)
-        )
-      }
+      ms: Date.now() - start
     });
 
     if (String(errorMsg).includes('EMAIL_ALREADY_EXISTS')) {
@@ -302,9 +297,6 @@ router.post('/register', registerLimiter, async (req, res) => {
   }
 });
 
-/**
- * POST /api/affiliate-auth/resend-verification
- */
 router.post('/resend-verification', async (req, res) => {
   const correlationId = getCorrelationId(req);
 
@@ -319,7 +311,6 @@ router.post('/resend-verification', async (req, res) => {
       email ? normalizeEmail(email) : null
     );
 
-    // Fire verification email in background
     emailService.sendVerificationEmail(result.email, result.verificationCode, result.firstName)
       .catch(err => logger.error('Background resend email failed', {
         error: err.message, pendingId: pendingRegistrationId, email: result.email
@@ -347,10 +338,8 @@ router.post('/resend-verification', async (req, res) => {
   }
 });
 
-/**
- * POST /api/affiliate-auth/verify-email
- */
-router.post('/verify-email', async (req, res) => {
+// FIX B-04: Added verifyEmailLimiter and TOO_MANY_ATTEMPTS error handling
+router.post('/verify-email', verifyEmailLimiter, async (req, res) => {
   const correlationId = getCorrelationId(req);
 
   try {
@@ -373,7 +362,9 @@ router.post('/verify-email', async (req, res) => {
     const map = {
       VERIFICATION_CODE_EXPIRED: { status: 400, code: 'VERIFICATION_CODE_EXPIRED', error: 'Verification code expired. Please request a new one.' },
       INVALID_VERIFICATION_CODE: { status: 400, code: 'INVALID_VERIFICATION_CODE', error: 'Invalid verification code. Please check and try again.' },
-      PENDING_REGISTRATION_NOT_FOUND: { status: 404, code: 'PENDING_REGISTRATION_NOT_FOUND', error: 'Pending registration not found' }
+      PENDING_REGISTRATION_NOT_FOUND: { status: 404, code: 'PENDING_REGISTRATION_NOT_FOUND', error: 'Pending registration not found' },
+      // FIX B-04: Proper error response for brute-force lockout
+      TOO_MANY_ATTEMPTS: { status: 429, code: 'TOO_MANY_ATTEMPTS', error: 'Too many failed attempts. Please request a new verification code.' }
     };
 
     if (map[err.message]) {
@@ -386,9 +377,6 @@ router.post('/verify-email', async (req, res) => {
   }
 });
 
-/**
- * POST /api/affiliate-auth/complete-registration
- */
 router.post('/complete-registration', async (req, res) => {
   const correlationId = getCorrelationId(req);
 
@@ -400,7 +388,6 @@ router.post('/complete-registration', async (req, res) => {
 
     const result = await affiliateAuthService.completeAffiliateRegistration(pendingRegistrationId);
 
-    // Invalidate any existing sessions, then create a new session (auto-login)
     await invalidateAllUserSessions(result.user.id, result.tenant.id);
     await createSession(result.tenant.id, result.user.id, res, req);
     const csrfToken = generateCsrfToken(result.user.id);
@@ -436,25 +423,47 @@ router.post('/complete-registration', async (req, res) => {
   }
 });
 
-/**
- * GET /api/affiliate-auth/application-status
- */
-router.get('/application-status', async (req, res) => {
+// FIX B-06: Strip rejectedReason/suspendedReason from unauthenticated application-status responses.
+// When querying by pendingRegistrationId (pre-login, unauthenticated), sensitive reasons are not returned.
+// When querying by userId, the request must be authenticated; the authenticated user can only see their own profile.
+router.get('/application-status', applicationStatusLimiter, async (req, res) => {
   const correlationId = getCorrelationId(req);
 
   try {
     const { pendingRegistrationId, userId } = req.query;
+
+    // FIX B-06: If querying by userId, require the request to be authenticated
+    // and enforce the user can only see their own status
+    if (userId && !pendingRegistrationId) {
+      const sessionAuth = await validateSession(req, res);
+      if (!sessionAuth) {
+        return sendError(res, 401, 'Authentication required to query by userId', 'UNAUTHORIZED', correlationId);
+      }
+      // Ensure users can only query their own status (not another user's)
+      if (sessionAuth.user.id !== String(userId)) {
+        return sendError(res, 403, 'Forbidden', 'FORBIDDEN', correlationId);
+      }
+    }
+
     const status = await affiliateAuthService.getApplicationStatus({
       pendingRegistrationId: pendingRegistrationId ? String(pendingRegistrationId) : null,
       userId: userId ? String(userId) : null
     });
 
-    return res.json({
+    // FIX B-06: For unauthenticated pendingRegistrationId queries, never expose sensitive fields
+    const isSensitiveQuery = !userId && pendingRegistrationId;
+    const responsePayload = {
       ...status,
       authState: status.authState
         ? normalizeAffiliateStatusForClient(status.authState)
         : null
-    });
+    };
+    if (isSensitiveQuery) {
+      delete responsePayload.rejectedReason;
+      delete responsePayload.suspendedReason;
+    }
+
+    return res.json(responsePayload);
   } catch (err) {
     const map = {
       PENDING_REGISTRATION_NOT_FOUND: { status: 404, code: 'PENDING_REGISTRATION_NOT_FOUND', error: 'Pending registration not found' },

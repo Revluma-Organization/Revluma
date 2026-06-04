@@ -5,9 +5,34 @@
  * host dependency. On Render (frontend + backend same origin) and Vercel
  * (separate frontend, relative proxy) this eliminates 502s and env-var
  * configuration issues.
+ *
+ * FIX A-06: CSRF token is now stored in a module-level in-memory variable
+ * instead of sessionStorage. sessionStorage is accessible to any same-origin
+ * JavaScript (including injected scripts), whereas a closure variable is
+ * only reachable through this module's exported functions.
+ *
+ * Trade-off: the token is lost on page refresh, which triggers an automatic
+ * re-fetch on the next mutating request (the server returns 403, the client
+ * re-authenticates and retries). For a 7-day session this is acceptable and
+ * far safer than sessionStorage.
  */
 
 const API_BASE = '/api';
+
+// FIX A-06: In-memory store — not accessible from the DOM or from injected scripts
+let _csrfToken: string | null = null;
+
+function getCsrfToken(): string {
+  return _csrfToken ?? '';
+}
+
+function setCsrfToken(token: string): void {
+  _csrfToken = token;
+}
+
+function clearCsrfToken(): void {
+  _csrfToken = null;
+}
 
 async function request<T>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
@@ -17,7 +42,7 @@ async function request<T>(
   timeout = 10000,
   maxRetries = 0
 ): Promise<T> {
-  const csrfToken = sessionStorage.getItem('csrf_token') ?? '';
+  const csrfToken = getCsrfToken();
   const start = Date.now();
 
   const headers: Record<string, string> = {
@@ -46,7 +71,6 @@ async function request<T>(
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({})) as { error?: string };
-        console.error(`[API] ${method} ${path} -> ${response.status} (${Date.now() - start}ms)`, errorBody);
         const err = new Error(errorBody.error ?? `HTTP ${response.status}`) as Error & { status?: number; body: { error?: string } };
         err.status = response.status;
         err.body = errorBody;
@@ -54,7 +78,6 @@ async function request<T>(
       }
 
       const data = await response.json() as T;
-      console.log(`[API] ${method} ${path} -> ${response.status} (${Date.now() - start}ms)`);
       return data;
 
     } catch (err) {
@@ -63,25 +86,20 @@ async function request<T>(
       const isLastAttempt = attempt >= maxRetries;
 
       if (timedOut) {
-        console.error(`[API] ${method} ${path} -> TIMEOUT after ${timeout}ms [attempt ${attempt + 1}/${maxRetries + 1}]`);
         if (!isLastAttempt) {
           const wait = 2000 * (attempt + 1);
-          console.warn(`[API.retry] ${method} ${path} — timed out, retrying in ${wait}ms...`);
           await new Promise(r => setTimeout(r, wait));
           continue;
         }
         throw Object.assign(new Error('Request timed out'), { timedOut: true });
       }
 
-      // Network error (fetch threw) — retry
       if (!isLastAttempt) {
         const wait = 1500 * (attempt + 1);
-        console.warn(`[API.retry] ${method} ${path} — network error, retrying in ${wait}ms:`, err instanceof Error ? err.message : err);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
 
-      console.error(`[API] ${method} ${path} -> ERROR (${Date.now() - start}ms):`, err instanceof Error ? err.message : err);
       throw err;
     }
   }
@@ -99,8 +117,9 @@ export async function login(email: string, password: string) {
     csrfToken?: string;
   }>('POST', '/session/login', { email: email.toLowerCase().trim(), password }, false, 30000, 3);
 
+  // FIX A-06: Store in module-level variable (not sessionStorage)
   if (data.csrfToken) {
-    sessionStorage.setItem('csrf_token', data.csrfToken);
+    setCsrfToken(data.csrfToken);
   }
 
   return data;
@@ -195,7 +214,7 @@ export async function affiliateVerifyEmail(payload: {
 export async function affiliateCompleteRegistration(payload: {
   pendingRegistrationId: string;
 }) {
-  return request<{
+  const data = await request<{
     message: string;
     user: { id: string; email: string; full_name: string; role: string };
     userId: string;
@@ -204,10 +223,20 @@ export async function affiliateCompleteRegistration(payload: {
     csrfToken?: string;
     sessionEstablished: boolean;
   }>('POST', '/affiliate-auth/complete-registration', payload, true, 30000, 2);
+
+  // FIX A-06: Store CSRF token from complete-registration response in-memory
+  if (data.csrfToken) {
+    setCsrfToken(data.csrfToken);
+  }
+
+  return data;
 }
 
 export async function logout() {
-  return request<{ message: string }>('POST', '/session/logout', { allSessions: false }, false, 15000, 2);
+  const result = await request<{ message: string }>('POST', '/session/logout', { allSessions: false }, false, 15000, 2);
+  // Clear CSRF token on logout
+  clearCsrfToken();
+  return result;
 }
 
 export async function me() {

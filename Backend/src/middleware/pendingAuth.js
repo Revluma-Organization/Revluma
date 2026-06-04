@@ -26,8 +26,12 @@ const authenticatePending = (req, res, next) => {
 
         next();
     } catch (err) {
-        const status = err.name === 'TokenExpiredError' ? 401 : 401;
-        return res.status(status).json({ error: 'Invalid or expired pending registration token' });
+        // FIX A-07: Distinguish expired tokens (401) from malformed tokens (400)
+        const status = err.name === 'TokenExpiredError' ? 401 : 400;
+        const message = err.name === 'TokenExpiredError'
+            ? 'Pending registration session has expired. Please start registration again.'
+            : 'Invalid pending registration token';
+        return res.status(status).json({ error: message, code: err.name === 'TokenExpiredError' ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN' });
     }
 };
 

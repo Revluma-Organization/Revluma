@@ -1,31 +1,33 @@
 /**
  * Affiliate Dashboard API Routes
  * Real-time metrics and analytics for affiliate dashboard
- * Requires authentication with 'affiliate' or 'admin' role
+ *
+ * FIX B-09: Replaced inline requireRole(['affiliate', 'admin']) with requireAffiliateStatus(['APPROVED']).
+ * The old requireRole only checked the JWT/session role claim — it did NOT verify affiliate DB status,
+ * meaning SUSPENDED and REJECTED affiliates could still access dashboard data. The new middleware
+ * queries the DB on every request and enforces status-level access control.
  */
 
 const express = require('express');
 const router = express.Router();
 const { prisma } = require('../../services/prisma');
 const logger = require('../../utils/logger');
+const { requireAffiliateStatus } = require('../../middleware/affiliateStatusGuard');
+const { requireRole } = require('../../middleware/roleAuth');
 
-function requireRole(roles) {
-  return (req, res, next) => {
-    const userRole = req.user?.role;
-    if (!userRole || !roles.includes(userRole)) {
-      return res.status(403).json({ error: 'Access denied', required: roles });
-    }
-    next();
-  };
+// FIX B-09: Admin users bypass affiliate status check (they have no affiliate profile).
+// All non-admin users must have APPROVED status in DB.
+function dashboardAccess(req, res, next) {
+  if (req.user?.role === 'admin') {
+    return next();
+  }
+  return requireAffiliateStatus(['APPROVED'])(req, res, next);
 }
-
-const affiliateOrAdmin = requireRole(['affiliate', 'admin']);
 
 /**
  * GET /api/affiliate/dashboard/metrics
- * Real-time dashboard metrics for an affiliate
  */
-router.get('/metrics', affiliateOrAdmin, async (req, res) => {
+router.get('/metrics', dashboardAccess, async (req, res) => {
   const { period = 'month' } = req.query;
 
   try {
@@ -37,7 +39,6 @@ router.get('/metrics', affiliateOrAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Affiliate profile not found' });
     }
 
-    // Calculate date range
     const now = new Date();
     let startDate;
     switch (period) {
@@ -55,7 +56,6 @@ router.get('/metrics', affiliateOrAdmin, async (req, res) => {
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     }
 
-    // Get referral links
     const referralLinks = await prisma.referralLink.findMany({
       where: { affiliateId: profile.id },
       select: {
@@ -66,7 +66,6 @@ router.get('/metrics', affiliateOrAdmin, async (req, res) => {
       }
     });
 
-    // Get total clicks in period
     const totalClicks = await prisma.referralClick.count({
       where: {
         affiliateId: profile.id,
@@ -74,7 +73,6 @@ router.get('/metrics', affiliateOrAdmin, async (req, res) => {
       }
     });
 
-    // Get total referrals in period
     const totalReferrals = await prisma.affiliateReferral.count({
       where: {
         partnerId: profile.id,
@@ -82,7 +80,6 @@ router.get('/metrics', affiliateOrAdmin, async (req, res) => {
       }
     });
 
-    // Get conversions (non-waitlist statuses)
     const conversions = await prisma.affiliateReferral.count({
       where: {
         partnerId: profile.id,
@@ -91,7 +88,6 @@ router.get('/metrics', affiliateOrAdmin, async (req, res) => {
       }
     });
 
-    // Get earnings in period
     const earnings = await prisma.affiliateEarning.aggregate({
       where: {
         partnerId: profile.id,
@@ -100,7 +96,6 @@ router.get('/metrics', affiliateOrAdmin, async (req, res) => {
       _sum: { amount: true }
     });
 
-    // Referral status breakdown
     const statusBreakdown = await prisma.affiliateReferral.groupBy({
       by: ['status'],
       where: { partnerId: profile.id },
@@ -143,9 +138,8 @@ router.get('/metrics', affiliateOrAdmin, async (req, res) => {
 
 /**
  * GET /api/affiliate/dashboard/referral-links
- * Get all referral links for an affiliate
  */
-router.get('/referral-links', affiliateOrAdmin, async (req, res) => {
+router.get('/referral-links', dashboardAccess, async (req, res) => {
   try {
     const profile = await prisma.affiliateProfile.findUnique({
       where: { userId: req.user.id }
@@ -160,7 +154,6 @@ router.get('/referral-links', affiliateOrAdmin, async (req, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Construct absolute URLs using centralized BASE_URL config if available
     let configuredBase = null;
     try { configuredBase = require('../../config/baseUrl').BASE_URL; } catch (e) { configuredBase = null; }
 
@@ -185,9 +178,8 @@ router.get('/referral-links', affiliateOrAdmin, async (req, res) => {
 
 /**
  * GET /api/affiliate/dashboard/click-analytics
- * Get detailed click analytics
  */
-router.get('/click-analytics', affiliateOrAdmin, async (req, res) => {
+router.get('/click-analytics', dashboardAccess, async (req, res) => {
   const { days = 30 } = req.query;
 
   try {
@@ -202,7 +194,6 @@ router.get('/click-analytics', affiliateOrAdmin, async (req, res) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(days));
 
-    // Get clicks by day
     const dailyClicks = await prisma.referralClick.groupBy({
       by: ['createdAt'],
       where: {
@@ -213,7 +204,6 @@ router.get('/click-analytics', affiliateOrAdmin, async (req, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    // Get top referrers
     const topReferrers = await prisma.referralClick.groupBy({
       by: ['referrer'],
       where: {

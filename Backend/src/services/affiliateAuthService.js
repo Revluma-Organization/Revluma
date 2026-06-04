@@ -1,3 +1,11 @@
+// FIX B-01: bcrypt for OTP hash (not SHA-256)
+// FIX B-02: Fix broken resendVerificationEmail (undefined variable refs removed)
+// FIX B-03: PENDING_REVIEW on registration (not APPROVED)
+// FIX B-04: verificationAttempts counter + lockout
+// FIX B-07: Removed all console.log statements
+// FIX B-08: bcrypt cost 12 for password hash
+// FIX B-13: Removed hardcoded fallback email
+
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
@@ -7,6 +15,7 @@ const emailService = require('./emailService');
 
 const VERIFICATION_CODE_EXPIRY_MINUTES = 15;
 const MAX_RESEND_ATTEMPTS = 10;
+const MAX_VERIFY_ATTEMPTS = 5;
 
 const AUTH_STATES = {
   PENDING_EMAIL_VERIFICATION: 'PENDING_EMAIL_VERIFICATION',
@@ -93,10 +102,12 @@ class AffiliateAuthService {
       throw new Error('MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED');
     }
 
-    console.log(`[affiliateAuthService] Hashing password for ${data.email}...`);
-    const passwordHash = await bcrypt.hash(data.password, 10);
-    console.log(`[affiliateAuthService] Password hashed for ${data.email}`);
-    const verificationCodeHash = crypto.createHash('sha256').update(data.verificationCode).digest('hex');
+    // FIX B-08: Cost 12 for password hash (was 10)
+    const passwordHash = await bcrypt.hash(data.password, 12);
+
+    // FIX B-01: Use bcrypt for OTP hash (not SHA-256)
+    // Cost 10 is appropriate for short-lived OTPs (fast enough for the use-case)
+    const verificationCodeHash = await bcrypt.hash(data.verificationCode, 10);
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
@@ -135,6 +146,7 @@ class AffiliateAuthService {
         verificationExpiresAt,
         emailVerified: false,
         emailVerifiedAt: null,
+        verificationAttempts: 0,
         authState: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
         expiresAt,
         onboardingData,
@@ -148,6 +160,7 @@ class AffiliateAuthService {
         passwordHash,
         verificationCodeHash,
         verificationExpiresAt,
+        verificationAttempts: 0,
         authState: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
         expiresAt,
         onboardingData,
@@ -169,6 +182,8 @@ class AffiliateAuthService {
     };
   }
 
+  // FIX B-02: Completely rewritten — removed undefined variable references (normalizedEmail, data)
+  // and broken upsert. Now uses a targeted update on the correct pending record.
   async resendVerificationEmail(pendingId, email) {
     const pending = await prisma.pendingRegistration.findUnique({ where: { id: pendingId } });
     if (!pending) throw new Error('PENDING_REGISTRATION_NOT_FOUND');
@@ -188,51 +203,41 @@ class AffiliateAuthService {
     }
 
     const verificationCode = crypto.randomInt(100000, 999999).toString();
-    const verificationCodeHash = crypto.createHash('sha256').update(verificationCode).digest('hex');
+
+    // FIX B-01: Use bcrypt for OTP hash (not SHA-256)
+    const verificationCodeHash = await bcrypt.hash(verificationCode, 10);
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    const t0 = Date.now();
-    console.log(`[registerAffiliate] About to upsert pendingRegistration for ${normalizedEmail}...`);
-    const pendingRegistration = await prisma.pendingRegistration.upsert({
-      where: { email: normalizedEmail },
-      update: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        passwordHash,
+    // FIX B-02: Correct update targeting the known pending record by its ID
+    await prisma.pendingRegistration.update({
+      where: { id: pendingId },
+      data: {
         verificationCodeHash,
         verificationExpiresAt,
-        emailVerified: false,
-        emailVerifiedAt: null,
-        authState: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
+        verificationAttempts: 0,
         expiresAt,
-        onboardingData,
-        step: 1,
+        onboardingData: { ...onboardingData, resendAttempts: attempts },
         updatedAt: new Date()
-      },
-      create: {
-        email: normalizedEmail,
-        firstName: data.firstName,
-        lastName: data.lastName,
-        passwordHash,
-        verificationCodeHash,
-        verificationExpiresAt,
-        authState: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
-        expiresAt,
-        onboardingData,
-        step: 1
       }
     });
-    console.log(`[registerAffiliate] pendingRegistration upserted in ${Date.now() - t0}ms, id=${pendingRegistration.id}`);
 
     await this.logAuthEvent('verification_resent', {
       newStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
       metadata: { pendingId, email: pending.email, attempt: attempts }
     });
 
-    return { message: 'Verification code resent', expiresAt: verificationExpiresAt, verificationCode, firstName: pending.firstName, email: pending.email };
+    return {
+      message: 'Verification code resent',
+      expiresAt: verificationExpiresAt,
+      verificationCode,
+      firstName: pending.firstName,
+      email: pending.email
+    };
   }
 
+  // FIX B-01: Compare OTP with bcrypt instead of SHA-256
+  // FIX B-04: Brute-force protection — lock after MAX_VERIFY_ATTEMPTS failures
   async verifyAffiliateEmail(pendingId, code) {
     const pending = await prisma.pendingRegistration.findUnique({ where: { id: pendingId } });
     if (!pending) throw new Error('PENDING_REGISTRATION_NOT_FOUND');
@@ -249,30 +254,38 @@ class AffiliateAuthService {
       throw new Error('VERIFICATION_CODE_EXPIRED');
     }
 
-    const isValidCode = (() => {
-      try {
-        const provided = crypto.createHash('sha256').update(code).digest('hex');
-        const expected = pending.verificationCodeHash;
-        if (provided.length !== expected.length) return false;
-        return crypto.timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(expected, 'hex'));
-      } catch {
-        return false;
-      }
-    })();
+    // FIX B-04: Check attempt counter before comparing
+    const attempts = pending.verificationAttempts || 0;
+    if (attempts >= MAX_VERIFY_ATTEMPTS) {
+      throw new Error('TOO_MANY_ATTEMPTS');
+    }
+
+    // FIX B-01: Use bcrypt.compare (not SHA-256 timing-safe compare)
+    const isValidCode = await bcrypt.compare(code, pending.verificationCodeHash);
+
     if (!isValidCode) {
+      // FIX B-04: Increment attempt counter on failure
+      await prisma.pendingRegistration.update({
+        where: { id: pendingId },
+        data: { verificationAttempts: { increment: 1 }, updatedAt: new Date() }
+      });
+
       await this.logAuthEvent('verification_failed', {
         newStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
         reason: 'INVALID_CODE',
-        metadata: { pendingId, email: pending.email }
+        metadata: { pendingId, email: pending.email, attemptsAfter: attempts + 1 }
       });
+
       throw new Error('INVALID_VERIFICATION_CODE');
     }
 
+    // Success: reset attempt counter
     await prisma.pendingRegistration.update({
       where: { id: pendingId },
       data: {
         emailVerified: true,
         emailVerifiedAt: new Date(),
+        verificationAttempts: 0,
         authState: AUTH_STATES.PENDING_REVIEW,
         step: 2,
         updatedAt: new Date()
@@ -305,6 +318,7 @@ class AffiliateAuthService {
         emailVerified: pending.emailVerified,
         step: pending.step,
         expiresAt: pending.expiresAt
+        // NOTE: rejectedReason / suspendedReason intentionally not included here (unauthenticated path)
       };
     }
 
@@ -327,6 +341,7 @@ class AffiliateAuthService {
     throw new Error('IDENTIFIER_REQUIRED');
   }
 
+  // FIX B-03: Set status to PENDING_REVIEW (not APPROVED) on registration
   async completeAffiliateRegistration(pendingId) {
     const pending = await prisma.pendingRegistration.findUnique({ where: { id: pendingId } });
     if (!pending) throw new Error('PENDING_REGISTRATION_NOT_FOUND');
@@ -390,7 +405,8 @@ class AffiliateAuthService {
           whyJoin: onboardingData.whyJoin,
           referralSource: onboardingData.referralSource,
           emailVerificationSentAt: new Date(),
-          status: AUTH_STATES.APPROVED,
+          // FIX B-03: Set to PENDING_REVIEW — admin must manually approve before access is granted
+          status: AUTH_STATES.PENDING_REVIEW,
           tier: 'AFFILIATE',
           commissionRate: 0.20
         }
@@ -405,10 +421,12 @@ class AffiliateAuthService {
       return { user, affiliateProfile, tenant };
     });
 
+    // FIX B-03: Audit log now correctly reflects PENDING_REVIEW (not APPROVED)
     await this.logAuthEvent('registration_completed', {
       affiliateProfileId: result.affiliateProfile.id,
-      previousStatus: AUTH_STATES.PENDING_REVIEW,
-      newStatus: AUTH_STATES.APPROVED,
+      previousStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
+      newStatus: AUTH_STATES.PENDING_REVIEW,
+      changedBy: 'system',
       metadata: { userId: result.user.id, email: result.user.email }
     });
 
@@ -431,10 +449,12 @@ class AffiliateAuthService {
     return result;
   }
 
+  // FIX B-13: Removed hardcoded fallback email ('revluma.ai@gmail.com').
+  // If neither env var is set, log an error and skip the notification.
   async sendVettingNotification(affiliateProfile, applicantEmail) {
-    const vettingEmail = process.env.AFFILIATE_VETTING_EMAIL || process.env.RAPP_VETTING_EMAIL || 'revluma.ai@gmail.com';
+    const vettingEmail = process.env.AFFILIATE_VETTING_EMAIL || process.env.RAPP_VETTING_EMAIL;
     if (!vettingEmail) {
-      logger.warn('AFFILIATE_VETTING_EMAIL not configured - skipping vetting notification');
+      logger.error('AFFILIATE_VETTING_EMAIL is not configured — skipping vetting notification. Set AFFILIATE_VETTING_EMAIL in environment.');
       return;
     }
 
@@ -477,7 +497,6 @@ class AffiliateAuthService {
       throw error;
     }
   }
-
 }
 
 module.exports = new AffiliateAuthService();

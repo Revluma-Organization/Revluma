@@ -4,7 +4,9 @@ const { prisma } = require('../services/prisma');
 const logger = require('../utils/logger');
 
 const SESSION_EXPIRY_DAYS = Number(process.env.SESSION_EXPIRY_DAYS || '7');
-const CSRF_TOKEN_TTL_MS = 30 * 60 * 1000;
+// FIX A-08: CSRF TTL now matches the session window to prevent spurious 403s
+// on clients that go quiet for >30 minutes within an active 7-day session.
+const CSRF_TOKEN_TTL_MS = SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
 const isProduction = process.env.NODE_ENV === 'production';
 const CSRF_SECRET = process.env.CSRF_SECRET || process.env.JWT_SECRET;
 const COOKIE_NAME = 'revluma_session';
@@ -54,6 +56,7 @@ function validateCsrfToken(token, userId) {
       return false;
     }
 
+    // FIX A-08: Use the extended CSRF_TOKEN_TTL_MS (matches session window)
     if (Date.now() - Number(timestamp) > CSRF_TOKEN_TTL_MS) {
       return false;
     }
@@ -72,7 +75,6 @@ async function createSession(tenantId, userId, res, req = null) {
   const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
   try {
-    // Attempt to create the session row and capture the created record for diagnostics
     const created = await prisma.userSession.create({
       data: {
         userId,
@@ -84,10 +86,8 @@ async function createSession(tenantId, userId, res, req = null) {
       }
     });
 
-    // Set cookie for the raw token so the browser stores the session identifier (HTTP-only)
     setSessionCookie(res, rawToken);
 
-    // Log an abbreviated tokenHash for traceability without leaking secrets
     logger.info('AUTH_EVENT', {
       event: 'session_created',
       userId,
@@ -98,10 +98,8 @@ async function createSession(tenantId, userId, res, req = null) {
       userAgent: req?.headers['user-agent'] || 'unknown'
     });
 
-    // Return the raw token to be used by the caller (note: raw token is not persisted)
     return { token: rawToken, expiresAt, sessionId: created.id };
   } catch (error) {
-    // Log full error details for debugging (avoid leaking sensitive token material)
     logger.error('Session creation failed', { error: error.message, userId, tenantId });
     throw error;
   }
@@ -152,7 +150,8 @@ async function validateSession(req, res) {
             fullName: true,
             emailVerified: true,
             role: true,
-            tenantId: true
+            tenantId: true,
+            onboardingStatus: true
           }
         }
       }
@@ -169,16 +168,13 @@ async function validateSession(req, res) {
       return null;
     }
 
-    // Sliding window: extend session by 7 days on successful validation
+    // Sliding window: extend session by SESSION_EXPIRY_DAYS on successful validation
     const newExpiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
     await prisma.userSession.update({
       where: { tokenHash },
-      data: {
-        expiresAt: newExpiresAt
-      }
+      data: { expiresAt: newExpiresAt }
     });
 
-    // Reset cookie with new expiry
     setSessionCookie(res, sessionId);
 
     return {
@@ -250,7 +246,6 @@ const csrfProtection = async (req, res, next) => {
   const token = authHeader.slice('Bearer '.length);
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
-    // For JWT tokens, validate CSRF based on user ID in token
     if (!validateCsrfToken(csrfToken, decoded.id)) {
       logger.warn('Invalid CSRF token for JWT user', { ip: req.ip, userId: decoded.id, url: req.originalUrl });
       return res.status(403).json({ error: 'Invalid CSRF token' });
@@ -302,11 +297,14 @@ const authenticate = async (req, res, next) => {
       return res.status(403).json({ error: 'Email verification required' });
     }
 
+    // FIX: Normalise JWT user shape to match session user shape (use tenantId not tenant_id)
     req.user = {
       id: decoded.id,
       email: decoded.email,
+      tenantId: decoded.tenant_id,
       tenant_id: decoded.tenant_id,
       role: decoded.role || 'user',
+      emailVerified: decoded.emailVerified,
       email_verified: decoded.emailVerified
     };
 
@@ -327,7 +325,7 @@ const authenticate = async (req, res, next) => {
 };
 
 const requireOnboarding = async (req, res, next) => {
-  const tenant_id = req.user?.tenant_id;
+  const tenant_id = req.user?.tenantId || req.user?.tenant_id;
 
   if (!tenant_id) {
     return res.status(400).json({ error: 'Tenant information is missing' });

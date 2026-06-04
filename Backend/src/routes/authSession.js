@@ -5,8 +5,8 @@
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
+const rateLimit = require('express-rate-limit');
 const { prisma } = require('../services/prisma');
 const logger = require('../utils/logger');
 const { validatePasswordStrength, validateEmail, normalizeEmail, checkPasswordHistory } = require('../lib/auth-utils');
@@ -50,6 +50,10 @@ const refreshLimiter = rateLimit({
   legacyHeaders: false
 });
 
+// FIX A-05: Reduced lockout threshold from 10 to 5 failed attempts
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const ACCOUNT_LOCKOUT_MINUTES = 15;
+
 function sendErrorResponse(res, statusCode, message, code, detail = null) {
   const correlationId = res.getHeader('X-Correlation-ID') || 'unknown';
   const body = { error: message, code, correlationId };
@@ -91,9 +95,8 @@ router.get('/health', async (req, res) => {
 // Use /api/auth/register for the deferred-verification flow
 router.post('/signup', signupLimiter, async (req, res) => {
   // Block affiliate registrations from using this route
-  // Affiliates must use /api/affiliate-auth/register
   if (req.headers['x-affiliate-portal'] === 'true') {
-    return sendErrorResponse(res, 400, 
+    return sendErrorResponse(res, 400,
       'Affiliate registrations must use the affiliate registration endpoint.',
       'USE_AFFILIATE_AUTH');
   }
@@ -174,6 +177,8 @@ router.post('/signup', signupLimiter, async (req, res) => {
 });
 
 // LOGIN
+// FIX A-05: Lockout threshold reduced to 5
+// FIX B-05: Affiliate status check at login time
 router.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = req.body;
   const normalizedEmail = normalizeEmail(email);
@@ -193,7 +198,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       return sendErrorResponse(
         res, 423,
         `Account locked due to too many failed attempts. Try again in ${remainingMinutes} minutes.`,
-        'ACCOUNT_SUSPENDED'
+        'ACCOUNT_LOCKED'
       );
     }
 
@@ -201,8 +206,9 @@ router.post('/login', loginLimiter, async (req, res) => {
     if (!validPassword) {
       const newAttempts = (user.failedLoginAttempts || 0) + 1;
       const updateData = { failedLoginAttempts: newAttempts };
-      if (newAttempts >= 10) {
-        updateData.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+      // FIX A-05: Lock after 5 failed attempts (was 10)
+      if (newAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+        updateData.lockedUntil = new Date(Date.now() + ACCOUNT_LOCKOUT_MINUTES * 60 * 1000);
         updateData.failedLoginAttempts = 0;
         logger.warn('Account locked due to failed login attempts', { userId: user.id, email: normalizedEmail });
       }
@@ -212,6 +218,32 @@ router.post('/login', loginLimiter, async (req, res) => {
 
     if (!user.emailVerified) {
       return sendErrorResponse(res, 403, 'Email verification required', 'EMAIL_NOT_VERIFIED');
+    }
+
+    // FIX B-05: Check affiliate status at login — suspended/rejected affiliates must be blocked
+    if (user.role === 'affiliate') {
+      const affiliateProfile = await prisma.affiliateProfile.findUnique({
+        where: { userId: user.id },
+        select: { status: true, rejectedReason: true, suspendedReason: true }
+      });
+      if (affiliateProfile) {
+        if (affiliateProfile.status === 'SUSPENDED') {
+          logger.warn('Suspended affiliate login attempt blocked', { userId: user.id, email: normalizedEmail });
+          return sendErrorResponse(
+            res, 403,
+            affiliateProfile.suspendedReason || 'Your account has been suspended. Please contact support.',
+            'ACCOUNT_SUSPENDED'
+          );
+        }
+        if (affiliateProfile.status === 'REJECTED') {
+          logger.warn('Rejected affiliate login attempt blocked', { userId: user.id, email: normalizedEmail });
+          return sendErrorResponse(
+            res, 403,
+            affiliateProfile.rejectedReason || 'Your application was not approved.',
+            'ACCOUNT_REJECTED'
+          );
+        }
+      }
     }
 
     await prisma.user.update({
@@ -338,7 +370,6 @@ router.get('/csrf-token', async (req, res) => {
     const csrfToken = generateCsrfToken(sessionAuth.user.id);
     return res.status(200).json({ csrfToken, authenticated: true });
   }
-  // Return a token for unauthenticated requests (e.g. login form)
   const tempId = `anon_${crypto.randomBytes(8).toString('hex')}`;
   const csrfToken = generateCsrfToken(tempId);
   return res.status(200).json({ csrfToken, authenticated: false });
@@ -369,6 +400,7 @@ router.get('/validate', csrfProtection, async (req, res) => {
 });
 
 // VERIFY EMAIL (session-based flow)
+// FIX A-03: Compare against SHA-256 hash of the stored code
 router.post('/verify-email', csrfProtection, async (req, res) => {
   const sessionAuth = await validateSession(req, res);
   if (!sessionAuth) {
@@ -398,11 +430,18 @@ router.post('/verify-email', csrfProtection, async (req, res) => {
       return sendErrorResponse(res, 400, 'Verification code expired or not sent', 'CODE_EXPIRED');
     }
 
-    // Codes stored in plaintext (6-digit OTP); use constant-time comparison
-    const isValid = crypto.timingSafeEqual(
-      Buffer.from(code.trim()),
-      Buffer.from(verificationCode.code)
-    );
+    // FIX A-03: Hash the provided code and compare against stored SHA-256 hash
+    const providedHash = crypto.createHash('sha256').update(code.trim()).digest('hex');
+    let isValid = false;
+    try {
+      isValid = crypto.timingSafeEqual(
+        Buffer.from(providedHash, 'hex'),
+        Buffer.from(verificationCode.code, 'hex')
+      );
+    } catch {
+      isValid = false;
+    }
+
     if (!isValid) {
       return sendErrorResponse(res, 400, 'Invalid verification code', 'INVALID_CODE');
     }

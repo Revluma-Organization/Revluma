@@ -10,8 +10,8 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 
-// Load environment variables
-dotenv.config();
+// Load environment variables from the Affiliate folder's .env
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 // Ensure double-checking port binding defaults
 const PORT = 3000;

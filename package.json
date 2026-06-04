@@ -17,7 +17,7 @@
     "start:dev": "node server.js"
   },
   "prisma": {
-    "schema": "prisma/schema.prisma"
+    "schema": "Backend/prisma/schema.prisma"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

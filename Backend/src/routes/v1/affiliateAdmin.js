@@ -1,19 +1,24 @@
 ﻿/**
  * Affiliate Admin Routes
  * Admin-only endpoints for affiliate approval and management
+ *
+ * FIX (B-10 related): approvedBy, rejectedAt, rejectedBy, suspendedAt, suspendedBy,
+ *   reviewNotes, statusUpdatedAt, statusUpdatedBy are now in the schema (see schema.prisma).
+ * FIX (B-09 related): Session invalidation added on suspend and reject — active sessions
+ *   are immediately killed when an affiliate's status changes to SUSPENDED or REJECTED.
  */
 
 const express = require('express');
 const { prisma } = require('../../services/prisma');
 const logger = require('../../utils/logger');
 const { requireRole } = require('../../middleware/roleAuth');
+const { invalidateAllUserSessions } = require('../../middleware/sessionAuth');
 
 const router = express.Router();
 const adminOnly = requireRole(['admin']);
 
 /**
  * GET /api/affiliate/admin/pending-applications
- * Get all pending affiliate applications
  */
 router.get('/pending-applications', adminOnly, async (req, res) => {
   try {
@@ -22,7 +27,7 @@ router.get('/pending-applications', adminOnly, async (req, res) => {
 
     const [applications, total] = await Promise.all([
       prisma.affiliateProfile.findMany({
-        where: { status: 'PENDING' },
+        where: { status: 'PENDING_REVIEW' },
         include: {
           user: {
             select: {
@@ -38,7 +43,7 @@ router.get('/pending-applications', adminOnly, async (req, res) => {
         skip,
         take: parseInt(limit)
       }),
-      prisma.affiliateProfile.count({ where: { status: 'PENDING' } })
+      prisma.affiliateProfile.count({ where: { status: 'PENDING_REVIEW' } })
     ]);
 
     res.status(200).json({
@@ -61,7 +66,6 @@ router.get('/pending-applications', adminOnly, async (req, res) => {
 
 /**
  * PATCH /api/affiliate/admin/approve/:affiliateId
- * Approve affiliate application
  */
 router.patch('/approve/:affiliateId', adminOnly, async (req, res) => {
   try {
@@ -69,41 +73,33 @@ router.patch('/approve/:affiliateId', adminOnly, async (req, res) => {
     const { notes } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
-      // Get current profile
       const profile = await tx.affiliateProfile.findUnique({
         where: { id: affiliateId },
         include: { user: true }
       });
 
-      if (!profile) {
-        throw new Error('AFFILIATE_NOT_FOUND');
-      }
+      if (!profile) throw new Error('AFFILIATE_NOT_FOUND');
+      if (profile.status === 'APPROVED') throw new Error('ALREADY_APPROVED');
 
-      if (profile.status === 'APPROVED') {
-        throw new Error('ALREADY_APPROVED');
-      }
-
-      // Update profile
       const updatedProfile = await tx.affiliateProfile.update({
         where: { id: affiliateId },
         data: {
           status: 'APPROVED',
           approvedAt: new Date(),
           approvedBy: req.user.id,
-          reviewNotes: notes,
+          reviewNotes: notes || null,
           statusUpdatedAt: new Date(),
           statusUpdatedBy: req.user.id
         }
       });
 
-      // Log status change
       await tx.affiliateStatusAuditLog.create({
         data: {
           affiliateProfileId: affiliateId,
           previousStatus: profile.status,
           newStatus: 'APPROVED',
           changedBy: req.user.id,
-          notes,
+          notes: notes || null,
           metadata: {
             adminEmail: req.user.email,
             timestamp: new Date().toISOString()
@@ -111,23 +107,14 @@ router.patch('/approve/:affiliateId', adminOnly, async (req, res) => {
         }
       });
 
-      // Generate referral link if doesn't exist
-      const existingLink = await tx.referralLink.findFirst({
-        where: { affiliateId }
-      });
-
+      const existingLink = await tx.referralLink.findFirst({ where: { affiliateId } });
       if (!existingLink) {
         const crypto = require('crypto');
         const uniqueId = crypto.randomBytes(4).toString('hex');
         const referralCode = `${profile.username}-${uniqueId}`;
 
         await tx.referralLink.create({
-          data: {
-            affiliateId,
-            username: profile.username,
-            uniqueId,
-            referralCode
-          }
+          data: { affiliateId, username: profile.username, uniqueId, referralCode }
         });
       }
 
@@ -140,13 +127,10 @@ router.patch('/approve/:affiliateId', adminOnly, async (req, res) => {
       email: result.user.email
     });
 
-    // Send welcome email (non-blocking)
     const emailService = require('../../services/emailService');
     const config = require('../../config/environment');
-    const referralLink = await prisma.referralLink.findFirst({
-      where: { affiliateId }
-    });
-    
+    const referralLink = await prisma.referralLink.findFirst({ where: { affiliateId } });
+
     if (referralLink) {
       const fullLink = config.getAffiliateLink(result.profile.username, referralLink.uniqueId);
       emailService.sendAffiliateWelcomeEmail(
@@ -155,10 +139,7 @@ router.patch('/approve/:affiliateId', adminOnly, async (req, res) => {
         fullLink,
         result.profile.username
       ).catch(err => {
-        logger.error('Failed to send welcome email', {
-          error: err.message,
-          affiliateId
-        });
+        logger.error('Failed to send welcome email', { error: err.message, affiliateId });
       });
     }
 
@@ -178,7 +159,6 @@ router.patch('/approve/:affiliateId', adminOnly, async (req, res) => {
     if (error.message === 'AFFILIATE_NOT_FOUND') {
       return res.status(404).json({ error: 'Affiliate not found' });
     }
-
     if (error.message === 'ALREADY_APPROVED') {
       return res.status(400).json({ error: 'Affiliate already approved' });
     }
@@ -189,7 +169,7 @@ router.patch('/approve/:affiliateId', adminOnly, async (req, res) => {
 
 /**
  * PATCH /api/affiliate/admin/reject/:affiliateId
- * Reject affiliate application
+ * FIX: Invalidate all active sessions for the rejected affiliate.
  */
 router.patch('/reject/:affiliateId', adminOnly, async (req, res) => {
   try {
@@ -202,12 +182,11 @@ router.patch('/reject/:affiliateId', adminOnly, async (req, res) => {
 
     const result = await prisma.$transaction(async (tx) => {
       const profile = await tx.affiliateProfile.findUnique({
-        where: { id: affiliateId }
+        where: { id: affiliateId },
+        include: { user: { select: { id: true, tenantId: true } } }
       });
 
-      if (!profile) {
-        throw new Error('AFFILIATE_NOT_FOUND');
-      }
+      if (!profile) throw new Error('AFFILIATE_NOT_FOUND');
 
       const updatedProfile = await tx.affiliateProfile.update({
         where: { id: affiliateId },
@@ -216,7 +195,7 @@ router.patch('/reject/:affiliateId', adminOnly, async (req, res) => {
           rejectedAt: new Date(),
           rejectedBy: req.user.id,
           rejectedReason: reason,
-          reviewNotes: notes,
+          reviewNotes: notes || null,
           statusUpdatedAt: new Date(),
           statusUpdatedBy: req.user.id
         }
@@ -229,7 +208,7 @@ router.patch('/reject/:affiliateId', adminOnly, async (req, res) => {
           newStatus: 'REJECTED',
           changedBy: req.user.id,
           reason,
-          notes,
+          notes: notes || null,
           metadata: {
             adminEmail: req.user.email,
             timestamp: new Date().toISOString()
@@ -237,8 +216,20 @@ router.patch('/reject/:affiliateId', adminOnly, async (req, res) => {
         }
       });
 
-      return updatedProfile;
+      return { updatedProfile, userId: profile.user?.id, tenantId: profile.user?.tenantId };
     });
+
+    // Invalidate all active sessions for the rejected affiliate (non-blocking after tx commits)
+    if (result.userId) {
+      try {
+        const count = await invalidateAllUserSessions(result.userId, result.tenantId);
+        logger.info('Rejected affiliate sessions invalidated', { affiliateId, userId: result.userId, count });
+      } catch (sessionErr) {
+        logger.error('Failed to invalidate sessions after affiliate rejection', {
+          error: sessionErr.message, affiliateId, userId: result.userId
+        });
+      }
+    }
 
     logger.info('Affiliate rejected by admin', {
       affiliateId,
@@ -248,9 +239,9 @@ router.patch('/reject/:affiliateId', adminOnly, async (req, res) => {
 
     res.status(200).json({
       message: 'Affiliate rejected',
-      affiliateId: result.id,
-      status: result.status,
-      rejectedAt: result.rejectedAt
+      affiliateId: result.updatedProfile.id,
+      status: result.updatedProfile.status,
+      rejectedAt: result.updatedProfile.rejectedAt
     });
   } catch (error) {
     logger.error('Reject affiliate failed', {
@@ -269,7 +260,7 @@ router.patch('/reject/:affiliateId', adminOnly, async (req, res) => {
 
 /**
  * PATCH /api/affiliate/admin/suspend/:affiliateId
- * Suspend affiliate account
+ * FIX: Invalidate all active sessions for the suspended affiliate.
  */
 router.patch('/suspend/:affiliateId', adminOnly, async (req, res) => {
   try {
@@ -282,12 +273,11 @@ router.patch('/suspend/:affiliateId', adminOnly, async (req, res) => {
 
     const result = await prisma.$transaction(async (tx) => {
       const profile = await tx.affiliateProfile.findUnique({
-        where: { id: affiliateId }
+        where: { id: affiliateId },
+        include: { user: { select: { id: true, tenantId: true } } }
       });
 
-      if (!profile) {
-        throw new Error('AFFILIATE_NOT_FOUND');
-      }
+      if (!profile) throw new Error('AFFILIATE_NOT_FOUND');
 
       const updatedProfile = await tx.affiliateProfile.update({
         where: { id: affiliateId },
@@ -296,7 +286,7 @@ router.patch('/suspend/:affiliateId', adminOnly, async (req, res) => {
           suspendedAt: new Date(),
           suspendedBy: req.user.id,
           suspendedReason: reason,
-          reviewNotes: notes,
+          reviewNotes: notes || null,
           statusUpdatedAt: new Date(),
           statusUpdatedBy: req.user.id
         }
@@ -309,7 +299,7 @@ router.patch('/suspend/:affiliateId', adminOnly, async (req, res) => {
           newStatus: 'SUSPENDED',
           changedBy: req.user.id,
           reason,
-          notes,
+          notes: notes || null,
           metadata: {
             adminEmail: req.user.email,
             timestamp: new Date().toISOString()
@@ -317,8 +307,20 @@ router.patch('/suspend/:affiliateId', adminOnly, async (req, res) => {
         }
       });
 
-      return updatedProfile;
+      return { updatedProfile, userId: profile.user?.id, tenantId: profile.user?.tenantId };
     });
+
+    // Immediately invalidate all active sessions for the suspended affiliate
+    if (result.userId) {
+      try {
+        const count = await invalidateAllUserSessions(result.userId, result.tenantId);
+        logger.info('Suspended affiliate sessions invalidated', { affiliateId, userId: result.userId, count });
+      } catch (sessionErr) {
+        logger.error('Failed to invalidate sessions after affiliate suspension', {
+          error: sessionErr.message, affiliateId, userId: result.userId
+        });
+      }
+    }
 
     logger.info('Affiliate suspended by admin', {
       affiliateId,
@@ -328,9 +330,9 @@ router.patch('/suspend/:affiliateId', adminOnly, async (req, res) => {
 
     res.status(200).json({
       message: 'Affiliate suspended',
-      affiliateId: result.id,
-      status: result.status,
-      suspendedAt: result.suspendedAt
+      affiliateId: result.updatedProfile.id,
+      status: result.updatedProfile.status,
+      suspendedAt: result.updatedProfile.suspendedAt
     });
   } catch (error) {
     logger.error('Suspend affiliate failed', {
@@ -349,7 +351,6 @@ router.patch('/suspend/:affiliateId', adminOnly, async (req, res) => {
 
 /**
  * GET /api/affiliate/admin/status-audit/:affiliateId
- * Get status change audit log for affiliate
  */
 router.get('/status-audit/:affiliateId', adminOnly, async (req, res) => {
   try {
