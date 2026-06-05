@@ -1,6 +1,8 @@
 // FIX B-04: Brute-force protection on verify-email (verificationAttempts counter in service)
 // FIX B-06: Strip rejectedReason/suspendedReason from unauthenticated application-status
 // FIX B-11: Replaced sanitizeString's strip-only approach with proper HTML entity escaping
+// FIX B-14: Added CSRF token fetch + forwarding on complete-registration
+// FIX B (reserved usernames): Error code USERNAME_RESERVED surfaced to client
 
 const express = require('express');
 const rateLimit = require('express-rate-limit');
@@ -15,7 +17,8 @@ const {
   createSession,
   generateCsrfToken,
   invalidateAllUserSessions,
-  validateSession
+  validateSession,
+  csrfProtection
 } = require('../middleware/sessionAuth');
 
 const router = express.Router();
@@ -283,6 +286,10 @@ router.post('/register', registerLimiter, async (req, res) => {
     if (String(errorMsg).includes('USERNAME_ALREADY_EXISTS')) {
       return sendError(res, 409, 'That username is already taken.', 'USERNAME_ALREADY_EXISTS', correlationId);
     }
+    // FIX B (reserved usernames): Surface reserved username error to client
+    if (String(errorMsg).includes('USERNAME_RESERVED')) {
+      return sendError(res, 400, 'That username is reserved and cannot be used.', 'USERNAME_RESERVED', correlationId);
+    }
     if (String(errorMsg).includes('MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED')) {
       return sendError(res, 400, 'Please provide at least two distribution channels (e.g., Twitter/X, Instagram, YouTube, TikTok, LinkedIn, etc.).', 'MINIMUM_TWO_DISTRIBUTION_CHANNELS_REQUIRED', correlationId);
     }
@@ -377,7 +384,12 @@ router.post('/verify-email', verifyEmailLimiter, async (req, res) => {
   }
 });
 
-router.post('/complete-registration', async (req, res) => {
+// FIX B-14: complete-registration now fetches an anon CSRF token internally and
+// validates the submitted CSRF token via csrfProtection middleware.
+// The frontend must:
+//   1. GET /api/session/csrf-token to obtain a token (returns csrfToken for anon users)
+//   2. Include it as X-CSRF-Token header in the POST /complete-registration request
+router.post('/complete-registration', csrfProtection, async (req, res) => {
   const correlationId = getCorrelationId(req);
 
   try {

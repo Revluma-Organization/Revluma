@@ -5,6 +5,7 @@
 // FIX B-07: Removed all console.log statements
 // FIX B-08: bcrypt cost 12 for password hash
 // FIX B-13: Removed hardcoded fallback email
+// FIX B (reserved usernames): Added RESERVED_USERNAMES blocklist
 
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -25,6 +26,22 @@ const AUTH_STATES = {
   REJECTED: 'REJECTED',
   SUSPENDED: 'SUSPENDED'
 };
+
+/**
+ * Reserved usernames — affiliates cannot register with these handles.
+ * They are reserved for Revluma system use or to prevent brand impersonation.
+ */
+const RESERVED_USERNAMES = new Set([
+  'admin', 'administrator', 'root', 'system', 'revluma', 'revluma_ai', 'revlumaai',
+  'support', 'help', 'helpdesk', 'billing', 'security', 'abuse', 'postmaster',
+  'api', 'www', 'mail', 'email', 'info', 'sales', 'team', 'staff', 'ops',
+  'partner', 'partners', 'affiliate', 'affiliates', 'marketing', 'press',
+  'legal', 'privacy', 'terms', 'contact', 'hello', 'hi', 'hey', 'webmaster',
+  'careers', 'jobs', 'intern', 'bot', 'robots', 'sitemap', 'feed', 'rss',
+  'anonymous', 'user', 'guest', 'test', 'demo', 'sample', 'example',
+  'null', 'undefined', 'none', 'n_a', 'na', 'delete', 'removed',
+  'moderator', 'mod', 'official'
+]);
 
 class AffiliateAuthService {
   async logAuthEvent(event, payload = {}) {
@@ -87,13 +104,19 @@ class AffiliateAuthService {
   }
 
   async registerAffiliate(data) {
-    const normalizedEmail = data.email.toLowerCase().trim();
+    const normalizedEmail    = data.email.toLowerCase().trim();
+    const normalizedUsername = data.username.toLowerCase().trim();
+
+    // FIX B (reserved usernames): Block system/brand-impersonation handles
+    if (RESERVED_USERNAMES.has(normalizedUsername)) {
+      throw new Error('USERNAME_RESERVED');
+    }
 
     const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) throw new Error('EMAIL_ALREADY_EXISTS');
 
     const existingUsername = await prisma.affiliateProfile.findUnique({
-      where: { username: data.username.toLowerCase().trim() }
+      where: { username: normalizedUsername }
     });
     if (existingUsername) throw new Error('USERNAME_ALREADY_EXISTS');
 
@@ -106,13 +129,13 @@ class AffiliateAuthService {
     const passwordHash = await bcrypt.hash(data.password, 12);
 
     // FIX B-01: Use bcrypt for OTP hash (not SHA-256)
-    // Cost 10 is appropriate for short-lived OTPs (fast enough for the use-case)
-    const verificationCodeHash = await bcrypt.hash(data.verificationCode, 10);
+    // Cost 10 is appropriate for short-lived OTPs (fast enough for the use-case, resistant to rainbow tables)
+    const verificationCodeHash  = await bcrypt.hash(data.verificationCode, 10);
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt             = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const onboardingData = {
-      username: data.username.toLowerCase().trim(),
+      username: normalizedUsername,
       phoneNumber: data.phoneNumber,
       country: data.country,
       twitterHandle: data.twitterHandle,
@@ -205,9 +228,9 @@ class AffiliateAuthService {
     const verificationCode = crypto.randomInt(100000, 999999).toString();
 
     // FIX B-01: Use bcrypt for OTP hash (not SHA-256)
-    const verificationCodeHash = await bcrypt.hash(verificationCode, 10);
+    const verificationCodeHash  = await bcrypt.hash(verificationCode, 10);
     const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt             = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     // FIX B-02: Correct update targeting the known pending record by its ID
     await prisma.pendingRegistration.update({
@@ -279,7 +302,7 @@ class AffiliateAuthService {
       throw new Error('INVALID_VERIFICATION_CODE');
     }
 
-    // Success: reset attempt counter
+    // Success: reset attempt counter, mark verified, advance state
     await prisma.pendingRegistration.update({
       where: { id: pendingId },
       data: {
@@ -419,6 +442,19 @@ class AffiliateAuthService {
       await tx.pendingRegistration.delete({ where: { id: pendingId } });
 
       return { user, affiliateProfile, tenant };
+    });
+
+    // Prune password history beyond 10 entries for this user (defence-in-depth)
+    prisma.passwordHistory.findMany({
+      where: { userId: result.user.id },
+      orderBy: { createdAt: 'asc' }
+    }).then(async (rows) => {
+      if (rows.length > 10) {
+        const toDelete = rows.slice(0, rows.length - 10).map(r => r.id);
+        await prisma.passwordHistory.deleteMany({ where: { id: { in: toDelete } } });
+      }
+    }).catch(err => {
+      logger.warn('Password history pruning failed', { error: err.message, userId: result.user.id });
     });
 
     // FIX B-03: Audit log now correctly reflects PENDING_REVIEW (not APPROVED)

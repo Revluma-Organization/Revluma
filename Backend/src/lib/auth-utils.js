@@ -1,6 +1,10 @@
 /**
  * Shared authentication utilities
  * Single source of truth — do not duplicate these functions in route files
+ *
+ * FIX (Password History Cap): checkPasswordHistory now accepts an optional
+ * pruneAfter parameter (default 10). After checking history, any entries
+ * beyond the cap are deleted to prevent unbounded growth.
  */
 
 /**
@@ -29,7 +33,7 @@ function validatePasswordStrength(password) {
     }
   }
 
-  if (/(.)\1{2,}/.test(password)) {
+  if (/(.)\\1{2,}/.test(password)) {
     return { valid: false, error: 'Password cannot contain repeated characters' };
   }
 
@@ -73,24 +77,40 @@ function normalizeEmail(email) {
  * Fails open — if the DB check errors, allow the password change so users
  * are never locked out by a transient DB failure.
  *
+ * Also prunes old password history entries beyond `pruneAfter` (default 10)
+ * to keep the PasswordHistory table bounded.
+ *
  * @param {import('@prisma/client').PrismaClient} prisma
- * @param {string} userId
- * @param {string} plaintextPassword  — the raw new password to compare
+ * @param {string}  userId
+ * @param {string}  plaintextPassword  — the raw new password to compare
  * @param {import('bcryptjs')} bcrypt
+ * @param {object}  [logger]
+ * @param {number}  [lookback=5]       — number of passwords to check for reuse
+ * @param {number}  [pruneAfter=10]    — cap total history rows per user
  */
-async function checkPasswordHistory(prisma, userId, plaintextPassword, bcrypt, logger) {
+async function checkPasswordHistory(prisma, userId, plaintextPassword, bcrypt, logger, lookback = 5, pruneAfter = 10) {
   try {
-    const recentPasswords = await prisma.passwordHistory.findMany({
+    // Fetch all history for this user ordered newest-first
+    const allPasswords = await prisma.passwordHistory.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: 5
+      orderBy: { createdAt: 'desc' }
     });
 
-    for (const history of recentPasswords) {
+    // Check the most recent `lookback` entries for reuse
+    const toCheck = allPasswords.slice(0, lookback);
+    for (const history of toCheck) {
       const isSame = await bcrypt.compare(plaintextPassword, history.passwordHash);
       if (isSame) {
-        return { valid: false, error: 'You cannot reuse one of your last 5 passwords.' };
+        return { valid: false, error: `You cannot reuse one of your last ${lookback} passwords.` };
       }
+    }
+
+    // Prune entries beyond `pruneAfter` cap (fire-and-forget — non-blocking)
+    if (allPasswords.length > pruneAfter) {
+      const toDelete = allPasswords.slice(pruneAfter).map(r => r.id);
+      prisma.passwordHistory.deleteMany({ where: { id: { in: toDelete } } }).catch(pruneErr => {
+        if (logger) logger.warn('Password history pruning failed', { error: pruneErr.message, userId });
+      });
     }
 
     return { valid: true };
