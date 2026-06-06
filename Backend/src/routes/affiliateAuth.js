@@ -172,7 +172,7 @@ router.get('/check-email', checkEmailLimiter, async (req, res) => {
     }
     const [existingUser, existingPending] = await Promise.all([
       prisma.user.findUnique({ where: { email }, select: { id: true } }),
-      prisma.pendingRegistration.findUnique({ where: { email }, select: { id: true } })
+      prisma.pendingRegistration.findFirst({ where: { email, accountType: 'AFFILIATE' }, select: { id: true } })
     ]);
     const taken = !!(existingUser || existingPending);
     logger.info('check-email completed', { email, taken, ms: Date.now() - start });

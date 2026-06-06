@@ -222,6 +222,12 @@ enum AccountStatus {
   SUSPENDED
 }
 
+
+enum AccountType {
+  USER
+  AFFILIATE
+}
+
 model RappAccessToken {
   id            String    @id @default(uuid())
   token         String    @unique
@@ -441,7 +447,8 @@ model AffiliateNotification {
 
 model PendingRegistration {
   id                    String        @id @default(uuid())
-  email                 String        @unique
+  email                 String
+  accountType           AccountType   @default(USER)
   firstName             String
   lastName              String
   passwordHash          String
@@ -457,8 +464,10 @@ model PendingRegistration {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
+  @@unique([email, accountType], name: "email_accountType")
   @@index([expiresAt])
   @@index([authState])
+  @@index([accountType])
   @@map("pending_registrations")
 }
 

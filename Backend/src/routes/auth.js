@@ -187,7 +187,7 @@ router.post('/register', async (req, res) => {
       return res.status(409).json({ error: 'Email already in use', correlationId });
     }
 
-    const existingPending = await prisma.pendingRegistration.findUnique({ where: { email: normalizedEmail } });
+    const existingPending = await prisma.pendingRegistration.findUnique({ where: { email_accountType: { email: normalizedEmail, accountType: 'USER' } } });
 
     if (existingPending && !existingPending.emailVerified && new Date(existingPending.expiresAt) > new Date()) {
       logger.info('Existing valid pending registration found, resending code', { email: normalizedEmail, correlationId });
@@ -197,7 +197,7 @@ router.post('/register', async (req, res) => {
         const verificationExpiresAt = new Date(Date.now() + VERIFICATION_CODE_EXPIRY_MINUTES * 60 * 1000);
 
         await prisma.pendingRegistration.update({
-          where: { email: normalizedEmail },
+          where: { email_accountType: { email: normalizedEmail, accountType: 'USER' } },
           data: {
             verificationCodeHash,
             verificationExpiresAt,
@@ -230,7 +230,7 @@ router.post('/register', async (req, res) => {
     const expiresAt = new Date(Date.now() + PENDING_REGISTRATION_TTL_HOURS * 60 * 60 * 1000);
 
     const pendingRegistration = await prisma.pendingRegistration.upsert({
-      where: { email: normalizedEmail },
+      where: { email_accountType: { email: normalizedEmail, accountType: 'USER' } },
       update: {
         firstName: resolvedFirstName, lastName: resolvedLastName,
         passwordHash, verificationCodeHash, verificationExpiresAt,
@@ -239,6 +239,7 @@ router.post('/register', async (req, res) => {
         expiresAt, onboardingData: {}, step: 1, updatedAt: new Date()
       },
       create: {
+        accountType: 'USER',
         email: normalizedEmail, firstName: resolvedFirstName, lastName: resolvedLastName,
         passwordHash, verificationCodeHash, verificationExpiresAt,
         verificationAttempts: 0,
