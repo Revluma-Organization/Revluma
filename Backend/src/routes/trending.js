@@ -2,16 +2,33 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const logger = require('../utils/logger');
-const { authenticate } = require('../middleware/sessionAuth');
-const redis = require('../queue/redis').redis; 
+const sessionAuth = require('../middleware/sessionAuth');
+const redisModule = require('../queue/redis');
+
+// Guard: fail loudly at startup if critical dependencies are missing
+const authenticate = sessionAuth.authenticate;
+if (typeof authenticate !== 'function') {
+  throw new Error(
+    '[trending.js] sessionAuth.authenticate is not a function. ' +
+    'Check that ../middleware/sessionAuth exports { authenticate }.'
+  );
+}
+
+// Redis: support both { redis } and direct export patterns
+const redis = redisModule.redis || redisModule.default || redisModule;
+if (!redis || typeof redis.get !== 'function') {
+  throw new Error(
+    '[trending.js] Redis client is not available. ' +
+    'Check that ../queue/redis exports a valid ioredis client.'
+  );
+}
 
 const CACHE_TTL = 300; // 5 min
 const CACHE_PREFIX = 'trending:';
 
-// Rate limit suggestion (apply in server.js or here)
 const limiter = require('express-rate-limit')({
-  windowMs: 60 * 1000, // 1 min
-  max: 100, // 100 req/min per IP
+  windowMs: 60 * 1000,
+  max: 100,
   message: { error: 'Too many requests – slow down' }
 });
 
@@ -24,32 +41,26 @@ router.get('/', async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { region, category, keyword, limit = 20, page = 1, sort = 'velocity_desc' } = req.query;
 
-  // Validation
   const parsedLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
   const parsedPage = Math.max(1, parseInt(page) || 1);
   if (isNaN(parsedLimit) || isNaN(parsedPage)) {
     return res.status(400).json({ error: 'Invalid limit or page' });
   }
 
-  // Cache key (tenant-specific)
   const cacheKey = `${CACHE_PREFIX}query:${tenant_id}:${JSON.stringify({ region, category, keyword, limit: parsedLimit, page: parsedPage, sort })}`;
 
   try {
-    // Check Redis cache
     const cached = await redis.get(cacheKey);
     if (cached) {
       return res.json(JSON.parse(cached));
     }
 
-    // Build safe WHERE (parameterized)
     const whereParts = [];
     const params = [];
     let idx = 1;
 
     if (region) {
-      whereParts.push(`top_regions->>$ ${idx} IS NOT NULL`);
-      params.push(region);
-      idx++;
+      whereParts.push(`top_regions->>'${region}' IS NOT NULL`);
     }
     if (category) {
       whereParts.push(`$${idx} = ANY(top_categories)`);
@@ -64,21 +75,17 @@ router.get('/', async (req, res) => {
 
     const whereSql = whereParts.length ? 'WHERE ' + whereParts.join(' AND ') : '';
 
-    // Sorting (safe enum)
     let orderBy = 'opportunity_score DESC';
     if (sort === 'velocity_desc') orderBy = 'velocity_score DESC';
     if (sort === 'sales_24h_desc') orderBy = 'units_sold_24h DESC';
     if (sort === 'price_asc') orderBy = 'avg_price ASC';
 
-    // Pagination
     const offset = (parsedPage - 1) * parsedLimit;
 
-    // Total count query (accurate pagination)
     const countQuery = `SELECT COUNT(*) FROM trending_products ${whereSql}`;
     const countRes = await db.query(countQuery, params, tenant_id);
     const total = parseInt(countRes.rows[0].count);
 
-    // Data query
     const dataQuery = `
       SELECT id, product_key, name, description, image_urls, avg_price, currency,
              units_sold_24h, units_sold_7d, units_sold_30d, velocity_score,
@@ -105,7 +112,6 @@ router.get('/', async (req, res) => {
       }
     };
 
-    // Cache in Redis
     await redis.set(cacheKey, JSON.stringify(response), 'EX', CACHE_TTL);
 
     logger.info('Trending query served', { tenant_id, params: req.query, count: result.rowCount });
@@ -117,8 +123,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ====================== POST /api/trending (Admin ingest – protected) ======================
-router.post('/', authenticate, async (req, res) => {
+// ====================== POST /api/trending (Admin ingest) ======================
+router.post('/', async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const {
     product_key, name, description, image_urls, avg_price, currency,
@@ -157,9 +163,8 @@ router.post('/', authenticate, async (req, res) => {
       product_key, name, description, image_urls, avg_price, currency,
       units_sold_24h, units_sold_7d, units_sold_30d, velocity_score,
       top_regions, top_categories, external_sources, aggregated_reviews
-    ], tenant_id); // admin tenant or system
+    ], tenant_id);
 
-    // Invalidate cache for this product (precise)
     await redis.del(`${CACHE_PREFIX}query:${tenant_id}:*${product_key}*`);
 
     logger.info('Trending product upserted', { tenant_id, product_key });
@@ -172,7 +177,7 @@ router.post('/', authenticate, async (req, res) => {
 });
 
 // ====================== INTELLIGENCE ENDPOINT ======================
-router.get('/intelligence', authenticate, async (req, res) => {
+router.get('/intelligence', async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { region, category, min_score = 70, status, limit = 50 } = req.query;
 
@@ -192,9 +197,7 @@ router.get('/intelligence', authenticate, async (req, res) => {
     let idx = 3;
 
     if (region) {
-      query += ` AND p.top_regions->>$ ${idx} IS NOT NULL`;
-      params.push(region);
-      idx++;
+      query += ` AND p.top_regions->>'${region}' IS NOT NULL`;
     }
     if (category) {
       query += ` AND $${idx} = ANY(p.top_categories)`;
@@ -225,8 +228,8 @@ router.get('/intelligence', authenticate, async (req, res) => {
   }
 });
 
-// ====================== EXPORT & AD COPY ======================
-router.get('/export', authenticate, async (req, res) => {
+// ====================== EXPORT ======================
+router.get('/export', async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { region, category, min_score = 50 } = req.query;
 
@@ -241,7 +244,7 @@ router.get('/export', authenticate, async (req, res) => {
          AND ($3::text IS NULL OR $3 = ANY(p.top_categories))
          AND p.opportunity_score >= $4
        ORDER BY p.opportunity_score DESC LIMIT 200`,
-      [tenant_id, region, category, parsedMinScore],
+      [tenant_id, region || null, category || null, parsedMinScore],
       tenant_id
     );
 
@@ -249,11 +252,13 @@ router.get('/export', authenticate, async (req, res) => {
 
     const csvRows = [
       'Name,Price (avg),Sales 24h,Opportunity Score,Trend Status,Sentiment Summary',
-      ...result.rows.map(r => `"${r.name.replace(/"/g, '""')}",${r.avg_price},${r.units_sold_24h},${r.opportunity_score},${r.predicted_trend_status},"${(r.sentiment_summary || '').replace(/"/g, '""')}"`)
+      ...result.rows.map(r =>
+        `"${r.name.replace(/"/g, '""')}",${r.avg_price},${r.units_sold_24h},${r.opportunity_score},${r.predicted_trend_status},"${(r.sentiment_summary || '').replace(/"/g, '""')}"`
+      )
     ];
 
     res.header('Content-Type', 'text/csv');
-    res.attachment('splendor_trending_export.csv');
+    res.attachment('revluma_trending_export.csv');
     res.send(csvRows.join('\n'));
   } catch (err) {
     logger.error('CSV export failed', { tenant_id, error: err.message });
@@ -261,7 +266,8 @@ router.get('/export', authenticate, async (req, res) => {
   }
 });
 
-router.get('/ad-copy/:product_key', authenticate, async (req, res) => {
+// ====================== AD COPY ======================
+router.get('/ad-copy/:product_key', async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { product_key } = req.params;
 
@@ -278,12 +284,12 @@ router.get('/ad-copy/:product_key', authenticate, async (req, res) => {
 
     const p = result.rows[0];
     const copy = `
-      🔥 HOT ALERT: ${p.name} is trending HARD!
-      ${p.units_sold_24h}+ sold in last 24h • Score: ${p.opportunity_score}/100
-      ${p.sentiment_summary || 'Customers loving it!'}
-      Price: ${p.avg_price} ${p.currency}
-      Add to your store NOW before stock runs out!
-      #Trending #TikTokShop #EcommerceWins
+🔥 HOT ALERT: ${p.name} is trending HARD!
+${p.units_sold_24h}+ sold in last 24h • Score: ${p.opportunity_score}/100
+${p.sentiment_summary || 'Customers loving it!'}
+Price: ${p.avg_price} ${p.currency}
+Add to your store NOW before stock runs out!
+#Trending #TikTokShop #EcommerceWins
     `.trim();
 
     res.json({ ad_copy: copy, product: p });
