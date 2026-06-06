@@ -160,7 +160,7 @@ class AffiliateAuthService {
     };
 
     const pendingRegistration = await prisma.pendingRegistration.upsert({
-      where: { email: normalizedEmail },
+      where: { email_accountType: { email: normalizedEmail, accountType: 'AFFILIATE' } },
       update: {
         firstName: data.firstName,
         lastName: data.lastName,
@@ -178,6 +178,7 @@ class AffiliateAuthService {
       },
       create: {
         email: normalizedEmail,
+        accountType: 'AFFILIATE',
         firstName: data.firstName,
         lastName: data.lastName,
         passwordHash,
