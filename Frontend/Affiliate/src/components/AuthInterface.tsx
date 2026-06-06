@@ -865,18 +865,42 @@ export default function AuthInterface({
   if (authMode === 'verifyEmail') {
     return (
       <PageWrap>
-        <LogoHeader subtitle="Verify Your Email" />
-        <div className="text-center -mt-2">
-          <p className="text-sm text-zinc-400">
-            We sent a 6-digit code to{' '}
-            <span className="text-violet-400 font-medium">{pendingEmail}</span>
-          </p>
+        {/* Header */}
+        <div className="text-center space-y-3">
+          <div className="flex items-center justify-center mb-1">
+            <img src={revlumaLogo} alt="Revluma" className="h-10 w-auto" />
+          </div>
+          <div className="mx-auto w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/25 flex items-center justify-center">
+            <Mail className="w-7 h-7 text-violet-400" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-zinc-100">Check your inbox</h1>
+            <p className="text-sm text-zinc-400 mt-1">We sent a 6-digit code to</p>
+            <p className="text-sm font-semibold text-violet-400 mt-0.5">{pendingEmail}</p>
+          </div>
         </div>
+
         <Card>
           {renderAlert(errorText, 'error')}
           {renderAlert(successText, 'success')}
 
-          <OTPInput value={verifyCode} onChange={setVerifyCode} />
+          {/* OTP input section */}
+          <div className="text-center space-y-4">
+            <p className="text-xs text-zinc-500 uppercase tracking-widest font-semibold">
+              Enter verification code
+            </p>
+            <OTPInput value={verifyCode} onChange={setVerifyCode} />
+            {verifyCode.length > 0 && verifyCode.length < 6 && (
+              <p className="text-xs text-zinc-600">
+                {6 - verifyCode.length} digit{6 - verifyCode.length !== 1 ? 's' : ''} remaining
+              </p>
+            )}
+            {verifyCode.length === 6 && !isLoading && (
+              <p className="text-xs text-violet-400 flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Code complete — verifying…
+              </p>
+            )}
+          </div>
 
           <button
             type="button"
@@ -884,9 +908,17 @@ export default function AuthInterface({
             onClick={handleVerifyEmail}
             className={btnPrimary}
           >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckSquare className="w-4 h-4" />}
-            {isLoading ? 'Verifying...' : 'Verify Email'}
+            {isLoading
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</>
+              : <><CheckSquare className="w-4 h-4" /> Verify Email</>
+            }
           </button>
+
+          <div className="relative flex items-center gap-3">
+            <div className="flex-1 h-px bg-zinc-800" />
+            <span className="text-xs text-zinc-600">didn't receive it?</span>
+            <div className="flex-1 h-px bg-zinc-800" />
+          </div>
 
           <button
             type="button"
@@ -898,6 +930,7 @@ export default function AuthInterface({
             Resend Code
           </button>
         </Card>
+
         <p className="text-center text-xs text-zinc-500">
           Already verified?{' '}
           <button onClick={() => goToMode('login')} className="text-violet-400 hover:underline font-medium">
