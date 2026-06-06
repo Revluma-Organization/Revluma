@@ -116,6 +116,12 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'healthy', ts: Date.now() });
 });
 
+// /api/health — keep-alive ping target for GitHub Actions + uptime monitors
+// Lightweight: no DB/Redis dependency so it responds instantly even on cold start
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // ============================================================
 // Auth Routes
 // ============================================================
@@ -276,8 +282,8 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'Frontend', 'index.html'));
 });
 
-// Health check
-app.get('/health', async (req, res) => {
+// Deep health check — includes DB + Redis status (for internal monitoring)
+app.get('/api/health/deep', async (req, res) => {
   try {
     const dbHealthy = await checkConnection();
     const redisHealthy = await checkRedisHealth();
