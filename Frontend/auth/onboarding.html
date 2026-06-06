@@ -1264,21 +1264,17 @@
     const stepCounter = document.getElementById('stepCounter');
 
     // ====================== API ======================
-    const API_BASE = window.APP_API_BASE?.replace(/\/$/, '') || (() => {
-      const hostname = (window.location.hostname || '').toLowerCase();
-      const isVercelHost = hostname.endsWith('.vercel.app') || hostname.endsWith('.vercel.sh');
-      const isRenderHost = hostname === 'revluma.onrender.com' || hostname.endsWith('.revluma.onrender.com');
-      const isCustomDomain = hostname === 'revluma.com' || hostname.endsWith('.revluma.com');
-      const isRevlumaHost = hostname.includes('revluma');
-      const isProduction = isRenderHost || (isVercelHost && isRevlumaHost) || isCustomDomain;
-
+    // FIX: Use same-origin /api on Vercel so requests go through the vercel.json
+    // proxy rewrite (→ Render). Using absolute Render URL directly causes
+    // cross-origin failures on cold starts and cookie SameSite issues.
+    const API_BASE = (() => {
       if (window.location.protocol === 'file:' || !window.location.origin) {
         return 'http://localhost:5000/api';
       }
-      if (isProduction) {
-        return 'https://revluma.onrender.com/api';
-      }
-      return `${window.location.origin}/api`;
+      const hostname = (window.location.hostname || '').toLowerCase();
+      const isRenderHost = hostname === 'revluma.onrender.com' || hostname.endsWith('.revluma.onrender.com');
+      if (isRenderHost) return 'https://revluma.onrender.com/api';
+      return `${window.location.origin.replace(/\/+$/, '')}/api`;
     })();
 
     state.pendingToken = localStorage.getItem('revluma_pending_token');

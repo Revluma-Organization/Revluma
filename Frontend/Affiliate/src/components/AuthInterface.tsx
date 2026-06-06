@@ -209,14 +209,15 @@ export default function AuthInterface({
   // Attempt backend warmup on mount. Once the health endpoint responds we
   // consider the backend ready and allow registration submissions to proceed
   // immediately. If it isn't ready yet we check again right before submit.
+  // FIX: Increased to 6 attempts with 15s timeout each to handle Render cold starts (~30-50s).
   useEffect(() => {
     let cancelled = false;
-    async function warmUp(attempts = 3) {
+    async function warmUp(attempts = 6) {
       for (let i = 0; i < attempts; i++) {
         if (cancelled) return;
         try {
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 10000);
+          const timeout = setTimeout(() => controller.abort(), 15000);
           const res = await fetch('/api/affiliate-auth/health', { signal: controller.signal });
           clearTimeout(timeout);
           if (res.ok) {
@@ -228,7 +229,8 @@ export default function AuthInterface({
           console.log(`[WarmUp] Backend not ready (attempt ${i + 1})`);
         }
         if (i < attempts - 1) {
-          await new Promise(r => setTimeout(r, 3000 * (i + 1)));
+          const delay = Math.min(5000 + i * 3000, 15000);
+          await new Promise(r => setTimeout(r, delay));
         }
       }
       console.warn('[WarmUp] Backend did not respond after all attempts');
@@ -562,10 +564,13 @@ export default function AuthInterface({
 
     if (!backendReady) {
       console.warn('[Register] Backend not ready — will attempt anyway, may hit cold start');
+      // FIX: Show an informational message so the user knows the server is waking up
+      // rather than seeing a confusing timeout error immediately.
+      setErrorText('The server is starting up (this can take ~30 seconds on first use). Submitting now — please wait...');
     }
 
     setIsLoading(true);
-    setErrorText('');
+    if (backendReady) setErrorText('');
     console.log('[Register] Building payload...');
 
     try {

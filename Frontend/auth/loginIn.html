@@ -973,21 +973,22 @@
     // ================================================================
     //  CONFIGURATION
     // ================================================================
-    const API_BASE = window.APP_API_BASE?.replace(/\/$/, '') || (() => {
-      const hostname = (window.location.hostname || '').toLowerCase();
-      const isVercelHost = hostname.endsWith('.vercel.app') || hostname.endsWith('.vercel.sh');
-      const isRenderHost = hostname === 'revluma.onrender.com' || hostname.endsWith('.revluma.onrender.com');
-      const isCustomDomain = hostname === 'revluma.com' || hostname.endsWith('.revluma.com');
-      const isRevlumaHost = hostname.includes('revluma');
-      const isProduction = isRenderHost || (isVercelHost && isRevlumaHost) || isCustomDomain;
-
+    // FIX: Use same-origin /api on Vercel so requests go through the vercel.json
+    // proxy rewrite (→ Render). Using the absolute Render URL directly causes
+    // cross-origin requests that can fail on cold starts / cookie SameSite issues.
+    const API_BASE = (() => {
       if (window.location.protocol === 'file:' || !window.location.origin) {
         return 'http://localhost:5000/api';
       }
-      if (isProduction) {
+      const hostname = (window.location.hostname || '').toLowerCase();
+      const isRenderHost = hostname === 'revluma.onrender.com' || hostname.endsWith('.revluma.onrender.com');
+      // On Render itself, use absolute URL (no proxy)
+      if (isRenderHost) {
         return 'https://revluma.onrender.com/api';
       }
-      return `${window.location.origin}/api`;
+      // On Vercel or any other host (incl. custom domain): use same-origin /api
+      // which routes through the Vercel proxy rewrite to Render.
+      return `${window.location.origin.replace(/\/+$/, '')}/api`;
     })();
 
     // Client-side rate-limit tracking
@@ -1446,18 +1447,19 @@
         return result;
       }
 
-      // Convert auth-client error format to expected format
+      // BUG FIX: throw a proper Error object, not a plain object literal.
+      // Throwing a plain object with a `message` property causes issues when
+      // caught code tries to read .message — on some paths the runtime treats
+      // the thrown value as an Error and its .message becomes a read-only getter.
       const codeMap = {
         'INVALID_CREDENTIALS': 'WRONG_PASSWORD',
         'EMAIL_NOT_VERIFIED': 'EMAIL_NOT_VERIFIED',
         'ACCOUNT_SUSPENDED': 'ACCOUNT_SUSPENDED'
       };
-
-      throw {
-        code: codeMap[result.code] || result.code || 'UNKNOWN',
-        message: result.error || 'Login failed',
-        detail: 'An error occurred during login. Please try again.'
-      };
+      const err = new Error(result.error || 'Login failed');
+      err.code = codeMap[result.code] || result.code || 'UNKNOWN';
+      err.detail = 'An error occurred during login. Please try again.';
+      throw err;
     }
 
     /**

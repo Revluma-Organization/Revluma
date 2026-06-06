@@ -1,10 +1,15 @@
 /**
  * Revluma Authentication Client
  * Production-grade session-based auth with JWT fallback
- * 
- * Usage: 
- *   const auth = new RevlumaAuth();
- *   auth.checkAutoLogin().then(user => { ... })
+ *
+ * BUG FIX: The `fetchWithAuth` method mutated `error.message` directly on a caught
+ * `DOMException` (AbortError). The `.message` property on `DOMException` (and all
+ * native Error subclasses) is a read-only getter — assigning to it throws:
+ *   "TypeError: Cannot set property message of which has only a getter"
+ * This TypeError propagated up and showed as the login failure message.
+ *
+ * FIX: Instead of mutating the caught error, create a new Error with the desired
+ * message and copy over any extra properties. This matches standard practice.
  */
 
 class RevlumaAuth {
@@ -39,10 +44,13 @@ class RevlumaAuth {
 
     /**
      * Fetch with credentials and proper error handling
+     *
+     * BUG FIX: Replaced `error.message = ...` (throws TypeError on read-only getter)
+     * with creating a new Error object when a timeout (AbortError) is detected.
      */
     async fetchWithAuth(url, options = {}) {
         const defaultOptions = {
-            credentials: 'include', // Always include cookies
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
                 ...options.headers
@@ -68,10 +76,14 @@ class RevlumaAuth {
             });
         }
 
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+        const controller = new AbortController();
+        let didTimeout = false;
+        const timeoutId = setTimeout(() => {
+            didTimeout = true;
+            controller.abort();
+        }, this.timeout);
 
+        try {
             const response = await fetch(url, {
                 ...mergedOptions,
                 signal: controller.signal
@@ -80,26 +92,37 @@ class RevlumaAuth {
             clearTimeout(timeoutId);
 
             if (!response.ok) {
-                const error = new Error(`HTTP ${response.status}: ${response.statusText}`);
-                error.status = response.status;
+                const httpError = new Error(`HTTP ${response.status}: ${response.statusText}`);
+                httpError.status = response.status;
                 try {
-                    error.data = await response.json();
+                    httpError.data = await response.json();
                 } catch {
-                    error.data = null;
+                    httpError.data = null;
                 }
-                throw error;
+                throw httpError;
             }
 
             return await response.json();
-        } catch (error) {
-            if (error.name === 'AbortError') {
-                error.message = `Request timed out after ${this.timeout}ms: ${url}`;
-                error.code = 'REQUEST_TIMEOUT';
+
+        } catch (caughtError) {
+            clearTimeout(timeoutId);
+
+            // BUG FIX: Do NOT mutate caughtError.message — it's a read-only getter on
+            // DOMException (AbortError). Instead, create a fresh Error with the timeout message.
+            if (didTimeout || (caughtError && caughtError.name === 'AbortError')) {
+                const timeoutError = new Error(`Request timed out after ${this.timeout}ms: ${url}`);
+                timeoutError.code = 'REQUEST_TIMEOUT';
+                timeoutError.originalError = caughtError;
+                if (this.debug) {
+                    console.warn('[RevlumaAuth] Request timed out', { url, timeout: this.timeout });
+                }
+                throw timeoutError;
             }
+
             if (this.debug) {
-                console.error('[RevlumaAuth]', error);
+                console.error('[RevlumaAuth]', caughtError);
             }
-            throw error;
+            throw caughtError;
         }
     }
 
@@ -117,7 +140,7 @@ class RevlumaAuth {
             const response = await this.fetchWithAuth(`${this.baseUrl}/csrf-token`);
             if (response.csrfToken) {
                 this.csrfToken = response.csrfToken;
-                // Token valid for 25 minutes (request from server was 30 min TTL)
+                // Token valid for 25 minutes (server TTL is 30 min / or matches session)
                 this.csrfTokenExpiry = Date.now() + 25 * 60 * 1000;
                 return this.csrfToken;
             }
@@ -148,7 +171,7 @@ class RevlumaAuth {
             }
         }
 
-        // JWT Fallback: Check Authorization header
+        // JWT Fallback
         const token = this.getStoredToken();
         if (token) {
             try {
@@ -195,7 +218,6 @@ class RevlumaAuth {
                 this.user = response.user;
                 this.isAuthenticated = true;
 
-                // Store CSRF token from response
                 if (response.csrfToken) {
                     this.csrfToken = response.csrfToken;
                     this.csrfTokenExpiry = Date.now() + 25 * 60 * 1000;
@@ -235,7 +257,6 @@ class RevlumaAuth {
                 this.user = response.user;
                 this.isAuthenticated = true;
 
-                // Store CSRF token from response
                 if (response.csrfToken) {
                     this.csrfToken = response.csrfToken;
                     this.csrfTokenExpiry = Date.now() + 25 * 60 * 1000;
@@ -278,14 +299,12 @@ class RevlumaAuth {
                 console.warn('[RevlumaAuth] Logout request failed:', error);
             }
         } finally {
-            // Clear state regardless of logout success
             this.user = null;
             this.isAuthenticated = false;
             this.csrfToken = null;
             this.csrfTokenExpiry = null;
             this.clearStoredToken();
 
-            // Comprehensive cleanup of all auth-related keys
             try {
                 const authKeys = [
                     'revluma_token',
@@ -303,7 +322,7 @@ class RevlumaAuth {
                 });
             } catch (error) {
                 if (this.debug) {
-                    console.warn('[RevlumaAuth] Comprehensive logout cleanup failed:', error);
+                    console.warn('[RevlumaAuth] Cleanup failed:', error);
                 }
             }
         }
@@ -363,7 +382,7 @@ class RevlumaAuth {
     }
 
     /**
-     * Request password reset (if available)
+     * Request password reset
      */
     async requestPasswordReset(email) {
         try {
@@ -390,9 +409,6 @@ class RevlumaAuth {
         }
     }
 
-    /**
-     * Store JWT token locally (for JWT fallback)
-     */
     storeToken(token) {
         try {
             localStorage.setItem('revluma_token', token);
@@ -403,9 +419,6 @@ class RevlumaAuth {
         }
     }
 
-    /**
-     * Get stored JWT token
-     */
     getStoredToken() {
         try {
             return localStorage.getItem('revluma_token');
@@ -414,9 +427,6 @@ class RevlumaAuth {
         }
     }
 
-    /**
-     * Clear stored JWT token
-     */
     clearStoredToken() {
         try {
             localStorage.removeItem('revluma_token');
@@ -427,46 +437,25 @@ class RevlumaAuth {
         }
     }
 
-    /**
-     * Format error message for display
-     */
     getErrorMessage(error) {
-        if (typeof error === 'string') {
-            return error;
-        }
-        if (error.data && error.data.error) {
-            return error.data.error;
-        }
-        if (error.message) {
-            return error.message;
-        }
+        if (typeof error === 'string') return error;
+        if (error.data && error.data.error) return error.data.error;
+        if (error.message) return error.message;
         return 'An unknown error occurred';
     }
 
-    /**
-     * Check if user has a specific role
-     */
     hasRole(role) {
         return this.user && this.user.role === role;
     }
 
-    /**
-     * Check if user is admin
-     */
     isAdmin() {
         return this.hasRole('admin') || this.hasRole('owner');
     }
 
-    /**
-     * Check if user email is verified
-     */
     isEmailVerified() {
         return this.user && this.user.email_verified === true;
     }
 
-    /**
-     * Get user's tenant ID
-     */
     getTenantId() {
         return this.user ? this.user.tenant_id : null;
     }
