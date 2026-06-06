@@ -280,16 +280,6 @@ export default function AuthInterface({
     return () => { cancelled = true; };
   }, []);
 
-  // While the return-user guard is running, show a neutral loader
-  // so we never flash the wrong screen briefly
-  if (!otpCheckDone && sessionStorage.getItem('rapp_pending_id')) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
-      </div>
-    );
-  }
-
   const [pendingUserId, setPendingUserId] = useState('');
   const [pendingEmail, setPendingEmail] = useState(() => sessionStorage.getItem('rapp_pending_email') ?? '');
   const [verifyCode, setVerifyCode] = useState('');
@@ -904,6 +894,16 @@ export default function AuthInterface({
       setErrorText(err instanceof Error ? err.message : 'Reset failed. Please try again.');
     } finally { setIsLoading(false); }
   };
+
+  // While the return-user guard is running, show a neutral loader
+  // so we never flash the wrong screen briefly
+  if (!otpCheckDone && sessionStorage.getItem('rapp_pending_id')) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+      </div>
+    );
+  }
 
   const renderAlert = (text: string, type: 'error' | 'success') =>
     text ? (
