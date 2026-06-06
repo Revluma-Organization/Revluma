@@ -469,6 +469,98 @@ router.post('/complete-registration', authenticatePending, async (req, res) => {
   }
 });
 
+// UPDATE ONBOARDING DATA — saves step progress during onboarding flow (USER account type)
+// Called by onboarding.html on each step continuation
+// PATCH /api/auth/pending-registration
+router.patch('/pending-registration', async (req, res) => {
+  const correlationId = getCorrelationId(req);
+  res.setHeader('X-Correlation-ID', correlationId);
+
+  const { email, onboardingData, step, pendingRegistrationId } = req.body || {};
+
+  // Must supply either email or pendingRegistrationId as the lookup key
+  if (!email && !pendingRegistrationId) {
+    return sendAuthError(res, 400, 'email or pendingRegistrationId is required', 'VALIDATION_ERROR', correlationId);
+  }
+
+  try {
+    let record;
+
+    if (pendingRegistrationId) {
+      // Prefer lookup by ID — more precise, avoids compound-key issues
+      record = await prisma.pendingRegistration.findUnique({
+        where: { id: pendingRegistrationId }
+      });
+    } else {
+      const normalizedEmail = normalizeEmail(email);
+      record = await prisma.pendingRegistration.findUnique({
+        where: { email_accountType: { email: normalizedEmail, accountType: 'USER' } }
+      });
+    }
+
+    if (!record) {
+      return sendAuthError(res, 404, 'Pending registration not found', 'PENDING_REGISTRATION_NOT_FOUND', correlationId);
+    }
+
+    // Don't allow updates on expired registrations
+    if (new Date(record.expiresAt) < new Date()) {
+      return sendAuthError(res, 410, 'Registration session has expired. Please start over.', 'REGISTRATION_EXPIRED', correlationId);
+    }
+
+    // Merge incoming onboardingData with existing (so partial step updates don't overwrite prior steps)
+    const mergedOnboardingData = {
+      ...(record.onboardingData || {}),
+      ...(onboardingData || {})
+    };
+
+    const updated = await prisma.pendingRegistration.update({
+      where: { id: record.id },
+      data: {
+        onboardingData: mergedOnboardingData,
+        ...(typeof step === 'number' ? { step } : {}),
+        updatedAt: new Date()
+      },
+      select: {
+        id: true,
+        email: true,
+        step: true,
+        onboardingData: true,
+        updatedAt: true
+      }
+    });
+
+    logger.info('Pending registration onboarding data updated', {
+      pendingId: record.id,
+      email: record.email,
+      step: updated.step,
+      correlationId
+    });
+
+    return res.status(200).json({
+      success: true,
+      pendingRegistrationId: updated.id,
+      step: updated.step,
+      updatedAt: updated.updatedAt,
+      correlationId
+    });
+  } catch (err) {
+    logger.error('PATCH pending-registration failed', {
+      error: err.message,
+      code: err.code,
+      correlationId
+    });
+
+    if (err.code === 'P2025') {
+      return sendAuthError(res, 404, 'Pending registration not found', 'PENDING_REGISTRATION_NOT_FOUND', correlationId);
+    }
+    if (err.code === 'P1001' || err.message?.includes('ECONNREFUSED')) {
+      return sendAuthError(res, 503, 'Database temporarily unavailable. Please try again.', 'DATABASE_UNAVAILABLE', correlationId);
+    }
+
+    return sendAuthError(res, 500, 'Internal server error', 'SERVER_ERROR', correlationId);
+  }
+});
+
 // REQUEST PASSWORD RESET
 // FIX A-01: Remove `token` from response body
 // FIX A-11: Use SHA-256 for OTP hash (fast; OTP is already high-entropy and short-lived)

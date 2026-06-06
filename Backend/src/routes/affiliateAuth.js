@@ -299,6 +299,18 @@ router.post('/register', registerLimiter, async (req, res) => {
     if (err.code === 'P2025' || String(errorMsg).includes('Record to update not found')) {
       return sendError(res, 409, 'Record conflict. Please try again.', 'RECORD_NOT_FOUND', correlationId);
     }
+    // Prisma compound unique key error — affiliateAuthService.registerAffiliate() must use
+    // `where: { email_accountType: { email, accountType: 'AFFILIATE' } }` in its upsert call,
+    // NOT `where: { email }` alone. Fix the upsert in services/affiliateAuthService.js.
+    if (
+      String(errorMsg).includes('email_accountType') ||
+      String(errorMsg).includes('needs at least one of') ||
+      (err.code === 'P2018') ||
+      String(errorMsg).includes('PendingRegistrationWhereUniqueInput')
+    ) {
+      logger.error('affiliate-auth/register: upsert where-clause missing accountType — fix affiliateAuthService.registerAffiliate()', { correlationId });
+      return sendError(res, 500, 'Registration failed due to a configuration error. Please contact support.', 'CONFIG_ERROR', correlationId);
+    }
 
     return sendError(res, 500, 'Registration failed. Please try again.', 'SERVER_ERROR', correlationId);
   }
