@@ -86,57 +86,97 @@ const SOCIAL_PLATFORMS = [
   { key: 'communityUrl', icon: Users, label: 'Community', placeholder: 'Discord, Slack, etc.' },
 ] as const;
 
-function OTPInput({ value, onChange, length = 6 }: {
+function OTPInput({ value, onChange, length = 6, disabled = false }: {
   value: string;
   onChange: (v: string) => void;
   length?: number;
+  disabled?: boolean;
 }) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const digits = value.padEnd(length, '').split('').slice(0, length);
+  // Normalised array — always exactly `length` slots, each a single digit or ''
+  const slots: string[] = Array.from({ length }, (_, i) => value[i] ?? '');
 
-  const handleChange = (idx: number, char: string) => {
-    const digit = char.replace(/\D/g, '').slice(-1);
-    const next = [...digits];
-    next[idx] = digit;
-    const newVal = next.join('').replace(/ /g, '');
-    onChange(newVal);
-    if (digit && idx < length - 1) {
-      inputRefs.current[idx + 1]?.focus();
-    }
+  const focusSlot = (idx: number) => {
+    const el = inputRefs.current[Math.max(0, Math.min(idx, length - 1))];
+    el?.focus();
+    // Move cursor to end
+    setTimeout(() => el?.setSelectionRange(el.value.length, el.value.length), 0);
   };
 
-  const handleKeyDown = (idx: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !digits[idx] && idx > 0) {
-      inputRefs.current[idx - 1]?.focus();
-      const next = [...digits];
-      next[idx - 1] = '';
-      onChange(next.join('').replace(/ /g, ''));
+  const commit = (next: string[]) => {
+    onChange(next.join(''));
+  };
+
+  const handleChange = (idx: number, raw: string) => {
+    const digit = raw.replace(/\D/g, '').slice(-1);
+    const next = [...slots];
+    next[idx] = digit;
+    commit(next);
+    if (digit && idx < length - 1) focusSlot(idx + 1);
+  };
+
+  const handleKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      if (slots[idx]) {
+        const next = [...slots];
+        next[idx] = '';
+        commit(next);
+      } else if (idx > 0) {
+        const next = [...slots];
+        next[idx - 1] = '';
+        commit(next);
+        focusSlot(idx - 1);
+      }
+    } else if (e.key === 'ArrowLeft' && idx > 0) {
+      e.preventDefault(); focusSlot(idx - 1);
+    } else if (e.key === 'ArrowRight' && idx < length - 1) {
+      e.preventDefault(); focusSlot(idx + 1);
     }
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, length);
-    onChange(pasted);
-    const focusIdx = Math.min(pasted.length, length - 1);
-    inputRefs.current[focusIdx]?.focus();
     e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, length);
+    const next = Array.from({ length }, (_, i) => pasted[i] ?? '');
+    commit(next);
+    focusSlot(Math.min(pasted.length, length - 1));
   };
 
+  // Auto-focus first empty slot on mount
+  useEffect(() => {
+    const firstEmpty = slots.findIndex(s => s === '');
+    focusSlot(firstEmpty === -1 ? length - 1 : firstEmpty);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
-    <div className="flex gap-2 justify-center" onPaste={handlePaste}>
-      {digits.map((d, idx) => (
+    <div className="flex gap-3 justify-center" onPaste={handlePaste}>
+      {slots.map((digit, idx) => (
         <input
           key={idx}
           ref={el => { inputRefs.current[idx] = el; }}
           type="text"
           inputMode="numeric"
+          pattern="[0-9]*"
           maxLength={1}
-          value={d === ' ' ? '' : d}
+          value={digit}
+          disabled={disabled}
           onChange={e => handleChange(idx, e.target.value)}
           onKeyDown={e => handleKeyDown(idx, e)}
-          className="w-12 h-14 text-center text-xl font-mono font-bold bg-zinc-900 border-2 border-zinc-700 text-zinc-100 rounded-xl focus:outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition-all duration-150 caret-transparent hover:border-zinc-500"
-          autoComplete="one-time-code"
+          onFocus={e => e.target.select()}
+          className={[
+            'w-12 h-14 text-center text-2xl font-mono font-bold rounded-xl',
+            'border-2 transition-all duration-150 caret-transparent',
+            'focus:outline-none focus:ring-2 focus:ring-violet-500/30',
+            disabled
+              ? 'bg-zinc-800 border-zinc-700 text-zinc-500 cursor-not-allowed'
+              : digit
+                ? 'bg-zinc-800 border-violet-500 text-zinc-100 shadow-lg shadow-violet-500/10'
+                : 'bg-zinc-900 border-zinc-700 text-zinc-100 hover:border-zinc-500 focus:border-violet-500',
+          ].join(' ')}
+          autoComplete={idx === 0 ? 'one-time-code' : 'off'}
         />
       ))}
     </div>
@@ -240,10 +280,77 @@ export default function AuthInterface({
     return () => { cancelled = true; };
   }, []);
 
+  // While the return-user guard is running, show a neutral loader
+  // so we never flash the wrong screen briefly
+  if (!otpCheckDone && sessionStorage.getItem('rapp_pending_id')) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+      </div>
+    );
+  }
+
   const [pendingUserId, setPendingUserId] = useState('');
-  const [pendingEmail, setPendingEmail] = useState('');
+  const [pendingEmail, setPendingEmail] = useState(() => sessionStorage.getItem('rapp_pending_email') ?? '');
   const [verifyCode, setVerifyCode] = useState('');
-  const [pendingRegistrationId, setPendingRegistrationId] = useState('');
+  const [pendingRegistrationId, setPendingRegistrationId] = useState(() => sessionStorage.getItem('rapp_pending_id') ?? '');
+  const [otpCheckDone, setOtpCheckDone] = useState(false);
+
+  // Persist pending registration state to sessionStorage so returning users
+  // can continue verification after a page refresh.
+  useEffect(() => {
+    if (pendingRegistrationId) {
+      sessionStorage.setItem('rapp_pending_id', pendingRegistrationId);
+    } else {
+      sessionStorage.removeItem('rapp_pending_id');
+    }
+  }, [pendingRegistrationId]);
+
+  useEffect(() => {
+    if (pendingEmail) {
+      sessionStorage.setItem('rapp_pending_email', pendingEmail);
+    } else {
+      sessionStorage.removeItem('rapp_pending_email');
+    }
+  }, [pendingEmail]);
+
+  // Return-user guard: on mount, if we have a saved pendingRegistrationId,
+  // check its status against the backend.
+  //   - emailVerified=true  → completeRegistration already ran, go to login with message
+  //   - authState=PENDING_EMAIL_VERIFICATION → show verify screen
+  //   - anything else / not found → clear and stay on login
+  useEffect(() => {
+    const savedId = sessionStorage.getItem('rapp_pending_id');
+    if (!savedId) { setOtpCheckDone(true); return; }
+
+    (async () => {
+      try {
+        const status = await api.affiliateApplicationStatus({ pendingRegistrationId: savedId });
+        if (status.authState === 'PENDING_EMAIL_VERIFICATION' && !status.emailVerified) {
+          // Resume verification
+          setPendingRegistrationId(savedId);
+          setPendingEmail(sessionStorage.getItem('rapp_pending_email') ?? '');
+          setAuthModeInternal('verifyEmail');
+        } else if (status.emailVerified) {
+          // Already verified — clear and prompt login
+          sessionStorage.removeItem('rapp_pending_id');
+          sessionStorage.removeItem('rapp_pending_email');
+          setSuccessText('Your email is verified. Please log in to continue.');
+          setAuthModeInternal('login');
+        } else {
+          sessionStorage.removeItem('rapp_pending_id');
+          sessionStorage.removeItem('rapp_pending_email');
+        }
+      } catch {
+        // Pending record not found or expired — clear
+        sessionStorage.removeItem('rapp_pending_id');
+        sessionStorage.removeItem('rapp_pending_email');
+      } finally {
+        setOtpCheckDone(true);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -629,6 +736,8 @@ export default function AuthInterface({
       console.log('[Register] Setting state and navigating to verifyEmail');
       setPendingRegistrationId(result.pendingRegistrationId);
       setPendingEmail(email.toLowerCase().trim());
+      sessionStorage.setItem('rapp_pending_id', result.pendingRegistrationId);
+      sessionStorage.setItem('rapp_pending_email', email.toLowerCase().trim());
       setSuccessText(`Verification code sent to ${email}.`);
       clearForm();
       console.log('[Register] Navigating to verifyEmail mode');
@@ -675,6 +784,11 @@ export default function AuthInterface({
 
       if (completeResult.sessionEstablished) {
         console.log('[VerifyEmail] Step 3: Session auto-established');
+        // Clear pending state from sessionStorage — user is now fully registered
+        sessionStorage.removeItem('rapp_pending_id');
+        sessionStorage.removeItem('rapp_pending_email');
+        setPendingRegistrationId('');
+        setPendingEmail('');
       }
 
       if (completeResult.csrfToken) {
@@ -863,20 +977,32 @@ export default function AuthInterface({
   }
 
   if (authMode === 'verifyEmail') {
+    // Block render until we've checked the return-user status on mount
+    if (!otpCheckDone) {
+      return (
+        <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+        </div>
+      );
+    }
+
     return (
       <PageWrap>
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <div className="flex items-center justify-center mb-1">
-            <img src={revlumaLogo} alt="Revluma" className="h-10 w-auto" />
+        {/* Big logo + header */}
+        <div className="text-center space-y-4">
+          <div className="flex items-center justify-center">
+            <img src={revlumaLogo} alt="Revluma" className="h-16 w-auto" />
           </div>
-          <div className="mx-auto w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/25 flex items-center justify-center">
-            <Mail className="w-7 h-7 text-violet-400" />
+          <div className="mx-auto w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/30 flex items-center justify-center shadow-lg shadow-violet-500/5">
+            <Mail className="w-8 h-8 text-violet-400" />
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-zinc-100">Check your inbox</h1>
-            <p className="text-sm text-zinc-400 mt-1">We sent a 6-digit code to</p>
-            <p className="text-sm font-semibold text-violet-400 mt-0.5">{pendingEmail}</p>
+          <div className="space-y-1">
+            <h1 className="text-2xl font-bold text-zinc-100">Check your inbox</h1>
+            <p className="text-sm text-zinc-400">We sent a 6-digit verification code to</p>
+            {pendingEmail
+              ? <p className="text-sm font-semibold text-violet-400">{pendingEmail}</p>
+              : <p className="text-xs text-zinc-600 italic">unknown — please go back and register again</p>
+            }
           </div>
         </div>
 
@@ -884,22 +1010,36 @@ export default function AuthInterface({
           {renderAlert(errorText, 'error')}
           {renderAlert(successText, 'success')}
 
-          {/* OTP input section */}
-          <div className="text-center space-y-4">
-            <p className="text-xs text-zinc-500 uppercase tracking-widest font-semibold">
-              Enter verification code
+          {/* OTP input */}
+          <div className="space-y-4">
+            <p className="text-center text-xs text-zinc-500 uppercase tracking-widest font-semibold">
+              Enter 6-digit code
             </p>
-            <OTPInput value={verifyCode} onChange={setVerifyCode} />
-            {verifyCode.length > 0 && verifyCode.length < 6 && (
-              <p className="text-xs text-zinc-600">
-                {6 - verifyCode.length} digit{6 - verifyCode.length !== 1 ? 's' : ''} remaining
-              </p>
-            )}
-            {verifyCode.length === 6 && !isLoading && (
-              <p className="text-xs text-violet-400 flex items-center justify-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Code complete — verifying…
-              </p>
-            )}
+
+            <OTPInput
+              value={verifyCode}
+              onChange={setVerifyCode}
+              disabled={isLoading}
+            />
+
+            {/* Progress hint */}
+            <div className="text-center min-h-[1.25rem]">
+              {isLoading && (
+                <p className="text-xs text-violet-400 flex items-center justify-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Verifying your code…
+                </p>
+              )}
+              {!isLoading && verifyCode.length > 0 && verifyCode.length < 6 && (
+                <p className="text-xs text-zinc-600">
+                  {6 - verifyCode.length} more digit{6 - verifyCode.length !== 1 ? 's' : ''} needed
+                </p>
+              )}
+              {!isLoading && verifyCode.length === 6 && (
+                <p className="text-xs text-emerald-400 flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Code complete
+                </p>
+              )}
+            </div>
           </div>
 
           <button
@@ -910,13 +1050,13 @@ export default function AuthInterface({
           >
             {isLoading
               ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</>
-              : <><CheckSquare className="w-4 h-4" /> Verify Email</>
+              : <><CheckSquare className="w-4 h-4" /> Verify & Continue</>
             }
           </button>
 
-          <div className="relative flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <div className="flex-1 h-px bg-zinc-800" />
-            <span className="text-xs text-zinc-600">didn't receive it?</span>
+            <span className="text-xs text-zinc-600 shrink-0">didn't receive it?</span>
             <div className="flex-1 h-px bg-zinc-800" />
           </div>
 
@@ -929,6 +1069,10 @@ export default function AuthInterface({
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             Resend Code
           </button>
+
+          <p className="text-center text-xs text-zinc-600">
+            Code expires in 15 minutes. Check spam if you don't see it.
+          </p>
         </Card>
 
         <p className="text-center text-xs text-zinc-500">
