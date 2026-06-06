@@ -31,6 +31,8 @@ class RevlumaAuth {
         this.fallbackBaseUrl = config.fallbackBaseUrl || `${appApiBase}/auth`;
         this.sessionCookie = 'revluma_session';
         this.timeout = config.timeout || 15000;
+        this.extendedTimeout = config.extendedTimeout || 90000;
+        this.maxRetries = config.maxRetries !== undefined ? config.maxRetries : 1;
         this.debug = config.debug !== undefined ? config.debug : window.location.hostname === 'revluma.vercel.app';
 
         // Cache for CSRF token
@@ -49,6 +51,9 @@ class RevlumaAuth {
      * with creating a new Error object when a timeout (AbortError) is detected.
      */
     async fetchWithAuth(url, options = {}) {
+        const retryCount = options._retryCount || 0;
+        const timeout = retryCount === 0 ? this.timeout : (this.extendedTimeout || 90000);
+
         const defaultOptions = {
             credentials: 'include',
             headers: {
@@ -57,23 +62,24 @@ class RevlumaAuth {
             }
         };
 
-        // Add CSRF token for non-GET requests
-        if (options.method && !['GET', 'HEAD', 'OPTIONS'].includes(options.method)) {
-            const csrfToken = await this.getCsrfToken();
-            if (csrfToken) {
-                defaultOptions.headers['X-CSRF-Token'] = csrfToken;
-            }
-        }
-
         const mergedOptions = { ...defaultOptions, ...options };
+        delete mergedOptions._retryCount;
 
         if (this.debug) {
             console.debug('[RevlumaAuth] fetchWithAuth start', {
                 url,
                 method: mergedOptions.method || 'GET',
-                headers: mergedOptions.headers,
-                timeout: this.timeout
+                timeout,
+                retryCount
             });
+        }
+
+        // Fetch CSRF on initial attempt only — cached token used on retry
+        if (retryCount === 0 && mergedOptions.method && !['GET', 'HEAD', 'OPTIONS'].includes(mergedOptions.method)) {
+            const csrfToken = await this.getCsrfToken();
+            if (csrfToken) {
+                defaultOptions.headers['X-CSRF-Token'] = csrfToken;
+            }
         }
 
         const controller = new AbortController();
@@ -81,7 +87,7 @@ class RevlumaAuth {
         const timeoutId = setTimeout(() => {
             didTimeout = true;
             controller.abort();
-        }, this.timeout);
+        }, timeout);
 
         try {
             const response = await fetch(url, {
@@ -107,14 +113,21 @@ class RevlumaAuth {
         } catch (caughtError) {
             clearTimeout(timeoutId);
 
-            // BUG FIX: Do NOT mutate caughtError.message — it's a read-only getter on
-            // DOMException (AbortError). Instead, create a fresh Error with the timeout message.
             if (didTimeout || (caughtError && caughtError.name === 'AbortError')) {
-                const timeoutError = new Error(`Request timed out after ${this.timeout}ms: ${url}`);
+                if (retryCount < this.maxRetries) {
+                    if (this.debug) {
+                        console.warn('[RevlumaAuth] Request timed out, retrying with extended timeout', {
+                            url, timeout, retryCount: retryCount + 1
+                        });
+                    }
+                    return this.fetchWithAuth(url, { ...options, _retryCount: retryCount + 1 });
+                }
+
+                const timeoutError = new Error(`Request timed out after ${timeout}ms: ${url}`);
                 timeoutError.code = 'REQUEST_TIMEOUT';
                 timeoutError.originalError = caughtError;
                 if (this.debug) {
-                    console.warn('[RevlumaAuth] Request timed out', { url, timeout: this.timeout });
+                    console.warn('[RevlumaAuth] Request timed out', { url, timeout });
                 }
                 throw timeoutError;
             }
@@ -464,5 +477,7 @@ class RevlumaAuth {
 // Global instance
 window.revlumaAuth = window.revlumaAuth || new RevlumaAuth({
     timeout: 15000,
+    extendedTimeout: 90000,
+    maxRetries: 1,
     debug: window.location.hostname === 'revluma.vercel.app'
 });
