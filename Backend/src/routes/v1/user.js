@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const authenticate = require('../../middleware/sessionAuth');
+const { authenticate } = require("../../middleware/sessionAuth");
 const { prisma } = require('../../services/prisma');
 const logger = require('../../utils/logger');
 

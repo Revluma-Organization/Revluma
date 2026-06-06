@@ -10,7 +10,7 @@
 
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const authenticate = require('../middleware/sessionAuth');
+const { authenticate } = require("../middleware/sessionAuth");
 const newsletterService = require('../services/newsletterService');
 const logger = require('../utils/logger');
 

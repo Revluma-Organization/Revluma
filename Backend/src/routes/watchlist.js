@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const authenticate = require('../middleware/sessionAuth');
+const { authenticate } = require("../middleware/sessionAuth");
 const db = require('../config/db');
 const logger = require('../utils/logger');
-const redis = require('../queue/redis').redis; // shared Redis client
+const redisModule = require('../queue/redis');
+const redis = redisModule.redis || redisModule.default || redisModule; // shared Redis client
 
 const CACHE_PREFIX = 'watchlist:';
 const CACHE_TTL = 60; // 1 min – watchlist changes infrequently

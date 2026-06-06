@@ -104,11 +104,11 @@ router.get('/:code', async (req, res) => {
 
     // Extract UTM parameters
     const utmParams = {
-      utmSource: (req.query.utm_source as string) || null,
-      utmMedium: (req.query.utm_medium as string) || null,
-      utmCampaign: (req.query.utm_campaign as string) || null,
-      utmTerm: (req.query.utm_term as string) || null,
-      utmContent: (req.query.utm_content as string) || null
+      utmSource: req.query.utm_source || null,
+      utmMedium: req.query.utm_medium || null,
+      utmCampaign: req.query.utm_campaign || null,
+      utmTerm: req.query.utm_term || null,
+      utmContent: req.query.utm_content || null
     };
 
     // ========================================
