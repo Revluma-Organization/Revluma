@@ -211,9 +211,23 @@ export async function affiliateVerifyEmail(payload: {
   );
 }
 
+export async function fetchAnonCsrfToken(): Promise<void> {
+  try {
+    const data = await request<{ csrfToken: string }>('GET', '/session/csrf-token', undefined, true, 10000, 2);
+    if (data.csrfToken) setCsrfToken(data.csrfToken);
+  } catch {
+    // Non-fatal — complete-registration will return 403 if missing
+  }
+}
+
 export async function affiliateCompleteRegistration(payload: {
   pendingRegistrationId: string;
 }) {
+  // Backend requires a CSRF token on this endpoint even for unauthenticated users.
+  // Fetch an anonymous token first, store it in-memory so the request() helper
+  // includes it automatically as X-CSRF-Token.
+  await fetchAnonCsrfToken();
+
   const data = await request<{
     message: string;
     user: { id: string; email: string; full_name: string; role: string };
