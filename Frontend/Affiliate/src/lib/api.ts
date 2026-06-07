@@ -20,8 +20,7 @@
 import { ApiError } from "@google/genai";
 import { Component } from "lucide-react";
 
-const API_BASE = ((import.meta as any).env?.VITE_API_URL ?? '') + '/api';
-// FIX A-06: In-memory store — not accessible from the DOM or from injected scripts
+const API_BASE = (import.meta as any).env?.VITE_API_URL ?? '/api';
 let _csrfToken: string | null = null;
 
 function getCsrfToken(): string {
