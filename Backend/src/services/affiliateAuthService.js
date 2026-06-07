@@ -1,6 +1,5 @@
 // FIX B-01: bcrypt for OTP hash (not SHA-256)
 // FIX B-02: Fix broken resendVerificationEmail (undefined variable refs removed)
-// FIX B-03: PENDING_REVIEW on registration (not APPROVED)
 // FIX B-04: verificationAttempts counter + lockout
 // FIX B-07: Removed all console.log statements
 // FIX B-08: bcrypt cost 12 for password hash
@@ -20,8 +19,6 @@ const MAX_VERIFY_ATTEMPTS = 5;
 
 const AUTH_STATES = {
   PENDING_EMAIL_VERIFICATION: 'PENDING_EMAIL_VERIFICATION',
-  PENDING_REVIEW: 'PENDING_REVIEW',
-  UNDER_REVIEW: 'UNDER_REVIEW',
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
   SUSPENDED: 'SUSPENDED'
@@ -270,7 +267,7 @@ class AffiliateAuthService {
       return {
         verified: true,
         message: 'Email already verified',
-        authState: AUTH_STATES.PENDING_REVIEW
+        authState: AUTH_STATES.APPROVED
       };
     }
 
@@ -310,7 +307,7 @@ class AffiliateAuthService {
         emailVerified: true,
         emailVerifiedAt: new Date(),
         verificationAttempts: 0,
-        authState: AUTH_STATES.PENDING_REVIEW,
+        authState: AUTH_STATES.APPROVED,
         step: 2,
         updatedAt: new Date()
       }
@@ -318,14 +315,14 @@ class AffiliateAuthService {
 
     await this.logAuthEvent('email_verified', {
       previousStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
-      newStatus: AUTH_STATES.PENDING_REVIEW,
+      newStatus: AUTH_STATES.APPROVED,
       metadata: { pendingId, email: pending.email }
     });
 
     return {
       verified: true,
       message: 'Email verified successfully',
-      authState: AUTH_STATES.PENDING_REVIEW
+      authState: AUTH_STATES.APPROVED
     };
   }
 
@@ -429,8 +426,8 @@ class AffiliateAuthService {
           whyJoin: onboardingData.whyJoin,
           referralSource: onboardingData.referralSource,
           emailVerificationSentAt: new Date(),
-          // FIX B-03: Set to PENDING_REVIEW — admin must manually approve before access is granted
-          status: AUTH_STATES.PENDING_REVIEW,
+          // Auto-approved: email verification is sufficient for dashboard access
+          status: AUTH_STATES.APPROVED,
           tier: 'AFFILIATE',
           commissionRate: 0.20
         }
@@ -458,20 +455,12 @@ class AffiliateAuthService {
       logger.warn('Password history pruning failed', { error: err.message, userId: result.user.id });
     });
 
-    // FIX B-03: Audit log now correctly reflects PENDING_REVIEW (not APPROVED)
     await this.logAuthEvent('registration_completed', {
       affiliateProfileId: result.affiliateProfile.id,
       previousStatus: AUTH_STATES.PENDING_EMAIL_VERIFICATION,
-      newStatus: AUTH_STATES.PENDING_REVIEW,
+      newStatus: AUTH_STATES.APPROVED,
       changedBy: 'system',
       metadata: { userId: result.user.id, email: result.user.email }
-    });
-
-    this.sendVettingNotification(result.affiliateProfile, result.user.email).catch(err => {
-      logger.error('Failed to send vetting notification', {
-        error: err.message,
-        affiliateProfileId: result.affiliateProfile.id
-      });
     });
 
     emailService.sendAffiliateWelcomeEmail(
@@ -486,54 +475,6 @@ class AffiliateAuthService {
     return result;
   }
 
-  // FIX B-13: Removed hardcoded fallback email ('revluma.ai@gmail.com').
-  // If neither env var is set, log an error and skip the notification.
-  async sendVettingNotification(affiliateProfile, applicantEmail) {
-    const vettingEmail = process.env.AFFILIATE_VETTING_EMAIL || process.env.RAPP_VETTING_EMAIL;
-    if (!vettingEmail) {
-      logger.error('AFFILIATE_VETTING_EMAIL is not configured — skipping vetting notification. Set AFFILIATE_VETTING_EMAIL in environment.');
-      return;
-    }
-
-    const notification = await prisma.affiliateVettingNotification.create({
-      data: {
-        affiliateProfileId: affiliateProfile.id,
-        email: vettingEmail,
-        status: 'PENDING'
-      }
-    });
-
-    try {
-      const channels = this.getActiveDistributionChannels(affiliateProfile);
-
-      await emailService.sendAffiliateVettingNotification(vettingEmail, {
-        ...affiliateProfile,
-        applicantEmail,
-        activeChannels: channels,
-        registrationTime: new Date().toISOString()
-      });
-
-      await prisma.affiliateVettingNotification.update({
-        where: { id: notification.id },
-        data: { status: 'SENT', sentAt: new Date() }
-      });
-
-      await prisma.affiliateProfile.update({
-        where: { id: affiliateProfile.id },
-        data: { vettingNotificationSentAt: new Date() }
-      });
-    } catch (error) {
-      await prisma.affiliateVettingNotification.update({
-        where: { id: notification.id },
-        data: {
-          status: 'FAILED',
-          failureReason: error.message,
-          retryCount: { increment: 1 }
-        }
-      });
-      throw error;
-    }
-  }
 }
 
 module.exports = new AffiliateAuthService();

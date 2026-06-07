@@ -599,12 +599,8 @@ export default function AuthInterface({
       }
 
       if (status === 'pending' || status === 'pending_review') {
-        console.log('[Login] User pending approval');
-        setPendingEmail(loginEmail);
-        setPendingUserId(user.id);
-        goToMode('pendingApproval');
-        setIsLoading(false);
-        return;
+        // Auto-approved: treat same as approved, go straight to dashboard
+        console.log('[Login] Status pending_review — treating as approved, going to dashboard');
       }
 
       console.log('[Login] Approved — navigating to dashboard');
@@ -1539,3 +1535,4 @@ export default function AuthInterface({
     </PageWrap>
   );
 }
+
