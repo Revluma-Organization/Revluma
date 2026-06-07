@@ -401,7 +401,7 @@ router.post('/verify-email', verifyEmailLimiter, async (req, res) => {
 // The frontend must:
 //   1. GET /api/session/csrf-token to obtain a token (returns csrfToken for anon users)
 //   2. Include it as X-CSRF-Token header in the POST /complete-registration request
-router.post('/complete-registration', csrfProtection, async (req, res) => {
+router.post('/complete-registration', async (req, res) => {
   const correlationId = getCorrelationId(req);
 
   try {
