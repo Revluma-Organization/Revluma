@@ -32,11 +32,11 @@ export default function AcademyPage() {
                   {c.title}
                 </div>
                 <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--color-text-tertiary)' }}>
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-text-tertiary)' }}>
                     {c.duration}
                   </span>
                   <span style={{
-                    fontSize: 9, fontFamily: 'var(--font-mono)', fontWeight: 600, textTransform: 'uppercase',
+                    fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600, textTransform: 'uppercase',
                     padding: '1px 6px', borderRadius: 3,
                     background: c.level === 'Beginner' ? 'var(--color-success-bg)' : c.level === 'Intermediate' ? 'var(--color-bg-active)' : 'var(--color-bg-hover)',
                     color: c.level === 'Beginner' ? 'var(--color-success)' : 'var(--color-text-secondary)',

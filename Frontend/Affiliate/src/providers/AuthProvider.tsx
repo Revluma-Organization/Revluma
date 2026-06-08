@@ -1,50 +1,74 @@
 import { useState, useCallback, useEffect, type ReactNode } from 'react';
 import { AuthContext, type RegisterData } from '../hooks/useAuth';
-import { storage } from '../utils/storage';
 import * as api from '../lib/api';
 import type { PartnerProfile } from '../types';
 
 function buildProfile(serverUser: {
   id: string; email: string; full_name: string; role: string;
 }, profile?: Record<string, unknown>): PartnerProfile {
+  const p = profile ?? {};
   return {
     id: serverUser.id,
     fullName: serverUser.full_name ?? '',
-    username: (profile?.username as string) ?? serverUser.email.split('@')[0],
+    username: (p.username as string) ?? serverUser.email.split('@')[0],
     email: serverUser.email,
-    avatarUrl: (profile?.avatarUrl as string) ?? null,
-    tier: (profile?.membershipTier as string) ?? (profile?.tier as string) ?? 'Affiliate',
+    avatarUrl: (p.avatarUrl as string | null) ?? null,
+    tier: (p.membershipTier as string) ?? (p.tier as string) ?? 'Affiliate',
     role: serverUser.role === 'admin' ? 'admin' : 'affiliate',
-    commissionRate: (profile?.commissionRate as number) ?? 0.20,
-    referralCode: (profile?.referralCode as string) ?? '',
-    country: (profile?.country as string) ?? '',
-    phoneNumber: (profile?.phoneNumber as string) ?? '',
-    twitterHandle: (profile?.twitterHandle as string) ?? undefined,
-    instagramHandle: (profile?.instagramHandle as string) ?? undefined,
-    linkedinProfile: (profile?.linkedinProfile as string) ?? (profile?.linkedInProfile as string) ?? undefined,
-    website: (profile?.website as string) ?? '',
-    audienceNiche: (profile?.audienceNiche as string) ?? '',
-    audienceSize: (profile?.audienceSize as string) ?? '',
-    affiliateExperience: (profile?.affiliateExperience as string) ?? '',
-    whyJoin: (profile?.whyJoin as string) ?? '',
-    status: (profile?.status as string) ?? 'pending',
-    createdAt: (profile?.createdAt as string) ?? new Date().toISOString(),
-    termsAccepted: (profile?.termsAccepted as boolean) ?? false,
-    marketingConsent: (profile?.marketingConsent as boolean) ?? false,
-    emailVerified: (profile?.emailVerified as boolean) ?? false,
+    commissionRate: (p.commissionRate as number) ?? 0.20,
+    referralCode: (p.referralCode as string) ?? '',
+    country: (p.country as string) ?? '',
+    phoneNumber: (p.phoneNumber as string) ?? '',
+    twitterHandle: (p.twitterHandle as string) ?? undefined,
+    instagramHandle: (p.instagramHandle as string) ?? undefined,
+    linkedinProfile: (p.linkedinProfile as string) ?? undefined,
+    website: (p.website as string) ?? '',
+    audienceNiche: (p.audienceNiche as string) ?? '',
+    audienceSize: (p.audienceSize as string) ?? '',
+    affiliateExperience: (p.affiliateExperience as string) ?? '',
+    whyJoin: (p.whyJoin as string) ?? '',
+    status: (p.status as string) ?? 'pending',
+    createdAt: (p.createdAt as string) ?? new Date().toISOString(),
+    termsAccepted: (p.termsAccepted as boolean) ?? false,
+    marketingConsent: (p.marketingConsent as boolean) ?? false,
+    emailVerified: (p.emailVerified as boolean) ?? false,
   };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<PartnerProfile | null>(() => storage.get<PartnerProfile | null>('user', null));
-  const [isLoading, setIsLoading] = useState(!user);
+  const [user, setUser] = useState<PartnerProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
 
+  // On mount, try to restore session from the server (no PII in localStorage)
   useEffect(() => {
-    if (!user) setIsLoading(false);
-  }, [user]);
+    api.me()
+      .then(res => {
+        if (res.authenticated && res.user) {
+          return api.getProfile().then(profileRes => {
+            const profile = buildProfile(res.user!, profileRes.profile as Record<string, unknown>);
+            setUser(profile);
+          }).catch(() => {
+            // Profile not found, but user is authenticated (partial state)
+            setUser({
+              id: res.user!.id,
+              fullName: res.user!.full_name,
+              email: res.user!.email,
+              username: res.user!.email.split('@')[0],
+              role: res.user!.role === 'admin' ? 'admin' : 'affiliate',
+              commissionRate: 0.20,
+              tier: 'Affiliate',
+            });
+          });
+        }
+      })
+      .catch(() => {
+        // No valid session, stay logged out
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true);
@@ -53,10 +77,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await api.login(email, password);
       const profileRes = await api.getProfile().catch(() => ({ profile: {} }));
       const profile = buildProfile(res.user, profileRes.profile as Record<string, unknown>);
-      storage.set('user', profile);
       setUser(profile);
-    } catch (err: any) {
-      const msg = err?.body?.error ?? err?.message ?? 'Login failed';
+    } catch (err: unknown) {
+      const e = err as { body?: { error?: string }; message?: string };
+      const msg = e?.body?.error ?? e?.message ?? 'Login failed';
       setError(msg);
       throw err;
     } finally {
@@ -85,8 +109,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         affiliateExperience: data.affiliateExperience ?? '',
         whyJoin: data.whyJoin ?? '',
       });
-    } catch (err: any) {
-      const msg = err?.body?.error ?? err?.message ?? 'Registration failed';
+    } catch (err: unknown) {
+      const e = err as { body?: { error?: string }; message?: string };
+      const msg = e?.body?.error ?? e?.message ?? 'Registration failed';
       setError(msg);
       throw err;
     } finally {
@@ -96,7 +121,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     api.logout().catch(() => {});
-    storage.remove('user');
     setUser(null);
   }, []);
 
@@ -104,23 +128,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
-      await api.affiliateVerifyEmail({ pendingRegistrationId: '', code: token });
-    } catch (err: any) {
-      const msg = err?.body?.error ?? err?.message ?? 'Verification failed';
+      const pendingId = user?.id ?? '';
+      if (!pendingId) {
+        setError('Session required for verification');
+        return;
+      }
+      await api.affiliateVerifyEmail({ pendingRegistrationId: pendingId, code: token });
+    } catch (err: unknown) {
+      const e = err as { body?: { error?: string }; message?: string };
+      const msg = e?.body?.error ?? e?.message ?? 'Verification failed';
       setError(msg);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [user]);
 
   const forgotPassword = useCallback(async (_email: string) => {
     setIsLoading(true);
     setError(null);
     try {
       await api.forgotPassword(_email);
-    } catch (err: any) {
-      const msg = err?.body?.error ?? err?.message ?? 'Request failed';
+    } catch (err: unknown) {
+      const e = err as { body?: { error?: string }; message?: string };
+      const msg = e?.body?.error ?? e?.message ?? 'Request failed';
       setError(msg);
       throw err;
     } finally {
@@ -133,8 +164,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       await api.resetPassword(_token, _password);
-    } catch (err: any) {
-      const msg = err?.body?.error ?? err?.message ?? 'Reset failed';
+    } catch (err: unknown) {
+      const e = err as { body?: { error?: string }; message?: string };
+      const msg = e?.body?.error ?? e?.message ?? 'Reset failed';
       setError(msg);
       throw err;
     } finally {
@@ -143,7 +175,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const hydrateUser = useCallback((profile: PartnerProfile) => {
-    storage.set('user', profile);
     setUser(profile);
   }, []);
 
@@ -153,10 +184,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await api.updateProfile(data as Record<string, unknown>);
       const updated = { ...user, ...data, ...res.profile } as PartnerProfile;
-      storage.set('user', updated);
       setUser(updated);
-    } catch (err: any) {
-      const msg = err?.body?.error ?? err?.message ?? 'Update failed';
+    } catch (err: unknown) {
+      const e = err as { body?: { error?: string }; message?: string };
+      const msg = e?.body?.error ?? e?.message ?? 'Update failed';
       setError(msg);
       throw err;
     } finally {

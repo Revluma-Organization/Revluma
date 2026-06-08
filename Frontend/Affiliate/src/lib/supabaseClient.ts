@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Read configuration from Vite environment variables
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 // Verify if the credentials are set and are not placeholder template strings
 export const isSupabaseConfigured = (): boolean => {
@@ -19,7 +19,7 @@ export const isSupabaseConfigured = (): boolean => {
 };
 
 // Lazy initialization of Supabase client to prevent app crash if credentials are empty at boot
-let supabaseInstance: any = null;
+let supabaseInstance: ReturnType<typeof createClient> | null = null;
 
 export const getSupabase = () => {
   if (!isSupabaseConfigured()) {
@@ -57,24 +57,24 @@ const setLocalStorageItem = <T>(key: string, value: T): void => {
 };
 
 export const localDB = {
-  getProfiles: () => getLocalStorageItem('rev_luma_profiles', []),
-  setProfiles: (data: any[]) => setLocalStorageItem('rev_luma_profiles', data),
-  
-  getWithdrawals: () => getLocalStorageItem('rev_luma_withdrawals', []),
-  setWithdrawals: (data: any[]) => setLocalStorageItem('rev_luma_withdrawals', data),
-  
-  getBroadcasts: () => getLocalStorageItem('rev_luma_broadcasts', []),
-  setBroadcasts: (data: any[]) => setLocalStorageItem('rev_luma_broadcasts', data),
+  getProfiles: () => getLocalStorageItem<unknown[]>('rev_luma_profiles', []),
+  setProfiles: (data: unknown[]) => setLocalStorageItem('rev_luma_profiles', data),
 
-  getNotifications: () => getLocalStorageItem('rev_luma_notifications', []),
-  setNotifications: (data: any[]) => setLocalStorageItem('rev_luma_notifications', data),
+  getWithdrawals: () => getLocalStorageItem<unknown[]>('rev_luma_withdrawals', []),
+  setWithdrawals: (data: unknown[]) => setLocalStorageItem('rev_luma_withdrawals', data),
 
-  getReferredUsers: () => getLocalStorageItem('rev_luma_referred_users', []),
-  setReferredUsers: (data: any[]) => setLocalStorageItem('rev_luma_referred_users', data),
+  getBroadcasts: () => getLocalStorageItem<unknown[]>('rev_luma_broadcasts', []),
+  setBroadcasts: (data: unknown[]) => setLocalStorageItem('rev_luma_broadcasts', data),
 
-  getCommissions: () => getLocalStorageItem('rev_luma_commissions', []),
-  setCommissions: (data: any[]) => setLocalStorageItem('rev_luma_commissions', data),
+  getNotifications: () => getLocalStorageItem<unknown[]>('rev_luma_notifications', []),
+  setNotifications: (data: unknown[]) => setLocalStorageItem('rev_luma_notifications', data),
 
-  getCampaigns: () => getLocalStorageItem('rev_luma_campaigns', []),
-  setCampaigns: (data: any[]) => setLocalStorageItem('rev_luma_campaigns', data),
+  getReferredUsers: () => getLocalStorageItem<unknown[]>('rev_luma_referred_users', []),
+  setReferredUsers: (data: unknown[]) => setLocalStorageItem('rev_luma_referred_users', data),
+
+  getCommissions: () => getLocalStorageItem<unknown[]>('rev_luma_commissions', []),
+  setCommissions: (data: unknown[]) => setLocalStorageItem('rev_luma_commissions', data),
+
+  getCampaigns: () => getLocalStorageItem<unknown[]>('rev_luma_campaigns', []),
+  setCampaigns: (data: unknown[]) => setLocalStorageItem('rev_luma_campaigns', data),
 };

@@ -32,7 +32,7 @@ export default function ResourcesPage() {
                   {r.title}
                 </div>
                 <span style={{
-                  fontSize: 9, fontFamily: 'var(--font-mono)', fontWeight: 600, textTransform: 'uppercase',
+                  fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600, textTransform: 'uppercase',
                   padding: '1px 6px', borderRadius: 3, background: 'var(--color-bg)', color: 'var(--color-text-tertiary)',
                   letterSpacing: '0.05em',
                 }}>

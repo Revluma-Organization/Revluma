@@ -19,6 +19,7 @@
     "schema": "prisma/schema.prisma"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "@prisma/client": "^5.22.0",
     "@sendgrid/mail": "^8.1.6",
     "bcryptjs": "^2.4.3",
@@ -33,9 +34,12 @@
     "ioredis-mock": "^8.13.1",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
     "nodemailer": "^8.0.5",
     "pg": "^8.13.0",
+    "sharp": "^0.33.5",
+    "shopify-api-node": "^3.14.1",
     "twilio": "^5.13.1",
     "uuid": "^10.0.0",
     "winston": "^3.14.0",

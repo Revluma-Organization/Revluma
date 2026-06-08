@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import { useState } from 'react';
 import {
   ArrowRight, Shield, Zap, Sparkles, User, Database, Coins, Layers,

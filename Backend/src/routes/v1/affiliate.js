@@ -311,29 +311,23 @@ router.post('/copilot/chat', affiliateOrAdmin, async (req, res) => {
     const profile = await prisma.affiliateProfile.findUnique({ where: { userId: req.user.id } });
     const tier = profile?.tier || 'Affiliate';
 
-    // Check for OpenAI API key and package
-    const openaiKey = process.env.OPENAI_API_KEY || process.env.COPILOT_API_KEY;
+    // Check for Anthropic/Claude API key
+    const anthropicKey = process.env.ANTHROPIC_API_KEY || process.env.COPILOT_API_KEY;
 
-    if (openaiKey) {
+    if (anthropicKey) {
       try {
-        const openaiModule = require('openai');
-        const OpenAI = openaiModule.default || openaiModule.OpenAI || openaiModule;
-        if (typeof OpenAI === 'function') {
-          const openai = new OpenAI({ apiKey: openaiKey });
-          const completion = await openai.chat.completions.create({
-            model: process.env.COPILOT_MODEL || 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: `You are Revluma Copilot, an AI marketing assistant for affiliate partners. The user's tier is ${tier}. Help them with campaign strategy, copywriting, content ideas, and affiliate marketing best practices. Be concise and actionable.` },
-              { role: 'user', content: message }
-            ],
-            max_tokens: 600,
-            temperature: 0.7,
-          });
-          const response = completion.choices?.[0]?.message?.content?.trim() || 'No response generated.';
-          return res.json({ response });
-        }
+        const { Anthropic } = require('@anthropic-ai/sdk');
+        const anthropic = new Anthropic({ apiKey: anthropicKey });
+        const msg = await anthropic.messages.create({
+          model: process.env.COPILOT_MODEL || 'claude-sonnet-4-20250514',
+          max_tokens: 600,
+          system: `You are Revluma Copilot, an AI marketing assistant for affiliate partners. The user's tier is ${tier}. Help them with campaign strategy, copywriting, content ideas, and affiliate marketing best practices. Be concise and actionable.`,
+          messages: [{ role: 'user', content: message }],
+        });
+        const response = msg.content?.[0]?.text?.trim() || 'No response generated.';
+        return res.json({ response });
       } catch (aiErr) {
-        logger.warn('OpenAI call failed, falling back to fallback', { error: aiErr.message });
+        logger.warn('Anthropic/Claude call failed, falling back to fallback', { error: aiErr.message });
         // Fall through to fallback
       }
     }

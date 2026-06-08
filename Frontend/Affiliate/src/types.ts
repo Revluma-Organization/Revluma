@@ -18,7 +18,6 @@ export interface PartnerProfile {
     twitterHandle?: string;
     instagramHandle?: string;
     linkedinProfile?: string;
-    linkedInProfile?: string;
     website?: string;
     audienceNiche?: string;
     audienceSize?: string;
@@ -168,7 +167,7 @@ export const TIER_INFORMATION: TierInfo[] = [
     description: '30% Recurring First 12 Months',
     rewards: [
       'Advanced Campaign UTMs',
-      'Gemini Copy Assistant Access',
+      'Claude Copy Assistant Access',
       'Custom Branding Collateral',
     ],
   },
@@ -201,5 +200,5 @@ export const TIER_INFORMATION: TierInfo[] = [
 ];
 
 export function getTierInfo(tier: string): TierInfo {
-  return TIER_INFORMATION.find(t => t.name === tier) ?? TIER_INFORMATION[0];
+  return TIER_INFORMATION.find(t => t.name === tier) ?? TIER_INFORMATION[0]!;
 }

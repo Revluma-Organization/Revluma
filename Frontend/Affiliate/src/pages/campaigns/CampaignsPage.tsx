@@ -122,7 +122,7 @@ export default function CampaignsPage() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
+                <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 12, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Tag</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Source</th>
                   <th style={{ padding: '12px 16px', textAlign: 'right' }}>Clicks</th>

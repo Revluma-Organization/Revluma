@@ -60,7 +60,7 @@ export default function BillingSettings() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
+                <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 12, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Date</th>
                   <th style={{ padding: '12px 16px', textAlign: 'right' }}>Amount</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Method</th>
@@ -84,7 +84,7 @@ export default function BillingSettings() {
                     </td>
                     <td style={{ padding: '12px 16px' }}>
                       <span style={{
-                        padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                        padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600,
                         background: w.status === 'Paid' ? 'var(--color-success-bg)' : 'var(--color-bg-active)',
                         color: w.status === 'Paid' ? 'var(--color-success)' : 'var(--color-text-secondary)',
                       }}>

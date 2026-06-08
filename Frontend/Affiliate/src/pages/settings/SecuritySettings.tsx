@@ -14,7 +14,7 @@ export default function SecuritySettings() {
     if (newPassword.length < 8) { setMessage({ type: 'error', text: 'Password must be at least 8 characters' }); return; }
     setChanging(true);
     try {
-      await api.updateProfile({ currentPassword, password: newPassword } as any);
+      await api.updateProfile({ currentPassword, password: newPassword } as Record<string, unknown>);
       setMessage({ type: 'success', text: 'Password updated successfully' });
       setCurrentPassword('');
       setNewPassword('');

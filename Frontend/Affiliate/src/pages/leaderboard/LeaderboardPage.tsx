@@ -41,7 +41,7 @@ export default function LeaderboardPage() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
+                <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 12, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
                   <th style={{ padding: '12px 16px', textAlign: 'left', width: 60 }}>Rank</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Partner</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Tier</th>
@@ -72,7 +72,7 @@ export default function LeaderboardPage() {
                     <td style={{ padding: '12px 16px' }}>
                       {u.tier && (
                         <span style={{
-                          padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                          padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600,
                           background: `${tierColors[u.tier] ?? 'var(--color-bg)'}20`,
                           color: tierColors[u.tier] ?? 'var(--color-text)',
                         }}>

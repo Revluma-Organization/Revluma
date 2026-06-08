@@ -100,7 +100,7 @@ export default function TopNav() {
           <span>Search partners, campaigns...</span>
           <span style={{
             marginLeft: 'auto',
-            fontSize: 10,
+            fontSize: 12,
             color: 'var(--color-text-tertiary)',
             background: 'var(--color-bg-active)',
             padding: '1px 6px',

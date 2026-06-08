@@ -4,6 +4,7 @@ import { ThemeProvider } from './providers/ThemeProvider';
 import { AuthProvider } from './providers/AuthProvider';
 import { SidebarProvider } from './providers/SidebarProvider';
 import { routes } from './routes';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 function AppRoutes() {
   return useRoutes(routes);
@@ -40,16 +41,18 @@ function LoadingScreen() {
 
 export default function App() {
   return (
-    <BrowserRouter basename="/affiliate">
-      <ThemeProvider>
-        <AuthProvider>
-          <SidebarProvider>
-            <Suspense fallback={<LoadingScreen />}>
-              <AppRoutes />
-            </Suspense>
-          </SidebarProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter basename="/affiliate">
+        <ThemeProvider>
+          <AuthProvider>
+            <SidebarProvider>
+              <Suspense fallback={<LoadingScreen />}>
+                <AppRoutes />
+              </Suspense>
+            </SidebarProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

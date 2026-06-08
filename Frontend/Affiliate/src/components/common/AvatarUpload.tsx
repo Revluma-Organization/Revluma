@@ -53,8 +53,8 @@ export default function AvatarUpload({ onClose }: AvatarUploadProps) {
       const result = await api.uploadAvatar(formData);
       hydrateUser({ ...user!, avatarUrl: result.avatarUrl });
       onClose();
-    } catch (err: any) {
-      setError(err?.message ?? 'Upload failed');
+    } catch (err: unknown) {
+      setError((err as Error)?.message ?? 'Upload failed');
     } finally {
       setUploading(false);
     }

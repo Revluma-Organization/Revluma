@@ -145,7 +145,7 @@ export default function Sidebar() {
           Revluma
         </span>
         <span style={{
-          fontSize: 9,
+          fontSize: 11,
           fontWeight: 600,
           textTransform: 'uppercase',
           letterSpacing: '0.08em',
@@ -202,7 +202,7 @@ export default function Sidebar() {
                   marginLeft: 'auto',
                   background: 'var(--color-brand)',
                   color: '#fff',
-                  fontSize: 10,
+                  fontSize: 12,
                   fontWeight: 600,
                   minWidth: 18,
                   height: 18,
@@ -261,7 +261,7 @@ export default function Sidebar() {
               {user.fullName || user.username || 'User'}
             </div>
             <div style={{
-              fontSize: 10,
+              fontSize: 12,
               color: 'var(--color-text-tertiary)',
               fontWeight: 500,
             }}>

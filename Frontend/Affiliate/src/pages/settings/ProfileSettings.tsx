@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import * as api from '../../lib/api';
+import type { PartnerProfile } from '../../types';
 
 export default function ProfileSettings() {
-  const { profile, hydrateUser } = useAuth();
+  const { user: profile, hydrateUser } = useAuth();
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
   const [website, setWebsite] = useState('');
@@ -24,7 +25,7 @@ export default function ProfileSettings() {
     setSaving(true);
     try {
       const res = await api.updateProfile({ fullName, username, website, audienceNiche });
-      if (res.profile) hydrateUser(res.profile as any);
+      if (res.profile) hydrateUser({ ...profile, ...res.profile } as PartnerProfile);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {}

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Shield, User, Mail, Lock, Phone, Globe, Twitter, Linkedin, Instagram,
-  Layers, CheckSquare, Info, ChevronRight, ChevronLeft, Loader2, Link2,
+  Layers, CheckSquare, Info, ChevronRight, ChevronLeft, Loader2,
   Send, CheckCircle2, AlertCircle, Eye, EyeOff, Youtube, Hash, Facebook,
-  FileText, Users, RefreshCw, ArrowLeft, X, Clock, AlertTriangle, ExternalLink
+  FileText, Users, RefreshCw, ArrowLeft, AlertTriangle, ExternalLink
 } from 'lucide-react';
 import { PartnerProfile, AuthMode } from '../types';
 import * as api from '../lib/api';
@@ -38,7 +38,7 @@ function buildPartnerProfile(serverUser: {
     country: (profile?.country as string) ?? '',
     twitterHandle: (profile?.twitterHandle as string) ?? undefined,
     instagramHandle: (profile?.instagramHandle as string) ?? undefined,
-    linkedInProfile: (profile?.linkedInUrl as string) ?? undefined,
+    linkedinProfile: (profile?.linkedInUrl as string) ?? undefined,
     website: (profile?.websiteUrl as string) ?? undefined,
     audienceNiche: (profile?.audienceNiche as string) ?? '',
     audienceSize: (profile?.audienceSize as string) ?? '',

@@ -55,7 +55,7 @@ export default function AdminPage() {
         setWithdrawals(wRes.value.withdrawals as WithdrawalRequest[]);
       }
       if (pRes.status === 'fulfilled' && pRes.value.affiliates) {
-        setProfiles(pRes.value.affiliates.map((a: any) => ({
+        setProfiles((pRes.value.affiliates as Record<string, unknown>[]).map((a) => ({
           id: a.id ?? a.userId ?? '',
           username: a.username ?? '',
           fullName: a.fullName ?? a.full_name ?? '',
@@ -156,7 +156,7 @@ export default function AdminPage() {
               fontFamily: 'var(--font-mono)',
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
-              fontSize: 10,
+              fontSize: 12,
             }}
           >
             {tab.label}
@@ -222,7 +222,7 @@ function ApprovalsTab({ profiles, onStatus }: {
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)', marginBottom: 2 }}>
                 {p.fullName}
-                <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 8, fontFamily: 'var(--font-mono)' }}>
+                <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginLeft: 8, fontFamily: 'var(--font-mono)' }}>
                   @{p.username}
                 </span>
               </div>
@@ -235,7 +235,7 @@ function ApprovalsTab({ profiles, onStatus }: {
               <button onClick={() => onStatus(p.id, 'approved')} style={{
                 padding: '6px 14px',
                 borderRadius: 6,
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: 600,
                 fontFamily: 'var(--font-mono)',
                 color: 'var(--color-success)',
@@ -252,7 +252,7 @@ function ApprovalsTab({ profiles, onStatus }: {
               <button onClick={() => onStatus(p.id, 'rejected')} style={{
                 padding: '6px 14px',
                 borderRadius: 6,
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: 600,
                 fontFamily: 'var(--font-mono)',
                 color: 'var(--color-error)',
@@ -271,19 +271,19 @@ function ApprovalsTab({ profiles, onStatus }: {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 12 }}>
             <div>
-              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 2, fontFamily: 'var(--font-mono)' }}>
+              <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 2, fontFamily: 'var(--font-mono)' }}>
                 Niche & Audience
               </span>
               {p.audienceNiche} ({p.audienceSize})
             </div>
             <div>
-              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 2, fontFamily: 'var(--font-mono)' }}>
+              <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 2, fontFamily: 'var(--font-mono)' }}>
                 Experience
               </span>
               {p.affiliateExperience || 'N/A'}
             </div>
             <div>
-              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 2, fontFamily: 'var(--font-mono)' }}>
+              <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 2, fontFamily: 'var(--font-mono)' }}>
                 Social
               </span>
               {p.twitterHandle ? `X: ${p.twitterHandle} ` : ''}{p.linkedinProfile ? 'LinkedIn: Yes' : ''}
@@ -299,7 +299,7 @@ function ApprovalsTab({ profiles, onStatus }: {
               color: 'var(--color-text-secondary)',
               fontStyle: 'italic',
             }}>
-              <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 4, fontStyle: 'normal', fontFamily: 'var(--font-mono)' }}>
+              <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)', display: 'block', marginBottom: 4, fontStyle: 'normal', fontFamily: 'var(--font-mono)' }}>
                 Why Join
               </span>
               &ldquo;{p.whyJoin}&rdquo;
@@ -326,7 +326,7 @@ function UsersTab({ profiles, onRole }: {
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 9, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
+            <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 11, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
               <th style={{ padding: '12px 16px', textAlign: 'left' }}>Name</th>
               <th style={{ padding: '12px 16px', textAlign: 'left' }}>Username</th>
               <th style={{ padding: '12px 16px', textAlign: 'left' }}>Tier</th>
@@ -350,7 +350,7 @@ function UsersTab({ profiles, onRole }: {
                   <span style={{
                     padding: '2px 8px',
                     borderRadius: 4,
-                    fontSize: 9,
+                    fontSize: 11,
                     fontWeight: 600,
                     fontFamily: 'var(--font-mono)',
                     background: p.status === 'approved' ? 'var(--color-success-bg)' :
@@ -363,13 +363,13 @@ function UsersTab({ profiles, onRole }: {
                     {(p.status ?? '').toUpperCase()}
                   </span>
                 </td>
-                <td style={{ padding: '12px 16px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', fontSize: 10 }}>{p.role}</td>
+                <td style={{ padding: '12px 16px', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', fontSize: 12 }}>{p.role}</td>
                 <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                   {p.role !== 'admin' ? (
                     <button onClick={() => onRole(p.id, 'admin')} style={{
                       padding: '4px 10px',
                       borderRadius: 4,
-                      fontSize: 9,
+                      fontSize: 11,
                       fontFamily: 'var(--font-mono)',
                       cursor: 'pointer',
                       border: '1px solid var(--color-border)',
@@ -386,7 +386,7 @@ function UsersTab({ profiles, onRole }: {
                     <button onClick={() => onRole(p.id, 'affiliate')} style={{
                       padding: '4px 10px',
                       borderRadius: 4,
-                      fontSize: 9,
+                      fontSize: 11,
                       fontFamily: 'var(--font-mono)',
                       cursor: 'pointer',
                       border: '1px solid var(--color-border)',
@@ -445,7 +445,7 @@ function BroadcastsTab({ broadcasts, onAdd }: {
         </h3>
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 500, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>
               Title
             </label>
             <input
@@ -465,7 +465,7 @@ function BroadcastsTab({ broadcasts, onAdd }: {
             />
           </div>
           <div>
-            <label style={{ fontSize: 10, fontWeight: 500, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>
+            <label style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>
               Content
             </label>
             <textarea
@@ -535,7 +535,7 @@ function BroadcastsTab({ broadcasts, onAdd }: {
               <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
                 {b.content}
               </div>
-              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-mono)' }}>
                 {b.author} &middot; {b.date ? new Date(b.date).toLocaleDateString() : ''}
               </div>
             </div>
@@ -582,7 +582,7 @@ function WithdrawalsTab({ withdrawals, onUpdate }: {
               <span style={{
                 padding: '2px 8px',
                 borderRadius: 4,
-                fontSize: 9,
+                fontSize: 11,
                 fontWeight: 600,
                 fontFamily: 'var(--font-mono)',
                 background: w.status === 'Pending Review' ? 'var(--color-warning-bg)' : 'var(--color-info-bg)',
@@ -600,7 +600,7 @@ function WithdrawalsTab({ withdrawals, onUpdate }: {
                   style={{
                     padding: '4px 12px',
                     borderRadius: 4,
-                    fontSize: 10,
+                    fontSize: 12,
                     fontWeight: 600,
                     fontFamily: 'var(--font-mono)',
                     cursor: 'pointer',
@@ -624,7 +624,7 @@ function WithdrawalsTab({ withdrawals, onUpdate }: {
                     style={{
                       padding: '4px 8px',
                       borderRadius: 4,
-                      fontSize: 10,
+                      fontSize: 12,
                       border: '1px solid var(--color-border)',
                       background: 'var(--color-bg-inset)',
                       color: 'var(--color-text)',
@@ -632,7 +632,7 @@ function WithdrawalsTab({ withdrawals, onUpdate }: {
                       width: 160,
                     }}
                   />
-                  <button onClick={() => setEditNotes(null)} style={{ fontSize: 10, color: 'var(--color-text-tertiary)', cursor: 'pointer', border: 'none', background: 'none' }}>
+                  <button onClick={() => setEditNotes(null)} style={{ fontSize: 12, color: 'var(--color-text-tertiary)', cursor: 'pointer', border: 'none', background: 'none' }}>
                     Done
                   </button>
                 </div>
@@ -640,7 +640,7 @@ function WithdrawalsTab({ withdrawals, onUpdate }: {
                 <button onClick={() => setEditNotes(w.id)} style={{
                   padding: '4px 8px',
                   borderRadius: 4,
-                  fontSize: 10,
+                  fontSize: 12,
                   cursor: 'pointer',
                   border: '1px solid var(--color-border)',
                   background: 'transparent',
@@ -685,7 +685,7 @@ function SystemStat({ label, value, status }: { label: string; value: string; st
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, background: 'var(--color-bg-inset)' }}>
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
       <div>
-        <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {label}
         </div>
         <div style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>

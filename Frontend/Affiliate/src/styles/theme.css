@@ -63,6 +63,7 @@
 
   /* Spacing */
   --sidebar-width: 260px;
+  --sidebar-collapsed-width: 0px;
   --topnav-height: 64px;
 
   /* Z-index layers */

@@ -17,7 +17,7 @@
  * far safer than sessionStorage.
  */
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL ?? '/api';
+const API_BASE: string = import.meta.env.VITE_API_URL ?? '/api';
 let _csrfToken: string | null = null;
 
 function getCsrfToken(): string {

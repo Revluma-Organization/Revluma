@@ -52,7 +52,7 @@ export default function NotificationSettings() {
               <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text)', marginBottom: 1 }}>
                 {t.label}
               </div>
-              <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+              <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
                 {t.description}
               </div>
             </div>

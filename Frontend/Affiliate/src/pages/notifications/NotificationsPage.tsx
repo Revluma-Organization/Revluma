@@ -110,7 +110,7 @@ export default function NotificationsPage() {
                   <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.4 }}>
                     {n.message}
                   </p>
-                  <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 4, display: 'block', fontFamily: 'var(--font-mono)' }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginTop: 4, display: 'block', fontFamily: 'var(--font-mono)' }}>
                     {new Date(n.timestamp).toLocaleString()}
                   </span>
                 </div>

@@ -67,7 +67,7 @@ export default function ReferralsPage() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
+                <tr style={{ borderBottom: '1px solid var(--color-border)', fontSize: 12, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)' }}>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Email</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Signed Up</th>
                   <th style={{ padding: '12px 16px', textAlign: 'left' }}>Status</th>
@@ -92,7 +92,7 @@ export default function ReferralsPage() {
                       <span style={{
                         padding: '2px 8px',
                         borderRadius: 4,
-                        fontSize: 10,
+                        fontSize: 12,
                         fontWeight: 600,
                         fontFamily: 'var(--font-mono)',
                         background: (r.planName || r.status === 'active') ? 'var(--color-success-bg)' : 'var(--color-bg-active)',

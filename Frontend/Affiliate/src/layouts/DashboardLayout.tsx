@@ -41,7 +41,7 @@ export default function DashboardLayout() {
         <Sidebar />
         <div style={{
           flex: 1,
-          marginLeft: open ? 'var(--sidebar-width)' : 0,
+          marginLeft: open ? 'var(--sidebar-width)' : 'var(--sidebar-collapsed-width)',
           display: 'flex',
           flexDirection: 'column',
           minHeight: '100vh',
