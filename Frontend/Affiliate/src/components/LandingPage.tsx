@@ -9,7 +9,6 @@ import {
   HelpCircle, ChevronDown, CheckCircle2, ChevronRight, Globe, TrendingUp, Flame, Code
 } from 'lucide-react';
 import { PartnerProfile } from '../types';
-import { FounderImage } from './BrandAssets';
 import revlumaLogo from '../assets/images/Revluma-logo.png';
 import splendorImg from '../assets/images/Splendor.jpg';
 
@@ -615,12 +614,13 @@ export default function LandingPage({ onNavigateToAuth, currentProfile, onNaviga
         {/* SECTION: FOUNDER SPOTLIGHT */}
         <section id="founder" className="py-20 border-t border-zinc-900">
           <div className="p-8 bg-zinc-900/30 rounded-2xl border border-zinc-850 max-w-4xl mx-auto flex flex-col md:flex-row gap-8 items-center">
-            <FounderImage
-              src={splendorImg}
-              alt="Portrait of Splendor Benjamin, Founder & CEO of Luminor Terminal"
-              name="Splendor Benjamin"
-              className="w-36 h-36"
-            />
+            <div className="w-36 h-36 rounded-full overflow-hidden border-2 border-zinc-700 shrink-0">
+              <img
+                src={splendorImg}
+                alt="Portrait of Splendor Benjamin, Founder & CEO of Luminor Terminal"
+                className="w-full h-full object-cover"
+              />
+            </div>
 
             <div className="space-y-4">
               <div className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-450 uppercase tracking-widest">

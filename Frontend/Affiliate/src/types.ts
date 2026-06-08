@@ -1,12 +1,14 @@
 // Shared type definitions for the Affiliate frontend
 
+export type MembershipTier = 'Affiliate' | 'Growth' | 'Elite' | 'Ambassador';
+
 export interface PartnerProfile {
     id: string;
     username: string;
     fullName: string;
     email: string;
     avatarUrl?: string | null;
-    tier: 'Affiliate' | 'Growth' | 'Elite' | 'Founding Ambassador' | string;
+    tier: MembershipTier | string;
     role: 'affiliate' | 'admin' | string;
     status?: string;
     commissionRate: number;
@@ -26,6 +28,9 @@ export interface PartnerProfile {
     termsAccepted?: boolean;
     marketingConsent?: boolean;
     emailVerified?: boolean;
+    membershipTier?: MembershipTier;
+    verificationStatus?: 'unverified' | 'verified' | 'pending';
+    affiliateLevel?: number;
 }
 
 export interface ReferredUser {
@@ -123,3 +128,78 @@ export interface WithdrawalRequest {
 }
 
 export type ApprovalStatus = 'approved' | 'pending' | 'rejected' | string;
+
+export type AuthMode =
+  | 'login'
+  | 'register'
+  | 'forgot'
+  | 'resetConfirm'
+  | 'verifyEmail'
+  | 'pendingApproval'
+  | 'rejected';
+
+export interface TierInfo {
+  name: MembershipTier;
+  commissionRate: number;
+  minReferrals: number;
+  color: string;
+  description: string;
+  rewards: string[];
+}
+
+export const TIER_INFORMATION: TierInfo[] = [
+  {
+    name: 'Affiliate',
+    commissionRate: 0.20,
+    minReferrals: 0,
+    color: 'orange',
+    description: '20% Recurring First 12 Months',
+    rewards: [
+      'Basic Campaign Dashboard',
+      'Standard Copy Center',
+      'Standard Bank Payouts',
+    ],
+  },
+  {
+    name: 'Growth',
+    commissionRate: 0.30,
+    minReferrals: 10,
+    color: 'indigo',
+    description: '30% Recurring First 12 Months',
+    rewards: [
+      'Advanced Campaign UTMs',
+      'Gemini Copy Assistant Access',
+      'Custom Branding Collateral',
+    ],
+  },
+  {
+    name: 'Elite',
+    commissionRate: 0.35,
+    minReferrals: 30,
+    color: 'cyan',
+    description: '35% Recurring First 12 Months',
+    rewards: [
+      'Multi-attribution Campaign Channels',
+      'Priority 24-hr Payout Clearance',
+      'Private Discord & Slack Access',
+      'Direct Engineering Consultation',
+    ],
+  },
+  {
+    name: 'Ambassador',
+    commissionRate: 0.40,
+    minReferrals: 50,
+    color: 'emerald',
+    description: '40% Recurring First 12 Months',
+    rewards: [
+      'Direct Access to Founder Syncs',
+      'Customized Sign-up Landing Codes',
+      'Co-marketing Press Campaigns',
+      'Elite Advisory Board Invite',
+    ],
+  },
+];
+
+export function getTierInfo(tier: string): TierInfo {
+  return TIER_INFORMATION.find(t => t.name === tier) ?? TIER_INFORMATION[0];
+}

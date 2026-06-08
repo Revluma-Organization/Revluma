@@ -5,10 +5,9 @@ import {
   Send, CheckCircle2, AlertCircle, Eye, EyeOff, Youtube, Hash, Facebook,
   FileText, Users, RefreshCw, ArrowLeft, X, Clock, AlertTriangle, ExternalLink
 } from 'lucide-react';
-import { PartnerProfile } from '../types';
+import { PartnerProfile, AuthMode } from '../types';
 import * as api from '../lib/api';
 import revlumaLogo from '../assets/images/Revluma-logo.png';
-import type { AuthMode } from '../App';
 
 interface AuthInterfaceProps {
   onAuthSuccess: (profile: PartnerProfile) => void;
@@ -22,7 +21,7 @@ function convertBackendTierToDisplay(backendTier: unknown): PartnerProfile['tier
   const tier = (backendTier as string)?.toUpperCase() ?? 'AFFILIATE';
   const tierMap: Record<string, PartnerProfile['tier']> = {
     'AFFILIATE': 'Affiliate', 'GROWTH': 'Growth',
-    'ELITE': 'Elite', 'FOUNDING_AMBASSADOR': 'Founding Ambassador'
+    'ELITE': 'Elite', 'FOUNDING_AMBASSADOR': 'Ambassador'
   };
   return tierMap[tier] ?? 'Affiliate';
 }

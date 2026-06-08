@@ -1,13 +1,3 @@
-import React from 'react';
-
-interface SkeletonPros {
-    className?: string;
-}
-
-export default function Skeleton ({ className = ''}: SkeletonPros) {
-    return (
-        <div
-        className={`animate-pulse bg-white/10 rounded-md ${className}`}
-        />
-    )
-}
+// DEPRECATED — No longer imported by any file.
+// Use src/components/common/Skeleton instead.
+export default function SkeletonFallback() { return null; }

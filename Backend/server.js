@@ -196,6 +196,13 @@ app.use('/api/v1/customers', authenticate, require('./src/routes/v1/customers'))
 app.use('/api/v1/user', authenticate, require('./src/routes/v1/user'));
 app.use('/api/v1/notifications', authenticate, require('./src/routes/v1/notifications'));
 
+// User profile & preferences (authenticated)
+app.use('/api/v1/profile', authenticate, require('./src/routes/v1/profile'));
+app.use('/api/v1/preferences', authenticate, require('./src/routes/v1/preferences'));
+
+// File upload (authenticated)
+app.use('/api/v1/upload', authenticate, require('./src/routes/v1/upload'));
+
 // Affiliate routes (authenticated)
 app.use('/api/affiliate', authenticate, require('./src/routes/v1/affiliate'));
 
@@ -254,6 +261,12 @@ app.get('/affiliate/:code', (req, res, next) => {
   }
   require('./src/routes/v1/affiliate-tracking')(req, res, next);
 });
+
+// ============================================================
+// Serve uploaded files (avatars, etc.)
+// ============================================================
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ============================================================
 // Static frontend (after all dynamic routes)

@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+import { useThemeStore } from "./store";
 import { DashboardRoutes } from "./routes";
 import LoadingSpinner from "./components/LoadingSpinner";
 
@@ -12,6 +14,15 @@ const queryClient = new QueryClient();
 
 function App() {
   const { user, loading, error } = useAuth();
+  const initializeTheme = useThemeStore((s) => s.initializeTheme);
+  const fetchPreferences = useThemeStore((s) => s.fetchPreferences);
+
+  useEffect(() => {
+    initializeTheme();
+    if (user) {
+      fetchPreferences();
+    }
+  }, [user, initializeTheme, fetchPreferences]);
 
   console.log('[DASHBOARD APP] Render state', { loading, hasUser: !!user, userId: user?.id });
 

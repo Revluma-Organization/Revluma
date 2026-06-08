@@ -17,9 +17,6 @@
  * far safer than sessionStorage.
  */
 
-import { ApiError } from "@google/genai";
-import { Component } from "lucide-react";
-
 const API_BASE = (import.meta as any).env?.VITE_API_URL ?? '/api';
 let _csrfToken: string | null = null;
 
@@ -47,8 +44,9 @@ async function request<T>(
   const csrfToken = getCsrfToken();
   const start = Date.now();
 
+  const isFormData = body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
     ...(affiliatePortal ? { 'X-Affiliate-Portal': 'true' } : {})
   };
@@ -67,7 +65,7 @@ async function request<T>(
         credentials: 'include',
         headers,
         signal: controller.signal,
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {})
+        ...(body !== undefined ? { body: isFormData ? body : JSON.stringify(body) } : {})
       });
       clearTimeout(timeoutId);
 
@@ -357,6 +355,26 @@ export async function updateAffiliateRole(profileId: string, role: 'user' | 'adm
     `/affiliate/admin/${profileId}/role`,
     { role }
   );
+}
+
+// ============================================
+// Password Management
+// ============================================
+
+export async function forgotPassword(email: string) {
+  return request<{ message: string }>('POST', '/affiliate-auth/forgot-password', { email }, true, 15000, 2);
+}
+
+export async function resetPassword(token: string, password: string) {
+  return request<{ message: string }>('POST', '/affiliate-auth/reset-password', { token, password }, true, 15000, 2);
+}
+
+// ============================================
+// Avatar Upload
+// ============================================
+
+export async function uploadAvatar(formData: FormData) {
+  return request<{ avatarUrl: string }>('POST', '/affiliate/avatar', formData, true, 30000, 2);
 }
 
 // ============================================

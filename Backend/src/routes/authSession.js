@@ -66,10 +66,15 @@ function buildUserPayload(user) {
     id: user.id,
     email: user.email,
     full_name: user.fullName,
+    display_name: user.displayName || user.fullName,
+    avatar_url: user.avatarUrl || null,
     role: user.role,
     tenant_id: user.tenantId,
     email_verified: user.emailVerified,
-    onboarding_status: user.onboardingStatus
+    onboarding_status: user.onboardingStatus,
+    membership_tier: user.membershipTier || 'free',
+    account_status: user.accountStatus || 'active',
+    last_login_at: user.lastLoginAt?.toISOString() || null
   };
 }
 

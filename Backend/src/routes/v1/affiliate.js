@@ -14,8 +14,16 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { prisma } = require('../../services/prisma');
 const logger = require('../../utils/logger');
+const { storeAvatar, validateFileType, validateFileSize } = require('../../services/uploadService');
+const { processAvatar, validateImage } = require('../../services/imageService');
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
 
 function requireRole(roles) {
   return (req, res, next) => {
@@ -135,12 +143,50 @@ router.get('/profile', affiliateOrAdmin, async (req, res) => {
 
 // PATCH /api/affiliate/profile
 router.patch('/profile', affiliateOrAdmin, async (req, res) => {
-  const { websiteUrl, twitterHandle, instagramHandle, linkedinProfile, audienceNiche, audienceSize } = req.body;
+  const { fullName, username, website, websiteUrl, twitterHandle, instagramHandle, linkedinProfile, audienceNiche, audienceSize, currentPassword, password } = req.body;
 
   try {
+    // Update user table fields (fullName, password)
+    if (fullName !== undefined) {
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { fullName, updatedAt: new Date() }
+      });
+    }
+
+    if (username !== undefined) {
+      const existing = await prisma.affiliateProfile.findUnique({ where: { username } });
+      if (existing && existing.userId !== req.user.id) {
+        return res.status(409).json({ error: 'Username already taken' });
+      }
+    }
+
+    // Handle password change
+    if (password !== undefined) {
+      const bcrypt = require('bcryptjs');
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Current password is required to set a new password' });
+      }
+      const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+      if (!user || !user.passwordHash) {
+        return res.status(400).json({ error: 'Cannot change password for this account' });
+      }
+      const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+      if (!valid) {
+        return res.status(403).json({ error: 'Current password is incorrect' });
+      }
+      const hash = await bcrypt.hash(password, 12);
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { passwordHash: hash, updatedAt: new Date() }
+      });
+    }
+
     const profile = await prisma.affiliateProfile.update({
       where: { userId: req.user.id },
       data: {
+        ...(username !== undefined && { username }),
+        ...(website !== undefined && { website }),
         ...(websiteUrl !== undefined && { website: websiteUrl }),
         ...(twitterHandle !== undefined && { twitterHandle }),
         ...(instagramHandle !== undefined && { instagramHandle }),
@@ -148,14 +194,52 @@ router.patch('/profile', affiliateOrAdmin, async (req, res) => {
         ...(audienceNiche !== undefined && { audienceNiche }),
         ...(audienceSize !== undefined && { audienceSize }),
         updatedAt: new Date()
-      }
+      },
+      include: { user: { select: { email: true, fullName: true } } }
     });
 
     res.json({ profile });
   } catch (err) {
     logger.error('Update affiliate profile failed', { error: err.message, userId: req.user.id });
     if (err.code === 'P2025') return res.status(404).json({ error: 'Profile not found' });
+    if (err.code === 'P2002') return res.status(409).json({ error: 'Username already taken' });
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// Avatar Upload
+// ============================================================
+
+// POST /api/affiliate/avatar
+router.post('/avatar', affiliateOrAdmin, avatarUpload.single('avatar'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    if (!validateFileType(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Invalid file type. Allowed: JPEG, PNG, WebP' });
+    }
+    if (!validateFileSize(req.file.size)) {
+      return res.status(400).json({ error: 'File too large. Maximum 5MB' });
+    }
+    await validateImage(req.file.buffer);
+    const processedBuffer = await processAvatar(req.file.buffer);
+    const avatarUrl = await storeAvatar(req.user.id, processedBuffer);
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { avatarUrl, updatedAt: new Date() }
+    });
+
+    logger.info('Affiliate avatar uploaded', { userId: req.user.id, size: req.file.size });
+    res.json({ avatarUrl });
+  } catch (err) {
+    logger.error('Affiliate avatar upload failed', { error: err.message, userId: req.user.id });
+    if (err.message.includes('Invalid') || err.message.includes('Unsupported')) {
+      return res.status(400).json({ error: err.message });
+    }
+    res.status(500).json({ error: 'Failed to upload avatar' });
   }
 });
 
@@ -209,6 +293,61 @@ router.post('/campaigns', affiliateOrAdmin, async (req, res) => {
     logger.error('Create campaign failed', { error: err.message, userId: req.user.id });
     if (err.code === 'P2002') return res.status(409).json({ error: 'Campaign tag already exists' });
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// Copilot Chat (AI marketing assistant)
+// ============================================================
+
+// POST /api/affiliate/copilot/chat
+router.post('/copilot/chat', affiliateOrAdmin, async (req, res) => {
+  const { message } = req.body;
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+
+  try {
+    const profile = await prisma.affiliateProfile.findUnique({ where: { userId: req.user.id } });
+    const tier = profile?.tier || 'Affiliate';
+
+    // Check for OpenAI API key and package
+    const openaiKey = process.env.OPENAI_API_KEY || process.env.COPILOT_API_KEY;
+
+    if (openaiKey) {
+      try {
+        const openaiModule = require('openai');
+        const OpenAI = openaiModule.default || openaiModule.OpenAI || openaiModule;
+        if (typeof OpenAI === 'function') {
+          const openai = new OpenAI({ apiKey: openaiKey });
+          const completion = await openai.chat.completions.create({
+            model: process.env.COPILOT_MODEL || 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: `You are Revluma Copilot, an AI marketing assistant for affiliate partners. The user's tier is ${tier}. Help them with campaign strategy, copywriting, content ideas, and affiliate marketing best practices. Be concise and actionable.` },
+              { role: 'user', content: message }
+            ],
+            max_tokens: 600,
+            temperature: 0.7,
+          });
+          const response = completion.choices?.[0]?.message?.content?.trim() || 'No response generated.';
+          return res.json({ response });
+        }
+      } catch (aiErr) {
+        logger.warn('OpenAI call failed, falling back to fallback', { error: aiErr.message });
+        // Fall through to fallback
+      }
+    }
+
+    // Fallback response when no AI key is configured
+    const fallbacks = [
+      `Great question about affiliate marketing! As a ${tier} partner, I recommend focusing on creating targeted content that resonates with your audience. Try A/B testing your campaign creatives and tracking which channels drive the highest conversion rates.`,
+      `For your ${tier} tier, here's a tip: leverage your unique referral link across multiple touchpoints — email signatures, social media bios, blog posts, and community discussions. Consistency drives results.`,
+      `When crafting your pitch, focus on the specific value proposition that matters most to your audience. Revluma's AI-powered features are a strong differentiator. Want me to help you draft specific copy for a channel?`,
+    ];
+    res.json({ response: fallbacks[Math.floor(Math.random() * fallbacks.length)] });
+  } catch (err) {
+    logger.error('Copilot chat failed', { error: err.message, userId: req.user.id });
+    res.status(500).json({ error: 'Failed to process chat message' });
   }
 });
 
@@ -631,6 +770,36 @@ router.patch('/admin/withdrawals/:id', adminOnly, async (req, res) => {
   } catch (err) {
     logger.error('Admin update withdrawal failed', { error: err.message, withdrawalId: id });
     if (err.code === 'P2025') return res.status(404).json({ error: 'Withdrawal not found' });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/affiliate/admin/:id/role
+router.patch('/admin/:id/role', adminOnly, async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+  const validRoles = ['user', 'admin', 'affiliate'];
+
+  if (!role || !validRoles.includes(role)) {
+    return res.status(400).json({ error: `Role must be one of: ${validRoles.join(', ')}` });
+  }
+
+  try {
+    const profile = await prisma.affiliateProfile.findUnique({ where: { id } });
+    if (!profile) {
+      return res.status(404).json({ error: 'Affiliate profile not found' });
+    }
+
+    await prisma.user.update({
+      where: { id: profile.userId },
+      data: { role, updatedAt: new Date() }
+    });
+
+    logger.info('Affiliate role updated', { profileId: id, role, adminId: req.user.id });
+    res.json({ message: 'Role updated', profileId: id, role });
+  } catch (err) {
+    logger.error('Admin update role failed', { error: err.message, profileId: id });
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Profile not found' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

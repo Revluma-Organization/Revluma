@@ -148,10 +148,15 @@ async function validateSession(req, res) {
             id: true,
             email: true,
             fullName: true,
+            displayName: true,
+            avatarUrl: true,
             emailVerified: true,
             role: true,
             tenantId: true,
-            onboardingStatus: true
+            onboardingStatus: true,
+            membershipTier: true,
+            accountStatus: true,
+            lastLoginAt: true
           }
         }
       }
