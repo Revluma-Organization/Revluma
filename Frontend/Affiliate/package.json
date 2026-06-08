@@ -12,8 +12,8 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@sendgrid/mail": "^8.1.6",
     "@google/genai": "^1.29.0",
+    "@sendgrid/mail": "^8.1.6",
     "@supabase/supabase-js": "^2.106.1",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
@@ -23,6 +23,7 @@
     "motion": "^12.23.24",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-router-dom": "^6.30.4",
     "vite": "^6.2.3"
   },
   "devDependencies": {
