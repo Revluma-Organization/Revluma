@@ -5,49 +5,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="../assets/images/Revluma-icon.png">
-  </link>
   <title>Revluma - Sign Up</title>
 </head>
 
 <body>
-  <!-- This page now serves as a redirect to onboarding -->
   <script>
-    // Check if user is already authenticated
-    async function checkAuthAndRedirect() {
-      try {
-        const response = await fetch('/api/session/me', {
-          credentials: 'include'
-        });
-
-        if (response.ok) {
-          // User is already logged in, redirect to dashboard
-          try {
-            const abs = new URL('/dashboard/overview', window.location.origin).href;
-            console.info('[SIGNUP] Authenticated - redirect to', abs);
-            window.location.href = abs;
-          } catch (err) {
-            console.error('[SIGNUP ERROR] Dashboard redirect failed', err);
-            window.location.href = '/dashboard/overview';
-          }
-        } else {
-          // User is not logged in, proceed to onboarding
-          try {
-            const abs = new URL('onboarding.html', window.location.origin).href;
-            console.info('[SIGNUP] Not authenticated - redirect to onboarding', abs);
-            window.location.href = abs;
-          } catch (err) {
-            console.error('[SIGNUP ERROR] Onboarding redirect failed', err);
-            window.location.href = 'onboarding.html';
-          }
-        }
-      } catch (error) {
-        // On error, default to onboarding
-        console.error('[SIGNUP ERROR] checkAuthAndRedirect failed', error);
-        window.location.href = 'onboarding.html';
-      }
-    }
-
-    checkAuthAndRedirect();
+    window.location.href = 'onboarding.html';
   </script>
 </body>
 

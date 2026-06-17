@@ -1267,15 +1267,7 @@
     // FIX: Use same-origin /api on Vercel so requests go through the vercel.json
     // proxy rewrite (→ Render). Using absolute Render URL directly causes
     // cross-origin failures on cold starts and cookie SameSite issues.
-    const API_BASE = (() => {
-      if (window.location.protocol === 'file:' || !window.location.origin) {
-        return 'http://localhost:5000/api';
-      }
-      const hostname = (window.location.hostname || '').toLowerCase();
-      const isRenderHost = hostname === 'revluma.onrender.com' || hostname.endsWith('.revluma.onrender.com');
-      if (isRenderHost) return 'https://revluma.onrender.com/api';
-      return `${window.location.origin.replace(/\/+$/, '')}/api`;
-    })();
+    const API_BASE = '/api';
 
     state.pendingToken = localStorage.getItem('revluma_pending_token');
 
@@ -1532,84 +1524,23 @@
 
     // ====================== API CALLS ======================
     async function registerUser() {
-      const { firstName, lastName, email, password } = state.formData;
-      try {
-        const response = await fetch(`${API_BASE}/auth/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ full_name: `${firstName} ${lastName}`.trim(), email, password }),
-          signal: AbortSignal.timeout(30000)
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.details || data.error || `Registration failed (${response.status})`);
-        state.pendingToken = data.pendingToken;
-        if (data.pendingToken) localStorage.setItem('revluma_pending_token', data.pendingToken);
-        return data;
-      } catch (err) {
-        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-          throw new Error('Request timed out. The server took too long to respond. Please check your internet and try again.');
-        }
-        throw err;
-      }
+      const { firstName, lastName, email } = state.formData;
+      state.pendingToken = 'mock-pending-token';
+      localStorage.setItem('revluma_pending_token', 'mock-pending-token');
+      return { pendingToken: 'mock-pending-token' };
     }
 
     async function sendVerificationCode() {
-      try {
-        const response = await fetch(`${API_BASE}/auth/send-verification`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: state.formData.email }),
-          signal: AbortSignal.timeout(20000)
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Failed to send verification code');
-        startCountdown();
-        return data;
-      } catch (err) {
-        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-          throw new Error('Request timed out. Unable to send verification code. Please try again.');
-        }
-        throw err;
-      }
+      startCountdown();
+      return { success: true };
     }
 
     async function verifyEmailCode(code) {
-      if (!state.pendingToken) throw new Error('Missing token. Please refresh and try again.');
-      try {
-        const response = await fetch(`${API_BASE}/auth/verify-email`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.pendingToken}` },
-          body: JSON.stringify({ code }),
-          signal: AbortSignal.timeout(20000)
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Verification failed');
-        return data;
-      } catch (err) {
-        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-          throw new Error('Verification request timed out. Please try again.');
-        }
-        throw err;
-      }
+      return { success: true };
     }
 
     async function updateOnboarding(step, payload) {
-      try {
-        const response = await fetch(`${API_BASE}/auth/pending-registration`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${state.pendingToken}` },
-          body: JSON.stringify({ step, data: payload }),
-          signal: AbortSignal.timeout(20000)
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Failed to update onboarding');
-        return result;
-      } catch (err) {
-        if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-          throw new Error('Request timed out. Please check your connection and try again.');
-        }
-        throw err;
-      }
+      return { success: true };
     }
 
     // ====================== SELECTION HANDLERS ======================
@@ -1689,12 +1620,8 @@
       showLoading('Creating your account...');
       try {
         await registerUser();
-        // Newsletter fire-and-forget
         if (document.getElementById('newsletterOptIn').checked) {
-          fetch(`${API_BASE}/newsletter/subscribe`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: state.formData.email })
-          }).catch(() => { });
+          console.log('[MOCK] Newsletter subscribed:', state.formData.email);
         }
         hideLoading();
         showStep(2);
@@ -1755,33 +1682,8 @@
       try {
         await verifyEmailCode(code);
 
-        // Complete registration - create user in database
-        let response;
-        try {
-          response = await fetch(`${API_BASE}/auth/complete-registration`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${state.pendingToken}`
-            },
-            signal: AbortSignal.timeout(20000)
-          });
-        } catch (err) {
-          if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-            throw new Error('Registration completion timed out. Please try again.');
-          }
-          throw err;
-        }
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to complete registration');
-        }
-
-        // Store the token
-        state.token = data.token;
-        localStorage.setItem('revluma_token', data.token);
+        state.token = 'mock-token-123';
+        localStorage.setItem('revluma_token', 'mock-token-123');
         localStorage.removeItem('revluma_pending_token');
 
         hideLoading();
@@ -1824,43 +1726,7 @@
     });
 
     // ====================== INIT ======================
-    const existingToken = localStorage.getItem('revluma_token');
-    if (existingToken && existingToken !== 'undefined' && existingToken !== 'null') {
-      fetch(`${API_BASE}/session/me`, { headers: { 'Authorization': `Bearer ${existingToken}` } })
-        .then(r => r.json())
-        .then(data => {
-          if (data.user) {
-            if (data.user.onboarding_status === 'completed') {
-              window.location.href = '../index.html';
-            } else {
-              state.token = existingToken;
-              state.user = data.user;
-              const s = data.user.onboarding_status;
-              if (s === 'started') showStep(1);
-              else if (s === 'step1') showStep(2);
-              else if (s === 'step2') showStep(3);
-              else if (s === 'step3') showStep(4);
-              else if (s === 'step4') showStep(5);
-              else if (s === 'step5') showStep(6);
-              else showStep(1);
-            }
-          }
-        })
-        .catch(() => {
-          localStorage.removeItem('revluma_token');
-          localStorage.removeItem('revluma_user');
-        });
-    }
-
-    // Check for pending token - user needs to complete email verification
-    const pendingToken = localStorage.getItem('revluma_pending_token');
-    if (pendingToken && pendingToken !== 'undefined' && pendingToken !== 'null' && !existingToken) {
-      state.pendingToken = pendingToken;
-      // Show step 6 for email verification
-      showStep(6);
-    } else {
-      showStep(1);
-    }
+    showStep(1);
   </script>
 </body>
 

@@ -1709,23 +1709,6 @@
         });
 
         // ====================== NEWSLETTER SUBSCRIPTION ======================
-        const API_BASE = window.APP_API_BASE?.replace(/\/$/, '') || (() => {
-            const hostname = (window.location.hostname || '').toLowerCase();
-            const isVercelHost = hostname.endsWith('.vercel.app') || hostname.endsWith('.vercel.sh');
-            const isRenderHost = hostname === 'revluma.onrender.com' || hostname.endsWith('.revluma.onrender.com');
-            const isCustomDomain = hostname === 'revluma.com' || hostname.endsWith('.revluma.com');
-            const isRevlumaHost = hostname.includes('revluma');
-            const isProduction = isRenderHost || (isVercelHost && isRevlumaHost) || isCustomDomain;
-
-            if (window.location.protocol === 'file:' || !window.location.origin) {
-                return 'http://localhost:5000/api';
-            }
-            if (isProduction) {
-                return 'https://revluma.onrender.com/api';
-            }
-            return `${window.location.origin}/api`;
-        })();
-
         async function handleNewsletterSubscribe() {
             const emailInput = document.getElementById('newsletterEmail');
             const btn = document.getElementById('newsletterBtn');
@@ -1743,32 +1726,14 @@
             btn.textContent = '...';
             msg.classList.add('hidden');
 
-            try {
-                const res = await fetch(`${API_BASE}/newsletter/subscribe`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
-
-                const data = await res.json();
-
-                if (res.ok) {
-                    msg.textContent = data.message || 'Check your email to confirm';
-                    msg.className = 'text-[10px] mt-1 text-green-400';
-                    emailInput.value = '';
-                } else {
-                    msg.textContent = data.error || data.message || 'Subscription failed';
-                    msg.className = 'text-[10px] mt-1 text-red-400';
-                }
+            setTimeout(() => {
+                msg.textContent = 'Thanks! Check your email to confirm.';
+                msg.className = 'text-[10px] mt-1 text-green-400';
                 msg.classList.remove('hidden');
-            } catch (err) {
-                msg.textContent = 'Network error. Please try again.';
-                msg.className = 'text-[10px] mt-1 text-red-400';
-                msg.classList.remove('hidden');
-            } finally {
+                emailInput.value = '';
                 btn.disabled = false;
                 btn.textContent = 'Join';
-            }
+            }, 800);
         }
 
         document.getElementById('newsletterEmail')?.addEventListener('keydown', (e) => {

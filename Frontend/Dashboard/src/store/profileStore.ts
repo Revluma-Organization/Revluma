@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import api from '@/lib/api';
 
 export interface Profile {
   id: string;
@@ -35,45 +34,41 @@ interface ProfileActions {
 
 type ProfileStore = ProfileState & ProfileActions;
 
+const MOCK_PROFILE: Profile = {
+  id: "mock-user-001",
+  email: "alex@mystore.com",
+  full_name: "Alex Johnson",
+  display_name: "Alex",
+  avatar_url: null,
+  bio: "E-commerce entrepreneur",
+  phone: null,
+  timezone: "America/New_York",
+  country: "US",
+  role: "admin",
+  membership_tier: "pro",
+  account_status: "active",
+  email_verified: true,
+  onboarding_status: "completed",
+  last_login_at: new Date().toISOString(),
+  created_at: "2024-01-15T00:00:00Z",
+};
+
 export const useProfileStore = create<ProfileStore>()((set) => ({
-  profile: null,
+  profile: MOCK_PROFILE,
   loading: false,
   error: null,
   saving: false,
 
   fetchProfile: async () => {
-    set({ loading: true, error: null });
-    try {
-      const response = await api.get('/v1/profile', { withCredentials: true });
-      if (response.data?.success) {
-        set({ profile: response.data.data, loading: false });
-      } else {
-        set({ error: 'Failed to load profile', loading: false });
-      }
-    } catch (err) {
-      set({
-        error: err instanceof Error ? err.message : 'Failed to load profile',
-        loading: false
-      });
-    }
+    set({ profile: MOCK_PROFILE, loading: false, error: null });
   },
 
   updateProfile: async (data) => {
-    set({ saving: true, error: null });
-    try {
-      const response = await api.put('/v1/profile', data, { withCredentials: true });
-      if (response.data?.success) {
-        set({ profile: response.data.data, saving: false });
-      } else {
-        set({ error: 'Failed to update profile', saving: false });
-      }
-    } catch (err) {
-      set({
-        error: err instanceof Error ? err.message : 'Failed to update profile',
-        saving: false
-      });
-      throw err;
-    }
+    set((state) => ({
+      profile: state.profile ? { ...state.profile, ...data } : state.profile,
+      saving: false,
+      error: null,
+    }));
   },
 
   clearProfile: () => set({ profile: null, loading: false, error: null })

@@ -10,10 +10,10 @@ import {
   AvatarFallback
 } from "@/components/ui";
 import { useUI } from "@/store/ui";
-import { useAuth } from "@/context/AuthContext";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { MOCK } from "@/data/mockOverview";
+import { useAuth } from "@/context/AuthContext";
 
 const RANGES = ["Today", "Last 7 days", "Last 30 days", "Last 90 days", "This year"] as const;
 

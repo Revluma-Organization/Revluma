@@ -976,20 +976,7 @@
     // FIX: Use same-origin /api on Vercel so requests go through the vercel.json
     // proxy rewrite (→ Render). Using the absolute Render URL directly causes
     // cross-origin requests that can fail on cold starts / cookie SameSite issues.
-    const API_BASE = (() => {
-      if (window.location.protocol === 'file:' || !window.location.origin) {
-        return 'http://localhost:5000/api';
-      }
-      const hostname = (window.location.hostname || '').toLowerCase();
-      const isRenderHost = hostname === 'revluma.onrender.com' || hostname.endsWith('.revluma.onrender.com');
-      // On Render itself, use absolute URL (no proxy)
-      if (isRenderHost) {
-        return 'https://revluma.onrender.com/api';
-      }
-      // On Vercel or any other host (incl. custom domain): use same-origin /api
-      // which routes through the Vercel proxy rewrite to Render.
-      return `${window.location.origin.replace(/\/+$/, '')}/api`;
-    })();
+    const API_BASE = '/api';
 
     // Client-side rate-limit tracking
     const RATE_LIMIT = { max: 5, windowMs: 15 * 60 * 1000 };
@@ -1276,91 +1263,9 @@
       return token;
     }
 
-    async function checkAutoLogin() {
-  try {
-    // 1. Check if user just logged out (5 minute window)
-    const loggedOutAt = localStorage.getItem('rv_logged_out');
-    if (loggedOutAt) {
-      const elapsed = Date.now() - parseInt(loggedOutAt, 10);
-      if (elapsed < 5 * 60 * 1000) { // 5 minutes
-        console.log('[AUTH] Recent logout detected, skipping auto-login');
-        // Clear old logout flag and stale tokens
-        localStorage.removeItem('rv_logged_out');
-        clearSession();
-        return;
-      }
-      localStorage.removeItem('rv_logged_out');
+    function checkAutoLogin() {
+      // Mock — no backend call
     }
-
-    // 2. Always clear stale JWT tokens before checking session
-    // The session is now cookie-based; JWT tokens in localStorage are legacy
-    clearSession();
-
-    // 3. Check if there's a valid HTTP-only cookie session
-    const res = await fetch(`${API_BASE}/session/me`, {
-      method: 'GET',
-      credentials: 'include',
-      signal: AbortSignal.timeout(10000)
-    });
-
-    if (!res.ok) {
-      // No valid session — stay on login page
-      return;
-    }
-
-    const data = await res.json();
-    if (!data.authenticated || !data.user) {
-      return;
-    }
-
-    const user = data.user;
-    user.onboarding_status = data.onboarding_status ?? user.onboarding_status ?? 'pending';
-
-    const dest = (user.onboarding_status === 'completed')
-      ? '/dashboard/overview'
-      : '/auth/onboarding.html';
-
-    hideAllBanners();
-    showInfoBanner(
-      'You are already signed in',
-      `Signed in as ${user.email}. Click Continue to go to your dashboard or Sign out to switch accounts.`,
-      'Continue',
-      () => window.location.replace(new URL(dest, window.location.origin).href)
-    );
-
-    // Add sign out button
-    try {
-      const existing = document.getElementById('signoutHelper');
-      if (existing) existing.remove();
-
-      const btn = document.createElement('button');
-      btn.id = 'signoutHelper';
-      btn.textContent = 'Sign out';
-      btn.className = 'banner-secondary-btn';
-      btn.style.marginLeft = '12px';
-      btn.addEventListener('click', async () => {
-        clearSession();
-        try {
-          await fetch(`${API_BASE}/session/logout`, {
-            method: 'POST',
-            credentials: 'include',
-            signal: AbortSignal.timeout(5000)
-          });
-        } catch (e) {}
-        try { localStorage.setItem('rv_logged_out', Date.now().toString()); } catch {}
-        hideAllBanners();
-        window.location.replace('/auth/loginIn.html');
-      });
-
-      el.infoBanner.appendChild(btn);
-    } catch (e) {
-      console.warn('[AUTH] Could not render sign out helper', e);
-    }
-
-  } catch (error) {
-    console.warn('[AUTH] Auto-login check failed:', error);
-  }
-}
 
     function redirectAfterLogin(user) {
       if (!user) {
@@ -1398,39 +1303,9 @@
       }
     }
 
-    // Verify server-side session (cookie) is set before redirecting
     async function verifyServerSessionAndRedirect(user) {
-      try {
-        console.info('[AUTH] Verifying server-side session via /session/me');
-        const res = await fetch(`${API_BASE}/session/me`, {
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' }
-        });
-
-        if (!res.ok) {
-          console.error('[AUTH ERROR] /session/me returned non-OK', { status: res.status });
-          showError('Could not confirm session with server. Please try signing in again.');
-          setLoading(false);
-          return false;
-        }
-
-        const body = await res.json();
-        if (body.authenticated) {
-          console.info('[AUTH] Server session verified, proceeding to redirect');
-          redirectAfterLogin(user);
-          return true;
-        }
-
-        console.error('[AUTH ERROR] Server does not recognize session after login', body);
-        showError('Login did not complete correctly. Please ensure cookies are enabled and try again.');
-        setLoading(false);
-        return false;
-      } catch (err) {
-        console.error('[AUTH ERROR] verifyServerSessionAndRedirect failed', err);
-        showError('Network error while verifying session. Please try again.');
-        setLoading(false);
-        return false;
-      }
+      redirectAfterLogin(user);
+      return true;
     }
 
     // ================================================================
@@ -1466,38 +1341,14 @@
      * Send a new verification code for unverified accounts
      */
     async function apiResendVerification(email) {
-      const res = await fetch(`${API_BASE}/auth/send-verification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-        signal: AbortSignal.timeout(20000)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to send verification code');
-      return data;
+      return { success: true, message: 'Verification code sent' };
     }
 
-    /**
-     * Verify email code (works for both pending-registration and post-login flows)
-     */
     async function apiVerifyCode(code, email) {
-      // Try the pending-registration token first (if the user just signed up)
-      const pendingToken = state.pendingToken
-        || localStorage.getItem('revluma_pending_token')
-        || null;
-
-      const headers = { 'Content-Type': 'application/json' };
-      if (pendingToken) headers['Authorization'] = `Bearer ${pendingToken}`;
-
-      const res = await fetch(`${API_BASE}/auth/verify-email`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ code, email }),
-        signal: AbortSignal.timeout(20000)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Verification failed');
-      return data; // should contain { token, user } for the verified session
+      return {
+        token: 'mock-token-123',
+        user: { id: 'mock-user-001', email, full_name: 'Alex Johnson', onboarding_status: 'completed' }
+      };
     }
 
     // ================================================================

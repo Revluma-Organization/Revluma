@@ -7,17 +7,14 @@ secrets/
 
 # Dependencies (NEVER PUSH)
 node_modules/
-Backend/node_modules/
 Frontend/node_modules/
 Frontend/node/
 
 # Build outputs (NEVER PUSH)
 Frontend/dist/
-Backend/dist/
-Frontend/build/
-Backend/build/
 Frontend/Dashboard/dist/
 Frontend/Dashboard/node_modules/
+Frontend/Dashboard/.next/
 
 # IDE & OS files (NEVER PUSH)
 .vscode/
@@ -33,17 +30,6 @@ Thumbs.db
 *.webm
 *.zip
 *.tar.gz
-# Video files in Frontend (served from Backend)
-Frontend/assets/videos/*.mp4
-
-# Database backups (NEVER PUSH)
-*.backup
-*.dump
-*.sql (in backup folders)
-
-# Prisma (DO PUSH - migrations only)
-prisma/migrations/
-!prisma/migrations/.gitkeep
 
 # Temporary files
 *.log

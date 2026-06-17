@@ -2948,14 +2948,6 @@
                         class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Blog</a>
                 </div>
 
-                <!-- Careers    -->
-                <div class="space-y-2.5">
-                    <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Careers</p>
-                    
-                     <a href="/affiliate"
-                         class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Affiliate</a>
-                </div>
-
                 <!-- Social -->
                 <div class="space-y-2.5">
                     <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Social</p>
@@ -2984,60 +2976,22 @@
     </footer>
 
     <script>
-        // Auth check function (shared from loginIn.html)
-        const API_BASE = window.APP_API_BASE?.replace(/\/$/, '') || (() => {
-            if (window.location.protocol === 'file:' || !window.location.origin) {
-                return 'http://localhost:5000/api';
-            }
-            return `${window.location.origin}/api`;
-        })();
-
-        function getStoredToken() {
-            return localStorage.getItem('revluma_token') || sessionStorage.getItem('revluma_token') || null;
-        }
-
-        async function checkAuthStatus() {
-            const token = getStoredToken();
-            if (!token || token === 'undefined' || token === 'null') return false;
-
-            try {
-                const res = await fetch(`${API_BASE}/session/me`, {
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    signal: AbortSignal.timeout(5000)
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    return data.user && data.user.onboarding_status === 'completed';
-                }
-            } catch (e) {
-                console.log('Auth check failed:', e);
-            }
-            return false;
-        }
-
-        // Update nav on auth status
-        async function updateAuthNav() {
-            const isLoggedIn = await checkAuthStatus();
-
-            // Desktop nav
+        // Mock auth — show dashboard link
+        function updateNav() {
             const dashboardLink = document.getElementById('dashboard-link');
             const loginLink = document.getElementById('login-link');
             const signupLink = document.getElementById('signup-link');
-            if (dashboardLink) dashboardLink.classList.toggle('hidden', !isLoggedIn);
-            if (loginLink) loginLink.classList.toggle('hidden', isLoggedIn);
-            if (signupLink) signupLink.style.display = isLoggedIn ? 'none' : 'block';
-
-            // Mobile nav
             const mobileDashboardLink = document.getElementById('mobile-dashboard-link');
             const mobileLoginLink = document.getElementById('mobile-login-link');
             const mobileSignupLink = document.getElementById('mobile-signup-link');
-            if (mobileDashboardLink) mobileDashboardLink.classList.toggle('hidden', !isLoggedIn);
-            if (mobileLoginLink) mobileLoginLink.classList.toggle('hidden', isLoggedIn);
-            if (mobileSignupLink) mobileSignupLink.style.display = isLoggedIn ? 'none' : 'block';
+            if (dashboardLink) dashboardLink.classList.remove('hidden');
+            if (loginLink) loginLink.classList.add('hidden');
+            if (signupLink) signupLink.style.display = 'none';
+            if (mobileDashboardLink) mobileDashboardLink.classList.remove('hidden');
+            if (mobileLoginLink) mobileLoginLink.classList.add('hidden');
+            if (mobileSignupLink) mobileSignupLink.style.display = 'none';
         }
-
-        // Run auth check on load
-        window.addEventListener('load', updateAuthNav);
+        window.addEventListener('load', updateNav);
 
         // Laptop + promo items scatter animation on scroll
         const laptop = document.querySelector('.laptop-container');

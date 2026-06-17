@@ -1,6 +1,6 @@
 {
-  "installCommand": "cd Frontend/Dashboard && npm install --include=dev && cd ../Affiliate && npm install --include=dev",
-  "buildCommand": "cd Frontend/Dashboard && npm run build && cd ../Affiliate && npm run build:vercel",
+  "installCommand": "cd Frontend/Dashboard && npm install --include=dev",
+  "buildCommand": "cd Frontend/Dashboard && npm run build",
   "outputDirectory": "Frontend",
   "headers": [
     {
@@ -21,10 +21,6 @@
   ],
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://revluma.onrender.com/api/:path*"
-    },
-    {
       "source": "/dashboard/assets/:path*",
       "destination": "/Dashboard/dist/assets/:path*"
     },
@@ -35,18 +31,6 @@
     {
       "source": "/dashboard",
       "destination": "/Dashboard/dist/index.html"
-    },
-    {
-      "source": "/affiliate/assets/:path*",
-      "destination": "/Affiliate/dist/assets/:path*"
-    },
-    {
-      "source": "/affiliate/:path*",
-      "destination": "/Affiliate/dist/index.html"
-    },
-    {
-      "source": "/affiliate",
-      "destination": "/Affiliate/dist/index.html"
     }
   ]
 }

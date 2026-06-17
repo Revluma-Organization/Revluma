@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import api from '@/lib/api';
 
 export type ThemeMode = 'dark' | 'light';
 export type SidebarDensity = 'default' | 'compact' | 'spacious';
@@ -79,29 +78,11 @@ export const useThemeStore = create<ThemeStore>()(
       },
 
       fetchPreferences: async () => {
-        try {
-          const response = await api.get('/v1/preferences', { withCredentials: true });
-          if (response.data?.success) {
-            const prefs = response.data.data as UserPreferences;
-            set({ preferences: prefs, synced: true });
-            if (prefs.theme) {
-              applyThemeClass(prefs.theme);
-              set({ theme: prefs.theme });
-            }
-          }
-        } catch {
-          // silently fail — preferences not critical
-        }
+        // Mock — no backend call
       },
 
-      syncPreference: async (key, value) => {
-        const payload: Record<string, unknown> = {};
-        payload[key] = value;
-        try {
-          await api.put('/v1/preferences', payload, { withCredentials: true });
-        } catch {
-          // silently fail
-        }
+      syncPreference: async () => {
+        // Mock — no backend call
       },
 
       initializeTheme: () => {
