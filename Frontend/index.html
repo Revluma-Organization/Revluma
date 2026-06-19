@@ -893,7 +893,7 @@
                      </button>
                      
                      <div x-show="waitlistModal" x-transition.opacity class="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4 backdrop-blur-sm">
-                         <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 max-w-md w-full relative space-y-6 shadow-2xl">
+                         <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 max-w-4xl w-full relative max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-zinc-900 [&::-webkit-scrollbar-thumb]:bg-zinc-600 [&::-webkit-scrollbar-thumb]:rounded-full">
                              <div class="flex justify-between items-center pb-3 border-b border-zinc-850">
                                  <span class="font-display font-semibold text-zinc-100">Join the Waitlist</span>
                                  <button @click="waitlistModal = false" class="text-zinc-500 hover:text-white">
@@ -902,26 +902,103 @@
                                      </svg>
                                  </button>
                              </div>
-                             <form id="waitlist-form" class="space-y-4">
-                                 <div>
-                                     <input type="text" name="fullName" placeholder="Full Name" required
-                                         class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500/50" />
-                                 </div>
-                                 <div>
-                                     <input type="email" name="email" placeholder="Email Address" required
-                                         class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500/50" />
-                                 </div>
-                                 <div>
-                                     <select name="primaryPlatform" required
-                                         class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none focus:border-orange-500/50 appearance-none">
-                                         <option value="" class="bg-zinc-900">Select Platform</option>
-                                         <option value="Shopify" class="bg-zinc-900">Shopify</option>
-                                         <option value="WooCommerce" class="bg-zinc-900">WooCommerce</option>
-                                         <option value="BigCommerce" class="bg-zinc-900">BigCommerce</option>
-                                         <option value="Custom Store" class="bg-zinc-900">Custom Store</option>
-                                     </select>
-                                 </div>
-                                 <button type="submit"
+                             <form id="waitlist-form" method="POST" @submit.prevent="waitlistModal = false; alert('Application submitted successfully!');" class="space-y-4">
+                                 <div class="pt-2">
+  <h3 class="text-sm font-semibold text-zinc-300 mb-3 border-b border-white/10 pb-1">Personal Information</h3>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <input type="text" name="full_name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="email" name="work_email" placeholder="Work Email *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="tel" name="phone_number" placeholder="Phone Number" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 md:col-span-2">
+  </div>
+</div>
+
+<div class="pt-2">
+  <h3 class="text-sm font-semibold text-zinc-300 mb-3 border-b border-white/10 pb-1">Social Handles</h3>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <input type="text" name="twitter_handle" placeholder="Twitter / X (@)" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="text" name="tiktok_handle" placeholder="TikTok (@)" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="text" name="instagram_handle" placeholder="Instagram (@)" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+  </div>
+</div>
+
+<div class="pt-2">
+  <h3 class="text-sm font-semibold text-zinc-300 mb-3 border-b border-white/10 pb-1">Business Profile</h3>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <input type="text" name="company_name" placeholder="Company Name *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 md:col-span-2">
+    <input type="url" name="website_url" placeholder="Website URL" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="url" name="store_url" placeholder="Store URL" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="text" name="industry" placeholder="Industry *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="text" name="country" placeholder="Country *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="text" name="state_region" placeholder="State / Region" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 md:col-span-2">
+    
+    <select name="team_size" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 appearance-none">
+      <option value="" class="bg-zinc-900">Select Team Size...</option>
+      <option value="Solo Founder" class="bg-zinc-900">Solo Founder</option>
+      <option value="2-10" class="bg-zinc-900">2-10</option>
+      <option value="11-50" class="bg-zinc-900">11-50</option>
+      <option value="51+" class="bg-zinc-900">51+</option>
+    </select>
+    <select name="monthly_revenue_range" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 appearance-none">
+      <option value="" class="bg-zinc-900">Monthly Revenue...</option>
+      <option value="Under $1k" class="bg-zinc-900">Under $1k</option>
+      <option value="$1k-$10k" class="bg-zinc-900">$1k - $10k</option>
+      <option value="$10k-$100k" class="bg-zinc-900">$10k - $100k</option>
+      <option value="$100k+" class="bg-zinc-900">$100k+</option>
+    </select>
+  </div>
+</div>
+
+<div class="pt-2">
+  <h3 class="text-sm font-semibold text-zinc-300 mb-3 border-b border-white/10 pb-1">Technology Stack</h3>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <select name="ecommerce_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 appearance-none">
+      <option value="" class="bg-zinc-900">Ecommerce Platform...</option>
+      <option value="Shopify" class="bg-zinc-900">Shopify</option>
+      <option value="WooCommerce" class="bg-zinc-900">WooCommerce</option>
+     <option value="BigCommerce" class="bg-zinc-900">BigCommerce</option>
+      <option value="Meta" class="bg-zinc-900">Meta (FB/IG Shops)</option>
+      <option value="TikTok" class="bg-zinc-900">TikTok Shop</option>
+      <option value="Custom" class="bg-zinc-900">Other / Custom Store</option>
+    </select>
+    <input type="text" name="email_platform" placeholder="Email Platform (e.g. Klaviyo)" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="text" name="analytics_platform" placeholder="Analytics (e.g. Google Analytics)" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+    <input type="text" name="ad_platform" placeholder="Ads (e.g. Meta Ads)" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
+  </div>
+</div>
+
+<div class="pt-2">
+  <h3 class="text-sm font-semibold text-zinc-300 mb-3 border-b border-white/10 pb-1">Goals & Challenges</h3>
+  <input type="text" name="primary_goal" placeholder="Primary Goal" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 mb-4">
+  <textarea name="biggest_challenge" required rows="2" placeholder="Biggest Challenge right now *" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 resize-none mb-4"></textarea>
+  
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 px-2">
+    <label class="flex items-center space-x-3 text-zinc-400 text-sm cursor-pointer">
+      <input type="checkbox" name="current_churn_problem" value="true" class="w-4 h-4 rounded bg-white/5 border-white/10 text-orange-500 focus:ring-orange-500 focus:ring-offset-zinc-900">
+      <span>Customer churn problem</span>
+    </label>
+    <label class="flex items-center space-x-3 text-zinc-400 text-sm cursor-pointer">
+      <input type="checkbox" name="abandoned_cart_problem" value="true" class="w-4 h-4 rounded bg-white/5 border-white/10 text-orange-500 focus:ring-orange-500 focus:ring-offset-zinc-900">
+      <span>High abandoned carts</span>
+    </label>
+    <label class="flex items-center space-x-3 text-zinc-400 text-sm cursor-pointer">
+      <input type="checkbox" name="retention_problem" value="true" class="w-4 h-4 rounded bg-white/5 border-white/10 text-orange-500 focus:ring-orange-500 focus:ring-offset-zinc-900">
+      <span>Retention issues</span>
+    </label>
+    <label class="flex items-center space-x-3 text-zinc-400 text-sm cursor-pointer">
+      <input type="checkbox" name="revenue_visibility_problem" value="true" class="w-4 h-4 rounded bg-white/5 border-white/10 text-orange-500 focus:ring-orange-500 focus:ring-offset-zinc-900">
+      <span>Lack revenue visibility</span>
+    </label>
+  </div>
+</div>
+
+<div class="pt-2 pb-4">
+  <textarea name="why_join_waitlist" rows="2" placeholder="Why do you want to join the waitlist?" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 resize-none mb-4"></textarea>
+  <label class="flex items-center space-x-3 text-zinc-400 text-sm cursor-pointer px-2">
+    <input type="checkbox" name="interested_in_beta" value="true" checked class="w-4 h-4 rounded bg-white/5 border-white/10 text-orange-500 focus:ring-orange-500 focus:ring-offset-zinc-900">
+    <span>I am interested in the Beta program</span>
+  </label>
+    </div>
+                            <button type="submit"
                                      class="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-all">
                                      Join the Waitlist
                                  </button>
