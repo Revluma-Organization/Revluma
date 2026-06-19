@@ -902,7 +902,7 @@
                                      </svg>
                                  </button>
                              </div>
-                             <form id="waitlist-form" class="space-y-4">
+                             <form id="waitlist-form" method="POST" @submit.prevent="waitlistModal = false; alert('Application submitted successfully!');" class="space-y-4">
                                  <div class="pt-2">
   <h3 class="text-sm font-semibold text-zinc-300 mb-3 border-b border-white/10 pb-1">Personal Information</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
