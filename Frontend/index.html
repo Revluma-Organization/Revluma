@@ -878,19 +878,18 @@
 
             </p>
 
-            <div class="flex flex-row items-center justify-center gap-6">
-                <a href="./auth/onboarding.html" target="_blank">
-                    <div
-                        class="glass-btn text-sm font-bold uppercase tracking-wide text-white hover:scale-[1.02] transition-all duration-300">
-                        Get Started Free
-                    </div>
-                </a>
-<a href="#" @click="waitlistModal = true" x-data="{waitlistModal: false}" x-show="waitlistModal = false" style="display:none;"></a>
-                 <div x-data="{waitlistModal: false}" x-cloak>
-                     <button @click="waitlistModal = true"
-                         class="glass-btn text-sm font-bold uppercase tracking-wide text-white hover:scale-[1.02] transition-all duration-300">
-                         Join Waitlist
-                     </button>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
+  
+  <!-- Get Started Free Button -->
+  <a href="./auth/onboarding.html" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide text-center hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
+    Get Started Free
+  </a>
+
+  <!-- Join Waitlist Button -->
+  <button @click="waitlistModal = true" type="button" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
+    Join Waitlist
+  </button>
+            </div>
                              
              <div x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/80 flex justify-center overflow-y-auto p-4 backdrop-blur-sm">
                  <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 mt-28 mb-8 w-full max-w-4xl h-fit">
@@ -904,7 +903,7 @@
                              </div>
                              <form id="waitlist-form" method="POST" @submit.prevent="waitlistModal = false; alert('Application submitted successfully!');" class="space-y-4">
                                  <div class="pt-2">
-  <h3 class="text-sm font-semibold text-zinc-300 mb-6 border-b border-white/10 pb-1">Personal Information</h3>
+  <h3 class="text-[13px] md:text-sm font-semibold text-zinc-300 mb-6 border-b border-white/10 pb-2 w-full truncate">Personal Information</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <input type="text" name="full_name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
     <input type="email" name="work_email" placeholder="Work Email *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300">
@@ -914,7 +913,7 @@
 
 <div class="pt-2">
   <!-- SOCIALS (Icons on top, URL placeholders) -->
-  <h3 class="text-sm font-semibold text-zinc-300 mb-6 border-b border-white/10 pb-1">Social Handles</h3>
+  <h3 class="text-[13px] md:text-sm font-semibold text-zinc-300 mb-6 border-b border-white/10 pb-2 w-full truncate">Social Handles</h3>
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
     
     <!-- Twitter -->
@@ -947,7 +946,7 @@
 
     <!-- BUSINESS PROFILE -->
    <div class="pt-10 border-t border-white/5 mt-4">
-  <h3 class="text-sm font-semibold text-zinc-300 pb-2">Business Profile</h3>
+  <h3 class="text-[13px] md:text-sm font-semibold text-zinc-300 mb-6 border-b border-white/10 pb-2 w-full truncate">Business Profile</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <input type="text" name="company_name" placeholder="Brand Name *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none focus:border-orange-500 transition-all duration-300 md:col-span-2">
     
@@ -988,7 +987,7 @@
 </div>
 
 <div class="pt-2">
-  <h3 class="text-sm font-semibold text-zinc-300 mb-6 border-b border-white/10 pb-1">Technology Stack</h3>
+  <h3 class="text-[13px] md:text-sm font-semibold text-zinc-300 mb-6 border-b border-white/10 pb-2 w-full truncate">Technology Stack</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div x-data="{ ecom: '' }">
     <select x-model="ecom" name="ecommerce_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-500 focus:outline-none focus:border-orange-500 transition-all duration-300 appearance-none">
@@ -1041,15 +1040,16 @@
 </div>
 </div>
       
-<div class="mt-8">
-  <h3 class="text-sm font-semibold text-zinc-300 mb-6 border-b border-white/10 pb-1">Goals & Challenges</h3>
-  
-  <input type="text" name="primary_goal" placeholder="What is your primary goal for joining?" class="w-full px-4 py-3 mb-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none focus:border-orange-500 transition-all duration-300">
-  
-  <textarea name="biggest_challenge" required rows="2" placeholder="What is the biggest challenge you are facing in your store right now? *" class="w-full px-4 py-3 mb-6 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none focus:border-orange-500 transition-all duration-300 resize-none"></textarea>
-  
-  <div class="px-2">
-    <p class="text-sm font-medium text-zinc-300 mb-4">Is your store currently facing any of these problems? (Check all that apply)</p>
+<div class="mt-8"> 
+    <h3 class="text-[13px] md:text-sm font-semibold text-zinc-300 mb-6 border-b border-white/10 pb-2 w-full truncate">Goals & Challenges</h3>
+  <input type="text" name="primary_goal" placeholder="What is your primary goal for joining?" class="text-xs md:text-sm placeholder:text-xs md:placeholder:text-sm placeholder-zinc-400 w-full bg-zinc-800/50 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500/50 transition-colors mt-4">
+
+<textarea name="biggest_challenge" required rows="2" placeholder="What is the biggest challenge you are facing in your store right now? *" class="text-xs md:text-sm placeholder:text-xs md:placeholder:text-sm placeholder-zinc-400 w-full bg-zinc-800/50 border border-white/10 rounded-xl px-4 py-3 mt-4 focus:outline-none focus:border-orange-500/50 transition-colors min-h-[80px] resize-y"></textarea>
+
+<div class="px-2 mt-6">
+  <p class="text-xs md:text-sm text-zinc-300 leading-snug mb-3 text-center sm:text-left">
+    Is your store currently facing any of these problems? (Check all that apply)
+  </p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <label class="flex items-center space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-orange-500 transition-colors">
         <input type="checkbox" name="current_churn_problem" value="true" class="w-5 h-5 rounded border-zinc-700 bg-white/5 text-orange-500 focus:ring-orange-500">
@@ -1078,10 +1078,11 @@
     <span>I am interested in the Beta program</span>
   </label>
     </div>
-                            <button type="submit"
-                                     class="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-all">
-                                     Join the Waitlist
-                                 </button>
+                            <button 
+  type="submit" 
+  class="w-full py-4 mt-4 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl transition-all duration-200 active:scale-[0.98] shadow-[0_0_15px_rgba(249,115,22,0.15)] hover:shadow-[0_0_25px_rgba(249,115,22,0.3)]">
+                                Join the Waitlist
+                            </button>
                             </form>
                          </div>
                      </div>
