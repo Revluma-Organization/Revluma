@@ -1,14 +1,15 @@
-1. Firstly Clone the repo in your local machine https://github.com/Revluma-Organization/Revluma.git
+1. ## Clone Repo
+Firstly Clone the repo in your local machine https://github.com/Revluma-Organization/Revluma.git
 git clone https://github.com/Revluma-Organization/Revluma.git
 
-2. Install Dependencies
+2. ## Install Dependencies
 Navigate directly into the folder containing your backend package.json file and install the node modules:
 
 Bash
 cd Backend
 npm install
 
-3. Set Up the Environment Variables (.env)
+3. ## Set Up the Environment Variables (.env)
 Create a plaintext file named precisely .env at the root of your Backend/ folder directory:
 
 Plaintext
@@ -40,7 +41,7 @@ DB_NAME StringThe database catalog instance name (usually postgres).
 DB_PASSWORD StringThe explicit database password credential. Stored separately to bypass string parsing errors.
 DB_PORT IntegerConnection pooler port (6543) optimized for transaction management without SSL enforcement bugs.
 
-4. Run Database Migrations
+4. ## Run Database Migrations
 Synchronize your local Prisma relational schema layout with the active database tables:
 
 Bash
@@ -48,7 +49,7 @@ npx prisma migrate dev --name init
 
 Note: If the remote database layout is already matching, you can run npx prisma generate to build your local client objects instead.
 
-5. Start the Server Locally
+5. ## Start the Server Locally
 Launch your development server with nodemon hot-reloading:
 
 Bash
@@ -58,7 +59,7 @@ Expected Success Logs:
 Server is running on port 8080
 PostgreSQL Database connected successfully via Driver Adapter to Supabase.
 
-6. Database Administration via Prisma Studio
+6. ## Database Administration via Prisma Studio
 Prisma includes an integrated visual UI to view, filter, edit, or delete database rows (such as the records inside your waitlist_users table) from your browser.
 
 Open a separate terminal split window.
@@ -68,6 +69,6 @@ Run the following command:
 Bash
 npx prisma studio
 
-7. System & Database Requirements
+7. ## System & Database Requirements
 Required Node.js Version: v24.13.0 (Verify using node -v)
 Required PostgreSQL Version: v15.0 or higher
