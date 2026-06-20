@@ -1,0 +1,70 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // Set this string in .env for migrations
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+enum Role {
+  USER
+  MERCHANT
+  ADMIN
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  role         Role      @default(USER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  // Relations
+  merchant     Merchant? // A user *can* be a merchant manager
+}
+
+model Merchant {
+  id          String   @id @default(uuid())
+  businessName String
+  userId      String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stores      Store[]
+}
+
+model Store {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  merchantId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  merchant    Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  customers   Customer[]
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  email     String
+  phone     String?
+  name      String
+  storeId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  // A customer email is unique per store scope
+  @@unique([email, storeId])
+}
