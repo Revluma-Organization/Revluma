@@ -1,0 +1,29 @@
+# ── Environment & Secrets ─────────────────────────────────────
+.env
+*.env
+.env.local
+.env.production
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# ── MLflow ───────────────────────────────────────────────────
+mlruns/
+mlartifacts/
+mlflow.db
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── IDE ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
