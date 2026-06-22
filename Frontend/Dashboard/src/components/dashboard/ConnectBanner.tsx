@@ -1,12 +1,3 @@
-// src/components/dashboard/ConnectBanner.tsx
-// Task 1.FE2.2 — accepts storeConnected prop instead of local useState(true)
-//
-// storeConnected === null  → still loading, banner shows (safe default)
-// storeConnected === false → no store, banner shows
-// storeConnected === true  → store connected, banner hidden
-//
-// The dismiss (X) button is added — was missing in the original.
-
 import { ExternalLink, X } from "lucide-react";
 import { useState } from "react";
 
