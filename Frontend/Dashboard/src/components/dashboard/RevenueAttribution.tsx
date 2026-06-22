@@ -1,6 +1,3 @@
-// src/components/dashboard/RevenueAttribution.tsx
-// Task 1.FE2.2 — accepts slices and total props instead of importing MOCK
-
 import type { DonutSlice } from "@/data/mockOverview";
 
 interface Props {
