@@ -888,8 +888,11 @@
   <!-- Join Waitlist Button -->
   <button @click="$dispatch('open-waitlist')" type="button" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
     Join Waitlist
-  </             <div x-data="{ waitlistModal: false }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/80 flex justify-center overflow-y-auto p-4 backdrop-blur-sm" x-cloak>
-                 <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-8 mt-28 mb-8 w-full max-w-4xl h-fit shadow-2xl relative">
+  </button>
+            </div>
+
+            <div x-data="{ waitlistModal: false }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/80 flex justify-center overflow-y-auto p-4 backdrop-blur-sm" x-cloak>
+                 <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-8 mt-12 md:mt-24 mb-8 w-full max-w-4xl h-fit shadow-2xl relative">
                              <div class="flex justify-between items-center pb-4 border-b border-zinc-800 mb-6">
                                  <span class="text-xl font-display font-semibold text-zinc-100">Join the Waitlist</span>
                                  <button @click="waitlistModal = false" class="text-zinc-500 hover:text-white transition-colors p-2 rounded-full hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-orange-500">
@@ -898,16 +901,16 @@
                                      </svg>
                                  </button>
                              </div>
-                             <form id="waitlist-form" method="POST" @submit.prevent="waitlistModal = false; $dispatch('show-toast', 'Application submitted successfully!')" class="space-y-8">
+                             <form id="waitlist-form" method="POST" @submit.prevent="waitlistModal = false; $dispatch('show-toast', 'Application submitted successfully!'); document.getElementById('waitlist-form').reset();" class="space-y-8">
                                  <div>
   <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Personal Information</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="relative">
-      <input type="text" name="full_name" placeholder="Full Name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="text" name="full_name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
       <span class="absolute top-3 right-4 text-orange-500 font-bold">*</span>
     </div>
     <div class="relative">
-      <input type="email" name="work_email" placeholder="Work Email" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="email" name="work_email" placeholder="Work Email *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
       <span class="absolute top-3 right-4 text-orange-500 font-bold">*</span>
     </div>
     <input type="tel" name="phone_number" placeholder="Phone Number" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 md:col-span-2">
@@ -953,13 +956,13 @@
   <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Business Profile</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="relative md:col-span-2">
-      <input type="text" name="company_name" placeholder="Brand Name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="text" name="company_name" placeholder="Brand Name *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
       <span class="absolute top-3 right-4 text-orange-500 font-bold">*</span>
     </div>
     
     <div x-data="{ ind: '' }" class="relative">
       <select x-model="ind" name="industry" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
-        <option value="" class="bg-zinc-900">Select Industry</option>
+        <option value="" class="bg-zinc-900">Select Industry *</option>
         <option value="Beauty/Skincare" class="bg-zinc-900">Beauty & Skincare</option>
         <option value="Clothing Brand" class="bg-zinc-900">Clothing Brand</option>
         <option value="Supplement Brand" class="bg-zinc-900">Supplement Brand</option>
@@ -977,7 +980,7 @@
 
     <input type="url" name="website_url" placeholder="https://website.com" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
     <div class="relative">
-      <input type="text" name="country" placeholder="Country" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="text" name="country" placeholder="Country *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
       <span class="absolute top-3 right-4 text-orange-500 font-bold">*</span>
     </div>
     <input type="text" name="state_region" placeholder="State / Region" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
@@ -1081,7 +1084,7 @@
   <input type="text" name="primary_goal" placeholder="What is your primary goal for joining?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
 
 <div class="relative mt-4">
-  <textarea name="biggest_challenge" required rows="2" placeholder="What is the biggest challenge you are facing in your store right now?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 min-h-[80px] resize-y"></textarea>
+  <textarea name="biggest_challenge" required rows="2" placeholder="What is the biggest challenge you are facing in your store right now? *" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 min-h-[80px] resize-y"></textarea>
   <span class="absolute top-3 right-4 text-orange-500 font-bold">*</span>
 </div>
 
