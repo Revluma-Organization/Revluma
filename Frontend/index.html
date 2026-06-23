@@ -807,7 +807,7 @@
 <body x-data="{ scrolled: false, mobileMenu: false }" @scroll.window="scrolled = (window.pageYOffset > 50)">
 
     <!-- ── Navigation ── -->
-    <nav :class="scrolled ? 'glass shadow-sm shadow-black/30' : 'glass'" class="fixed top-0 inset-x-0 w-full z-50 transition-all duration-500 border-b border-white/5">
+    <nav :class="scrolled ? 'glass shadow-sm shadow-black/30' : 'glass'" class="fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] md:w-[calc(100%-4rem)] max-w-7xl z-50 rounded-full transition-all duration-500 border border-white/10">
         <div class="flex items-center justify-between gap-2 px-3 py-1.5">
             <a href="/"
                 class="flex items-center gap-2.5 transition-transform duration-300 hover:-translate-y-0.5">

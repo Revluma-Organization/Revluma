@@ -51,10 +51,10 @@ The following changes were made directly inside the `index.html` file to enhance
 - **Change:** Changed navigation links from hardcoded file extensions (e.g., `href="index.html"`) to clean paths (e.g., `href="/"`).
 - **Result:** Users will no longer see ugly `.html` extensions in the URL bar, allowing Vercel to handle clean routing automatically.
 
-#### 8. Navigation Bar Flush Alignment
+#### 8. True Floating Pill Navigation Bar
 - **Location:** Global `<nav>` element.
-- **Change:** Removed padding margins (`top-4`, `inset-x-4`) and rounded edges (`rounded-full`). Applied `top-0 w-full rounded-none`.
-- **Result:** The dark navigation bar now sits perfectly flush against the top edge of the browser window without any awkward gaps.
+- **Change:** Transitioned the navigation bar from a flush header into a premium, responsive "floating pill".
+- **Result:** The dark navigation bar now sits beautifully centered (`left-1/2 -translate-x-1/2`) with equal, distinct margins on all sides (`top-6`), avoiding the full-width blocky look and ensuring it elegantly floats above the content.
 
 #### 9. Minor Bug Fixes & UX Polishes
 - **Form Clearing:** Attached `.reset()` to the Alpine.js form submission handler so the form instantly empties upon a successful submission.
