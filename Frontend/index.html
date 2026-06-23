@@ -919,14 +919,16 @@
   <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Personal Information</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="relative">
-      <input type="text" name="full_name" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="text" name="full_name" placeholder="Full Name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <span class="absolute top-3 right-4 text-orange-500 font-bold pointer-events-none">*</span>
       
     </div>
     <div class="relative">
-      <input type="email" name="work_email" placeholder="Work Email *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="email" name="work_email" placeholder="Work Email" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <span class="absolute top-3 right-4 text-orange-500 font-bold pointer-events-none">*</span>
       
     </div>
-    <input type="tel" name="phone_number" placeholder="Phone Number" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 md:col-span-2">
+    <input type="tel" name="phone_number" placeholder="Phone Number" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 ">
   </div>
 </div>
 
@@ -968,15 +970,17 @@
    <div>
   <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Business Profile</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div class="relative md:col-span-2">
-      <input type="text" name="company_name" placeholder="Brand Name *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+    <div class="relative ">
+      <input type="text" name="company_name" placeholder="Brand Name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <span class="absolute top-3 right-4 text-orange-500 font-bold pointer-events-none">*</span>
       
     </div>
     
     <div x-data="{ ind: '' }">
       <div class="relative">
         <select x-model="ind" name="industry" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled hidden class="bg-zinc-900">Select Industry *</option>
+        <option value="" disabled selected hidden class="bg-zinc-900">Select Industry</option>
+        <option value="" class="bg-zinc-900">None (Clear Selection)</option>
         <option value="Beauty/Skincare" class="bg-zinc-900">Beauty & Skincare</option>
         <option value="Clothing Brand" class="bg-zinc-900">Clothing Brand</option>
         <option value="Supplement Brand" class="bg-zinc-900">Supplement Brand</option>
@@ -985,6 +989,7 @@
         <option value="Food & Beverage" class="bg-zinc-900">Food & Beverage</option>
         <option value="Custom" class="bg-zinc-900">Other (Custom)</option>
       </select>
+      <span class="absolute top-3 right-10 text-orange-500 font-bold pointer-events-none">*</span>
         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
@@ -994,14 +999,16 @@
 
     <input type="url" name="website_url" placeholder="https://website.com" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
     <div class="relative">
-      <input type="text" name="country" placeholder="Country *" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="text" name="country" placeholder="Country" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <span class="absolute top-3 right-4 text-orange-500 font-bold pointer-events-none">*</span>
       
     </div>
     <input type="text" name="state_region" placeholder="State / Region" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
       
     <div class="relative">
       <select name="team_size" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled hidden class="bg-zinc-900">Select Team Size</option>
+        <option value="" disabled selected hidden class="bg-zinc-900">Select Team Size</option>
+        <option value="" class="bg-zinc-900">None (Clear Selection)</option>
         <option value="Solo Founder" class="bg-zinc-900">Solo Founder</option>
         <option value="2-10" class="bg-zinc-900">2-10</option>
         <option value="11-50" class="bg-zinc-900">11-50</option>
@@ -1014,7 +1021,8 @@
           
     <div class="relative">
       <select name="monthly_revenue_range" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled hidden class="bg-zinc-900">Monthly Revenue</option>
+        <option value="" disabled selected hidden class="bg-zinc-900">Monthly Revenue</option>
+        <option value="" class="bg-zinc-900">None (Clear Selection)</option>
         <option value="Under $1k" class="bg-zinc-900">Under $1k</option>
         <option value="$1k-$10k" class="bg-zinc-900">$1k - $10k</option>
         <option value="$10k-$100k" class="bg-zinc-900">$10k - $100k</option>
@@ -1033,7 +1041,8 @@
       <div x-data="{ ecom: '' }">
       <div class="relative">
         <select x-model="ecom" name="ecommerce_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
-      <option value="" disabled hidden class="bg-zinc-900">Ecommerce Platform</option>
+      <option value="" disabled selected hidden class="bg-zinc-900">Ecommerce Platform</option>
+        <option value="" class="bg-zinc-900">None (Clear Selection)</option>
       <option value="Shopify" class="bg-zinc-900">Shopify</option>
       <option value="WooCommerce" class="bg-zinc-900">WooCommerce</option>
      <option value="BigCommerce" class="bg-zinc-900">BigCommerce</option>
@@ -1051,7 +1060,8 @@
     <div x-data="{ email: '' }">
       <div class="relative">
         <select x-model="email" name="email_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled hidden class="bg-zinc-900">Email Platform</option>
+        <option value="" disabled selected hidden class="bg-zinc-900">Email Platform</option>
+        <option value="" class="bg-zinc-900">None (Clear Selection)</option>
         <option value="Klaviyo" class="bg-zinc-900">Klaviyo</option>
         <option value="Mailchimp" class="bg-zinc-900">Mailchimp</option>
         <option value="Omnisend" class="bg-zinc-900">Omnisend</option>
@@ -1068,7 +1078,8 @@
     <div x-data="{ analytics: '' }">
       <div class="relative">
         <select x-model="analytics" name="analytics_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled hidden class="bg-zinc-900">Analytics Platform</option>
+        <option value="" disabled selected hidden class="bg-zinc-900">Analytics Platform</option>
+        <option value="" class="bg-zinc-900">None (Clear Selection)</option>
         <option value="Google Analytics" class="bg-zinc-900">Google Analytics</option>
         <option value="TripleWhale" class="bg-zinc-900">TripleWhale</option>
         <option value="Northbeam" class="bg-zinc-900">Northbeam</option>
@@ -1085,7 +1096,8 @@
     <div x-data="{ ads: '' }">
       <div class="relative">
         <select x-model="ads" name="ad_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled hidden class="bg-zinc-900">Ad Platform</option>
+        <option value="" disabled selected hidden class="bg-zinc-900">Ad Platform</option>
+        <option value="" class="bg-zinc-900">None (Clear Selection)</option>
         <option value="Meta Ads" class="bg-zinc-900">Meta Ads</option>
         <option value="Google Ads" class="bg-zinc-900">Google Ads</option>
         <option value="TikTok Ads" class="bg-zinc-900">TikTok Ads</option>
@@ -1106,7 +1118,10 @@
   <input type="text" name="primary_goal" placeholder="What is your primary goal for joining?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
 
 <div class="relative mt-4">
-  <textarea name="biggest_challenge" required rows="2" placeholder="What is the biggest challenge you are facing in your store right now? *" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 min-h-[80px] resize-y"></textarea>
+  <div class="relative">
+  <textarea name="biggest_challenge" required rows="2" placeholder="What is the biggest challenge you are facing in your store right now?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 min-h-[80px] resize-none"></textarea>
+  <span class="absolute top-3 right-4 text-orange-500 font-bold pointer-events-none">*</span>
+</div>
   
 </div>
 
