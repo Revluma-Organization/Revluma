@@ -758,6 +758,50 @@
             animation-play-state: paused;
         }
     </style>
+
+    <script src="assets/js/countries.js"></script>
+    <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('locationSelect', () => ({
+        countries: window.locationsData || [],
+        searchQueryCountry: '',
+        searchQueryState: '',
+        selectedCountry: '',
+        selectedState: '',
+        showCountryDropdown: false,
+        showStateDropdown: false,
+        
+        get filteredCountries() {
+          if (this.searchQueryCountry === '') return this.countries;
+          return this.countries.filter(c => c.name.toLowerCase().includes(this.searchQueryCountry.toLowerCase()));
+        },
+        
+        get availableStates() {
+          const country = this.countries.find(c => c.name === this.selectedCountry);
+          return country ? country.states : [];
+        },
+        
+        get filteredStates() {
+          if (this.searchQueryState === '') return this.availableStates;
+          return this.availableStates.filter(s => s.toLowerCase().includes(this.searchQueryState.toLowerCase()));
+        },
+
+        selectCountry(name) {
+          this.selectedCountry = name;
+          this.searchQueryCountry = name;
+          this.showCountryDropdown = false;
+          this.selectedState = '';
+          this.searchQueryState = '';
+        },
+
+        selectState(name) {
+          this.selectedState = name;
+          this.searchQueryState = name;
+          this.showStateDropdown = false;
+        }
+      }));
+    });
+    </script>
 </head>
 
 <body x-data="{ scrolled: false, mobileMenu: false }" @scroll.window="scrolled = (window.pageYOffset > 50)">
@@ -919,17 +963,17 @@
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="relative">
       <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="text" name="full_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+        <input x-model="val" type="text" name="full_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
         <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Full Name</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
       </div>
       </div>
     <div class="relative">
       <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="email" name="work_email" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+        <input x-model="val" type="email" name="work_email" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
         <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Work Email</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
       </div>
       </div>
-    <input type="tel" name="phone_number" placeholder="Phone Number" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 ">
+    <input type="tel" name="phone_number" placeholder="Phone Number" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 ">
   </div>
 </div>
 
@@ -944,7 +988,7 @@
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
         <span class="text-xs font-medium">X (formerly Twitter)</span>
       </div>
-      <input type="url" name="twitter_handle" placeholder="https://x.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="url" name="twitter_handle" placeholder="https://x.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
     </div>
 
     <!-- TikTok -->
@@ -953,7 +997,7 @@
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 448 512"><path d="M448 209.91a210.06 210.06 0 01-122.77-39.25V349.38A162.55 162.55 0 11185 188.31v89.89a74.62 74.62 0 1052.23 71.18V0l88 0a121.18 121.18 0 001.86 22.17h0A122.18 122.18 0 00381 102.39a121.43 121.43 0 0067 20.14z"/></svg>
         <span class="text-xs font-medium">TikTok</span>
       </div>
-      <input type="url" name="tiktok_handle" placeholder="https://tiktok.com/@username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="url" name="tiktok_handle" placeholder="https://tiktok.com/@username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
     </div>
 
     <!-- Instagram -->
@@ -962,7 +1006,7 @@
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
         <span class="text-xs font-medium">Instagram</span>
       </div>
-      <input type="url" name="instagram_handle" placeholder="https://instagram.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="url" name="instagram_handle" placeholder="https://instagram.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
     </div>
   </div>
 </div>
@@ -971,16 +1015,16 @@
    <div>
   <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Business Profile</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div class="relative ">
+    <div class="relative md:col-span-2">
       <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="text" name="company_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+        <input x-model="val" type="text" name="company_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
         <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Brand Name</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
       </div>
       </div>
     
     <div x-data="{ ind: '' }">
       <div class="relative">
-        <select x-model="ind" name="industry" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="ind" name="industry" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900"></option>
         <option value="Beauty/Skincare" class="bg-zinc-900">Beauty & Skincare</option>
         <option value="Clothing Brand" class="bg-zinc-900">Clothing Brand</option>
@@ -995,20 +1039,53 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-      <input x-show="ind === 'Custom'" type="text" name="industry_custom" placeholder="Type your industry..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input x-show="ind === 'Custom'" type="text" name="industry_custom" placeholder="Type your industry..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
     </div>
 
-    <input type="url" name="website_url" placeholder="Website" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
-    <div class="relative">
-      <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="text" name="country" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
-        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Country</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
+    <input type="url" name="website_url" placeholder="Website" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+    
+<div x-data="locationSelect" class="grid grid-cols-1 md:grid-cols-2 gap-4 md:col-span-2">
+  <!-- Country Dropdown -->
+  <div class="relative w-full" @click.away="showCountryDropdown = false">
+    <input type="hidden" name="country" :value="selectedCountry">
+    <div class="relative w-full">
+      <input type="text" x-model="searchQueryCountry" @focus="showCountryDropdown = true" required class="peer w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <div x-show="!searchQueryCountry" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Country</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
+      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
+    </div>
+    <!-- Dropdown List -->
+    <ul x-show="showCountryDropdown" x-transition class="absolute z-50 w-full mt-2 max-h-60 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl custom-scrollbar" style="display: none;">
+      <template x-for="country in filteredCountries" :key="country.name">
+        <li @click="selectCountry(country.name)" class="px-4 py-3 text-zinc-300 hover:bg-orange-500/10 hover:text-white cursor-pointer transition-colors" x-text="country.name"></li>
+      </template>
+      <li x-show="filteredCountries.length === 0" class="px-4 py-3 text-zinc-500">No countries found</li>
+    </ul>
+  </div>
+
+  <!-- State Dropdown -->
+  <div class="relative w-full" @click.away="showStateDropdown = false">
+    <input type="hidden" name="state_region" :value="selectedState">
+    <div class="relative w-full">
+      <input type="text" x-model="searchQueryState" @focus="showStateDropdown = true" :disabled="!selectedCountry" class="peer w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
+      <div x-show="!searchQueryState" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500" x-text="selectedCountry ? 'State / Region' : 'Select a Country first'"></span></div>
+      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
-    <input type="text" name="state_region" placeholder="State / Region" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+    </div>
+    <!-- Dropdown List -->
+    <ul x-show="showStateDropdown && availableStates.length > 0" x-transition class="absolute z-50 w-full mt-2 max-h-60 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl custom-scrollbar" style="display: none;">
+      <template x-for="state in filteredStates" :key="state">
+        <li @click="selectState(state)" class="px-4 py-3 text-zinc-300 hover:bg-orange-500/10 hover:text-white cursor-pointer transition-colors" x-text="state"></li>
+      </template>
+      <li x-show="filteredStates.length === 0" class="px-4 py-3 text-zinc-500">No states found</li>
+    </ul>
+  </div>
+</div>
       
     <div class="relative">
-      <select name="team_size" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+      <select name="team_size" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Select Team Size</option>
         <option value="Solo Founder" class="bg-zinc-900">Solo Founder</option>
         <option value="2-10" class="bg-zinc-900">2-10</option>
@@ -1021,7 +1098,7 @@
     </div>
           
     <div class="relative">
-      <select name="monthly_revenue_range" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+      <select name="monthly_revenue_range" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Monthly Revenue</option>
         <option value="Under $1k" class="bg-zinc-900">Under $1k</option>
         <option value="$1k-$10k" class="bg-zinc-900">$1k - $10k</option>
@@ -1040,7 +1117,7 @@
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div x-data="{ ecom: '' }">
       <div class="relative">
-        <select x-model="ecom" name="ecommerce_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="ecom" name="ecommerce_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
       <option value="" disabled selected hidden class="bg-zinc-900">Ecommerce Platform</option>
         <option value="Shopify" class="bg-zinc-900">Shopify</option>
       <option value="WooCommerce" class="bg-zinc-900">WooCommerce</option>
@@ -1053,12 +1130,12 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-    <input x-show="ecom === 'Custom'" type="text" name="ecommerce_platform_custom" placeholder="Type ecommerce platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+    <input x-show="ecom === 'Custom'" type="text" name="ecommerce_platform_custom" placeholder="Type ecommerce platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
       </div>
     <!-- Email Platform -->
     <div x-data="{ email: '' }">
       <div class="relative">
-        <select x-model="email" name="email_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="email" name="email_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Email Platform</option>
         <option value="Klaviyo" class="bg-zinc-900">Klaviyo</option>
         <option value="Mailchimp" class="bg-zinc-900">Mailchimp</option>
@@ -1069,13 +1146,13 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-      <input x-show="email === 'Custom'" type="text" name="email_platform_custom" placeholder="Type email platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input x-show="email === 'Custom'" type="text" name="email_platform_custom" placeholder="Type email platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
     </div>
 
     <!-- Analytics Platform -->
     <div x-data="{ analytics: '' }">
       <div class="relative">
-        <select x-model="analytics" name="analytics_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="analytics" name="analytics_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Analytics Platform</option>
         <option value="Google Analytics" class="bg-zinc-900">Google Analytics</option>
         <option value="TripleWhale" class="bg-zinc-900">TripleWhale</option>
@@ -1086,13 +1163,13 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-      <input x-show="analytics === 'Custom'" type="text" name="analytics_platform_custom" placeholder="Type analytics tool..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input x-show="analytics === 'Custom'" type="text" name="analytics_platform_custom" placeholder="Type analytics tool..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
     </div>
 
     <!-- Ad Platform -->
     <div x-data="{ ads: '' }">
       <div class="relative">
-        <select x-model="ads" name="ad_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="ads" name="ad_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Ad Platform</option>
         <option value="Meta Ads" class="bg-zinc-900">Meta Ads</option>
         <option value="Google Ads" class="bg-zinc-900">Google Ads</option>
@@ -1103,7 +1180,7 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-      <input x-show="ads === 'Custom'" type="text" name="ad_platform_custom" placeholder="Type ad platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input x-show="ads === 'Custom'" type="text" name="ad_platform_custom" placeholder="Type ad platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
     </div>
       
 </div>
@@ -1111,11 +1188,11 @@
       
 <div> 
     <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Goals & Challenges</h3>
-  <input type="text" name="primary_goal" placeholder="What is your primary goal for joining?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+  <input type="text" name="primary_goal" placeholder="What is your primary goal for joining?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
 
 <div class="relative mt-4">
   <div x-data="{ val: '' }" class="relative w-full">
-    <textarea x-model="val" name="biggest_challenge" required rows="2" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 min-h-[80px] resize-none"></textarea>
+    <textarea x-model="val" name="biggest_challenge" required rows="2" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 min-h-[80px] resize-none"></textarea>
     <div x-show="!val" class="absolute top-3 left-4 pointer-events-none flex"><span class="text-zinc-500">What is the biggest challenge you are facing in your store right now?</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
   </div>
   
@@ -1147,7 +1224,7 @@
 </div>
 
 <div class="pb-2">
-  <textarea name="why_join_waitlist" rows="2" placeholder="Why do you want to join the waitlist?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:border-white/20 hover:bg-white/10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 resize-none mb-4"></textarea>
+  <textarea name="why_join_waitlist" rows="2" placeholder="Why do you want to join the waitlist?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 resize-none mb-4"></textarea>
   <label class="flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group px-2">
     <input type="checkbox" name="interested_in_beta" value="true" class="w-5 h-5 rounded border-zinc-600 bg-white/5 accent-orange-500 focus:ring-2 focus:ring-orange-500/50 mt-0.5">
     <span class="leading-relaxed">I am interested in the Beta program</span>
