@@ -1,22 +1,26 @@
 const dotenv = require('dotenv');
-const app = require('./src/app');
-const {connectDB} = require ("./src/configs/database")
-
-// Load environment variables
 dotenv.config();
 
-//Connect dataBase
-connectDB ()
+process.on('uncaughtException', (err) => {
+    console.error('UNCAUGHT EXCEPTION:', err);
+    process.exit(1);
+});
 
-//Server
+const app = require('./src/app');
+const { connectDB } = require('./src/configs/database');
+
+connectDB();
+
 const PORT = process.env.PORT;
+
 const server = app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
 
-// Handle unhandled promise rejections gracefully 
 process.on('unhandledRejection', (err) => {
-    console.error(`Error: ${err.message}`);
-    // Close server & exit process
-    server.close(() => process.exit(1));
+    console.error('UNHANDLED REJECTION:', err);
+
+    server.close(() => {
+        process.exit(1);
+    });
 });

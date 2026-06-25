@@ -1,70 +1,169 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL") // Set this string in .env for migrations
-}
-
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
 }
 
-enum Role {
-  USER
-  MERCHANT
-  ADMIN
+datasource db {
+  provider = "postgresql"
 }
 
-model User {
-  id           String    @id @default(uuid())
-  email        String    @unique
-  passwordHash String
-  firstName    String?
-  lastName     String?
-  role         Role      @default(USER)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  
-  // Relations
-  merchant     Merchant? // A user *can* be a merchant manager
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ai_alert_preferences {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ai_preference_id String         @db.Uuid
+  alert_type       String
+  created_at       DateTime?      @default(now()) @db.Timestamptz(6)
+  ai_preferences   ai_preferences @relation(fields: [ai_preference_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([ai_preference_id], map: "idx_ai_alerts")
 }
 
-model Merchant {
-  id          String   @id @default(uuid())
-  businessName String
-  userId      String   @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ai_monitoring_areas {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ai_preference_id String         @db.Uuid
+  area_name        String
+  created_at       DateTime?      @default(now()) @db.Timestamptz(6)
+  ai_preferences   ai_preferences @relation(fields: [ai_preference_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stores      Store[]
+  @@index([ai_preference_id], map: "idx_ai_monitoring")
 }
 
-model Store {
-  id          String   @id @default(uuid())
-  name        String
-  slug        String   @unique
-  merchantId  String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  merchant    Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  customers   Customer[]
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model ai_preferences {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id      String                 @unique @db.Uuid
+  insight_frequency    String
+  alert_recipient      String
+  created_at           DateTime?              @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime?              @default(now()) @db.Timestamptz(6)
+  ai_alert_preferences ai_alert_preferences[]
+  ai_monitoring_areas  ai_monitoring_areas[]
+  organizations        organizations          @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
-model Customer {
-  id        String   @id @default(uuid())
-  email     String
-  phone     String?
-  name      String
-  storeId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model onboarding_objectives {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  onboarding_profile_id String              @db.Uuid
+  objective             String
+  created_at            DateTime?           @default(now()) @db.Timestamptz(6)
+  onboarding_profiles   onboarding_profiles @relation(fields: [onboarding_profile_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  // Relations
-  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  @@index([onboarding_profile_id], map: "idx_objectives_profile")
+}
 
-  // A customer email is unique per store scope
-  @@unique([email, storeId])
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model onboarding_profiles {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id               String                  @unique @db.Uuid
+  biggest_challenge     String?
+  created_at            DateTime?               @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?               @default(now()) @db.Timestamptz(6)
+  onboarding_objectives onboarding_objectives[]
+  users                 users                   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  onboarding_tools      onboarding_tools[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model onboarding_tools {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  onboarding_profile_id String              @db.Uuid
+  tool_category         String
+  tool_name             String
+  is_custom             Boolean?            @default(false)
+  created_at            DateTime?           @default(now()) @db.Timestamptz(6)
+  onboarding_profiles   onboarding_profiles @relation(fields: [onboarding_profile_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([onboarding_profile_id], map: "idx_tools_profile")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model organizations {
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id              String          @db.Uuid
+  company_name          String
+  website_url           String?
+  store_url             String?
+  industry              String
+  custom_industry       String?
+  country               String
+  state_region          String?
+  team_size             String?
+  monthly_revenue_range String?
+  monthly_order_volume  String?
+  created_at            DateTime?       @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?       @default(now()) @db.Timestamptz(6)
+  ai_preferences        ai_preferences?
+  users                 users           @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([owner_id], map: "idx_organizations_owner")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model users {
+  id                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name               String
+  email                   String               @unique
+  password_hash           String
+  email_verified          Boolean?             @default(false)
+  accepted_terms          Boolean              @default(false)
+  accepted_privacy_policy Boolean              @default(false)
+  onboarding_completed    Boolean?             @default(false)
+  onboarding_step         Int?                 @default(1)
+  status                  String?              @default("active")
+  created_at              DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?            @default(now()) @db.Timestamptz(6)
+  onboarding_profiles     onboarding_profiles?
+  organizations           organizations[]
+
+  @@index([email], map: "idx_users_email")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model waitlist_users {
+  id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name                  String
+  work_email                 String    @unique
+  phone_number               String?
+  twitter_handle             String?
+  tiktok_handle              String?
+  instagram_handle           String?
+  company_name               String
+  website_url                String?
+  store_url                  String?
+  industry                   String
+  country                    String
+  state_region               String?
+  team_size                  String?
+  monthly_revenue_range      String?
+  monthly_order_volume       String?
+  ecommerce_platform         String?
+  email_platform             String?
+  analytics_platform         String?
+  support_platform           String?
+  ad_platform                String?
+  primary_goal               String?
+  biggest_challenge          String
+  current_churn_problem      Boolean?  @default(false)
+  abandoned_cart_problem     Boolean?  @default(false)
+  retention_problem          Boolean?  @default(false)
+  revenue_visibility_problem Boolean?  @default(false)
+  why_join_waitlist          String?
+  interested_in_beta         Boolean?  @default(true)
+  waitlist_position          Int?
+  lead_score                 Int?      @default(0)
+  status                     String?   @default("pending")
+  welcome_email_sent         Boolean?  @default(false)
+  ip_address                 String?
+  user_agent                 String?
+  created_at                 DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([country], map: "idx_waitlist_country")
+  @@index([work_email], map: "idx_waitlist_email")
+  @@index([industry], map: "idx_waitlist_industry")
+  @@index([lead_score], map: "idx_waitlist_lead_score")
+  @@index([waitlist_position], map: "idx_waitlist_position")
+  @@index([status], map: "idx_waitlist_status")
 }

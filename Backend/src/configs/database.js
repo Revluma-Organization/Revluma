@@ -3,42 +3,31 @@ const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const { PrismaClient } = require('@prisma/client');
 
-// Use global memory to hold the instances across reloads/multiple imports
-let prisma;
-let pool;
-
-if (!global.prismaInstance) {
-  // 1. Initialize the single pg connection pool
-  pool = new Pool({
-    user: process.env.DATABASE_USER,
-    host: process.env.DATABASE_HOST,
-    database: 'postgres',
-    password: process.env.DATABASE_PASSWORD,
-    port: process.env.DATABASE_PORT,
-    ssl: {
-      rejectUnauthorized: false // Supabase requires SSL connections
-    }
-  });
-
-  // 2. Set up the Driver Adapter and Client instance
-  const adapter = new PrismaPg(pool);
-  prisma = new PrismaClient({ 
-    adapter,
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error']
-  });
-
-  // 3. Save them to global cache if we aren't in production
-  if (process.env.NODE_ENV !== 'production') {
-    global.prismaInstance = prisma;
-    global.poolInstance = pool;
+// 1. Initialize the PostgreSQL Pool immediately on file load
+const pool = global.poolInstance || new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false // Supabase requires SSL connections
   }
-} else {
-  // Reuse the existing cached instances
-  prisma = global.prismaInstance;
-  pool = global.poolInstance;
+});
+
+// 2. Set up the Driver Adapter immediately
+const adapter = global.prismaAdapterInstance || new PrismaPg(pool);
+
+// 3. Instantiate the Prisma Client immediately so it is NEVER undefined when required
+const prisma = global.prismaInstance || new PrismaClient({ 
+  adapter,
+  log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error']
+});
+
+// 4. Save to global cache in development to support hot-reloading smoothly
+if (process.env.NODE_ENV !== 'production') {
+  global.poolInstance = pool;
+  global.prismaAdapterInstance = adapter;
+  global.prismaInstance = prisma;
 }
 
-// 4. Verification connection function
+// 5. Verification connection function (called in server.js)
 const connectDB = async () => {
   try {
     await pool.query('SELECT 1');
@@ -49,4 +38,8 @@ const connectDB = async () => {
   }
 };
 
-module.exports = { prisma, connectDB };
+// Export using a live getter so controllers always pull the current instance
+module.exports = { 
+  get prisma() { return prisma; }, 
+  connectDB 
+};
