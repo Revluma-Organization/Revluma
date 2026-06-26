@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="../assets/images/Revluma-icon.png" />
+  <title>Revluma — Verify Email</title>
+  <script>
+    // This app currently handles email verification inside loginIn.html.
+    // Keep this page as a compatibility/redirect target so routes don't break.
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      // Preserve optional context parameters, if any.
+      const q = params.toString();
+      const suffix = q ? ('?' + q) : '';
+      window.location.replace('loginIn.html' + suffix);
+    })();
+  </script>
+</head>
+<body>
+  <noscript>
+    <p style="font-family: system-ui, sans-serif; padding: 24px;">
+      JavaScript is required for this page. Redirecting to Sign In…
+    </p>
+  </noscript>
+</body>
+</html>

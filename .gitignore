@@ -1,6 +1,37 @@
-node_modules/
-
+# Environment & Secrets (NEVER PUSH)
 .env
-/src/generated/prisma
-dist/
+.env.*
+*.pem
+*.key
+secrets/
+
+# Dependencies (NEVER PUSH)
+node_modules/
+Frontend/node_modules/
+Frontend/node/
+
+# Build outputs (NEVER PUSH)
+Frontend/dist/
+Frontend/Dashboard/dist/
+Frontend/Dashboard/node_modules/
+Frontend/Dashboard/.next/
+
+# IDE & OS files (NEVER PUSH)
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
+Thumbs.db
+
+# Large files (NEVER PUSH)
+*.MOV
+*.mov
+*.webm
+*.zip
+*.tar.gz
+
+# Temporary files
+*.log
+*.tmp
+.cache/

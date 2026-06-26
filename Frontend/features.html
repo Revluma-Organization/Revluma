@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="./assets/images/Revluma-icon.png">
+    </link>
+    <title>All Features</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,500,400&f[]=inter@400,700&display=swap"
+        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+    <script src="./assets/js/apiConfig.js"></script>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
+        html {
+            overflow-x: hidden;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Satoshi', sans-serif;
+            background-color: #080808;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        /* ── Glass ── */
+        .glass {
+            background: rgba(14, 14, 14, 0.65);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* ── Nav ── */
+        [x-cloak] {
+            display: none !important;
+        }
+
+        .logo-mark {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            flex-shrink: 0;
+            animation: logoFloat 5s ease-in-out infinite;
+        }
+
+        .logo-mark img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 12px;
+            display: block;
+        }
+
+        @keyframes logoFloat {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-3px);
+            }
+        }
+
+        /* Footer logo */
+        .logo-mark-sm {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            flex-shrink: 0;
+        }
+
+        .logo-mark-sm img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 10px;
+            display: block;
+        }
+
+        .logo-name-wrap {
+            overflow: hidden;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .logo-name {
+            display: inline-block;
+            opacity: 0;
+            transform: translateX(-20px);
+            animation: slideNameIn 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+            animation-delay: 0.5s;
+        }
+
+        @keyframes slideNameIn {
+            0% {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes floatLogo {
+
+            0%,
+            100% {
+                transform: translateY(0) scale(1);
+            }
+
+            50% {
+                transform: translateY(-3px) scale(1.02);
+            }
+        }
+
+        /* ── Hero ── */
+        .grid-bg {
+            background-image: linear-gradient(to right, #1a1a1a 1px, transparent 1px),
+                linear-gradient(to bottom, #1a1a1a 1px, transparent 1px);
+            background-size: 4rem 4rem;
+            mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 60%, transparent 100%);
+        }
+
+        .hero-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, #ffffff 0%, #d8d8ff 45%, #b5b5ff 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        /* ── Filter pills ── */
+        .filter-pill {
+            padding: 0.4rem 1.1rem;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.04);
+            color: #888;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            text-transform: uppercase;
+        }
+
+        .filter-pill:hover {
+            border-color: rgba(255, 255, 255, 0.25);
+            color: #ccc;
+        }
+
+        .filter-pill.active {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.3);
+            color: #fff;
+        }
+
+        /* ── Feature card ── */
+        .feat-card {
+            background: rgba(13, 13, 13, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+            border-radius: 20px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: border-color 0.3s ease, transform 0.3s ease;
+            position: relative;
+        }
+
+        .feat-card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            transform: translateY(-3px);
+        }
+
+        /* Image placeholder area */
+        .feat-img {
+            width: 100%;
+            height: 160px;
+            position: relative;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .feat-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.75;
+            transition: opacity 0.4s, transform 0.5s;
+            display: block;
+        }
+
+        .feat-card:hover .feat-img img {
+            opacity: 0.95;
+            transform: scale(1.06);
+        }
+
+        .feat-img .img-fallback {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .feat-img .img-chip {
+            position: absolute;
+            bottom: 10px;
+            left: 12px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.55);
+            background: rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(8px);
+            padding: 3px 8px;
+            border-radius: 6px;
+        }
+
+        /* Beta badge */
+        .beta-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #fff;
+            background: rgba(139, 92, 246, 0.55);
+            border: 1px solid rgba(167, 139, 250, 0.4);
+            backdrop-filter: blur(8px);
+            padding: 3px 9px;
+            border-radius: 999px;
+            z-index: 2;
+        }
+
+        /* Card content */
+        .feat-body {
+            padding: 1.1rem 1.2rem 1.3rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .feat-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            margin-bottom: 0.45rem;
+            color: #f5f5f5;
+            line-height: 1.3;
+        }
+
+        .feat-desc {
+            font-size: 0.75rem;
+            color: #777;
+            line-height: 1.65;
+            flex: 1;
+        }
+
+        .feat-stat {
+            margin-top: 0.85rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #4ade80;
+        }
+
+        /* ── Reveal ── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(18px);
+            transition: all 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* ── Search ── */
+        .search-box {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 999px;
+            padding: 0.55rem 1.2rem;
+            color: white;
+            font-size: 0.8rem;
+            outline: none;
+            width: 100%;
+            max-width: 320px;
+            transition: border-color 0.2s;
+            font-family: 'Satoshi', sans-serif;
+        }
+
+        .search-box::placeholder {
+            color: #444;
+        }
+
+        .search-box:focus {
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        /* ── Section label ── */
+        .section-eyebrow {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: #444;
+            margin-bottom: 0.5rem;
+        }
+
+        /* ── Gradient separators ── */
+        .grad-line {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+        }
+
+        /* ── Coming soon pill ── */
+        .coming-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: rgba(167, 139, 250, 0.9);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            background: rgba(139, 92, 246, 0.08);
+            padding: 2px 8px;
+            border-radius: 999px;
+            margin-top: 0.7rem;
+            width: fit-content;
+        }
+
+        /* ── Mobile nav ── */
+        @media (max-width: 640px) {
+            .feat-img {
+                height: 130px;
+            }
+        }
+
+        /* ── Hide card ── */
+        .feat-card.hidden-card {
+            display: none;
+        }
+
+        /* ── Stagger delay ── */
+        .d-0 {
+            transition-delay: 0ms;
+        }
+
+        .d-1 {
+            transition-delay: 60ms;
+        }
+
+        .d-2 {
+            transition-delay: 120ms;
+        }
+
+        .d-3 {
+            transition-delay: 180ms;
+        }
+
+        .d-4 {
+            transition-delay: 240ms;
+        }
+
+        .d-5 {
+            transition-delay: 300ms;
+        }
+    </style>
+</head>
+
+<body x-data="{ scrolled: false, mobileMenu: false }" @scroll.window="scrolled = (window.pageYOffset > 50)">
+
+    <!-- ── Navigation ── -->
+    <nav :class="scrolled ? 'glass shadow-sm shadow-black/30' : 'glass'"
+        class="fixed inset-x-4 top-4 z-50 max-w-7xl mx-auto left-0 right-0 rounded-full transition-all duration-500">
+        <div class="flex items-center justify-between gap-2 px-3 py-1.5">
+            <a href="/"
+                class="flex items-center gap-2.5 transition-transform duration-300 hover:-translate-y-0.5">
+                <div class="logo-mark">
+                    <img src="assets/images/Revluma-logo.png" alt="Revluma" />
+                </div>
+                <div class="logo-name-wrap">
+                    <span class="logo-name">Revluma</span>
+                </div>
+            </a>
+
+            <div
+                class="hidden md:flex items-center gap-5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#A1A1AA]">
+                <a href="/#features" class="group relative hover:text-white transition-colors">Features
+                    <span
+                        class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
+                </a>
+                <a href="/#pricing" class="group relative hover:text-white transition-colors">Pricing
+                    <span
+                        class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
+                </a>
+                <a href="/#integrations" class="group relative hover:text-white transition-colors">Integrations
+                    <span
+                        class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
+                </a>
+                <a href="#" class="group relative hover:text-white transition-colors">Contact
+                    <span
+                        class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
+                </a>
+            </div>
+
+            <div class="hidden md:flex items-center gap-2">
+                <a href="#"
+                    class="text-[11px] font-semibold text-[#A1A1AA] hover:text-white transition-colors">Login</a>
+                <a href="./auth/signUp.html">
+                    <button
+                        class="bg-white text-black px-3 py-1.5 rounded-full text-[11px] font-bold hover:-translate-y-0.5 transition-transform">Get
+                        Started</button>
+                </a>
+            </div>
+
+            <button @click="mobileMenu = !mobileMenu"
+                class="md:hidden p-2 rounded-full border border-white/10 bg-white/5 text-[#A1A1AA]">
+                <svg x-show="!mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                    stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
+                </svg>
+                <svg x-show="mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                    stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile menu -->
+    <div x-show="mobileMenu" x-transition.opacity x-cloak
+        class="fixed inset-x-0 top-20 z-40 rounded-b-3xl border border-white/10 bg-[#090909]/95 px-6 py-8 md:hidden">
+        <div class="flex flex-col gap-6 text-lg font-semibold uppercase tracking-wide">
+            <a href="/#features" @click="mobileMenu=false"
+                class="hover:text-[#A1A1AA] transition-colors">Features</a>
+            <a href="/#pricing" @click="mobileMenu=false"
+                class="hover:text-[#A1A1AA] transition-colors">Pricing</a>
+            <a href="/#integrations" @click="mobileMenu=false"
+                class="hover:text-[#A1A1AA] transition-colors">Integrations</a>
+            <a href="#" @click="mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Login</a>
+            <button
+                class="mt-2 bg-white text-black py-4 rounded-2xl font-bold hover:-translate-y-0.5 transition-transform">Get
+                Started</button>
+        </div>
+    </div>
+
+    <!-- ── Hero ── -->
+    <section class="relative pt-40 pb-20 px-6 text-center overflow-hidden">
+        <div class="absolute inset-0 grid-bg opacity-25 pointer-events-none"></div>
+        <div class="absolute inset-0 bg-radial-gradient pointer-events-none"
+            style="background: radial-gradient(ellipse 70% 50% at 50% 0%, rgba(139,92,246,0.07), transparent 70%)">
+        </div>
+
+        <div class="relative z-10 max-w-3xl mx-auto">
+            <div
+                class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-[11px] uppercase tracking-widest text-[#A1A1AA] mb-6 font-semibold">
+                <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse inline-block"></span>
+                Full Platform Capabilities
+            </div>
+            <h1 class="hero-headline text-4xl md:text-6xl lg:text-7xl leading-[1] mb-5">
+                Every tool to<br>scale your revenue.
+            </h1>
+            <p class="text-[#666] text-base md:text-lg max-w-xl mx-auto leading-relaxed">
+                From intelligent cart recovery to predictive AI — every feature Revluma offers, in one place. Features
+                tagged <span class="text-violet-400 font-semibold">Beta</span> are in active development.
+            </p>
+        </div>
+    </section>
+
+    <div class="grad-line mx-6 md:mx-12 mb-0"></div>
+
+    <!-- ── Filter & Search bar ── -->
+    <section class="sticky top-[72px] z-40 bg-[#080808]/90 backdrop-blur-xl border-b border-white/[0.05] px-6 py-3">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center gap-3">
+            <!-- Search -->
+            <div class="relative flex-shrink-0">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#444]" fill="none"
+                    viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0" />
+                </svg>
+                <input id="searchInput" type="text" placeholder="Search features…" class="search-box pl-8" />
+            </div>
+
+            <!-- Filter pills -->
+            <div class="flex flex-wrap gap-2">
+                <button class="filter-pill active" data-filter="all">All</button>
+                <button class="filter-pill" data-filter="revenue">Revenue</button>
+                <button class="filter-pill" data-filter="ai">AI & Intelligence</button>
+                <button class="filter-pill" data-filter="automation">Automation</button>
+                <button class="filter-pill" data-filter="data">Data & Analytics</button>
+                <button class="filter-pill" data-filter="platform">Platform</button>
+                <button class="filter-pill" data-filter="beta">Beta Only</button>
+            </div>
+
+            <!-- Count -->
+            <span id="featureCount"
+                class="ml-auto text-[11px] text-[#444] font-semibold whitespace-nowrap hidden md:block">29
+                features</span>
+        </div>
+    </section>
+
+    <!-- ── Features Grid ── -->
+    <main class="px-6 pt-12 pb-24 max-w-7xl mx-auto">
+
+        <!-- Section: Revenue & Conversion -->
+        <div class="mb-4 reveal" id="sec-revenue">
+            <p class="section-eyebrow">Revenue & Conversion</p>
+            <div class="grad-line"></div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-14" id="grid-revenue">
+
+            <!-- 1. Abandoned Cart Recovery -->
+            <div class="feat-card reveal d-0" data-category="revenue" data-name="abandoned cart recovery">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d0d1a, #141428, #0a0a1f)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M18 20h3l2 10h12l2-7H22" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                            <circle cx="24" cy="34" r="2" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" />
+                            <circle cx="33" cy="34" r="2" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" />
+                            <path d="M30 16l-3 3 3 3" stroke="rgba(139,92,246,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M27 19h8" stroke="rgba(139,92,246,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="./assets/images/cart-recovery-icon.png" alt="Abandoned Cart"
+                        onerror="this.style.display='none'">
+                    <span class="img-chip">Cart Recovery</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Abandoned Cart Recovery</p>
+                    <p class="feat-desc">Detects when a visitor adds to cart but doesn't checkout within 10 minutes.
+                        Auto-triggers personalized Email, SMS or WhatsApp with product image, price, reviews & limited
+                        stock cues. Classifies new vs returning leads instantly.</p>
+                    <p class="feat-stat">↑ Avg. $4,200/mo recovered per store</p>
+                </div>
+            </div>
+
+            <!-- 2. Low Conversion Rate Fix -->
+            <div class="feat-card reveal d-1" data-category="revenue" data-name="low conversion rate fix">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d1a10, #0f221a, #081a12)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M16 36l6-8 5 4 7-10 6 6" stroke="rgba(74,222,128,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M34 16l6 6-6 0 0-6z" fill="rgba(74,222,128,0.3)" stroke="rgba(74,222,128,0.7)"
+                                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <img src="./assets/images/conversation.avif" alt="Conversion" onerror="this.style.display='none'">
+                    <span class="img-chip">Conversion Engine</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Low Conversion Rate Fix</p>
+                    <p class="feat-desc">Tracks time-on-page, scroll depth, product views, and repeat visits. Identifies
+                        exact drop-off points, then triggers targeted pop-ups, exclusive offers, and personalized
+                        follow-up campaigns automatically.</p>
+                    <p class="feat-stat">↑ Avg. 34% lift in store conversion rate</p>
+                </div>
+            </div>
+
+            <!-- 3. Smart Drip Campaigns -->
+            <div class="feat-card reveal d-2" data-category="revenue automation"
+                data-name="smart drip campaigns automated sequences">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a0d0d, #22100f, #1a0808)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <rect x="15" y="17" width="26" height="18" rx="3" stroke="rgba(255,255,255,0.5)"
+                                stroke-width="1.5" />
+                            <path d="M15 20l13 8 13-8" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"
+                                stroke-linecap="round" />
+                            <path d="M21 39h3M26 39h3M31 39h3" stroke="rgba(251,146,60,0.6)" stroke-width="1.5"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="./assets/images/campaign.webp" alt="Drip Campaigns" onerror="this.style.display='none'">
+                    <span class="img-chip">Drip Campaigns</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Smart Drip Campaigns</p>
+                    <p class="feat-desc">Trigger → Sequence → Conditional Branching → Optimization → Feedback. Moves
+                        leads and customers from one behavioural state to the next using timed, adaptive messaging
+                        across every channel.</p>
+                    <p class="feat-stat">↑ Up to 3× revenue per campaign vs static emails</p>
+                </div>
+            </div>
+
+            <!-- 4. Customer Retention Automation -->
+            <div class="feat-card reveal d-3" data-category="revenue automation"
+                data-name="customer retention automation loyalty">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d1a1a, #0f1f22, #081a1a)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M28 22c-4-6-14-6-14 2s14 14 14 14 14-6 14-14-10-8-14-2z"
+                                fill="rgba(248,113,113,0.15)" stroke="rgba(248,113,113,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <img src="./assets/images/retention.jpg" alt="Retention" onerror="this.style.display='none'">
+                    <span class="img-chip">Retention</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Customer Retention Automation</p>
+                    <p class="feat-desc">Tracks purchase frequency, time on site, referrals, and chat behaviour.
+                        Triggers loyalty programs, personalized discounts, daily/weekly check-ins, and new product
+                        suggestions based on past purchases.</p>
+                    <p class="feat-stat">↑ 2× repeat purchase rate within 90 days</p>
+                </div>
+            </div>
+
+            <!-- 5. LTV Optimization Layer -->
+            <div class="feat-card reveal d-4" data-category="revenue ai" data-name="ltv optimization lifetime value">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a1a0d, #22220f, #1a1a08)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <rect x="16" y="28" width="24" height="4" rx="1" fill="rgba(250,204,21,0.25)"
+                                stroke="rgba(250,204,21,0.6)" stroke-width="1.2" />
+                            <rect x="16" y="22" width="24" height="4" rx="1" fill="rgba(250,204,21,0.2)"
+                                stroke="rgba(250,204,21,0.5)" stroke-width="1.2" />
+                            <rect x="16" y="34" width="24" height="4" rx="1" fill="rgba(250,204,21,0.15)"
+                                stroke="rgba(250,204,21,0.4)" stroke-width="1.2" />
+                            <text x="28" y="20" text-anchor="middle" fill="rgba(250,204,21,0.7)" font-size="7"
+                                font-weight="700">$$$</text>
+                        </svg>
+                    </div>
+                    <img src="./assets/images/ltv.webp" alt="LTV" onerror="this.style.display='none'">
+                    <span class="img-chip">LTV Layer</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">LTV Optimization Layer</p>
+                    <p class="feat-desc">Classifies customers into value tiers and deploys different monetization logic
+                        per segment. High-value customers get VIP flows. Mid-tier get upsell sequences. Low-tier get
+                        re-engagement funnels. Every customer is treated based on their actual value.</p>
+                    <p class="feat-stat">↑ Average LTV increase of 38% in 6 months</p>
+                </div>
+            </div>
+
+            <!-- 6. Referral Automation Loop -->
+            <div class="feat-card reveal d-5" data-category="revenue automation"
+                data-name="referral automation loop organic growth">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d0a1a, #130f22, #0a081a)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <circle cx="20" cy="20" r="5" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" />
+                            <circle cx="36" cy="20" r="5" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" />
+                            <circle cx="28" cy="36" r="5" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" />
+                            <path d="M24 22l8 0M21 25l5 7M35 25l-5 7" stroke="rgba(139,92,246,0.6)" stroke-width="1.5"
+                                stroke-linecap="round" />
+                            <path d="M18 18l-2-2M38 18l2-2M28 40l0 3" stroke="rgba(139,92,246,0.4)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="./assets/images/referral.jpg" alt="Referral" onerror="this.style.display='none'">
+                    <span class="img-chip">Referral Loop</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Referral Automation Loop</p>
+                    <p class="feat-desc">Triggers referral prompts at peak customer satisfaction moments — after
+                        positive delivery, repeat purchase, discount redemption, a 5-star review, or a meaningful
+                        conversation. Organic growth compounds automatically.</p>
+                    <p class="feat-stat">↑ 22% average new-customer rate from referrals</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Section: AI & Intelligence -->
+        <div class="mb-4 reveal" id="sec-ai">
+            <p class="section-eyebrow">AI & Intelligence</p>
+            <div class="grad-line"></div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-14" id="grid-ai">
+
+            <!-- 7. Industry-Aware AI -->
+            <div class="feat-card reveal d-0" data-category="ai" data-name="industry aware ai chatbot advisor">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0a0d1a, #0f1222, #080a1a)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <rect x="19" y="18" width="18" height="14" rx="3" stroke="rgba(139,92,246,0.6)"
+                                stroke-width="1.5" />
+                            <circle cx="23" cy="25" r="1.5" fill="rgba(139,92,246,0.7)" />
+                            <circle cx="28" cy="25" r="1.5" fill="rgba(139,92,246,0.7)" />
+                            <circle cx="33" cy="25" r="1.5" fill="rgba(139,92,246,0.7)" />
+                            <path d="M22 29h12" stroke="rgba(139,92,246,0.4)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <path d="M24 32l4 6 4-6" stroke="rgba(139,92,246,0.6)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M19 21v-3M37 21v-3M19 35v3M37 35v3" stroke="rgba(139,92,246,0.3)"
+                                stroke-width="1.2" stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/industry-aware.webp" alt="AI" onerror="this.style.display='none'">
+                    <span class="img-chip">Industry AI</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Industry-Aware AI</p>
+                    <p class="feat-desc">Not a generic chatbot. Powered by your Business Profile, live store metrics,
+                        industry benchmarks, and your historical data. Suggests, asks, and executes — activating
+                        automations, scheduling campaigns, tracking results, and feeding outcomes back into its own
+                        learning loop.</p>
+                    <p class="feat-stat">↑ Decisions backed by live + historical intelligence</p>
+                </div>
+            </div>
+
+            <!-- 8. Conversion Scoring Engine -->
+            <div class="feat-card reveal d-1" data-category="ai" data-name="conversion scoring engine micro behaviour">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a0d12, #22101a, #1a0810)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M28 16a12 12 0 1 1 0 24" stroke="rgba(255,255,255,0.15)" stroke-width="2.5"
+                                stroke-linecap="round" />
+                            <path d="M28 16a12 12 0 0 1 8.5 3.5" stroke="rgba(74,222,128,0.7)" stroke-width="2.5"
+                                stroke-linecap="round" />
+                            <circle cx="28" cy="28" r="2" fill="rgba(255,255,255,0.5)" />
+                            <path d="M28 22v6l4 2" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/conversation.avif" alt="Scoring" onerror="this.style.display='none'">
+                    <span class="img-chip">Conversion Scoring</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Conversion Scoring Engine</p>
+                    <p class="feat-desc">Tracks micro-behaviours — page views, scroll depth, repeat visits, time spent,
+                        search patterns — and assigns a real-time intent score. High-intent visitors trigger persuasion
+                        flows. Low-intent visitors get nurture sequences.</p>
+                    <p class="feat-stat">↑ Identifies buyers before they self-select</p>
+                </div>
+            </div>
+
+            <!-- 9. Business Profile Setup -->
+            <div class="feat-card reveal d-2" data-category="ai platform"
+                data-name="business profile setup industry configuration">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d1a15, #0f2218, #081a12)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <rect x="17" y="16" width="22" height="24" rx="3" stroke="rgba(255,255,255,0.4)"
+                                stroke-width="1.5" />
+                            <path d="M22 22h12M22 27h12M22 32h8" stroke="rgba(255,255,255,0.25)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <circle cx="35" cy="35" r="7" fill="#0d1a15" stroke="rgba(74,222,128,0.7)"
+                                stroke-width="1.5" />
+                            <path d="M35 32v6M32 35h6" stroke="rgba(74,222,128,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/business-profile.jpg" alt="Business Profile"
+                        onerror="this.style.display='none'">
+                    <span class="img-chip">Profile Setup</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Business Profile Setup</p>
+                    <p class="feat-desc">5-layer structured intelligence onboarding: Business Identity, Revenue
+                        Structure, Operational Capacity, Growth Goals, and Brand Personality. Revluma learns what kind
+                        of business it's working with before any automation starts — then auto-generates your Revenue
+                        Opportunity Map.</p>
+                    <p class="feat-stat">↑ Setup complete in under 4 minutes</p>
+                </div>
+            </div>
+
+            <!-- 10. Benchmark Comparison Engine -->
+            <div class="feat-card reveal d-3" data-category="ai data"
+                data-name="benchmark comparison engine industry performance">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a1508, #221e0a, #1a1a06)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <rect x="16" y="30" width="6" height="10" rx="1.5" fill="rgba(250,204,21,0.25)"
+                                stroke="rgba(250,204,21,0.5)" stroke-width="1.2" />
+                            <rect x="25" y="22" width="6" height="18" rx="1.5" fill="rgba(139,92,246,0.25)"
+                                stroke="rgba(139,92,246,0.5)" stroke-width="1.2" />
+                            <rect x="34" y="26" width="6" height="14" rx="1.5" fill="rgba(255,255,255,0.15)"
+                                stroke="rgba(255,255,255,0.3)" stroke-width="1.2" />
+                            <path d="M14 42h32" stroke="rgba(255,255,255,0.2)" stroke-width="1"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/comparison-engine.avif" alt="Benchmark" onerror="this.style.display='none'">
+                    <span class="img-chip">Benchmarks</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Benchmark Comparison Engine</p>
+                    <p class="feat-desc">Compares your store against anonymized peers in the same industry, business
+                        model, price band, and region. Calculates your percentile rank across AOV, cart abandonment,
+                        conversion rate, ROAS, and repeat purchase rate — then surfaces the gaps worth closing first.
+                    </p>
+                    <p class="feat-stat">↑ Know exactly where you rank vs your industry</p>
+                </div>
+            </div>
+
+            <!-- 11. Revenue Health Score -->
+            <div class="feat-card reveal d-4" data-category="ai data" data-name="revenue health score formula weighted">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d1a0a, #0f2208, #081a06)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M28 18v10" stroke="rgba(74,222,128,0.7)" stroke-width="2" stroke-linecap="round" />
+                            <path d="M28 28l7 7" stroke="rgba(74,222,128,0.7)" stroke-width="2"
+                                stroke-linecap="round" />
+                            <circle cx="28" cy="28" r="12" stroke="rgba(74,222,128,0.3)" stroke-width="1.5" />
+                            <path d="M20 20l-2-2M36 20l2-2" stroke="rgba(74,222,128,0.3)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <path d="M24 38h8" stroke="rgba(255,255,255,0.2)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                            <path d="M26 40h4" stroke="rgba(255,255,255,0.15)" stroke-width="1.2"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/revenue-health.webp" alt="Health Score" onerror="this.style.display='none'">
+                    <span class="img-chip">Health Score</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Revenue Health Score</p>
+                    <p class="feat-desc">A weighted composite score across Conversion Rate (25%), AOV (20%), Repeat
+                        Purchase Rate (20%), Cart Abandonment (15%), Gross Margin (10%), and Inventory Turnover (10%).
+                        Also tracks velocity — how fast your metrics move vs industry movement.</p>
+                    <p class="feat-stat">↑ Real-time revenue maturity rating</p>
+                </div>
+            </div>
+
+            <!-- 12. Churn Detection System -->
+            <div class="feat-card reveal d-5" data-category="ai revenue"
+                data-name="churn detection system inactivity predictive">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a0808, #221010, #1a0606)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M28 16l12 20H16z" stroke="rgba(248,113,113,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" fill="rgba(248,113,113,0.08)" />
+                            <path d="M28 24v8" stroke="rgba(248,113,113,0.8)" stroke-width="2" stroke-linecap="round" />
+                            <circle cx="28" cy="35" r="1.2" fill="rgba(248,113,113,0.8)" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/retention.jpg" alt="Churn" onerror="this.style.display='none'">
+                    <span class="img-chip">Churn Detection</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Churn Detection System</p>
+                    <p class="feat-desc">Identifies inactivity patterns before full churn happens. Assigns a predictive
+                        churn score per customer and launches escalating reactivation sequences — from a soft nudge to
+                        an aggressive win-back offer — before the customer is lost forever.</p>
+                    <p class="feat-stat">↑ Catches 68% of at-risk customers before they churn</p>
+                </div>
+            </div>
+
+            <!-- 13. Global Trending Products -->
+            <div class="feat-card reveal d-0" data-category="ai data"
+                data-name="global trending products market intelligence">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #080d1a, #0a1222, #06081a)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M16 34l6-8 5 4 7-12 6 8" stroke="rgba(59,130,246,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M34 14l6 6-6 0 0-6z" fill="rgba(59,130,246,0.2)" stroke="rgba(59,130,246,0.7)"
+                                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                            <circle cx="22" cy="30" r="1.5" fill="rgba(59,130,246,0.5)" />
+                            <circle cx="27" cy="26" r="1.5" fill="rgba(59,130,246,0.5)" />
+                            <circle cx="34" cy="18" r="1.5" fill="rgba(59,130,246,0.5)" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/global-trend.jpg" alt="Trending" onerror="this.style.display='none'">
+                    <span class="img-chip">Trend Intelligence</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Global Trending Products</p>
+                    <p class="feat-desc">Aggregates real-time product sales data from connected stores, marketplace
+                        APIs, and social selling platforms. Filter by country, city, or category. Shows units sold,
+                        sales velocity, avg price, top regions, and ad performance — refreshed daily or hourly.</p>
+                    <p class="feat-stat">↑ Spot winning products 3–6 weeks before competitors</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Section: Automation -->
+        <div class="mb-4 reveal" id="sec-automation">
+            <p class="section-eyebrow">Automation</p>
+            <div class="grad-line"></div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-14" id="grid-automation">
+
+            <!-- 14. Lead Capture & Scoring -->
+            <div class="feat-card reveal d-0" data-category="automation revenue"
+                data-name="lead capture scoring segmentation">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0a1a10, #0f2218, #081a0e)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M28 16c-6 0-11 4-11 9s5 6 5 6h12s5-1 5-6-5-9-11-9z" stroke="rgba(248,113,113,0.6)"
+                                stroke-width="1.5" fill="rgba(248,113,113,0.08)" />
+                            <path d="M28 34v6M24 37h8" stroke="rgba(248,113,113,0.5)" stroke-width="1.5"
+                                stroke-linecap="round" />
+                            <circle cx="24" cy="42" r="1" fill="rgba(248,113,113,0.3)" />
+                            <circle cx="28" cy="43" r="1" fill="rgba(248,113,113,0.3)" />
+                            <circle cx="32" cy="42" r="1" fill="rgba(248,113,113,0.3)" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/lead-capture.avif" alt="Lead Capture" onerror="this.style.display='none'">
+                    <span class="img-chip">Lead Capture</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Lead Capture & Scoring</p>
+                    <p class="feat-desc">Captures every visitor interaction automatically. Segments leads into
+                        High-Intent and Low-Intent buckets based on purchase value thresholds and behavioural signals.
+                        Each segment receives a tailored follow-up sequence with the right urgency level.</p>
+                    <p class="feat-stat">↑ Zero leads leave without entering a follow-up flow</p>
+                </div>
+            </div>
+
+            <!-- 15. Automated Task Assignment -->
+            <div class="feat-card reveal d-1" data-category="automation platform"
+                data-name="automated task assignment workflow">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a150a, #221e0f, #1a1808)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <rect x="17" y="17" width="22" height="22" rx="3" stroke="rgba(250,204,21,0.5)"
+                                stroke-width="1.5" />
+                            <path d="M22 24l3 3 7-7" stroke="rgba(74,222,128,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M22 32l3 3 7-7" stroke="rgba(74,222,128,0.5)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/automated-task.webp" alt="Task Assignment"
+                        onerror="this.style.display='none'">
+                    <span class="img-chip">Task Engine</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Automated Task Assignment</p>
+                    <p class="feat-desc">Turns AI recommendations into executable tasks without manual planning. Trigger
+                        Layer → Task Generation → Assignment → Conditional Logic → Notification → Feedback. The advisor
+                        detects the opportunity and handles everything from assignment to outcome tracking.</p>
+                    <p class="feat-stat">↑ Eliminates 80% of manual planning work</p>
+                </div>
+            </div>
+
+            <!-- 16. Watchlist & Campaign Automation -->
+            <div class="feat-card reveal d-2" data-category="automation ai"
+                data-name="watchlist campaign automation trending">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #100a1a, #180f22, #0e081a)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M28 20c-8 0-14 8-14 8s6 8 14 8 14-8 14-8-6-8-14-8z" stroke="rgba(255,255,255,0.4)"
+                                stroke-width="1.5" />
+                            <circle cx="28" cy="28" r="4" stroke="rgba(139,92,246,0.7)" stroke-width="1.5" />
+                            <circle cx="28" cy="28" r="1.5" fill="rgba(139,92,246,0.7)" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/watch-list.avif" alt="Watchlist" onerror="this.style.display='none'">
+                    <span class="img-chip">Watchlist</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Watchlist & Campaign Automation</p>
+                    <p class="feat-desc">Add any trending product to your watch list. System monitors sales velocity, ad
+                        engagement, and regional trends. When a product enters the top 10 globally, an alert fires. When
+                        it starts declining, you're warned to pause spend. AI suggests campaign type, audience, and
+                        timing automatically.</p>
+                    <p class="feat-stat">↑ Acts on trending data before your competitors do</p>
+                </div>
+            </div>
+
+            <!-- 17. Automated Reminders & Notifications -->
+            <div class="feat-card reveal d-3" data-category="automation"
+                data-name="automated reminders notifications triggers">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0a1a18, #0f2220, #081a18)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M24 22c0-2.2 1.8-4 4-4s4 1.8 4 4v4c0 2 1 3 2 4H22c1-1 2-2 2-4v-4z"
+                                stroke="rgba(250,204,21,0.6)" stroke-width="1.5" />
+                            <path d="M21 30h14v2c0 2-2 4-7 4s-7-2-7-4v-2z" stroke="rgba(250,204,21,0.5)"
+                                stroke-width="1.5" />
+                            <circle cx="28" cy="38" r="1.5" fill="rgba(250,204,21,0.5)" />
+                            <circle cx="35" cy="19" r="3" fill="rgba(248,113,113,0.6)" />
+                            <path d="M35 18v2M34 19h2" stroke="white" stroke-width="1" stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/reminders.jpg" alt="Reminders" onerror="this.style.display='none'">
+                    <span class="img-chip">Reminders</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Automated Reminders & Notifications</p>
+                    <p class="feat-desc">Exists to prevent revenue leakage caused by delay, forgetfulness, or inaction.
+                        Every trigger runs on: Trigger → Condition → Action → Feedback → Learn. Replenishment reminders,
+                        follow-up nudges, and re-engagement pings are all handled without manual input.</p>
+                    <p class="feat-stat">↑ Revenue leaks plugged before they cost you</p>
+                </div>
+            </div>
+
+            <!-- 18. Omni-Channel Connection -->
+            <div class="feat-card reveal d-4" data-category="automation platform"
+                data-name="omni channel connection social media unified">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a0d10, #221015, #1a080e)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <circle cx="28" cy="28" r="5" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" />
+                            <circle cx="17" cy="17" r="3" stroke="rgba(139,92,246,0.5)" stroke-width="1.2" />
+                            <circle cx="39" cy="17" r="3" stroke="rgba(59,130,246,0.5)" stroke-width="1.2" />
+                            <circle cx="17" cy="39" r="3" stroke="rgba(74,222,128,0.5)" stroke-width="1.2" />
+                            <circle cx="39" cy="39" r="3" stroke="rgba(248,113,113,0.5)" stroke-width="1.2" />
+                            <path d="M21 21l4 4M35 21l-4 4M21 35l4-4M35 35l-4-4" stroke="rgba(255,255,255,0.2)"
+                                stroke-width="1" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/omini-channel.webp" alt="Omni Channel" onerror="this.style.display='none'">
+                    <span class="img-chip">Omni-Channel</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Omni-Channel Connection</p>
+                    <p class="feat-desc">Connects your store with Shopify, WooCommerce, WhatsApp, TikTok, Instagram,
+                        Facebook, LinkedIn, X, Email, SMS, Google Ads, and custom APIs — all routed into one AI system.
+                        Unified communication, consistent follow-ups, no data silos.</p>
+                    <p class="feat-stat">↑ One system. Every channel. Zero gaps.</p>
+                </div>
+            </div>
+
+            <!-- 19. Product Uploads (Social → Product) -->
+            <div class="feat-card reveal d-5" data-category="automation platform"
+                data-name="product uploads social media auto extract">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d1a0a, #122208, #0a1a06)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M20 30v8h16v-8" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M28 18v14" stroke="rgba(74,222,128,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" />
+                            <path d="M23 23l5-5 5 5" stroke="rgba(74,222,128,0.7)" stroke-width="1.5"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M17 34h22" stroke="rgba(255,255,255,0.3)" stroke-width="1.5"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/product-upload.png" alt="Product Uploads"
+                        onerror="this.style.display='none'">
+                    <span class="img-chip">Product Uploads</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Product Uploads (Social → Store)</p>
+                    <p class="feat-desc">Monitors connected social accounts for posts containing price, product name,
+                        availability keywords, and CTAs. Extracts all info, creates a structured product object, and
+                        holds for your approval before listing. Detect → Extract → Structure → Validate → Sync → Track.
+                    </p>
+                    <p class="feat-stat">↑ Turn any post into a sellable product in seconds</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Section: Data & Analytics -->
+        <div class="mb-4 reveal" id="sec-data">
+            <p class="section-eyebrow">Data & Analytics</p>
+            <div class="grad-line"></div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-14" id="grid-data">
+
+            <!-- 20. Reporting & Dashboard Analytics -->
+            <div class="feat-card reveal d-0" data-category="data platform"
+                data-name="reporting dashboard analytics insights">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #080a1a, #0a0e22, #06081a)">
+                        <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="28" cy="28" r="27" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+                            <path d="M28 18v20" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
+                            <path d="M18 28h20" stroke="rgba(255,255,255,0.2)" stroke-width="1" />
+                            <path d="M28 28c0-5.5 4.5-10 10-10" stroke="rgba(59,130,246,0.7)" stroke-width="2.5"
+                                stroke-linecap="round" />
+                            <path d="M28 28c-5.5 0-10 4.5-10 10" stroke="rgba(139,92,246,0.7)" stroke-width="2.5"
+                                stroke-linecap="round" />
+                            <path d="M28 28c5.5 0 10 4.5 10 10" stroke="rgba(74,222,128,0.7)" stroke-width="2.5"
+                                stroke-linecap="round" />
+                            <path d="M28 28c0 5.5-4.5 10-10 10" stroke="rgba(248,113,113,0.7)" stroke-width="2.5"
+                                stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <img src="assets/images/dashboard-analystic.png" alt="Reports" onerror="this.style.display='none'">
+                    <span class="img-chip">Analytics</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Reporting & Dashboard Analytics</p>
+                    <p class="feat-desc">Auto-collects sales, conversion, ad performance, retention growth, revenue
+                        recovered, inventory alerts, bot performance, and most profitable platform data. Generates a
+                        live dashboard with actionable insights — not just numbers, but decisions.</p>
+                    <p class="feat-stat">↑ Full revenue picture in one dashboard</p>
+                </div>
+            </div>
+
+            <!-- 21. CRM Database -->
+            <div class="feat-card reveal d-1" data-category="data platform" data-name="crm database customer records">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a0a0d, #220d12, #1a0810)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">
+                        </div>
+                    </div>
+                    <img src="assets/images/crm-database.webp" alt="CRM" onerror="this.style.display='none'">
+                    <span class="img-chip">CRM</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">CRM Database</p>
+                    <p class="feat-desc">Stores every customer's name, email, phone, products purchased, amounts, lead
+                        score, purchase date, number of orders, and reviews in a structured, searchable CRM inside your
+                        dashboard. Full history. Zero manual entry. Every interaction logged.</p>
+                    <p class="feat-stat">↑ Complete customer intelligence at your fingertips</p>
+                </div>
+            </div>
+
+            <!-- 22. Inventory & Stock Management -->
+            <div class="feat-card reveal d-2" data-category="data" data-name="inventory stock management alerts">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d1a10, #0f2215, #081a0d)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">
+                        </div>
+                    </div>
+                    <img src="assets/images/inventory.png" alt="Inventory" onerror="this.style.display='none'">
+                    <span class="img-chip">Inventory</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Inventory & Stock Management</p>
+                    <p class="feat-desc">Tracks stock levels, identifies top-performing products and why they perform,
+                        detects new traffic patterns, compares usual order rate vs current rate, and triggers
+                        pre-stockout alerts with auto-updated listings showing live counts (e.g. "3 remaining").</p>
+                    <p class="feat-stat">↑ Never lose a sale to a stockout again</p>
+                </div>
+            </div>
+
+            <!-- 23. Business Type Dashboard -->
+            <div class="feat-card reveal d-3" data-category="data platform"
+                data-name="business type dashboard industry workspace">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a1208, #22180a, #1a1206)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">
+                        </div>
+                    </div>
+                    <img src="assets/images/business-type.png" alt="Dashboard" onerror="this.style.display='none'">
+                    <span class="img-chip">Industry Dashboard</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Business Type Dashboard</p>
+                    <p class="feat-desc">Once a user is created with an industry type and business model, Revluma
+                        assigns a dashboard configured for that exact business. A fashion brand sees different KPIs,
+                        automations, and recommendations than a digital products store or a skincare brand.</p>
+                    <p class="feat-stat">↑ Your dashboard thinks like your business</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Section: Platform & Operations -->
+        <div class="mb-4 reveal" id="sec-platform">
+            <p class="section-eyebrow">Platform & Operations</p>
+            <div class="grad-line"></div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-14" id="grid-platform">
+
+            <!-- 24. Data Security & Fraud Prevention -->
+            <div class="feat-card reveal d-0" data-category="platform" data-name="data security fraud prevention">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #080d1a, #0a1020, #06081a)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">
+                        </div>
+                    </div>
+                    <img src="assets/images/data-security.jpg" alt="Security" onerror="this.style.display='none'">
+                    <span class="img-chip">Security</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Data Security & Fraud Prevention</p>
+                    <p class="feat-desc">Detects suspicious behaviour, scam patterns, and unusual activity in real-time.
+                        Immediately alerts admin or temporarily blocks the threat. Encrypts payment data and personal
+                        information with enterprise-grade protocols. Every interaction is logged for audit.</p>
+                    <p class="feat-stat">↑ Zero-tolerance fraud detection layer</p>
+                </div>
+            </div>
+
+            <!-- 25. Email Support System -->
+            <div class="feat-card reveal d-1" data-category="platform" data-name="email support ticketing priority">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a0d08, #22120a, #1a0e06)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">
+                        </div>
+                    </div>
+                    <img src="assets/images/email-support.png" alt="Support" onerror="this.style.display='none'">
+                    <span class="img-chip">Support</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Email Support System</p>
+                    <p class="feat-desc">Trigger → Create Ticket → Auto-Tag by category → Score priority by impact and
+                        plan tier → Queue by severity → Resolve → Log feedback → Detect recurring issues. Every issue
+                        tracked, prioritized, measurable, and improvable. No support ticket falls through.</p>
+                    <p class="feat-stat">↑ Priority response based on plan tier & severity</p>
+                </div>
+            </div>
+
+            <!-- 26. Priority Support -->
+            <div class="feat-card reveal d-2" data-category="platform" data-name="priority support plan tier access">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d1a15, #0f2018, #081a12)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">
+                        </div>
+                    </div>
+                    <img src="assets/images/customer-support.jpg" alt="Priority" onerror="this.style.display='none'">
+                    <span class="img-chip">Priority Access</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Priority Support</p>
+                    <p class="feat-desc">Your plan tier determines response time, access channel (email, live chat,
+                        dedicated manager), and queue weight. Queue sorted by: severity, tier priority, and waiting
+                        time. High-value customers receive faster resolution without compromising fairness to others.
+                    </p>
+                    <p class="feat-stat">↑ Faster resolution for plans that need it most</p>
+                </div>
+            </div>
+
+            <!-- 27. System Updates -->
+            <div class="feat-card reveal d-3" data-category="platform" data-name="system updates rollout deployment">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a1a08, #22220a, #1a1a06)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">
+                        </div>
+                    </div>
+                    <img src="assets/images/system-updates.png" alt="Updates" onerror="this.style.display='none'">
+                    <span class="img-chip">System Updates</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">System Updates</p>
+                    <p class="feat-desc">Develop → Test → Controlled rollout → Monitor → Full release. If error rate
+                        exceeds threshold, auto-rollback is triggered. Users are notified for feature updates. Security
+                        patches deploy silently without disruption. Your operations never break during an update.</p>
+                    <p class="feat-stat">↑ Zero downtime update architecture</p>
+                </div>
+            </div>
+
+            <!-- 28. Maintenance -->
+            <div class="feat-card reveal d-4" data-category="platform" data-name="maintenance monitoring server health">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0a0d18, #0c1020, #08081a)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">
+                        </div>
+                    </div>
+                    <img src="assets/images/system-maintanance.jpg" alt="Maintenance"
+                        onerror="this.style.display='none'">
+                    <span class="img-chip">System Health</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Maintenance & System Health</p>
+                    <p class="feat-desc">Continuously monitors server load, error rates, API failures, and automation
+                        health. If any metric crosses a threshold, an internal alert fires and a mitigation protocol
+                        starts. Scheduled maintenance runs during lowest-traffic windows. Failure prevented before users
+                        notice.</p>
+                    <p class="feat-stat">↑ 99.9% uptime target with proactive monitoring</p>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Section: Beta Features -->
+        <div class="mb-4 reveal" id="sec-beta">
+            <div class="flex items-center gap-3">
+                <p class="section-eyebrow">In Development</p>
+                <span
+                    class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-bold uppercase tracking-widest">
+                    <span class="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span>
+                    Beta
+                </span>
+            </div>
+            <div class="grad-line"></div>
+            <p class="text-[#444] text-xs mt-3 max-w-2xl">These features are in active development or early access. If
+                you're a Private Beta User, you'll have first access to each module as it launches.</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-14" id="grid-beta">
+
+            <!-- B1. AI Voice Commerce -->
+            <div class="feat-card reveal d-0" data-category="beta ai" data-name="ai voice commerce shopping assistant">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #12081a, #180a22, #100618)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12)">
+                        </div>
+                    </div>
+                    <img src="assets/images/feat-voice.jpg" alt="Voice Commerce" onerror="this.style.display='none'">
+                    <span class="img-chip">Voice Commerce</span>
+                    <span class="beta-badge">Beta</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">AI Voice Commerce</p>
+                    <p class="feat-desc">Conversational voice shopping assistant that handles product discovery, FAQs,
+                        order status, and checkout — through natural voice input. Integrates with WhatsApp voice notes
+                        and web-based voice UI for hands-free shopping experiences.</p>
+                    <div class="coming-pill"><span
+                            class="w-1 h-1 rounded-full bg-violet-400 animate-pulse"></span>Coming Soon</div>
+                </div>
+            </div>
+
+            <div class="feat-card reveal d-0" data-category="beta ai" data-name="ai voice commerce shopping assistant">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #12081a, #180a22, #100618)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12)">
+                        </div>
+                    </div>
+                    <img src="assets/images/feat-voice.jpg" alt="Voice Commerce" onerror="this.style.display='none'">
+                    <span class="img-chip">Booking & Payments</span>
+                    <span class="beta-badge">Beta</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Online Booking & Payment Automation</p>
+                    <p class="feat-desc">Handles end-to-end appointment scheduling, custom checkout flows, and payment
+                        processing via Stripe or PayPal. Supports card payments, bank transfers, and gift cards.
+                        Automated booking confirmations, reminders, and receipts run without any manual involvement.</p>
+                    <p class="feat-stat">↑ Frictionless checkout to booking in one system</p>
+                    <div class="coming-pill"><span
+                            class="w-1 h-1 rounded-full bg-violet-400 animate-pulse"></span>Coming Soon</div>
+                </div>
+            </div>
+
+
+            <!-- B2. Predictive Inventory Forecasting -->
+            <div class="feat-card reveal d-1" data-category="beta data"
+                data-name="predictive inventory forecasting demand">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #081a12, #0a2218, #06180e)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12)">
+                        </div>
+                    </div>
+                    <img src="assets/images/feat-forecast.jpg" alt="Forecasting" onerror="this.style.display='none'">
+                    <span class="img-chip">Forecasting</span>
+                    <span class="beta-badge">Beta</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Predictive Inventory Forecasting</p>
+                    <p class="feat-desc">Uses historical sales data, seasonal patterns, trending products, and regional
+                        demand signals to predict how much stock you'll need — before you run out. Generates reorder
+                        recommendations with supplier timing built in.</p>
+                    <div class="coming-pill"><span
+                            class="w-1 h-1 rounded-full bg-violet-400 animate-pulse"></span>Coming Soon</div>
+                </div>
+            </div>
+
+            <!-- B3. Competitor Price Tracking -->
+            <div class="feat-card reveal d-2" data-category="beta ai data"
+                data-name="competitor price tracking monitoring">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a1008, #22180a, #1a1206)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12)">
+                        </div>
+                    </div>
+                    <img src="assets/images/feat-price-track.jpg" alt="Price Tracking"
+                        onerror="this.style.display='none'">
+                    <span class="img-chip">Price Intelligence</span>
+                    <span class="beta-badge">Beta</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Competitor Price Tracking</p>
+                    <p class="feat-desc">Monitors competitor pricing across marketplaces and direct sites in real-time.
+                        Alerts you when a competitor undercuts your price by more than a set threshold. Recommends
+                        optimal price adjustments to stay competitive without sacrificing margin.</p>
+                    <div class="coming-pill"><span
+                            class="w-1 h-1 rounded-full bg-violet-400 animate-pulse"></span>Coming Soon</div>
+                </div>
+            </div>
+
+            <!-- B4. Multi-Currency & Localization Engine -->
+            <div class="feat-card reveal d-3" data-category="beta platform"
+                data-name="multi currency localization international">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #081a1a, #0a2020, #061818)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12)">
+                        </div>
+                    </div>
+                    <img src="assets/images/feat-currency.jpg" alt="Currency" onerror="this.style.display='none'">
+                    <span class="img-chip">Multi-Currency</span>
+                    <span class="beta-badge">Beta</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Multi-Currency & Localization Engine</p>
+                    <p class="feat-desc">Auto-detects visitor location and displays prices in local currency. Localizes
+                        messaging tone, imagery, and offers by region. Supports tax rule differences across markets.
+                        Built for brands scaling into new geographies without rebuilding their entire stack.</p>
+                    <div class="coming-pill"><span
+                            class="w-1 h-1 rounded-full bg-violet-400 animate-pulse"></span>Coming Soon</div>
+                </div>
+            </div>
+
+            <!-- B5. AI-Generated Ad Creative -->
+            <div class="feat-card reveal d-4" data-category="beta ai automation"
+                data-name="ai generated ad creative campaigns">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a0810, #220a18, #1a0810)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12)">
+                        </div>
+                    </div>
+                    <img src="assets/images/feat-adcreative.jpg" alt="Ad Creative" onerror="this.style.display='none'">
+                    <span class="img-chip">Ad Creative AI</span>
+                    <span class="beta-badge">Beta</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">AI-Generated Ad Creative</p>
+                    <p class="feat-desc">Generates ad copy, captions, and image briefs automatically from your product
+                        catalog and brand tone. Recommends the best creative format per platform — short-form video
+                        scripts for TikTok, carousel copy for Instagram, search copy for Google. Ready to publish in one
+                        click.</p>
+                    <div class="coming-pill"><span
+                            class="w-1 h-1 rounded-full bg-violet-400 animate-pulse"></span>Coming Soon</div>
+                </div>
+            </div>
+
+            <!-- B6. Affiliate & Influencer Management -->
+            <div class="feat-card reveal d-5" data-category="beta automation"
+                data-name="affiliate influencer management tracking">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #0d1a08, #12220a, #0a1a06)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12)">
+                        </div>
+                    </div>
+                    <img src="assets/images/feat-affiliate.jpg" alt="Affiliate" onerror="this.style.display='none'">
+                    <span class="img-chip">Affiliates</span>
+                    <span class="beta-badge">Beta</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Affiliate & Influencer Management</p>
+                    <p class="feat-desc">Create, manage, and track affiliate programs and influencer partnerships from
+                        inside Revluma. Auto-generate unique tracking links, monitor clicks and conversions per
+                        affiliate, calculate commissions, and trigger payout flows — all without a third-party tool.</p>
+                    <div class="coming-pill"><span
+                            class="w-1 h-1 rounded-full bg-violet-400 animate-pulse"></span>Coming Soon</div>
+                </div>
+            </div>
+
+            <!-- B7. Customer Sentiment Analysis -->
+            <div class="feat-card reveal d-0" data-category="beta ai data"
+                data-name="customer sentiment analysis reviews feedback">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #1a1208, #221a0a, #1a1208)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12)">
+                        </div>
+                    </div>
+                    <img src="assets/images/feat-sentiment.jpg" alt="Sentiment" onerror="this.style.display='none'">
+                    <span class="img-chip">Sentiment AI</span>
+                    <span class="beta-badge">Beta</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Customer Sentiment Analysis</p>
+                    <p class="feat-desc">Analyses reviews, chat messages, and social mentions to detect satisfaction
+                        trends, recurring complaints, and emerging praise signals. Surfaces the top 3 reasons customers
+                        love or dislike a product — and recommends actions to amplify or fix each one.</p>
+                    <div class="coming-pill"><span
+                            class="w-1 h-1 rounded-full bg-violet-400 animate-pulse"></span>Coming Soon</div>
+                </div>
+            </div>
+
+            <!-- B8. Private Beta Access -->
+            <div class="feat-card reveal d-1" data-category="beta platform"
+                data-name="private beta founding member access early">
+                <div class="feat-img">
+                    <div class="img-fallback" style="background: linear-gradient(135deg, #100812, #18081a, #100812)">
+                        <div
+                            style="width:60px;height:60px;border-radius:50%;background:rgba(139,92,246,0.06);border:1px solid rgba(139,92,246,0.12)">
+                        </div>
+                    </div>
+                    <img src="assets/images/feat-beta.jpg" alt="Beta Access" onerror="this.style.display='none'">
+                    <span class="img-chip">Beta Program</span>
+                    <span class="beta-badge">Beta</span>
+                </div>
+                <div class="feat-body">
+                    <p class="feat-title">Private Beta Program</p>
+                    <p class="feat-desc">Founding members lock in pricing for life, get direct access to the founder,
+                        receive first access to every new feature module, and unlock referral benefits. Founding Member
+                        Access Tokens are single-use — one per account, automatically expires after first activation.
+                    </p>
+                    <div class="coming-pill"><span
+                            class="w-1 h-1 rounded-full bg-violet-400 animate-pulse"></span>Waitlist Open</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ── No results ── -->
+        <div id="noResults" class="hidden text-center py-24">
+            <p class="text-[#333] text-lg font-semibold mb-2">No features match</p>
+            <p class="text-[#2a2a2a] text-sm">Try a different keyword or filter.</p>
+        </div>
+
+    </main>
+
+    <!-- ── Bottom CTA ── -->
+    <section class="py-24 px-6 border-t border-[#141414] text-center">
+        <div class="max-w-2xl mx-auto reveal">
+            <p class="section-eyebrow text-center mb-4">Ready to use all of this?</p>
+            <h2 style="font-family:'Playfair Display',serif;font-weight:800;letter-spacing:-0.03em"
+                class="text-4xl md:text-5xl mb-5 leading-tight">
+                Start recovering revenue today.
+            </h2>
+            <p class="text-[#555] mb-8 text-sm leading-relaxed">Every feature above is designed to work together — as
+                one system, not 12 separate tools.</p>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <a href="./auth/signUp.html">
+                    <button
+                        class="px-8 py-3.5 rounded-2xl bg-white text-black text-sm font-bold hover:scale-[1.03] transition-all">
+                        Get Started Free →
+                    </button>
+                </a>
+                <button
+                    class="px-8 py-3.5 rounded-2xl border border-white/10 text-sm font-bold text-[#777] hover:text-white hover:border-white/25 transition-all">
+                    Book a Demo
+                </button>
+            </div>
+            <p class="mt-5 text-[11px] text-[#333]">No credit card required · 7-day free trial · Cancel anytime</p>
+        </div>
+    </section>
+
+    <!-- ── Footer ── -->
+    <footer class="py-16 px-6 border-t border-[#111]">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-10 mb-14">
+                <!-- Brand -->
+                <div class="col-span-2 sm:col-span-2 md:col-span-1 space-y-3">
+                    <a href="/" class="flex items-center gap-2.5">
+                        <div class="logo-mark-sm">
+                            <img src="assets/images/Revluma-logo.png" alt="Revluma" />
+                        </div>
+                        <span class="text-[13px] font-bold tracking-tight"
+                            style="letter-spacing: -0.02em;">Revluma</span>
+                    </a>
+                    <p class="text-[#555] text-[11px] leading-relaxed max-w-[220px]">The revenue intelligence platform
+                        for modern e-commerce teams.</p>
+                    <div class="flex gap-1.5 mt-2">
+                        <input type="email" id="newsletterEmail" placeholder="Your email"
+                            class="flex-1 max-w-[160px] bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-white placeholder-[#444] outline-none focus:border-white/25 transition-colors">
+                        <button id="newsletterBtn" onclick="handleNewsletterSubscribe()"
+                            class="bg-white text-black px-3 py-1.5 rounded-lg text-[11px] font-bold hover:scale-[1.02] transition-all">Join</button>
+                    </div>
+                    <p id="newsletterMsg" class="text-[10px] mt-1 hidden"></p>
+                </div>
+
+                <!-- Product -->
+                <div class="space-y-2.5">
+                    <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Product</p>
+                    <a href="/features"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Features</a>
+                    <a href="/#pricing"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Pricing</a>
+                    <a href="#"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Changelog</a>
+                    <a href="#"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Docs</a>
+                </div>
+
+                <!-- Company -->
+                <div class="space-y-2.5">
+                    <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Company</p>
+                    <a href="#"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">About</a>
+                    <a href="#"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Blog</a>
+                    <a href="#"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Careers</a>
+                    <a href="#"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Contact</a>
+                </div>
+
+                <!-- Social -->
+                <div class="space-y-2.5">
+                    <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Social</p>
+                    <a href="https://tiktok.com/@splendor_automation" target="_blank" rel="noopener noreferrer"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">TikTok</a>
+                    <a href="https://x.com/SplenAutomate02" target="_blank" rel="noopener noreferrer"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Twitter /
+                        X</a>
+                    <a href="#"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">LinkedIn</a>
+                    <a href="https://instagram.com/splendor_ai_automation" target="_blank"
+                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Instagram</a>
+                </div>
+            </div>
+
+            <div
+                class="border-t border-[#1A1A1A] pt-6 flex flex-col sm:flex-row justify-between items-center gap-3 text-[10px] text-[#444]">
+                <p>&copy; 2025 Revluma. All rights reserved.</p>
+                <div class="flex flex-wrap justify-center gap-4">
+                    <a href="#" class="hover:text-white transition-colors">Privacy Policy</a>
+                    <a href="#" class="hover:text-white transition-colors">Terms of Service</a>
+                    <a href="#" class="hover:text-white transition-colors">Cookie Settings</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // ── Reveal on scroll ──
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('active'); } });
+        }, { threshold: 0.08 });
+        document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+        // ── Filter + Search ──
+        const cards = document.querySelectorAll('.feat-card');
+        const pills = document.querySelectorAll('.filter-pill');
+        const searchInput = document.getElementById('searchInput');
+        const noResults = document.getElementById('noResults');
+        const countEl = document.getElementById('featureCount');
+
+        let activeFilter = 'all';
+        let searchTerm = '';
+
+        function applyFilters() {
+            let visible = 0;
+            cards.forEach(card => {
+                const categories = card.dataset.category || '';
+                const name = card.dataset.name || '';
+                const matchFilter = activeFilter === 'all' || categories.includes(activeFilter);
+                const matchSearch = searchTerm === '' || name.includes(searchTerm.toLowerCase()) || categories.includes(searchTerm.toLowerCase());
+                if (matchFilter && matchSearch) {
+                    card.classList.remove('hidden-card');
+                    visible++;
+                } else {
+                    card.classList.add('hidden-card');
+                }
+            });
+
+            // Show/hide section headers
+            document.querySelectorAll('[id^="sec-"]').forEach(sec => {
+                const gridId = 'grid-' + sec.id.replace('sec-', '');
+                const grid = document.getElementById(gridId);
+                if (!grid) return;
+                const anyVisible = [...grid.querySelectorAll('.feat-card')].some(c => !c.classList.contains('hidden-card'));
+                sec.style.display = anyVisible ? '' : 'none';
+                if (grid) grid.style.display = anyVisible ? '' : 'none';
+            });
+
+            noResults.style.display = visible === 0 ? 'block' : 'none';
+            if (countEl) countEl.textContent = visible + ' feature' + (visible !== 1 ? 's' : '');
+        }
+
+        pills.forEach(pill => {
+            pill.addEventListener('click', () => {
+                pills.forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                activeFilter = pill.dataset.filter;
+                applyFilters();
+            });
+        });
+
+        searchInput.addEventListener('input', () => {
+            searchTerm = searchInput.value.trim();
+            applyFilters();
+        });
+
+        // ====================== NEWSLETTER SUBSCRIPTION ======================
+        async function handleNewsletterSubscribe() {
+            const emailInput = document.getElementById('newsletterEmail');
+            const btn = document.getElementById('newsletterBtn');
+            const msg = document.getElementById('newsletterMsg');
+
+            const email = emailInput.value.trim();
+            if (!email) {
+                msg.textContent = 'Please enter your email';
+                msg.className = 'text-[10px] mt-1 text-red-400';
+                msg.classList.remove('hidden');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = '...';
+            msg.classList.add('hidden');
+
+            setTimeout(() => {
+                msg.textContent = 'Thanks! Check your email to confirm.';
+                msg.className = 'text-[10px] mt-1 text-green-400';
+                msg.classList.remove('hidden');
+                emailInput.value = '';
+                btn.disabled = false;
+                btn.textContent = 'Join';
+            }, 800);
+        }
+
+        document.getElementById('newsletterEmail')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleNewsletterSubscribe();
+            }
+        });
+    </script>
+</body>
+
+</html>

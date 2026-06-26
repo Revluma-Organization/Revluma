@@ -1,0 +1,194 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ──────────────────────────────────────────────
+   Revluma AI — Design System (dark-first)
+   All colors HSL. Tokens mirror reference HTML.
+   ────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    /* Layout */
+    --sidebar-w: 252px;
+    --sidebar-w-collapsed: 72px;
+    --topbar-h: 64px;
+    --radius: 0.75rem;
+
+    /* Brand accent (Revluma green) */
+    --accent: 158 100% 45%;             /* #00e5a0 */
+    --accent-2: 162 100% 36%;            /* #00b87d */
+    --accent-foreground: 0 0% 0%;
+
+    /* Status palette */
+    --green: 158 100% 45%;
+    --amber: 36 91% 55%;
+    --red: 359 100% 65%;
+    --blue: 213 100% 65%;
+    --purple: 252 95% 76%;
+
+    /* DARK SURFACES (default theme) */
+    --bg: 0 0% 3.5%;                     /* #090909 */
+    --bg-2: 0 0% 6.7%;                   /* #111111 */
+    --bg-3: 0 0% 9.4%;                   /* #181818 */
+    --bg-4: 0 0% 13.3%;                  /* #222222 */
+    --bg-5: 0 0% 17.3%;                  /* #2c2c2c */
+    --sidebar-bg: 0 0% 2%;               /* #050505 */
+    --notif-bg: 0 0% 6.7%;
+
+    /* Text */
+    --t1: 0 0% 95%;
+    --t2: 0 0% 58%;
+    --t3: 0 0% 32%;
+    --t4: 0 0% 18%;
+
+    /* Glass */
+    --glass: 0 0% 100%;                   /* used with /opacity */
+    --border-soft: 0 0% 100%;             /* used with /opacity */
+
+    /* shadcn semantic mapping (so existing UI primitives just work) */
+    --background: var(--bg);
+    --foreground: var(--t1);
+
+    --card: var(--bg-2);
+    --card-foreground: var(--t1);
+
+    --popover: var(--notif-bg);
+    --popover-foreground: var(--t1);
+
+    --primary: var(--accent);
+    --primary-foreground: var(--accent-foreground);
+
+    --secondary: var(--bg-3);
+    --secondary-foreground: var(--t1);
+
+    --muted: var(--bg-3);
+    --muted-foreground: var(--t2);
+
+    --accent-color: var(--bg-3);
+    --accent-foreground-color: var(--t1);
+
+    --destructive: var(--red);
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 100%;                  /* paired with /7 in components via tw token below */
+    --input: 0 0% 100%;
+    --ring: var(--accent);
+
+    /* shadcn expects --accent token name */
+    --accent: 158 100% 45%;
+  }
+
+  /* Light theme override */
+  .light {
+    --bg: 60 11% 96%;
+    --bg-2: 0 0% 100%;
+    --bg-3: 60 6% 94%;
+    --bg-4: 60 4% 91%;
+    --bg-5: 60 3% 87%;
+    --sidebar-bg: 0 0% 100%;
+    --notif-bg: 0 0% 100%;
+    --t1: 0 0% 12%;
+    --t2: 0 0% 38%;
+    --t3: 0 0% 58%;
+    --t4: 0 0% 75%;
+    --accent: 161 100% 31%;
+    --accent-2: 161 100% 26%;
+    --green: 161 100% 31%;
+    --amber: 35 100% 38%;
+    --red: 0 68% 53%;
+    --blue: 213 78% 47%;
+    --purple: 262 83% 58%;
+    --glass: 0 0% 0%;
+    --border-soft: 0 0% 0%;
+  }
+
+  * {
+    border-color: hsl(var(--border-soft) / 0.07);
+  }
+
+  html {
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: 'Instrument Sans', system-ui, sans-serif;
+    background: hsl(var(--bg));
+    color: hsl(var(--t1));
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Slim scrollbars matching reference */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border-soft) / 0.12); border-radius: 99px; }
+}
+
+/* ──────────────────────────────────────────────
+   Component utilities
+   ────────────────────────────────────────────── */
+@layer components {
+  .glass-card {
+    @apply rounded-xl border;
+    background: hsl(var(--bg-2));
+    border-color: hsl(var(--border-soft) / 0.07);
+  }
+  .glass-card-2 {
+    @apply rounded-xl border;
+    background: hsl(var(--glass) / 0.035);
+    border-color: hsl(var(--border-soft) / 0.07);
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[0.68rem] font-medium;
+    background: hsl(var(--glass) / 0.07);
+    border-color: hsl(var(--border-soft) / 0.11);
+    color: hsl(var(--t2));
+  }
+  .section-title {
+    @apply text-[0.92rem] font-semibold tracking-tight;
+    color: hsl(var(--t1));
+  }
+  .section-action {
+    @apply inline-flex items-center gap-1 text-[0.72rem] font-medium cursor-pointer transition-colors;
+    color: hsl(var(--t3));
+  }
+  .section-action:hover { color: hsl(var(--t1)); }
+
+  .accent-text { color: hsl(var(--accent)); }
+  .text-t1 { color: hsl(var(--t1)); }
+  .text-t2 { color: hsl(var(--t2)); }
+  .text-t3 { color: hsl(var(--t3)); }
+  .text-t4 { color: hsl(var(--t4)); }
+
+  .live-dot {
+    @apply h-1.5 w-1.5 rounded-full;
+    background: hsl(var(--accent));
+    box-shadow: 0 0 0 0 hsl(var(--accent) / 0.7);
+    animation: live-pulse 1.6s cubic-bezier(0.4,0,0.6,1) infinite;
+  }
+  .serif { font-family: 'Instrument Serif', serif; }
+  .display { font-family: 'DM Sans', system-ui, sans-serif; letter-spacing: -0.035em; }
+}
+
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 hsl(var(--accent) / 0.55); }
+  70%  { box-shadow: 0 0 0 8px hsl(var(--accent) / 0); }
+  100% { box-shadow: 0 0 0 0 hsl(var(--accent) / 0); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes wave {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(14deg); }
+  20% { transform: rotate(-8deg); }
+}
+.wave-emoji { display:inline-block; transform-origin: 70% 70%; animation: wave 2.4s ease-in-out infinite; }
