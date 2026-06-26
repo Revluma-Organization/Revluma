@@ -21,7 +21,7 @@ Gradient Boosting (multi-output regressor → PSS + CSS scores)
 | < 40 | < 40 | Neutral | Soft reminder nudge, no offer |
 | 40–59 | 40–59 | Ambiguous | Hold or soft nudge with 5% discount |
 
-## Features consumed (8)
+## Features consumed (18)
 
 | Feature | Type | PSS/CSS | Weight |
 |---|---|---|---|
@@ -33,6 +33,16 @@ Gradient Boosting (multi-output regressor → PSS + CSS scores)
 | `searched_discount_terms` | bool | PSS | MEDIUM |
 | `scroll_depth_checkout_pct` | float | CSS | MEDIUM |
 | `tab_switch_count_session` | int | PSS | LOW |
+| `google_shopping_referrer` | bool | PSS/CSS | TBD |
+| `time_first_view_to_cart_add_hrs` | float | PSS/CSS | TBD |
+| `sale_period_purchase_only` | bool | PSS/CSS | TBD |
+| `failed_coupon_attempt` | bool | PSS/CSS | TBD |
+| `merchant_avg_order_value` | float | PSS/CSS | TBD |
+| `account_creation_abandonment` | bool | PSS/CSS | TBD |
+| `repeat_checkout_attempts` | int | PSS/CSS | TBD |
+| `device_type_mobile` | bool | PSS/CSS | TBD |
+| `shipping_eta_dwell_sec` | float | PSS/CSS | TBD |
+| `trust_page_visited` | bool | PSS/CSS | TBD |
 
 ## Schema gaps (Backend Engineer 1 action needed)
 - `abandoned_carts.pss_score` (FLOAT) — column needs adding (P0)

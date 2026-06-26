@@ -2,7 +2,7 @@
 Revluma Feature Engineering Pipeline
 Source: FEATURE_VECTOR_SPEC v1.0.0 — Okanlawon David (AI/ML Engineer 1)
 
-Computes the 16-feature Shopper Feature Vector fed into all five ML models.
+Computes the 26-feature Shopper Feature Vector fed into all five ML models.
 Skeletons only — implementation begins Week 4.
 """
 
@@ -331,6 +331,110 @@ def calculate_day_of_week_session(events: list) -> int:
 
 
 # ---------------------------------------------------------------------------
+# EXTENDED M2 SENSITIVITY SIGNALS — introduced in v1.1.0
+# ---------------------------------------------------------------------------
+
+def calculate_google_shopping_referrer(events: list) -> bool:
+    """
+    Feature: google_shopping_referrer
+    Boolean flag indicating whether the session originated from Google Shopping.
+    Models: M2
+    Returns: bool
+    """
+    pass
+
+
+def calculate_time_first_view_to_cart_add_hrs(events: list) -> float:
+    """
+    Feature: time_first_view_to_cart_add_hrs
+    Hours elapsed between first product view and first cart addition.
+    Models: M2
+    Returns: float
+    """
+    pass
+
+
+def calculate_sale_period_purchase_only(customer_id: str, db) -> bool:
+    """
+    Feature: sale_period_purchase_only
+    Boolean flag indicating 80%+ of historical orders were during sale periods.
+    Models: M2
+    Returns: bool
+    """
+    pass
+
+
+def calculate_failed_coupon_attempt(events: list) -> bool:
+    """
+    Feature: failed_coupon_attempt
+    Boolean flag indicating shopper attempted a rejected discount code.
+    Models: M2, M5
+    Returns: bool
+    """
+    pass
+
+
+def calculate_merchant_avg_order_value(merchant_id: str, db) -> float:
+    """
+    Feature: merchant_avg_order_value
+    Merchant's global average order value.
+    Models: M2
+    Returns: float
+    """
+    pass
+
+
+def calculate_account_creation_abandonment(events: list) -> bool:
+    """
+    Feature: account_creation_abandonment
+    Boolean flag indicating shopper abandoned at account registration.
+    Models: M2
+    Returns: bool
+    """
+    pass
+
+
+def calculate_repeat_checkout_attempts(events: list) -> int:
+    """
+    Feature: repeat_checkout_attempts
+    Count of distinct checkout initiation events in the same session.
+    Models: M2
+    Returns: int
+    """
+    pass
+
+
+def calculate_device_type_mobile(events: list) -> bool:
+    """
+    Feature: device_type_mobile
+    Boolean flag indicating session is on a mobile device.
+    Models: M2
+    Returns: bool
+    """
+    pass
+
+
+def calculate_shipping_eta_dwell_sec(events: list) -> float:
+    """
+    Feature: shipping_eta_dwell_sec
+    Seconds spent viewing shipping ETA/delivery timeline elements.
+    Models: M2
+    Returns: float
+    """
+    pass
+
+
+def calculate_trust_page_visited(events: list) -> bool:
+    """
+    Feature: trust_page_visited
+    Boolean flag indicating shopper visited return policy/FAQ/trust pages.
+    Models: M2
+    Returns: bool
+    """
+    pass
+
+
+# ---------------------------------------------------------------------------
 # DERIVED SCORES — computed from feature_dict after all features are assembled
 # ---------------------------------------------------------------------------
 
@@ -413,7 +517,7 @@ def calculate_rfm_scores(customer_id: str, db) -> dict:
 
 def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
     """
-    Assembles the complete 16-feature Shopper Feature Vector for a session.
+    Assembles the complete 26-feature Shopper Feature Vector for a session.
     Calls all individual feature functions above and returns the unified dict
     passed to any model at inference time.
 
@@ -447,7 +551,17 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
                 "abandoned_at_shipping_reveal"        : bool,
                 "failed_payment_attempt"              : bool,
                 "local_hour_of_session"               : int,   # 0–23, default 12
-                "day_of_week_session"                 : int    # 0=Mon–6=Sun, default 0
+                "day_of_week_session"                 : int,   # 0=Mon–6=Sun, default 0
+                "google_shopping_referrer"            : bool,
+                "time_first_view_to_cart_add_hrs"     : float,
+                "sale_period_purchase_only"           : bool,
+                "failed_coupon_attempt"               : bool,
+                "merchant_avg_order_value"            : float,
+                "account_creation_abandonment"        : bool,
+                "repeat_checkout_attempts"            : int,
+                "device_type_mobile"                  : bool,
+                "shipping_eta_dwell_sec"              : float,
+                "trust_page_visited"                  : bool
             }
         }
 

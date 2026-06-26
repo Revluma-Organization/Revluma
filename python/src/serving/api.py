@@ -62,6 +62,12 @@ class SendTimeResponse(BaseModel):
     model_version: str
 
 
+class OfferValueResponse(BaseModel):
+    recommended_discount_pct: int
+    confidence: float
+    model_version: str
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -147,4 +153,24 @@ async def predict_send_time(request: SessionRequest):
     Falls back to 10 AM / 7 PM defaults at MVP launch (no training data yet).
     """
     # TODO Week 4: pull features, load M3, return prediction
+    raise HTTPException(status_code=501, detail="Not implemented yet — Week 4")
+
+
+@app.post("/predict/offer-value", response_model=OfferValueResponse)
+async def predict_offer_value(request: SessionRequest):
+    """
+    M5 — Offer Value Optimizer
+
+    Determines the minimum discount percentage needed to convert a shopper.
+    Must run AFTER /predict/shopper-sensitivity (M2).
+
+    Features pulled from Redis:
+        pss_score, css_score, cursor_hesitation_ms_on_price_field,
+        past_orders_total, past_orders_with_coupon_pct,
+        days_since_last_purchase, avg_order_value, visited_coupon_page,
+        searched_discount_terms, failed_coupon_attempt
+
+    Returns recommended_discount_pct.
+    """
+    # TODO Week 4: pull features, load M5, return prediction
     raise HTTPException(status_code=501, detail="Not implemented yet — Week 4")

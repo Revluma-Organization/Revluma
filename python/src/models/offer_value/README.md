@@ -12,7 +12,7 @@ Gradient Boosting (regressor)
 ## What it predicts
 - `recommended_discount_pct` (int) — clipped to merchant's `max_discount_pct` (default 20%)
 
-## Features consumed (9)
+## Features consumed (10)
 
 | Feature | Type | Source |
 |---|---|---|
@@ -25,6 +25,7 @@ Gradient Boosting (regressor)
 | `avg_order_value` | float | Order table |
 | `visited_coupon_page` | bool | Tracking pixel |
 | `searched_discount_terms` | bool | Tracking pixel |
+| `failed_coupon_attempt` | bool | Tracking pixel |
 
 ## Merchant constraints
 - `store_config.max_discount_pct` — hard cap (default 20%). **P0 gap: verify this column exists.**
