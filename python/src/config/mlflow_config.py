@@ -11,7 +11,7 @@ import mlflow
 try:
     from dotenv import load_dotenv
     _env_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../../../.env")
+        os.path.join(os.path.dirname(__file__), "../../../.env")
     )
     load_dotenv(_env_path)
 except ImportError:
@@ -22,7 +22,7 @@ os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
 
 # Priority: MLFLOW_TRACKING_URI → MLFLOW_REMOTE_URL → local mlruns
 _LOCAL_MLRUNS = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../../../../mlruns")
+    os.path.join(os.path.dirname(__file__), "../../../mlruns")
 )
 
 MLFLOW_TRACKING_URI = (

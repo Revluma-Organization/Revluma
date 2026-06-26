@@ -49,7 +49,7 @@ The config uses a priority system for where to send experiment data:
 2nd — local mlruns/        (fallback when no remote configured)
 ```
 
-Credentials are loaded from `backend/.env` (3 levels up from the config file via `../../../.env`).
+Credentials are loaded from `python/.env` (3 levels up from the config file via `../../../.env`).
 
 ### Remote Tracking Server
 - **Provider:** DagsHub (free hosted MLflow)
@@ -57,7 +57,7 @@ Credentials are loaded from `backend/.env` (3 levels up from the config file via
 - **Experiment name:** `Revluma-MVP`
 - **Auth:** Token-based via `MLFLOW_TRACKING_USERNAME` + `MLFLOW_TRACKING_PASSWORD`
 
-### Environment Variables (in backend/.env)
+### Environment Variables (in python/.env)
 ```
 MLFLOW_TRACKING_URI=https://dagshub.com/srdataml/revluma_ml.mlflow
 MLFLOW_TRACKING_USERNAME=srdataml
@@ -66,7 +66,7 @@ MLFLOW_ALLOW_FILE_STORE=true
 ```
 ### How to verify the connection
 ```bash
-cd backend/python
+cd python
 python scripts/test_mlflow.py
 ```
 
@@ -80,7 +80,7 @@ MLflow test passed ✅
 
 Actions Taken
 Folder Structure
-Created backend/python/src/config/, src/features/, src/serving/, src/models/abandonment/, src/models/sensitivity/, src/models/churn/, src/models/timing/, src/models/offer_value/, and scripts/.
+Created python/src/config/, src/features/, src/serving/, src/models/abandonment/, src/models/sensitivity/, src/models/churn/, src/models/timing/, src/models/offer_value/, and scripts/.
 Feature Engineering Pipeline
 src/features/pipeline.py created. 19 functions declared, logic yet to be implemented:
 
@@ -143,6 +143,6 @@ MLflow Test Script
 scripts/test_mlflow.py created — confirms remote connection, logic declared and working
 Environment Setup
 
-backend/.env created — credentials configured, never committed to git
+python/.env created — credentials configured, never committed to git
 python/.gitignore created — protects .env, mlruns/, __pycache__/, venv/
 

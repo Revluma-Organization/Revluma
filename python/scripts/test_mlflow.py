@@ -2,7 +2,7 @@
 MLflow Setup Verification Script
 ==================================
 Usage:
-    cd /path/to/revluma/backend/python
+    cd /path/to/revluma/python
     python scripts/test_mlflow.py
 """
 
