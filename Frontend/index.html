@@ -12,6 +12,7 @@
     <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,500,400&f[]=inter@400,700&display=swap"
         rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="./assets/js/apiConfig.js"></script>
     <style>
         html {
@@ -781,6 +782,7 @@
       font-size: 12px;
       font-weight: bold;
       line-height: 16px;
+      font-family: 'DM Sans', system-ui, sans-serif;
     }
 </style>
 
@@ -1220,11 +1222,17 @@
       
 <div> 
     <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Goals & Challenges</h3>
-  <input type="text" name="primary_goal" placeholder="What is your primary goal for joining?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
+  <div class="relative">
+    <div x-data="{ val: '' }" class="relative w-full">
+      <input x-model="val" type="text" name="primary_goal" class="text-sm w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
+      <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500 text-sm">What is your primary goal for joining?</span></div>
+    </div>
+  </div>
 
 <div class="relative mt-4">
-    <div class="relative w-full">
-      <textarea name="biggest_challenge" required rows="2" placeholder="What is the biggest challenge you are facing in your store right now? *" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 min-h-[80px] resize-none"></textarea>
+    <div x-data="{ val: '' }" class="relative w-full">
+      <textarea x-model="val" name="biggest_challenge" required rows="2" class="text-sm w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 min-h-[80px] resize-none"></textarea>
+      <div x-show="!val" class="absolute top-3 left-4 pointer-events-none flex text-sm"><span class="text-zinc-500">What is the biggest challenge you are facing in your store right now?</span><span class="text-white/70 ml-1 font-bold">*</span></div>
     </div>
 </div>
 
