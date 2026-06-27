@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="../assets/images/Revluma-icon.png">
-  <title>Revluma - Create Your Account</title>
+  <title>Revluma - Onboarding</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -580,7 +580,7 @@
         </div>
       </a>
       <!-- Step counter label -->
-      <div id="stepCounter" class="text-sm" style="color: var(--muted);">Step 1 of 5</div>
+      <div id="stepCounter" class="text-sm" style="color: var(--muted);">Step 1 of 3</div>
     </div>
 
     <!-- Step Dots -->
@@ -588,169 +588,20 @@
       <div id="dot1" class="step-dot w-2 h-2 rounded-full bg-white"></div>
       <div id="dot2" class="step-dot w-2 h-2 rounded-full" style="background: var(--border);"></div>
       <div id="dot3" class="step-dot w-2 h-2 rounded-full" style="background: var(--border);"></div>
-      <div id="dot4" class="step-dot w-2 h-2 rounded-full" style="background: var(--border);"></div>
-      <div id="dot5" class="step-dot w-2 h-2 rounded-full" style="background: var(--border);"></div>
     </div>
 
     <!-- Content Area -->
     <div class="flex-1 flex items-start justify-center px-4 pb-16">
       <div class="w-full max-w-[520px]">
+<!-- ======================== STEP 1: Store Setup ======================== -->
 
-        <!-- ======================== STEP 1: Account ======================== -->
         <div id="step1" class="step-container">
-          <div class="mb-8">
-            <h1 class="text-3xl sm:text-[2.1rem] font-bold mb-2 leading-tight">Create your account</h1>
-            <p style="color: var(--muted);">Takes under 60 seconds. No credit card required.</p>
-          </div>
-
-          <form id="step1Form" class="space-y-4">
-            <!-- Name Row -->
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label for="firstName" class="block text-sm font-medium mb-1.5" style="color: var(--muted);">First
-                  Name</label>
-                <input type="text" id="firstName" name="firstName"
-                  class="input-field w-full px-4 py-3 rounded-xl text-white placeholder-gray-600 focus:outline-none"
-                  style="background: var(--surface); border: 1px solid var(--border); font-size:0.95rem;"
-                  placeholder="Alex" autocomplete="given-name" required>
-                <p id="firstNameError" class="text-xs mt-1 hidden" style="color: var(--red);"></p>
-              </div>
-              <div>
-                <label for="lastName" class="block text-sm font-medium mb-1.5" style="color: var(--muted);">Last
-                  Name</label>
-                <input type="text" id="lastName" name="lastName"
-                  class="input-field w-full px-4 py-3 rounded-xl text-white placeholder-gray-600 focus:outline-none"
-                  style="background: var(--surface); border: 1px solid var(--border); font-size:0.95rem;"
-                  placeholder="Chen" autocomplete="family-name" required>
-                <p id="lastNameError" class="text-xs mt-1 hidden" style="color: var(--red);"></p>
-              </div>
-            </div>
-
-            <!-- Email -->
-            <div>
-              <label for="email" class="block text-sm font-medium mb-1.5" style="color: var(--muted);">
-                Email</label>
-              <input type="email" id="email" name="email"
-                class="input-field w-full px-4 py-3 rounded-xl text-white placeholder-gray-600 focus:outline-none"
-                style="background: var(--surface); border: 1px solid var(--border); font-size:0.95rem;"
-                placeholder="you@yourstore.com" autocomplete="email" required>
-              <p id="emailError" class="text-xs mt-1 hidden" style="color: var(--red);"></p>
-            </div>
-
-            <!-- Password -->
-            <div>
-              <label for="password" class="block text-sm font-medium mb-1.5"
-                style="color: var(--muted);">Password</label>
-              <div class="relative">
-                <input type="password" id="password" name="password"
-                  class="input-field w-full px-4 py-3 pr-11 rounded-xl text-white placeholder-gray-600 focus:outline-none"
-                  style="background: var(--surface); border: 1px solid var(--border); font-size:0.95rem;"
-                  placeholder="Min. 8 characters" autocomplete="new-password" required>
-                <button type="button" id="togglePassword"
-                  class="absolute right-3 top-1/2 -translate-y-1/2 transition-colors" style="color: var(--muted2);">
-                  <svg id="eyeIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
-                    </path>
-                  </svg>
-                  <svg id="eyeOffIcon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21">
-                    </path>
-                  </svg>
-                </button>
-              </div>
-              <!-- Strength bar -->
-              <div class="flex gap-1.5 mt-2">
-                <div id="strengthBar1" class="strength-bar flex-1"></div>
-                <div id="strengthBar2" class="strength-bar flex-1"></div>
-                <div id="strengthBar3" class="strength-bar flex-1"></div>
-              </div>
-              <p id="passwordError" class="text-xs mt-1 hidden" style="color: var(--red);"></p>
-            </div>
-
-            <!-- Confirm Password -->
-            <div>
-              <label for="confirmPassword" class="block text-sm font-medium mb-1.5" style="color: var(--muted);">Confirm
-                Password</label>
-              <div class="relative">
-                <input type="password" id="confirmPassword" name="confirmPassword"
-                  class="input-field w-full px-4 py-3 pr-11 rounded-xl text-white placeholder-gray-600 focus:outline-none"
-                  style="background: var(--surface); border: 1px solid var(--border); font-size:0.95rem;"
-                  placeholder="Re-enter password" autocomplete="new-password" required>
-                <button type="button" id="toggleConfirmPassword"
-                  class="absolute right-3 top-1/2 -translate-y-1/2 transition-colors" style="color: var(--muted2);">
-                  <svg id="confirmEyeIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
-                    </path>
-                  </svg>
-                  <svg id="confirmEyeOffIcon" class="w-5 h-5 hidden" fill="none" stroke="currentColor"
-                    viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21">
-                    </path>
-                  </svg>
-                </button>
-              </div>
-              <div id="passwordMatch"
-                class="flex items-center gap-1.5 mt-1.5 opacity-0 transition-opacity duration-300">
-                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20" style="color: var(--green);">
-                  <path fill-rule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                    clip-rule="evenodd"></path>
-                </svg>
-                <span class="text-xs" style="color: var(--green);">Passwords match</span>
-              </div>
-              <p id="confirmPasswordError" class="text-xs mt-1 hidden" style="color: var(--red);"></p>
-            </div>
-
-            <!-- Newsletter opt-in -->
-            <label class="flex items-start gap-3 cursor-pointer select-none pt-1">
-              <input type="checkbox" id="newsletterOptIn" checked class="checkbox-custom mt-0.5">
-              <span class="text-sm leading-snug" style="color: var(--muted);">Send me product updates and eCommerce
-                growth tips, no spam. Unsubscribe any time.</span>
-            </label>
-
-            <!-- Terms -->
-            <label class="flex items-start gap-3 cursor-pointer select-none">
-              <input type="checkbox" id="termsAccept" class="checkbox-custom mt-0.5" required>
-              <span class="text-sm leading-snug" style="color: var(--muted);">
-                I agree to Revluma's
-                <a href="#" class="text-white hover:underline">Terms of Service</a> and
-                <a href="#" class="text-white hover:underline">Privacy Policy</a>
-              </span>
-            </label>
-            <p id="termsError" class="text-xs hidden" style="color: var(--red);">You must accept the terms to continue
-            </p>
-
-            <button type="submit" id="step1Submit"
-              class="btn-primary w-full py-3.5 flex items-center justify-center gap-2 mt-2">
-              <span>Continue</span>
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"></path>
-              </svg>
-            </button>
-          </form>
-
-          <p class="text-center text-sm mt-5" style="color: var(--muted);">
-            Already have an account?
-            <a href="loginIn.html" class="text-white font-medium hover:underline">Sign in</a>
-          </p>
-        </div>
-
-        <!-- ======================== STEP 2: Store Setup ======================== -->
-        <div id="step2" class="step-container hidden">
           <div class="mb-7">
             <h1 class="text-3xl sm:text-[2.1rem] font-bold mb-2 leading-tight">Set up your store</h1>
             <p style="color: var(--muted);">This helps Revluma personalize your experience and recovery flows.</p>
           </div>
 
-          <form id="step2Form" class="space-y-6">
+          <form id="step1Form" class="space-y-6">
 
             <!-- Platform -->
             <div>
@@ -832,24 +683,24 @@
               <p id="categoryError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
             </div>
 
-            <!-- Monthly Traffic -->
+            <!-- Monthly Revenue -->
             <div>
-              <p class="section-label mb-3">Monthly website visitors</p>
+              <p class="section-label mb-3">Monthly revenue</p>
               <div class="grid grid-cols-4 gap-2">
-                <button type="button" data-traffic="0-1k" class="pill-btn">0–1K</button>
-                <button type="button" data-traffic="1k-10k" class="pill-btn">1K–10K</button>
-                <button type="button" data-traffic="10k-50k" class="pill-btn">10K–50K</button>
-                <button type="button" data-traffic="50k+" class="pill-btn">50K+</button>
+                <button type="button" data-revenue="0-1k" class="pill-btn">$0–$1K</button>
+                <button type="button" data-revenue="1k-10k" class="pill-btn">$1K–$10K</button>
+                <button type="button" data-revenue="10k-50k" class="pill-btn">$10K–$50K</button>
+                <button type="button" data-revenue="50k+" class="pill-btn">$50K+</button>
               </div>
-              <input type="hidden" id="monthlyTraffic" name="monthlyTraffic" required>
-              <p id="trafficError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
+              <input type="hidden" id="monthlyRevenue" name="monthlyRevenue" required>
+              <p id="revenueError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
             </div>
 
             <div class="flex gap-3 pt-2">
-              <button type="button" id="step2Back" class="btn-secondary flex-none px-5 py-3.5 text-sm">
+              <button type="button" id="step1Back" class="btn-secondary flex-none px-5 py-3.5 text-sm hidden">
                 ← Back
               </button>
-              <button type="submit" id="step2Submit"
+              <button type="submit" id="step1Submit"
                 class="btn-primary flex-1 py-3.5 flex items-center justify-center gap-2">
                 <span>Continue</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -860,14 +711,15 @@
           </form>
         </div>
 
-        <!-- ======================== STEP 3: Goals ======================== -->
-        <div id="step3" class="step-container hidden">
+        <!-- ======================== STEP 2: Goals ======================== -->
+
+        <div id="step2" class="step-container hidden">
           <div class="mb-7">
             <h1 class="text-3xl sm:text-[2.1rem] font-bold mb-2 leading-tight">What do you want to improve?</h1>
             <p style="color: var(--muted);">Select all that apply, we'll prioritize these in your setup.</p>
           </div>
 
-          <form id="step3Form" class="space-y-6">
+          <form id="step2Form" class="space-y-6">
             <div class="space-y-2.5">
 
               <button type="button" data-goal="recover_carts" class="sel-card w-full p-4 flex items-center gap-4">
@@ -989,8 +841,8 @@
             <p id="goalsError" class="text-xs hidden" style="color: var(--red);">Please select at least one goal</p>
 
             <div class="flex gap-3 pt-2">
-              <button type="button" id="step3Back" class="btn-secondary flex-none px-5 py-3.5 text-sm">← Back</button>
-              <button type="submit" id="step3Submit"
+              <button type="button" id="step2Back" class="btn-secondary flex-none px-5 py-3.5 text-sm">← Back</button>
+              <button type="submit" id="step2Submit"
                 class="btn-primary flex-1 py-3.5 flex items-center justify-center gap-2">
                 <span>Continue</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1001,27 +853,17 @@
           </form>
         </div>
 
-        <!-- ======================== STEP 4: Revenue + Recovery Channel ======================== -->
-        <div id="step4" class="step-container hidden">
+        <!-- ======================== STEP 3: Almost there! ======================== -->
+
+        <div id="step3" class="step-container hidden">
           <div class="mb-7">
             <h1 class="text-3xl sm:text-[2.1rem] font-bold mb-2 leading-tight">Almost there!</h1>
             <p style="color: var(--muted);">Two quick questions to finish setting up your account.</p>
           </div>
 
-          <form id="step4Form" class="space-y-7">
+          <form id="step3Form" class="space-y-7">
 
-            <!-- Monthly Revenue -->
-            <div>
-              <p class="section-label mb-1">Monthly revenue <span class="normal-case font-normal"
-                  style="color: var(--muted2);">— optional, helps tailor recommendations</span></p>
-              <div class="grid grid-cols-4 gap-2 mt-3">
-                <button type="button" data-revenue="0-1k" class="pill-btn">$0–$1K</button>
-                <button type="button" data-revenue="1k-10k" class="pill-btn">$1K–$10K</button>
-                <button type="button" data-revenue="10k-50k" class="pill-btn">$10K–$50K</button>
-                <button type="button" data-revenue="50k+" class="pill-btn">$50K+</button>
-              </div>
-              <input type="hidden" id="monthlyRevenue" name="monthlyRevenue">
-            </div>
+
 
             <!-- Recovery Channel -->
             <div>
@@ -1109,8 +951,8 @@
             </div>
 
             <div class="flex gap-3 pt-1">
-              <button type="button" id="step4Back" class="btn-secondary flex-none px-5 py-3.5 text-sm">← Back</button>
-              <button type="submit" id="step4Submit"
+              <button type="button" id="step3Back" class="btn-secondary flex-none px-5 py-3.5 text-sm">← Back</button>
+              <button type="submit" id="step3Submit"
                 class="btn-primary flex-1 py-3.5 flex items-center justify-center gap-2">
                 <span>Complete Setup</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1121,613 +963,130 @@
           </form>
         </div>
 
-        <!-- ======================== STEP 5: Email Verification ======================== -->
-        <div id="step5" class="step-container hidden">
-          <div class="mb-8">
-            <div class="w-14 h-14 mb-5 rounded-2xl flex items-center justify-center"
-              style="background: rgba(255,255,255,0.06); border: 1px solid var(--border);">
-              <svg class="w-7 h-7" style="color: var(--text);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
-                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
-                </path>
-              </svg>
-            </div>
-            <h1 class="text-3xl sm:text-[2.1rem] font-bold mb-2 leading-tight">Check your inbox</h1>
-            <p style="color: var(--muted);">We've sent a 6-digit code to <span id="emailDisplay"
-                class="text-white font-medium"></span></p>
-          </div>
-
-          <form id="step5Form" class="space-y-5">
-            <div>
-              <label for="verificationCode" class="block text-sm font-medium mb-2"
-                style="color: var(--muted);">Verification Code</label>
-              <div class="flex gap-2.5">
-                <input type="text" id="verificationCode" name="verificationCode" maxlength="6" inputmode="numeric"
-                  autocomplete="one-time-code"
-                  class="input-field code-input flex-1 px-4 py-3.5 rounded-xl text-white placeholder-gray-600 focus:outline-none"
-                  style="background: var(--surface); border: 1px solid var(--border);" placeholder="000000">
-                <button type="button" id="submitCodeBtn"
-                  class="btn-primary px-5 py-3 text-sm font-semibold rounded-xl whitespace-nowrap">
-                  Verify
-                </button>
               </div>
-              <p id="codeError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
-              <div class="flex items-center justify-between mt-2.5">
-                <p class="text-xs" style="color: var(--muted2);">Code expires in 15 min</p>
-                <button type="button" id="resendCodeBtn"
-                  class="text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  style="color: var(--muted);" disabled>
-                  Resend (<span id="countdown" class="countdown">60</span>s)
-                </button>
-              </div>
-            </div>
-
-            <div class="flex gap-3 pt-2">
-              <button type="button" id="step5Back" class="btn-secondary flex-none px-5 py-3.5 text-sm">← Back</button>
-            </div>
-          </form>
-        </div>
-
-        <!-- ======================== SUCCESS ======================== -->
-        <div id="successScreen" class="step-container hidden text-center py-8">
-          <div class="mb-8">
-            <div class="w-20 h-20 mx-auto mb-6 rounded-full ring-pop flex items-center justify-center"
-              style="background: rgba(52,211,153,0.12); border: 1.5px solid rgba(52,211,153,0.35);">
-              <svg class="w-10 h-10" style="color: var(--green);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-              </svg>
-            </div>
-            <h1 class="text-3xl sm:text-4xl font-bold mb-3">You're all set 🎉</h1>
-            <p class="text-lg" style="color: var(--muted);">Your account is ready. Let's start growing your revenue
-              automatically.</p>
-          </div>
-          <a href="/dashboard/overview"
-            class="btn-primary inline-flex items-center gap-2 px-8 py-3.5 text-base rounded-xl"
-            style="text-decoration: none;">
-            Go to Dashboard
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
-            </svg>
-          </a>
-        </div>
-
-        <!-- ======================== LOADING OVERLAY ======================== -->
-        <div id="loadingOverlay" class="fixed inset-0 flex items-center justify-center z-50 hidden"
-          style="background: rgba(6,6,8,0.85); backdrop-filter: blur(6px);">
-          <div class="text-center">
-            <div class="spinner w-10 h-10 border-[3px] mx-auto mb-4 rounded-full"
-              style="border-color: var(--border); border-top-color: var(--text);"></div>
-            <p id="loadingMessage" class="text-sm" style="color: var(--muted);">Creating your account...</p>
-          </div>
-        </div>
-
-        <!-- ======================== TOAST: ERROR ======================== -->
-        <div id="errorToast"
-          class="fixed bottom-5 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center gap-3"
-          style="background: rgba(239,68,68,0.9); color: #fff; backdrop-filter: blur(8px);">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-          </svg>
-          <span id="errorMessage" class="text-sm font-medium">An error occurred</span>
-        </div>
-
-        <!-- ======================== TOAST: SUCCESS ======================== -->
-        <div id="successToast"
-          class="fixed bottom-5 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50 flex items-center gap-3"
-          style="background: rgba(16,185,129,0.9); color: #fff; backdrop-filter: blur(8px);">
-          <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-          <span id="successMessage" class="text-sm font-medium">Success!</span>
-        </div>
-
-      </div>
     </div>
-  </div>
 
   <script>
-    // ====================== STATE ======================
-    const state = {
-      currentStep: 1,
-      token: null,
-      pendingToken: null,
-      user: null,
-      emailVerified: false,
-      countdownInterval: null,
-      formData: {
-        firstName: '', lastName: '', email: '', password: '',
-        platform: '', storeUrl: '', storeCategory: '', monthlyTraffic: '',
-        goals: [], monthlyRevenue: '', recoveryChannel: ''
-      }
-    };
+    document.addEventListener('DOMContentLoaded', () => {
+      let currentStep = 1;
+      const totalSteps = 3;
 
-    const TOTAL_STEPS = 5;
-
-    // ====================== DOM REFS ======================
-    const steps = {
-      1: document.getElementById('step1'),
-      2: document.getElementById('step2'),
-      3: document.getElementById('step3'),
-      4: document.getElementById('step4'),
-      5: document.getElementById('step5'),
-    };
-    const dots = [1, 2, 3, 4, 5].map(i => document.getElementById('dot' + i));
-    const progressBar = document.getElementById('progressBar');
-    const successScreen = document.getElementById('successScreen');
-    const loadingOverlay = document.getElementById('loadingOverlay');
-    const loadingMessage = document.getElementById('loadingMessage');
-    const errorToast = document.getElementById('errorToast');
-    const errorMessage = document.getElementById('errorMessage');
-    const successToast = document.getElementById('successToast');
-    const successMessage = document.getElementById('successMessage');
-    const stepCounter = document.getElementById('stepCounter');
-
-    // ====================== API ======================
-    // FIX: Use same-origin /api on Vercel so requests go through the vercel.json
-    // proxy rewrite (→ Render). Using absolute Render URL directly causes
-    // cross-origin failures on cold starts and cookie SameSite issues.
-    const API_BASE = '/api';
-
-    state.pendingToken = localStorage.getItem('revluma_pending_token');
-
-    // ====================== UI HELPERS ======================
-    function showLoading(msg = 'Loading...') {
-      loadingMessage.textContent = msg;
-      loadingOverlay.classList.remove('hidden');
-    }
-    function hideLoading() { loadingOverlay.classList.add('hidden'); }
-
-    function showError(msg) {
-      errorMessage.textContent = msg;
-      errorToast.classList.remove('translate-y-20', 'opacity-0');
-      setTimeout(() => errorToast.classList.add('translate-y-20', 'opacity-0'), 4500);
-    }
-    function showSuccess(msg) {
-      successMessage.textContent = msg;
-      successToast.classList.remove('translate-y-20', 'opacity-0');
-      setTimeout(() => successToast.classList.add('translate-y-20', 'opacity-0'), 3000);
-    }
-
-    function showFieldError(fieldId, msg) {
-      const err = document.getElementById(fieldId + 'Error');
-      const inp = document.getElementById(fieldId);
-      if (err) { err.textContent = msg; err.classList.remove('hidden'); }
-      if (inp) {
-        inp.classList.add('error');
-        inp.classList.add('shake');
-        setTimeout(() => inp.classList.remove('shake'), 350);
-      }
-    }
-    function clearFieldError(fieldId) {
-      const err = document.getElementById(fieldId + 'Error');
-      const inp = document.getElementById(fieldId);
-      if (err) err.classList.add('hidden');
-      if (inp) inp.classList.remove('error');
-    }
-
-    function showStep(n) {
-      Object.values(steps).forEach(el => el.classList.add('hidden'));
-      successScreen.classList.add('hidden');
-
-      if (n <= TOTAL_STEPS) {
-        steps[n].classList.remove('hidden');
-        steps[n].classList.add('slide-in');
-      } else {
-        successScreen.classList.remove('hidden');
-      }
-
-      state.currentStep = Math.min(n, TOTAL_STEPS);
-
-      // Update progress
-      const pct = (state.currentStep / TOTAL_STEPS) * 100;
-      progressBar.style.width = pct + '%';
-
-      // Update dots
-      dots.forEach((dot, i) => {
-        const stepNum = i + 1;
-        if (stepNum < state.currentStep) {
-          dot.style.background = 'var(--green)';
-          dot.style.width = '8px';
-          dot.style.height = '8px';
-        } else if (stepNum === state.currentStep) {
-          dot.style.background = 'white';
-          dot.style.width = '20px';
-          dot.style.borderRadius = '4px';
-        } else {
-          dot.style.background = 'var(--border)';
-          dot.style.width = '8px';
-          dot.style.height = '8px';
-          dot.style.borderRadius = '50%';
+      const updateUI = () => {
+        // Update dots
+        for (let i = 1; i <= totalSteps; i++) {
+          const dot = document.getElementById('dot' + i);
+          if (dot) dot.style.background = (i === currentStep) ? 'white' : 'var(--border)';
         }
-      });
-
-      // Update step counter
-      if (n <= TOTAL_STEPS) {
-        stepCounter.textContent = `Step ${n} of ${TOTAL_STEPS}`;
-        stepCounter.style.display = '';
-      } else {
-        stepCounter.style.display = 'none';
-      }
-    }
-
-    function startCountdown() {
-      clearInterval(state.countdownInterval);
-      let secs = 60;
-      const resendBtn = document.getElementById('resendCodeBtn');
-      const countdown = document.getElementById('countdown');
-      resendBtn.disabled = true;
-      countdown.textContent = secs;
-
-      state.countdownInterval = setInterval(() => {
-        secs--;
-        countdown.textContent = secs;
-        if (secs <= 0) {
-          clearInterval(state.countdownInterval);
-          resendBtn.disabled = false;
-          resendBtn.innerHTML = 'Resend code';
+        
+        // Update top progress bar
+        const progressBar = document.getElementById('progressBar');
+        if (progressBar) {
+          const percentage = (currentStep / totalSteps) * 100;
+          progressBar.style.width = percentage + '%';
         }
-      }, 1000);
-    }
 
-    // ====================== PASSWORD STRENGTH ======================
-    function getPasswordStrength(pwd) {
-      if (!pwd) return 0;
-      let score = 0;
-      if (pwd.length >= 8) score++;
-      if (pwd.length >= 12) score++;
-      if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score++;
-      if (/\d/.test(pwd)) score++;
-      if (/[^A-Za-z0-9]/.test(pwd)) score++;
-      if (score <= 2) return 1;
-      if (score <= 3) return 2;
-      return 3;
-    }
-
-    document.getElementById('password').addEventListener('input', function () {
-      const strength = getPasswordStrength(this.value);
-      const bars = [
-        document.getElementById('strengthBar1'),
-        document.getElementById('strengthBar2'),
-        document.getElementById('strengthBar3')
-      ];
-      const classes = ['weak', 'medium', 'strong'];
-      bars.forEach((bar, i) => {
-        bar.className = 'strength-bar flex-1';
-        if (i < strength) bar.classList.add(classes[strength - 1]);
-      });
-      if (this.value && this.value.length < 8) {
-        showFieldError('password', 'Password must be at least 8 characters');
-      } else {
-        clearFieldError('password');
-      }
-    });
-
-    // ====================== PASSWORD TOGGLE ======================
-    document.getElementById('togglePassword').addEventListener('click', () => {
-      const inp = document.getElementById('password');
-      const on = document.getElementById('eyeIcon');
-      const off = document.getElementById('eyeOffIcon');
-      if (inp.type === 'password') { inp.type = 'text'; on.classList.add('hidden'); off.classList.remove('hidden'); }
-      else { inp.type = 'password'; on.classList.remove('hidden'); off.classList.add('hidden'); }
-    });
-
-    document.getElementById('toggleConfirmPassword').addEventListener('click', () => {
-      const inp = document.getElementById('confirmPassword');
-      const on = document.getElementById('confirmEyeIcon');
-      const off = document.getElementById('confirmEyeOffIcon');
-      if (inp.type === 'password') { inp.type = 'text'; on.classList.add('hidden'); off.classList.remove('hidden'); }
-      else { inp.type = 'password'; on.classList.remove('hidden'); off.classList.add('hidden'); }
-    });
-
-    // ====================== CONFIRM PASSWORD ======================
-    document.getElementById('confirmPassword').addEventListener('input', function () {
-      const pwd = document.getElementById('password').value;
-      const match = document.getElementById('passwordMatch');
-      if (this.value.length > 0) {
-        if (this.value === pwd && pwd.length >= 8) {
-          match.classList.remove('opacity-0'); match.classList.add('opacity-100');
-          this.classList.add('valid'); this.classList.remove('error');
-          clearFieldError('confirmPassword');
-        } else {
-          match.classList.remove('opacity-100'); match.classList.add('opacity-0');
-          this.classList.remove('valid');
+        const counter = document.getElementById('stepCounter');
+        if (counter) counter.textContent = 'Step ' + currentStep + ' of ' + totalSteps;
+        
+        for (let i = 1; i <= totalSteps; i++) {
+          const stepDiv = document.getElementById('step' + i);
+          if (stepDiv) {
+            if (i === currentStep) {
+              stepDiv.classList.remove('hidden');
+              stepDiv.classList.add('slide-in');
+            } else {
+              stepDiv.classList.add('hidden');
+              stepDiv.classList.remove('slide-in');
+            }
+          }
         }
-      } else {
-        match.classList.add('opacity-0');
-        this.classList.remove('valid');
+      };
+
+      // Form Navigations
+      const form1 = document.getElementById('step1Form');
+      if (form1) {
+        form1.addEventListener('submit', (e) => { e.preventDefault(); currentStep = 2; updateUI(); });
       }
-    });
-
-    // ====================== VALIDATION ======================
-    function validateEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
-    function validateUrl(url) { try { new URL(url); return true; } catch { return false; } }
-
-    function validateStep1() {
-      let ok = true;
-      const fn = document.getElementById('firstName').value.trim();
-      const ln = document.getElementById('lastName').value.trim();
-      const em = document.getElementById('email').value.trim();
-      const pw = document.getElementById('password').value;
-      const cpw = document.getElementById('confirmPassword').value;
-
-      if (!fn) { showFieldError('firstName', 'First name is required'); ok = false; } else clearFieldError('firstName');
-      if (!ln) { showFieldError('lastName', 'Last name is required'); ok = false; } else clearFieldError('lastName');
-      if (!em) { showFieldError('email', 'Email is required'); ok = false; }
-      else if (!validateEmail(em)) { showFieldError('email', 'Please enter a valid email'); ok = false; }
-      else clearFieldError('email');
-
-      if (!pw) { showFieldError('password', 'Password is required'); ok = false; }
-      else if (pw.length < 8) { showFieldError('password', 'Password must be at least 8 characters'); ok = false; }
-      else clearFieldError('password');
-
-      if (!cpw) { showFieldError('confirmPassword', 'Please confirm your password'); ok = false; }
-      else if (cpw !== pw) { showFieldError('confirmPassword', 'Passwords do not match'); ok = false; }
-      else clearFieldError('confirmPassword');
-
-      if (!document.getElementById('termsAccept').checked) {
-        document.getElementById('termsError').classList.remove('hidden');
-        ok = false;
-      } else {
-        document.getElementById('termsError').classList.add('hidden');
+      
+      const back2 = document.getElementById('step2Back');
+      if (back2) {
+        back2.addEventListener('click', () => { currentStep = 1; updateUI(); });
       }
 
-      if (ok) { state.formData = { ...state.formData, firstName: fn, lastName: ln, email: em, password: pw }; }
-      return ok;
-    }
-
-    function validateStep2() {
-      let ok = true;
-      const platform = document.getElementById('platform').value;
-      const storeUrl = document.getElementById('storeUrl').value.trim();
-      const category = document.getElementById('storeCategory').value;
-      const traffic = document.getElementById('monthlyTraffic').value;
-
-      if (!platform) { document.getElementById('platformError').textContent = 'Please select your platform'; document.getElementById('platformError').classList.remove('hidden'); ok = false; }
-      else document.getElementById('platformError').classList.add('hidden');
-
-      if (!storeUrl) { showFieldError('storeUrl', 'Store URL is required'); ok = false; }
-      else if (!validateUrl(storeUrl)) { showFieldError('storeUrl', 'Please enter a valid URL (include https://)'); ok = false; }
-      else clearFieldError('storeUrl');
-
-      if (!category) { document.getElementById('categoryError').textContent = 'Please select a category'; document.getElementById('categoryError').classList.remove('hidden'); ok = false; }
-      else document.getElementById('categoryError').classList.add('hidden');
-
-      if (!traffic) { document.getElementById('trafficError').textContent = 'Please select your monthly traffic'; document.getElementById('trafficError').classList.remove('hidden'); ok = false; }
-      else document.getElementById('trafficError').classList.add('hidden');
-
-      if (ok) { state.formData.platform = platform; state.formData.storeUrl = storeUrl; state.formData.storeCategory = category; state.formData.monthlyTraffic = traffic; }
-      return ok;
-    }
-
-    function validateStep3() {
-      if (state.formData.goals.length === 0) {
-        document.getElementById('goalsError').classList.remove('hidden');
-        return false;
+      const form2 = document.getElementById('step2Form');
+      if (form2) {
+        form2.addEventListener('submit', (e) => { e.preventDefault(); currentStep = 3; updateUI(); });
       }
-      document.getElementById('goalsError').classList.add('hidden');
-      return true;
-    }
 
-    function validateStep4() {
-      const channel = document.getElementById('recoveryChannel').value;
-      if (!channel) {
-        document.getElementById('channelError').textContent = 'Please select a recovery channel';
-        document.getElementById('channelError').classList.remove('hidden');
-        return false;
+      const back3 = document.getElementById('step3Back');
+      if (back3) {
+        back3.addEventListener('click', () => { currentStep = 2; updateUI(); });
       }
-      document.getElementById('channelError').classList.add('hidden');
-      state.formData.recoveryChannel = channel;
-      state.formData.monthlyRevenue = document.getElementById('monthlyRevenue').value;
-      return true;
-    }
 
-    // ====================== API CALLS ======================
-    async function registerUser() {
-      const { firstName, lastName, email } = state.formData;
-      state.pendingToken = 'mock-pending-token';
-      localStorage.setItem('revluma_pending_token', 'mock-pending-token');
-      return { pendingToken: 'mock-pending-token' };
-    }
-
-    async function sendVerificationCode() {
-      startCountdown();
-      return { success: true };
-    }
-
-    async function verifyEmailCode(code) {
-      return { success: true };
-    }
-
-    async function updateOnboarding(step, payload) {
-      return { success: true };
-    }
-
-    // ====================== SELECTION HANDLERS ======================
-    // Platform
-    document.querySelectorAll('[data-platform]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('[data-platform]').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        document.getElementById('platform').value = btn.dataset.platform;
-        document.getElementById('platformError').classList.add('hidden');
-      });
-    });
-
-    // Store Category
-    document.querySelectorAll('[data-category]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('[data-category]').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        document.getElementById('storeCategory').value = btn.dataset.category;
-        document.getElementById('categoryError').classList.add('hidden');
-      });
-    });
-
-    // Traffic
-    document.querySelectorAll('[data-traffic]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('[data-traffic]').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        document.getElementById('monthlyTraffic').value = btn.dataset.traffic;
-        document.getElementById('trafficError').classList.add('hidden');
-      });
-    });
-
-    // Goals (multi-select)
-    document.querySelectorAll('[data-goal]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        btn.classList.toggle('selected');
-        const icon = btn.querySelector('.goal-check-icon');
-        if (icon) icon.classList.toggle('hidden');
-        const goal = btn.dataset.goal;
-        const idx = state.formData.goals.indexOf(goal);
-        if (idx > -1) state.formData.goals.splice(idx, 1);
-        else state.formData.goals.push(goal);
-        document.getElementById('goalsError').classList.add('hidden');
-      });
-    });
-
-    // Revenue
-    document.querySelectorAll('[data-revenue]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('[data-revenue]').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        document.getElementById('monthlyRevenue').value = btn.dataset.revenue;
-      });
-    });
-
-    // Recovery Channel
-    document.querySelectorAll('[data-channel]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('[data-channel]').forEach(b => {
-          b.classList.remove('selected');
-          const icon = b.querySelector('.channel-check-icon');
-          if (icon) icon.classList.add('hidden');
+      const form3 = document.getElementById('step3Form');
+      if (form3) {
+        form3.addEventListener('submit', (e) => {
+          e.preventDefault();
+          window.location.href = '/dashboard/overview';
         });
-        btn.classList.add('selected');
-        const icon = btn.querySelector('.channel-check-icon');
-        if (icon) icon.classList.remove('hidden');
-        document.getElementById('recoveryChannel').value = btn.dataset.channel;
-        document.getElementById('channelError').classList.add('hidden');
+      }
+
+
+      // UI Selection Logic
+      const setupPills = (selector, inputId) => {
+        const btns = document.querySelectorAll(selector);
+        const input = document.getElementById(inputId);
+        btns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            btns.forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            if (input) input.value = btn.dataset.category || btn.dataset.traffic || btn.dataset.revenue;
+          });
+        });
+      };
+
+      setupPills('[data-category]', 'storeCategory');
+      setupPills('[data-traffic]', 'monthlyTraffic');
+      setupPills('[data-revenue]', 'monthlyRevenue');
+
+      const platforms = document.querySelectorAll('.platform-card');
+      const platformInput = document.getElementById('platform');
+      platforms.forEach(btn => {
+        btn.addEventListener('click', () => {
+          platforms.forEach(b => b.classList.remove('selected'));
+          btn.classList.add('selected');
+          if (platformInput) platformInput.value = btn.dataset.platform;
+        });
+      });
+
+      const goals = document.querySelectorAll('[data-goal]');
+      goals.forEach(btn => {
+        btn.addEventListener('click', () => {
+          btn.classList.toggle('selected');
+          const icon = btn.querySelector('.goal-check-icon') || btn.querySelector('.check-ring svg');
+          if (icon) {
+            if (btn.classList.contains('selected')) icon.classList.remove('hidden');
+            else icon.classList.add('hidden');
+          }
+        });
+      });
+
+      const channels = document.querySelectorAll('[data-channel]');
+      const channelInput = document.getElementById('preferredChannel');
+      channels.forEach(btn => {
+        btn.addEventListener('click', () => {
+          channels.forEach(b => {
+            b.classList.remove('selected');
+            const icon = b.querySelector('.channel-check-icon') || b.querySelector('.check-ring svg');
+            if (icon) icon.classList.add('hidden');
+          });
+          btn.classList.add('selected');
+          const icon = btn.querySelector('.channel-check-icon') || btn.querySelector('.check-ring svg');
+          if (icon) icon.classList.remove('hidden');
+          if (channelInput) channelInput.value = btn.dataset.channel;
+        });
       });
     });
-
-    // ====================== FORM SUBMISSIONS ======================
-    document.getElementById('step1Form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!validateStep1()) return;
-      showLoading('Creating your account...');
-      try {
-        await registerUser();
-        if (document.getElementById('newsletterOptIn').checked) {
-          console.log('[MOCK] Newsletter subscribed:', state.formData.email);
-        }
-        hideLoading();
-        showStep(2);
-      } catch (err) { hideLoading(); showError(err.message); }
-    });
-
-    document.getElementById('step2Form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!validateStep2()) return;
-      showLoading('Saving store info...');
-      try {
-        await updateOnboarding(2, {
-          platform: state.formData.platform,
-          store_url: state.formData.storeUrl,
-          store_category: state.formData.storeCategory,
-          monthly_traffic: state.formData.monthlyTraffic
-        });
-        hideLoading();
-        showStep(3);
-      } catch (err) { hideLoading(); showError(err.message); }
-    });
-
-    document.getElementById('step3Form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!validateStep3()) return;
-      showLoading('Saving your goals...');
-      try {
-        await updateOnboarding(3, { goals: state.formData.goals });
-        hideLoading();
-        showStep(4);
-      } catch (err) { hideLoading(); showError(err.message); }
-    });
-
-    document.getElementById('step4Form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!validateStep4()) return;
-      showLoading('Finalizing setup...');
-      try {
-        await updateOnboarding(4, {
-          monthly_revenue: state.formData.monthlyRevenue || null,
-          preferred_recovery_channel: state.formData.recoveryChannel
-        });
-        await sendVerificationCode();
-        hideLoading();
-        // Update email display
-        document.getElementById('emailDisplay').textContent = state.formData.email;
-        showStep(5);
-      } catch (err) { hideLoading(); showError(err.message); }
-    });
-
-    // Verify code
-    document.getElementById('submitCodeBtn').addEventListener('click', async () => {
-      const code = document.getElementById('verificationCode').value.trim();
-      const codeError = document.getElementById('codeError');
-      if (!code) { codeError.textContent = 'Please enter the verification code'; codeError.classList.remove('hidden'); return; }
-      if (code.length !== 6) { codeError.textContent = 'Code must be 6 digits'; codeError.classList.remove('hidden'); return; }
-      showLoading('Verifying...');
-      try {
-        await verifyEmailCode(code);
-
-        state.token = 'mock-token-123';
-        localStorage.setItem('revluma_token', 'mock-token-123');
-        localStorage.removeItem('revluma_pending_token');
-
-        hideLoading();
-        state.emailVerified = true;
-        showStep(6); // success screen
-      } catch (err) {
-        hideLoading();
-        codeError.textContent = err.message;
-        codeError.classList.remove('hidden');
-      }
-    });
-
-    // Resend code
-    document.getElementById('resendCodeBtn').addEventListener('click', async () => {
-      if (document.getElementById('resendCodeBtn').disabled) return;
-      showLoading('Sending new code...');
-      try {
-        await sendVerificationCode();
-        hideLoading();
-        showSuccess('New verification code sent');
-      } catch (err) { hideLoading(); showError(err.message); }
-    });
-
-    // Back buttons
-    document.getElementById('step2Back').addEventListener('click', () => showStep(1));
-    document.getElementById('step3Back').addEventListener('click', () => showStep(2));
-    document.getElementById('step4Back').addEventListener('click', () => showStep(3));
-    document.getElementById('step5Back').addEventListener('click', () => showStep(4));
-
-    // URL blur validation
-    document.getElementById('storeUrl').addEventListener('blur', function () {
-      if (this.value && !validateUrl(this.value)) showFieldError('storeUrl', 'Please enter a valid URL (include https://)');
-      else if (this.value) clearFieldError('storeUrl');
-    });
-
-    // Email blur validation
-    document.getElementById('email').addEventListener('blur', function () {
-      if (this.value && !validateEmail(this.value)) showFieldError('email', 'Please enter a valid email');
-      else if (this.value) clearFieldError('email');
-    });
-
-    // ====================== INIT ======================
-    showStep(1);
   </script>
 </body>
-
 </html>

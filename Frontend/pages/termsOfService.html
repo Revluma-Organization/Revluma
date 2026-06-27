@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="../assets/images/Revluma-icon.png">
+  <title>Revluma - Documentation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #060608;
+      --surface: rgba(255, 255, 255, 0.028);
+      --border: rgba(255, 255, 255, 0.07);
+      --text: #f0f0f5;
+      --muted: #8b8b9d;
+      --accent: #f97316; /* Orange brand color */
+    }
+
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+      scroll-behavior: smooth;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0a0a0a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 3px;
+    }
+
+    /* Ambient glow */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      opacity: 0.02;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* Sidebar Links */
+    .toc-link {
+      transition: color 0.2s ease, padding-left 0.2s ease;
+      display: block;
+      padding: 6px 0 6px 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      border-left: 2px solid transparent;
+    }
+    .toc-link:hover {
+      color: #fff;
+    }
+    .toc-link.active {
+      color: var(--accent);
+      border-left-color: var(--accent);
+      font-weight: 500;
+    }
+    .toc-h3 {
+      padding-left: 24px;
+      font-size: 0.85rem;
+    }
+
+    /* Content Typography */
+    .prose h2 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-top: 3rem;
+      margin-bottom: 1rem;
+      scroll-margin-top: 100px; /* Offset for sticky nav if any */
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .prose h3 {
+      font-size: 1.3rem;
+      font-weight: 600;
+      margin-top: 2rem;
+      margin-bottom: 0.75rem;
+      scroll-margin-top: 100px;
+    }
+    .prose p {
+      color: #d1d1db;
+      line-height: 1.7;
+      margin-bottom: 1.25rem;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col relative">
+
+  <!-- Minimal Header -->
+  <header class="w-full border-b border-white/10 bg-[#060608]/80 backdrop-blur-md sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <img src="../assets/images/Revluma-icon.png" alt="Revluma" class="h-6 opacity-90">
+        <span class="font-bold tracking-wide">Revluma</span>
+      </div>
+      <a href="../auth/onboarding" class="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Go to Dashboard</a>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-7xl mx-auto w-full px-6 py-12 flex flex-col md:flex-row gap-12 relative">
+    
+    <!-- Main Content Area -->
+    <article class="flex-1 max-w-3xl prose" id="main-content">
+      <h1 class="text-4xl font-bold mb-4">Terms of Service</h1>
+      <p class="text-zinc-500 mb-12">Last updated: June 2026</p>
+
+      <section>
+        <h2>1. Introduction</h2>
+        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+        <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+      </section>
+
+      <section>
+        <h2>2. Use of Service</h2>
+        <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>
+        
+        <h3>2.1 Account Security</h3>
+        <p>Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet.</p>
+        
+        <h3>2.2 Acceptable Use</h3>
+        <p>Consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam.</p>
+      </section>
+
+      <section>
+        <h2>3. Payment and Billing</h2>
+        <p>At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi sint occaecati cupiditate non provident, similique sunt in culpa qui officia deserunt mollitia animi.</p>
+        <p>Id est laborum et dolorum fuga. Et harum quidem rerum facilis est et expedita distinctio. Nam libero tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat facere possimus.</p>
+      </section>
+
+      <section>
+        <h2>4. Data Privacy</h2>
+        <p>Temporibus autem quibusdam et aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et molestiae non recusandae. Itaque earum rerum hic tenetur a sapiente delectus.</p>
+        
+        <h3>4.1 Analytics Collection</h3>
+        <p>Ut aut reiciendis voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+      </section>
+      
+      <section>
+        <h2>5. Termination</h2>
+        <p>Dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.</p>
+      </section>
+    </article>
+
+    <!-- Sticky Sidebar -->
+    <aside class="hidden md:block w-64 flex-shrink-0">
+      <div class="sticky top-24">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-4 px-3">On this page</h4>
+        <nav id="toc-container" class="space-y-1 relative border-l border-white/10 ml-3">
+          <!-- JS will inject links here -->
+        </nav>
+      </div>
+    </aside>
+
+  </main>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const mainContent = document.getElementById('main-content');
+      const tocContainer = document.getElementById('toc-container');
+      const headings = mainContent.querySelectorAll('h2, h3');
+      
+      if (headings.length === 0) return;
+
+      // 1. Generate Sidebar Links
+      headings.forEach((heading, index) => {
+        // Generate an ID if it doesn't have one
+        if (!heading.id) {
+          heading.id = heading.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        }
+
+        const link = document.createElement('a');
+        link.href = '#' + heading.id;
+        link.textContent = heading.textContent;
+        link.className = 'toc-link';
+        
+        if (heading.tagName.toLowerCase() === 'h3') {
+          link.classList.add('toc-h3');
+        }
+
+        tocContainer.appendChild(link);
+      });
+
+      // 2. Scroll Spy using Intersection Observer
+      const tocLinks = document.querySelectorAll('.toc-link');
+      
+      const observerOptions = {
+        root: null,
+        rootMargin: '-100px 0px -60% 0px', // Adjust offsets so highlighting triggers slightly below the header
+        threshold: 0
+      };
+
+      let activeIndex = 0;
+
+      const observerCallback = (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            // Find index of the currently intersecting heading
+            const index = Array.from(headings).findIndex(h => h.id === entry.target.id);
+            if (index !== -1) {
+              // Remove active class from all links
+              tocLinks.forEach(link => link.classList.remove('active'));
+              // Add active class to corresponding link
+              tocLinks[index].classList.add('active');
+            }
+          }
+        });
+      };
+
+      const observer = new IntersectionObserver(observerCallback, observerOptions);
+
+      headings.forEach(heading => {
+        observer.observe(heading);
+      });
+
+      // Set first link as active initially
+      if (tocLinks.length > 0) {
+        tocLinks[0].classList.add('active');
+      }
+    });
+  </script>
+</body>
+</html>

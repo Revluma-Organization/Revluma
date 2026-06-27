@@ -39,7 +39,7 @@ export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
-    window.location.href = "/auth/loginIn.html";
+    window.location.href = '/auth/loginIn';
   };
 
   return (
@@ -50,5 +50,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  return { user: MOCK_USER, logout: () => { window.location.href = "/auth/loginIn.html"; } };
+  return { user: MOCK_USER, logout: () => { window.location.href = '/auth/loginIn'; } };
 }

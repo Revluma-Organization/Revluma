@@ -80,7 +80,7 @@ export const useAuthStore = create<AuthStore>()(
 
       logout: async () => {
         set({ user: null, csrfToken: null, loading: false });
-        window.location.href = '/auth/loginIn.html';
+        window.location.href = '/auth/loginIn';
       }
     }),
     {

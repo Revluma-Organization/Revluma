@@ -804,13 +804,17 @@
 
   <div class="page">
 
-    <!-- Logo -->
-    <a href="/" class="logo-lockup">
-      <img src="../assets/images/Revluma-logo.png" alt="Revluma" class="logo-img" />
-      <div class="logo-name-clip">
-        <span class="logo-wordmark">Revluma</span>
-      </div>
-    </a>
+    <!-- Header Logo -->
+    <div class="w-full flex justify-between items-center py-5 px-6 sm:px-8 absolute top-0 left-0">
+      <a href="/" class="flex items-center gap-2.5" style="text-decoration:none;">
+        <div class="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
+          <img src="../assets/images/Revluma-logo.png" alt="Revluma Logo" class="w-full h-full object-contain">
+        </div>
+        <div>
+          <span class="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Revluma</span>
+        </div>
+      </a>
+    </div>
 
     <!-- Heading -->
     <div class="page-heading">
@@ -856,6 +860,23 @@
           <p>Too many failed attempts. Try again in <strong id="lockoutTimer">--</strong>.</p>
         </div>
 
+        <!-- Sign in with Google -->
+        <button type="button" id="googleSignInBtn" class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 hover:opacity-90 mb-5" style="background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif;">
+          <svg class="w-5 h-5" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Sign in with Google
+        </button>
+
+        <div class="flex items-center gap-3 mb-5" style="font-family: 'DM Sans', system-ui, sans-serif;">
+          <div style="height: 1px; flex: 1; background: var(--border);"></div>
+          <span style="font-size: 12px; color: var(--muted);">or continue with email</span>
+          <div style="height: 1px; flex: 1; background: var(--border);"></div>
+        </div>
+
         <!-- Email field -->
         <div class="field">
           <label for="email">Email address</label>
@@ -895,7 +916,7 @@
             <input type="checkbox" id="rememberMe" />
             Keep me signed in
           </label>
-          <a href="forgottenPassword.html" class="forgot-link">Forgot password?</a>
+          <a href="forgottenPassword" class="forgot-link">Forgot password?</a>
         </div>
 
         <!-- Submit -->
@@ -928,12 +949,7 @@
         <!-- Divider + Sign up -->
         <div class="divider"><span>or</span></div>
         <div class="signup-row">
-          No account? <a href="onboarding.html">Create one free →</a>
-        </div>
-        <div class="signup-row" style="margin-top: 10px;">
-          <a href="#"
-            onclick="localStorage.clear(); sessionStorage.clear(); window.location.reload(); return false;">Clear
-            session and start fresh</a>
+          No account? <a href="signUp">Create one free →</a>
         </div>
 
       </form>
@@ -942,8 +958,8 @@
     <!-- Footer -->
     <p style="margin-top: 26px; font-size: 11px; color: var(--muted2); text-align: center; letter-spacing: 0.02em;">
       Protected by Revluma &nbsp;·&nbsp;
-      <a href="#" style="color: inherit; text-decoration: none;">Privacy</a> &nbsp;·&nbsp;
-      <a href="#" style="color: inherit; text-decoration: none;">Terms</a>
+      <a href="../pages/privacyPolicy" style="color: inherit; text-decoration: none;">Privacy</a> &nbsp;·&nbsp;
+      <a href="../pages/termsOfService" style="color: inherit; text-decoration: none;">Terms</a>
     </p>
   </div>
 
@@ -968,6 +984,44 @@
     </svg>
     <span id="infoMessage"></span>
   </div>
+
+  <script>
+    // ================================================================
+    //  GOOGLE SIGN IN
+    // ================================================================
+    document.addEventListener('DOMContentLoaded', () => {
+      const googleBtn = document.getElementById('googleSignInBtn');
+      if (googleBtn) {
+        googleBtn.addEventListener('click', () => {
+          const width = 500;
+          const height = 600;
+          const left = (screen.width / 2) - (width / 2);
+          const top = (screen.height / 2) - (height / 2);
+          const popup = window.open('about:blank', 'GoogleAuth', `width=${width},height=${height},top=${top},left=${left}`);
+
+          popup.document.write(`<body style="font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#fff;color:#202124;">
+            <div style="text-align:center;">
+              <svg viewBox="0 0 24 24" width="48" height="48" style="margin-bottom:16px;">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              <h2 style="font-size:18px;font-weight:600;margin-bottom:8px;">Sign in with Google</h2>
+              <p style="color:#5f6368;font-size:14px;">Authenticating...</p>
+              <div style="margin-top:24px;width:36px;height:36px;border:3px solid #e0e0e0;border-top-color:#4285F4;border-radius:50%;animation:spin 0.8s linear infinite;margin-left:auto;margin-right:auto;"></div>
+              <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+            </div>
+          </body>`);
+
+          setTimeout(() => {
+            popup.close();
+            window.location.href = '/dashboard/overview';
+          }, 2000);
+        });
+      }
+    });
+  </script>
 
   <script>
     // ================================================================
@@ -1140,11 +1194,13 @@
         clearFieldError('email');
       }
 
+      // Password checks
+      const pw = el.password.value;
       if (!pw) {
         setFieldError('password', 'Password is required');
         ok = false;
-      } else if (pw.length < 6) {
-        setFieldError('password', 'Password is too short');
+      } else if (pw.length < 8) {
+        setFieldError('password', 'Password must be at least 8 characters');
         ok = false;
       } else {
         clearFieldError('password');
@@ -1272,7 +1328,7 @@
         console.warn('[AUTH ERROR] redirectAfterLogin called without user object');
         console.log('[AUTH] Falling back to login page');
         try {
-          const abs = new URL('/auth/loginIn.html', window.location.origin).href;
+          const abs = new URL('/auth/loginIn', window.location.origin).href;
           window.location.replace(abs);
         } catch (err) {
           console.error('[AUTH ERROR] redirect fallback failed', err);
@@ -1290,7 +1346,7 @@
 
       const dest = (onboarding_status === 'completed')
         ? '/dashboard/overview'
-        : '/auth/onboarding.html';
+        : 'onboarding';
 
 
       console.log('[AUTH STEP 10] Redirecting to:', { destination: dest, reason: onboarding_status === 'completed' ? 'onboarding complete' : 'onboarding required' });
@@ -1458,18 +1514,6 @@
       console.log('[AUTH] Login form submitted', { timestamp: new Date().toISOString() });
       hideAllBanners();
 
-      if (state.isLoading) {
-        console.log('[AUTH] Already processing login, ignoring duplicate submit');
-        return;
-      }
-
-      // Client-side rate limit check
-      if (isLockedOut()) {
-        console.warn('[AUTH] Rate limit lockout active, starting countdown');
-        startLockoutCountdown();
-        return;
-      }
-
       if (!validateForm()) {
         console.warn('[AUTH] Form validation failed');
         return;
@@ -1480,151 +1524,9 @@
 
       setLoading(true);
 
-      try {
-        console.log('[AUTH] Calling apiLogin function');
-        const data = await apiLogin(email, password);
-
-        // ── SUCCESS ──
-        console.log('[AUTH] API login successful, processing response');
-        clearRateLimit();
-        clearFieldError('email');
-        clearFieldError('password');
-        console.log('[AUTH STEP 11] About to store session', { hasToken: !!data.token, hasUser: !!data.user });
-        storeSession(data.token, data.user, state.rememberMe);
-
-        // Save remembered email (use Revluma's own key)
-        if (state.rememberMe) {
-          localStorage.setItem('revluma_remembered_email', email);
-          console.log('[AUTH] Saved remembered email');
-        } else {
-          localStorage.removeItem('revluma_remembered_email');
-        }
-
-        console.log('[AUTH STEP 12] Login successful, showing success message and preparing redirect');
-        showSuccess('Signed in — redirecting…');
-        setTimeout(() => {
-          redirectAfterLogin(data.user);
-        }, 900);
-      } catch (err) {
-        console.error('[AUTH] Login failed', {
-          code: err.code,
-          message: err.message,
-          detail: err.detail
-        });
-        setLoading(false);
-        recordAttempt();
-
-        if (isLockedOut()) {
-          console.warn('[AUTH] Rate limit exceeded after error');
-          startLockoutCountdown();
-          return;
-        }
-
-        switch (err.code) {
-          case 'USER_NOT_FOUND':
-            clearFieldError('password');
-            setFieldError('email', 'No account found with this email');
-            showErrorBanner(
-              err.message,
-              err.detail,
-              'Create a free account',
-              () => window.location.href = 'onboarding.html'
-            );
-            break;
-
-          case 'WRONG_PASSWORD':
-          case 'INVALID_CREDENTIALS':
-            clearFieldError('email');
-            setFieldError('password', 'Incorrect password');
-            el.password.value = '';
-            el.password.focus();
-            showErrorBanner(
-              err.message,
-              err.detail,
-              'Reset password',
-              () => window.location.replace('forgottenPassword.html')
-            );
-            break;
-
-          case 'EMAIL_NOT_VERIFIED':
-            hideVerifySection();
-            showInfoBanner(
-              'Email not verified',
-              'We sent a verification code to ' + email + '. Enter it below to verify and sign in.',
-              'Resend code',
-              async () => {
-                try {
-                  await apiResendVerification(email);
-                  showVerifySection(email);
-                  showInfo('Verification code sent to ' + email);
-                  hideAllBanners();
-                } catch (resendErr) {
-                  showError(resendErr.message || 'Could not send code');
-                }
-              }
-            );
-            // Also try to auto-send the code and show the input
-            try {
-              await apiResendVerification(email);
-              showVerifySection(email);
-            } catch {
-              // Show the resend button in the banner instead
-            }
-            break;
-
-          case 'PENDING_ACCOUNT':
-            showInfoBanner(
-              'Account setup not complete',
-              'It looks like you started signing up but didn\'t finish. Continue where you left off.',
-              'Continue setup',
-              () => {
-                // Restore email for onboarding context
-                sessionStorage.setItem('revluma_resume_email', email);
-                window.location.href = 'onboarding.html';
-              }
-            );
-            break;
-
-          case 'ACCOUNT_SUSPENDED':
-            showErrorBanner(
-              err.message,
-              err.detail
-            );
-            el.loginBtn.disabled = true;
-            break;
-
-          case 'RATE_LIMITED':
-            showErrorBanner(err.message, err.detail);
-            startLockoutCountdown();
-            break;
-
-          case 'TIMEOUT':
-            showErrorBanner('Request timed out', err.detail);
-            break;
-
-          case 'NETWORK':
-            showErrorBanner('Connection error', err.detail);
-            break;
-
-          case 'SERVER_ERROR':
-            // Check if this is a session creation failure
-            if (err.message && err.message.includes('Session creation')) {
-              showErrorBanner(
-                'We couldn\'t establish your session',
-                'Our servers are having trouble saving your login. This is temporary. Please try again in a moment.'
-              );
-            } else {
-              showErrorBanner('Server error', err.detail || 'Please try again later.');
-            }
-            break;
-
-          default:
-            showErrorBanner(
-              err.message || 'Sign in failed',
-              err.detail || 'Please try again. If the problem persists, contact support.'
-            );
-        }
-      }
+      // TODO Week 2: call POST /api/auth/login here with body { email, password }
+      console.log('Ready for API Integration:', { email, passwordLength: password.length });
+      
     });
 
     // ================================================================
