@@ -18,7 +18,9 @@ import { RevenueAttribution } from "@/components/dashboard/RevenueAttribution";
 import { HealthScore } from "@/components/dashboard/HealthScore";
 import { AnalyticsStrip, InnovationRow } from "@/components/dashboard/Strips";
 import { QuickActions, TrendingProducts, WinbackLeaderboard } from "@/components/dashboard/BottomGrid";
-import type {
+import { 
+  MOCK_OVERVIEW_DATA,
+  type
   KPI,
   ActivityItem,
   SequenceRow,
@@ -35,21 +37,21 @@ import type {
 
 export default function Overview() {
   //State hooks: one per data group from DASHBOARD_DATA_MAP.md
-  const [userName, setUserName]                     = useState<string | null>(null);
-  const [kpi, setKpi]                               = useState<KPI[] | null>(null);
-  const [chart, setChart]                           = useState<ChartData | null>(null);
-  const [activity, setActivity]                     = useState<ActivityItem[] | null>(null);
-  const [sequences, setSequences]                   = useState<SequenceRow[] | null>(null);
-  const [abandonedProducts, setAbandonedProducts]   = useState<ProductRow[] | null>(null);
-  const [donutSlices, setDonutSlices]               = useState<DonutSlice[] | null>(null);
-  const [donutTotal, setDonutTotal]                 = useState<string | null>(null);
-  const [health, setHealth]                         = useState<Health | null>(null);
-  const [analytics, setAnalytics]                   = useState<AnalyticTile[] | null>(null);
-  const [innovation, setInnovation]                 = useState<InnovationCard[] | null>(null);
-  const [trendingProducts, setTrendingProducts]     = useState<Trending[] | null>(null);
-  const [winback, setWinback]                       = useState<WinbackEntry[] | null>(null);
-  const [insights, setInsights]                     = useState<AIInsight[] | null>(null);
-  const [storeConnected, setStoreConnected]         = useState<boolean | null>(null);
+  const [userName, setUserName]                     = useState<string | null>("Alex Johnson");
+  const [kpi, setKpi]                               = useState<KPI[] | null>(MOCK_OVERVIEW_DATA.kpi);
+  const [chart, setChart]                           = useState<ChartData | null>(MOCK_OVERVIEW_DATA.chart);
+  const [activity, setActivity]                     = useState<ActivityItem[] | null>(MOCK_OVERVIEW_DATA.activity);
+  const [sequences, setSequences]                   = useState<SequenceRow[] | null>(MOCK_OVERVIEW_DATA.sequences);
+  const [abandonedProducts, setAbandonedProducts]   = useState<ProductRow[] | null>(MOCK_OVERVIEW_DATA.abandonedProducts);
+  const [donutSlices, setDonutSlices]               = useState<DonutSlice[] | null>(MOCK_OVERVIEW_DATA.donutSlices);
+  const [donutTotal, setDonutTotal]                 = useState<string | null>(MOCK_OVERVIEW_DATA.donutTotal);
+  const [health, setHealth]                         = useState<Health | null>(MOCK_OVERVIEW_DATA.health);
+  const [analytics, setAnalytics]                   = useState<AnalyticTile[] | null>(MOCK_OVERVIEW_DATA.analytics);
+  const [innovation, setInnovation]                 = useState<InnovationCard[] | null>(MOCK_OVERVIEW_DATA.innovation);
+  const [trendingProducts, setTrendingProducts]     = useState<Trending[] | null>(MOCK_OVERVIEW_DATA.trending);
+  const [winback, setWinback]                       = useState<WinbackEntry[] | null>(MOCK_OVERVIEW_DATA.winback);
+  const [insights, setInsights]                     = useState<AIInsight[] | null>(MOCK_OVERVIEW_DATA.insights);
+  const [storeConnected, setStoreConnected]         = useState<boolean | null>(true);
 
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
