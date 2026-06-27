@@ -758,25 +758,30 @@
             animation-play-state: paused;
         }
 .checkbox-custom {
-  appearance: none;
-  background-color: white;
-  margin: 0;
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 1px solid #52525b;
-  border-radius: 0.25rem;
-  display: inline-block;
-  cursor: pointer;
-  transition: all 0.2s;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: 90%;
-  flex-shrink: 0;
-}
-.checkbox-custom:checked {
-  border-color: white;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='black'%3E%3Cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3E%3C/svg%3E");
-}
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+    .checkbox-custom:checked {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: rgba(255, 255, 255, 0.9);
+    }
+    .checkbox-custom:checked::after {
+      content: '\2713';
+      display: block;
+      text-align: center;
+      color: #0a0a0a;
+      font-size: 12px;
+      font-weight: bold;
+      line-height: 16px;
+    }
 </style>
 
     <script src="assets/js/countries.js"></script>
@@ -1218,11 +1223,9 @@
   <input type="text" name="primary_goal" placeholder="What is your primary goal for joining?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
 
 <div class="relative mt-4">
-  <div x-data="{ val: '' }" class="relative w-full">
-    <textarea x-model="val" name="biggest_challenge" required rows="2" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 min-h-[80px] resize-none"></textarea>
-    <div x-show="!val" class="absolute top-3 left-4 pointer-events-none flex text-sm"><span class="text-zinc-500">What is the biggest challenge you are facing in your store right now?</span><span class="text-white/70 ml-1 font-bold">*</span></div>
-  </div>
-  
+    <div class="relative w-full">
+      <textarea name="biggest_challenge" required rows="2" placeholder="What is the biggest challenge you are facing in your store right now? *" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 min-h-[80px] resize-none"></textarea>
+    </div>
 </div>
 
 <div class="px-2 mt-6">
