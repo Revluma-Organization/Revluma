@@ -93,6 +93,13 @@
       margin-bottom: 1.25rem;
     }
   </style>
+
+  <!-- Clean URL Masking -->
+  <script>
+    if (window.location.pathname.endsWith('.html')) {
+      window.history.replaceState(null, '', window.location.pathname.replace('.html', '') + window.location.search);
+    }
+  </script>
 </head>
 <body class="min-h-screen flex flex-col relative">
 

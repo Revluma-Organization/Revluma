@@ -141,6 +141,13 @@
       .code-box { width: 42px; height: 50px; font-size: 1.25rem; }
     }
   </style>
+
+  <!-- Clean URL Masking -->
+  <script>
+    if (window.location.pathname.endsWith('.html')) {
+      window.history.replaceState(null, '', window.location.pathname.replace('.html', '') + window.location.search);
+    }
+  </script>
 </head>
 
 <body>

@@ -394,6 +394,13 @@
             transition-delay: 300ms;
         }
     </style>
+
+  <!-- Clean URL Masking -->
+  <script>
+    if (window.location.pathname.endsWith('.html')) {
+      window.history.replaceState(null, '', window.location.pathname.replace('.html', '') + window.location.search);
+    }
+  </script>
 </head>
 
 <body x-data="{ scrolled: false, mobileMenu: false }" @scroll.window="scrolled = (window.pageYOffset > 50)">
