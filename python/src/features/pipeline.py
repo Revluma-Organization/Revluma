@@ -512,7 +512,7 @@ def calculate_rfm_scores(customer_id: str, db) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# MASTER FUNCTION — assembles the complete 16-feature vector
+# MASTER FUNCTION — assembles the complete 26-feature vector
 # ---------------------------------------------------------------------------
 
 def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
