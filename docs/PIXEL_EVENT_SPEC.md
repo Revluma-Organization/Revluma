@@ -206,7 +206,7 @@ Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown
 
 - **Pixel (Future JS SDK):** Only emits events. No transformation logic beyond the envelope.
 - **Backend (2.BE1.6):** Validates and stores events. Normalises checkout steps. Forwards clean events to the ML pipeline.
-- **ML Pipeline (`pipeline.py`):** Consumes normalised events only. Computes the 16-feature vector strictly as defined.
+- **ML Pipeline (`pipeline.py`):** Consumes normalised events only. Computes the 29-feature vector strictly as defined.
 
 ## 6. Approval
 - **Author:** Okanlawon David

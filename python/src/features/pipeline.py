@@ -2,7 +2,7 @@
 Revluma Feature Engineering Pipeline
 Source: FEATURE_VECTOR_SPEC v1.0.0 — Okanlawon David (AI/ML Engineer 1)
 
-Computes the 26-feature Shopper Feature Vector fed into all five ML models.
+Computes the 29-feature Shopper Feature Vector fed into all five ML models.
 Skeletons only — implementation begins Week 4.
 """
 
@@ -546,7 +546,7 @@ def calculate_rfm_scores(customer_id: str, db) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# MASTER FUNCTION — assembles the complete 26-feature vector
+# MASTER FUNCTION — assembles the complete 29-feature vector
 # ---------------------------------------------------------------------------
 
 def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
