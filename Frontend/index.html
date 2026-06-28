@@ -855,15 +855,15 @@
 
             <div
                 class="hidden md:flex items-center gap-5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#CCCCCC]">
-                <a href="#features" class="group relative hover:text-white transition-colors">Features
+                <a href="#features" @click.prevent="document.getElementById('features').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Features
                     <span
                         class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
-                <a href="#pricing" class="group relative hover:text-white transition-colors">Pricing
+                <a href="#pricing" @click.prevent="document.getElementById('pricing').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Pricing
                     <span
                         class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
-                <a href="#integrations" class="group relative hover:text-white transition-colors">Integrations
+                <a href="#integrations" @click.prevent="document.getElementById('integrations').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Integrations
                     <span
                         class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
@@ -878,9 +878,9 @@
                     class="hidden px-4 py-1.5 rounded-full bg-white text-black/95 font-bold text-xs uppercase tracking-wide shadow-sm hover:shadow-md hover:scale-[1.02] hover:bg-white/90 transition-all duration-300 whitespace-nowrap text-[11px]">
                     Go to Dashboard
                 </a>
-                <a href="./auth/loginIn.html" target="_blank" id="login-link"
+                <a href="./auth/loginIn.html" id="login-link"
                     class="text-[11px] font-semibold text-[#CCCCCC] hover:text-white transition-colors">Login</a>
-                <a href="./auth/signUp.html" target="_blank" id="signup-link">
+                <a href="./auth/signUp.html" id="signup-link">
                     <button
                         class="bg-white text-black px-3 py-1.5 rounded-full text-[11px] font-bold hover:-translate-y-0.5 transition-transform">Get
                         Started</button>
@@ -905,15 +905,15 @@
     <div x-show="mobileMenu" x-transition.opacity x-cloak
         class="fixed inset-x-0 top-20 z-40 rounded-b-3xl border border-white/10 bg-[#090909]/95 px-6 py-8 md:hidden">
         <div class="flex flex-col gap-6 text-lg font-semibold uppercase tracking-wide">
-            <a href="#features" @click="mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Features</a>
-            <a href="#pricing" @click="mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Pricing</a>
-            <a href="#integrations" @click="mobileMenu=false"
+            <a href="#features" @click.prevent="document.getElementById('features').scrollIntoView({behavior: 'smooth'}); mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Features</a>
+            <a href="#pricing" @click.prevent="document.getElementById('pricing').scrollIntoView({behavior: 'smooth'}); mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Pricing</a>
+            <a href="#integrations" @click.prevent="document.getElementById('integrations').scrollIntoView({behavior: 'smooth'}); mobileMenu=false"
                 class="hover:text-[#A1A1AA] transition-colors">Integrations</a>
             <a href="/dashboard/overview" id="mobile-dashboard-link"
                 class="hidden py-3 px-6 rounded-2xl bg-white text-black font-bold hover:scale-[1.01] hover:bg-white/90 shadow-sm transition-all block w-full text-left">Dashboard</a>
             <a href="./auth/loginIn.html" id="mobile-login-link" @click="mobileMenu=false"
                 class="hover:text-[#A1A1AA] transition-colors">Login</a>
-            <a href="./auth/signUp.html" id="mobile-signup-link" @click="mobileMenu=false" target="_blank"
+            <a href="./auth/signUp.html" id="mobile-signup-link" @click="mobileMenu=false"
                 class="hover:text-[#A1A1AA] transition-colors">
                 <button
                     class="mt-2 bg-white text-black py-4 rounded-2xl font-bold hover:-translate-y-0.5 transition-transform block w-full text-left p-0">Get
@@ -2883,9 +2883,10 @@
 
 
                     </ul>
+                    <div class="mt-8 flex flex-col sm:flex-row gap-4 items-center justify-center">
                     <a href="./auth/signUp.html"><button
-                            class="mt-8 w-full py-3 rounded-2xl border border-white/10 text-sm font-bold hover:bg-white hover:text-black transition-all duration-300">Start
-                            Free Trial</button></a>
+                            class="px-8 py-3.5 rounded-full bg-white text-black font-bold text-sm tracking-wide hover:bg-zinc-200 transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] w-full sm:w-auto text-center">Start Free Trial</button></a>
+                    </div>
                 </div>
 
 
@@ -2910,7 +2911,7 @@
 
 
                     </ul>
-                    <a href="./auth/signUp.html" target="_blank"><button
+                    <a href="./auth/signUp.html"><button
                             class="mt-8 w-full py-3 rounded-2xl bg-white text-black text-sm font-bold hover:scale-[1.02] transition-all duration-300">Get
                             Started Free</button></a>
                 </div>
@@ -3274,7 +3275,7 @@
                     <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Product</p>
                     <a href="/features.html"
                         class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Features</a>
-                    <a href="#pricing"
+                    <a href="#pricing" @click.prevent="document.getElementById('pricing').scrollIntoView({behavior: 'smooth'})"
                         class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Pricing</a>
                     <a href="#"
                         class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Changelog</a>
