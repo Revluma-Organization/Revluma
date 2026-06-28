@@ -991,7 +991,7 @@
                                      </svg>
                                  </button>
                              </div>
-                             <form id="waitlist-form" method="POST" @submit.prevent="waitlistModal = false; $dispatch('show-toast', 'Application submitted successfully!'); document.getElementById('waitlist-form').reset();" class="space-y-8">
+                             <form id="waitlist-form" method="POST" x-data="{ isValid: false }" @input="isValid = $el.checkValidity()" @change="isValid = $el.checkValidity()" x-init="isValid = $el.checkValidity()" @submit.prevent="waitlistModal = false; $dispatch('show-toast', 'Application submitted successfully!'); document.getElementById('waitlist-form').reset(); isValid = false;" class="space-y-8">
                                  <div>
   <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Personal Information</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1270,7 +1270,9 @@
 </div>
                             <button 
   type="submit" 
-  class="w-full py-4 mt-2 bg-white hover:bg-zinc-200 text-black font-bold rounded-xl transition-all duration-300 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-white/30 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]">
+  :disabled="!isValid"
+  :class="!isValid ? 'opacity-50 cursor-not-allowed bg-zinc-400' : 'bg-white hover:bg-zinc-200 active:scale-[0.98] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]'"
+  class="w-full py-4 mt-2 text-black font-bold rounded-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-white/30 shadow-[0_0_20px_rgba(255,255,255,0.1)]">
                                 Join the Waitlist
                             </button>
                           </form>
