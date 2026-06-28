@@ -211,4 +211,3 @@ Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown
 ## 6. Approval
 - **Author:** Okanlawon David
 - **Approvers Required:** Afolabi (Backend), Samuel (ML Pipeline)
-- **Status:** Pending Review
