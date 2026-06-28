@@ -114,6 +114,22 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
+### 2.9 `TEXT_COPIED`
+```json
+"context": {
+  "copied_text": "string",
+  "element_selector": "string" // e.g. "h1.product-title"
+}
+```
+
+### 2.10 `COUPON_REJECTED`
+```json
+"context": {
+  "coupon_code": "string",
+  "reason": "string" // e.g. "expired", "invalid"
+}
+```
+
 ---
 
 ## 3. Shopper Feature Vector (ML Contract)
