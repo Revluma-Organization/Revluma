@@ -14,10 +14,12 @@ venv/
 env/
 .venv/
 
-# ── MLflow ───────────────────────────────────────────────────
+# ── MLflow & ML Artifacts ────────────────────────────────────
 mlruns/
 mlartifacts/
 mlflow.db
+artifacts/
+*.pkl
 
 # ── OS ───────────────────────────────────────────────────────
 .DS_Store
