@@ -11,7 +11,7 @@ import mlflow
 try:
     from dotenv import load_dotenv
     _env_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../../.env")
+        os.path.join(os.path.dirname(__file__), "../../.env")
     )
     load_dotenv(_env_path)
 except ImportError:

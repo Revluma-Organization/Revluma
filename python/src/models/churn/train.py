@@ -47,7 +47,7 @@ def load_training_data():
 
 def build_model():
     """
-    Gradient Boosting classifier with per-merchant MinMaxScaler.
+    Gradient Boosting classifier with per-merchant StandardScaler.
 
     Key signal: purchase_frequency_trend = -1 combined with high
     days_since_last_purchase is the strongest churn predictor.

@@ -52,7 +52,7 @@ def load_training_data():
 
 def build_model():
     """
-    Gradient Boosting classifier with MinMaxScaler preprocessing.
+    Gradient Boosting classifier with StandardScaler preprocessing.
     Two outputs: PSS score and CSS score (two separate regressors or
     multi-output wrapper — to be decided in Week 4).
 
