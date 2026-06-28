@@ -435,6 +435,40 @@ def calculate_trust_page_visited(events: list) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# NEW SMART FEATURES — Proposed in v1.1.1
+# ---------------------------------------------------------------------------
+
+def calculate_failed_coupon_count(events: list) -> int:
+    """
+    Feature: failed_coupon_count
+    Integer count indicating how many times the shopper attempted a rejected discount code.
+    Models: M2, M5
+    Returns: int
+    """
+    pass
+
+
+def calculate_copied_product_title(events: list) -> bool:
+    """
+    Feature: copied_product_title
+    Boolean flag indicating shopper copied the product title (potential price-checking behaviour).
+    Models: M2
+    Returns: bool
+    """
+    pass
+
+
+def calculate_cart_value_vs_avg_order_value_ratio(customer_id: str, events: list, db) -> float:
+    """
+    Feature: cart_value_vs_avg_order_value_ratio
+    Float ratio of the current checkout cart value vs the shopper's lifetime average order value.
+    Models: M1, M5
+    Returns: float
+    """
+    pass
+
+
+# ---------------------------------------------------------------------------
 # DERIVED SCORES — computed from feature_dict after all features are assembled
 # ---------------------------------------------------------------------------
 
@@ -517,7 +551,7 @@ def calculate_rfm_scores(customer_id: str, db) -> dict:
 
 def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
     """
-    Assembles the complete 26-feature Shopper Feature Vector for a session.
+    Assembles the complete 29-feature Shopper Feature Vector for a session.
     Calls all individual feature functions above and returns the unified dict
     passed to any model at inference time.
 
@@ -561,7 +595,10 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
                 "repeat_checkout_attempts"            : int,
                 "device_type_mobile"                  : bool,
                 "shipping_eta_dwell_sec"              : float,
-                "trust_page_visited"                  : bool
+                "trust_page_visited"                  : bool,
+                "failed_coupon_count"                 : int,
+                "copied_product_title"                : bool,
+                "cart_value_vs_avg_order_value_ratio" : float
             }
         }
 
