@@ -18,7 +18,7 @@ Gradient Boosting (regressor)
 |---|---|---|
 | `pss_score` | float | M2 output → `abandoned_carts.pss_score` |
 | `css_score` | float | M2 output → `abandoned_carts.css_score` |
-| `cursor_hesitation_ms_on_price_field` | int | Tracking pixel |
+| `cursor_hesitation` | int | Tracking pixel |
 | `past_orders_total` | int | Order table |
 | `past_orders_with_coupon_pct` | float | Order table |
 | `days_since_last_purchase` | int | Order table |

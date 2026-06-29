@@ -7,10 +7,10 @@ Purpose     : Classifies each shopper as price-sensitive, convenience-
               scores that determine the recovery offer strategy.
 
 Features consumed (7 behavioural + transactional signals):
-    scroll_depth_checkout_pct            (float)  — medium CSS signal
-    tab_switch_count_session             (int)    — low PSS signal
-    checkout_step_abandoned              (int)    — high CSS signal
-    cursor_hesitation_ms_on_price_field  (int)    — HIGH PSS signal
+    scroll_depth_pct            (float)  — medium CSS signal
+    tab_switch_count             (int)    — low PSS signal
+    checkout_step_reached              (int)    — high CSS signal
+    cursor_hesitation  (int)    — HIGH PSS signal
     past_orders_with_coupon_pct          (float)  — HIGH PSS signal
     visited_coupon_page                  (bool)   — medium PSS signal
     searched_discount_terms              (bool)   — medium PSS signal

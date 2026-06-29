@@ -12,7 +12,7 @@ Dependency: M2 must run before M5. M5 requires pss_score and css_score
 Features consumed (9):
     pss_score                            (float) — output of M2
     css_score                            (float) — output of M2
-    cursor_hesitation_ms_on_price_field  (int)   — HIGH price signal
+    cursor_hesitation  (int)   — HIGH price signal
     past_orders_total                    (int)   — loyalty context
     past_orders_with_coupon_pct          (float) — coupon history
     days_since_last_purchase             (int)   — recency

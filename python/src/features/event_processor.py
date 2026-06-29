@@ -85,8 +85,8 @@ def extract_session_timeline(events: list) -> dict:
     used by features that depend on event sequencing and time deltas.
 
     Features that need this:
-        - time_on_checkout_step_sec (Feature 3) — needs step start/end timestamps
-        - cursor_hesitation_ms_on_price_field (Feature 4) — needs focus/blur pairs
+        - time_on_page_ms (Feature 3) — needs step start/end timestamps
+        - cursor_hesitation (Feature 4) — needs focus/blur pairs
         - abandoned_at_shipping_reveal (Feature 13) — needs step 2→exit sequence
         - failed_payment_attempt (Feature 14) — needs payment_failed event timing
 
@@ -114,7 +114,7 @@ def extract_session_timeline(events: list) -> dict:
     Engineering note:
         Tab visibility events should be debounced — ignore duplicate hidden
         transitions within 1 second of each other (per pixel spec).
-        time_on_checkout_step_sec for MVP includes hidden (tab-away) time.
+        time_on_page_ms for MVP includes hidden (tab-away) time.
         Future refinement: subtract hidden duration for true active time.
     """
     pass

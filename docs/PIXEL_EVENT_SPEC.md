@@ -55,7 +55,14 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
-### 2.2 `PRODUCT_VIEW`
+### 2.2 `SCROLL`
+```json
+"context": {
+  "depth_pct": 50
+}
+```
+
+### 2.3 `PRODUCT_VIEW`
 ```json
 "context": {
   "product_id": "string",
@@ -91,10 +98,10 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
-### 2.6 `CHECKOUT_STEP`
+### 2.7 `CHECKOUT_STEP`
 ```json
 "context": {
-  "step_name": "string" // raw platform step
+  "step": 2 // 0=landing, 1=cart, 2=shipping, 3=payment, 4=review, 5=complete
 }
 ```
 
@@ -122,11 +129,32 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
-### 2.10 `COUPON_REJECTED`
+### 2.11 `COUPON_REJECTED`
 ```json
 "context": {
   "coupon_code": "string",
   "reason": "string" // e.g. "expired", "invalid"
+}
+```
+
+### 2.12 `TAB_SWITCH`
+```json
+"context": {
+  "direction": "blur" // or "focus"
+}
+```
+
+### 2.13 `EXIT_INTENT`
+```json
+"context": {
+  "cursor_y_position": 5
+}
+```
+
+### 2.14 `FAILED_PAYMENT`
+```json
+"context": {
+  "reason": "string"
 }
 ```
 
@@ -135,17 +163,17 @@ All events MUST follow this exact envelope. No silent field transformations are 
 ## 3. Shopper Feature Vector (ML Contract)
 
 ### 3.1 Vector Size & Constraint
-- **Fixed Size:** 29 features.
+- **Fixed Size:** 30 features.
 - **Critical Constraint:** Feature names MUST exactly match `pipeline.py`. No aliases, renaming, or deviations are allowed.
 
-### 3.2 Feature Definitions (29 Features)
+### 3.2 Feature Definitions (30 Features)
 
 **Behavioural Features:**
-1. `scroll_depth_checkout_pct`
-2. `tab_switch_count_session`
-3. `time_on_checkout_step_sec`
-4. `cursor_hesitation_ms_on_price_field`
-5. `checkout_step_abandoned`
+1. `scroll_depth_pct`
+2. `tab_switch_count`
+3. `time_on_page_ms`
+4. `cursor_hesitation`
+5. `checkout_step_reached`
 
 **Transactional Features:**
 6. `past_orders_total`
@@ -161,23 +189,24 @@ All events MUST follow this exact envelope. No silent field transformations are 
 14. `failed_payment_attempt`
 15. `local_hour_of_session`
 16. `day_of_week_session`
+17. `time_on_page_ms`
 
 **Extended M2 Sensitivity Signals:**
-17. `google_shopping_referrer`
-18. `time_first_view_to_cart_add_hrs`
-19. `sale_period_purchase_only`
-20. `failed_coupon_attempt`
-21. `merchant_avg_order_value`
-22. `account_creation_abandonment`
-23. `repeat_checkout_attempts`
-24. `device_type_mobile`
-25. `shipping_eta_dwell_sec`
-26. `trust_page_visited`
+18. `google_shopping_referrer`
+19. `time_first_view_to_cart_add_hrs`
+20. `sale_period_purchase_only`
+21. `failed_coupon_attempt`
+22. `merchant_avg_order_value`
+23. `account_creation_abandonment`
+24. `repeat_checkout_attempts`
+25. `device_type_mobile`
+26. `shipping_eta_dwell_sec`
+27. `trust_page_visited`
 
 **New Smart Features:**
-27. `failed_coupon_count`
-28. `copied_product_title`
-29. `cart_value_vs_avg_order_value_ratio`
+28. `failed_coupon_count`
+29. `copied_product_title`
+30. `cart_value_vs_avg_order_value_ratio`
 
 ---
 
@@ -222,7 +251,7 @@ Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown
 
 - **Pixel (Future JS SDK):** Only emits events. No transformation logic beyond the envelope.
 - **Backend (2.BE1.6):** Validates and stores events. Normalises checkout steps. Forwards clean events to the ML pipeline.
-- **ML Pipeline (`pipeline.py`):** Consumes normalised events only. Computes the 29-feature vector strictly as defined.
+- **ML Pipeline (`pipeline.py`):** Consumes normalised events only. Computes the 30-feature vector strictly as defined.
 
 ## 6. Approval
 - **Author:** Okanlawon David

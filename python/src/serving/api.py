@@ -87,8 +87,8 @@ async def predict_abandonment(request: SessionRequest):
     Called every 60 seconds by the session monitoring job.
 
     Features pulled from Redis:
-        scroll_depth_checkout_pct, tab_switch_count_session,
-        time_on_checkout_step_sec, checkout_step_abandoned,
+        scroll_depth_pct, tab_switch_count,
+        time_on_page_ms, checkout_step_reached,
         failed_payment_attempt
 
     Returns abandonment_probability (0.0–1.0) and whether to intervene.
@@ -106,8 +106,8 @@ async def predict_sensitivity(request: SessionRequest):
     Must run BEFORE /predict/offer-value (M5 depends on PSS/CSS output).
 
     Features pulled from Redis:
-        scroll_depth_checkout_pct, tab_switch_count_session,
-        checkout_step_abandoned, cursor_hesitation_ms_on_price_field,
+        scroll_depth_pct, tab_switch_count,
+        checkout_step_reached, cursor_hesitation,
         past_orders_with_coupon_pct, visited_coupon_page,
         searched_discount_terms, abandoned_at_shipping_reveal
 
@@ -165,7 +165,7 @@ async def predict_offer_value(request: SessionRequest):
     Must run AFTER /predict/shopper-sensitivity (M2).
 
     Features pulled from Redis:
-        pss_score, css_score, cursor_hesitation_ms_on_price_field,
+        pss_score, css_score, cursor_hesitation,
         past_orders_total, past_orders_with_coupon_pct,
         days_since_last_purchase, avg_order_value, visited_coupon_page,
         searched_discount_terms, failed_coupon_attempt

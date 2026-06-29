@@ -25,14 +25,14 @@ Gradient Boosting (multi-output regressor → PSS + CSS scores)
 
 | Feature | Type | PSS/CSS | Weight |
 |---|---|---|---|
-| `cursor_hesitation_ms_on_price_field` | int | PSS | HIGH |
+| `cursor_hesitation` | int | PSS | HIGH |
 | `past_orders_with_coupon_pct` | float | PSS | HIGH |
 | `abandoned_at_shipping_reveal` | bool | CSS | VERY HIGH |
-| `checkout_step_abandoned` | int | CSS | HIGH |
+| `checkout_step_reached` | int | CSS | HIGH |
 | `visited_coupon_page` | bool | PSS | MEDIUM |
 | `searched_discount_terms` | bool | PSS | MEDIUM |
-| `scroll_depth_checkout_pct` | float | CSS | MEDIUM |
-| `tab_switch_count_session` | int | PSS | LOW |
+| `scroll_depth_pct` | float | CSS | MEDIUM |
+| `tab_switch_count` | int | PSS | LOW |
 | `google_shopping_referrer` | bool | PSS/CSS | TBD |
 | `time_first_view_to_cart_add_hrs` | float | PSS/CSS | TBD |
 | `sale_period_purchase_only` | bool | PSS/CSS | TBD |

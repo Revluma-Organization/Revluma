@@ -20,7 +20,7 @@ backend/
         ├── config/
         │   └── mlflow_config.py  ← MLflow setup, local + remote
         ├── features/
-        │   ├── pipeline.py       ← 29-feature engineering pipeline skeleton
+        │   ├── pipeline.py       ← 30-feature engineering pipeline skeleton
         │   └── event_processor.py← raw pixel event processor skeleton
         ├── models/
         │   ├── abandonment/      ← M1: Logistic Regression
