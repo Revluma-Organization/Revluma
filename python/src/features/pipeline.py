@@ -758,3 +758,142 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
         Temporal     → 12 (hour), 0 (day of week)
     """
     pass
+
+
+# ---------------------------------------------------------------------------
+# TRANSACTIONAL FEATURES — from database (Customer DB & RFM Layer)
+# ---------------------------------------------------------------------------
+
+def calculate_past_orders_total(customer_id: str, db) -> int:
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT orders_count FROM customers WHERE id = %s", (customer_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                return int(row[0])
+    except Exception:
+        pass
+    return 0
+
+def calculate_avg_order_value(customer_id: str, db) -> float:
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT AVG(total) FROM orders WHERE customer_id = %s", (customer_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                return float(row[0])
+    except Exception:
+        pass
+    return 0.0
+
+def calculate_days_since_last_purchase(customer_id: str, db) -> int:
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT MAX(ordered_at) FROM orders WHERE customer_id = %s", (customer_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                last_order_date = row[0]
+                if isinstance(last_order_date, str):
+                    last_order_date = datetime.fromisoformat(last_order_date.replace('Z', '+00:00'))
+                
+                # Ensure it's timezone-aware (UTC) before subtracting
+                if not last_order_date.tzinfo:
+                    from datetime import timezone
+                    last_order_date = last_order_date.replace(tzinfo=timezone.utc)
+                
+                from datetime import timezone
+                now = datetime.now(timezone.utc)
+                delta = now - last_order_date
+                return max(0, delta.days)
+    except Exception:
+        pass
+    return -1
+
+def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
+    try:
+        with db.cursor() as cursor:
+            query = """
+                SELECT
+                  COUNT(*) FILTER (WHERE ordered_at >= NOW() - INTERVAL '30 days'),
+                  COUNT(*) FILTER (WHERE ordered_at < NOW() - INTERVAL '30 days' AND ordered_at >= NOW() - INTERVAL '60 days')
+                FROM orders WHERE customer_id = %s
+            """
+            cursor.execute(query, (customer_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None and row[1] is not None:
+                recent = int(row[0])
+                past = int(row[1])
+                if recent > past:
+                    return 1
+                elif recent < past:
+                    return -1
+    except Exception:
+        pass
+    return 0
+
+def calculate_coupon_usage_pct(customer_id: str, db) -> float:
+    try:
+        with db.cursor() as cursor:
+            query = """
+                SELECT
+                  COUNT(*) FILTER (WHERE coupon_used = true)::float / NULLIF(COUNT(*), 0)
+                FROM orders
+                WHERE customer_id = %s
+            """
+            cursor.execute(query, (customer_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                return float(row[0])
+    except Exception:
+        pass
+    return 0.0
+
+def calculate_rfm_scores(customer_id: str, db) -> dict:
+    days = calculate_days_since_last_purchase(customer_id, db)
+    orders = calculate_past_orders_total(customer_id, db)
+    aov = calculate_avg_order_value(customer_id, db)
+    
+    # Recency Score
+    if days == -1 or days > 365:
+        r_score = 1
+    elif days < 30:
+        r_score = 5
+    elif days <= 90:
+        r_score = 4
+    elif days <= 180:
+        r_score = 3
+    else:
+        r_score = 2
+        
+    # Frequency Score
+    if orders > 10:
+        f_score = 5
+    elif orders >= 6:
+        f_score = 4
+    elif orders >= 3:
+        f_score = 3
+    elif orders >= 1:
+        f_score = 2
+    else:
+        f_score = 1
+        
+    # Monetary Score
+    if aov > 200:
+        m_score = 5
+    elif aov >= 100:
+        m_score = 4
+    elif aov >= 50:
+        m_score = 3
+    elif aov >= 10:
+        m_score = 2
+    else:
+        m_score = 1
+        
+    return {
+        "rfm_recency_score": r_score,
+        "rfm_frequency_score": f_score,
+        "rfm_monetary_score": m_score,
+        "days_since_last_purchase": days,
+        "past_orders_total": orders,
+        "avg_order_value": aov
+    }
