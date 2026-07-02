@@ -1,29 +1,29 @@
-# ── Environment & Secrets ─────────────────────────────────────
+# Environment & Secrets (NEVER PUSH)
 .env
-*.env
-.env.local
-.env.production
+.env.*
+*.pem
+*.key
+secrets/
 
-# ── Python ───────────────────────────────────────────────────
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.Python
-venv/
-env/
-.venv/
+# Dependencies (NEVER PUSH)
+node_modules/
+Frontend/node_modules/
+Frontend/node/
 
-# ── MLflow ───────────────────────────────────────────────────
-mlruns/
-mlartifacts/
-mlflow.db
+# Build outputs (NEVER PUSH)
+Frontend/dist/
+Frontend/Dashboard/dist/
+Frontend/Dashboard/node_modules/
+Frontend/Dashboard/.next/
 
-# ── OS ───────────────────────────────────────────────────────
+# IDE & OS files (NEVER PUSH)
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
 
-<<<<<<< HEAD
 # Large files (NEVER PUSH)
 *.MOV
 *.mov
@@ -40,10 +40,3 @@ Thumbs.db
 .pytest_cache/
 __pycache__/
 *.pyc
-=======
-# ── IDE ──────────────────────────────────────────────────────
-.vscode/
-.idea/
-*.swp
-__pycache__/
->>>>>>> a03266fc (feat: ML pipeline skeleton, event processor, rfm sync, tests)
