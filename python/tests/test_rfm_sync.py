@@ -10,7 +10,7 @@ import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from python.src.jobs.rfm_sync import get_rfm_segment, calculate_rfm_for_all_customers
+from src.jobs.rfm_sync import get_rfm_segment, calculate_rfm_for_all_customers
 
 
 class TestGetRfmSegment(unittest.TestCase):

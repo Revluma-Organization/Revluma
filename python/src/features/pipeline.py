@@ -782,11 +782,13 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
 # ---------------------------------------------------------------------------
 
 def calculate_past_orders_total(customer_id: str, db) -> int:
+    if not customer_id or db is None:
+        return 0
     try:
         with db.cursor() as cursor:
             cursor.execute("SELECT orders_count FROM customers WHERE id = %s", (customer_id,))
             row = cursor.fetchone()
-            if row and row[0] is not None:
+            if row is not None and row[0] is not None:
                 return int(row[0])
     except Exception:
         pass

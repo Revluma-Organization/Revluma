@@ -359,6 +359,8 @@ def make_mock_db(fetchone_return=None, execute_side_effect=None):
     mock_cursor.fetchone.return_value = fetchone_return
     if execute_side_effect:
         mock_cursor.execute.side_effect = execute_side_effect
+        
+    mock_cursor.__enter__.return_value = mock_cursor
 
     mock_db = MagicMock()
     mock_db.cursor.return_value = mock_cursor
@@ -547,6 +549,7 @@ class TestCalculateRfmScores(unittest.TestCase):
         five_days_ago = datetime.now() - timedelta(days=5)
 
         mock_cursor = MagicMock()
+        mock_cursor.__enter__.return_value = mock_cursor
         # Order of internal calls: days_since_last_purchase, past_orders_total, avg_order_value
         mock_cursor.fetchone.side_effect = [
             (five_days_ago,),  # days_since_last_purchase query
@@ -566,6 +569,7 @@ class TestCalculateRfmScores(unittest.TestCase):
 
     def test_new_customer_no_history(self):
         mock_cursor = MagicMock()
+        mock_cursor.__enter__.return_value = mock_cursor
         mock_cursor.fetchone.side_effect = [
             None,    # no purchase history
             (0,),    # zero orders
@@ -585,6 +589,7 @@ class TestCalculateRfmScores(unittest.TestCase):
 
     def test_db_exception_does_not_propagate(self):
         mock_cursor = MagicMock()
+        mock_cursor.__enter__.return_value = mock_cursor
         mock_cursor.execute.side_effect = Exception("connection dropped")
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_cursor
@@ -600,6 +605,7 @@ class TestCalculateRfmScores(unittest.TestCase):
 
     def test_output_schema_complete(self):
         mock_cursor = MagicMock()
+        mock_cursor.__enter__.return_value = mock_cursor
         mock_cursor.fetchone.side_effect = [None, (0,), None]
         mock_db = MagicMock()
         mock_db.cursor.return_value = mock_cursor
