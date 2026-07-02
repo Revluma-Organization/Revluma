@@ -226,6 +226,7 @@ exports.getProfile = async (req, res, next) => {
   }
 };
 
+
 // LOGOUT
 exports.logout = async (req, res, next) => {
   try {
