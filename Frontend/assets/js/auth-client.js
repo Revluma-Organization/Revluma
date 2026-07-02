@@ -15,7 +15,17 @@ class RevlumaAuth {
         const result = await response.json();
 
         if (!response.ok) {
-            throw new Error(result.error || result.message || 'Registration failed');
+            let errorMsg = result.error || result.message || 'Registration failed';
+            if (result.errors && Array.isArray(result.errors)) {
+                errorMsg = result.errors.join(', ');
+            }
+            // Log full backend response so backend devs can debug
+            console.error('Backend validation error data:', result);
+            
+            // To simulate axios error.response.data for anyone checking console
+            const simulatedAxiosError = new Error(errorMsg);
+            simulatedAxiosError.response = { data: result };
+            throw simulatedAxiosError;
         }
 
         this._storeTokens(result.accessToken || result.token, result.refreshToken, result.user);
@@ -39,7 +49,15 @@ class RevlumaAuth {
         const result = await response.json();
 
         if (!response.ok) {
-            throw new Error(result.error || result.message || 'Login failed');
+            let errorMsg = result.error || result.message || 'Login failed';
+            if (result.errors && Array.isArray(result.errors)) {
+                errorMsg = result.errors.join(', ');
+            }
+            console.error('Backend validation error data:', result);
+            
+            const simulatedAxiosError = new Error(errorMsg);
+            simulatedAxiosError.response = { data: result };
+            throw simulatedAxiosError;
         }
 
         this._storeTokens(result.accessToken || result.token, result.refreshToken, result.user);
