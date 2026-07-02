@@ -35,3 +35,8 @@ Thumbs.db
 *.log
 *.tmp
 .cache/
+
+# Python caching
+.pytest_cache/
+__pycache__/
+*.pyc
