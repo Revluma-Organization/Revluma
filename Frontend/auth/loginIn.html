@@ -409,36 +409,32 @@
       user-select: none;
     }
 
-    .remember-label input[type="checkbox"] {
+    .checkbox-custom {
       appearance: none;
       -webkit-appearance: none;
-      width: 16px;
-      height: 16px;
-      border: 1px solid var(--border-focus);
+      width: 18px;
+      height: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 4px;
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(255, 255, 255, 0.05);
       cursor: pointer;
-      transition: all 0.15s ease;
+      transition: all 0.2s ease;
       flex-shrink: 0;
-      position: relative;
     }
 
-    .remember-label input[type="checkbox"]:checked {
-      background: rgba(255, 255, 255, 0.88);
-      border-color: rgba(255, 255, 255, 0.88);
+    .checkbox-custom:checked {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: rgba(255, 255, 255, 0.9);
     }
 
-    .remember-label input[type="checkbox"]:checked::after {
-      content: '';
-      position: absolute;
-      top: 2px;
-      left: 5px;
-      width: 4px;
-      height: 8px;
-      border: 2px solid #060608;
-      border-top: none;
-      border-left: none;
-      transform: rotate(45deg);
+    .checkbox-custom:checked::after {
+      content: '\2713';
+      display: block;
+      text-align: center;
+      color: #0a0a0a;
+      font-size: 12px;
+      font-weight: bold;
+      line-height: 16px;
     }
 
     .forgot-link {
@@ -920,7 +916,7 @@
         <!-- Remember + Forgot -->
         <div class="row-aux">
           <label class="remember-label">
-            <input type="checkbox" id="rememberMe" />
+            <input type="checkbox" id="rememberMe" class="checkbox-custom mt-0.5" />
             Keep me signed in
           </label>
           <a href="forgottenPassword.html" class="forgot-link">Forgot password?</a>
@@ -1006,7 +1002,7 @@
           const top = (screen.height / 2) - (height / 2);
           const popup = window.open('about:blank', 'GoogleAuth', `width=${width},height=${height},top=${top},left=${left}`);
 
-          popup.document.write(`<body style="font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#fff;color:#202124;">
+          popup.document.write(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#fff;color:#202124;">
             <div style="text-align:center;">
               <svg viewBox="0 0 24 24" width="48" height="48" style="margin-bottom:16px;">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -1019,7 +1015,7 @@
               <div style="margin-top:24px;width:36px;height:36px;border:3px solid #e0e0e0;border-top-color:#4285F4;border-radius:50%;animation:spin 0.8s linear infinite;margin-left:auto;margin-right:auto;"></div>
               <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
             </div>
-          </body>`);
+          </body></html>`);
 
           setTimeout(() => {
             popup.close();
