@@ -239,12 +239,12 @@ class TestDetectPlatform(unittest.TestCase):
 class TestNormalizeCheckoutStep(unittest.TestCase):
 
     def test_shopify_mapping(self):
-        self.assertEqual(normalize_checkout_step("shopify", "shipping_method"), 3)
-        self.assertEqual(normalize_checkout_step("shopify", "payment_method"), 4)
+        self.assertEqual(normalize_checkout_step("shopify", "shipping"), 2)
+        self.assertEqual(normalize_checkout_step("shopify", "payment"), 3)
 
     def test_woocommerce_mapping(self):
-        self.assertEqual(normalize_checkout_step("woocommerce", "shipping"), 3)
-        self.assertEqual(normalize_checkout_step("woocommerce", "payment"), 4)
+        self.assertEqual(normalize_checkout_step("woocommerce", "checkout_shipping"), 2)
+        self.assertEqual(normalize_checkout_step("woocommerce", "checkout_payment"), 3)
 
     def test_already_normalized_int(self):
         self.assertEqual(normalize_checkout_step("shopify", 3), 3)

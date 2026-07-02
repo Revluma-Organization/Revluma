@@ -277,19 +277,20 @@ def detect_platform(merchant_id: str, db) -> str:
     # pass
 
 _SHOPIFY_STEP_MAP = {
-    "contact_information": 1,
+    "product": 0,
     "cart": 1,
-    "shipping_address": 2,
-    "shipping_method": 3,
-    "payment_method": 4,
-    "order_confirmation": 5,
+    "shipping": 2,
+    "payment": 3,
+    "review": 4,
+    "thank_you": 5,
 }
 
 _WOOCOMMERCE_STEP_MAP = {
+    "product_view": 0,
     "cart": 1,
-    "billing": 2,
-    "shipping": 3,
-    "payment": 4,
+    "checkout_shipping": 2,
+    "checkout_payment": 3,
+    "order_review": 4,
     "order_received": 5,
 }
 
