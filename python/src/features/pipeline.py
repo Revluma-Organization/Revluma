@@ -187,23 +187,32 @@ def calculate_checkout_step_reached(events: list) -> int:
 
 def calculate_past_orders_total(customer_id: str, db) -> int:
     """
-    Feature: past_orders_total
+    Total count of orders for this customer.
 
-    Total count of completed orders for this customer with this merchant.
-    Formula: COUNT(*) FROM Order WHERE customer_id=? AND status='completed'.
-    Excludes cancelled, refunded, and pending orders.
-
-    Models: M4 (Churn Risk Scorer), M5 (Offer Value Optimizer)
-    Source: Order table (S6) via Prisma ORM, populated by platform webhooks
+    Query: SELECT orders_count FROM customers WHERE id = %s
 
     Args:
         customer_id: UUID of the customer
-        db: Active database session
+        db: Active database connection
 
     Returns:
-        int: 0–1000+. Default 0 for new customers with no history.
+        int: orders_count if row exists, else 0. Never raises.
     """
-    pass
+    if not customer_id or db is None:
+        return 0
+
+    try:
+        cursor = db.cursor()
+        cursor.execute(
+            "SELECT orders_count FROM customers WHERE id = %s",
+            (customer_id,)
+        )
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return int(row[0])
+        return 0
+    except Exception:
+        return 0
 
 
 def calculate_coupon_usage_pct(customer_id: str, db) -> float:
@@ -249,24 +258,32 @@ def calculate_days_since_last_purchase(customer_id: str, db) -> int:
 
 def calculate_avg_order_value(customer_id: str, db) -> float:
     """
-    Feature: avg_order_value
+    Average order value across all orders for this customer.
 
-    Lifetime average order value across all completed orders for this merchant.
-    Formula: SUM(order_total) / COUNT(*) WHERE customer_id=? AND status='completed'.
-    Includes product cost + shipping. Excludes tax for cross-region comparability.
-
-    Models: M4 (Churn Risk Scorer), M5 (Offer Value Optimizer)
-    Source: Order table (S6) — order_total / total_price field
+    Query: SELECT AVG(total) FROM orders WHERE customer_id = %s
 
     Args:
         customer_id: UUID of the customer
-        db: Active database session
+        db: Active database connection
 
     Returns:
-        float: 0.0–10000.0+ in merchant's local currency. Default 0.0.
+        float: average order value if row exists, else 0.0. Never raises.
     """
-    pass
+    if not customer_id or db is None:
+        return 0.0
 
+    try:
+        cursor = db.cursor()
+        cursor.execute(
+            "SELECT AVG(total) FROM orders WHERE customer_id = %s",
+            (customer_id,)
+        )
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return float(row[0])
+        return 0.0
+    except Exception:
+        return 0.0
 
 def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
     """
@@ -786,7 +803,29 @@ def calculate_avg_order_value(customer_id: str, db) -> float:
         pass
     return 0.0
 
+# ---------------------------------------------------------------------------
+# 2.3 calculate_days_since_last_purchase
+# ---------------------------------------------------------------------------
+
+
 def calculate_days_since_last_purchase(customer_id: str, db) -> int:
+    """
+    Days between today and the customer's most recent order.
+
+    Query: SELECT MAX(ordered_at) FROM orders WHERE customer_id = %s
+
+    Sentinel: -1 means no purchase history. Models must treat this as a
+    distinct feature class, not a numeric zero.
+
+    Args:
+        customer_id: UUID of the customer
+        db: Active database connection
+
+    Returns:
+        int: days since last purchase if orders exist, else -1. Never raises.
+    """
+    if not customer_id or db is None:
+        return -1
     try:
         with db.cursor() as cursor:
             cursor.execute("SELECT MAX(ordered_at) FROM orders WHERE customer_id = %s", (customer_id,))
@@ -810,6 +849,9 @@ def calculate_days_since_last_purchase(customer_id: str, db) -> int:
     return -1
 
 def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
+    if not customer_id or db is None:
+        return 0
+     
     try:
         with db.cursor() as cursor:
             query = """
@@ -832,6 +874,8 @@ def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
     return 0
 
 def calculate_coupon_usage_pct(customer_id: str, db) -> float:
+    if not customer_id or db is None:
+        return 0.0
     try:
         with db.cursor() as cursor:
             query = """

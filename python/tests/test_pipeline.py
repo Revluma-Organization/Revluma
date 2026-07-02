@@ -318,3 +318,300 @@ class TestDatabaseFeatures(unittest.TestCase):
         self.cursor.execute.side_effect = Exception("DB Error")
         res = calculate_rfm_scores("cus_1", self.db)
         self.assertEqual(res["rfm_recency_score"], 1)
+
+# ---------------------------------------------------------------------------
+# Extended Database Tests
+# These tests add additional edge cases and validation without modifying
+# the existing database test suite.
+# ---------------------------------------------------------------------------
+
+"""
+Unit tests for pipeline.py (database-backed feature functions)
+Framework: unittest + unittest.mock.MagicMock
+
+Each function tested for:
+    1. Normal DB response (cursor returns valid row(s))
+    2. No data (cursor returns empty/None result)
+    3. DB exception (cursor.execute raises an exception)
+"""
+
+import unittest
+from unittest.mock import MagicMock
+import sys
+import os
+from datetime import datetime, timedelta
+
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+from src.features.pipeline import (
+    calculate_past_orders_total,
+    calculate_avg_order_value,
+    calculate_days_since_last_purchase,
+    calculate_purchase_frequency_trend,
+    calculate_coupon_usage_pct,
+    calculate_rfm_scores,
+)
+
+
+def make_mock_db(fetchone_return=None, execute_side_effect=None):
+    """Helper to build a mock db with a mock cursor."""
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = fetchone_return
+    if execute_side_effect:
+        mock_cursor.execute.side_effect = execute_side_effect
+
+    mock_db = MagicMock()
+    mock_db.cursor.return_value = mock_cursor
+    return mock_db, mock_cursor
+
+
+class TestCalculatePastOrdersTotal(unittest.TestCase):
+
+    def test_normal_response(self):
+        db, cursor = make_mock_db(fetchone_return=(10,))
+        result = calculate_past_orders_total("cust_1", db)
+        self.assertEqual(result, 10)
+        cursor.execute.assert_called_once()
+        # Verify parameterized query — customer_id passed as param, not interpolated
+        args, kwargs = cursor.execute.call_args
+        self.assertIn("%s", args[0])
+        self.assertEqual(args[1], ("cust_1",))
+
+    def test_no_data(self):
+        db, cursor = make_mock_db(fetchone_return=None)
+        result = calculate_past_orders_total("cust_999", db)
+        self.assertEqual(result, 0)
+
+    def test_null_value(self):
+        db, cursor = make_mock_db(fetchone_return=(None,))
+        result = calculate_past_orders_total("cust_1", db)
+        self.assertEqual(result, 0)
+
+    def test_db_exception(self):
+        db, cursor = make_mock_db(execute_side_effect=Exception("DB connection failed"))
+        try:
+            result = calculate_past_orders_total("cust_1", db)
+        except Exception as e:
+            self.fail(f"calculate_past_orders_total raised: {e}")
+        self.assertEqual(result, 0)
+
+    def test_none_customer_id(self):
+        db, _ = make_mock_db(fetchone_return=(10,))
+        result = calculate_past_orders_total(None, db)
+        self.assertEqual(result, 0)
+
+    def test_none_db(self):
+        result = calculate_past_orders_total("cust_1", None)
+        self.assertEqual(result, 0)
+
+
+class TestCalculateAvgOrderValue(unittest.TestCase):
+
+    def test_normal_response(self):
+        db, cursor = make_mock_db(fetchone_return=(75.50,))
+        result = calculate_avg_order_value("cust_1", db)
+        self.assertEqual(result, 75.50)
+
+    def test_no_data(self):
+        db, cursor = make_mock_db(fetchone_return=None)
+        result = calculate_avg_order_value("cust_999", db)
+        self.assertEqual(result, 0.0)
+
+    def test_null_average(self):
+        db, cursor = make_mock_db(fetchone_return=(None,))
+        result = calculate_avg_order_value("cust_1", db)
+        self.assertEqual(result, 0.0)
+
+    def test_db_exception(self):
+        db, cursor = make_mock_db(execute_side_effect=Exception("query failed"))
+        try:
+            result = calculate_avg_order_value("cust_1", db)
+        except Exception as e:
+            self.fail(f"calculate_avg_order_value raised: {e}")
+        self.assertEqual(result, 0.0)
+
+
+class TestCalculateDaysSinceLastPurchase(unittest.TestCase):
+
+    def test_normal_response(self):
+        ten_days_ago = datetime.now() - timedelta(days=10)
+        db, cursor = make_mock_db(fetchone_return=(ten_days_ago,))
+        result = calculate_days_since_last_purchase("cust_1", db)
+        self.assertIn(result, [9, 10, 11])  # allow for timing flex
+
+    def test_no_orders_returns_sentinel(self):
+        db, cursor = make_mock_db(fetchone_return=(None,))
+        result = calculate_days_since_last_purchase("cust_1", db)
+        self.assertEqual(result, -1)
+
+    def test_no_row_returns_sentinel(self):
+        db, cursor = make_mock_db(fetchone_return=None)
+        result = calculate_days_since_last_purchase("cust_1", db)
+        self.assertEqual(result, -1)
+
+    def test_db_exception_returns_sentinel(self):
+        db, cursor = make_mock_db(execute_side_effect=Exception("boom"))
+        try:
+            result = calculate_days_since_last_purchase("cust_1", db)
+        except Exception as e:
+            self.fail(f"calculate_days_since_last_purchase raised: {e}")
+        self.assertEqual(result, -1)
+
+    def test_invalid_data_type_returns_sentinel(self):
+        db, cursor = make_mock_db(fetchone_return=("not-a-date",))
+        result = calculate_days_since_last_purchase("cust_1", db)
+        self.assertEqual(result, -1)
+
+
+class TestCalculatePurchaseFrequencyTrend(unittest.TestCase):
+
+    def test_increasing_trend(self):
+        db, cursor = make_mock_db(fetchone_return=(5, 2))  # current > previous
+        result = calculate_purchase_frequency_trend("cust_1", db)
+        self.assertEqual(result, 1)
+
+    def test_decreasing_trend(self):
+        db, cursor = make_mock_db(fetchone_return=(1, 5))  # current < previous
+        result = calculate_purchase_frequency_trend("cust_1", db)
+        self.assertEqual(result, -1)
+
+    def test_stable_trend(self):
+        db, cursor = make_mock_db(fetchone_return=(3, 3))
+        result = calculate_purchase_frequency_trend("cust_1", db)
+        self.assertEqual(result, 0)
+
+    def test_no_data(self):
+        db, cursor = make_mock_db(fetchone_return=None)
+        result = calculate_purchase_frequency_trend("cust_1", db)
+        self.assertEqual(result, 0)
+
+    def test_null_values_treated_as_zero(self):
+        db, cursor = make_mock_db(fetchone_return=(None, None))
+        result = calculate_purchase_frequency_trend("cust_1", db)
+        self.assertEqual(result, 0)
+
+    def test_db_exception(self):
+        db, cursor = make_mock_db(execute_side_effect=Exception("query failed"))
+        try:
+            result = calculate_purchase_frequency_trend("cust_1", db)
+        except Exception as e:
+            self.fail(f"calculate_purchase_frequency_trend raised: {e}")
+        self.assertEqual(result, 0)
+
+
+class TestCalculateCouponUsagePct(unittest.TestCase):
+
+    def test_normal_response(self):
+        db, cursor = make_mock_db(fetchone_return=(0.4,))
+        result = calculate_coupon_usage_pct("cust_1", db)
+        self.assertEqual(result, 0.4)
+
+    def test_no_orders_null_result(self):
+        # NULLIF(COUNT(*), 0) makes this NULL when no orders exist
+        db, cursor = make_mock_db(fetchone_return=(None,))
+        result = calculate_coupon_usage_pct("cust_1", db)
+        self.assertEqual(result, 0.0)
+
+    def test_no_row(self):
+        db, cursor = make_mock_db(fetchone_return=None)
+        result = calculate_coupon_usage_pct("cust_1", db)
+        self.assertEqual(result, 0.0)
+
+    def test_zero_pct(self):
+        db, cursor = make_mock_db(fetchone_return=(0.0,))
+        result = calculate_coupon_usage_pct("cust_1", db)
+        self.assertEqual(result, 0.0)
+
+    def test_full_pct(self):
+        db, cursor = make_mock_db(fetchone_return=(1.0,))
+        result = calculate_coupon_usage_pct("cust_1", db)
+        self.assertEqual(result, 1.0)
+
+    def test_db_exception(self):
+        db, cursor = make_mock_db(execute_side_effect=Exception("boom"))
+        try:
+            result = calculate_coupon_usage_pct("cust_1", db)
+        except Exception as e:
+            self.fail(f"calculate_coupon_usage_pct raised: {e}")
+        self.assertEqual(result, 0.0)
+
+
+class TestCalculateRfmScores(unittest.TestCase):
+    """
+    These tests mock the cursor at a lower level since calculate_rfm_scores
+    calls three other functions internally, each issuing its own query.
+    We use side_effect on fetchone to return different values per call.
+    """
+
+    def test_normal_high_value_customer(self):
+        five_days_ago = datetime.now() - timedelta(days=5)
+
+        mock_cursor = MagicMock()
+        # Order of internal calls: days_since_last_purchase, past_orders_total, avg_order_value
+        mock_cursor.fetchone.side_effect = [
+            (five_days_ago,),  # days_since_last_purchase query
+            (25,),              # past_orders_total query
+            (250.0,),            # avg_order_value query
+        ]
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_cursor
+
+        result = calculate_rfm_scores("cust_1", mock_db)
+
+        self.assertEqual(result["rfm_recency_score"], 5)
+        self.assertEqual(result["rfm_frequency_score"], 5)
+        self.assertEqual(result["rfm_monetary_score"], 5)
+        self.assertEqual(result["past_orders_total"], 25)
+        self.assertEqual(result["avg_order_value"], 250.0)
+
+    def test_new_customer_no_history(self):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.side_effect = [
+            None,    # no purchase history
+            (0,),    # zero orders
+            None,    # no avg
+        ]
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_cursor
+
+        result = calculate_rfm_scores("cust_new", mock_db)
+
+        self.assertEqual(result["days_since_last_purchase"], -1)
+        self.assertEqual(result["rfm_recency_score"], 1)
+        self.assertEqual(result["past_orders_total"], 0)
+        self.assertEqual(result["rfm_frequency_score"], 1)
+        self.assertEqual(result["avg_order_value"], 0.0)
+        self.assertEqual(result["rfm_monetary_score"], 1)
+
+    def test_db_exception_does_not_propagate(self):
+        mock_cursor = MagicMock()
+        mock_cursor.execute.side_effect = Exception("connection dropped")
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_cursor
+
+        try:
+            result = calculate_rfm_scores("cust_1", mock_db)
+        except Exception as e:
+            self.fail(f"calculate_rfm_scores raised: {e}")
+
+        self.assertEqual(result["days_since_last_purchase"], -1)
+        self.assertEqual(result["past_orders_total"], 0)
+        self.assertEqual(result["avg_order_value"], 0.0)
+
+    def test_output_schema_complete(self):
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.side_effect = [None, (0,), None]
+        mock_db = MagicMock()
+        mock_db.cursor.return_value = mock_cursor
+
+        result = calculate_rfm_scores("cust_1", mock_db)
+
+        expected_keys = {
+            "rfm_recency_score", "rfm_frequency_score", "rfm_monetary_score",
+            "days_since_last_purchase", "past_orders_total", "avg_order_value"
+        }
+        self.assertEqual(set(result.keys()), expected_keys)
+
+
+if __name__ == "__main__":
+    unittest.main()
