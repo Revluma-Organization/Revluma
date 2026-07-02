@@ -1,40 +1,48 @@
 // API Configuration
-const API_BASE_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:8080/api/v1'
-  : 'https://your-production-backend-url/api/v1';
+(function() {
+  window.REVLUMA_API_BASE = 'http://localhost:3000/api/v1';
+})();
 
-async function callAPI(endpoint, method = 'GET', data = null) {
-  const options = {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  };
-
-  if (data) {
-    options.body = JSON.stringify(data);
-  }
-
+// Waitlist API Functions
+async function submitWaitlistForm(formData) {
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+    const response = await fetch(`${window.REVLUMA_API_BASE}/waitlist/join`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(formData)
+    });
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.error || result.errors?.join(', ') || 'API Error');
+      throw new Error(result.error || (result.errors ? result.errors.join(', ') : null) || 'API Error');
     }
 
     return result;
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('Waitlist API Error:', error);
     throw error;
   }
 }
 
-// Waitlist API Functions
-async function submitWaitlistForm(formData) {
-  return callAPI('/waitlist/join', 'POST', formData);
-}
-
 async function getWaitlistStats() {
-  return callAPI('/waitlist/stats', 'GET');
+  try {
+    const response = await fetch(`${window.REVLUMA_API_BASE}/waitlist/stats`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || (result.errors ? result.errors.join(', ') : null) || 'API Error');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Waitlist API Error:', error);
+    throw error;
+  }
 }

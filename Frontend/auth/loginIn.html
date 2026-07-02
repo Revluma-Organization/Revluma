@@ -1544,9 +1544,15 @@
 
       setLoading(true);
 
-      // TODO Week 2: call POST /api/auth/login here with body { email, password }
-      console.log('Ready for API Integration:', { email, passwordLength: password.length });
-      
+      try {
+        await window.revlumaAuth.login(email, password);
+        window.location.href = '/dashboard/overview';
+      } catch (err) {
+        showError(err.message || 'An error occurred during sign in. Please try again.');
+        console.error('Login failed:', err);
+      } finally {
+        setLoading(false);
+      }
     });
 
     // ================================================================

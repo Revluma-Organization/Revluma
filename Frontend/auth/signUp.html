@@ -639,8 +639,51 @@
             return;
           }
 
-          // TODO Week 2: call POST /api/auth/register here with body { firstName, lastName, email, password }
-          console.log('Ready for API Integration (Register):', { firstName, lastName, email });
+          const payload = {
+            account: {
+              firstName,
+              lastName,
+              email,
+              password: pw,
+              confirmPassword: cpw,
+              termsAgreed: termsCheckbox.checked
+            },
+            storeSetup: {
+              brand_name: "",
+              storeUrl: "",
+              storeCategory: "",
+              country: ""
+            }
+          };
+
+          const btn = form.querySelector('button[type="submit"]');
+          const originalText = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = 'Creating account...';
+
+          let globalError = document.getElementById('globalAuthError');
+          if (!globalError) {
+            globalError = document.createElement('div');
+            globalError.id = 'globalAuthError';
+            globalError.style.color = '#ef4444';
+            globalError.style.fontSize = '0.875rem';
+            globalError.style.marginBottom = '1rem';
+            globalError.style.textAlign = 'center';
+            form.insertBefore(globalError, form.firstChild);
+          }
+          globalError.classList.add('hidden');
+
+          window.revlumaAuth.register(payload)
+            .then(() => {
+              window.location.href = '/dashboard/overview';
+            })
+            .catch(err => {
+              globalError.textContent = err.message || 'An error occurred during registration.';
+              globalError.classList.remove('hidden');
+              btn.disabled = false;
+              btn.innerHTML = originalText;
+              console.error('Registration failed:', err);
+            });
         });
       }
 
