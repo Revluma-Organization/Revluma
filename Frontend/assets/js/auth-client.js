@@ -1,6 +1,6 @@
 class RevlumaAuth {
     constructor() {
-        this.apiBase = window.REVLUMA_API_BASE || 'http://localhost:3000/api/v1';
+        this.apiBase = window.REVLUMA_API_BASE || 'http://localhost:8000/api/v1';
     }
 
     async register(payload) {

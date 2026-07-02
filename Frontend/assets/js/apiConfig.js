@@ -1,6 +1,6 @@
 // API Configuration
 (function() {
-  window.REVLUMA_API_BASE = 'http://localhost:3000/api/v1';
+  window.REVLUMA_API_BASE = 'http://localhost:8000/api/v1';
 })();
 
 // Waitlist API Functions
