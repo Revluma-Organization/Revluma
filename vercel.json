@@ -2,6 +2,7 @@
   "installCommand": "cd Frontend/Dashboard && npm install --include=dev",
   "buildCommand": "cd Frontend/Dashboard && npm run build",
   "outputDirectory": "Frontend",
+  "cleanUrls": true,
   "headers": [
     {
       "source": "/assets/videos/(.*)\\.mp4",
