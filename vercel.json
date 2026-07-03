@@ -23,7 +23,7 @@
   "rewrites": [
     {
       "source": "/dashboard/:path*",
-      "destination": "/dashboard/index.html"
+      "destination": "/dashboard/index"
     }
   ]
 }
