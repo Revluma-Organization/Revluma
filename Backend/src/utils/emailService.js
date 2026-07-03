@@ -2,6 +2,15 @@ const sgMail = require('@sendgrid/mail');
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 const emailService = {
   async sendWelcomeEmail(recipientEmail, userData) {
     try {
@@ -169,7 +178,7 @@ const emailService = {
 
                 <!-- Main Greeting -->
                 <h1>Welcome to the Revluma Waitlist! 🎉🚀</h1>
-                <p class="greeting">Hi <strong>${userData.full_name}</strong>,</p>
+                <p class="greeting">Hi <strong>${escapeHtml(userData.full_name)}</strong>,</p>
 
                 <!-- Waitlist Position Box -->
                 <div class="position-box">

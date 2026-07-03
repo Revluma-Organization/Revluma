@@ -1,6 +1,10 @@
 // API Configuration
 (function() {
-  window.REVLUMA_API_BASE = 'http://localhost:8000/api/v1';
+  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  // TODO: replace with your actual Render backend URL
+  window.REVLUMA_API_BASE = isLocal
+    ? 'http://localhost:8000/api/v1'
+    : 'https://revluma-backend.onrender.com/api/v1';
 })();
 
 // Waitlist API Functions

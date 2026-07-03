@@ -21,7 +21,8 @@ exports.validateWaitlist = [
   body('work_email')
     .trim()
     .isEmail()
-    .withMessage('Valid email is required'),
+    .withMessage('Valid email is required')
+    .customSanitizer((value) => value.toLowerCase()),
   body('company_name')
     .trim()
     .notEmpty()
@@ -60,5 +61,6 @@ exports.validateWaitlist = [
   body('retention_problem').optional().isBoolean(),
   body('revenue_visibility_problem').optional().isBoolean(),
   body('interested_in_beta').optional().isBoolean(),
+  body('hp_field').optional().trim(), // honeypot — real users never see/fill this
   validateRequest,
 ];

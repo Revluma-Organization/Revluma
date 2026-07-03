@@ -45,6 +45,18 @@ function calculateLeadScore(data) {
 
 exports.joinWaitlist = async (req, res, next) => {
   try {
+    // Honeypot — bots tend to fill every field they can find; real users never
+    // see this one (it's visually hidden off-screen). If it's filled, pretend
+    // to succeed without touching the DB or sending an email, so the bot has
+    // no signal that it was caught.
+    if (req.body.hp_field) {
+      return res.status(201).json({
+        success: true,
+        message: 'Successfully joined the waitlist!',
+        data: { waitlist_position: 0 },
+      });
+    }
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({

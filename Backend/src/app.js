@@ -1,11 +1,16 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const globalErrorHandler = require("./middlewares/globalHandler")
 const authRoutes = require('./route/authRoute');
 const waitlistRoutes = require('./route/waitlistRoute');
 
 const app = express();
+
+app.set('trust proxy', 1);
+
+app.use(helmet());
 
 //Global Middlewares
 app.use(cors({
