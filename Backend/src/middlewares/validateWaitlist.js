@@ -61,6 +61,6 @@ exports.validateWaitlist = [
   body('retention_problem').optional().isBoolean(),
   body('revenue_visibility_problem').optional().isBoolean(),
   body('interested_in_beta').optional().isBoolean(),
-  body('hp_field').optional().trim(), // honeypot — real users never see/fill this
+  body('hp_field').optional().isBoolean(), // honeypot — real users never see/check this
   validateRequest,
 ];

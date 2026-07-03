@@ -50,6 +50,9 @@ exports.joinWaitlist = async (req, res, next) => {
     // to succeed without touching the DB or sending an email, so the bot has
     // no signal that it was caught.
     if (req.body.hp_field) {
+      console.warn(
+        `[waitlist] honeypot triggered — email: ${req.body.work_email || 'n/a'}, ip: ${req.ip}, ua: ${req.get('user-agent') || 'n/a'}`
+      );
       return res.status(201).json({
         success: true,
         message: 'Successfully joined the waitlist!',
