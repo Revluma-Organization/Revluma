@@ -20,18 +20,18 @@
       ]
     }
   ],
-  "rewrites": [
+    "rewrites": [
     {
-      "source": "/dashboard/assets/(.*)",
-      "destination": "/Dashboard/dist/assets/$1"
+      "source": "/dashboard/assets/:path*",
+      "destination": "/Dashboard/dist/assets/:path*"
     },
     {
-      "source": "/dashboard/(.*)",
+      "source": "/dashboard/:path*",
       "destination": "/Dashboard/dist/index.html"
     },
     {
       "source": "/dashboard",
       "destination": "/Dashboard/dist/index.html"
     }
-  ]
+    ]
 }
