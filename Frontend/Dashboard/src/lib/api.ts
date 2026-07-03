@@ -1,21 +1,3 @@
-// src/lib/api.ts
-// Task 1.FE2.3 — Centralized HTTP Layer
-//
-// The single HTTP communication layer for the entire Revluma frontend.
-// No component ever calls raw fetch() — everything goes through api.get / post / put / delete.
-//
-// What it does
-// • baseURL from import.meta.env.VITE_API_URL (.env.local)
-// • Every request automatically gets Authorization: Bearer <token>
-//   Token is read from Zustand's persisted "rv-auth" localStorage key (state.csrfToken)
-// • 401 responses: clears auth state, redirects to /login
-//
-// Week 3 wiring example
-// import { api } from "@/lib/api";
-// const res = await api.get<KpiResponse>("/dashboard/kpis", { period: "7d" });
-// setKpi(res.data.kpi);
-
-// Types
 
 export interface ApiResponse<T = unknown> {
   data: T;
@@ -80,7 +62,7 @@ const BASE_URL: string =
 // Core request
 
 async function request<T = unknown>(
-  method: "GET" | "POST" | "PUT" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   options: { params?: Record<string, unknown>; body?: unknown } = {},
 ): Promise<ApiResponse<T>> {
@@ -141,11 +123,15 @@ function put<T = unknown>(path: string, body?: unknown): Promise<ApiResponse<T>>
   return request<T>("PUT", path, { body });
 }
 
+function patch<T = unknown>(path: string, body?: unknown): Promise<ApiResponse<T>> {
+  return request<T>("PATCH", path, { body });
+}
+
 function del<T = unknown>(path: string): Promise<ApiResponse<T>> {
   return request<T>("DELETE", path);
 }
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
-export const api = { get, post, put, delete: del };
+export const api = { get, post, put, patch, delete: del };
 export default api;

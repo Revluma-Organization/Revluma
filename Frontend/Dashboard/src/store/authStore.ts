@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { api } from '@/lib/api';
 
 export interface User {
   id: string;
@@ -38,25 +39,10 @@ interface AuthActions {
 
 type AuthStore = AuthState & AuthActions;
 
-const MOCK_USER: User = {
-  id: "mock-user-001",
-  email: "alex@mystore.com",
-  full_name: "Alex Johnson",
-  display_name: "Alex",
-  avatar_url: null,
-  role: "admin",
-  tenant_id: "tenant-001",
-  email_verified: true,
-  onboarding_status: "completed",
-  membership_tier: "pro",
-  account_status: "active",
-  last_login_at: new Date().toISOString(),
-};
-
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set) => ({
-      user: MOCK_USER,
+      user: null,
       loading: false,
       error: null,
       csrfToken: null,
@@ -67,34 +53,104 @@ export const useAuthStore = create<AuthStore>()(
       setError: (error) => set({ error }),
       setCsrfToken: (csrfToken) => set({ csrfToken }),
       setHydrated: (isHydrated) => set({ isHydrated }),
-
       clearError: () => set({ error: null }),
 
-      checkSession: async () => {
-        set({ user: MOCK_USER, error: null, loading: false });
+      login: async (email, password) => {
+        set({ loading: true, error: null });
+        try {
+          const res = await api.post<{
+            data: {
+              access_token: string;
+              refresh_token: string;
+              user: { id: string; full_name: string; email: string };
+            };
+          }>('/auth/login', { account: { email, password } });
+
+          const { access_token, refresh_token, user } = res.data.data;
+
+          // Store refresh token separately for the refresh endpoint
+          localStorage.setItem('revluma_refresh_token', refresh_token);
+
+          set({
+            csrfToken: access_token,
+            user: {
+              id: user.id,
+              email: user.email,
+              full_name: user.full_name,
+              display_name: user.full_name.split(' ')[0],
+              avatar_url: null,
+              role: 'admin',
+              tenant_id: '',
+              email_verified: true,
+              onboarding_status: 'completed',
+            },
+            loading: false,
+            error: null,
+          });
+        } catch {
+          set({ loading: false, error: 'Invalid email or password. Please try again.' });
+        }
       },
 
-      login: async (_email, _password) => {
-        set({ user: MOCK_USER, loading: false, error: null });
+      checkSession: async () => {
+        set({ loading: true });
+        try {
+          const res = await api.get<{
+            data: {
+              id: string;
+              full_name: string;
+              email: string;
+              email_verified: boolean;
+              onboarding_completed: boolean;
+              organizations: Array<{ id: string; company_name: string }>;
+            };
+          }>('/auth/me');
+
+          const u = res.data.data;
+          set({
+            user: {
+              id: u.id,
+              email: u.email,
+              full_name: u.full_name,
+              display_name: u.full_name.split(' ')[0],
+              avatar_url: null,
+              role: 'admin',
+              tenant_id: u.organizations?.[0]?.id ?? '',
+              email_verified: u.email_verified ?? false,
+              onboarding_status: u.onboarding_completed ? 'completed' : 'pending',
+            },
+            loading: false,
+          });
+        } catch {
+          // 401 is handled by api.ts (clears token + redirects)
+          // Any other error: silently clear user so ProtectedRoute redirects to login
+          set({ user: null, csrfToken: null, loading: false });
+        }
       },
 
       logout: async () => {
-        set({ user: null, csrfToken: null, loading: false });
-        window.location.href = '/auth/loginIn';
-      }
+        try {
+          await api.post('/auth/logout');
+        } catch {
+          // ignore — clear session regardless
+        }
+        localStorage.removeItem('revluma_refresh_token');
+        set({ user: null, csrfToken: null });
+        window.location.href = '/login';
+      },
     }),
     {
       name: 'rv-auth',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         user: state.user,
-        csrfToken: state.csrfToken
+        csrfToken: state.csrfToken,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.setHydrated(true);
         }
-      }
+      },
     }
   )
 );
