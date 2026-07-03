@@ -51,7 +51,8 @@ function handleUnauthorized(): void {
   } catch {
     localStorage.removeItem("rv-auth");
   }
-  window.location.href = "/login";
+  // Disabled for mockup mode to allow viewing dashboard without auth
+  // window.location.href = "/login";
 }
 
 // Base URL
