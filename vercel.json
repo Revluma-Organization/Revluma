@@ -1,6 +1,6 @@
 {
   "installCommand": "cd Frontend/Dashboard && npm install --include=dev",
-  "buildCommand": "cd Frontend/Dashboard && npm run build -- --outDir ../_dashboard_build --emptyOutDir",
+  "buildCommand": "cd Frontend/Dashboard && npm run build -- --outDir ../dashboard --emptyOutDir",
   "outputDirectory": "Frontend",
   "cleanUrls": true,
   "headers": [
@@ -22,12 +22,8 @@
   ],
   "rewrites": [
     {
-      "source": "/dashboard/assets/:path*",
-      "destination": "/_dashboard_build/assets/:path*"
-    },
-    {
       "source": "/dashboard/:path*",
-      "destination": "/_dashboard_build/index.html"
+      "destination": "/dashboard/index.html"
     }
   ]
 }
