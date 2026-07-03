@@ -1,4 +1,3 @@
-// API Configuration
 (function() {
   const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
   // TODO: replace with your actual Render backend URL

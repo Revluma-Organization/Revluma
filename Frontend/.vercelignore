@@ -1,0 +1,3 @@
+# Override .gitignore so Vercel includes the generated dist folders
+# Do not ignore dist
+!Dashboard/dist
