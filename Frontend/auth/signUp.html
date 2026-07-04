@@ -679,7 +679,8 @@
 
           window.revlumaAuth.register(payload)
             .then(() => {
-              window.location.href = '/dashboard/overview';
+              localStorage.setItem('signup_email', payload.email);
+              window.location.href = 'verifyEmail.html';
             })
             .catch(err => {
               globalError.textContent = err.message || 'An error occurred during registration.';
