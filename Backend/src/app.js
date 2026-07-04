@@ -8,7 +8,8 @@ const waitlistRoutes = require('./route/waitlistRoute');
 
 const app = express();
 
-app.set('trust proxy', 1);
+// Trust the first reverse proxy
+app.set("trust proxy", 1);
 
 app.use(helmet());
 
