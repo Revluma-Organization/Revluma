@@ -6,6 +6,9 @@ const authRoutes = require('./route/authRoute');
 
 const app = express();
 
+// Trust the first reverse proxy
+app.set("trust proxy", 1);
+
 //Global Middlewares
 app.use(cors({
     origin: process.env.FRONTEND_URL, // Update this as frontend scales
