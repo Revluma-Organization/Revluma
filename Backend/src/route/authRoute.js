@@ -9,8 +9,8 @@ const { authenticateToken } = require('../middlewares/authMiddleware');
 
 // Simple protected profile endpoint using the new middleware layer
 router.get('/getProfile', authenticateToken, authController.getProfile);
-router.post('/register', validateRegister, authController.register);
-router.post('/login', validateLogin, authController.login);
+router.post('/register', validateRegister, registerLimiter, authController.register);
+router.post('/login', validateLogin,loginLimiter,  authController.login);
 router.post('/logout', authenticateToken, authController.logout);
 
 module.exports = router;
