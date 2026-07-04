@@ -15,10 +15,10 @@ Logistic Regression (binary classifier)
 
 | Feature | Type | Source | Signal meaning |
 |---|---|---|---|
-| `scroll_depth_checkout_pct` | float | Tracking pixel | Low scroll = disengaged |
-| `tab_switch_count_session` | int | Tracking pixel | High switches = comparison shopping |
-| `time_on_checkout_step_sec` | float | Tracking pixel + checkout table | Very long = hesitation |
-| `checkout_step_abandoned` | int | Pixel + checkout table | Step 3–4 = near-miss abandonment |
+| `scroll_depth_pct` | float | Tracking pixel | Low scroll = disengaged |
+| `tab_switch_count` | int | Tracking pixel | High switches = comparison shopping |
+| `time_on_page_ms` | float | Tracking pixel + checkout table | Very long = hesitation |
+| `checkout_step_reached` | int | Pixel + checkout table | Step 3–4 = near-miss abandonment |
 | `failed_payment_attempt` | bool | Platform webhooks | True = intent was there, friction blocked |
 
 ## Data sources

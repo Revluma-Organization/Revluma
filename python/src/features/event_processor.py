@@ -12,16 +12,25 @@ This sits between:
                      → Feature Engineering Pipeline (pipeline.py)
                      → Redis Feature Store (S8)
 
-Source: FEATURE_VECTOR_SPEC v1.0.0 + AI_DATA_REQUIREMENTS v1.0.0
-
-DO NOT implement logic yet. Skeletons and docstrings only.
-Implementation begins in Week 4.
 """
 
 from __future__ import annotations
+from datetime import datetime
 from typing import Any
 
-
+def _safe_parse_timestamp(ts):
+    """
+    Attempts to parse an ISO 8601 timestamp string into a datetime object.
+    Returns None on any failure — never raises.
+    """
+    if not ts or not isinstance(ts, str):
+        return None
+    try:
+        normalized = ts.replace("Z", "+00:00")
+        return datetime.fromisoformat(normalized)
+    except (ValueError, TypeError):
+        return None
+    
 def parse_raw_event(raw_payload: dict) -> dict:
     """
     Validates and normalises a single raw event payload from the tracking pixel.
@@ -51,9 +60,49 @@ def parse_raw_event(raw_payload: dict) -> dict:
         Pixel gap — the generic POST /api/tracking/event endpoint is marked
         "TO BUILD" in the engineering spec. This processor must handle
         malformed or partial payloads gracefully (missing fields, null values).
-        Never raise an exception on bad input — log and continue.
     """
-    pass
+    if not isinstance(raw_payload, dict):
+        return {
+            "event_type": "unknown",
+            "session_id": None,
+            "timestamp": None,
+            "payload": {},
+            "_valid": False
+        }
+
+    event_type = raw_payload.get("event_type")
+    session_id = raw_payload.get("session_id")
+    timestamp = raw_payload.get("timestamp")
+    payload = raw_payload.get("payload")
+
+    is_valid = True
+
+    if not event_type or not isinstance(event_type, str):
+        event_type = "unknown"
+        is_valid = False
+
+    if not session_id or not isinstance(session_id, str):
+        session_id = None
+        is_valid = False
+
+    if not timestamp or not isinstance(timestamp, str):
+        timestamp = None
+        is_valid = False
+    elif _safe_parse_timestamp(timestamp) is None:
+        is_valid = False
+
+    if not isinstance(payload, dict):
+        payload = {}
+
+    return {
+        "event_type": event_type,
+        "session_id": session_id,
+        "timestamp": timestamp,
+        "payload": payload,
+        "_valid": is_valid
+    }
+
+    # pass
 
 
 def filter_events_by_type(events: list, event_type: str) -> list:
@@ -76,7 +125,16 @@ def filter_events_by_type(events: list, event_type: str) -> list:
         list: Subset of events matching the given event_type.
               Returns empty list if no matching events found.
     """
-    pass
+    if not isinstance(events, list):
+        return []
+
+    result = []
+    for e in events:
+        if isinstance(e, dict) and e.get("event_type") == event_type:
+            result.append(e)
+    return result
+
+    # pass
 
 
 def extract_session_timeline(events: list) -> dict:
@@ -117,7 +175,54 @@ def extract_session_timeline(events: list) -> dict:
         time_on_checkout_step_sec for MVP includes hidden (tab-away) time.
         Future refinement: subtract hidden duration for true active time.
     """
-    pass
+    empty_result = {
+        "session_start": None,
+        "session_end": None,
+        "checkout_steps": [],
+        "tab_hidden_events": [],
+        "exit_intent_at": None,
+        "payment_failed_at": None
+    }
+
+    if not isinstance(events, list) or len(events) == 0:
+        return empty_result
+
+    valid_events = [e for e in events if isinstance(e, dict)]
+    if not valid_events:
+        return empty_result
+
+    def _sort_key(e):
+        parsed = _safe_parse_timestamp(e.get("timestamp"))
+        return (parsed is None, parsed or datetime.min)
+
+    sorted_events = sorted(valid_events, key=_sort_key)
+
+    timestamped = [e for e in sorted_events if _safe_parse_timestamp(e.get("timestamp")) is not None]
+    session_start = timestamped[0]["timestamp"] if timestamped else None
+    session_end = timestamped[-1]["timestamp"] if timestamped else None
+
+    checkout_steps = [e for e in sorted_events if e.get("event_type") == "checkout_step"]
+
+    tab_hidden_events = [
+        e for e in sorted_events
+        if e.get("event_type") == "tab_switch" and e.get("payload", {}).get("direction") == "blur"
+    ]
+
+    exit_intent_events = [e for e in sorted_events if e.get("event_type") == "exit_intent"]
+    exit_intent_at = exit_intent_events[0]["timestamp"] if exit_intent_events else None
+
+    failed_payment_events = [e for e in sorted_events if e.get("event_type") == "failed_payment"]
+    payment_failed_at = failed_payment_events[0]["timestamp"] if failed_payment_events else None
+
+    return {
+        "session_start": session_start,
+        "session_end": session_end,
+        "checkout_steps": checkout_steps,
+        "tab_hidden_events": tab_hidden_events,
+        "exit_intent_at": exit_intent_at,
+        "payment_failed_at": payment_failed_at
+    }
+    # pass
 
 
 def detect_platform(merchant_id: str, db) -> str:
@@ -148,7 +253,46 @@ def detect_platform(merchant_id: str, db) -> str:
         SELECT platform FROM store_config WHERE merchant_id = <merchant_id>
         Cache result in Redis to avoid repeated DB lookups per event.
     """
-    pass
+    valid_platforms = {"shopify", "woocommerce"}
+
+    if not merchant_id or db is None:
+        return "unknown"
+
+    try:
+        cursor = db.cursor()
+        cursor.execute(
+            "SELECT platform FROM stores WHERE merchant_id = %s",
+            (merchant_id,)
+        )
+        row = cursor.fetchone()
+
+        if not row or not row[0]:
+            return "unknown"
+
+        platform = str(row[0]).strip().lower()
+        return platform if platform in valid_platforms else "unknown"
+
+    except Exception:
+        return "unknown"
+    # pass
+
+_SHOPIFY_STEP_MAP = {
+    "product": 0,
+    "cart": 1,
+    "shipping": 2,
+    "payment": 3,
+    "review": 4,
+    "thank_you": 5,
+}
+
+_WOOCOMMERCE_STEP_MAP = {
+    "product_view": 0,
+    "cart": 1,
+    "checkout_shipping": 2,
+    "checkout_payment": 3,
+    "order_review": 4,
+    "order_received": 5,
+}
 
 
 def normalize_checkout_step(platform: str, platform_step: Any) -> int:
@@ -182,7 +326,21 @@ def normalize_checkout_step(platform: str, platform_step: Any) -> int:
         directly — this function is a safety fallback for any cases where
         the raw platform value leaks through.
     """
-    pass
+    if isinstance(platform_step, int) and 0 <= platform_step <= 5:
+        return platform_step
+
+    if not isinstance(platform_step, str) or not platform:
+        return 0
+
+    step_key = platform_step.strip().lower()
+    platform_key = platform.strip().lower()
+
+    if platform_key == "shopify":
+        return _SHOPIFY_STEP_MAP.get(step_key, 0)
+    elif platform_key == "woocommerce":
+        return _WOOCOMMERCE_STEP_MAP.get(step_key, 0)
+    return 0
+    # pass
 
 
 def group_events_by_session(events: list) -> dict:
@@ -211,4 +369,23 @@ def group_events_by_session(events: list) -> dict:
             Transactional → Every 5 min (active) / hourly (all profiles)
             Temporal     → Captured once at session start, static for session
     """
-    pass
+    if not isinstance(events, list) or len(events) == 0:
+        return {}
+
+    grouped: dict = {}
+
+    for e in events:
+        if not isinstance(e, dict):
+            continue
+        session_id = e.get("session_id") or "__no_session__"
+        grouped.setdefault(session_id, []).append(e)
+
+    def _sort_key(e):
+        parsed = _safe_parse_timestamp(e.get("timestamp"))
+        return (parsed is None, parsed or datetime.min)
+
+    for session_id in grouped:
+        grouped[session_id] = sorted(grouped[session_id], key=_sort_key)
+
+    return grouped
+    # pass

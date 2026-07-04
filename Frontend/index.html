@@ -12,6 +12,7 @@
     <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,500,400&f[]=inter@400,700&display=swap"
         rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="./assets/js/apiConfig.js"></script>
     <style>
         html {
@@ -757,7 +758,33 @@
         .int-track:hover {
             animation-play-state: paused;
         }
-    </style>
+.checkbox-custom {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+    }
+    .checkbox-custom:checked {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: rgba(255, 255, 255, 0.9);
+    }
+    .checkbox-custom:checked::after {
+      content: '\2713';
+      display: block;
+      text-align: center;
+      color: #0a0a0a;
+      font-size: 12px;
+      font-weight: bold;
+      line-height: 16px;
+      font-family: 'DM Sans', system-ui, sans-serif;
+    }
+</style>
 
     <script src="assets/js/countries.js"></script>
     <script>
@@ -800,8 +827,98 @@
           this.showStateDropdown = false;
         }
       }));
+
+      Alpine.data('waitlistForm', () => ({
+        isValid: false,
+        submitting: false,
+        errorMsg: '',
+
+        // Selects that have a "Custom" option paired with a `<field>_custom` text input.
+        // If the user picked Custom and typed something, send the typed value instead
+        // of the literal string "Custom".
+        resolveCustom(form, field) {
+          const select = form.elements[field];
+          const custom = form.elements[`${field}_custom`];
+          if (!select) return null;
+          const value = select.value || '';
+          if (value === 'Custom' && custom && custom.value.trim()) {
+            return custom.value.trim();
+          }
+          return value || null;
+        },
+
+        async submit(event) {
+          const form = event.target;
+          if (!form.checkValidity()) {
+            this.isValid = false;
+            form.reportValidity();
+            return;
+          }
+
+          this.submitting = true;
+          this.errorMsg = '';
+
+          const fd = new FormData(form);
+          const str = (name) => {
+            const v = fd.get(name);
+            return v && String(v).trim() ? String(v).trim() : null;
+          };
+          const checked = (name) => !!form.elements[name]?.checked;
+
+          const payload = {
+            hp_field: !!form.elements['hp_field']?.checked,
+            full_name: str('full_name'),
+            work_email: str('work_email'),
+            phone_number: str('phone_number'),
+            twitter_handle: str('twitter_handle'),
+            tiktok_handle: str('tiktok_handle'),
+            instagram_handle: str('instagram_handle'),
+            company_name: str('company_name'),
+            website_url: str('website_url'),
+            store_url: str('store_url'),
+            industry: this.resolveCustom(form, 'industry'),
+            country: str('country'),
+            state_region: str('state_region'),
+            team_size: str('team_size'),
+            monthly_revenue_range: str('monthly_revenue_range'),
+            monthly_order_volume: str('monthly_order_volume'),
+            ecommerce_platform: this.resolveCustom(form, 'ecommerce_platform'),
+            email_platform: this.resolveCustom(form, 'email_platform'),
+            analytics_platform: this.resolveCustom(form, 'analytics_platform'),
+            support_platform: str('support_platform'),
+            ad_platform: this.resolveCustom(form, 'ad_platform'),
+            primary_goal: str('primary_goal'),
+            biggest_challenge: str('biggest_challenge'),
+            current_churn_problem: checked('current_churn_problem'),
+            abandoned_cart_problem: checked('abandoned_cart_problem'),
+            retention_problem: checked('retention_problem'),
+            revenue_visibility_problem: checked('revenue_visibility_problem'),
+            why_join_waitlist: str('why_join_waitlist'),
+            interested_in_beta: checked('interested_in_beta'),
+          };
+
+          try {
+            const result = await submitWaitlistForm(payload);
+            const position = result?.data?.waitlist_position ?? '';
+            form.reset();
+            this.isValid = false;
+            this.submitting = false;
+            this.$dispatch('waitlist-success', position);
+          } catch (err) {
+            this.submitting = false;
+            this.errorMsg = err.message || 'Something went wrong. Please try again.';
+          }
+        },
+      }));
     });
     </script>
+
+  <!-- Clean URL Masking -->
+  <script>
+    if (window.location.pathname.endsWith('.html')) {
+      window.history.replaceState(null, '', window.location.pathname.replace('.html', '') + window.location.search);
+    }
+  </script>
 </head>
 
 <body x-data="{ scrolled: false, mobileMenu: false }" @scroll.window="scrolled = (window.pageYOffset > 50)">
@@ -812,7 +929,7 @@
             <a href="/"
                 class="flex items-center gap-2.5 transition-transform duration-300 hover:-translate-y-0.5">
                 <div class="logo-mark">
-                    <img src="assets/images/Revluma-logo.png" alt="Revluma" />
+                    <img src="assets/images/Revluma-icon.png" alt="Revluma" style="mix-blend-mode: screen;" />
                 </div>
                 <div class="logo-name-wrap">
                     <span class="logo-name">Revluma</span>
@@ -821,15 +938,15 @@
 
             <div
                 class="hidden md:flex items-center gap-5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#CCCCCC]">
-                <a href="#features" class="group relative hover:text-white transition-colors">Features
+                <a href="#features" @click.prevent="document.getElementById('features').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Features
                     <span
                         class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
-                <a href="#pricing" class="group relative hover:text-white transition-colors">Pricing
+                <a href="#pricing" @click.prevent="document.getElementById('pricing').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Pricing
                     <span
                         class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
-                <a href="#integrations" class="group relative hover:text-white transition-colors">Integrations
+                <a href="#integrations" @click.prevent="document.getElementById('integrations').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Integrations
                     <span
                         class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
@@ -844,9 +961,9 @@
                     class="hidden px-4 py-1.5 rounded-full bg-white text-black/95 font-bold text-xs uppercase tracking-wide shadow-sm hover:shadow-md hover:scale-[1.02] hover:bg-white/90 transition-all duration-300 whitespace-nowrap text-[11px]">
                     Go to Dashboard
                 </a>
-                <a href="./auth/loginIn.html" target="_blank" id="login-link"
+                <a href="./auth/loginIn.html" id="login-link"
                     class="text-[11px] font-semibold text-[#CCCCCC] hover:text-white transition-colors">Login</a>
-                <a href="./auth/onboarding.html" target="_blank" id="signup-link">
+                <a href="./auth/signUp.html" id="signup-link">
                     <button
                         class="bg-white text-black px-3 py-1.5 rounded-full text-[11px] font-bold hover:-translate-y-0.5 transition-transform">Get
                         Started</button>
@@ -871,15 +988,15 @@
     <div x-show="mobileMenu" x-transition.opacity x-cloak
         class="fixed inset-x-0 top-20 z-40 rounded-b-3xl border border-white/10 bg-[#090909]/95 px-6 py-8 md:hidden">
         <div class="flex flex-col gap-6 text-lg font-semibold uppercase tracking-wide">
-            <a href="#features" @click="mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Features</a>
-            <a href="#pricing" @click="mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Pricing</a>
-            <a href="#integrations" @click="mobileMenu=false"
+            <a href="#features" @click.prevent="document.getElementById('features').scrollIntoView({behavior: 'smooth'}); mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Features</a>
+            <a href="#pricing" @click.prevent="document.getElementById('pricing').scrollIntoView({behavior: 'smooth'}); mobileMenu=false" class="hover:text-[#A1A1AA] transition-colors">Pricing</a>
+            <a href="#integrations" @click.prevent="document.getElementById('integrations').scrollIntoView({behavior: 'smooth'}); mobileMenu=false"
                 class="hover:text-[#A1A1AA] transition-colors">Integrations</a>
             <a href="/dashboard/overview" id="mobile-dashboard-link"
                 class="hidden py-3 px-6 rounded-2xl bg-white text-black font-bold hover:scale-[1.01] hover:bg-white/90 shadow-sm transition-all block w-full text-left">Dashboard</a>
             <a href="./auth/loginIn.html" id="mobile-login-link" @click="mobileMenu=false"
                 class="hover:text-[#A1A1AA] transition-colors">Login</a>
-            <a href="./auth/onboarding.html" id="mobile-signup-link" @click="mobileMenu=false" target="_blank"
+            <a href="./auth/signUp.html" id="mobile-signup-link" @click="mobileMenu=false"
                 class="hover:text-[#A1A1AA] transition-colors">
                 <button
                     class="mt-2 bg-white text-black py-4 rounded-2xl font-bold hover:-translate-y-0.5 transition-transform block w-full text-left p-0">Get
@@ -911,20 +1028,19 @@
                 Trusted by 2,400+ e-commerce brands
             </div>
 
-            <h1 class="premium-headline text-5xl md:text-[90px] tracking-tighter leading-[0.95] mb-8">
-                Recover Lost Revenue. <br>
-                <span>Sell What Actually Wins.</span>
+            <h1 class="premium-headline text-5xl md:text-[40px] tracking-tighter leading-[0.95] mb-8">
+                Recover abandoned carts, Retain customers<br>
+                <span>with data-driven intelligence.</span>
             </h1>
 
             <p class="text-[#A1A1AA] text-lg md:text-xl max-w-2xl mx-auto mb-8 font-light leading-relaxed">
-                Revluma helps eCommerce brands recover lost revenue, spot winning products before competitors do, retain more customers, and uncover growth opportunities with Industry-aware AI in one unified system, to reduce the operational chaos.
-
-            </p>
+                Revluma helps eCommerce brands recover lost revenue from abandoned carts, predict which customer is about 
+                to churn, and win them back with data-driven personalized messages that actually feel human, not generic blast. Turn-one time buyers into loyal customers. </p>
 
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
   
   <!-- Get Started Free Button -->
-  <a href="./auth/onboarding.html" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide text-center hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
+  <a href="./auth/signUp.html" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide text-center hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
     Get Started Free
   </a>
 
@@ -934,7 +1050,7 @@
   </button>
             </div>
 
-            <div x-data="{ waitlistModal: false }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/80 flex justify-center overflow-y-auto p-4 backdrop-blur-sm" x-cloak
+            <div x-data="{ waitlistModal: false, successPosition: null }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" @waitlist-success.window="successPosition = $event.detail" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/80 flex justify-center overflow-y-auto p-4 backdrop-blur-sm" x-cloak
       x-transition:enter="transition ease-out duration-300"
       x-transition:enter-start="opacity-0"
       x-transition:enter-end="opacity-100"
@@ -950,36 +1066,40 @@
       x-transition:leave-start="opacity-100 translate-y-0 scale-100"
       x-transition:leave-end="opacity-0 translate-y-8 scale-95">
                              <div class="flex justify-between items-center pb-4 border-b border-zinc-800 mb-6">
-                                 <span class="text-xl font-display font-semibold text-zinc-100">Join the Waitlist</span>
-                                 <button @click="waitlistModal = false" class="text-zinc-500 hover:text-white transition-colors p-2 rounded-full hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                                 <span class="text-xl font-display font-semibold text-zinc-100" x-text="successPosition === null ? 'Join the Waitlist' : 'You\'re on the list'"></span>
+                                 <button @click="waitlistModal = false; successPosition = null" class="text-zinc-500 hover:text-white transition-colors p-2 rounded-full hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-white/50">
                                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                                      </svg>
                                  </button>
                              </div>
-                             <form id="waitlist-form" method="POST" @submit.prevent="waitlistModal = false; $dispatch('show-toast', 'Application submitted successfully!'); document.getElementById('waitlist-form').reset();" class="space-y-8">
+                             <form id="waitlist-form" method="POST" x-data="waitlistForm" x-show="successPosition === null" @input="isValid = $el.checkValidity()" @change="isValid = $el.checkValidity()" x-init="isValid = $el.checkValidity()" @submit.prevent="submit($event)" class="space-y-8">
+                                 <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
+                                   <label for="hp_field">Leave this unchecked</label>
+                                   <input type="checkbox" id="hp_field" name="hp_field" tabindex="-1" autocomplete="off">
+                                 </div>
                                  <div>
-  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Personal Information</h3>
+  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Personal Information</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="relative">
       <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="text" name="full_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
-        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Full Name</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
+        <input x-model="val" type="text" name="full_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
+        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Full Name</span><span class="text-white/70 ml-1 font-bold">*</span></div>
       </div>
       </div>
     <div class="relative">
       <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="email" name="work_email" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
-        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Work Email</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
+        <input x-model="val" type="email" name="work_email" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
+        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Work Email</span><span class="text-white/70 ml-1 font-bold">*</span></div>
       </div>
       </div>
-    <input type="tel" name="phone_number" placeholder="Phone Number" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 ">
+    <input type="tel" name="phone_number" placeholder="Phone Number" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 ">
   </div>
 </div>
 
 <div>
   <!-- SOCIALS (Icons on top, URL placeholders) -->
-  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Social Handles</h3>
+  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Social Handles</h3>
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
     
     <!-- Twitter -->
@@ -988,7 +1108,7 @@
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
         <span class="text-xs font-medium">X (formerly Twitter)</span>
       </div>
-      <input type="url" name="twitter_handle" placeholder="https://x.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="url" name="twitter_handle" placeholder="https://x.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
     </div>
 
     <!-- TikTok -->
@@ -997,7 +1117,7 @@
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 448 512"><path d="M448 209.91a210.06 210.06 0 01-122.77-39.25V349.38A162.55 162.55 0 11185 188.31v89.89a74.62 74.62 0 1052.23 71.18V0l88 0a121.18 121.18 0 001.86 22.17h0A122.18 122.18 0 00381 102.39a121.43 121.43 0 0067 20.14z"/></svg>
         <span class="text-xs font-medium">TikTok</span>
       </div>
-      <input type="url" name="tiktok_handle" placeholder="https://tiktok.com/@username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="url" name="tiktok_handle" placeholder="https://tiktok.com/@username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
     </div>
 
     <!-- Instagram -->
@@ -1006,25 +1126,25 @@
         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
         <span class="text-xs font-medium">Instagram</span>
       </div>
-      <input type="url" name="instagram_handle" placeholder="https://instagram.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input type="url" name="instagram_handle" placeholder="https://instagram.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
     </div>
   </div>
 </div>
 
     <!-- BUSINESS PROFILE -->
    <div>
-  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Business Profile</h3>
+  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Business Profile</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="relative md:col-span-2">
       <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="text" name="company_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
-        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Brand Name</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
+        <input x-model="val" type="text" name="company_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
+        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Brand Name</span><span class="text-white/70 ml-1 font-bold">*</span></div>
       </div>
       </div>
     
     <div x-data="{ ind: '' }">
       <div class="relative">
-        <select x-model="ind" name="industry" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="ind" name="industry" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900"></option>
         <option value="Beauty/Skincare" class="bg-zinc-900">Beauty & Skincare</option>
         <option value="Clothing Brand" class="bg-zinc-900">Clothing Brand</option>
@@ -1034,23 +1154,23 @@
         <option value="Food & Beverage" class="bg-zinc-900">Food & Beverage</option>
         <option value="Custom" class="bg-zinc-900">Other (Custom)</option>
       </select>
-        <div x-show="!ind" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Select Industry</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
+        <div x-show="!ind" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Select Industry</span><span class="text-white/70 ml-1 font-bold">*</span></div>
       <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-      <input x-show="ind === 'Custom'" type="text" name="industry_custom" placeholder="Type your industry..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input x-show="ind === 'Custom'" type="text" name="industry_custom" placeholder="Type your industry..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
     </div>
 
-    <input type="url" name="website_url" placeholder="https://website.com" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+    <input type="url" name="website_url" placeholder="https://website.com" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
     
 <div x-data="locationSelect" class="grid grid-cols-1 md:grid-cols-2 gap-4 md:col-span-2">
   <!-- Country Dropdown -->
   <div class="relative w-full" @click.away="showCountryDropdown = false">
     <input type="hidden" name="country" :value="selectedCountry">
     <div class="relative w-full">
-      <input type="text" x-model="searchQueryCountry" @focus="showCountryDropdown = true" required class="peer w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
-      <div x-show="!searchQueryCountry" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Country</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
+      <input type="text" x-model="searchQueryCountry" @focus="showCountryDropdown = true" required class="peer w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
+      <div x-show="!searchQueryCountry" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Country</span><span class="text-white/70 ml-1 font-bold">*</span></div>
       <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
@@ -1058,7 +1178,7 @@
     <!-- Dropdown List -->
     <ul x-show="showCountryDropdown" x-transition class="absolute z-50 w-full mt-2 max-h-60 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl custom-scrollbar" style="display: none;">
       <template x-for="country in filteredCountries" :key="country.name">
-        <li @click="selectCountry(country.name)" class="px-4 py-3 text-zinc-300 hover:bg-orange-500/10 hover:text-white cursor-pointer transition-colors" x-text="country.name"></li>
+        <li @click="selectCountry(country.name)" class="px-4 py-3 text-zinc-300 hover:bg-white/10 hover:text-white cursor-pointer transition-colors" x-text="country.name"></li>
       </template>
       <li x-show="filteredCountries.length === 0" class="px-4 py-3 text-zinc-500">No countries found</li>
     </ul>
@@ -1068,7 +1188,7 @@
   <div class="relative w-full" @click.away="showStateDropdown = false">
     <input type="hidden" name="state_region" :value="selectedState">
     <div class="relative w-full">
-      <input type="text" x-model="searchQueryState" @focus="showStateDropdown = true" :disabled="!selectedCountry" class="peer w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
+      <input type="text" x-model="searchQueryState" @focus="showStateDropdown = true" :disabled="!selectedCountry" class="peer w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
       <div x-show="!searchQueryState" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500" x-text="selectedCountry ? 'State / Region' : 'Select a Country first'"></span></div>
       <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
@@ -1077,7 +1197,7 @@
     <!-- Dropdown List -->
     <ul x-show="showStateDropdown && availableStates.length > 0" x-transition class="absolute z-50 w-full mt-2 max-h-60 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl custom-scrollbar" style="display: none;">
       <template x-for="state in filteredStates" :key="state">
-        <li @click="selectState(state)" class="px-4 py-3 text-zinc-300 hover:bg-orange-500/10 hover:text-white cursor-pointer transition-colors" x-text="state"></li>
+        <li @click="selectState(state)" class="px-4 py-3 text-zinc-300 hover:bg-white/10 hover:text-white cursor-pointer transition-colors" x-text="state"></li>
       </template>
       <li x-show="filteredStates.length === 0" class="px-4 py-3 text-zinc-500">No states found</li>
     </ul>
@@ -1085,7 +1205,7 @@
 </div>
       
     <div class="relative">
-      <select name="team_size" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+      <select name="team_size" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Select Team Size</option>
         <option value="Solo Founder" class="bg-zinc-900">Solo Founder</option>
         <option value="2-10" class="bg-zinc-900">2-10</option>
@@ -1098,7 +1218,7 @@
     </div>
           
     <div class="relative">
-      <select name="monthly_revenue_range" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+      <select name="monthly_revenue_range" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Monthly Revenue</option>
         <option value="Under $1k" class="bg-zinc-900">Under $1k</option>
         <option value="$1k-$10k" class="bg-zinc-900">$1k - $10k</option>
@@ -1113,11 +1233,11 @@
 </div>
 
 <div>
-  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Technology Stack</h3>
+  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Technology Stack</h3>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div x-data="{ ecom: '' }">
       <div class="relative">
-        <select x-model="ecom" name="ecommerce_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="ecom" name="ecommerce_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
       <option value="" disabled selected hidden class="bg-zinc-900">Ecommerce Platform</option>
         <option value="Shopify" class="bg-zinc-900">Shopify</option>
       <option value="WooCommerce" class="bg-zinc-900">WooCommerce</option>
@@ -1130,12 +1250,12 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-    <input x-show="ecom === 'Custom'" type="text" name="ecommerce_platform_custom" placeholder="Type ecommerce platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+    <input x-show="ecom === 'Custom'" type="text" name="ecommerce_platform_custom" placeholder="Type ecommerce platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
       </div>
     <!-- Email Platform -->
     <div x-data="{ email: '' }">
       <div class="relative">
-        <select x-model="email" name="email_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="email" name="email_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Email Platform</option>
         <option value="Klaviyo" class="bg-zinc-900">Klaviyo</option>
         <option value="Mailchimp" class="bg-zinc-900">Mailchimp</option>
@@ -1146,13 +1266,13 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-      <input x-show="email === 'Custom'" type="text" name="email_platform_custom" placeholder="Type email platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input x-show="email === 'Custom'" type="text" name="email_platform_custom" placeholder="Type email platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
     </div>
 
     <!-- Analytics Platform -->
     <div x-data="{ analytics: '' }">
       <div class="relative">
-        <select x-model="analytics" name="analytics_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="analytics" name="analytics_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Analytics Platform</option>
         <option value="Google Analytics" class="bg-zinc-900">Google Analytics</option>
         <option value="TripleWhale" class="bg-zinc-900">TripleWhale</option>
@@ -1163,13 +1283,13 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-      <input x-show="analytics === 'Custom'" type="text" name="analytics_platform_custom" placeholder="Type analytics tool..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input x-show="analytics === 'Custom'" type="text" name="analytics_platform_custom" placeholder="Type analytics tool..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
     </div>
 
     <!-- Ad Platform -->
     <div x-data="{ ads: '' }">
       <div class="relative">
-        <select x-model="ads" name="ad_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 appearance-none pr-10">
+        <select x-model="ads" name="ad_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
         <option value="" disabled selected hidden class="bg-zinc-900">Ad Platform</option>
         <option value="Meta Ads" class="bg-zinc-900">Meta Ads</option>
         <option value="Google Ads" class="bg-zinc-900">Google Ads</option>
@@ -1180,22 +1300,26 @@
         <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
       </div>
       </div>
-      <input x-show="ads === 'Custom'" type="text" name="ad_platform_custom" placeholder="Type ad platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+      <input x-show="ads === 'Custom'" type="text" name="ad_platform_custom" placeholder="Type ad platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
     </div>
       
 </div>
 </div>
       
 <div> 
-    <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span>Goals & Challenges</h3>
-  <input type="text" name="primary_goal" placeholder="What is your primary goal for joining?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300">
+    <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Goals & Challenges</h3>
+  <div class="relative">
+    <div x-data="{ val: '' }" class="relative w-full">
+      <input x-model="val" type="text" name="primary_goal" class="text-sm w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
+      <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500 text-sm">What is your primary goal for joining?</span></div>
+    </div>
+  </div>
 
 <div class="relative mt-4">
-  <div x-data="{ val: '' }" class="relative w-full">
-    <textarea x-model="val" name="biggest_challenge" required rows="2" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 min-h-[80px] resize-none"></textarea>
-    <div x-show="!val" class="absolute top-3 left-4 pointer-events-none flex"><span class="text-zinc-500">What is the biggest challenge you are facing in your store right now?</span><span class="text-orange-500 ml-1 font-bold">*</span></div>
-  </div>
-  
+    <div x-data="{ val: '' }" class="relative w-full">
+      <textarea x-model="val" name="biggest_challenge" required rows="2" class="text-sm w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 min-h-[80px] resize-none"></textarea>
+      <div x-show="!val" class="absolute top-3 left-4 right-4 pointer-events-none text-sm text-left"><span class="text-zinc-500">What is the biggest challenge you are facing in your store right now?</span><span class="text-white/70 ml-1 font-bold">*</span></div>
+    </div>
 </div>
 
 <div class="px-2 mt-6">
@@ -1203,20 +1327,20 @@
     Is your store currently facing any of these problems? (Check all that apply)
   </p>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <label class="flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group">
-        <input type="checkbox" name="current_churn_problem" value="true" class="w-5 h-5 rounded border-zinc-600 bg-white/5 accent-orange-500 focus:ring-2 focus:ring-orange-500/50 mt-0.5">
+      <label for="churn_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group" style="touch-action: manipulation;">
+        <input id="churn_cb" type="checkbox" name="current_churn_problem" value="true" class="checkbox-custom mt-0.5">
         <span class="leading-relaxed">Customer churn</span>
       </label>
-      <label class="flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group">
-        <input type="checkbox" name="abandoned_cart_problem" value="true" class="w-5 h-5 rounded border-zinc-600 bg-white/5 accent-orange-500 focus:ring-2 focus:ring-orange-500/50 mt-0.5">
+      <label for="cart_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group" style="touch-action: manipulation;">
+        <input id="cart_cb" type="checkbox" name="abandoned_cart_problem" value="true" class="checkbox-custom mt-0.5">
         <span class="leading-relaxed">High abandoned carts</span>
       </label>
-      <label class="flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group">
-        <input type="checkbox" name="retention_problem" value="true" class="w-5 h-5 rounded border-zinc-600 bg-white/5 accent-orange-500 focus:ring-2 focus:ring-orange-500/50 mt-0.5">
+      <label for="retention_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group" style="touch-action: manipulation;">
+        <input id="retention_cb" type="checkbox" name="retention_problem" value="true" class="checkbox-custom mt-0.5">
         <span class="leading-relaxed">Retention issues</span>
       </label>
-      <label class="flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group">
-        <input type="checkbox" name="revenue_visibility_problem" value="true" class="w-5 h-5 rounded border-zinc-600 bg-white/5 accent-orange-500 focus:ring-2 focus:ring-orange-500/50 mt-0.5">
+      <label for="revenue_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group" style="touch-action: manipulation;">
+        <input id="revenue_cb" type="checkbox" name="revenue_visibility_problem" value="true" class="checkbox-custom mt-0.5">
         <span class="leading-relaxed">Lack revenue visibility</span>
       </label>
     </div>
@@ -1224,18 +1348,36 @@
 </div>
 
 <div class="pb-2">
-  <textarea name="why_join_waitlist" rows="2" placeholder="Why do you want to join the waitlist?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.15)] focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all duration-300 resize-none mb-4"></textarea>
-  <label class="flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group px-2">
-    <input type="checkbox" name="interested_in_beta" value="true" class="w-5 h-5 rounded border-zinc-600 bg-white/5 accent-orange-500 focus:ring-2 focus:ring-orange-500/50 mt-0.5">
+  <textarea name="why_join_waitlist" rows="2" placeholder="Why do you want to join the waitlist?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 resize-none mb-4"></textarea>
+  <label for="beta_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group px-2" style="touch-action: manipulation;">
+    <input id="beta_cb" type="checkbox" name="interested_in_beta" value="true" class="checkbox-custom mt-0.5">
     <span class="leading-relaxed">I am interested in the Beta program</span>
   </label>
 </div>
+                            <p x-show="errorMsg" x-text="errorMsg" x-cloak class="text-red-400 text-sm text-center -mt-2 mb-2"></p>
                             <button 
   type="submit" 
-  class="w-full py-4 mt-2 bg-orange-500 hover:bg-orange-400 text-white font-bold rounded-xl transition-all duration-300 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-orange-500/30 shadow-[0_0_20px_rgba(249,115,22,0.2)] hover:shadow-[0_0_30px_rgba(249,115,22,0.4)]">
-                                Join the Waitlist
+  :disabled="!isValid || submitting"
+  :class="(!isValid || submitting) ? 'opacity-50 cursor-not-allowed bg-zinc-400' : 'bg-white hover:bg-zinc-200 active:scale-[0.98] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]'"
+  class="w-full py-4 mt-2 text-black font-bold rounded-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-white/30 shadow-[0_0_20px_rgba(255,255,255,0.1)]">
+                                <span x-show="!submitting">Join the Waitlist</span>
+                                <span x-show="submitting" x-cloak>Submitting…</span>
                             </button>
                           </form>
+                          <div x-show="successPosition !== null" x-cloak class="py-10 text-center">
+                              <div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-green-500/10 border border-green-500/30">
+                                  <svg class="w-10 h-10 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                  </svg>
+                              </div>
+                              <h3 class="text-2xl md:text-3xl font-display font-bold text-white mb-3">You're #<span x-text="successPosition"></span> on the waitlist</h3>
+                              <p class="text-zinc-400 text-base max-w-md mx-auto mb-8">
+                                  We've saved your spot and sent a confirmation to your email. If you don't see it in a minute or two, check your spam folder.
+                              </p>
+                              <button @click="waitlistModal = false; successPosition = null" class="px-8 py-3 rounded-xl bg-white text-black font-bold hover:bg-zinc-200 transition-colors">
+                                  Done
+                              </button>
+                          </div>
                          </div>
                      </div>
                  </div>
@@ -1447,7 +1589,7 @@
 
             <!-- All Features Button -->
             <div class="mt-12 text-center reveal">
-                <a target="_blank" href="/features"
+                <a href="/features.html"
                     class="inline-flex items-center justify-center px-8 py-3 rounded-full bg-white/5 backdrop-blur-md border border-white/15 text-white font-semibold text-sm hover:bg-white/10 hover:border-white/30 transition-all duration-300">
                     All Features
                     <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1837,221 +1979,293 @@
                 <p class="text-[#A1A1AA] max-w-lg mx-auto">Most tools send messages. Revluma makes decisions.</p>
             </div>
 
-            <!-- Column headers -->
-            <div class="grid grid-cols-3 gap-4 mb-3 px-2 reveal">
-                <div></div>
-                <div class="text-center">
-                    <span
-                        class="inline-block px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-white font-bold text-sm tracking-tight">Revluma
-                    </span>
-                </div>
-                <div class="text-center">
-                    <span
-                        class="inline-block px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-[#555] font-semibold text-sm tracking-tight">Typical
-                        Tools</span>
-                </div>
-            </div>
+            <!-- Premium comparison table -->
+            <div class="relative reveal">
+                <!-- Ambient glow accents -->
+                <div class="absolute -top-16 -left-16 w-64 h-64 rounded-full opacity-[0.07] pointer-events-none"
+                    style="background: radial-gradient(circle, #40ffaa, transparent 70%);"></div>
+                <div class="absolute -bottom-16 -right-16 w-64 h-64 rounded-full opacity-[0.05] pointer-events-none"
+                    style="background: radial-gradient(circle, #40ffaa, transparent 70%);"></div>
 
-            <!-- Comparison rows -->
-            <div class="space-y-2 reveal">
+                <div class="relative rounded-3xl border border-white/10 overflow-hidden"
+                    style="background: linear-gradient(180deg, #0D0D0D 0%, #0A0A0A 100%); box-shadow: 0 30px 80px -20px rgba(0,0,0,0.6);">
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse min-w-[620px]">
+                            <thead>
+                                <tr class="border-b border-white/10">
+                                    <th class="text-left align-bottom py-6 pl-7 pr-4 w-[34%]">
+                                        <span
+                                            class="text-[10px] uppercase tracking-widest text-[#555] font-semibold">Feature</span>
+                                    </th>
+                                    <th class="py-6 px-4 text-center align-bottom w-[33%]"
+                                        style="background: linear-gradient(180deg, rgba(80,210,120,0.07), transparent);">
+                                        <span
+                                            class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border text-sm font-bold tracking-tight"
+                                            style="background: rgba(80,210,120,0.12); border-color: rgba(80,210,120,0.3); color: #fff;">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                                            Revluma
+                                        </span>
+                                    </th>
+                                    <th class="py-6 px-4 text-center align-bottom w-[33%]">
+                                        <span
+                                            class="inline-block px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-[#666] font-semibold text-sm tracking-tight">Typical
+                                            Tools</span>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-white/[0.05]">
 
-                <div
-                    class="grid grid-cols-3 gap-4 items-center px-4 py-4 rounded-2xl hover:bg-white/[0.025] transition-colors group">
-                    <p class="text-[#A1A1AA] text-sm font-medium">AI Cart Recovery</p>
-                    <div class="flex items-center justify-center gap-2">
-                        <span
-                            class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </span>
-                        <span class="text-green-400 text-xs font-semibold hidden sm:inline">AI-Driven behavior-based
-                            recovery</span>
-                    </div>
-                    <div class="flex items-center justify-center gap-2">
-                        <span class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
-                            </svg>
-                        </span>
-                        <span class="text-[#555] text-xs hidden sm:inline">Basic flows only</span>
+                                <tr class="group transition-colors hover:bg-white/[0.02]">
+                                    <td class="py-5 pl-7 pr-4 text-sm font-medium text-[#D1D1D1]">AI Cart Recovery</td>
+                                    <td class="py-5 px-4" style="background: rgba(80,210,120,0.025);">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-green-400 text-xs font-semibold hidden sm:inline">AI-Driven
+                                                behavior-based recovery</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-5 px-4">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-[#555] text-xs hidden sm:inline">Basic flows only</span>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <tr class="group transition-colors hover:bg-white/[0.02]">
+                                    <td class="py-5 pl-7 pr-4 text-sm font-medium text-[#D1D1D1]">Predict & Prevent churn</td>
+                                    <td class="py-5 px-4" style="background: rgba(80,210,120,0.025);">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-green-400 text-xs font-semibold hidden sm:inline">Data-driven churn prediction and customer retention</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-5 px-4">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-red-500" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-[#555] text-xs hidden sm:inline">Not available</span>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <tr class="group transition-colors hover:bg-white/[0.02]">
+                                    <td class="py-5 pl-7 pr-4 text-sm font-medium text-[#D1D1D1]">ROAS Opportunity
+                                        Scoring</td>
+                                    <td class="py-5 px-4" style="background: rgba(80,210,120,0.025);">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                            <span
+                                                class="text-green-400 text-xs font-semibold hidden sm:inline">Pre-ad
+                                                prediction</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-5 px-4">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-red-500" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-[#555] text-xs hidden sm:inline">Not available</span>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <tr class="group transition-colors hover:bg-white/[0.02]">
+                                    <td class="py-5 pl-7 pr-4 text-sm font-medium text-[#D1D1D1]">WhatsApp & Multi-channel
+                                    </td>
+                                    <td class="py-5 px-4" style="background: rgba(80,210,120,0.025);">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                            <span
+                                                class="text-green-400 text-xs font-semibold hidden sm:inline">Native
+                                                support</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-5 px-4">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-[#555] text-xs hidden sm:inline">Email + SMS only</span>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <tr class="group transition-colors hover:bg-white/[0.02]">
+                                    <td class="py-5 pl-7 pr-4 text-sm font-medium text-[#D1D1D1]">AI Decision Layer</td>
+                                    <td class="py-5 px-4" style="background: rgba(80,210,120,0.025);">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-green-400 text-xs font-semibold hidden sm:inline">AI advisor
+                                                tells you what to do next</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-5 px-4">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-[#555] text-xs hidden sm:inline">Manual guesswork</span>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <tr class="group transition-colors hover:bg-white/[0.02]">
+                                    <td class="py-5 pl-7 pr-4 text-sm font-medium text-[#D1D1D1]">Setup Time</td>
+                                    <td class="py-5 px-4" style="background: rgba(80,210,120,0.025);">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-green-400 text-xs font-semibold hidden sm:inline">Fast,
+                                                minimal setup under 4 minutes</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-5 px-4">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-[#555] text-xs hidden sm:inline">Complex workfolws & days
+                                                of config</span>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <tr class="group transition-colors hover:bg-white/[0.02]">
+                                    <td class="py-5 pl-7 pr-4 text-sm font-medium text-[#D1D1D1]">Learning system</td>
+                                    <td class="py-5 px-4" style="background: rgba(80,210,120,0.025);">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-green-400 text-xs font-semibold hidden sm:inline">Improves
+                                                overtime with data + benchmark comparison</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-5 px-4">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-red-500" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-[#555] text-xs hidden sm:inline">No adaptive learning</span>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                                <tr class="group transition-colors hover:bg-white/[0.02]">
+                                    <td class="py-5 pl-7 pr-4 text-sm font-medium text-[#D1D1D1]">Pricing model</td>
+                                    <td class="py-5 px-4" style="background: rgba(80,210,120,0.025);">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-green-400 text-xs font-semibold hidden sm:inline">Flat. No
+                                                limits.</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-5 px-4">
+                                        <div class="flex items-center justify-center gap-2.5">
+                                            <span
+                                                class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
+                                                <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24"
+                                                    stroke="currentColor" stroke-width="3">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
+                                                </svg>
+                                            </span>
+                                            <span class="text-[#555] text-xs hidden sm:inline">Scales with contacts</span>
+                                        </div>
+                                    </td>
+                                </tr>
+
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-
-                <div
-                    class="grid grid-cols-3 gap-4 items-center px-4 py-4 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-colors group">
-                    <p class="text-[#A1A1AA] text-sm font-medium">Product Trend Intelligence</p>
-                    <div class="flex items-center justify-center gap-2">
-                        <span
-                            class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </span>
-                        <span class="text-green-400 text-xs font-semibold hidden sm:inline">Data-backed winning product
-                            insights</span>
-                    </div>
-                    <div class="flex items-center justify-center gap-2">
-                        <span class="w-5 h-5 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </span>
-                        <span class="text-[#555] text-xs hidden sm:inline">Not available</span>
-                    </div>
-                </div>
-
-                <div
-                    class="grid grid-cols-3 gap-4 items-center px-4 py-4 rounded-2xl hover:bg-white/[0.025] transition-colors group">
-                    <p class="text-[#A1A1AA] text-sm font-medium">ROAS Opportunity Scoring</p>
-                    <div class="flex items-center justify-center gap-2">
-                        <span
-                            class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </span>
-                        <span class="text-green-400 text-xs font-semibold hidden sm:inline">Pre-ad prediction</span>
-                    </div>
-                    <div class="flex items-center justify-center gap-2">
-                        <span class="w-5 h-5 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </span>
-                        <span class="text-[#555] text-xs hidden sm:inline">Not available</span>
-                    </div>
-                </div>
-
-                <div
-                    class="grid grid-cols-3 gap-4 items-center px-4 py-4 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-colors group">
-                    <p class="text-[#A1A1AA] text-sm font-medium">WhatsApp & Multi-channel</p>
-                    <div class="flex items-center justify-center gap-2">
-                        <span
-                            class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </span>
-                        <span class="text-green-400 text-xs font-semibold hidden sm:inline">Native support</span>
-                    </div>
-                    <div class="flex items-center justify-center gap-2">
-                        <span class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
-                            </svg>
-                        </span>
-                        <span class="text-[#555] text-xs hidden sm:inline">Email + SMS only</span>
-                    </div>
-                </div>
-
-                <div
-                    class="grid grid-cols-3 gap-4 items-center px-4 py-4 rounded-2xl hover:bg-white/[0.025] transition-colors group">
-                    <p class="text-[#A1A1AA] text-sm font-medium">AI Decision Layer</p>
-                    <div class="flex items-center justify-center gap-2">
-                        <span
-                            class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </span>
-                        <span class="text-green-400 text-xs font-semibold hidden sm:inline">AI advisor tells you what to
-                            do next</span>
-                    </div>
-                    <div class="flex items-center justify-center gap-2">
-                        <span class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
-                            </svg>
-                        </span>
-                        <span class="text-[#555] text-xs hidden sm:inline">Manual guesswork</span>
-                    </div>
-                </div>
-
-                <div
-                    class="grid grid-cols-3 gap-4 items-center px-4 py-4 rounded-2xl bg-white/[0.02] hover:bg-white/[0.04] transition-colors group">
-                    <p class="text-[#A1A1AA] text-sm font-medium">Setup Time</p>
-                    <div class="flex items-center justify-center gap-2">
-                        <span
-                            class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </span>
-                        <span class="text-green-400 text-xs font-semibold hidden sm:inline">Fast, minimal setup under 4
-                            minutes</span>
-                    </div>
-                    <div class="flex items-center justify-center gap-2">
-                        <span class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
-                            </svg>
-                        </span>
-                        <span class="text-[#555] text-xs hidden sm:inline">Complex workfolws & days of config</span>
-                    </div>
-                </div>
-
-                <div
-                    class="grid grid-cols-3 gap-4 items-center px-4 py-4 rounded-2xl hover:bg-white/[0.025] transition-colors group">
-                    <p class="text-[#A1A1AA] text-sm font-medium">Learning system</p>
-                    <div class="flex items-center justify-center gap-2">
-                        <span
-                            class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </span>
-                        <span class="text-green-400 text-xs font-semibold hidden sm:inline">Improves overtime with data
-                            + benchmark comparison</span>
-                    </div>
-                    <div class="flex items-center justify-center gap-2">
-                        <span class="w-5 h-5 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </span>
-                        <span class="text-[#555] text-xs hidden sm:inline">No adaptive learning</span>
-                    </div>
-                </div>
-
-                <div
-                    class="grid grid-cols-3 gap-4 items-center px-4 py-4 rounded-2xl hover:bg-white/[0.025] transition-colors group">
-                    <p class="text-[#A1A1AA] text-sm font-medium">Pricing model</p>
-                    <div class="flex items-center justify-center gap-2">
-                        <span
-                            class="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </span>
-                        <span class="text-green-400 text-xs font-semibold hidden sm:inline">Flat. No limits.</span>
-                    </div>
-                    <div class="flex items-center justify-center gap-2">
-                        <span class="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-3 h-3 text-[#555]" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                                stroke-width="3">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
-                            </svg>
-                        </span>
-                        <span class="text-[#555] text-xs hidden sm:inline">Scales with contacts</span>
-                    </div>
-                </div>
-
             </div>
 
             <!-- Bottom CTA nudge -->
@@ -2066,19 +2280,19 @@
         </div>
     </section>
 
-    <!-- ── Automation Flow Visual ── -->
+    <!-- ── Always-On / Global Revenue Section ── -->
     <section class="py-24 px-6 border-t border-[#1F1F1F] overflow-hidden">
         <div class="max-w-7xl mx-auto">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
                 <!-- Left text -->
                 <div class="reveal">
-                    <p class="text-[11px] uppercase tracking-widest text-[#555] font-semibold mb-4">Automation Engine
+                    <p class="text-[11px] uppercase tracking-widest text-[#555] font-semibold mb-4">Always-On Revenue
                     </p>
-                    <h2 class="text-3xl md:text-4xl font-bold tracking-tighter mb-6 leading-tight">The brain
-                        behind<br>every recovered sale.</h2>
-                    <p class="text-[#777] text-sm leading-relaxed mb-8">Most tools blast the same email to everyone.
-                        Revluma's AI reads your customer's intent, what they viewed, how long they spent, what they
-                        skipped, then sends exactly the right message at exactly the right time.</p>
+                    <h2 class="text-3xl md:text-4xl font-bold tracking-tighter mb-6 leading-tight">The world doesn't
+                        sleep.<br>Neither does your revenue.</h2>
+                    <p class="text-[#777] text-sm leading-relaxed mb-8">While your customers browse at 2AM in Lagos,
+                        9AM in London, or 11PM in Sydney, Revluma is already reading their intent and sending exactly
+                        the right message at exactly the right moment, no time zone left uncovered.</p>
                     <div class="space-y-4">
                         <div class="flex items-start gap-4">
                             <div
@@ -2087,9 +2301,9 @@
                                     onerror="this.style.display='none'; this.parentElement.innerHTML='<span class=\'text-green-400 text-xs font-bold\'>✓</span>'">
                             </div>
                             <div>
-                                <p class="text-sm font-semibold mb-0.5">Behavior-triggered sequences</p>
-                                <p class="text-[#666] text-xs">Fires based on cart value, product category,
-                                    time-on-site, and purchase history, not just "they abandoned checkout."</p>
+                                <p class="text-sm font-semibold mb-0.5">Runs across every time zone</p>
+                                <p class="text-[#666] text-xs">Your automations never clock out. Revluma fires the
+                                    moment a shopper's behavior signals intent, day or night.</p>
                             </div>
                         </div>
                         <div class="flex items-start gap-4">
@@ -2099,9 +2313,9 @@
                                     onerror="this.style.display='none'; this.parentElement.innerHTML='<span class=\'text-green-400 text-xs font-bold\'>✓</span>'">
                             </div>
                             <div>
-                                <p class="text-sm font-semibold mb-0.5">Multi-channel orchestration</p>
-                                <p class="text-[#666] text-xs">Email, SMS, and WhatsApp work in concert, each channel
-                                    fires at the optimal moment in the recovery sequence.</p>
+                                <p class="text-sm font-semibold mb-0.5">Captures revenue while you sleep</p>
+                                <p class="text-[#666] text-xs">Every abandoned cart and hesitant shopper is met with a
+                                    recovery sequence in real time, whether you're awake or not.</p>
                             </div>
                         </div>
                         <div class="flex items-start gap-4">
@@ -2111,573 +2325,205 @@
                                     onerror="this.style.display='none'; this.parentElement.innerHTML='<span class=\'text-green-400 text-xs font-bold\'>✓</span>'">
                             </div>
                             <div>
-                                <p class="text-sm font-semibold mb-0.5">Self-optimizing over time</p>
-                                <p class="text-[#666] text-xs">Every send improves the model. Revluma benchmarks your
-                                    results against 2,400+ stores and adjusts automatically.</p>
+                                <p class="text-sm font-semibold mb-0.5">One engine, global coverage</p>
+                                <p class="text-[#666] text-xs">From Lagos to London to Los Angeles, the same
+                                    intelligent engine adapts to every customer, everywhere.</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Right: Automation flow diagram -->
+                <!-- Right: Spinning globe with live revenue notifications -->
                 <div class="reveal" style="transition-delay: 0.15s;">
-                    <!-- App window chrome -->
-                    <div class="relative rounded-xl overflow-hidden shadow-2xl"
-                        style="border: 1px solid rgba(255,255,255,0.07); background: #111213;">
-                        <!-- Titlebar -->
-                        <div class="flex items-center justify-between px-4 py-2.5"
-                            style="background: #1a1b1e; border-bottom: 1px solid rgba(255,255,255,0.06);">
-                            <div class="flex items-center gap-1.5">
-                                <div class="w-2.5 h-2.5 rounded-full" style="background:#ff5f57;"></div>
-                                <div class="w-2.5 h-2.5 rounded-full" style="background:#febc2e;"></div>
-                                <div class="w-2.5 h-2.5 rounded-full" style="background:#28c840;"></div>
-                            </div>
-                            <div class="flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-medium"
-                                style="background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.35); border: 1px solid rgba(255,255,255,0.06);">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="2">
-                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                </svg>
-                                revluma.io/automations/cart-recovery
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <div class="w-5 h-5 rounded flex items-center justify-center"
-                                    style="background: rgba(255,255,255,0.04);">
-                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
-                                        stroke="rgba(255,255,255,0.3)" stroke-width="2.5">
-                                        <path d="M18 6L6 18M6 6l12 12" />
-                                    </svg>
-                                </div>
-                            </div>
+                    <div class="flex justify-center mb-6">
+                        <span
+                            class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-[#A1A1AA] font-semibold">
+                            <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block"></span>
+                            Live global revenue feed
+                        </span>
+                    </div>
+                    <div id="revlumaGlobeWrap" class="relative mx-auto"
+                        style="width: 100%; max-width: 440px; aspect-ratio: 1 / 1;">
+                        <!-- Ambient glow -->
+                        <div class="absolute inset-0 rounded-full pointer-events-none"
+                            style="background: radial-gradient(circle, rgba(80,210,120,0.18), transparent 70%); filter: blur(24px);">
                         </div>
 
-                        <!-- App layout: sidebar + main -->
-                        <div class="flex" style="min-height: 420px;">
-
-                            <!-- Sidebar -->
-                            <div class="flex-shrink-0 py-4 flex flex-col gap-1"
-                                style="width: 44px; background: #16171a; border-right: 1px solid rgba(255,255,255,0.05);">
-                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto mb-2"
-                                    style="background: rgba(80,210,120,0.15);">
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                                        stroke="rgba(80,210,120,0.9)" stroke-width="2">
-                                        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-                                        <polyline points="9,22 9,12 15,12 15,22" />
-                                    </svg>
-                                </div>
-                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto"
-                                    style="background: rgba(255,255,255,0.06);">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                        stroke="rgba(255,255,255,0.5)" stroke-width="2">
-                                        <polyline points="22,12 18,12 15,21 9,3 6,12 2,12" />
-                                    </svg>
-                                </div>
-                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto" style="">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                        stroke="rgba(255,255,255,0.25)" stroke-width="2">
-                                        <circle cx="12" cy="12" r="3" />
-                                        <path d="M19.07 4.93a10 10 0 010 14.14" />
-                                        <path d="M4.93 4.93a10 10 0 000 14.14" />
-                                    </svg>
-                                </div>
-                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                        stroke="rgba(255,255,255,0.25)" stroke-width="2">
-                                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                                        <circle cx="9" cy="7" r="4" />
-                                        <path d="M23 21v-2a4 4 0 00-3-3.87" />
-                                        <path d="M16 3.13a4 4 0 010 7.75" />
-                                    </svg>
-                                </div>
-                                <div class="flex-1"></div>
-                                <div class="flex items-center justify-center w-7 h-7 rounded-lg mx-auto">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                        stroke="rgba(255,255,255,0.2)" stroke-width="2">
-                                        <circle cx="12" cy="12" r="3" />
-                                        <path
-                                            d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-                                    </svg>
-                                </div>
-                            </div>
-
-                            <!-- Main content -->
-                            <div class="flex-1 flex flex-col" style="background: #111213;">
-                                <!-- Top bar -->
-                                <div class="flex items-center justify-between px-4 py-2.5"
-                                    style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-[11px] font-semibold"
-                                            style="color: rgba(255,255,255,0.7);">Automation</span>
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                                            stroke="rgba(255,255,255,0.2)" stroke-width="2.5">
-                                            <polyline points="9,18 15,12 9,6" />
-                                        </svg>
-                                        <span class="text-[11px] font-semibold"
-                                            style="color: rgba(255,255,255,0.9);">Cart Recovery Flow</span>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                        <div class="flex items-center gap-1.5 px-2 py-0.5 rounded"
-                                            style="background: rgba(80,210,120,0.1); border: 1px solid rgba(80,210,120,0.2);">
-                                            <div class="w-1.5 h-1.5 rounded-full animate-pulse"
-                                                style="background: rgba(80,210,120,0.9);"></div>
-                                            <span class="text-[9px] font-bold uppercase tracking-wide"
-                                                style="color: rgba(80,210,120,0.9);">Live</span>
-                                        </div>
-                                        <button
-                                            class="flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-semibold"
-                                            style="background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.08);">
-                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
-                                                stroke="currentColor" stroke-width="2.5">
-                                                <circle cx="12" cy="12" r="1" />
-                                                <circle cx="12" cy="5" r="1" />
-                                                <circle cx="12" cy="19" r="1" />
-                                            </svg>
-                                            Edit
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <!-- Flow canvas -->
-                                <div class="flex-1 px-5 py-4 overflow-hidden">
-                                    <!-- Stats bar at top -->
-                                    <div class="flex items-center gap-4 mb-4 pb-3"
-                                        style="border-bottom: 1px solid rgba(255,255,255,0.04);">
-                                        <div>
-                                            <span class="text-[9px] uppercase tracking-wider font-semibold"
-                                                style="color: rgba(255,255,255,0.3);">Recovery Rate</span>
-                                            <p class="text-sm font-bold mt-0.5" style="color: rgba(80,210,120,0.95);">
-                                                26.4%</p>
-                                        </div>
-                                        <div class="w-px h-6" style="background: rgba(255,255,255,0.07);"></div>
-                                        <div>
-                                            <span class="text-[9px] uppercase tracking-wider font-semibold"
-                                                style="color: rgba(255,255,255,0.3);">Avg Order Value</span>
-                                            <p class="text-sm font-bold mt-0.5" style="color: rgba(255,255,255,0.85);">
-                                                $143.20</p>
-                                        </div>
-                                        <div class="w-px h-6" style="background: rgba(255,255,255,0.07);"></div>
-                                        <div>
-                                            <span class="text-[9px] uppercase tracking-wider font-semibold"
-                                                style="color: rgba(255,255,255,0.3);">Triggered today</span>
-                                            <p class="text-sm font-bold mt-0.5" style="color: rgba(255,255,255,0.85);">
-                                                48</p>
-                                        </div>
-                                        <div class="flex-1"></div>
-                                        <div class="text-[9px] font-medium" style="color: rgba(255,255,255,0.2);">Last
-                                            run: 2m ago</div>
-                                    </div>
-
-                                    <!-- Flow nodes -->
-                                    <div class="space-y-1.5">
-
-                                        <!-- Trigger node -->
-                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg"
-                                            style="background: rgba(99,130,255,0.06); border: 1px solid rgba(99,130,255,0.2);">
-                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
-                                                style="background: rgba(99,130,255,0.15);">
-                                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                                                    stroke="rgba(140,160,255,0.9)" stroke-width="2">
-                                                    <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" />
-                                                    <line x1="3" y1="6" x2="21" y2="6" />
-                                                    <path d="M16 10a4 4 0 01-8 0" />
-                                                </svg>
-                                            </div>
-                                            <div class="flex-1 min-w-0">
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-[11px] font-semibold"
-                                                        style="color: rgba(255,255,255,0.85);">Cart Abandoned</span>
-                                                    <span
-                                                        class="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
-                                                        style="background: rgba(99,130,255,0.15); color: rgba(140,160,255,0.9);">Trigger</span>
-                                                </div>
-                                                <p class="text-[9px] mt-0.5 truncate"
-                                                    style="color: rgba(255,255,255,0.35);">Filter: cart value ≥ $120 ·
-                                                    session duration &gt; 45s</p>
-                                            </div>
-                                            <div class="text-[9px] font-semibold tabular-nums"
-                                                style="color: rgba(255,255,255,0.4);">48 <span
-                                                    style="color:rgba(255,255,255,0.2)">today</span></div>
-                                        </div>
-
-                                        <!-- Connector -->
-                                        <div class="flex items-center gap-0 ml-5">
-                                            <div class="w-px h-3" style="background: rgba(255,255,255,0.1);"></div>
-                                        </div>
-
-                                        <!-- Email node -->
-                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg ml-4"
-                                            style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);">
-                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
-                                                style="background: rgba(251,146,60,0.12); border: 1px solid rgba(251,146,60,0.15);">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                                    stroke="rgba(251,146,60,0.9)" stroke-width="2">
-                                                    <path
-                                                        d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                                                    <polyline points="22,6 12,13 2,6" />
-                                                </svg>
-                                            </div>
-                                            <div class="flex-1 min-w-0">
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-[11px] font-semibold"
-                                                        style="color: rgba(255,255,255,0.8);">Email — 30 min
-                                                        delay</span>
-                                                    <span
-                                                        class="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
-                                                        style="background: rgba(251,146,60,0.1); color: rgba(251,146,60,0.85);">Email</span>
-                                                </div>
-                                                <p class="text-[9px] mt-0.5 truncate"
-                                                    style="color: rgba(255,255,255,0.3);">"Your cart is waiting" ·
-                                                    product image · 1-click checkout</p>
-                                            </div>
-                                            <div class="flex flex-col items-end gap-0.5">
-                                                <span class="text-[9px] font-semibold tabular-nums"
-                                                    style="color: rgba(255,255,255,0.4);">38 <span
-                                                        style="color:rgba(255,255,255,0.2)">sent</span></span>
-                                                <div class="flex items-center gap-1">
-                                                    <div class="h-1 rounded-full"
-                                                        style="width: 32px; background: rgba(255,255,255,0.07);">
-                                                        <div class="h-1 rounded-full"
-                                                            style="width: 65%; background: rgba(251,146,60,0.6);"></div>
-                                                    </div>
-                                                    <span class="text-[8px]"
-                                                        style="color: rgba(255,255,255,0.2);">65%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Connector -->
-                                        <div class="flex items-center gap-0 ml-9">
-                                            <div class="w-px h-3" style="background: rgba(255,255,255,0.08);"></div>
-                                        </div>
-
-                                        <!-- SMS node -->
-                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg ml-4"
-                                            style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);">
-                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
-                                                style="background: rgba(80,210,120,0.1); border: 1px solid rgba(80,210,120,0.15);">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                                    stroke="rgba(80,210,120,0.9)" stroke-width="2">
-                                                    <path
-                                                        d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                                                </svg>
-                                            </div>
-                                            <div class="flex-1 min-w-0">
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-[11px] font-semibold"
-                                                        style="color: rgba(255,255,255,0.8);">SMS — 2 hour delay</span>
-                                                    <span
-                                                        class="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
-                                                        style="background: rgba(80,210,120,0.1); color: rgba(80,210,120,0.85);">SMS</span>
-                                                </div>
-                                                <p class="text-[9px] mt-0.5 truncate"
-                                                    style="color: rgba(255,255,255,0.3);">Short reminder · direct
-                                                    checkout link · auto-unsubscribe</p>
-                                            </div>
-                                            <div class="flex flex-col items-end gap-0.5">
-                                                <span class="text-[9px] font-semibold tabular-nums"
-                                                    style="color: rgba(255,255,255,0.4);">19 <span
-                                                        style="color:rgba(255,255,255,0.2)">sent</span></span>
-                                                <div class="flex items-center gap-1">
-                                                    <div class="h-1 rounded-full"
-                                                        style="width: 32px; background: rgba(255,255,255,0.07);">
-                                                        <div class="h-1 rounded-full"
-                                                            style="width: 42%; background: rgba(80,210,120,0.6);"></div>
-                                                    </div>
-                                                    <span class="text-[8px]"
-                                                        style="color: rgba(255,255,255,0.2);">42%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Connector -->
-                                        <div class="flex items-center gap-0 ml-9">
-                                            <div class="w-px h-3" style="background: rgba(255,255,255,0.08);"></div>
-                                        </div>
-
-                                        <!-- WhatsApp node -->
-                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg ml-4"
-                                            style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);">
-                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
-                                                style="background: rgba(37,211,102,0.1); border: 1px solid rgba(37,211,102,0.15);">
-                                                <svg width="12" height="12" viewBox="0 0 24 24"
-                                                    fill="rgba(37,211,102,0.9)">
-                                                    <path
-                                                        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
-                                                    <path
-                                                        d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.533 5.86L.054 23.25a.75.75 0 00.916.916l5.39-1.479A11.954 11.954 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.75a9.722 9.722 0 01-4.93-1.342l-.354-.21-3.668 1.007 1.007-3.668-.21-.354A9.722 9.722 0 012.25 12C2.25 6.615 6.615 2.25 12 2.25S21.75 6.615 21.75 12 17.385 21.75 12 21.75z" />
-                                                </svg>
-                                            </div>
-                                            <div class="flex-1 min-w-0">
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-[11px] font-semibold"
-                                                        style="color: rgba(255,255,255,0.8);">WhatsApp — 24 hr
-                                                        delay</span>
-                                                    <span
-                                                        class="text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider"
-                                                        style="background: rgba(37,211,102,0.1); color: rgba(37,211,102,0.85);">WA</span>
-                                                </div>
-                                                <p class="text-[9px] mt-0.5 truncate"
-                                                    style="color: rgba(255,255,255,0.3);">Personalized offer with
-                                                    time-limited discount · FOMO trigger</p>
-                                            </div>
-                                            <div class="flex flex-col items-end gap-0.5">
-                                                <span class="text-[9px] font-semibold tabular-nums"
-                                                    style="color: rgba(255,255,255,0.4);">9 <span
-                                                        style="color:rgba(255,255,255,0.2)">sent</span></span>
-                                                <div class="flex items-center gap-1">
-                                                    <div class="h-1 rounded-full"
-                                                        style="width: 32px; background: rgba(255,255,255,0.07);">
-                                                        <div class="h-1 rounded-full"
-                                                            style="width: 78%; background: rgba(37,211,102,0.6);"></div>
-                                                    </div>
-                                                    <span class="text-[8px]"
-                                                        style="color: rgba(255,255,255,0.2);">78%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Connector -->
-                                        <div class="flex items-center gap-0 ml-9">
-                                            <div class="w-px h-3" style="background: rgba(80,210,120,0.2);"></div>
-                                        </div>
-
-                                        <!-- Result node -->
-                                        <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg"
-                                            style="background: rgba(80,210,120,0.05); border: 1px solid rgba(80,210,120,0.18);">
-                                            <div class="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
-                                                style="background: rgba(80,210,120,0.15);">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
-                                                    stroke="rgba(80,210,120,0.95)" stroke-width="2.5">
-                                                    <polyline points="20,6 9,17 4,12" />
-                                                </svg>
-                                            </div>
-                                            <div class="flex-1">
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-[11px] font-semibold"
-                                                        style="color: rgba(80,210,120,0.95);">Order Recovered</span>
-                                                </div>
-                                                <p class="text-[9px] mt-0.5" style="color: rgba(255,255,255,0.35);">26%
-                                                    of sequences convert · avg $143 recovered per order</p>
-                                            </div>
-                                            <div class="text-right">
-                                                <p class="text-[11px] font-bold" style="color: rgba(80,210,120,0.9);">
-                                                    +$$$</p>
-                                                <p class="text-[8px]" style="color: rgba(80,210,120,0.5);">12 today</p>
-                                            </div>
-                                        </div>
-
-                                    </div>
-
-                                    <!-- Bottom stats bar -->
-                                    <div class="flex gap-0 mt-4 pt-3"
-                                        style="border-top: 1px solid rgba(255,255,255,0.05);">
-                                        <div class="flex-1 text-center">
-                                            <p class="text-sm font-bold tabular-nums"
-                                                style="color: rgba(255,255,255,0.9);">26%</p>
-                                            <p class="text-[8px] uppercase tracking-wider mt-0.5"
-                                                style="color: rgba(255,255,255,0.25);">Recovery Rate</p>
-                                        </div>
-                                        <div class="w-px" style="background: rgba(255,255,255,0.06);"></div>
-                                        <div class="flex-1 text-center">
-                                            <p class="text-sm font-bold tabular-nums"
-                                                style="color: rgba(255,255,255,0.9);">4 min</p>
-                                            <p class="text-[8px] uppercase tracking-wider mt-0.5"
-                                                style="color: rgba(255,255,255,0.25);">Avg Setup</p>
-                                        </div>
-                                        <div class="w-px" style="background: rgba(255,255,255,0.06);"></div>
-                                        <div class="flex-1 text-center">
-                                            <p class="text-sm font-bold tabular-nums"
-                                                style="color: rgba(255,255,255,0.9);">3 ch</p>
-                                            <p class="text-[8px] uppercase tracking-wider mt-0.5"
-                                                style="color: rgba(255,255,255,0.25);">Channels</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        <!-- The globe sphere -->
+                        <div class="revluma-globe-sphere">
+                            <div class="revluma-globe-texture"></div>
+                            <div class="revluma-globe-grid"></div>
+                            <div class="revluma-globe-shade"></div>
+                            <div class="revluma-globe-glare"></div>
                         </div>
+
+                        <!-- Floating money notifications spawn here -->
+                        <div id="revlumaMoneyNotifs" class="absolute inset-0 pointer-events-none"></div>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
 
-    <!-- ── Use Case Bento Grid ── -->
-    <section class="py-24 px-6 border-t border-[#1F1F1F]">
-        <div class="max-w-7xl mx-auto">
-            <div class="mb-14 text-center reveal">
-                <p class="text-[11px] uppercase tracking-widest text-[#555] font-semibold mb-3">Built For Your Business
-                    Type</p>
-                <h2 class="text-3xl md:text-4xl font-bold tracking-tighter mb-3">Every store wins differently.</h2>
-                <p class="text-[#A1A1AA] max-w-md mx-auto text-sm">Whether you're running dropshipping, DTC, or a
-                    growing brand, Revluma adapts to how you sell.</p>
-            </div>
+        <style>
+            .revluma-globe-sphere {
+                position: absolute;
+                inset: 10%;
+                border-radius: 50%;
+                overflow: hidden;
+                background: radial-gradient(circle at 32% 28%, #123526 0%, #0a1f16 55%, #050f0b 100%);
+                box-shadow:
+                    inset -26px -22px 60px rgba(0, 0, 0, 0.75),
+                    inset 16px 14px 40px rgba(80, 210, 120, 0.08),
+                    0 0 70px rgba(80, 210, 120, 0.15);
+            }
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 reveal">
-                <!-- Dropshipping card -->
-                <div
-                    class="relative rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden p-6 hover:border-white/10 transition-all duration-300 group">
-                    <div class="absolute top-0 right-0 w-40 h-40 rounded-full opacity-10 pointer-events-none"
-                        style="background: radial-gradient(circle, #4080ff, transparent 70%); transform: translate(30%, -30%);">
-                    </div>
-                    <div
-                        class="w-10 h-10 rounded-xl overflow-hidden bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
-                        <img src="assets/images/dropshipping.webp" alt="Dropshipping" class="w-full h-full object-cover"
-                            onerror="this.style.display='none'; this.parentElement.style.background='rgba(59,130,246,0.1)'">
-                    </div>
-                    <p class="text-[10px] uppercase tracking-widest text-blue-400/70 font-semibold mb-2">Dropshipping
-                    </p>
-                    <h3 class="text-base font-bold mb-2">Win before your competitors restock</h3>
-                    <p class="text-[#666] text-xs leading-relaxed">Spot trending products weeks before they peak.
-                        Revluma scans 12+ marketplaces and signals when to source before everyone else does.</p>
-                    <div class="mt-5 pt-4 border-t border-[#1a1a1a]">
-                        <p class="text-xs text-green-400 font-semibold">↑ 3–6 week market lead time</p>
-                    </div>
-                </div>
+            .revluma-globe-texture {
+                position: absolute;
+                inset: -20% -60%;
+                width: 220%;
+                height: 140%;
+                background-image:
+                    radial-gradient(circle, rgba(80, 210, 120, 0.4) 0 16px, transparent 17px),
+                    radial-gradient(circle, rgba(80, 210, 120, 0.3) 0 22px, transparent 23px),
+                    radial-gradient(circle, rgba(80, 210, 120, 0.32) 0 12px, transparent 13px),
+                    radial-gradient(circle, rgba(80, 210, 120, 0.26) 0 18px, transparent 19px),
+                    radial-gradient(circle, rgba(80, 210, 120, 0.3) 0 14px, transparent 15px);
+                background-position:
+                    10% 30%,
+                    30% 65%,
+                    50% 20%,
+                    68% 70%,
+                    85% 35%;
+                background-repeat: repeat-x;
+                background-size: 55% 100%;
+                opacity: 0.85;
+                animation: revlumaGlobeSpin 16s linear infinite;
+            }
 
-                <!-- DTC Brands card — tall / featured -->
-                <div
-                    class="relative rounded-2xl border border-white/10 bg-gradient-to-b from-[#111] to-[#0D0D0D] overflow-hidden p-6 hover:border-white/20 transition-all duration-300 group md:row-span-1">
-                    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-32 opacity-20 pointer-events-none"
-                        style="background: radial-gradient(ellipse, rgba(255,255,255,0.3), transparent 70%);"></div>
-                    <div
-                        class="w-10 h-10 rounded-xl overflow-hidden bg-white/5 border border-white/15 flex items-center justify-center mb-4">
-                        <img src="assets/images/dtc.jpg" alt="DTC Brands" class="w-full h-full object-cover"
-                            onerror="this.style.display='none'">
-                    </div>
-                    <p class="text-[10px] uppercase tracking-widest text-[#777] font-semibold mb-2">DTC Brands</p>
-                    <h3 class="text-base font-bold mb-2">Turn one-time buyers into loyal customers</h3>
-                    <p class="text-[#666] text-xs leading-relaxed">Post-purchase flows, win-back sequences, and LTV
-                        optimization. Revluma converts first-time purchasers into repeat buyers on autopilot.</p>
-                    <div class="mt-5 pt-4 border-t border-[#1a1a1a]">
-                        <p class="text-xs text-green-400 font-semibold">↑ Avg. 38% revenue lift in 90 days</p>
-                    </div>
-                </div>
+            .revluma-globe-grid {
+                position: absolute;
+                inset: 0;
+                border-radius: 50%;
+                background-image: repeating-linear-gradient(90deg,
+                        rgba(255, 255, 255, 0.07) 0 1px,
+                        transparent 1px 15%);
+                background-size: 220% 100%;
+                mix-blend-mode: screen;
+                animation: revlumaGlobeSpin 16s linear infinite;
+            }
 
-                <!-- High Volume stores card -->
-                <div
-                    class="relative rounded-2xl border border-[#1F1F1F] bg-[#0D0D0D] overflow-hidden p-6 hover:border-white/10 transition-all duration-300 group">
-                    <div class="absolute top-0 right-0 w-40 h-40 rounded-full opacity-10 pointer-events-none"
-                        style="background: radial-gradient(circle, #40ffaa, transparent 70%); transform: translate(30%, -30%);">
-                    </div>
-                    <div
-                        class="w-10 h-10 rounded-xl overflow-hidden bg-green-500/10 border border-green-500/20 flex items-center justify-center mb-4">
-                        <img src="assets/images/sale-recovery.png" alt="High Volume Stores"
-                            class="w-full h-full object-cover" onerror="this.style.display='none'">
-                    </div>
-                    <p class="text-[10px] uppercase tracking-widest text-green-400/70 font-semibold mb-2">High-Volume
-                        Stores</p>
-                    <h3 class="text-base font-bold mb-2">Scale recovery without scaling headcount</h3>
-                    <p class="text-[#666] text-xs leading-relaxed">Process thousands of abandoned events daily. Revluma
-                        handles the volume so your team doesn't have to touch a single follow-up manually.</p>
-                    <div class="mt-5 pt-4 border-t border-[#1a1a1a]">
-                        <p class="text-xs text-green-400 font-semibold">↑ Unlimited automations, flat pricing</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
+            .revluma-globe-shade {
+                position: absolute;
+                inset: 0;
+                border-radius: 50%;
+                background: radial-gradient(circle at 65% 75%, rgba(0, 0, 0, 0.55), transparent 60%);
+                pointer-events: none;
+            }
 
-    <!-- ── Case Study Spotlight ── -->
-    <section class="py-24 px-6 border-t border-[#1F1F1F]"
-        style="background: linear-gradient(180deg, #0a0a0a 0%, #0d0d0d 100%);">
-        <div class="max-w-7xl mx-auto">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-                <!-- Image/visual side -->
-                <div class="reveal order-2 md:order-1">
-                    <div class="relative rounded-2xl border border-[#1F1F1F] bg-[#0A0A0A] overflow-hidden"
-                        style="min-height: 340px;">
-                        <!-- Abstract revenue chart illustration -->
-                        <svg class="absolute inset-0 w-full h-full" viewBox="0 0 560 340" fill="none"
-                            xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
-                            <!-- Background grid -->
-                            <line x1="0" y1="280" x2="560" y2="280" stroke="rgba(255,255,255,0.05)" stroke-width="1" />
-                            <line x1="0" y1="220" x2="560" y2="220" stroke="rgba(255,255,255,0.04)" stroke-width="1" />
-                            <line x1="0" y1="160" x2="560" y2="160" stroke="rgba(255,255,255,0.04)" stroke-width="1" />
-                            <line x1="0" y1="100" x2="560" y2="100" stroke="rgba(255,255,255,0.04)" stroke-width="1" />
-                            <!-- Revenue area chart -->
-                            <path
-                                d="M0 280 L40 270 L80 265 L120 260 L160 240 L200 230 L240 210 L260 160 L300 140 L340 120 L380 95 L420 80 L460 65 L500 50 L540 38 L560 32 L560 340 L0 340 Z"
-                                fill="url(#greenGrad)" opacity="0.15" />
-                            <path
-                                d="M0 280 L40 270 L80 265 L120 260 L160 240 L200 230 L240 210 L260 160 L300 140 L340 120 L380 95 L420 80 L460 65 L500 50 L540 38 L560 32"
-                                stroke="url(#greenLine)" stroke-width="2.5" fill="none" />
-                            <!-- Before/after divider -->
-                            <line x1="240" y1="40" x2="240" y2="300" stroke="rgba(255,255,255,0.1)" stroke-width="1"
-                                stroke-dasharray="4 4" />
-                            <rect x="210" y="44" width="60" height="18" rx="4" fill="rgba(255,255,255,0.05)" />
-                            <text x="240" y="57" text-anchor="middle" fill="rgba(255,255,255,0.5)"
-                                font-family="sans-serif" font-size="8" font-weight="600">Revluma ON</text>
-                            <!-- Glow dot at current point -->
-                            <circle cx="540" cy="38" r="6" fill="rgba(80,210,120,0.4)" />
-                            <circle cx="540" cy="38" r="3" fill="rgba(80,210,120,0.9)" />
-                            <!-- Labels -->
-                            <text x="20" y="296" fill="rgba(255,255,255,0.25)" font-family="sans-serif"
-                                font-size="9">Month 1</text>
-                            <text x="240" y="296" fill="rgba(255,255,255,0.25)" font-family="sans-serif"
-                                font-size="9">Month 4</text>
-                            <text x="500" y="296" fill="rgba(255,255,255,0.25)" font-family="sans-serif"
-                                font-size="9">Month 8</text>
-                            <defs>
-                                <linearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stop-color="rgba(80,210,120,1)" />
-                                    <stop offset="100%" stop-color="rgba(80,210,120,0)" />
-                                </linearGradient>
-                                <linearGradient id="greenLine" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stop-color="rgba(80,210,120,0.3)" />
-                                    <stop offset="50%" stop-color="rgba(80,210,120,0.8)" />
-                                    <stop offset="100%" stop-color="rgba(80,210,120,1)" />
-                                </linearGradient>
-                            </defs>
-                        </svg>
-                        <!-- Stat cards overlay -->
-                        <div class="absolute bottom-5 left-5 right-5 flex gap-3">
-                            <div class="flex-1 bg-black/60 backdrop-blur-sm border border-white/8 rounded-xl p-3">
-                                <p class="text-[10px] text-[#555] uppercase tracking-wide mb-1">Revenue recovered</p>
-                                <p class="text-xl font-bold text-white">$42,800</p>
-                                <p class="text-[10px] text-green-400 font-semibold">in 6 months</p>
-                            </div>
-                            <div class="flex-1 bg-black/60 backdrop-blur-sm border border-white/8 rounded-xl p-3">
-                                <p class="text-[10px] text-[#555] uppercase tracking-wide mb-1">Cart recovery rate</p>
-                                <p class="text-xl font-bold text-white">31%</p>
-                                <p class="text-[10px] text-green-400 font-semibold">↑ from 8% baseline</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            .revluma-globe-glare {
+                position: absolute;
+                inset: 0;
+                border-radius: 50%;
+                background: radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.22), transparent 35%);
+                pointer-events: none;
+            }
 
-                <!-- Text side -->
-                <div class="reveal order-1 md:order-2" style="transition-delay: 0.15s;">
-                    <div
-                        class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-[#A1A1AA] mb-5 font-semibold">
-                        <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block"></span>
-                        Customer spotlight
-                    </div>
-                    <h2 class="text-3xl md:text-4xl font-bold tracking-tighter mb-4 leading-tight">"We recovered
-                        $42K<br>in 4 months without<br>touching a thing."</h2>
-                    <p class="text-[#777] text-sm leading-relaxed mb-6">Kira Neveah connected Revluma to her fashion
-                        dropshipping store in 4 minutes. Within the first week, her AI cart recovery sequences were
-                        live. She didn't write a single email, Revluma handled everything, personalized to each shopper.
-                    </p>
-                    <div class="flex items-center gap-4 mb-8">
-                        <div
-                            class="w-11 h-11 rounded-full border border-white/10 overflow-hidden bg-white/5 flex items-center justify-center">
-                            <img src="assets/images/profile1.jpg" alt="Kira Neveah" class="w-full h-full object-cover"
-                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'" />
-                            <div class="w-full h-full hidden items-center justify-center text-sm font-bold text-white">
-                                KN</div>
-                        </div>
-                        <div>
-                            <p class="text-sm font-semibold">Kira Neveah</p>
-                            <p class="text-[11px] text-[#555]">Founder, NovaNoir Fashion — Shopify store</p>
-                        </div>
-                    </div>
-                    <a href="./auth/signUp.html">
-                        <button class="glass-btn text-sm font-bold hover:scale-[1.03] transition-all">Start your free
-                            trial →</button>
-                    </a>
-                </div>
-            </div>
-        </div>
+            @keyframes revlumaGlobeSpin {
+                from {
+                    background-position-x: 0%;
+                }
+
+                to {
+                    background-position-x: -100%;
+                }
+            }
+
+            .revluma-money-pop {
+                position: absolute;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 5px 10px;
+                border-radius: 999px;
+                font-size: 11px;
+                font-weight: 700;
+                color: #6ee7a8;
+                background: rgba(8, 14, 11, 0.75);
+                border: 1px solid rgba(80, 210, 120, 0.35);
+                backdrop-filter: blur(6px);
+                -webkit-backdrop-filter: blur(6px);
+                box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), 0 0 16px rgba(80, 210, 120, 0.12);
+                white-space: nowrap;
+                opacity: 0;
+                animation: revlumaMoneyPop 3.2s ease-out forwards;
+            }
+
+            @keyframes revlumaMoneyPop {
+                0% {
+                    opacity: 0;
+                    transform: translateY(8px) scale(0.85);
+                }
+
+                14% {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                }
+
+                82% {
+                    opacity: 1;
+                    transform: translateY(-4px) scale(1);
+                }
+
+                100% {
+                    opacity: 0;
+                    transform: translateY(-14px) scale(0.95);
+                }
+            }
+
+            @media (max-width: 767px) {
+                .revluma-globe-sphere {
+                    inset: 14%;
+                }
+            }
+        </style>
+
+        <script>
+            (function () {
+                const notifWrap = document.getElementById('revlumaMoneyNotifs');
+                if (!notifWrap) return;
+
+                const amounts = ['+$24', '+$50', '+$100', '+$80', '+$74', '+$36', '+$62', '+$95', '+$18', '+$127'];
+                const maxOnScreen = 4;
+                let activeCount = 0;
+
+                function spawnNotif() {
+                    if (activeCount < maxOnScreen) {
+                        const el = document.createElement('span');
+                        el.className = 'revluma-money-pop';
+                        el.textContent = amounts[Math.floor(Math.random() * amounts.length)];
+
+                        // Random position around/over the globe
+                        const top = 6 + Math.random() * 80; // %
+                        const left = 4 + Math.random() * 84; // %
+                        el.style.top = top + '%';
+                        el.style.left = left + '%';
+
+                        notifWrap.appendChild(el);
+                        activeCount++;
+
+                        el.addEventListener('animationend', () => {
+                            el.remove();
+                            activeCount--;
+                        });
+                    }
+
+                    const nextDelay = 700 + Math.random() * 1100;
+                    setTimeout(spawnNotif, nextDelay);
+                }
+
+                spawnNotif();
+            })();
+        </script>
     </section>
 
     <!-- ── Trust & Security Section ── -->
@@ -2843,9 +2689,10 @@
 
 
                     </ul>
+                    <div class="mt-8 flex flex-col sm:flex-row gap-4 items-center justify-center">
                     <a href="./auth/signUp.html"><button
-                            class="mt-8 w-full py-3 rounded-2xl border border-white/10 text-sm font-bold hover:bg-white hover:text-black transition-all duration-300">Start
-                            Free Trial</button></a>
+                            class="px-8 py-3.5 rounded-full bg-white text-black font-bold text-sm tracking-wide hover:bg-zinc-200 transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] w-full sm:w-auto text-center">Start Free Trial</button></a>
+                    </div>
                 </div>
 
 
@@ -2870,12 +2717,12 @@
 
 
                     </ul>
-                    <a href="./auth/signUp.html" target="_blank"><button
+                    <a href="./auth/signUp.html"><button
                             class="mt-8 w-full py-3 rounded-2xl bg-white text-black text-sm font-bold hover:scale-[1.02] transition-all duration-300">Get
                             Started Free</button></a>
                 </div>
             </div>
-            <p class="mt-8 text-[11px] text-[#444]">All plans include a 7-day free trial. No credit card required.</p>
+            <p class="mt-8 text-[11px] text-[#888]">All plans include a 7-day free trial. No credit card required.</p>
         </div>
     </section>
 
@@ -3194,7 +3041,7 @@
             <p class="text-[#A1A1AA] mb-10 max-w-md mx-auto">Join 2,400+ brands already recovering more revenue than
                 they thought possible.</p>
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a href="./auth/onboarding.html">
+                <a href="./auth/signUp.html">
                     <button class="glass-btn text-base font-bold hover:scale-[1.05] transition-all">
                         Get Started Free →
                     </button>
@@ -3204,7 +3051,7 @@
                     Book a Demo
                 </button>
             </div>
-            <p class="mt-5 text-[11px] text-[#444]">No credit card required &nbsp;·&nbsp; 7-day free trial
+            <p class="mt-5 text-[11px] text-[#888]">No credit card required &nbsp;·&nbsp; 7-day free trial
                 &nbsp;·&nbsp; Cancel anytime</p>
         </div>
     </section>
@@ -3216,10 +3063,10 @@
                 <!-- Brand -->
                 <div class="col-span-2 sm:col-span-2 md:col-span-1 space-y-3">
                     <div class="flex items-center gap-2">
-                        <img src="assets/images/Revluma-logo.png" alt="Revluma" class="w-6 h-6 rounded-lg object-cover">
+                        <img src="assets/images/Revluma-icon.png" alt="Revluma" class="w-6 h-6 rounded-lg object-cover mix-blend-screen">
                         <span class="text-sm font-bold tracking-tighter">REVLUMA</span>
                     </div>
-                    <p class="text-[#555] text-[11px] leading-relaxed max-w-[220px]">The revenue intelligence platform
+                    <p class="text-[#888] text-[11px] leading-relaxed max-w-[220px]">The revenue intelligence platform
                         for modern e-commerce teams.</p>
                     <div class="flex gap-1.5 mt-2">
                         <input type="email" placeholder="Your email"
@@ -3232,47 +3079,47 @@
                 <!-- Product -->
                 <div class="space-y-2.5">
                     <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Product</p>
-                    <a href="/features"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Features</a>
-                    <a href="#pricing"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Pricing</a>
+                    <a href="/features.html"
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">Features</a>
+                    <a href="#pricing" @click.prevent="document.getElementById('pricing').scrollIntoView({behavior: 'smooth'})"
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">Pricing</a>
                     <a href="#"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Changelog</a>
-                    <a href="#"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Docs</a>
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">Changelog</a>
+                    <a href="./pages/docs.html"
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">Docs</a>
                 </div>
 
                 <!-- Company -->
                 <div class="space-y-2.5">
                     <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Company</p>
-                    <a href="#"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">About</a>
-                    <a href="#"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Blog</a>
+                    <a href="./pages/about.html"
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">About</a>
+                    <a href="./pages/blog.html"
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">Blog</a>
                 </div>
 
                 <!-- Social -->
                 <div class="space-y-2.5">
                     <p class="text-white text-[10px] uppercase tracking-widest font-semibold mb-3">Social</p>
                     <a href="https://x.com/RevlumaAI" target="_blank" rel="noopener noreferrer"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Twitter /
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">Twitter /
                         X</a>
                     <a href="https://tiktok.com/@splendor_automation"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Tiktok</a>
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">Tiktok</a>
                     <a href="#"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">LinkedIn</a>
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">LinkedIn</a>
                     <a href="https://instagram.com/splendor_ai_automation"
-                        class="block text-[#555] text-[11px] font-medium hover:text-white transition-colors">Instagram</a>
+                        class="block text-[#888] text-[11px] font-medium hover:text-white transition-colors">Instagram</a>
                 </div>
             </div>
 
             <div
-                class="border-t border-[#1A1A1A] pt-6 flex flex-col sm:flex-row justify-between items-center gap-3 text-[10px] text-[#444]">
+                class="border-t border-[#1A1A1A] pt-6 flex flex-col sm:flex-row justify-between items-center gap-3 text-[10px] text-[#888]">
                 <p>&copy; 2025 Revluma. All rights reserved.</p>
                 <div class="flex flex-wrap justify-center gap-4">
-                    <a href="#" class="hover:text-white transition-colors">Privacy Policy</a>
-                    <a href="#" class="hover:text-white transition-colors">Terms of Service</a>
-                    <a href="#" class="hover:text-white transition-colors">Cookie Settings</a>
+                    <a href="./pages/privacyPolicy.html" class="hover:text-white transition-colors">Privacy Policy</a>
+                    <a href="./pages/termsOfService.html" class="hover:text-white transition-colors">Terms of Service</a>
+                    <a href="./pages/cookieSettings.html" class="hover:text-white transition-colors">Cookie Settings</a>
                 </div>
             </div>
         </div>

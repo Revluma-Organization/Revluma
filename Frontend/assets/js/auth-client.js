@@ -1,75 +1,143 @@
 class RevlumaAuth {
     constructor() {
-        this.user = {
-            id: "mock-user-001",
-            email: "alex@mystore.com",
-            full_name: "Alex Johnson",
-            display_name: "Alex",
-            role: "admin",
-            tenant_id: "tenant-001",
-            email_verified: true,
-            onboarding_status: "completed",
-            membership_tier: "pro",
-            account_status: "active"
-        };
-        this.isAuthenticated = true;
+        this.apiBase = window.REVLUMA_API_BASE || 'http://localhost:8000/api/v1';
     }
 
-    async checkAutoLogin() {
-        return this.user;
+    async register(payload) {
+        const response = await fetch(`${this.apiBase}/auth/register`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            let errorMsg = result.error || result.message || 'Registration failed';
+            if (result.errors && Array.isArray(result.errors)) {
+                errorMsg = result.errors.join(', ');
+            }
+            // Log full backend response so backend devs can debug
+            console.error('Backend validation error data:', result);
+            
+            // To simulate axios error.response.data for anyone checking console
+            const simulatedAxiosError = new Error(errorMsg);
+            simulatedAxiosError.response = { data: result };
+            throw simulatedAxiosError;
+        }
+
+        this._storeTokens(result.accessToken || result.token, result.refreshToken, result.user);
+        return result;
     }
 
     async login(email, password) {
-        this.isAuthenticated = true;
-        this.user.email = email;
-        return { success: true, user: this.user, message: "Mock login successful" };
-    }
+        const response = await fetch(`${this.apiBase}/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                account: {
+                    email: email,
+                    password: password
+                }
+            })
+        });
 
-    async signup(email, password, firstName, lastName) {
-        this.isAuthenticated = true;
-        this.user.email = email;
-        this.user.full_name = `${firstName} ${lastName}`;
-        return { success: true, user: this.user, message: "Mock signup successful" };
+        const result = await response.json();
+
+        if (!response.ok) {
+            let errorMsg = result.error || result.message || 'Login failed';
+            if (result.errors && Array.isArray(result.errors)) {
+                errorMsg = result.errors.join(', ');
+            }
+            console.error('Backend validation error data:', result);
+            
+            const simulatedAxiosError = new Error(errorMsg);
+            simulatedAxiosError.response = { data: result };
+            throw simulatedAxiosError;
+        }
+
+        this._storeTokens(result.accessToken || result.token, result.refreshToken, result.user);
+        return result;
     }
 
     async logout() {
-        this.isAuthenticated = false;
-        this.user = null;
-        return { success: true };
+        try {
+            const token = this.getStoredToken();
+            if (token) {
+                await fetch(`${this.apiBase}/auth/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn('Backend logout failed or was unreachable', e);
+        } finally {
+            this.clearStoredToken();
+        }
     }
 
-    async refreshSession() {
-        return { success: true, expiresAt: new Date(Date.now() + 3600000).toISOString() };
-    }
-
-    async validateSession() {
-        return { authenticated: true, user: this.user };
-    }
-
-    async requestPasswordReset(email) {
-        return { success: true, message: "Mock password reset email sent" };
-    }
-
-    storeToken(token) {
-        try { localStorage.setItem('revluma_token', token); } catch (e) {}
+    _storeTokens(accessToken, refreshToken, user) {
+        if (accessToken) {
+            const authState = {
+                state: {
+                    user: user || null,
+                    csrfToken: accessToken
+                },
+                version: 0
+            };
+            localStorage.setItem('rv-auth', JSON.stringify(authState));
+        }
+        if (refreshToken) {
+            localStorage.setItem('revluma_refresh_token', refreshToken);
+        }
     }
 
     getStoredToken() {
-        try { return localStorage.getItem('revluma_token'); } catch (e) { return null; }
+        try {
+            const authStr = localStorage.getItem('rv-auth');
+            if (authStr) {
+                const parsed = JSON.parse(authStr);
+                return parsed?.state?.csrfToken || null;
+            }
+        } catch (e) {
+            return null;
+        }
+        return null;
+    }
+    
+    getUser() {
+        try {
+            const authStr = localStorage.getItem('rv-auth');
+            if (authStr) {
+                const parsed = JSON.parse(authStr);
+                return parsed?.state?.user || null;
+            }
+        } catch (e) {
+            return null;
+        }
+        return null;
     }
 
     clearStoredToken() {
-        try { localStorage.removeItem('revluma_token'); } catch (e) {}
+        localStorage.removeItem('rv-auth');
+        localStorage.removeItem('revluma_refresh_token');
+        localStorage.removeItem('revluma_token'); // Cleanup legacy mock token
     }
 
-    getErrorMessage(error) {
-        if (typeof error === 'string') return error;
-        if (error && error.message) return error.message;
-        return 'An unknown error occurred';
+    isAuthenticated() {
+        return !!this.getStoredToken();
     }
 
+    // Helper methods preserved for UI compatibility
     hasRole(role) {
-        return this.user && this.user.role === role;
+        const user = this.getUser();
+        return user && user.role === role;
     }
 
     isAdmin() {
@@ -77,12 +145,27 @@ class RevlumaAuth {
     }
 
     isEmailVerified() {
-        return this.user && this.user.email_verified === true;
+        const user = this.getUser();
+        return user && user.email_verified === true;
     }
 
     getTenantId() {
-        return this.user ? this.user.tenant_id : null;
+        const user = this.getUser();
+        return user ? user.tenant_id : null;
+    }
+    
+    async requestPasswordReset(email) {
+        const response = await fetch(`${this.apiBase}/auth/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        if (!response.ok) {
+            const result = await response.json();
+            throw new Error(result.error || result.message || 'Password reset failed');
+        }
+        return { success: true };
     }
 }
 
-window.revlumaAuth = window.revlumaAuth || new RevlumaAuth();
+window.revlumaAuth = new RevlumaAuth();

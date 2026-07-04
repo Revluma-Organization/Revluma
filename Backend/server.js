@@ -8,13 +8,18 @@ process.on('uncaughtException', (err) => {
 
 const app = require('./src/app');
 const { connectDB } = require('./src/configs/database');
+const { startKeepAlive } = require('./src/utils/keepAlive');
 
 connectDB();
 
-const PORT = process.env.PORT;
+// Start keep-alive service to prevent Render free tier sleep
+startKeepAlive();
+
+const PORT = process.env.PORT || 8080;
 
 const server = app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`✅ Server is running on port ${PORT}`);
+    console.log(`🔗 Backend URL: ${process.env.BACKEND_URL || 'Not configured'}`);
 });
 
 process.on('unhandledRejection', (err) => {

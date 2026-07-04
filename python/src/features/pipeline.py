@@ -2,7 +2,7 @@
 Revluma Feature Engineering Pipeline
 Source: FEATURE_VECTOR_SPEC v1.0.0 — Okanlawon David (AI/ML Engineer 1)
 
-Computes the 26-feature Shopper Feature Vector fed into all five ML models.
+Computes the 30-feature Shopper Feature Vector fed into all five ML models.
 Skeletons only — implementation begins Week 4.
 """
 
@@ -12,10 +12,21 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 # BEHAVIOURAL FEATURES — from tracking pixel events (real-time, per session)
 # ---------------------------------------------------------------------------
+from datetime import datetime
+
+def _parse_timestamp(ts: str) -> datetime | None:
+    if not ts or not isinstance(ts, str):
+        return None
+    try:
+        if ts.endswith('Z'):
+            ts = ts[:-1] + '+00:00'
+        return datetime.fromisoformat(ts)
+    except (ValueError, TypeError):
+        return None
 
 def calculate_scroll_depth(events: list) -> float:
     """
-    Feature: scroll_depth_checkout_pct
+    Feature: scroll_depth_pct
 
     Calculates the maximum scroll percentage reached on any checkout page
     during the session. Uses IntersectionObserver ratios from the pixel.
@@ -27,12 +38,31 @@ def calculate_scroll_depth(events: list) -> float:
     Returns:
         float: 0.0–100.0. Default 0.0 if no scroll data captured.
     """
-    pass
+    if not isinstance(events, list):
+        return 0.0
+
+    max_depth = 0.0
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("event_type") != "scroll":
+            continue
+        
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+            
+        depth = payload.get("depth_pct")
+        if isinstance(depth, (int, float)):
+            if depth > max_depth:
+                max_depth = float(depth)
+                
+    return max_depth
 
 
 def calculate_tab_switch_count(events: list) -> int:
     """
-    Feature: tab_switch_count_session
+    Feature: tab_switch_count
 
     Counts how many times the shopper switched away from the merchant tab
     during the session. Each visibilitychange to 'hidden' = +1.
@@ -44,12 +74,29 @@ def calculate_tab_switch_count(events: list) -> int:
     Returns:
         int: 0–50 (capped at 50). Default 0. Values 4+ signal price comparison.
     """
-    pass
+    if not isinstance(events, list):
+        return 0
+
+    count = 0
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("event_type") != "tab_switch":
+            continue
+            
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+            
+        if payload.get("direction") == "blur":
+            count += 1
+            
+    return count
 
 
 def calculate_time_on_checkout_step(events: list) -> float:
     """
-    Feature: time_on_checkout_step_sec
+    Feature: time_on_page_ms
 
     Time in seconds spent on the last checkout step before abandonment.
     Formula: timestamp(step_completed) - timestamp(step_started) for last step.
@@ -66,7 +113,7 @@ def calculate_time_on_checkout_step(events: list) -> float:
 
 def calculate_cursor_hesitation(events: list) -> int:
     """
-    Feature: cursor_hesitation_ms_on_price_field
+    Feature: cursor_hesitation
 
     Duration in milliseconds between focus and blur on any price-related field
     during the session. Uses the maximum hesitation across all price field interactions.
@@ -78,12 +125,22 @@ def calculate_cursor_hesitation(events: list) -> int:
     Returns:
         int: 0–30000ms (capped at 30000). Default 0 if no price field interaction.
     """
-    pass
+    if not isinstance(events, list):
+        return 0
+
+    count = 0
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("event_type") == "exit_intent":
+            count += 1
+            
+    return count
 
 
 def calculate_checkout_step_reached(events: list) -> int:
     """
-    Feature: checkout_step_abandoned
+    Feature: checkout_step_reached
 
     The highest normalised checkout step number reached before abandonment.
     Step scale (normalised across Shopify, WooCommerce, BigCommerce):
@@ -102,7 +159,26 @@ def calculate_checkout_step_reached(events: list) -> int:
     Returns:
         int: 0–5. Default 0.
     """
-    pass
+    if not isinstance(events, list):
+        return 0
+
+    max_step = 0
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("event_type") != "checkout_step":
+            continue
+            
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+            
+        step = payload.get("step")
+        if isinstance(step, (int, float)):
+            if step > max_step:
+                max_step = int(step)
+                
+    return max_step
 
 
 # ---------------------------------------------------------------------------
@@ -111,23 +187,32 @@ def calculate_checkout_step_reached(events: list) -> int:
 
 def calculate_past_orders_total(customer_id: str, db) -> int:
     """
-    Feature: past_orders_total
+    Total count of orders for this customer.
 
-    Total count of completed orders for this customer with this merchant.
-    Formula: COUNT(*) FROM Order WHERE customer_id=? AND status='completed'.
-    Excludes cancelled, refunded, and pending orders.
-
-    Models: M4 (Churn Risk Scorer), M5 (Offer Value Optimizer)
-    Source: Order table (S6) via Prisma ORM, populated by platform webhooks
+    Query: SELECT orders_count FROM customers WHERE id = %s
 
     Args:
         customer_id: UUID of the customer
-        db: Active database session
+        db: Active database connection
 
     Returns:
-        int: 0–1000+. Default 0 for new customers with no history.
+        int: orders_count if row exists, else 0. Never raises.
     """
-    pass
+    if not customer_id or db is None:
+        return 0
+
+    try:
+        cursor = db.cursor()
+        cursor.execute(
+            "SELECT orders_count FROM customers WHERE id = %s",
+            (customer_id,)
+        )
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return int(row[0])
+        return 0
+    except Exception:
+        return 0
 
 
 def calculate_coupon_usage_pct(customer_id: str, db) -> float:
@@ -173,24 +258,32 @@ def calculate_days_since_last_purchase(customer_id: str, db) -> int:
 
 def calculate_avg_order_value(customer_id: str, db) -> float:
     """
-    Feature: avg_order_value
+    Average order value across all orders for this customer.
 
-    Lifetime average order value across all completed orders for this merchant.
-    Formula: SUM(order_total) / COUNT(*) WHERE customer_id=? AND status='completed'.
-    Includes product cost + shipping. Excludes tax for cross-region comparability.
-
-    Models: M4 (Churn Risk Scorer), M5 (Offer Value Optimizer)
-    Source: Order table (S6) — order_total / total_price field
+    Query: SELECT AVG(total) FROM orders WHERE customer_id = %s
 
     Args:
         customer_id: UUID of the customer
-        db: Active database session
+        db: Active database connection
 
     Returns:
-        float: 0.0–10000.0+ in merchant's local currency. Default 0.0.
+        float: average order value if row exists, else 0.0. Never raises.
     """
-    pass
+    if not customer_id or db is None:
+        return 0.0
 
+    try:
+        cursor = db.cursor()
+        cursor.execute(
+            "SELECT AVG(total) FROM orders WHERE customer_id = %s",
+            (customer_id,)
+        )
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return float(row[0])
+        return 0.0
+    except Exception:
+        return 0.0
 
 def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
     """
@@ -263,7 +356,7 @@ def calculate_abandoned_at_shipping_reveal(events: list) -> bool:
     Feature: abandoned_at_shipping_reveal
 
     Boolean flag — did the shopper abandon specifically after seeing shipping costs?
-    Formula: checkout_step_abandoned IN (2,3) AND exit_intent event fired AFTER
+    Formula: checkout_step_reached IN (2,3) AND exit_intent event fired AFTER
              step 2 completed AND step 3 was never completed.
 
     Models: M2 (Price/Convenience Classifier) — primary CSS signal
@@ -292,7 +385,16 @@ def calculate_failed_payment_attempt(events: list) -> bool:
               blocked by friction — recovery should offer alternative payment, not discount).
               False = no failed payment detected. Default False.
     """
-    pass
+    if not isinstance(events, list):
+        return False
+
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("event_type") == "failed_payment":
+            return True
+            
+    return False
 
 
 def calculate_local_hour_of_session(events: list) -> int:
@@ -309,7 +411,21 @@ def calculate_local_hour_of_session(events: list) -> int:
     Returns:
         int: 0–23. Default 12 (noon) when timezone detection fails.
     """
-    pass
+    if not isinstance(events, list):
+        return 12
+
+    earliest_time = None
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        ts = _parse_timestamp(event.get("timestamp"))
+        if ts is not None:
+            if earliest_time is None or ts < earliest_time:
+                earliest_time = ts
+                
+    if earliest_time is not None:
+        return earliest_time.hour
+    return 12
 
 
 def calculate_day_of_week_session(events: list) -> int:
@@ -327,7 +443,57 @@ def calculate_day_of_week_session(events: list) -> int:
     Returns:
         int: 0–6 (0=Monday). Default 0 when timezone detection fails.
     """
-    pass
+    if not isinstance(events, list):
+        return 0
+
+    earliest_time = None
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        ts = _parse_timestamp(event.get("timestamp"))
+        if ts is not None:
+            if earliest_time is None or ts < earliest_time:
+                earliest_time = ts
+                
+    if earliest_time is not None:
+        return earliest_time.weekday()
+    return 0
+
+
+def calculate_time_on_page_ms(events: list) -> int:
+    """
+    Feature: time_on_page_ms
+
+    Total time spent by the shopper on the page.
+    Formula: max_timestamp - min_timestamp across all events.
+
+    Models: M1 (Abandonment Probability Predictor), M2 (Price/Convenience Classifier)
+    Source: customer_events
+
+    Returns:
+        int: Total milliseconds spent. Default 0.
+    """
+    if not isinstance(events, list):
+        return 0
+
+    min_time = None
+    max_time = None
+    
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        ts = _parse_timestamp(event.get("timestamp"))
+        if ts is not None:
+            if min_time is None or ts < min_time:
+                min_time = ts
+            if max_time is None or ts > max_time:
+                max_time = ts
+                
+    if min_time is not None and max_time is not None and min_time != max_time:
+        diff = max_time - min_time
+        return int(diff.total_seconds() * 1000)
+        
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +601,40 @@ def calculate_trust_page_visited(events: list) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# NEW SMART FEATURES — Proposed in v1.1.1
+# ---------------------------------------------------------------------------
+
+def calculate_failed_coupon_count(events: list) -> int:
+    """
+    Feature: failed_coupon_count
+    Integer count indicating how many times the shopper attempted a rejected discount code.
+    Models: M2, M5
+    Returns: int
+    """
+    pass
+
+
+def calculate_copied_product_title(events: list) -> bool:
+    """
+    Feature: copied_product_title
+    Boolean flag indicating shopper copied the product title (potential price-checking behaviour).
+    Models: M2
+    Returns: bool
+    """
+    pass
+
+
+def calculate_cart_value_vs_avg_order_value_ratio(customer_id: str, events: list, db) -> float:
+    """
+    Feature: cart_value_vs_avg_order_value_ratio
+    Float ratio of the current checkout cart value vs the shopper's lifetime average order value.
+    Models: M1, M5
+    Returns: float
+    """
+    pass
+
+
+# ---------------------------------------------------------------------------
 # DERIVED SCORES — computed from feature_dict after all features are assembled
 # ---------------------------------------------------------------------------
 
@@ -444,11 +644,11 @@ def calculate_pss_score(feature_dict: dict) -> int:
 
     Composite score representing how price-sensitive this shopper is.
     Weighted combination of PSS signals (weights owned by AI/ML Engineer 3):
-        HIGH   — cursor_hesitation_ms_on_price_field
+        HIGH   — cursor_hesitation
         HIGH   — past_orders_with_coupon_pct
         MEDIUM — visited_coupon_page
         MEDIUM — searched_discount_terms
-        LOW    — tab_switch_count_session
+        LOW    — tab_switch_count
 
     Models: M2 output, M5 input. Stored in abandoned_carts.pss_score.
 
@@ -468,8 +668,8 @@ def calculate_css_score(feature_dict: dict) -> int:
     Composite score representing how much friction drove the abandonment.
     Weighted combination of CSS signals (weights owned by AI/ML Engineer 3):
         VERY HIGH — abandoned_at_shipping_reveal
-        HIGH      — checkout_step_abandoned
-        MEDIUM    — scroll_depth_checkout_pct
+        HIGH      — checkout_step_reached
+        MEDIUM    — scroll_depth_pct
 
     Models: M2 output, M5 input. Stored in abandoned_carts.css_score.
 
@@ -512,12 +712,12 @@ def calculate_rfm_scores(customer_id: str, db) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# MASTER FUNCTION — assembles the complete 16-feature vector
+# MASTER FUNCTION — assembles the complete 30-feature vector
 # ---------------------------------------------------------------------------
 
 def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
     """
-    Assembles the complete 26-feature Shopper Feature Vector for a session.
+    Assembles the complete 30-feature Shopper Feature Vector for a session.
     Calls all individual feature functions above and returns the unified dict
     passed to any model at inference time.
 
@@ -536,11 +736,11 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
             "merchant_id" : str,
             "timestamp"   : str,  # ISO8601
             "features": {
-                "scroll_depth_checkout_pct"          : float,  # 0.0–100.0
-                "tab_switch_count_session"            : int,    # 0–50
-                "time_on_checkout_step_sec"           : float,  # 0.0–3600.0, -1.0 sentinel
-                "cursor_hesitation_ms_on_price_field" : int,   # 0–30000
-                "checkout_step_abandoned"             : int,    # 0–5
+                "scroll_depth_pct"          : float,  # 0.0–100.0
+                "tab_switch_count"            : int,    # 0–50
+                "time_on_page_ms"           : float,  # 0.0–3600.0, -1.0 sentinel
+                "cursor_hesitation" : int,   # 0–30000
+                "checkout_step_reached"             : int,    # 0–5
                 "past_orders_total"                   : int,    # 0–1000+
                 "past_orders_with_coupon_pct"         : float,  # 0.0–100.0
                 "days_since_last_purchase"            : int,    # -1 or 0–730+
@@ -552,6 +752,7 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
                 "failed_payment_attempt"              : bool,
                 "local_hour_of_session"               : int,   # 0–23, default 12
                 "day_of_week_session"                 : int,   # 0=Mon–6=Sun, default 0
+                "time_on_page_ms"                     : int,
                 "google_shopping_referrer"            : bool,
                 "time_first_view_to_cart_add_hrs"     : float,
                 "sale_period_purchase_only"           : bool,
@@ -561,7 +762,10 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
                 "repeat_checkout_attempts"            : int,
                 "device_type_mobile"                  : bool,
                 "shipping_eta_dwell_sec"              : float,
-                "trust_page_visited"                  : bool
+                "trust_page_visited"                  : bool,
+                "failed_coupon_count"                 : int,
+                "copied_product_title"                : bool,
+                "cart_value_vs_avg_order_value_ratio" : float
             }
         }
 
@@ -571,3 +775,171 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
         Temporal     → 12 (hour), 0 (day of week)
     """
     pass
+
+
+# ---------------------------------------------------------------------------
+# TRANSACTIONAL FEATURES — from database (Customer DB & RFM Layer)
+# ---------------------------------------------------------------------------
+
+def calculate_past_orders_total(customer_id: str, db) -> int:
+    if not customer_id or db is None:
+        return 0
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT orders_count FROM customers WHERE id = %s", (customer_id,))
+            row = cursor.fetchone()
+            if row is not None and row[0] is not None:
+                return int(row[0])
+    except Exception:
+        pass
+    return 0
+
+def calculate_avg_order_value(customer_id: str, db) -> float:
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT AVG(total) FROM orders WHERE customer_id = %s", (customer_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                return float(row[0])
+    except Exception:
+        pass
+    return 0.0
+
+# ---------------------------------------------------------------------------
+# 2.3 calculate_days_since_last_purchase
+# ---------------------------------------------------------------------------
+
+
+def calculate_days_since_last_purchase(customer_id: str, db) -> int:
+    """
+    Days between today and the customer's most recent order.
+
+    Query: SELECT MAX(ordered_at) FROM orders WHERE customer_id = %s
+
+    Sentinel: -1 means no purchase history. Models must treat this as a
+    distinct feature class, not a numeric zero.
+
+    Args:
+        customer_id: UUID of the customer
+        db: Active database connection
+
+    Returns:
+        int: days since last purchase if orders exist, else -1. Never raises.
+    """
+    if not customer_id or db is None:
+        return -1
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT MAX(ordered_at) FROM orders WHERE customer_id = %s", (customer_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                last_order_date = row[0]
+                if isinstance(last_order_date, str):
+                    last_order_date = datetime.fromisoformat(last_order_date.replace('Z', '+00:00'))
+                
+                # Ensure it's timezone-aware (UTC) before subtracting
+                if not last_order_date.tzinfo:
+                    from datetime import timezone
+                    last_order_date = last_order_date.replace(tzinfo=timezone.utc)
+                
+                from datetime import timezone
+                now = datetime.now(timezone.utc)
+                delta = now - last_order_date
+                return max(0, delta.days)
+    except Exception:
+        pass
+    return -1
+
+def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
+    if not customer_id or db is None:
+        return 0
+     
+    try:
+        with db.cursor() as cursor:
+            query = """
+                SELECT
+                  COUNT(*) FILTER (WHERE ordered_at >= NOW() - INTERVAL '30 days'),
+                  COUNT(*) FILTER (WHERE ordered_at < NOW() - INTERVAL '30 days' AND ordered_at >= NOW() - INTERVAL '60 days')
+                FROM orders WHERE customer_id = %s
+            """
+            cursor.execute(query, (customer_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None and row[1] is not None:
+                recent = int(row[0])
+                past = int(row[1])
+                if recent > past:
+                    return 1
+                elif recent < past:
+                    return -1
+    except Exception:
+        pass
+    return 0
+
+def calculate_coupon_usage_pct(customer_id: str, db) -> float:
+    if not customer_id or db is None:
+        return 0.0
+    try:
+        with db.cursor() as cursor:
+            query = """
+                SELECT
+                  COUNT(*) FILTER (WHERE coupon_used = true)::float / NULLIF(COUNT(*), 0)
+                FROM orders
+                WHERE customer_id = %s
+            """
+            cursor.execute(query, (customer_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                return float(row[0])
+    except Exception:
+        pass
+    return 0.0
+
+def calculate_rfm_scores(customer_id: str, db) -> dict:
+    days = calculate_days_since_last_purchase(customer_id, db)
+    orders = calculate_past_orders_total(customer_id, db)
+    aov = calculate_avg_order_value(customer_id, db)
+    
+    # Recency Score
+    if days == -1 or days > 365:
+        r_score = 1
+    elif days < 30:
+        r_score = 5
+    elif days <= 90:
+        r_score = 4
+    elif days <= 180:
+        r_score = 3
+    else:
+        r_score = 2
+        
+    # Frequency Score
+    if orders > 10:
+        f_score = 5
+    elif orders >= 6:
+        f_score = 4
+    elif orders >= 3:
+        f_score = 3
+    elif orders >= 1:
+        f_score = 2
+    else:
+        f_score = 1
+        
+    # Monetary Score
+    if aov > 200:
+        m_score = 5
+    elif aov >= 100:
+        m_score = 4
+    elif aov >= 50:
+        m_score = 3
+    elif aov >= 10:
+        m_score = 2
+    else:
+        m_score = 1
+        
+    return {
+        "rfm_recency_score": r_score,
+        "rfm_frequency_score": f_score,
+        "rfm_monetary_score": m_score,
+        "days_since_last_purchase": days,
+        "past_orders_total": orders,
+        "avg_order_value": aov
+    }

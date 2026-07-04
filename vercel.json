@@ -1,7 +1,8 @@
 {
   "installCommand": "cd Frontend/Dashboard && npm install --include=dev",
-  "buildCommand": "cd Frontend/Dashboard && npm run build",
+  "buildCommand": "cd Frontend/Dashboard && npm run build -- --outDir ../dashboard --emptyOutDir",
   "outputDirectory": "Frontend",
+  "cleanUrls": true,
   "headers": [
     {
       "source": "/assets/videos/(.*)\\.mp4",
@@ -21,16 +22,8 @@
   ],
   "rewrites": [
     {
-      "source": "/dashboard/assets/:path*",
-      "destination": "/Dashboard/dist/assets/:path*"
-    },
-    {
       "source": "/dashboard/:path*",
-      "destination": "/Dashboard/dist/index.html"
-    },
-    {
-      "source": "/dashboard",
-      "destination": "/Dashboard/dist/index.html"
+      "destination": "/dashboard/index"
     }
   ]
 }

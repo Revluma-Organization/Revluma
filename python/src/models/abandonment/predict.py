@@ -28,11 +28,11 @@ def predict(feature_vector: dict, merchant_id: str) -> dict:
     Args:
         feature_vector (dict): The 5 M1 features from the feature store:
             {
-                "scroll_depth_checkout_pct"  : float,
-                "tab_switch_count_session"   : int,
-                "time_on_checkout_step_sec"  : float,
-                "checkout_step_abandoned"    : int,
-                "failed_payment_attempt"     : bool
+                "scroll_depth_pct"       : float,
+                "tab_switch_count"       : int,
+                "time_on_page_ms"        : int,
+                "checkout_step_reached"  : int,
+                "failed_payment_attempt" : bool
             }
         merchant_id (str): UUID of the merchant
 

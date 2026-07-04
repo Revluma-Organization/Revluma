@@ -6,6 +6,7 @@
 // Week 3 wiring: uncomment fetchDashboard(), delete the setLoading(false) stub.
 
 import { useState, useEffect } from "react";
+import { api } from "@/lib/api";
 import { motion } from "framer-motion";
 import { ConnectBanner } from "@/components/dashboard/ConnectBanner";
 import { KpiCard } from "@/components/dashboard/KpiCard";
@@ -35,77 +36,49 @@ import type {
 
 export default function Overview() {
   //State hooks: one per data group from DASHBOARD_DATA_MAP.md
-  const [userName, setUserName]                     = useState<string | null>(null);
-  const [kpi, setKpi]                               = useState<KPI[] | null>(null);
-  const [chart, setChart]                           = useState<ChartData | null>(null);
-  const [activity, setActivity]                     = useState<ActivityItem[] | null>(null);
-  const [sequences, setSequences]                   = useState<SequenceRow[] | null>(null);
-  const [abandonedProducts, setAbandonedProducts]   = useState<ProductRow[] | null>(null);
-  const [donutSlices, setDonutSlices]               = useState<DonutSlice[] | null>(null);
-  const [donutTotal, setDonutTotal]                 = useState<string | null>(null);
-  const [health, setHealth]                         = useState<Health | null>(null);
-  const [analytics, setAnalytics]                   = useState<AnalyticTile[] | null>(null);
-  const [innovation, setInnovation]                 = useState<InnovationCard[] | null>(null);
-  const [trendingProducts, setTrendingProducts]     = useState<Trending[] | null>(null);
-  const [winback, setWinback]                       = useState<WinbackEntry[] | null>(null);
-  const [insights, setInsights]                     = useState<AIInsight[] | null>(null);
-  const [storeConnected, setStoreConnected]         = useState<boolean | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [kpi, setKpi] = useState<KPI[] | null>(null);
+  const [chart, setChart] = useState<ChartData | null>(null);
+  const [activity, setActivity] = useState<ActivityItem[] | null>(null);
+  const [sequences, setSequences] = useState<SequenceRow[] | null>(null);
+  const [abandonedProducts, setAbandonedProducts] = useState<ProductRow[] | null>(null);
+  const [donutSlices, setDonutSlices] = useState<DonutSlice[] | null>(null);
+  const [donutTotal, setDonutTotal] = useState<string | null>(null);
+  const [health, setHealth] = useState<Health | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticTile[] | null>(null);
+  const [innovation, setInnovation] = useState<InnovationCard[] | null>(null);
+  const [trendingProducts, setTrendingProducts] = useState<Trending[] | null>(null);
+  const [winback, setWinback] = useState<WinbackEntry[] | null>(null);
+  const [insights, setInsights] = useState<AIInsight[] | null>(null);
+  const [storeConnected, setStoreConnected] = useState<boolean | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // TODO Week 3: replace stub with real fetches 
-    // import { api } from "@/lib/api";
-    //
-    // async function fetchDashboard() {
-    //   try {
-    //     const [
-    //       meRes, kpiRes, chartRes, activityRes, attrRes,
-    //       healthRes, analyticsRes, innovationRes, trendingRes,
-    //       winbackRes, abandonedRes, insightsRes, seqRes, storesRes,
-    //     ] = await Promise.all([
-    //       api.get("/auth/me"),
-    //       api.get("/dashboard/kpis"),
-    //       api.get("/dashboard/chart"),
-    //       api.get("/dashboard/activity", { limit: 20 }),
-    //       api.get("/dashboard/attribution"),
-    //       api.get("/dashboard/health"),
-    //       api.get("/dashboard/analytics"),
-    //       api.get("/dashboard/innovation"),
-    //       api.get("/dashboard/trending-products", { limit: 3 }),
-    //       api.get("/dashboard/winback-leaderboard", { limit: 5 }),
-    //       api.get("/dashboard/abandoned-products", { limit: 5 }),
-    //       api.get("/dashboard/insights"),
-    //       api.get("/sequences/stats"),
-    //       api.get("/stores"),
-    //     ]);
-    //     setUserName(meRes.data.full_name);
-    //     setKpi(kpiRes.data.kpi);
-    //     setChart(chartRes.data.chart);
-    //     setActivity(activityRes.data.activity);
-    //     setDonutSlices(attrRes.data.slices);
-    //     setDonutTotal(attrRes.data.total);
-    //     setHealth(healthRes.data.health);
-    //     setAnalytics(analyticsRes.data.analytics);
-    //     setInnovation(innovationRes.data.innovation);
-    //     setTrendingProducts(trendingRes.data.trending);
-    //     setWinback(winbackRes.data.winback);
-    //     setAbandonedProducts(abandonedRes.data.products);
-    //     setInsights(insightsRes.data.insights);
-    //     setSequences(seqRes.data.sequences);
-    //     setStoreConnected(storesRes.data.stores?.length > 0);
-    //   } catch {
-    //     setError("Failed to load dashboard data.");
-    //   } finally {
-    //     setLoading(false);
-    //   }
-    // }
-    // fetchDashboard();
-    // END Week 3 block
-
-    // Week 1–2 stub: no data yet, just stop the loading spinner
-    setLoading(false);
+    async function fetchDashboard() {
+      try {
+        const [meRes, kpiRes, chartRes, activityRes, storesRes] = await Promise.all([
+          api.get<{ data: { full_name: string; organizations: Array<{ id: string }> } }>("/auth/me"),
+          api.get<{ data: { kpi: KPI[] } }>("/dashboard/kpis"),
+          api.get<{ data: { chart: ChartData } }>("/dashboard/chart"),
+          api.get<{ data: { activity: ActivityItem[] } }>("/dashboard/activity", { limit: 20 }),
+          api.get<{ data: { stores: Array<{ status: string }> } }>("/stores"),
+        ]);
+        setUserName(meRes.data.data.full_name);
+        setKpi(kpiRes.data.data.kpi);
+        setChart(chartRes.data.data.chart);
+        setActivity(activityRes.data.data.activity);
+        setStoreConnected(storesRes.data.data.stores?.some((s) => s.status === "active") ?? false);
+        // Remaining sections (attribution, health, analytics, etc.) wire in Week 4
+        // as their backend endpoints come online. Skeletons render in the meantime.
+      } catch {
+        setError("Failed to load dashboard data.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchDashboard();
   }, []);
 
   const firstName = userName ? userName.split(" ")[0] : null;
@@ -195,9 +168,9 @@ function KpiCardSkeleton({ index }: { index: number }) {
         <div className="h-5 w-14 animate-pulse rounded-full bg-bg-4" />
       </div>
       <div className="h-8 w-24 animate-pulse rounded-md bg-bg-4" />
-      <div className="mt-2 h-3 w-28 animate-pulse rounded bg-bg-4" />
-      <div className="mt-1 h-2.5 w-20 animate-pulse rounded bg-bg-4" />
-      <div className="mt-3 h-9 w-full animate-pulse rounded bg-bg-4" />
+      <div className="mt-2 h-3 w-28 animate-pulse rounded-md bg-bg-4" />
+      <div className="mt-1 h-2.5 w-20 animate-pulse rounded-md bg-bg-4" />
+      <div className="mt-3 h-9 w-full animate-pulse rounded-md bg-bg-4" />
     </motion.div>
   );
 }
