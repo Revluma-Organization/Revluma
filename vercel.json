@@ -42,11 +42,11 @@
     },
     {
       "source": "/login",
-      "destination": "/auth/loginIn.html"
+      "destination": "/auth/loginIn"
     },
     {
       "source": "/auth/signUp",
-      "destination": "/auth/signUp.html"
+      "destination": "/auth/signUp"
     }
   ]
 }
