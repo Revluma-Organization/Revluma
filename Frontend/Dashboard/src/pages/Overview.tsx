@@ -57,26 +57,57 @@ export default function Overview() {
 
   useEffect(() => {
     async function fetchDashboard() {
+      // ── Step 1: Fetch user identity (most critical — drives welcome header) ────
+      // Backend has /auth/getProfile and /auth/me (alias added in 2.BE1.3)
+      // Try /auth/me first, fall back to /auth/getProfile if not yet deployed
       try {
-        const [meRes, kpiRes, chartRes, activityRes, storesRes] = await Promise.all([
-          api.get<{ data: { full_name: string; organizations: Array<{ id: string }> } }>("/auth/me"),
-          api.get<{ data: { kpi: KPI[] } }>("/dashboard/kpis"),
-          api.get<{ data: { chart: ChartData } }>("/dashboard/chart"),
-          api.get<{ data: { activity: ActivityItem[] } }>("/dashboard/activity", { limit: 20 }),
-          api.get<{ data: { stores: Array<{ status: string }> } }>("/stores"),
-        ]);
-        setUserName(meRes.data.data.full_name);
-        setKpi(kpiRes.data.data.kpi);
-        setChart(chartRes.data.data.chart);
-        setActivity(activityRes.data.data.activity);
-        setStoreConnected(storesRes.data.data.stores?.some((s) => s.status === "active") ?? false);
-        // Remaining sections (attribution, health, analytics, etc.) wire in Week 4
-        // as their backend endpoints come online. Skeletons render in the meantime.
+        let meData: { full_name: string; organizations?: Array<{ id: string }> } | null = null;
+        try {
+          const meRes = await api.get<{ success: boolean; data: { full_name: string; organizations?: Array<{ id: string }> } }>("/auth/me");
+          meData = meRes.data.data;
+        } catch {
+          // /auth/me not yet deployed — try legacy route
+          try {
+            const meRes = await api.get<{ success: boolean; data: { full_name: string } }>("/auth/getProfile");
+            meData = meRes.data.data;
+          } catch {
+            // Both failed — user identity unavailable, dashboard continues without name
+          }
+        }
+        if (meData?.full_name) setUserName(meData.full_name);
       } catch {
-        setError("Failed to load dashboard data.");
-      } finally {
-        setLoading(false);
+        // Non-blocking — welcome header shows "--" but dashboard still loads
       }
+
+      // ── Step 2: Fetch dashboard data independently ─────────────────────────────
+      // Each endpoint is fetched independently so a missing endpoint (not yet built)
+      // does not kill the entire dashboard. Sections without data show skeletons.
+      const settled = await Promise.allSettled([
+        api.get<{ success: boolean; data: { kpi: KPI[] } }>("/dashboard/kpis"),
+        api.get<{ success: boolean; data: { chart: ChartData } }>("/dashboard/chart"),
+        api.get<{ success: boolean; data: { activity: ActivityItem[] } }>("/dashboard/activity", { limit: 20 }),
+        api.get<{ success: boolean; data: { stores: Array<{ status: string }> } }>("/stores"),
+      ]);
+
+      const [kpiResult, chartResult, activityResult, storesResult] = settled;
+
+      if (kpiResult.status === "fulfilled") {
+        setKpi(kpiResult.value.data.data?.kpi ?? null);
+      }
+      if (chartResult.status === "fulfilled") {
+        setChart(chartResult.value.data.data?.chart ?? null);
+      }
+      if (activityResult.status === "fulfilled") {
+        setActivity(activityResult.value.data.data?.activity ?? null);
+      }
+      if (storesResult.status === "fulfilled") {
+        setStoreConnected(
+          storesResult.value.data.data?.stores?.some((s) => s.status === "active") ?? false
+        );
+      }
+
+      setLoading(false);
+      // Note: remaining sections (attribution, health, analytics, etc.) wire in Week 4
     }
     fetchDashboard();
   }, []);

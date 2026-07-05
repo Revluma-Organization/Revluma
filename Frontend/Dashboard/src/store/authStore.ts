@@ -95,18 +95,26 @@ export const useAuthStore = create<AuthStore>()(
       checkSession: async () => {
         set({ loading: true });
         try {
-          const res = await api.get<{
-            data: {
-              id: string;
-              full_name: string;
-              email: string;
-              email_verified: boolean;
-              onboarding_completed: boolean;
-              organizations: Array<{ id: string; company_name: string }>;
-            };
-          }>('/auth/me');
+          // Try /auth/me first (preferred), fall back to legacy /auth/getProfile
+          type ProfileData = {
+            id: string;
+            full_name: string;
+            email: string;
+            email_verified: boolean;
+            onboarding_completed: boolean;
+            organizations?: Array<{ id: string }>;
+          };
+          let u: ProfileData | null = null;
+          try {
+            const res = await api.get<{ success: boolean; data: ProfileData }>('/auth/me');
+            u = res.data.data;
+          } catch {
+            const res2 = await api.get<{ success: boolean; data: ProfileData }>('/auth/getProfile');
+            u = res2.data.data;
+          }
 
-          const u = res.data.data;
+          if (!u) throw new Error('No user data returned');
+
           set({
             user: {
               id: u.id,
@@ -122,12 +130,10 @@ export const useAuthStore = create<AuthStore>()(
             loading: false,
           });
         } catch {
-          // 401 is handled by api.ts (clears token + redirects)
-          // Any other error: silently clear user so ProtectedRoute redirects to login
+          // 401 handled by api.ts. Any other error: clear session.
           set({ user: null, csrfToken: null, loading: false });
         }
       },
-
       logout: async () => {
         try {
           await api.post('/auth/logout');

@@ -894,16 +894,18 @@
             retention_problem: checked('retention_problem'),
             revenue_visibility_problem: checked('revenue_visibility_problem'),
             why_join_waitlist: str('why_join_waitlist'),
+            referral_code: str('referral_code'),
             interested_in_beta: checked('interested_in_beta'),
           };
 
           try {
             const result = await submitWaitlistForm(payload);
-            const position = result?.data?.waitlist_position ?? '';
+            const position = result?.data?.waitlist_position || result?.waitlist_position || '';
+            const referralCode = result?.data?.referral_code || result?.referral_code || '';
             form.reset();
             this.isValid = false;
             this.submitting = false;
-            this.$dispatch('waitlist-success', position);
+            this.$dispatch('waitlist-success', { position, referralCode });
           } catch (err) {
             this.submitting = false;
             this.errorMsg = err.message || 'Something went wrong. Please try again.';
@@ -1007,7 +1009,7 @@
 
     <!-- ── Hero ── -->
     <section id="hero-landing"
-        class="relative min-h-screen flex flex-col items-center justify-center pt-0 px-6 overflow-hidden">
+        class="relative min-h-[100dvh] flex flex-col items-center justify-center pt-28 pb-12 md:pt-0 md:pb-0 px-6 overflow-hidden">
         <video autoplay muted loop playsinline class="hero-video">
             <source src="assets/videos/growth-video.mp4" type="video/mp4">
         </video>
@@ -1028,7 +1030,7 @@
                 Trusted by 2,400+ e-commerce brands
             </div>
 
-            <h1 class="premium-headline text-5xl md:text-[40px] tracking-tighter leading-[0.95] mb-8">
+            <h1 class="premium-headline text-4xl sm:text-[40px] md:text-5xl tracking-tighter leading-[1.05] mb-6">
                 Recover abandoned carts, Retain customers<br>
                 <span>with data-driven intelligence.</span>
             </h1>
@@ -1050,7 +1052,7 @@
   </button>
             </div>
 
-            <div x-data="{ waitlistModal: false, successPosition: null }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" @waitlist-success.window="successPosition = $event.detail" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/80 flex justify-center overflow-y-auto p-4 backdrop-blur-sm" x-cloak
+            <div x-data="{ waitlistModal: false, successPosition: null, successReferral: null }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" @waitlist-success.window="successPosition = $event.detail.position; successReferral = $event.detail.referralCode;" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/80 flex justify-center overflow-y-auto p-4 backdrop-blur-sm" x-cloak
       x-transition:enter="transition ease-out duration-300"
       x-transition:enter-start="opacity-0"
       x-transition:enter-end="opacity-100"
@@ -1348,6 +1350,12 @@
 </div>
 
 <div class="pb-2">
+  <div class="relative mb-4">
+    <div x-data="{ val: '' }" class="relative w-full">
+      <input x-model="val" type="text" name="referral_code" class="text-sm w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
+      <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500 text-sm">Have a referral code? (Optional)</span></div>
+    </div>
+  </div>
   <textarea name="why_join_waitlist" rows="2" placeholder="Why do you want to join the waitlist?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 resize-none mb-4"></textarea>
   <label for="beta_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group px-2" style="touch-action: manipulation;">
     <input id="beta_cb" type="checkbox" name="interested_in_beta" value="true" class="checkbox-custom mt-0.5">
@@ -1360,7 +1368,7 @@
   :disabled="!isValid || submitting"
   :class="(!isValid || submitting) ? 'opacity-50 cursor-not-allowed bg-zinc-400' : 'bg-white hover:bg-zinc-200 active:scale-[0.98] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]'"
   class="w-full py-4 mt-2 text-black font-bold rounded-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-white/30 shadow-[0_0_20px_rgba(255,255,255,0.1)]">
-                                <span x-show="!submitting">Join the Waitlist</span>
+                                <span x-show="!submitting">Secure your spot</span>
                                 <span x-show="submitting" x-cloak>Submitting…</span>
                             </button>
                           </form>
@@ -1371,9 +1379,18 @@
                                   </svg>
                               </div>
                               <h3 class="text-2xl md:text-3xl font-display font-bold text-white mb-3">You're #<span x-text="successPosition"></span> on the waitlist</h3>
-                              <p class="text-zinc-400 text-base max-w-md mx-auto mb-8">
+                              <p class="text-zinc-400 text-base max-w-md mx-auto mb-4">
                                   We've saved your spot and sent a confirmation to your email. If you don't see it in a minute or two, check your spam folder.
                               </p>
+                              
+                              <div class="mb-8 mt-2 p-5 bg-white/5 border border-white/10 rounded-2xl mx-auto max-w-sm">
+                                <p class="text-sm text-zinc-400 mb-2 uppercase tracking-widest font-semibold">Your Referral Code</p>
+                                <div class="text-3xl font-mono font-bold tracking-widest text-white flex items-center justify-center gap-3">
+                                  <span x-text="successReferral"></span>
+                                </div>
+                                <p class="text-xs text-zinc-500 mt-3">Share this code with friends to move up the queue!</p>
+                              </div>
+
                               <button @click="waitlistModal = false; successPosition = null" class="px-8 py-3 rounded-xl bg-white text-black font-bold hover:bg-zinc-200 transition-colors">
                                   Done
                               </button>
@@ -2728,7 +2745,7 @@
 
     <!-- ── Integrations ── -->
     <div id="integrations" class="py-20 border-y border-[#1F1F1F] overflow-hidden">
-        <p class="text-center text-[10px] uppercase tracking-widest text-[#444] font-semibold mb-10">Plugs seamlessly
+        <p class="text-center text-[10px] uppercase tracking-widest text-[#888] font-semibold mb-10">Plugs seamlessly
             into your existing stack</p>
 
         <style>
@@ -2807,13 +2824,13 @@
             .int-name {
                 font-size: 12px;
                 font-weight: 600;
-                color: #565670;
+                color: #8f8fad;
                 letter-spacing: 0.01em;
                 transition: color 0.25s;
             }
 
             .int-pill:hover .int-name {
-                color: #9898b8;
+                color: #ffffff;
             }
 
             .beta-tag {
