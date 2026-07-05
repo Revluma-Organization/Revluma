@@ -11,6 +11,8 @@ const { authenticateToken } = require('../middlewares/authMiddleware');
 router.get('/me', authenticateToken, authController.getProfile);
 // /auth/getProfile — legacy alias (keep for backwards compatibility)
 router.get('/getProfile', authenticateToken, authController.getProfile);
+// New endpoint (frontend uses this)
+router.get("/me",authenticateToken,authController.getProfile);
 router.post('/register', validateRegister, registerLimiter, authController.register);
 router.post('/login', validateLogin,loginLimiter,  authController.login);
 router.post('/logout', authenticateToken, authController.logout);

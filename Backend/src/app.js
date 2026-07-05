@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const globalErrorHandler = require("./middlewares/globalHandler")
 const authRoutes = require('./route/authRoute');
 const waitlistRoutes = require('./route/waitlistRoute');
+const shopifyRoutes = require('./route/shopifyRoute')
 const dashboardRoutes = require('./route/dashboardRoute');
 const storeRoutes = require('./route/storeRoute');
 const notificationRoutes = require('./route/notificationRoute');
@@ -43,11 +44,12 @@ app.use(cors({
 }));
 
 app.use(express.json());
-app.use(cookieParser());
+app.use(cookieParser(process.env.COOKIE_SECRET));
 
 //  API Routers
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/waitlist', waitlistRoutes);
+app.use("/api/v1/shopify", shopifyRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/stores', storeRoutes);
 app.use('/api/v1/notifications', notificationRoutes);

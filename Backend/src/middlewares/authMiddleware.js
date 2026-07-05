@@ -1,6 +1,7 @@
-const jwt = require('jsonwebtoken');
+const jwt = require("jsonwebtoken");
 
 const authenticateToken = (req, res, next) => {
+  try {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -10,13 +11,9 @@ const authenticateToken = (req, res, next) => {
         });
     }
 
-    const token = authHeader.split(' ')[1];
+    const token = authHeader.split(" ")[1];
 
-    try {
-        const decoded = jwt.verify(
-            token,
-            process.env.JWT_SECRET
-        );
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         const user = {
             id: decoded.userId,
@@ -39,5 +36,5 @@ const authenticateToken = (req, res, next) => {
 };
 
 module.exports = {
-    authenticateToken
+  authenticateToken,
 };
