@@ -5,9 +5,7 @@ const prisma = dbConfig.prisma;
 
 const { encrypt, decrypt } = require("../utils/encryption");
 
-/**
- * Exchange Shopify authorization code for a permanent access token.
- */
+/**Exchange Shopify authorization code for a permanent access token.*/
 const exchangeAccessToken = async (shop, code) => {
   try {
     const response = await axios.post(
@@ -40,9 +38,7 @@ const exchangeAccessToken = async (shop, code) => {
   }
 };
 
-/**
- * Get organization that belongs to the authenticated user.
- */
+/**Get organization that belongs to the authenticated user.*/
 const getOrganizationByUser = async (userId) => {
   return prisma.organizations.findFirst({
     where: {
@@ -51,9 +47,7 @@ const getOrganizationByUser = async (userId) => {
   });
 };
 
-/**
- * Create or update a Shopify store.
- */
+/**Create or update a Shopify store.*/
 const upsertStore = async ({
   organizationId,
   shop,
@@ -86,10 +80,7 @@ const upsertStore = async ({
   });
 };
 
-/**
- * Retrieve decrypted Shopify access token.
- * Use this whenever making Shopify API requests.
- */
+/**Retrieve decrypted Shopify access token. Use this whenever making Shopify API requests.*/
 const getStoreAccessToken = (store) => {
   if (!store.access_token) {
     throw new Error("Store does not have an access token.");
@@ -98,9 +89,7 @@ const getStoreAccessToken = (store) => {
   return decrypt(store.access_token);
 };
 
-/**
- * Fire-and-forget background synchronization.
- */
+/*Fire-and-forget background synchronization.*/
 const syncShopifyStore = async (store) => {
   try {
     console.log(
@@ -109,7 +98,6 @@ const syncShopifyStore = async (store) => {
 
     /**
      * Future implementation:
-     *
      * await syncCustomers(store);
      * await syncOrders(store);
      * await syncProducts(store);

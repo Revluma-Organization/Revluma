@@ -206,11 +206,9 @@ const accessToken = jwt.sign(
 exports.getProfile = async (req, res) => {
   try {
     const user = await prisma.users.findUnique({
-      
       where: {
         id: req.user.id,
       },
-      
       select: {
         id: true,
         full_name: true,
@@ -246,14 +244,15 @@ exports.getProfile = async (req, res) => {
   } 
   
   catch (error) {
-  console.error("Get profile error:", error);
+    console.error("Get profile error:", error);
 
-  return res.status(500).json({
-    success: false,
-    message: error.message,
-    stack: error.stack,
-  });
-} }
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch profile",
+    });
+  }
+};
+
 
 // LOGOUT
 exports.logout = async (req, res, next) => {
