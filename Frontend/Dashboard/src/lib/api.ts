@@ -50,7 +50,7 @@ function handleUnauthorized(): void {
   } catch {
     localStorage.removeItem("rv-auth");
   }
-  // Redirect to login on 401 — token expired
+  // Redirect to login on 401 token expired
   window.location.href = "/login";
 }
 
