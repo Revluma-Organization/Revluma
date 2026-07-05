@@ -3,7 +3,6 @@ const jwt = require('jsonwebtoken');
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers.authorization;
 
-    // Check Authorization header exists and follows Bearer format
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return res.status(401).json({
             success: false,
@@ -19,7 +18,7 @@ const authenticateToken = (req, res, next) => {
             process.env.JWT_SECRET
         );
 
-        const user: Record<string, unknown> = {
+        const user = {
             id: decoded.userId,
             email: decoded.email,
         };
