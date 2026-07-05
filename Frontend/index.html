@@ -900,8 +900,8 @@
 
           try {
             const result = await submitWaitlistForm(payload);
-            const position = result?.data?.waitlist_position ?? '';
-            const referralCode = result?.data?.referral_code ?? Math.floor(10000 + Math.random() * 90000).toString();
+            const position = result?.data?.waitlist_position || result?.waitlist_position || '';
+            const referralCode = result?.data?.referral_code || result?.referral_code || '';
             form.reset();
             this.isValid = false;
             this.submitting = false;
