@@ -1,4 +1,4 @@
-const prisma = require("../../configs/database").prisma;
+const prisma = require("../configs/database").prisma;
 
 const getUserOrganization = async (userId) => {
   return prisma.organizations.findFirst({
@@ -316,55 +316,6 @@ function buildChartData(orders, carts) {
   for (let m = 2; m >= 0; m--) {
     const monthStart = new Date(now.getFullYear(), now.getMonth() - m, 1);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() - m + 1, 0, 23, 59, 59);
-
-    const monthOrders = orders.filter((o) => o.ordered_at >= monthStart && o.ordered_at <= monthEnd);
-    const monthCarts = carts.filter((c) => c.abandoned_at >= monthStart && c.abandoned_at <= monthEnd);
-
-    const abandoned = monthCarts.length;
-    const recovered = monthOrders.filter((o) => o.recovery_status === "recovered").length;
-    const revenue = monthOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-
-    months3.push({
-      label: monthStart.toLocaleDateString("en-US", { month: "short" }),
-      abandoned,
-      recovered,
-      revenue: Math.round(revenue),
-    });
-  }
-
-  return { "7d": days7, "30d": weeks4, "90d": months3 };
-}
-
-  for (let i = 27; i >= 0; i -= 7) {
-    const weekEnd = new Date(now);
-    weekEnd.setDate(weekEnd.getDate() - i);
-    const weekStart = new Date(weekEnd);
-    weekStart.setDate(weekStart.getDate() - 6);
-
-    const weekOrders = orders.filter((o) => {
-      const date = o.ordered_at;
-      return date >= weekStart && date <= weekEnd;
-    });
-    const weekCarts = carts.filter((c) => {
-      const date = c.abandoned_at;
-      return date >= weekStart && date <= weekEnd;
-    });
-
-    const abandoned = weekCarts.length;
-    const recovered = weekOrders.filter((o) => o.recovery_status === "recovered").length;
-    const revenue = weekOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-
-    weeks4.push({
-      label: `W${Math.floor((27 - i) / 7) + 1}`,
-      abandoned,
-      recovered,
-      revenue: Math.round(revenue),
-    });
-  }
-
-  for (let i = 2; i >= 0; i--) {
-    const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
 
     const monthOrders = orders.filter((o) => o.ordered_at >= monthStart && o.ordered_at <= monthEnd);
     const monthCarts = carts.filter((c) => c.abandoned_at >= monthStart && c.abandoned_at <= monthEnd);

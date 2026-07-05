@@ -1,4 +1,4 @@
-const prisma = require("../../configs/database").prisma;
+const prisma = require("../configs/database").prisma;
 
 exports.getStores = async (req, res, next) => {
   try {
