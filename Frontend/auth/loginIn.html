@@ -93,9 +93,14 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 100px 16px 40px;
+      padding: 80px 16px 40px;
       position: relative;
       z-index: 1;
+    }
+    @media (min-width: 768px) {
+      .page {
+        padding-top: 100px;
+      }
     }
     .page::before, .page::after {
       content: '';
@@ -345,7 +350,7 @@
     }
 
     .field input::placeholder {
-      color: var(--muted2);
+      color: #888;
     }
 
     .field input:focus {
@@ -384,7 +389,7 @@
       background: none;
       border: none;
       cursor: pointer;
-      color: var(--muted2);
+      color: #888;
       padding: 2px;
       display: flex;
       align-items: center;
@@ -549,7 +554,7 @@
 
     .divider span {
       font-size: 11px;
-      color: var(--muted2);
+      color: #888;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
@@ -731,7 +736,7 @@
 
     .resend-hint {
       font-size: 11.5px;
-      color: var(--muted2);
+      color: #888;
     }
 
     .resend-btn {
@@ -970,7 +975,7 @@
     </div> <!-- Close form container -->
 
     <!-- Footer -->
-    <p style="margin-top: 26px; font-size: 11px; color: var(--muted2); text-align: center; letter-spacing: 0.02em;">
+    <p style="margin-top: 26px; font-size: 11px; color: #888; text-align: center; letter-spacing: 0.02em;">
       Protected by Revluma &nbsp;·&nbsp;
       <a href="../pages/privacyPolicy.html" style="color: inherit; text-decoration: none;">Privacy</a> &nbsp;·&nbsp;
       <a href="../pages/termsOfService.html" style="color: inherit; text-decoration: none;">Terms</a>

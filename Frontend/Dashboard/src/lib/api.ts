@@ -20,7 +20,7 @@ export class ApiError extends Error {
   }
 }
 
-// ─── Token reader ─────────────────────────────────────────────────────────────
+// Token reader
 // Zustand persists auth under localStorage key "rv-auth":
 // { state: { user: {...}, csrfToken: "..." }, version: 0 }
 
@@ -35,7 +35,7 @@ function getToken(): string | null {
   }
 }
 
-// ─── 401 handler ─────────────────────────────────────────────────────────────
+// 401 handler
 
 function handleUnauthorized(): void {
   try {
@@ -53,7 +53,6 @@ function handleUnauthorized(): void {
   // Redirect to login on 401 — token expired
   window.location.href = "/login";
 }
-
 
 const BASE_URL: string =
   (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080";
@@ -117,7 +116,7 @@ async function request<T = unknown>(
   return { data, status: response.status, ok: response.ok };
 }
 
-// Helpers
+// Helpers 
 
 function get<T = unknown>(path: string, params?: Record<string, unknown>): Promise<ApiResponse<T>> {
   return request<T>("GET", path, { params });

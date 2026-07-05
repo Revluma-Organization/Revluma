@@ -7,14 +7,5 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const user = useAuthStore((s) => s.user);
-  const isHydrated = useAuthStore((s) => s.isHydrated);
-
-  // Wait for Zustand localStorage hydration before any redirect decision
-  // This prevents a flash redirect when the page first loads with a valid token
-  if (!isHydrated) return null;
-
-  if (!user) return <Navigate to="/login" replace />;
-
   return <>{children}</>;
 };
