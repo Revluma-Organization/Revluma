@@ -207,6 +207,16 @@ exports.getProfile = async (req, res, next) => {
         onboarding_step: true,
         status: true,
         created_at: true,
+        organizations: {
+          select: {
+            id: true,
+            company_name: true,
+            website_url: true,
+            store_url: true,
+            industry: true,
+            country: true,
+          }
+        }
       },
     });
 
@@ -236,5 +246,24 @@ exports.logout = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// REFRESH TOKEN
+exports.refresh = async (req, res, next) => {
+  try {
+    const { refresh_token } = req.body;
+    if (!refresh_token) {
+      return res.status(400).json({ success: false, error: 'Refresh token required' });
+    }
+    const decoded = jwt.verify(refresh_token, process.env.JWT_REFRESH_SECRET);
+    const accessToken = jwt.sign(
+      { userId: decoded.userId, email: decoded.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+    return res.status(200).json({ success: true, data: { access_token: accessToken } });
+  } catch (error) {
+    return res.status(401).json({ success: false, error: 'Refresh token expired or invalid' });
   }
 };

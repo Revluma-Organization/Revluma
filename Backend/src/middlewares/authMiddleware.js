@@ -19,13 +19,15 @@ const authenticateToken = (req, res, next) => {
             process.env.JWT_SECRET
         );
 
-        // Attach authenticated user to request
-        req.user = {
+        const user: Record<string, unknown> = {
             id: decoded.userId,
             email: decoded.email,
-            tenantId: decoded.tenantId,
-            role: decoded.role
         };
+
+        if (decoded.tenantId !== undefined) user.tenantId = decoded.tenantId;
+        if (decoded.role !== undefined) user.role = decoded.role;
+
+        req.user = user;
 
         next();
 

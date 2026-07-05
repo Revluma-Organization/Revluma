@@ -1,3 +1,6 @@
+// src/lib/api.ts
+// Centralized HTTP client for the entire Revluma frontend.
+// No component ever calls raw fetch() — all requests go through api.get/post/put/delete.
 
 export interface ApiResponse<T = unknown> {
   data: T;
@@ -17,11 +20,9 @@ export class ApiError extends Error {
   }
 }
 
-//Token reader
+// ─── Token reader ─────────────────────────────────────────────────────────────
 // Zustand persists auth under localStorage key "rv-auth":
 // { state: { user: {...}, csrfToken: "..." }, version: 0 }
-// Week 2: Afolabi's login endpoint stores the JWT in authStore.setCsrfToken(token)
-// this reader picks it up automatically, no changes needed here.
 
 function getToken(): string | null {
   try {
@@ -34,9 +35,7 @@ function getToken(): string | null {
   }
 }
 
-//401 handler
-// Surgically clears user + csrfToken from the persisted Zustand state without
-// wiping theme / UI preferences stored in other localStorage keys.
+// ─── 401 handler ─────────────────────────────────────────────────────────────
 
 function handleUnauthorized(): void {
   try {
@@ -51,65 +50,74 @@ function handleUnauthorized(): void {
   } catch {
     localStorage.removeItem("rv-auth");
   }
+  // Redirect to login on 401 — token expired
   window.location.href = "/login";
 }
 
-// Base URL
 
 const BASE_URL: string =
-  (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000";
+  (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8080";
 
-// Core request
+// Core request 
 
 async function request<T = unknown>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   options: { params?: Record<string, unknown>; body?: unknown } = {},
 ): Promise<ApiResponse<T>> {
-  // Build URL
   const url = new URL(
     path.startsWith("/") ? `${BASE_URL}${path}` : `${BASE_URL}/${path}`,
   );
+
   if (options.params) {
     Object.entries(options.params).forEach(([k, v]) => {
       if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
     });
   }
 
-  // Headers
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
   const token = getToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
 
-  // Fetch
-  const response = await fetch(url.toString(), {
-    method,
-    headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), {
+      method,
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (networkError) {
+    // Network error (backend unreachable, CORS preflight failed, etc.)
+    throw new ApiError(0, `Network error: ${(networkError as Error).message}`);
+  }
 
-  // 401 token expired
   if (response.status === 401) {
     handleUnauthorized();
     throw new ApiError(401, "Unauthorized — redirecting to login");
   }
 
-  // Parse body
-  let data: T;
   const ct = response.headers.get("content-type") ?? "";
-  data = ct.includes("application/json")
+  const data = ct.includes("application/json")
     ? ((await response.json()) as T)
     : (null as unknown as T);
 
-  // Non-2xx
   if (!response.ok) {
-    throw new ApiError(response.status, `API error ${response.status}: ${response.statusText}`, data);
+    throw new ApiError(
+      response.status,
+      `API error ${response.status}: ${response.statusText}`,
+      data,
+    );
   }
 
   return { data, status: response.status, ok: response.ok };
 }
 
-//Helpers
+// Helpers
 
 function get<T = unknown>(path: string, params?: Record<string, unknown>): Promise<ApiResponse<T>> {
   return request<T>("GET", path, { params });
@@ -130,8 +138,6 @@ function patch<T = unknown>(path: string, body?: unknown): Promise<ApiResponse<T
 function del<T = unknown>(path: string): Promise<ApiResponse<T>> {
   return request<T>("DELETE", path);
 }
-
-// ─── Export ───────────────────────────────────────────────────────────────────
 
 export const api = { get, post, put, patch, delete: del };
 export default api;
