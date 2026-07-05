@@ -72,16 +72,15 @@ exports.register = async (req, res, next) => {
 
     });
 
-    const accessToken = jwt.sign(
-      {
-        userId: result.user.id,
-        email: result.user.email,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "15m",
-      }
-    );
+   const accessToken = jwt.sign(
+    {
+    userId: result.user.id,
+    email: result.user.email,
+    tenantId: result.organization.id,
+     },
+     process.env.JWT_SECRET,
+      { expiresIn: "15m", }
+     );
 
     const refreshToken = jwt.sign(
       {
@@ -151,18 +150,30 @@ exports.login = async (req, res, next) => {
         success: false,
         error: "Invalid credentials",
       });
-    }
+    };
 
-    const accessToken = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "15m",
-      }
-    );
+  const organization = await prisma.organizations.findFirst({
+  where: {
+    owner_id: user.id,
+  },
+
+  select: {
+    id: true,
+  },
+  });
+
+const accessToken = jwt.sign(
+  {
+    userId: user.id,
+    email: user.email,
+    tenantId: organization?.id || null,
+  },
+  
+  process.env.JWT_SECRET,
+  {
+    expiresIn: "15m",
+  }
+);
 
     const refreshToken = jwt.sign(
       {
@@ -192,28 +203,39 @@ exports.login = async (req, res, next) => {
 };
 
 // GET CURRENT USER PROFILE
-exports.getProfile = async (req, res, next) => {
+exports.getProfile = async (req, res) => {
   try {
     const user = await prisma.users.findUnique({
+      
       where: {
         id: req.user.id,
       },
+      
       select: {
         id: true,
         full_name: true,
         email: true,
         email_verified: true,
         onboarding_completed: true,
-        onboarding_step: true,
         status: true,
         created_at: true,
+        organizations: {
+          select: {
+            id: true,
+            company_name: true,
+            website_url: true,
+            store_url: true,
+            industry: true,
+            country: true,
+          },
+        },
       },
     });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        error: "User not found",
+        message: "User not found",
       });
     }
 
@@ -221,11 +243,17 @@ exports.getProfile = async (req, res, next) => {
       success: true,
       data: user,
     });
-  } catch (error) {
-    next(error);
-  }
-};
+  } 
+  
+  catch (error) {
+  console.error("Get profile error:", error);
 
+  return res.status(500).json({
+    success: false,
+    message: error.message,
+    stack: error.stack,
+  });
+} }
 
 // LOGOUT
 exports.logout = async (req, res, next) => {
@@ -238,3 +266,6 @@ exports.logout = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
