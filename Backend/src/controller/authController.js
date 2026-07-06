@@ -203,6 +203,7 @@ const accessToken = jwt.sign(
 };
 
 // GET CURRENT USER PROFILE
+// GET CURRENT USER PROFILE
 exports.getProfile = async (req, res) => {
   try {
     const user = await prisma.users.findUnique({
@@ -227,8 +228,6 @@ exports.getProfile = async (req, res) => {
             country: true,
           },
         },
-          }
-        }
       },
     });
 
@@ -243,9 +242,7 @@ exports.getProfile = async (req, res) => {
       success: true,
       data: user,
     });
-  } 
-  
-  catch (error) {
+  } catch (error) {
     console.error("Get profile error:", error);
 
     return res.status(500).json({
@@ -254,7 +251,6 @@ exports.getProfile = async (req, res) => {
     });
   }
 };
-
 
 // LOGOUT
 exports.logout = async (req, res, next) => {
