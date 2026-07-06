@@ -1,21 +1,22 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken } = require('../middlewares/authMiddleware');
+const { validateWaitlistJoin, validateWaitlistDetails } = require('../middlewares/validateWaitlist');
+const { waitlistJoinLimiter } = require('../middlewares/rateLimiter');
+const { requireAdminKey } = require('../middlewares/adminAuth');
+const waitlistController = require('../controller/waitlistController');
 
-// GET /api/v1/stores
-// Returns connected stores for the authenticated user's organization
-// Stub: returns empty array until stores table migration runs (2.BE1.1)
-router.get('/', authenticateToken, async (req, res, next) => {
-  try {
-    // TODO 2.BE1.1: query stores table when migration is live
-    // const stores = await prisma.stores.findMany({
-    //   where: { organizations: { owner_id: req.user.id } },
-    //   select: { id: true, platform: true, shop_domain: true, status: true, installed_at: true, last_synced_at: true }
-    // });
-    res.json({ success: true, data: { stores: [] } });
-  } catch (error) {
-    next(error);
-  }
-});
+// POST /api/v1/waitlist/join
+// Step 1  "secure my spot". Creates the waitlist row with the minimal
+// fields needed (name, email, phone, X handle, brand name, store URL).
+router.post('/join', waitlistJoinLimiter, validateWaitlistJoin, waitlistController.joinWaitlist);
+
+// PATCH /api/v1/waitlist/:id/details
+// Step 2 — "tell us more". Optional, fills in the rest of the profile on
+// the row already created by /join.
+router.patch('/:id/details', validateWaitlistDetails, waitlistController.updateWaitlistDetails);
+
+// GET /api/v1/waitlist/stats
+// Admin-only lead dashboard data.
+router.get('/stats', requireAdminKey, waitlistController.getWaitlistStats);
 
 module.exports = router;

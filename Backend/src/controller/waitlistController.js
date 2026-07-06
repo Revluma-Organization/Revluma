@@ -45,7 +45,7 @@ function calculateLeadScore(data) {
 
 exports.joinWaitlist = async (req, res, next) => {
   try {
-    // Honeypot — bots tend to fill every field they can find; real users never
+    // Honeypot bots tend to fill every field they can find; real users never
     // see this one (it's visually hidden off-screen). If it's filled, pretend
     // to succeed without touching the DB or sending an email, so the bot has
     // no signal that it was caught.
@@ -142,8 +142,12 @@ exports.joinWaitlist = async (req, res, next) => {
         company_name,
         website_url: website_url || null,
         store_url: store_url || null,
-        industry,
-        country,
+        // industry/country/biggest_challenge are NOT NULL columns but are no
+        // longer collected in step 1, they're filled in later via
+        // updateWaitlistDetails (step 2). Empty string satisfies the
+        // constraint without a schema change; treated as "not yet provided".
+        industry: industry || '',
+        country: country || '',
         state_region: state_region || null,
         team_size: team_size || null,
         monthly_revenue_range: monthly_revenue_range || null,
@@ -154,7 +158,7 @@ exports.joinWaitlist = async (req, res, next) => {
         support_platform: support_platform || null,
         ad_platform: ad_platform || null,
         primary_goal: primary_goal || null,
-        biggest_challenge,
+        biggest_challenge: biggest_challenge || '',
         current_churn_problem: Boolean(current_churn_problem),
         abandoned_cart_problem: Boolean(abandoned_cart_problem),
         retention_problem: Boolean(retention_problem),
@@ -195,6 +199,94 @@ exports.joinWaitlist = async (req, res, next) => {
         waitlist_position: waitlistUser.waitlist_position,
         lead_score: waitlistUser.lead_score,
         email: waitlistUser.work_email,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Step 2 fills in the remaining profile fields on a row already created
+// by joinWaitlist. Every field is optional; only whatever was actually sent
+// gets written. Re-scores the lead once the fuller picture is in.
+exports.updateWaitlistDetails = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const existing = await prisma.waitlist_users.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: 'Waitlist entry not found',
+      });
+    }
+
+    const {
+      tiktok_handle,
+      instagram_handle,
+      website_url,
+      industry,
+      country,
+      state_region,
+      team_size,
+      monthly_revenue_range,
+      monthly_order_volume,
+      ecommerce_platform,
+      email_platform,
+      analytics_platform,
+      support_platform,
+      ad_platform,
+      primary_goal,
+      biggest_challenge,
+      why_join_waitlist,
+      current_churn_problem,
+      abandoned_cart_problem,
+      retention_problem,
+      revenue_visibility_problem,
+      interested_in_beta,
+    } = req.body;
+
+    // Only include fields the client actually sent, so a partial step-2
+    // submission never blanks out something already on the row.
+    const data = {};
+    if (tiktok_handle !== undefined) data.tiktok_handle = tiktok_handle || null;
+    if (instagram_handle !== undefined) data.instagram_handle = instagram_handle || null;
+    if (website_url !== undefined) data.website_url = website_url || null;
+    if (industry !== undefined) data.industry = industry || '';
+    if (country !== undefined) data.country = country || '';
+    if (state_region !== undefined) data.state_region = state_region || null;
+    if (team_size !== undefined) data.team_size = team_size || null;
+    if (monthly_revenue_range !== undefined) data.monthly_revenue_range = monthly_revenue_range || null;
+    if (monthly_order_volume !== undefined) data.monthly_order_volume = monthly_order_volume || null;
+    if (ecommerce_platform !== undefined) data.ecommerce_platform = ecommerce_platform || null;
+    if (email_platform !== undefined) data.email_platform = email_platform || null;
+    if (analytics_platform !== undefined) data.analytics_platform = analytics_platform || null;
+    if (support_platform !== undefined) data.support_platform = support_platform || null;
+    if (ad_platform !== undefined) data.ad_platform = ad_platform || null;
+    if (primary_goal !== undefined) data.primary_goal = primary_goal || null;
+    if (biggest_challenge !== undefined) data.biggest_challenge = biggest_challenge || '';
+    if (why_join_waitlist !== undefined) data.why_join_waitlist = why_join_waitlist || null;
+    if (current_churn_problem !== undefined) data.current_churn_problem = Boolean(current_churn_problem);
+    if (abandoned_cart_problem !== undefined) data.abandoned_cart_problem = Boolean(abandoned_cart_problem);
+    if (retention_problem !== undefined) data.retention_problem = Boolean(retention_problem);
+    if (revenue_visibility_problem !== undefined) data.revenue_visibility_problem = Boolean(revenue_visibility_problem);
+    if (interested_in_beta !== undefined) data.interested_in_beta = Boolean(interested_in_beta);
+
+    // Re-score using the merged picture (existing row + whatever's new).
+    const merged = { ...existing, ...data };
+    data.lead_score = calculateLeadScore(merged);
+
+    const updated = await prisma.waitlist_users.update({
+      where: { id },
+      data,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Thanks — your profile is complete!',
+      data: {
+        id: updated.id,
+        lead_score: updated.lead_score,
       },
     });
   } catch (error) {
