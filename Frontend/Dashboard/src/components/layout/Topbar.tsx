@@ -154,7 +154,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
               >
                 <Avatar className="h-[26px] w-[26px] border border-border">
                   <AvatarFallback className="text-[0.7rem] bg-primary/20 text-primary">
-                    {user.full_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'U'}
+                    {user.full_name?.split(' ')?.map((n: string) => n[0])?.join('')?.toUpperCase() || 'U'}
                   </AvatarFallback>
                 </Avatar>
               </Button>
@@ -163,7 +163,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
               <div className="flex items-center gap-3 px-2 py-2">
                 <Avatar className="h-8 w-8 border border-border">
                   <AvatarFallback className="bg-primary/20 text-primary text-sm">
-                    {user?.full_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'U'}
+                    {user?.full_name?.split(' ')?.map((n: string) => n[0])?.join('')?.toUpperCase() || 'U'}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col gap-0.5">
