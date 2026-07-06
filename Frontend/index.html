@@ -899,17 +899,18 @@
             twitter_handle: str('twitter_handle'),
             company_name: str('company_name'),
             store_url: str('store_url'),
+            referred_by_code: str('referred_by_code'),
           };
 
           try {
             const result = await submitWaitlistForm(payload);
             this.waitlistId = result?.data?.id || null;
             this.position = result?.data?.waitlist_position || '';
-            // Referral code is generated client-side from the row id — it's
-            // not persisted anywhere, purely a shareable token for this session.
-            this.referralCode = this.waitlistId
-              ? `RV-${this.waitlistId.split('-')[0].toUpperCase()}`
-              : '';
+            // Real, persisted referral code generated and stored by the
+            // backend — this is what actually gets credited when someone
+            // else signs up using it, so it must come from the server, not
+            // be faked up client-side.
+            this.referralCode = result?.data?.referral_code || '';
             this.submitting = false;
             this.step = 2;
           } catch (err) {
@@ -951,7 +952,6 @@
             retention_problem: checked('retention_problem'),
             revenue_visibility_problem: checked('revenue_visibility_problem'),
             why_join_waitlist: str('why_join_waitlist'),
-            referral_code: str('referral_code'),
             interested_in_beta: checked('interested_in_beta'),
           };
 
@@ -1196,6 +1196,37 @@
                                      <div x-data="{ val: '' }" class="relative w-full">
                                        <input x-model="val" type="url" name="store_url" class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
                                        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Store Url</span></div>
+                                     </div>
+                                   </div>
+                                   <div class="relative md:col-span-2">
+                                     <div x-data="{
+                                           val: '',
+                                           checking: false,
+                                           valid: null,
+                                           checkTimeout: null,
+                                           checkCode() {
+                                             clearTimeout(this.checkTimeout);
+                                             if (!this.val.trim()) { this.valid = null; return; }
+                                             this.checkTimeout = setTimeout(async () => {
+                                               this.checking = true;
+                                               try {
+                                                 const res = await fetch(`${window.REVLUMA_API_BASE}/waitlist/referral/${encodeURIComponent(this.val.trim())}/check`);
+                                                 const data = await res.json();
+                                                 this.valid = data.exists;
+                                               } catch (e) {
+                                                 this.valid = null;
+                                               } finally {
+                                                 this.checking = false;
+                                               }
+                                             }, 400);
+                                           }
+                                         }" class="relative w-full">
+                                       <input x-model="val" @input="checkCode()" type="text" name="referred_by_code"
+                                         class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border text-white placeholder-zinc-500 focus:outline-none transition-all duration-200"
+                                         :class="valid === false ? 'border-red-500/50' : (valid === true ? 'border-green-500/50' : 'border-white/10 hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10')">
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Referral code (optional)</span></div>
+                                       <p x-show="valid === false" x-cloak class="text-red-400 text-xs mt-1.5 pl-1">This referral code doesn't exist.</p>
+                                       <p x-show="valid === true" x-cloak class="text-green-400 text-xs mt-1.5 pl-1">Valid code — you'll both get credit!</p>
                                      </div>
                                    </div>
                                  </div>

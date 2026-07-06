@@ -1,7 +1,9 @@
 const { validationResult } = require('express-validator');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const dbConfig = require('../configs/database');
 const emailService = require('../utils/emailService');
+const { getCached, setCached } = require('../utils/referralCache');
 
 const prisma = dbConfig.prisma;
 
@@ -41,6 +43,38 @@ function calculateLeadScore(data) {
   if (data.interested_in_beta) score += 10;
 
   return Math.min(score, 200); // Cap at 200
+}
+
+// Generates a short, shareable referral code, e.g. "RV-4F8A2B".
+// Not cryptographically sensitive — it's a public shareable token, not a
+// secret — so a short random hex suffix is fine.
+function generateReferralCode() {
+  return `RV-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+}
+
+// Generates a referral code and confirms it's actually unique against the
+// DB before handing it back, retrying on the rare collision. Must be run
+// with a Prisma client that supports .waitlist_users (either the main
+// `prisma` instance or a `tx` transaction client) so the uniqueness check
+// and the row insert that uses this code stay consistent.
+async function generateUniqueReferralCode(client, attempts = 5) {
+  for (let i = 0; i < attempts; i++) {
+    const code = generateReferralCode();
+    const existing = await client.waitlist_users.findUnique({
+      where: { referral_code: code },
+      select: { id: true },
+    });
+    if (!existing) return code;
+  }
+  throw new Error('Failed to generate a unique referral code after multiple attempts');
+}
+
+// Referral codes are user-facing tokens people type in manually, so this
+// normalizes casing/whitespace before any lookup, cache hit, or DB write —
+// "rv-4f8a2b", " RV-4F8A2B ", and "RV-4F8A2B" must all resolve to the
+// same code.
+function normalizeReferralCode(code) {
+  return typeof code === 'string' ? code.trim().toUpperCase() : null;
 }
 
 exports.joinWaitlist = async (req, res, next) => {
@@ -97,6 +131,7 @@ exports.joinWaitlist = async (req, res, next) => {
       revenue_visibility_problem,
       why_join_waitlist,
       interested_in_beta,
+      referred_by_code,
     } = req.body;
 
     // Check if email already exists
@@ -111,13 +146,6 @@ exports.joinWaitlist = async (req, res, next) => {
       });
     }
 
-    // Get the current highest waitlist position
-    const lastWaitlistUser = await prisma.waitlist_users.findFirst({
-      orderBy: { waitlist_position: 'desc' },
-    });
-
-    const nextPosition = (lastWaitlistUser?.waitlist_position || 0) + 1;
-
     // Calculate lead score based on answers
     const leadScore = calculateLeadScore({
       team_size,
@@ -129,61 +157,106 @@ exports.joinWaitlist = async (req, res, next) => {
       revenue_visibility_problem,
     });
 
-    // Create the waitlist record
-    const waitlistUser = await prisma.waitlist_users.create({
-      data: {
-        id: uuidv4(),
-        full_name,
-        work_email,
-        phone_number: phone_number || null,
-        twitter_handle: twitter_handle || null,
-        tiktok_handle: tiktok_handle || null,
-        instagram_handle: instagram_handle || null,
-        company_name,
-        website_url: website_url || null,
-        store_url: store_url || null,
-        // industry/country/biggest_challenge are NOT NULL columns but are no
-        // longer collected in step 1, they're filled in later via
-        // updateWaitlistDetails (step 2). Empty string satisfies the
-        // constraint without a schema change; treated as "not yet provided".
-        industry: industry || '',
-        country: country || '',
-        state_region: state_region || null,
-        team_size: team_size || null,
-        monthly_revenue_range: monthly_revenue_range || null,
-        monthly_order_volume: monthly_order_volume || null,
-        ecommerce_platform: ecommerce_platform || null,
-        email_platform: email_platform || null,
-        analytics_platform: analytics_platform || null,
-        support_platform: support_platform || null,
-        ad_platform: ad_platform || null,
-        primary_goal: primary_goal || null,
-        biggest_challenge: biggest_challenge || '',
-        current_churn_problem: Boolean(current_churn_problem),
-        abandoned_cart_problem: Boolean(abandoned_cart_problem),
-        retention_problem: Boolean(retention_problem),
-        revenue_visibility_problem: Boolean(revenue_visibility_problem),
-        why_join_waitlist: why_join_waitlist || null,
-        interested_in_beta: interested_in_beta !== false,
-        waitlist_position: nextPosition,
-        lead_score: leadScore,
-        status: 'pending',
-        welcome_email_sent: false,
-        ip_address: req.ip || req.connection.remoteAddress || null,
-        user_agent: req.get('user-agent') || null,
-      },
+    const normalizedReferredByCode = normalizeReferralCode(referred_by_code);
+
+    // Everything below happens inside one transaction: resolving the
+    // referrer, generating this user's own unique code, computing their
+    // waitlist position, creating the row, and crediting the referrer's
+    // referral_count. Doing it all together means a crash or concurrent
+    // request can't leave things half-applied (e.g. a referral credited
+    // with no matching signup, or a signup with no position).
+    const result = await prisma.$transaction(async (tx) => {
+      let referrer = null;
+
+      if (normalizedReferredByCode) {
+        referrer = await tx.waitlist_users.findUnique({
+          where: { referral_code: normalizedReferredByCode },
+          select: { id: true, referral_code: true },
+        });
+        // If the code doesn't match anyone, we don't reject the signup —
+        // the frontend already checks and warns about invalid codes live,
+        // before the person even submits. Re-validating here (rather than
+        // trusting the frontend) just means an invalid/spoofed code quietly
+        // gets no credit, instead of blocking a legitimate signup over a
+        // stale or mistyped code.
+      }
+
+      const ownReferralCode = await generateUniqueReferralCode(tx);
+
+      const lastWaitlistUser = await tx.waitlist_users.findFirst({
+        orderBy: { waitlist_position: 'desc' },
+        select: { waitlist_position: true },
+      });
+      const nextPosition = (lastWaitlistUser?.waitlist_position || 0) + 1;
+
+      const newUser = await tx.waitlist_users.create({
+        data: {
+          id: uuidv4(),
+          full_name,
+          work_email,
+          phone_number: phone_number || null,
+          twitter_handle: twitter_handle || null,
+          tiktok_handle: tiktok_handle || null,
+          instagram_handle: instagram_handle || null,
+          company_name,
+          website_url: website_url || null,
+          store_url: store_url || null,
+          // industry/country/biggest_challenge are NOT NULL columns but are no
+          // longer collected in step 1, they're filled in later via
+          // updateWaitlistDetails (step 2). Empty string satisfies the
+          // constraint without a schema change; treated as "not yet provided".
+          industry: industry || '',
+          country: country || '',
+          state_region: state_region || null,
+          team_size: team_size || null,
+          monthly_revenue_range: monthly_revenue_range || null,
+          monthly_order_volume: monthly_order_volume || null,
+          ecommerce_platform: ecommerce_platform || null,
+          email_platform: email_platform || null,
+          analytics_platform: analytics_platform || null,
+          support_platform: support_platform || null,
+          ad_platform: ad_platform || null,
+          primary_goal: primary_goal || null,
+          biggest_challenge: biggest_challenge || '',
+          current_churn_problem: Boolean(current_churn_problem),
+          abandoned_cart_problem: Boolean(abandoned_cart_problem),
+          retention_problem: Boolean(retention_problem),
+          revenue_visibility_problem: Boolean(revenue_visibility_problem),
+          why_join_waitlist: why_join_waitlist || null,
+          interested_in_beta: interested_in_beta !== false,
+          waitlist_position: nextPosition,
+          lead_score: leadScore,
+          status: 'pending',
+          welcome_email_sent: false,
+          ip_address: req.ip || req.connection.remoteAddress || null,
+          user_agent: req.get('user-agent') || null,
+          referral_code: ownReferralCode,
+          referred_by_code: referrer ? referrer.referral_code : null,
+          referral_count: 0,
+          is_founding_member: false,
+        },
+      });
+
+      if (referrer) {
+        await tx.waitlist_users.update({
+          where: { id: referrer.id },
+          data: { referral_count: { increment: 1 } },
+        });
+      }
+
+      return newUser;
     });
 
     // Send welcome email
     try {
       await emailService.sendWelcomeEmail(work_email, {
         full_name,
-        waitlist_position: nextPosition,
+        waitlist_position: result.waitlist_position,
       });
 
       // Update the welcome_email_sent flag
       await prisma.waitlist_users.update({
-        where: { id: waitlistUser.id },
+        where: { id: result.id },
         data: { welcome_email_sent: true },
       });
     } catch (emailError) {
@@ -195,14 +268,57 @@ exports.joinWaitlist = async (req, res, next) => {
       success: true,
       message: 'Successfully joined the waitlist!',
       data: {
-        id: waitlistUser.id,
-        waitlist_position: waitlistUser.waitlist_position,
-        lead_score: waitlistUser.lead_score,
-        email: waitlistUser.work_email,
+        id: result.id,
+        waitlist_position: result.waitlist_position,
+        lead_score: result.lead_score,
+        email: result.work_email,
+        referral_code: result.referral_code,
       },
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// Checks whether a referral code exists — used by the frontend to give
+// instant "this code doesn't exist" feedback in Step 1, before the person
+// even submits the form.
+//
+// Layered to keep this cheap even under heavy or abusive traffic:
+//   1. Format check first — garbage input never touches the cache or DB.
+//   2. In-memory cache second — repeat checks of the same code (common,
+//      since many people will be checking the same shared/influencer code)
+//      barely touch the DB at all.
+//   3. Dedicated rate limiter on the route (see waitlistRoute.js) caps how
+//      often any single IP can hit this endpoint at all.
+exports.checkReferralCode = async (req, res) => {
+  try {
+    const code = normalizeReferralCode(req.params.code);
+
+    if (!code || !/^[A-Z0-9-]{4,20}$/.test(code)) {
+      return res.status(200).json({ success: true, exists: false });
+    }
+
+    const cached = getCached(code);
+    if (cached !== undefined) {
+      return res.status(200).json({ success: true, exists: cached });
+    }
+
+    const found = await prisma.waitlist_users.findUnique({
+      where: { referral_code: code },
+      select: { id: true },
+    });
+
+    const exists = !!found;
+    setCached(code, exists);
+
+    return res.status(200).json({ success: true, exists });
+  } catch (error) {
+    console.error('Referral check error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to check referral code',
+    });
   }
 };
 
@@ -311,6 +427,8 @@ exports.getWaitlistStats = async (req, res, next) => {
         company_name: true,
         lead_score: true,
         waitlist_position: true,
+        referral_count: true,
+        is_founding_member: true,
       },
     });
 
