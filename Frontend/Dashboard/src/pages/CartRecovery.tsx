@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { ShoppingCart, TrendingUp, RefreshCw } from "lucide-react";
 
 interface CartRow {
@@ -23,26 +24,26 @@ const STAT_TILES = [
 ];
 
 export default function CartRecovery() {
-  // State initialized to null — skeletons show until backend is wired in Week 4
-  const [stats] = useState<Record<string, string> | null>(null);
-  const [carts] = useState<CartRow[] | null>(null);
-  const loading = stats === null;
+  const [stats, setStats] = useState<Record<string, string> | null>(null);
+  const [carts, setCarts] = useState<CartRow[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setStats({ total_abandoned: "0", total_recovered: "0", recovery_rate: "0%" });
+      setCarts([]);
+      setLoading(false);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
       {/* Page header */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.28 }}
-      >
-        <h1 className="display text-[1.6rem] font-extrabold tracking-tight text-t1 sm:text-[1.85rem]">
-          Cart Recovery
-        </h1>
-        <p className="mt-1 text-[0.85rem] text-t2">
-          Recover abandoned carts and win back lost revenue.
-        </p>
-      </motion.div>
+      <PageHeader 
+        title="Cart Recovery"
+        subtitle="Recover abandoned carts and win back lost revenue."
+      />
 
       {/* Stat tiles */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -107,19 +108,25 @@ export default function CartRecovery() {
                   </tr>
                 ))
               )}
-              {!loading && (carts === null || carts.length === 0) && (
+              {!loading && (!carts || carts.length === 0) && (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <ShoppingCart className="h-8 w-8 text-t4" />
-                      <p className="text-[0.82rem] text-t3">
-                        No abandoned carts yet. Connect your store to start tracking.
+                  <td colSpan={5} className="py-20 text-center">
+                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: "hsl(var(--accent) / 0.08)", border: "1px solid hsl(var(--accent) / 0.15)" }}>
+                        <ShoppingCart className="h-8 w-8" style={{ color: "hsl(var(--accent))" }} />
+                      </div>
+                      <h4 className="text-lg font-bold text-t1 mb-2">No abandoned carts yet</h4>
+                      <p className="text-[0.85rem] text-t3 mb-6">
+                        Once you connect your store, Revluma will automatically start tracking and recovering abandoned carts.
                       </p>
+                      <button className="rounded-lg px-5 py-2.5 text-sm font-semibold transition-transform hover:-translate-y-0.5" style={{ background: "hsl(var(--t1))", color: "hsl(var(--bg))" }}>
+                        Connect your store
+                      </button>
                     </div>
                   </td>
                 </tr>
               )}
-              {!loading && carts && carts.map((c) => {
+              {!loading && carts && carts.length > 0 && carts.map((c) => {
                 const s = STATUS_STYLE[c.status];
                 return (
                   <tr key={c.id} className="text-[0.78rem] text-t1">

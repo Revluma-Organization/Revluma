@@ -1,5 +1,6 @@
 import { ExternalLink, X } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface Props {
   storeConnected: boolean | null;
@@ -7,6 +8,7 @@ interface Props {
 
 export function ConnectBanner({ storeConnected }: Props) {
   const [dismissed, setDismissed] = useState(false);
+  const navigate = useNavigate();
 
   // Hide if user dismissed OR store is confirmed connected
   if (dismissed || storeConnected === true) return null;
@@ -28,7 +30,8 @@ export function ConnectBanner({ storeConnected }: Props) {
       </div>
       <div className="flex items-center gap-2">
         <button
-          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[0.75rem] font-bold transition-opacity hover:opacity-90"
+          onClick={() => navigate("/dashboard/integrations")}
+          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[0.75rem] font-bold transition-transform hover:-translate-y-0.5 active:scale-95 shadow-lg shadow-accent/20"
           style={{ background: "hsl(var(--accent))", color: "#000" }}
         >
           <ExternalLink className="h-3 w-3" />

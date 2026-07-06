@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Users, Mail } from "lucide-react";
 
 interface CustomerRow {
@@ -25,26 +26,26 @@ const STAT_TILES = [
 ];
 
 export default function Customers() {
-  // State initialized to null — skeletons show until backend is wired in Week 4
-  const [stats] = useState<Record<string, string> | null>(null);
-  const [customers] = useState<CustomerRow[] | null>(null);
-  const loading = stats === null;
+  const [stats, setStats] = useState<Record<string, string> | null>(null);
+  const [customers, setCustomers] = useState<CustomerRow[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setStats({ total_customers: "0", active_subscribers: "0" });
+      setCustomers([]);
+      setLoading(false);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
       {/* Page header */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.28 }}
-      >
-        <h1 className="display text-[1.6rem] font-extrabold tracking-tight text-t1 sm:text-[1.85rem]">
-          Customers
-        </h1>
-        <p className="mt-1 text-[0.85rem] text-t2">
-          View and manage your synced customer base.
-        </p>
-      </motion.div>
+      <PageHeader 
+        title="Customers"
+        subtitle="View and manage your synced customer base."
+      />
 
       {/* Stat tiles */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -112,19 +113,25 @@ export default function Customers() {
                   </tr>
                 ))
               )}
-              {!loading && (customers === null || customers.length === 0) && (
+              {!loading && (!customers || customers.length === 0) && (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <Users className="h-8 w-8 text-t4" />
-                      <p className="text-[0.82rem] text-t3">
-                        No customers synced yet. Connect your store to import customer data.
+                  <td colSpan={5} className="py-20 text-center">
+                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
+                      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: "hsl(var(--accent) / 0.08)", border: "1px solid hsl(var(--accent) / 0.15)" }}>
+                        <Users className="h-8 w-8" style={{ color: "hsl(var(--accent))" }} />
+                      </div>
+                      <h4 className="text-lg font-bold text-t1 mb-2">No customers synced yet</h4>
+                      <p className="text-[0.85rem] text-t3 mb-6">
+                        Once you connect your store, Revluma will import and automatically segment your customer data.
                       </p>
+                      <button className="rounded-lg px-5 py-2.5 text-sm font-semibold transition-transform hover:-translate-y-0.5" style={{ background: "hsl(var(--t1))", color: "hsl(var(--bg))" }}>
+                        Connect your store
+                      </button>
                     </div>
                   </td>
                 </tr>
               )}
-              {!loading && customers && customers.map((c) => {
+              {!loading && customers && customers.length > 0 && customers.map((c) => {
                 const seg = c.rfm_segment ? SEGMENT_STYLE[c.rfm_segment] : null;
                 const initials = c.full_name
                   .split(' ')

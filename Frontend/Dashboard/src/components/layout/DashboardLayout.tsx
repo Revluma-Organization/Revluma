@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { CommandPalette } from "./CommandPalette";
@@ -7,6 +8,7 @@ import { CopilotPanel } from "./CopilotPanel";
 import { ProductTour } from "./ProductTour";
 import { useEffect } from "react";
 import { useUI } from "@/store/ui";
+import { useThemeStore } from "@/store";
 
 const SECTION_TITLES: Record<string, string> = {
   "/dashboard/overview":     "Overview",
@@ -20,7 +22,8 @@ const SECTION_TITLES: Record<string, string> = {
 };
 
 export function DashboardLayout() {
-  const { theme, startTour } = useUI();
+  const { startTour } = useUI();
+  const theme = useThemeStore((s) => s.theme);
   const { pathname } = useLocation();
 
   useEffect(() => {
@@ -42,7 +45,17 @@ export function DashboardLayout() {
       <main className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-bg">
         <Topbar section={SECTION_TITLES[pathname] ?? "Overview"} />
         <div className="px-4 py-5 sm:px-6 sm:py-6">
-          <Outlet />
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
       <CommandPalette />
