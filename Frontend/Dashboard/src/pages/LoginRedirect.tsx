@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 // When a proper React login page is built in Phase 2, swap the href here — one place.
 export default function LoginRedirect() {
   useEffect(() => {
-    window.location.href = '/auth/loginIn.html';
+    window.location.href = '/auth/login.html';
   }, []);
 
   return null;
