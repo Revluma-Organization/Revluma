@@ -9,6 +9,7 @@ import { NAV } from '@/data/nav';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
+import revlumaIcon from '@/assets/brand/revluma-icon.png';
 
 // Derive initials from a full name string
 function getInitials(fullName: string | undefined | null): string {
@@ -67,10 +68,10 @@ export function Sidebar() {
         <div className={cn('relative z-[1] flex shrink-0 items-center justify-between px-4 pb-3.5 pt-4', sidebarCollapsed && 'md:justify-center md:px-2')}>
           <div className="flex items-center gap-2.5">
             <div
-              className="flex h-7 w-7 items-center justify-center rounded-md font-display text-[0.7rem] font-extrabold"
-              style={{ background: 'hsl(var(--accent) / 0.12)', border: '1px solid hsl(var(--accent) / 0.25)', color: 'hsl(var(--accent))' }}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
+              style={{ background: 'hsl(var(--accent) / 0.12)', border: '1px solid hsl(var(--accent) / 0.25)' }}
             >
-              R
+              <img src={revlumaIcon} alt="Revluma" className="h-[18px] w-[18px] object-contain" />
             </div>
             {!sidebarCollapsed && <span className="display text-[1.18rem] font-extrabold text-t1">Revluma</span>}
           </div>

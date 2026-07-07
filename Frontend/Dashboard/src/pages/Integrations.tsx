@@ -1,8 +1,16 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { ExternalLink, Plug, WifiOff, X, Loader2 } from "lucide-react";
+import {
+  ExternalLink, Plug, WifiOff, X, Loader2, Info, CheckCircle2,
+  Clock, ShieldCheck, ArrowUpRight, Layers, Code2, LayoutTemplate,
+} from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+
+import shopifyLogo from "@/assets/brand/shopify-logo.png";
+import woocommerceLogo from "@/assets/brand/woocommerce-logo.webp";
+import bigcommerceLogo from "@/assets/brand/bigcommerce-logo.png";
 
 //Types
 
@@ -13,12 +21,21 @@ interface Platform {
   name: string;
   tagline: string;
   description: string;
-  logoInitial: string;
+  logo: string;
   accentColor: string;
   accentBg: string;
   accentBorder: string;
   docsUrl: string;
   features: string[];
+  popular?: boolean;
+}
+
+interface ComingSoonPlatform {
+  name: string;
+  tagline: string;
+  logo?: string;
+  icon?: React.ElementType;
+  accentColor: string;
 }
 
 //Platform config
@@ -30,11 +47,12 @@ const PLATFORMS: Platform[] = [
     tagline: "The world's leading e-commerce platform",
     description:
       "Connect your Shopify store to automatically detect abandoned carts, sync customer profiles, and fire recovery sequences — no code required.",
-    logoInitial: "S",
+    logo: shopifyLogo,
     accentColor: "#5C8F4D",
     accentBg: "hsl(142 40% 42% / 0.10)",
     accentBorder: "hsl(142 40% 42% / 0.28)",
     docsUrl: "https://shopify.dev/docs/apps/auth/oauth",
+    popular: true,
     features: [
       "Automatic cart abandonment detection via pixel",
       "Real-time order and customer sync",
@@ -48,7 +66,7 @@ const PLATFORMS: Platform[] = [
     tagline: "The open-source commerce platform for WordPress",
     description:
       "Connect your WooCommerce store via REST API to start recovering abandoned carts and unlocking customer intelligence across your catalogue.",
-    logoInitial: "W",
+    logo: woocommerceLogo,
     accentColor: "#7C5CBF",
     accentBg: "hsl(258 45% 55% / 0.10)",
     accentBorder: "hsl(258 45% 55% / 0.28)",
@@ -60,6 +78,13 @@ const PLATFORMS: Platform[] = [
       "Real-time stock and pricing updates",
     ],
   },
+];
+
+const COMING_SOON: ComingSoonPlatform[] = [
+  { name: "BigCommerce", tagline: "Open SaaS commerce", logo: bigcommerceLogo, accentColor: "#34313F" },
+  { name: "Magento", tagline: "Adobe Commerce", icon: Layers, accentColor: "#F46F25" },
+  { name: "Squarespace", tagline: "All-in-one website builder", icon: LayoutTemplate, accentColor: "#111111" },
+  { name: "Custom API", tagline: "Bring your own stack", icon: Code2, accentColor: "#4C8DFF" },
 ];
 
 //Status badge
@@ -82,7 +107,7 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
   const { color, bg } = STATUS_STYLE[status];
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold"
       style={{ color, background: bg }}
     >
       <span
@@ -91,6 +116,51 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
       />
       {STATUS_LABEL[status]}
     </span>
+  );
+}
+
+// Info popover — explains where to find a credential
+
+function FieldInfo({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`How to find your ${title}`}
+          className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-t3 transition-colors hover:text-t1"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="w-[280px] border-border-md bg-bg-3 p-3.5 text-t2 shadow-elegant"
+      >
+        <p className="mb-1.5 flex items-center gap-1.5 text-[0.78rem] font-semibold text-t1">
+          <ShieldCheck className="h-3.5 w-3.5" style={{ color: "hsl(var(--accent))" }} />
+          {title}
+        </p>
+        <div className="space-y-1.5 text-[0.74rem] leading-relaxed text-t2">{children}</div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Logo badge — consistent white tile treatment for every brand mark
+
+function LogoTile({ src, alt, size = 14 }: { src: string; alt: string; size?: number }) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-black/[0.06]",
+        size === 14 ? "h-14 w-14 p-2.5" : "h-10 w-10 p-2",
+      )}
+    >
+      <img src={src} alt={alt} className="h-full w-full object-contain" />
+    </div>
   );
 }
 
@@ -169,7 +239,8 @@ export default function Integrations() {
     }
   }
 
-  const anyConnected = Object.values(statuses).some((s) => s === "connected");
+  const connectedCount = Object.values(statuses).filter((s) => s === "connected").length;
+  const anyConnected = connectedCount > 0;
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
@@ -179,13 +250,23 @@ export default function Integrations() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.28 }}
+        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
       >
-        <h1 className="display text-[1.6rem] font-extrabold tracking-tight text-t1 sm:text-[1.85rem]">
-          Connect Your Store
-        </h1>
-        <p className="mt-1 text-[0.85rem] text-t2">
-          Connect your Shopify or WooCommerce store to start recovering abandoned carts.
-        </p>
+        <div>
+          <h1 className="display text-[1.6rem] font-extrabold tracking-tight text-t1 sm:text-[1.85rem]">
+            Connect Your Store
+          </h1>
+          <p className="mt-1 text-[0.85rem] text-t2">
+            Connect your Shopify or WooCommerce store to start recovering abandoned carts.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 self-start rounded-full border border-border bg-bg-2 px-3 py-1.5 text-[0.72rem] font-semibold text-t2 sm:self-auto">
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: anyConnected ? "hsl(var(--green))" : "hsl(var(--t4))" }}
+          />
+          {connectedCount} of {PLATFORMS.length} platforms connected
+        </div>
       </motion.div>
 
       {/* No-store warning */}
@@ -215,114 +296,158 @@ export default function Integrations() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="glass-card flex flex-col gap-5 p-6"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-bg-2 transition-all duration-300 hover:border-border-md hover:shadow-elegant"
             >
-              {/* Header */}
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border text-[1.25rem] font-extrabold"
-                    style={{ background: platform.accentBg, borderColor: platform.accentBorder, color: platform.accentColor }}
-                  >
-                    {platform.logoInitial}
+              {/* accent hairline */}
+              <div
+                className="h-[3px] w-full shrink-0"
+                style={{ background: `linear-gradient(90deg, ${platform.accentColor}, transparent)` }}
+              />
+
+              <div className="flex flex-1 flex-col gap-5 p-6">
+                {/* Header */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <LogoTile src={platform.logo} alt={platform.name} />
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-[1.05rem] font-bold leading-tight text-t1">{platform.name}</h2>
+                        {platform.popular && (
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[0.62rem] font-bold uppercase tracking-[0.06em]"
+                            style={{ background: "hsl(var(--accent) / 0.14)", color: "hsl(var(--accent))" }}
+                          >
+                            Most Popular
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-[0.74rem] text-t3">{platform.tagline}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-[1rem] font-bold leading-tight text-t1">{platform.name}</h2>
-                    <p className="mt-0.5 text-[0.72rem] text-t3">{platform.tagline}</p>
-                  </div>
+                  <StatusBadge status={status} />
                 </div>
-                <StatusBadge status={status} />
-              </div>
 
-              {/* Description & Features */}
-              {!(platform.id === "woocommerce" && wooFormOpen) && (
-                <>
-                  <p className="text-[0.82rem] leading-relaxed text-t2">{platform.description}</p>
-                  <ul className="space-y-2">
-                    {platform.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2 text-[0.78rem] text-t2">
-                        <span className="mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: platform.accentColor }} />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
+                {/* Description & Features */}
+                {!(platform.id === "woocommerce" && wooFormOpen) && (
+                  <>
+                    <p className="text-[0.82rem] leading-relaxed text-t2">{platform.description}</p>
+                    <div className="grid grid-cols-1 gap-x-3 gap-y-2.5 rounded-xl border border-border bg-white/[0.015] p-3.5 sm:grid-cols-2">
+                      {platform.features.map((f) => (
+                        <div key={f} className="flex items-start gap-2 text-[0.76rem] leading-snug text-t2">
+                          <CheckCircle2 className="mt-[1px] h-3.5 w-3.5 shrink-0" style={{ color: platform.accentColor }} />
+                          {f}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
 
-              {/* WooCommerce Inline Form */}
-              {platform.id === "woocommerce" && wooFormOpen && !isConnected && (
-                <form onSubmit={handleWooSubmit} className="flex flex-col gap-3 mt-2">
-                  <div className="space-y-1">
-                    <label className="text-[0.75rem] font-medium text-t2">Store URL</label>
-                    <input 
-                      type="url" 
-                      placeholder="https://yourstore.com"
-                      required
-                      className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none focus:border-border-focus"
-                      value={wooData.shop_url}
-                      onChange={e => setWooData({...wooData, shop_url: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[0.75rem] font-medium text-t2">Consumer Key</label>
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="ck_..."
-                      className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none focus:border-border-focus"
-                      value={wooData.consumer_key}
-                      onChange={e => setWooData({...wooData, consumer_key: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[0.75rem] font-medium text-t2">Consumer Secret</label>
-                    <input 
-                      type="password" 
-                      required
-                      placeholder="cs_..."
-                      className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none focus:border-border-focus"
-                      value={wooData.consumer_secret}
-                      onChange={e => setWooData({...wooData, consumer_secret: e.target.value})}
-                    />
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <button type="button" onClick={() => setWooFormOpen(false)} className="flex-1 rounded-md border border-border bg-bg-2 py-2 text-[0.82rem] font-medium text-t2 hover:bg-white/[0.04]">Cancel</button>
-                    <button type="submit" disabled={wooSubmitting} className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-[0.82rem] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50" style={{ background: platform.accentColor }}>
-                      {wooSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
-                      Connect
-                    </button>
-                  </div>
-                </form>
-              )}
+                {/* WooCommerce Inline Form */}
+                {platform.id === "woocommerce" && wooFormOpen && !isConnected && (
+                  <form onSubmit={handleWooSubmit} className="flex flex-col gap-3.5 mt-1">
+                    <div className="flex items-start gap-2 rounded-lg border border-border-md bg-white/[0.02] px-3 py-2.5 text-[0.72rem] leading-relaxed text-t3">
+                      <ShieldCheck className="mt-[1px] h-3.5 w-3.5 shrink-0" style={{ color: platform.accentColor }} />
+                      Your credentials are encrypted and only ever used to sync orders and customers from your store.
+                    </div>
 
-              {/* Actions */}
-              {!(platform.id === "woocommerce" && wooFormOpen) && (
-                <div className="mt-auto flex items-center gap-2 pt-1">
-                  {isConnected ? (
-                    <button className="flex-1 rounded-md border border-border bg-white/[0.035] py-2 text-[0.82rem] font-semibold text-t1 transition-colors hover:border-border-md hover:bg-white/[0.06]">
-                      Manage Connection
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleConnectClick(platform.id)}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 text-[0.82rem] font-bold transition-opacity hover:opacity-90"
-                      style={{ background: platform.accentColor, color: "#fff" }}
+                    <div className="space-y-1.5">
+                      <label className="flex items-center gap-1.5 text-[0.75rem] font-medium text-t2">
+                        Store URL
+                        <FieldInfo title="Store URL">
+                          <p>The full web address of your WooCommerce store, including <span className="text-t1">https://</span> — the same URL your customers use to shop.</p>
+                          <p className="text-t3">Example: https://yourstore.com</p>
+                        </FieldInfo>
+                      </label>
+                      <input 
+                        type="url" 
+                        placeholder="https://yourstore.com"
+                        required
+                        className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none transition-colors focus:border-[color:var(--woo-focus)]"
+                        style={{ ["--woo-focus" as string]: platform.accentColor }}
+                        value={wooData.shop_url}
+                        onChange={e => setWooData({...wooData, shop_url: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="flex items-center gap-1.5 text-[0.75rem] font-medium text-t2">
+                        Consumer Key
+                        <FieldInfo title="Consumer Key">
+                          <p>Found in your WordPress admin under:</p>
+                          <p className="text-t1">WooCommerce → Settings → Advanced → REST API</p>
+                          <p>Click <span className="text-t1">Add key</span>, set permissions to <span className="text-t1">Read/Write</span>, then generate. It starts with <span className="text-t1">ck_</span>.</p>
+                        </FieldInfo>
+                      </label>
+                      <input 
+                        type="text" 
+                        required
+                        placeholder="ck_..."
+                        className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none transition-colors focus:border-[color:var(--woo-focus)]"
+                        style={{ ["--woo-focus" as string]: platform.accentColor }}
+                        value={wooData.consumer_key}
+                        onChange={e => setWooData({...wooData, consumer_key: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="flex items-center gap-1.5 text-[0.75rem] font-medium text-t2">
+                        Consumer Secret
+                        <FieldInfo title="Consumer Secret">
+                          <p>Generated alongside your Consumer Key on the same screen. It starts with <span className="text-t1">cs_</span> and is shown only once — copy it immediately.</p>
+                          <p className="text-t3">Lost it? Just generate a new key pair and paste the new values here.</p>
+                        </FieldInfo>
+                      </label>
+                      <input 
+                        type="password" 
+                        required
+                        placeholder="cs_..."
+                        className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none transition-colors focus:border-[color:var(--woo-focus)]"
+                        style={{ ["--woo-focus" as string]: platform.accentColor }}
+                        value={wooData.consumer_secret}
+                        onChange={e => setWooData({...wooData, consumer_secret: e.target.value})}
+                      />
+                    </div>
+
+                    <div className="flex gap-2 mt-1">
+                      <button type="button" onClick={() => setWooFormOpen(false)} className="flex-1 rounded-md border border-border bg-bg-2 py-2 text-[0.82rem] font-medium text-t2 hover:bg-white/[0.04]">Cancel</button>
+                      <button type="submit" disabled={wooSubmitting} className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-[0.82rem] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50" style={{ background: platform.accentColor }}>
+                        {wooSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
+                        Connect
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Actions */}
+                {!(platform.id === "woocommerce" && wooFormOpen) && (
+                  <div className="mt-auto flex items-center gap-2 pt-1">
+                    {isConnected ? (
+                      <button className="flex flex-1 items-center justify-center gap-2 rounded-md border border-border bg-white/[0.035] py-2 text-[0.82rem] font-semibold text-t1 transition-colors hover:border-border-md hover:bg-white/[0.06]">
+                        <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "hsl(var(--green))" }} />
+                        Manage Connection
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleConnectClick(platform.id)}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 text-[0.82rem] font-bold transition-opacity hover:opacity-90"
+                        style={{ background: platform.accentColor, color: "#fff" }}
+                      >
+                        <Plug className="h-3.5 w-3.5" />
+                        Connect {platform.name}
+                      </button>
+                    )}
+                    <a
+                      href={platform.docsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`${platform.name} developer docs`}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-white/[0.025] text-t3 transition-colors hover:border-border-md hover:text-t1"
                     >
-                      <Plug className="h-3.5 w-3.5" />
-                      Connect {platform.name}
-                    </button>
-                  )}
-                  <a
-                    href={platform.docsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={`${platform.name} developer docs`}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-white/[0.025] text-t3 transition-colors hover:border-border-md hover:text-t1"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </a>
-                </div>
-              )}
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  </div>
+                )}
+              </div>
             </motion.div>
           );
         })}
@@ -353,9 +478,7 @@ export default function Integrations() {
               </button>
               
               <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#5C8F4D]/10 text-[#5C8F4D] border border-[#5C8F4D]/30">
-                  <Plug className="h-5 w-5" />
-                </div>
+                <LogoTile src={shopifyLogo} alt="Shopify" size={10} />
                 <div>
                   <h3 className="text-lg font-bold text-t1">Connect Shopify</h3>
                   <p className="text-sm text-t3">Enter your store domain</p>
@@ -364,14 +487,20 @@ export default function Integrations() {
 
               <form onSubmit={handleShopifySubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-t2">Shopify Domain</label>
+                  <label className="flex items-center gap-1.5 text-sm font-medium text-t2">
+                    Shopify Domain
+                    <FieldInfo title="Shopify Domain">
+                      <p>The subdomain shown when you're logged into your Shopify admin, before <span className="text-t1">.myshopify.com</span>.</p>
+                      <p className="text-t3">Find it in Shopify Admin → Settings → Domains, or in your browser's address bar.</p>
+                    </FieldInfo>
+                  </label>
                   <div className="relative">
                     <input 
                       type="text" 
                       placeholder="mystore"
                       autoFocus
                       required
-                      className="w-full rounded-md border border-border bg-bg-3 py-2.5 pl-3 pr-[110px] text-sm text-t1 outline-none focus:border-border-focus"
+                      className="w-full rounded-md border border-border bg-bg-3 py-2.5 pl-3 pr-[110px] text-sm text-t1 outline-none focus:border-[#5C8F4D]/50"
                       value={shopDomain}
                       onChange={e => setShopDomain(e.target.value.replace('.myshopify.com', ''))}
                     />
@@ -396,26 +525,53 @@ export default function Integrations() {
 
       {/* Coming soon */}
       <section>
-        <p className="mb-3 text-[0.72rem] font-bold uppercase tracking-[0.11em] text-t4">
-          More platforms — coming in Phase 2
-        </p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {["BigCommerce", "Magento", "Squarespace", "Custom API"].map((name) => (
+        <div className="mb-3 flex items-center justify-between">
+          <p className="text-[0.72rem] font-bold uppercase tracking-[0.11em] text-t4">
+            More platforms — coming in Phase 2
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {COMING_SOON.map((p) => (
             <div
-              key={name}
-              className="flex items-center gap-2.5 rounded-xl border border-border bg-bg-2 px-4 py-3 opacity-45"
+              key={p.name}
+              className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-bg-2 px-4 py-3.5 transition-colors hover:border-border-md"
             >
-              <div
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-[0.72rem] font-bold text-t3"
-                style={{ background: "hsl(var(--bg-4))", borderColor: "hsl(var(--border-soft) / 0.10)" }}
-              >
-                {name[0]}
+              {p.logo ? (
+                <LogoTile src={p.logo} alt={p.name} size={10} />
+              ) : (
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
+                  style={{ background: `${p.accentColor}14`, border: `1px solid ${p.accentColor}30` }}
+                >
+                  {p.icon && <p.icon className="h-4 w-4" style={{ color: p.accentColor }} />}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[0.85rem] font-semibold text-t1">{p.name}</p>
+                <p className="truncate text-[0.68rem] text-t3">{p.tagline}</p>
               </div>
-              <span className="text-[0.8rem] font-medium text-t2">{name}</span>
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border-md bg-bg-3 px-2 py-1 text-[0.62rem] font-bold uppercase tracking-[0.05em] text-t3">
+                <Clock className="h-2.5 w-2.5" />
+                Soon
+              </span>
             </div>
           ))}
         </div>
       </section>
+
+      {/* Footer note */}
+      <div className="flex items-center justify-center gap-2 pt-2 pb-6 text-[0.72rem] text-t4">
+        <ShieldCheck className="h-3 w-3" />
+        All store connections are encrypted in transit and at rest.
+        <a
+          href="https://revlumaai.com/security"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-0.5 font-medium text-t3 hover:text-t1"
+        >
+          Learn more <ArrowUpRight className="h-2.5 w-2.5" />
+        </a>
+      </div>
 
     </div>
   );

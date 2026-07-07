@@ -1183,7 +1183,7 @@
                                    <div class="relative">
                                      <div x-data="{ val: '' }" class="relative w-full">
                                        <input x-model="val" type="text" name="twitter_handle" class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
-                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">X handle</span></div>
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Twitter handle</span></div>
                                      </div>
                                    </div>
                                    <div class="relative md:col-span-2">
@@ -1195,7 +1195,7 @@
                                    <div class="relative md:col-span-2">
                                      <div x-data="{ val: '' }" class="relative w-full">
                                        <input x-model="val" type="url" name="store_url" class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
-                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Store Url</span></div>
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">https://your-store.com</span></div>
                                      </div>
                                    </div>
                                    <div class="relative md:col-span-2">
@@ -1226,7 +1226,7 @@
                                          :class="valid === false ? 'border-red-500/50' : (valid === true ? 'border-green-500/50' : 'border-white/10 hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10')">
                                        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Referral code (optional)</span></div>
                                        <p x-show="valid === false" x-cloak class="text-red-400 text-xs mt-1.5 pl-1">This referral code doesn't exist.</p>
-                                       <p x-show="valid === true" x-cloak class="text-green-400 text-xs mt-1.5 pl-1">Valid code — you'll both get credit!</p>
+                                       <p x-show="valid === true" x-cloak class="text-green-400 text-xs mt-1.5 pl-1">Valid code you'll both get credit!</p>
                                      </div>
                                    </div>
                                  </div>
