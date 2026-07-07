@@ -6,6 +6,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -109,6 +110,8 @@ model users {
   email                   String               @unique
   password_hash           String
   email_verified          Boolean?             @default(false)
+  verification_code       String?
+  verification_expires_at DateTime?            @db.Timestamptz(6)
   accepted_terms          Boolean              @default(false)
   accepted_privacy_policy Boolean              @default(false)
   onboarding_completed    Boolean?             @default(false)
@@ -116,9 +119,9 @@ model users {
   status                  String?              @default("active")
   created_at              DateTime?            @default(now()) @db.Timestamptz(6)
   updated_at              DateTime?            @default(now()) @db.Timestamptz(6)
+  notifications           notifications[]
   onboarding_profiles     onboarding_profiles?
   organizations           organizations[]
-  notifications           notifications[]
 
   @@index([email], map: "idx_users_email")
 }
@@ -162,6 +165,10 @@ model waitlist_users {
   user_agent                 String?
   created_at                 DateTime? @default(now()) @db.Timestamptz(6)
   updated_at                 DateTime? @default(now()) @db.Timestamptz(6)
+  referral_code              String?
+  referred_by_code           String?
+  referral_count             Int?      @db.SmallInt
+  is_founding_member         Boolean?  @default(false)
 
   @@index([country], map: "idx_waitlist_country")
   @@index([work_email], map: "idx_waitlist_email")
@@ -174,60 +181,53 @@ model waitlist_users {
 /// Connected Shopify or WooCommerce store for a merchant organization.
 /// One organization can have multiple stores across platforms.
 model stores {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id String    @db.Uuid
-  platform        String    // "shopify" | "woocommerce"
-  shop_domain     String    // e.g. "mystore.myshopify.com" or "mystore.com"
-  access_token    String?   // Encrypted. Never expose in API responses.
-  status          String    @default("not_connected") // "not_connected" | "active" | "syncing" | "error"
-  installed_at    DateTime? @db.Timestamptz(6)
-  last_synced_at  DateTime? @db.Timestamptz(6)
-  created_at      DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
-
-  // Relations
-  organizations   organizations    @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  customers       customers[]
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String            @db.Uuid
+  platform        String
+  shop_domain     String
+  access_token    String?
+  status          String            @default("not_connected")
+  installed_at    DateTime?         @db.Timestamptz(6)
+  last_synced_at  DateTime?         @db.Timestamptz(6)
+  created_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?         @default(now()) @db.Timestamptz(6)
   abandoned_carts abandoned_carts[]
+  customers       customers[]
+  events          events[]
   orders          orders[]
   sequences       sequences[]
-  events          events[]
+  organizations   organizations     @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([organization_id, shop_domain], map: "uq_stores_org_domain")
-  @@index([organization_id], map: "idx_stores_organization")
-  @@index([shop_domain], map: "idx_stores_domain")
-  @@index([status], map: "idx_stores_status")
 }
 
 /// Shopper profile synced from Shopify or WooCommerce.
 /// Stores consent flags for email/SMS marketing (legal compliance).
 /// RFM fields are written by the Python rfm_sync job.
 model customers {
-  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id           String    @db.Uuid
-  external_id        String    // Shopify customer ID or WooCommerce customer ID
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id           String            @db.Uuid
+  external_id        String
   email              String
   full_name          String?
   phone              String?
-  anonymous_id       String?   // Fingerprint hash for cross-session identity resolution
-  consent_email      Boolean   @default(false) // LEGAL: explicit email marketing consent
-  consent_sms        Boolean   @default(false) // LEGAL: explicit SMS marketing consent
-  consent_updated_at DateTime? @db.Timestamptz(6)
-  ltv                Decimal   @default(0) @db.Decimal(10, 2)
-  orders_count       Int       @default(0)
-  rfm_recency        Int?      // 1–5 (5 = most recent)
-  rfm_frequency      Int?      // 1–5 (5 = most frequent)
-  rfm_monetary       Int?      // 1–5 (5 = highest value)
-  rfm_segment        String?   // "champion" | "loyal" | "at_risk" | "hibernating" | "lost"
-  status             String    @default("active") // "active" | "unsubscribed" | "bounced"
-  created_at         DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime? @default(now()) @db.Timestamptz(6)
-
-  // Relations
-  stores          stores           @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  abandoned_carts abandoned_carts[]
-  orders          orders[]
-  events          events[]
+  anonymous_id       String?
+  consent_email      Boolean?          @default(false)
+  consent_sms        Boolean?          @default(false)
+  consent_updated_at DateTime?         @db.Timestamptz(6)
+  ltv                Decimal?          @default(0) @db.Decimal(10, 2)
+  orders_count       Int?              @default(0)
+  rfm_recency        Int?
+  rfm_frequency      Int?
+  rfm_monetary       Int?
+  rfm_segment        String?
+  status             String?           @default("active")
+  created_at         DateTime?         @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime?         @default(now()) @db.Timestamptz(6)
+  abandoned_carts    abandoned_carts[]
+  stores             stores            @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  events             events[]
+  orders             orders[]
 
   @@unique([store_id, external_id], map: "uq_customers_store_external")
   @@index([store_id], map: "idx_customers_store")
@@ -241,31 +241,24 @@ model customers {
 /// An abandoned checkout / cart detected on a merchant's store.
 /// customer_id is nullable to support anonymous cart abandonment.
 model abandoned_carts {
-  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id             String    @db.Uuid
-  customer_id          String?   @db.Uuid // Nullable — anonymous visitors can abandon carts
-  external_cart_id     String?   // Shopify checkout token or WooCommerce cart key
-  session_id           String?   // Pixel session that triggered the abandonment
-  cart_value           Decimal   @db.Decimal(10, 2)
-  currency             String    @default("USD")
-  status               String    @default("abandoned") // "abandoned" | "in_sequence" | "recovered" | "lost"
-  abandoned_at         DateTime  @db.Timestamptz(6)
-  recovered_at         DateTime? @db.Timestamptz(6)
-  recovery_sequence_id String?   @db.Uuid // FK to sequences.id set when a sequence is assigned
-  created_at           DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime? @default(now()) @db.Timestamptz(6)
-
-  // Relations
-  stores    stores      @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  customers customers?  @relation(fields: [customer_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  items     abandoned_cart_items[]
-  orders    orders[]
-
-  @@index([store_id], map: "idx_abandoned_carts_store")
-  @@index([customer_id], map: "idx_abandoned_carts_customer")
-  @@index([status], map: "idx_abandoned_carts_status")
-  @@index([abandoned_at], map: "idx_abandoned_carts_abandoned_at")
-  @@index([session_id], map: "idx_abandoned_carts_session")
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id             String                 @db.Uuid
+  customer_id          String?                @db.Uuid
+  external_cart_id     String?
+  session_id           String?
+  cart_value           Decimal                @db.Decimal(10, 2)
+  currency             String?                @default("USD")
+  status               String?                @default("abandoned")
+  abandoned_at         DateTime               @db.Timestamptz(6)
+  recovered_at         DateTime?              @db.Timestamptz(6)
+  recovery_sequence_id String?                @db.Uuid
+  created_at           DateTime?              @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime?              @default(now()) @db.Timestamptz(6)
+  items                abandoned_cart_items[]
+  customers            customers?             @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  sequences            sequences?             @relation(fields: [recovery_sequence_id], references: [id], onUpdate: NoAction)
+  stores               stores                 @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orders               orders[]
 }
 
 /// Individual line items within an abandoned cart.
@@ -273,18 +266,16 @@ model abandoned_carts {
 model abandoned_cart_items {
   id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   abandoned_cart_id   String          @db.Uuid
-  external_product_id String          // Shopify product ID or WooCommerce product ID
-  external_variant_id String?         // Shopify variant ID or WooCommerce variation ID
+  external_product_id String
+  external_variant_id String?
   product_name        String
-  variant_name        String?         // e.g. "Black / Large"
+  variant_name        String?
   price               Decimal         @db.Decimal(10, 2)
   quantity            Int
   image_url           String?
   product_url         String?
   created_at          DateTime?       @default(now()) @db.Timestamptz(6)
-
-  // Relations
-  abandoned_carts abandoned_carts @relation(fields: [abandoned_cart_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  abandoned_carts     abandoned_carts @relation(fields: [abandoned_cart_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([abandoned_cart_id], map: "idx_cart_items_cart")
   @@index([external_product_id], map: "idx_cart_items_product")
@@ -294,56 +285,45 @@ model abandoned_cart_items {
 /// attribution_channel and abandoned_cart_id track recovery attribution.
 /// coupon_used and coupon_code are required by ML pipeline (sensitivity model).
 model orders {
-  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id            String          @db.Uuid
-  customer_id         String          @db.Uuid
-  external_order_id   String          // Shopify order ID or WooCommerce order ID
-  total               Decimal         @db.Decimal(10, 2)
-  subtotal            Decimal?        @db.Decimal(10, 2)
-  discount_amount     Decimal?        @db.Decimal(10, 2) // Required by ML offer value model
-  currency            String          @default("USD")
-  coupon_used         Boolean         @default(false) // Required by ML sensitivity model
-  coupon_code         String?
-  recovery_status     String?         // "recovered" | "organic" — null = unknown
-  attribution_channel String?         // "email_sequence" | "sms" | "direct" | "popup" | "whatsapp"
-  attribution_sequence_id String?     @db.Uuid // FK to sequences.id if recovered via sequence
-  abandoned_cart_id   String?         @db.Uuid // FK to the cart this order recovered
-  ordered_at          DateTime        @db.Timestamptz(6)
-  created_at          DateTime?       @default(now()) @db.Timestamptz(6)
-
-  // Relations
-  stores          stores           @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  customers       customers        @relation(fields: [customer_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
-  abandoned_carts abandoned_carts? @relation(fields: [abandoned_cart_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  id                      String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id                String           @db.Uuid
+  customer_id             String           @db.Uuid
+  external_order_id       String
+  total                   Decimal          @db.Decimal(10, 2)
+  subtotal                Decimal?         @db.Decimal(10, 2)
+  discount_amount         Decimal?         @db.Decimal(10, 2)
+  currency                String?          @default("USD")
+  coupon_used             Boolean?         @default(false)
+  coupon_code             String?
+  recovery_status         String?
+  attribution_channel     String?
+  attribution_sequence_id String?          @db.Uuid
+  abandoned_cart_id       String?          @db.Uuid
+  ordered_at              DateTime         @db.Timestamptz(6)
+  created_at              DateTime?        @default(now()) @db.Timestamptz(6)
+  abandoned_carts         abandoned_carts? @relation(fields: [abandoned_cart_id], references: [id], onUpdate: NoAction)
+  sequences               sequences?       @relation(fields: [attribution_sequence_id], references: [id], onUpdate: NoAction)
+  customers               customers        @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  stores                  stores           @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([store_id, external_order_id], map: "uq_orders_store_external")
-  @@index([store_id], map: "idx_orders_store")
-  @@index([customer_id], map: "idx_orders_customer")
-  @@index([recovery_status], map: "idx_orders_recovery_status")
-  @@index([attribution_channel], map: "idx_orders_attribution")
-  @@index([ordered_at], map: "idx_orders_ordered_at")
-  @@index([abandoned_cart_id], map: "idx_orders_abandoned_cart")
 }
 
 /// Recovery message sequence configuration.
 /// One sequence = one channel (email, SMS, WhatsApp, push).
 /// sequence_sends and sequence_events are added in Phase 2 when recovery engine is built.
 model sequences {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id    String    @db.Uuid
-  name        String
-  channel     String    // "email" | "sms" | "whatsapp" | "push"
-  status      String    @default("active") // "active" | "paused" | "draft" | "archived"
-  delay_mins  Int       @default(30) // Minutes after abandonment before first message
-  created_at  DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at  DateTime? @default(now()) @db.Timestamptz(6)
-
-  // Relations
-  stores stores @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([store_id], map: "idx_sequences_store")
-  @@index([status], map: "idx_sequences_status")
-  @@index([channel], map: "idx_sequences_channel")
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id        String            @db.Uuid
+  name            String
+  channel         String
+  status          String?           @default("active")
+  delay_mins      Int?              @default(30)
+  created_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?         @default(now()) @db.Timestamptz(6)
+  abandoned_carts abandoned_carts[]
+  orders          orders[]
+  stores          stores            @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 /// In-app notification record for a merchant user.
@@ -351,47 +331,26 @@ model sequences {
 model notifications {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id    String    @db.Uuid
-  type       String    // "recovery" | "cart" | "campaign" | "subscribe" | "alert" | "system"
+  type       String
   message    String
-  action_url String?   // Optional deep-link to the relevant dashboard section
-  read_at    DateTime? @db.Timestamptz(6) // NULL = unread
+  action_url String?
+  read_at    DateTime? @db.Timestamptz(6)
   created_at DateTime? @default(now()) @db.Timestamptz(6)
-
-  // Relations
-  users users @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([user_id], map: "idx_notifications_user")
-  @@index([read_at], map: "idx_notifications_read_at")
-  @@index([type], map: "idx_notifications_type")
-  @@index([created_at], map: "idx_notifications_created_at")
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 /// Raw event stream — every pixel event from shopper sessions.
 /// Source for Live Activity feed, ML feature pipeline, and identity resolution.
 /// event_type values defined in docs/PIXEL_EVENT_SPEC.md.
 model events {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id     String    @db.Uuid
-  customer_id  String?   @db.Uuid // Null for anonymous/pre-identification sessions
-  session_id   String?             // Client-generated UUID per browser session
-  anonymous_id String?             // Fingerprint hash — links sessions pre-identification
-  event_type   String              // "page_view" | "scroll" | "tab_switch" | "checkout_step" |
-                                   // "exit_intent" | "cart_item_add" | "cart_item_remove" |
-                                   // "failed_payment" | "email_capture" | "phone_capture" |
-                                   // "cart_abandoned" | "cart_recovered"
-  payload      Json?               // Event-specific fields per PIXEL_EVENT_SPEC.md
-  created_at   DateTime? @default(now()) @db.Timestamptz(6)
-
-  // Relations
-  stores    stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  customers customers? @relation(fields: [customer_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
-
-  @@index([store_id], map: "idx_events_store")
-  @@index([customer_id], map: "idx_events_customer")
-  @@index([session_id], map: "idx_events_session")
-  @@index([anonymous_id], map: "idx_events_anonymous")
-  @@index([event_type], map: "idx_events_type")
-  @@index([created_at], map: "idx_events_created_at")
-  // Composite index for the activity feed query: store + time DESC
-  @@index([store_id, created_at(sort: Desc)], map: "idx_events_store_time")
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id     String     @db.Uuid
+  customer_id  String?    @db.Uuid
+  session_id   String?
+  anonymous_id String?
+  event_type   String
+  payload      Json?
+  created_at   DateTime?  @default(now()) @db.Timestamptz(6)
+  customers    customers? @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  stores       stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
