@@ -182,8 +182,8 @@ export function Sidebar() {
           </button>
         )}
 
-        {/* Upgrade banner (Temporarily hidden until billing is wired) */}
-        {false && !sidebarCollapsed && (
+        {/* Upgrade banner */}
+        {!sidebarCollapsed && (
           <div
             className="relative z-[1] mx-2.5 mb-2.5 rounded-xl border p-3.5 text-center"
             style={{ background: 'hsl(var(--glass) / 0.03)', borderColor: 'hsl(var(--border-soft) / 0.10)' }}

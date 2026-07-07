@@ -185,7 +185,7 @@ export default function Integrations() {
   // Fetch initial statuses
   const fetchStatuses = async () => {
     try {
-      const res = await api.get<{ data: { stores: { platform: "shopify" | "woocommerce"; status: string }[] } }>('/api/v1/stores');
+      const res = await api.get<{ data: { stores: { platform: "shopify" | "woocommerce"; status: string }[] } }>('/stores');
       const stores = res.data?.data?.stores || [];
       const newStatuses = { shopify: "not_connected", woocommerce: "not_connected" } as Record<Platform["id"], ConnectionStatus>;
       
@@ -218,7 +218,8 @@ export default function Integrations() {
     e.preventDefault();
     if (!shopDomain.trim()) return;
     const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-    window.location.href = `${apiUrl}/api/v1/shopify/install?shop=${shopDomain.trim()}`;
+    const base = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+    window.location.href = `${base}/shopify/install?shop=${shopDomain.trim()}`;
   }
 
   async function handleWooSubmit(e: React.FormEvent) {
@@ -226,7 +227,7 @@ export default function Integrations() {
     if (!wooData.shop_url || !wooData.consumer_key || !wooData.consumer_secret) return;
     setWooSubmitting(true);
     try {
-      await api.post('/api/v1/woocommerce/connect', wooData);
+      await api.post('/woocommerce/connect', wooData);
       setWooFormOpen(false);
       setStatuses(prev => ({ ...prev, woocommerce: "connected" }));
       // Optional: re-fetch statuses
