@@ -28,7 +28,12 @@ class RevlumaAuth {
             throw simulatedAxiosError;
         }
 
-        this._storeTokens(result.accessToken || result.token, result.refreshToken, result.user);
+        const tokenData = result.data || result;
+        this._storeTokens(
+            tokenData.access_token || tokenData.accessToken || tokenData.token,
+            tokenData.refresh_token || tokenData.refreshToken,
+            tokenData.user
+        );
         return result;
     }
 
@@ -60,7 +65,12 @@ class RevlumaAuth {
             throw simulatedAxiosError;
         }
 
-        this._storeTokens(result.accessToken || result.token, result.refreshToken, result.user);
+        const tokenData = result.data || result;
+        this._storeTokens(
+            tokenData.access_token || tokenData.accessToken || tokenData.token,
+            tokenData.refresh_token || tokenData.refreshToken,
+            tokenData.user
+        );
         return result;
     }
 
