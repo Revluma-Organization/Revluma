@@ -33,7 +33,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
     user_agent: string;
   };
 
-  context?: Record<string, any>; // extensible payload (strictly controlled)
+  payload?: Record<string, any>; // extensible payload (strictly controlled)
 }
 ```
 
@@ -49,7 +49,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ### 2.1 `PAGE_VIEW`
 ```json
-"context": {
+"payload": {
   "path": "string",
   "title": "string" // optional
 }
@@ -57,14 +57,14 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ### 2.2 `SCROLL`
 ```json
-"context": {
+"payload": {
   "depth_pct": 50
 }
 ```
 
 ### 2.3 `PRODUCT_VIEW`
 ```json
-"context": {
+"payload": {
   "product_id": "string",
   "product_name": "string",
   "price": 0.00,
@@ -75,7 +75,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ### 2.3 `ADD_TO_CART`
 ```json
-"context": {
+"payload": {
   "product_id": "string",
   "quantity": 1,
   "price": 0.00
@@ -84,7 +84,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ### 2.4 `REMOVE_FROM_CART`
 ```json
-"context": {
+"payload": {
   "product_id": "string",
   "quantity": 1
 }
@@ -92,7 +92,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ### 2.5 `CHECKOUT_STARTED`
 ```json
-"context": {
+"payload": {
   "cart_value": 0.00,
   "currency": "string"
 }
@@ -100,14 +100,14 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ### 2.7 `CHECKOUT_STEP`
 ```json
-"context": {
+"payload": {
   "step": 2 // 0=landing, 1=cart, 2=shipping, 3=payment, 4=review, 5=complete
 }
 ```
 
 ### 2.7 `PURCHASE_COMPLETED`
 ```json
-"context": {
+"payload": {
   "order_id": "string",
   "total_value": 0.00,
   "currency": "string"
@@ -116,14 +116,14 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ### 2.8 `CUSTOMER_CREATED`
 ```json
-"context": {
+"payload": {
   "email": "string"
 }
 ```
 
 ### 2.9 `TEXT_COPIED`
 ```json
-"context": {
+"payload": {
   "copied_text": "string",
   "element_selector": "string" // e.g. "h1.product-title"
 }
@@ -131,7 +131,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ### 2.11 `COUPON_REJECTED`
 ```json
-"context": {
+"payload": {
   "coupon_code": "string",
   "reason": "string" // e.g. "expired", "invalid"
 }
@@ -139,21 +139,21 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ### 2.12 `TAB_SWITCH`
 ```json
-"context": {
+"payload": {
   "direction": "blur" // or "focus"
 }
 ```
 
 ### 2.13 `EXIT_INTENT`
 ```json
-"context": {
+"payload": {
   "cursor_y_position": 5
 }
 ```
 
 ### 2.14 `FAILED_PAYMENT`
 ```json
-"context": {
+"payload": {
   "reason": "string"
 }
 ```
