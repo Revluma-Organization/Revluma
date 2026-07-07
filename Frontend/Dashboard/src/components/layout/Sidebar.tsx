@@ -67,12 +67,11 @@ export function Sidebar() {
         {/* Logo + controls */}
         <div className={cn('relative z-[1] flex shrink-0 items-center justify-between px-4 pb-3.5 pt-4', sidebarCollapsed && 'md:justify-center md:px-2')}>
           <div className="flex items-center gap-2.5">
-            <div
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md"
-              style={{ background: 'hsl(var(--accent) / 0.12)', border: '1px solid hsl(var(--accent) / 0.25)' }}
-            >
-              <img src={revlumaIcon} alt="Revluma" className="h-[18px] w-[18px] object-contain" />
-            </div>
+            <img
+              src={revlumaIcon}
+              alt="Revluma"
+              className="h-8 w-8 shrink-0 object-contain md:h-10 md:w-10"
+            />
             {!sidebarCollapsed && <span className="display text-[1.18rem] font-extrabold text-t1">Revluma</span>}
           </div>
           <div className={cn('flex items-center gap-1', sidebarCollapsed && 'md:hidden')}>
