@@ -73,7 +73,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
-### 2.3 `ADD_TO_CART`
+### 2.4 `ADD_TO_CART`
 ```json
 "payload": {
   "product_id": "string",
@@ -82,7 +82,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
-### 2.4 `REMOVE_FROM_CART`
+### 2.5 `REMOVE_FROM_CART`
 ```json
 "payload": {
   "product_id": "string",
@@ -90,7 +90,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
-### 2.5 `CHECKOUT_STARTED`
+### 2.6 `CHECKOUT_STARTED`
 ```json
 "payload": {
   "cart_value": 0.00,
@@ -105,7 +105,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
-### 2.7 `PURCHASE_COMPLETED`
+### 2.8 `PURCHASE_COMPLETED`
 ```json
 "payload": {
   "order_id": "string",
@@ -114,14 +114,14 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
-### 2.8 `CUSTOMER_CREATED`
+### 2.9 `CUSTOMER_CREATED`
 ```json
 "payload": {
   "email": "string"
 }
 ```
 
-### 2.9 `TEXT_COPIED`
+### 2.10 `TEXT_COPIED`
 ```json
 "payload": {
   "copied_text": "string",

@@ -33,7 +33,7 @@ def calculate_scroll_depth(events: list) -> float:
     Formula: max(depth_pct values) from scroll_depth events on checkout pages.
 
     Models: M1 (Abandonment), M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='scroll_depth', page_type='checkout'
+    Source: customer_events — event_type='scroll', page_type='checkout'
 
     Returns:
         float: 0.0–100.0. Default 0.0 if no scroll data captured.
@@ -69,7 +69,7 @@ def calculate_tab_switch_count(events: list) -> int:
     Formula: COUNT(tab_visibility events WHERE state='hidden').
 
     Models: M1 (Abandonment), M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='tab_visibility', state='hidden'
+    Source: customer_events — event_type='tab_switch', state='hidden'
 
     Returns:
         int: 0–50 (capped at 50). Default 0. Values 4+ signal price comparison.
@@ -102,7 +102,7 @@ def calculate_time_on_checkout_step(events: list) -> float:
     Formula: timestamp(step_completed) - timestamp(step_started) for last step.
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: customer_events — event_type='checkout_step_completed' timestamps
+    Source: customer_events — event_type='checkout_step' timestamps
 
     Returns:
         float: 0.0–3600.0 seconds. Returns -1.0 if no checkout step was reached
@@ -187,6 +187,10 @@ def calculate_checkout_step_reached(events: list) -> int:
 
 def calculate_past_orders_total(customer_id: str, db) -> int:
     """
+    Feature: past_orders_total
+
+
+
     Total count of orders for this customer.
 
     Query: SELECT orders_count FROM customers WHERE id = %s
@@ -258,6 +262,10 @@ def calculate_days_since_last_purchase(customer_id: str, db) -> int:
 
 def calculate_avg_order_value(customer_id: str, db) -> float:
     """
+    Feature: avg_order_value
+
+
+
     Average order value across all orders for this customer.
 
     Query: SELECT AVG(total) FROM orders WHERE customer_id = %s
