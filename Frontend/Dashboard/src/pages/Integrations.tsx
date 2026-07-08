@@ -228,12 +228,9 @@ export default function Integrations() {
     }
 
     try {
-      const response = await api.get('/shopify/install', {
-        params: {
-          shop: cleanShop
-        },
-        withCredentials: true
-      });
+          const response = await api.get('/shopify/install', {
+      shop: cleanShop
+    });
 
       if (response.data?.install_url) {
         window.location.href = response.data.install_url;
