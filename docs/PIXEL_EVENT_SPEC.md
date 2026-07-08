@@ -171,7 +171,7 @@ All events MUST follow this exact envelope. No silent field transformations are 
 **Behavioural Features:**
 1. `scroll_depth_pct`
 2. `tab_switch_count`
-3. `time_on_page_ms`
+3. `time_on_checkout_step_sec`
 4. `cursor_hesitation`
 5. `checkout_step_reached`
 

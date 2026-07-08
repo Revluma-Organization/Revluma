@@ -96,7 +96,7 @@ def calculate_tab_switch_count(events: list) -> int:
 
 def calculate_time_on_checkout_step(events: list) -> float:
     """
-    Feature: time_on_page_ms
+    Feature: time_on_checkout_step_sec
 
     Time in seconds spent on the last checkout step before abandonment.
     Formula: timestamp(step_completed) - timestamp(step_started) for last step.
