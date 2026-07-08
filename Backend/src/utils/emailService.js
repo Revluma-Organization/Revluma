@@ -241,6 +241,115 @@ const emailService = {
       throw error;
     }
   },
+  
+  async sendVerificationEmail(recipientEmail, userName, verificationCode) {
+  try {
+    const msg = {
+      to: recipientEmail,
+      from: process.env.SENDGRID_FROM_EMAIL,
+      subject: "Verify Your Email Address",
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8" />
+          <style>
+            body {
+              font-family: Arial, Helvetica, sans-serif;
+              background-color: #f4f4f4;
+              margin: 0;
+              padding: 40px 0;
+            }
+
+            .container {
+              max-width: 600px;
+              margin: auto;
+              background: #ffffff;
+              border-radius: 8px;
+              padding: 40px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            }
+
+            h1 {
+              color: #111827;
+              text-align: center;
+            }
+
+            p {
+              color: #4b5563;
+              font-size: 16px;
+              line-height: 1.6;
+            }
+
+            .code {
+              margin: 30px auto;
+              width: fit-content;
+              background: #EEF2FF;
+              color: #4338CA;
+              font-size: 32px;
+              font-weight: bold;
+              letter-spacing: 8px;
+              padding: 18px 32px;
+              border-radius: 8px;
+            }
+
+            .footer {
+              margin-top: 35px;
+              font-size: 13px;
+              color: #6b7280;
+            }
+          </style>
+        </head>
+
+        <body>
+          <div class="container">
+
+            <h1>Verify Your Email</h1>
+
+            <p>Hello ${userName},</p>
+
+            <p>
+              Thank you for signing up for <strong>Revluma</strong>.
+              Please use the verification code below to complete your registration.
+            </p>
+
+            <div class="code">
+              ${verificationCode}
+            </div>
+
+            <p>
+              This verification code will expire in
+              <strong>10 minutes</strong>.
+            </p>
+
+            <p>
+              If you didn't create this account, you can safely ignore this email.
+            </p>
+
+            <div class="footer">
+              <p>Thanks,</p>
+              <p><strong>The Revluma Team</strong></p>
+            </div>
+
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    await sgMail.send(msg);
+
+    return {
+      success: true,
+      message: "Verification email sent successfully.",
+    };
+  } catch (error) {
+    console.error("Error sending verification email:", error);
+
+    throw new Error("Failed to send verification email.");
+  }
+},
+
 
   async sendWaitlistNotification(recipientEmail, subject, message) {
     try {
@@ -297,5 +406,6 @@ const emailService = {
     }
   },
 };
+
 
 module.exports = emailService;

@@ -14,6 +14,8 @@ router.get('/getProfile', authenticateToken, authController.getProfile);
 // New endpoint (frontend uses this)
 router.get("/me",authenticateToken,authController.getProfile);
 router.post('/register', validateRegister, registerLimiter, authController.register);
+router.post("/verify-email", authController.verifyEmail);
+router.post("/resend-verification", authController.resendVerification);
 router.post('/login', validateLogin,loginLimiter,  authController.login);
 router.post('/logout', authenticateToken, authController.logout);
 router.post('/refresh', authController.refresh);

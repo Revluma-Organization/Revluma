@@ -183,22 +183,23 @@ model waitlist_users {
 /// Connected Shopify or WooCommerce store for a merchant organization.
 /// One organization can have multiple stores across platforms.
 model stores {
-  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id String            @db.Uuid
-  platform        String
-  shop_domain     String
-  access_token    String?
-  status          String            @default("not_connected")
-  installed_at    DateTime?         @db.Timestamptz(6)
-  last_synced_at  DateTime?         @db.Timestamptz(6)
-  created_at      DateTime?         @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime?         @default(now()) @db.Timestamptz(6)
-  abandoned_carts abandoned_carts[]
-  customers       customers[]
-  events          events[]
-  orders          orders[]
-  sequences       sequences[]
-  organizations   organizations     @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id   String                @db.Uuid
+  platform          String
+  shop_domain       String
+  access_token      String?
+  status            String                @default("not_connected")
+  installed_at      DateTime?             @db.Timestamptz(6)
+  last_synced_at    DateTime?             @db.Timestamptz(6)
+  created_at        DateTime?             @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime?             @default(now()) @db.Timestamptz(6)
+  abandoned_carts   abandoned_carts[]
+  customers         customers[]
+  events            events[]
+  orders            orders[]
+  sequences         sequences[]
+  organizations     organizations         @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  mlSessionFeatures ml_session_features[]
 
   @@unique([organization_id, shop_domain], map: "uq_stores_org_domain")
 }
@@ -207,29 +208,30 @@ model stores {
 /// Stores consent flags for email/SMS marketing (legal compliance).
 /// RFM fields are written by the Python rfm_sync job.
 model customers {
-  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id           String            @db.Uuid
+  id                 String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id           String                @db.Uuid
   external_id        String
   email              String
   full_name          String?
   phone              String?
   anonymous_id       String?
-  consent_email      Boolean?          @default(false)
-  consent_sms        Boolean?          @default(false)
-  consent_updated_at DateTime?         @db.Timestamptz(6)
-  ltv                Decimal?          @default(0) @db.Decimal(10, 2)
-  orders_count       Int?              @default(0)
+  consent_email      Boolean?              @default(false)
+  consent_sms        Boolean?              @default(false)
+  consent_updated_at DateTime?             @db.Timestamptz(6)
+  ltv                Decimal?              @default(0) @db.Decimal(10, 2)
+  orders_count       Int?                  @default(0)
   rfm_recency        Int?
   rfm_frequency      Int?
   rfm_monetary       Int?
   rfm_segment        String?
-  status             String?           @default("active")
-  created_at         DateTime?         @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime?         @default(now()) @db.Timestamptz(6)
+  status             String?               @default("active")
+  created_at         DateTime?             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime?             @default(now()) @db.Timestamptz(6)
   abandoned_carts    abandoned_carts[]
-  stores             stores            @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores             stores                @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   events             events[]
   orders             orders[]
+  mlSessionFeatures  ml_session_features[]
 
   @@unique([store_id, external_id], map: "uq_customers_store_external")
   @@index([store_id], map: "idx_customers_store")
@@ -355,4 +357,63 @@ model events {
   created_at   DateTime?  @default(now()) @db.Timestamptz(6)
   customers    customers? @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
   stores       stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model ml_session_features {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id     String  @db.Uuid
+  customer_id  String? @db.Uuid
+  session_id   String?
+  anonymous_id String?
+
+  // Behavioural Features
+  scroll_depth_pct          Float?
+  tab_switch_count          Int?
+  time_on_checkout_step_sec Float?
+  cursor_hesitation         Float?
+  checkout_step_reached     Int?
+
+  // Transactional Features
+  past_orders_total           Int?
+  past_orders_with_coupon_pct Float?
+  days_since_last_purchase    Int?
+  avg_order_value             Decimal? @db.Decimal(10, 2)
+  purchase_frequency_trend    Float?
+  visited_coupon_page         Boolean?
+  searched_discount_terms     Boolean?
+
+  // Temporal / Contextual Features
+  abandoned_at_shipping_reveal Boolean?
+  failed_payment_attempt       Boolean?
+  local_hour_of_session        Int?
+  day_of_week_session          Int?
+  time_on_page_ms              Int?
+
+  // Extended M2 Sensitivity Signals
+  google_shopping_referrer        Boolean?
+  time_first_view_to_cart_add_hrs Float?
+  sale_period_purchase_only       Boolean?
+  failed_coupon_attempt           Boolean?
+  merchant_avg_order_value        Decimal? @db.Decimal(10, 2)
+  account_creation_abandonment    Boolean?
+  repeat_checkout_attempts        Int?
+  device_type_mobile              Boolean?
+  shipping_eta_dwell_sec          Float?
+  trust_page_visited              Boolean?
+
+  // New Smart Features
+  failed_coupon_count                 Int?
+  copied_product_title                Boolean?
+  cart_value_vs_avg_order_value_ratio Float?
+
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @default(now()) @db.Timestamptz(6)
+
+  stores    stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  customers customers? @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+
+  @@index([store_id], map: "idx_ml_features_store")
+  @@index([customer_id], map: "idx_ml_features_customer")
+  @@index([session_id], map: "idx_ml_features_session")
+  @@index([anonymous_id], map: "idx_ml_features_anonymous")
 }
