@@ -165,10 +165,11 @@ model waitlist_users {
   user_agent                 String?
   created_at                 DateTime? @default(now()) @db.Timestamptz(6)
   updated_at                 DateTime? @default(now()) @db.Timestamptz(6)
-  referral_code              String?
-  referred_by_code           String?
-  referral_count             Int?      @db.SmallInt
-  is_founding_member         Boolean?  @default(false)
+   referral_code      String   @unique
+  referred_by_code   String?
+  referral_count     Int      @default(0)
+  is_founding_member Boolean  @default(false)
+
 
   @@index([country], map: "idx_waitlist_country")
   @@index([work_email], map: "idx_waitlist_email")
@@ -176,6 +177,7 @@ model waitlist_users {
   @@index([lead_score], map: "idx_waitlist_lead_score")
   @@index([waitlist_position], map: "idx_waitlist_position")
   @@index([status], map: "idx_waitlist_status")
+   @@index([referral_code])
 }
 
 /// Connected Shopify or WooCommerce store for a merchant organization.

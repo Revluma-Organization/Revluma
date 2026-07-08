@@ -1,7 +1,7 @@
 import { useUI } from "@/store/ui";
 import { Sparkles, X, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const STARTERS = [
   "Why is my recovery rate below benchmark?",
@@ -14,13 +14,27 @@ export function CopilotPanel() {
   const { copilotOpen, setCopilotOpen } = useUI();
   const [input, setInput] = useState("");
 
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setCopilotOpen(false);
+    }
+    if (copilotOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [copilotOpen, setCopilotOpen]);
+
   return (
     <>
       <div
         className={cn("fixed inset-0 z-[180] bg-black/40 backdrop-blur-sm transition-opacity", copilotOpen ? "opacity-100" : "pointer-events-none opacity-0")}
         onClick={() => setCopilotOpen(false)}
+        aria-hidden="true"
       />
       <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Copilot"
         className={cn(
           "fixed inset-y-0 right-0 z-[200] flex w-full max-w-[420px] flex-col border-l border-border bg-bg-notif transition-transform duration-300 ease-out",
           copilotOpen ? "translate-x-0" : "translate-x-full",

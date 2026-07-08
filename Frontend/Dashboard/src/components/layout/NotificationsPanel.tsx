@@ -52,6 +52,16 @@ export function NotificationsPanel() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setNotifOpen(false);
+    }
+    if (notifOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [notifOpen, setNotifOpen]);
+
+  useEffect(() => {
     if (!notifOpen) return;
     setLoading(true);
     api.get<{ data: { notifications: Array<{ id: string; type: string; message: string; unread: boolean; created_at: string }> } }>(
@@ -86,8 +96,13 @@ export function NotificationsPanel() {
 
   return (
     <>
-      <div className="fixed inset-0 z-[150]" onClick={() => setNotifOpen(false)} />
-      <div className="fixed right-3 top-[calc(var(--topbar-h)+8px)] z-[200] w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-border-md bg-bg-notif shadow-elegant sm:right-6">
+      <div className="fixed inset-0 z-[150]" onClick={() => setNotifOpen(false)} aria-hidden="true" />
+      <div 
+        role="dialog"
+        aria-modal="true"
+        aria-label="Notifications"
+        className="fixed right-3 top-[calc(var(--topbar-h)+8px)] z-[200] w-[360px] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-border-md bg-bg-notif shadow-elegant sm:right-6"
+      >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <span className="text-sm font-semibold text-t1">Notifications</span>
           <button onClick={markAll} className="text-[0.72rem] font-medium text-t3 transition-colors hover:text-t1">

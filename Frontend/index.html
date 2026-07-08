@@ -829,9 +829,36 @@
       }));
 
       Alpine.data('waitlistForm', () => ({
+        // step 1 = collecting the essentials, step 2 = secured + optional extra info
+        step: 1,
         isValid: false,
         submitting: false,
         errorMsg: '',
+
+        waitlistId: null,
+        position: null,
+        referralCode: null,
+
+        detailsSubmitting: false,
+        detailsDone: false,
+        detailsErrorMsg: '',
+
+        resetForm() {
+          this.step = 1;
+          this.isValid = false;
+          this.submitting = false;
+          this.errorMsg = '';
+          this.waitlistId = null;
+          this.position = null;
+          this.referralCode = null;
+          this.detailsSubmitting = false;
+          this.detailsDone = false;
+          this.detailsErrorMsg = '';
+          this.$nextTick(() => {
+            this.$refs.step1Form?.reset();
+            this.$refs.step2Form?.reset();
+          });
+        },
 
         // Selects that have a "Custom" option paired with a `<field>_custom` text input.
         // If the user picked Custom and typed something, send the typed value instead
@@ -847,7 +874,7 @@
           return value || null;
         },
 
-        async submit(event) {
+        async submitStep1(event) {
           const form = event.target;
           if (!form.checkValidity()) {
             this.isValid = false;
@@ -863,7 +890,6 @@
             const v = fd.get(name);
             return v && String(v).trim() ? String(v).trim() : null;
           };
-          const checked = (name) => !!form.elements[name]?.checked;
 
           const payload = {
             hp_field: !!form.elements['hp_field']?.checked,
@@ -871,11 +897,44 @@
             work_email: str('work_email'),
             phone_number: str('phone_number'),
             twitter_handle: str('twitter_handle'),
+            company_name: str('company_name'),
+            store_url: str('store_url'),
+            referred_by_code: str('referred_by_code'),
+          };
+
+          try {
+            const result = await submitWaitlistForm(payload);
+            this.waitlistId = result?.data?.id || null;
+            this.position = result?.data?.waitlist_position || '';
+            // Real, persisted referral code generated and stored by the
+            // backend — this is what actually gets credited when someone
+            // else signs up using it, so it must come from the server, not
+            // be faked up client-side.
+            this.referralCode = result?.data?.referral_code || '';
+            this.submitting = false;
+            this.step = 2;
+          } catch (err) {
+            this.submitting = false;
+            this.errorMsg = err.message || 'Something went wrong. Please try again.';
+          }
+        },
+
+        async submitStep2(event) {
+          const form = event.target;
+          this.detailsSubmitting = true;
+          this.detailsErrorMsg = '';
+
+          const fd = new FormData(form);
+          const str = (name) => {
+            const v = fd.get(name);
+            return v && String(v).trim() ? String(v).trim() : null;
+          };
+          const checked = (name) => !!form.elements[name]?.checked;
+
+          const payload = {
             tiktok_handle: str('tiktok_handle'),
             instagram_handle: str('instagram_handle'),
-            company_name: str('company_name'),
             website_url: str('website_url'),
-            store_url: str('store_url'),
             industry: this.resolveCustom(form, 'industry'),
             country: str('country'),
             state_region: str('state_region'),
@@ -885,7 +944,6 @@
             ecommerce_platform: this.resolveCustom(form, 'ecommerce_platform'),
             email_platform: this.resolveCustom(form, 'email_platform'),
             analytics_platform: this.resolveCustom(form, 'analytics_platform'),
-            support_platform: str('support_platform'),
             ad_platform: this.resolveCustom(form, 'ad_platform'),
             primary_goal: str('primary_goal'),
             biggest_challenge: str('biggest_challenge'),
@@ -894,22 +952,26 @@
             retention_problem: checked('retention_problem'),
             revenue_visibility_problem: checked('revenue_visibility_problem'),
             why_join_waitlist: str('why_join_waitlist'),
-            referral_code: str('referral_code'),
             interested_in_beta: checked('interested_in_beta'),
           };
 
           try {
-            const result = await submitWaitlistForm(payload);
-            const position = result?.data?.waitlist_position || result?.waitlist_position || '';
-            const referralCode = result?.data?.referral_code || result?.referral_code || '';
-            form.reset();
-            this.isValid = false;
-            this.submitting = false;
-            this.$dispatch('waitlist-success', { position, referralCode });
+            await updateWaitlistDetails(this.waitlistId, payload);
+            this.detailsSubmitting = false;
+            this.detailsDone = true;
           } catch (err) {
-            this.submitting = false;
-            this.errorMsg = err.message || 'Something went wrong. Please try again.';
+            this.detailsSubmitting = false;
+            this.detailsErrorMsg = err.message || 'Something went wrong. Please try again.';
           }
+        },
+
+        skipDetails() {
+          this.detailsDone = true;
+        },
+
+        copyReferralCode() {
+          if (!this.referralCode) return;
+          navigator.clipboard?.writeText(this.referralCode);
         },
       }));
     });
@@ -963,9 +1025,9 @@
                     class="hidden px-4 py-1.5 rounded-full bg-white text-black/95 font-bold text-xs uppercase tracking-wide shadow-sm hover:shadow-md hover:scale-[1.02] hover:bg-white/90 transition-all duration-300 whitespace-nowrap text-[11px]">
                     Go to Dashboard
                 </a>
-                <a href="./auth/loginIn.html" id="login-link"
+                <a href="./auth/login.html" id="login-link"
                     class="text-[11px] font-semibold text-[#CCCCCC] hover:text-white transition-colors">Login</a>
-                <a href="./auth/signUp.html" id="signup-link">
+                <a href="./auth/signup.html" id="signup-link">
                     <button
                         class="bg-white text-black px-3 py-1.5 rounded-full text-[11px] font-bold hover:-translate-y-0.5 transition-transform">Get
                         Started</button>
@@ -996,9 +1058,9 @@
                 class="hover:text-[#A1A1AA] transition-colors">Integrations</a>
             <a href="/dashboard/overview" id="mobile-dashboard-link"
                 class="hidden py-3 px-6 rounded-2xl bg-white text-black font-bold hover:scale-[1.01] hover:bg-white/90 shadow-sm transition-all block w-full text-left">Dashboard</a>
-            <a href="./auth/loginIn.html" id="mobile-login-link" @click="mobileMenu=false"
+            <a href="./auth/login.html" id="mobile-login-link" @click="mobileMenu=false"
                 class="hover:text-[#A1A1AA] transition-colors">Login</a>
-            <a href="./auth/signUp.html" id="mobile-signup-link" @click="mobileMenu=false"
+            <a href="./auth/signup.html" id="mobile-signup-link" @click="mobileMenu=false"
                 class="hover:text-[#A1A1AA] transition-colors">
                 <button
                     class="mt-2 bg-white text-black py-4 rounded-2xl font-bold hover:-translate-y-0.5 transition-transform block w-full text-left p-0">Get
@@ -1042,7 +1104,7 @@
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
   
   <!-- Get Started Free Button -->
-  <a href="./auth/signUp.html" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide text-center hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
+  <a href="./auth/signup.html" class="w-full sm:w-auto px-8 py-3.5 rounded-full bg-white/5 border border-white/10 text-white text-sm font-bold uppercase tracking-wide text-center hover:bg-white/10 hover:border-white/20 hover:-translate-y-0.5 transition-all duration-200 active:scale-[0.98]">
     Get Started Free
   </a>
 
@@ -1052,14 +1114,14 @@
   </button>
             </div>
 
-            <div x-data="{ waitlistModal: false, successPosition: null, successReferral: null }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" @waitlist-success.window="successPosition = $event.detail.position; successReferral = $event.detail.referralCode;" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/80 flex justify-center overflow-y-auto p-4 backdrop-blur-sm" x-cloak
+            <div x-data="{ waitlistModal: false }" x-init="$watch('waitlistModal', value => document.body.style.overflow = value ? 'hidden' : '')" @open-waitlist.window="waitlistModal = true" x-show="waitlistModal" class="fixed inset-0 z-[99999] bg-black/85 flex justify-center overflow-y-auto p-4 backdrop-blur-md" x-cloak
       x-transition:enter="transition ease-out duration-300"
       x-transition:enter-start="opacity-0"
       x-transition:enter-end="opacity-100"
       x-transition:leave="transition ease-in duration-200"
       x-transition:leave-start="opacity-100"
       x-transition:leave-end="opacity-0">
-                 <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-8 mt-32 md:mt-40 mb-8 w-full max-w-4xl h-fit shadow-2xl relative"
+                 <div x-data="waitlistForm" @open-waitlist.window="resetForm()" class="relative bg-black border border-white/[0.08] rounded-3xl p-6 md:p-10 mt-24 md:mt-32 mb-8 w-full max-w-xl h-fit shadow-[0_0_80px_rgba(255,255,255,0.04)] overflow-hidden"
       x-show="waitlistModal"
       x-transition:enter="transition ease-out duration-300 transform"
       x-transition:enter-start="opacity-0 translate-y-8 scale-95"
@@ -1067,336 +1129,342 @@
       x-transition:leave="transition ease-in duration-200 transform"
       x-transition:leave-start="opacity-100 translate-y-0 scale-100"
       x-transition:leave-end="opacity-0 translate-y-8 scale-95">
-                             <div class="flex justify-between items-center pb-4 border-b border-zinc-800 mb-6">
-                                 <span class="text-xl font-display font-semibold text-zinc-100" x-text="successPosition === null ? 'Join the Waitlist' : 'You\'re on the list'"></span>
-                                 <button @click="waitlistModal = false; successPosition = null" class="text-zinc-500 hover:text-white transition-colors p-2 rounded-full hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-white/50">
+
+                             <!-- Top hairline accent -->
+                             <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent"></div>
+
+                             <!-- Header -->
+                             <div class="flex justify-between items-start mb-8">
+                                 <div>
+                                     <span class="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500" x-text="detailsDone ? 'All set' : (step === 1 ? 'Step 1 of 2' : 'Step 2 of 2')"></span>
+                                     <h2 class="text-2xl md:text-[1.7rem] font-display font-bold text-white mt-1.5 leading-tight" x-text="detailsDone ? 'You\'re all set' : (step === 1 ? 'Secure your spot' : 'You\'re on the list')"></h2>
+                                 </div>
+                                 <button @click="waitlistModal = false" class="shrink-0 text-zinc-500 hover:text-white transition-colors p-2 -mr-2 -mt-1 rounded-full hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-white/50">
                                      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                                      </svg>
                                  </button>
                              </div>
-                             <form id="waitlist-form" method="POST" x-data="waitlistForm" x-show="successPosition === null" @input="isValid = $el.checkValidity()" @change="isValid = $el.checkValidity()" x-init="isValid = $el.checkValidity()" @submit.prevent="submit($event)" class="space-y-8">
+
+                             <!-- Progress rail -->
+                             <div x-show="!detailsDone" class="flex gap-1.5 mb-9" x-cloak>
+                                 <div class="h-[3px] flex-1 rounded-full bg-white transition-colors duration-300"></div>
+                                 <div class="h-[3px] flex-1 rounded-full transition-colors duration-300" :class="step >= 2 ? 'bg-white' : 'bg-white/10'"></div>
+                             </div>
+
+                             <!-- ───────────────────────── STEP 1 — secure my spot ───────────────────────── -->
+                             <form x-ref="step1Form" x-show="step === 1" method="POST" @input="isValid = $el.checkValidity()" @change="isValid = $el.checkValidity()" x-init="isValid = $el.checkValidity()" @submit.prevent="submitStep1($event)" class="space-y-5">
                                  <div style="position:absolute; left:-9999px; top:-9999px;" aria-hidden="true">
                                    <label for="hp_field">Leave this unchecked</label>
                                    <input type="checkbox" id="hp_field" name="hp_field" tabindex="-1" autocomplete="off">
                                  </div>
-                                 <div>
-  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Personal Information</h3>
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div class="relative">
-      <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="text" name="full_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Full Name</span><span class="text-white/70 ml-1 font-bold">*</span></div>
-      </div>
-      </div>
-    <div class="relative">
-      <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="email" name="work_email" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Work Email</span><span class="text-white/70 ml-1 font-bold">*</span></div>
-      </div>
-      </div>
-    <input type="tel" name="phone_number" placeholder="Phone Number" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 ">
-  </div>
-</div>
 
-<div>
-  <!-- SOCIALS (Icons on top, URL placeholders) -->
-  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Social Handles</h3>
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    
-    <!-- Twitter -->
-    <div class="space-y-2">
-      <div class="flex items-center space-x-2 text-zinc-400">
-        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/></svg>
-        <span class="text-xs font-medium">X (formerly Twitter)</span>
-      </div>
-      <input type="url" name="twitter_handle" placeholder="https://x.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-    </div>
+                                 <p class="text-sm text-zinc-400 -mt-2 mb-1">Six fields. Under a minute. We'll ask for the rest after you're locked in.</p>
 
-    <!-- TikTok -->
-    <div class="space-y-2">
-      <div class="flex items-center space-x-2 text-zinc-400">
-        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 448 512"><path d="M448 209.91a210.06 210.06 0 01-122.77-39.25V349.38A162.55 162.55 0 11185 188.31v89.89a74.62 74.62 0 1052.23 71.18V0l88 0a121.18 121.18 0 001.86 22.17h0A122.18 122.18 0 00381 102.39a121.43 121.43 0 0067 20.14z"/></svg>
-        <span class="text-xs font-medium">TikTok</span>
-      </div>
-      <input type="url" name="tiktok_handle" placeholder="https://tiktok.com/@username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-    </div>
+                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                   <div class="relative">
+                                     <div x-data="{ val: '' }" class="relative w-full">
+                                       <input x-model="val" type="text" name="full_name" required class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Full name</span><span class="text-white/60 ml-1">*</span></div>
+                                     </div>
+                                   </div>
+                                   <div class="relative">
+                                     <div x-data="{ val: '' }" class="relative w-full">
+                                       <input x-model="val" type="email" name="work_email" required class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Work email</span><span class="text-white/60 ml-1">*</span></div>
+                                     </div>
+                                   </div>
+                                   <div class="relative">
+                                     <div x-data="{ val: '' }" class="relative w-full">
+                                       <input x-model="val" type="tel" name="phone_number" class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Phone number</span></div>
+                                     </div>
+                                   </div>
+                                   <div class="relative">
+                                     <div x-data="{ val: '' }" class="relative w-full">
+                                       <input x-model="val" type="text" name="twitter_handle" class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Twitter handle</span></div>
+                                     </div>
+                                   </div>
+                                   <div class="relative md:col-span-2">
+                                     <div x-data="{ val: '' }" class="relative w-full">
+                                       <input x-model="val" type="text" name="company_name" required class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Brand name</span><span class="text-white/60 ml-1">*</span></div>
+                                     </div>
+                                   </div>
+                                   <div class="relative md:col-span-2">
+                                     <div x-data="{ val: '' }" class="relative w-full">
+                                       <input x-model="val" type="url" name="store_url" class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">https://your-store.com</span></div>
+                                     </div>
+                                   </div>
+                                   <div class="relative md:col-span-2">
+                                     <div x-data="{
+                                           val: '',
+                                           checking: false,
+                                           valid: null,
+                                           checkTimeout: null,
+                                           checkCode() {
+                                             clearTimeout(this.checkTimeout);
+                                             if (!this.val.trim()) { this.valid = null; return; }
+                                             this.checkTimeout = setTimeout(async () => {
+                                               this.checking = true;
+                                               try {
+                                                 const res = await fetch(`${window.REVLUMA_API_BASE}/waitlist/referral/${encodeURIComponent(this.val.trim())}/check`);
+                                                 const data = await res.json();
+                                                 this.valid = data.exists;
+                                               } catch (e) {
+                                                 this.valid = null;
+                                               } finally {
+                                                 this.checking = false;
+                                               }
+                                             }, 400);
+                                           }
+                                         }" class="relative w-full">
+                                       <input x-model="val" @input="checkCode()" type="text" name="referred_by_code"
+                                         class="w-full px-4 py-3.5 rounded-xl bg-white/[0.04] border text-white placeholder-zinc-500 focus:outline-none transition-all duration-200"
+                                         :class="valid === false ? 'border-red-500/50' : (valid === true ? 'border-green-500/50' : 'border-white/10 hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10')">
+                                       <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Referral code (optional)</span></div>
+                                       <p x-show="valid === false" x-cloak class="text-red-400 text-xs mt-1.5 pl-1">This referral code doesn't exist.</p>
+                                       <p x-show="valid === true" x-cloak class="text-green-400 text-xs mt-1.5 pl-1">Valid code you'll both get credit!</p>
+                                     </div>
+                                   </div>
+                                 </div>
 
-    <!-- Instagram -->
-    <div class="space-y-2">
-      <div class="flex items-center space-x-2 text-zinc-400">
-        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
-        <span class="text-xs font-medium">Instagram</span>
-      </div>
-      <input type="url" name="instagram_handle" placeholder="https://instagram.com/username" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-    </div>
-  </div>
-</div>
+                                 <p x-show="errorMsg" x-text="errorMsg" x-cloak class="text-red-400 text-sm text-center pt-1"></p>
 
-    <!-- BUSINESS PROFILE -->
-   <div>
-  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Business Profile</h3>
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div class="relative md:col-span-2">
-      <div x-data="{ val: '' }" class="relative w-full">
-        <input x-model="val" type="text" name="company_name" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-        <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Brand Name</span><span class="text-white/70 ml-1 font-bold">*</span></div>
-      </div>
-      </div>
-    
-    <div x-data="{ ind: '' }">
-      <div class="relative">
-        <select x-model="ind" name="industry" required class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled selected hidden class="bg-zinc-900"></option>
-        <option value="Beauty/Skincare" class="bg-zinc-900">Beauty & Skincare</option>
-        <option value="Clothing Brand" class="bg-zinc-900">Clothing Brand</option>
-        <option value="Supplement Brand" class="bg-zinc-900">Supplement Brand</option>
-        <option value="Home & Kitchen" class="bg-zinc-900">Home & Kitchen</option>
-        <option value="Electronics" class="bg-zinc-900">Electronics</option>
-        <option value="Food & Beverage" class="bg-zinc-900">Food & Beverage</option>
-        <option value="Custom" class="bg-zinc-900">Other (Custom)</option>
-      </select>
-        <div x-show="!ind" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Select Industry</span><span class="text-white/70 ml-1 font-bold">*</span></div>
-      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-      </div>
-      </div>
-      <input x-show="ind === 'Custom'" type="text" name="industry_custom" placeholder="Type your industry..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-    </div>
+                                 <button
+                                   type="submit"
+                                   :disabled="!isValid || submitting"
+                                   :class="(!isValid || submitting) ? 'opacity-40 cursor-not-allowed bg-white' : 'bg-white hover:bg-zinc-100 active:scale-[0.98] hover:shadow-[0_0_40px_rgba(255,255,255,0.15)]'"
+                                   class="w-full py-4 mt-3 text-black text-[0.95rem] font-bold rounded-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-white/20">
+                                   <span x-show="!submitting">Secure my spot</span>
+                                   <span x-show="submitting" x-cloak>Securing…</span>
+                                 </button>
+                                <p class="text-center text-[13px] text-zinc-200 pt-1">Takes 30 seconds to complete.</p>
+                                </form>
 
-    <input type="url" name="website_url" placeholder="https://website.com" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-    
-<div x-data="locationSelect" class="grid grid-cols-1 md:grid-cols-2 gap-4 md:col-span-2">
-  <!-- Country Dropdown -->
-  <div class="relative w-full" @click.away="showCountryDropdown = false">
-    <input type="hidden" name="country" :value="selectedCountry">
-    <div class="relative w-full">
-      <input type="text" x-model="searchQueryCountry" @focus="showCountryDropdown = true" required class="peer w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-      <div x-show="!searchQueryCountry" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Country</span><span class="text-white/70 ml-1 font-bold">*</span></div>
-      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-      </div>
-    </div>
-    <!-- Dropdown List -->
-    <ul x-show="showCountryDropdown" x-transition class="absolute z-50 w-full mt-2 max-h-60 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl custom-scrollbar" style="display: none;">
-      <template x-for="country in filteredCountries" :key="country.name">
-        <li @click="selectCountry(country.name)" class="px-4 py-3 text-zinc-300 hover:bg-white/10 hover:text-white cursor-pointer transition-colors" x-text="country.name"></li>
-      </template>
-      <li x-show="filteredCountries.length === 0" class="px-4 py-3 text-zinc-500">No countries found</li>
-    </ul>
-  </div>
+                             <!-- STEP 2 — secured + optional extra info -->
+                             <div x-show="step === 2" x-cloak
+                                  x-transition:enter="transition ease-out duration-400"
+                                  x-transition:enter-start="opacity-0 translate-y-3"
+                                  x-transition:enter-end="opacity-100 translate-y-0">
 
-  <!-- State Dropdown -->
-  <div class="relative w-full" @click.away="showStateDropdown = false">
-    <input type="hidden" name="state_region" :value="selectedState">
-    <div class="relative w-full">
-      <input type="text" x-model="searchQueryState" @focus="showStateDropdown = true" :disabled="!selectedCountry" class="peer w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
-      <div x-show="!searchQueryState" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500" x-text="selectedCountry ? 'State / Region' : 'Select a Country first'"></span></div>
-      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-      </div>
-    </div>
-    <!-- Dropdown List -->
-    <ul x-show="showStateDropdown && availableStates.length > 0" x-transition class="absolute z-50 w-full mt-2 max-h-60 overflow-y-auto bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl custom-scrollbar" style="display: none;">
-      <template x-for="state in filteredStates" :key="state">
-        <li @click="selectState(state)" class="px-4 py-3 text-zinc-300 hover:bg-white/10 hover:text-white cursor-pointer transition-colors" x-text="state"></li>
-      </template>
-      <li x-show="filteredStates.length === 0" class="px-4 py-3 text-zinc-500">No states found</li>
-    </ul>
-  </div>
-</div>
-      
-    <div class="relative">
-      <select name="team_size" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled selected hidden class="bg-zinc-900">Select Team Size</option>
-        <option value="Solo Founder" class="bg-zinc-900">Solo Founder</option>
-        <option value="2-10" class="bg-zinc-900">2-10</option>
-        <option value="11-50" class="bg-zinc-900">11-50</option>
-        <option value="51+" class="bg-zinc-900">51+</option>
-      </select>
-      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-      </div>
-    </div>
-          
-    <div class="relative">
-      <select name="monthly_revenue_range" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled selected hidden class="bg-zinc-900">Monthly Revenue</option>
-        <option value="Under $1k" class="bg-zinc-900">Under $1k</option>
-        <option value="$1k-$10k" class="bg-zinc-900">$1k - $10k</option>
-        <option value="$10k-$100k" class="bg-zinc-900">$10k - $100k</option>
-        <option value="$100k+" class="bg-zinc-900">$100k+</option>
-      </select>
-      <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-      </div>
-    </div>
-   </div>
-</div>
+                                 <!-- Success banner -->
+                                 <div class="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                                     <div class="flex items-center gap-3 mb-4">
+                                         <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
+                                             <svg class="w-4.5 h-4.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                                         </div>
+                                         <p class="text-white font-semibold">You're <span class="font-mono" x-text="'#' + position"></span> on the waitlist</p>
+                                     </div>
+                                     <div class="flex items-center justify-between gap-3 rounded-xl bg-black border border-white/10 px-4 py-3">
+                                         <div>
+                                             <p class="text-[10px] uppercase tracking-[0.15em] text-zinc-500 mb-1">Your referral code</p>
+                                             <p class="text-lg font-mono font-bold tracking-widest text-white" x-text="referralCode"></p>
+                                         </div>
+                                         <button @click="copyReferralCode()" type="button" class="shrink-0 text-xs font-semibold text-zinc-300 hover:text-white border border-white/15 hover:border-white/30 rounded-lg px-3 py-2 transition-colors">
+                                             Copy
+                                         </button>
+                                     </div>
+                                 </div>
 
-<div>
-  <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Technology Stack</h3>
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div x-data="{ ecom: '' }">
-      <div class="relative">
-        <select x-model="ecom" name="ecommerce_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
-      <option value="" disabled selected hidden class="bg-zinc-900">Ecommerce Platform</option>
-        <option value="Shopify" class="bg-zinc-900">Shopify</option>
-      <option value="WooCommerce" class="bg-zinc-900">WooCommerce</option>
-     <option value="BigCommerce" class="bg-zinc-900">BigCommerce</option>
-      <option value="Meta" class="bg-zinc-900">Meta (FB/IG Shops)</option>
-      <option value="TikTok" class="bg-zinc-900">TikTok Shop</option>
-      <option value="Custom" class="bg-zinc-900">Other / Custom Store</option>
-    </select>
-        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-      </div>
-      </div>
-    <input x-show="ecom === 'Custom'" type="text" name="ecommerce_platform_custom" placeholder="Type ecommerce platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-      </div>
-    <!-- Email Platform -->
-    <div x-data="{ email: '' }">
-      <div class="relative">
-        <select x-model="email" name="email_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled selected hidden class="bg-zinc-900">Email Platform</option>
-        <option value="Klaviyo" class="bg-zinc-900">Klaviyo</option>
-        <option value="Mailchimp" class="bg-zinc-900">Mailchimp</option>
-        <option value="Omnisend" class="bg-zinc-900">Omnisend</option>
-        <option value="Custom" class="bg-zinc-900">Other (Custom)</option>
-      </select>
-        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-      </div>
-      </div>
-      <input x-show="email === 'Custom'" type="text" name="email_platform_custom" placeholder="Type email platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-    </div>
+                                 <!-- Optional "tell us more" -->
+                                 <template x-if="!detailsDone">
+                                   <div>
+                                     <p class="text-sm text-zinc-400 mb-6 -mt-2">A few optional details help us prioritize early access — takes about a minute, skip anytime.</p>
 
-    <!-- Analytics Platform -->
-    <div x-data="{ analytics: '' }">
-      <div class="relative">
-        <select x-model="analytics" name="analytics_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled selected hidden class="bg-zinc-900">Analytics Platform</option>
-        <option value="Google Analytics" class="bg-zinc-900">Google Analytics</option>
-        <option value="TripleWhale" class="bg-zinc-900">TripleWhale</option>
-        <option value="Northbeam" class="bg-zinc-900">Northbeam</option>
-        <option value="Custom" class="bg-zinc-900">Other (Custom)</option>
-      </select>
-        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-      </div>
-      </div>
-      <input x-show="analytics === 'Custom'" type="text" name="analytics_platform_custom" placeholder="Type analytics tool..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-    </div>
+                                     <form x-ref="step2Form" @submit.prevent="submitStep2($event)" class="space-y-7">
 
-    <!-- Ad Platform -->
-    <div x-data="{ ads: '' }">
-      <div class="relative">
-        <select x-model="ads" name="ad_platform" class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 appearance-none pr-10">
-        <option value="" disabled selected hidden class="bg-zinc-900">Ad Platform</option>
-        <option value="Meta Ads" class="bg-zinc-900">Meta Ads</option>
-        <option value="Google Ads" class="bg-zinc-900">Google Ads</option>
-        <option value="TikTok Ads" class="bg-zinc-900">TikTok Ads</option>
-        <option value="Custom" class="bg-zinc-900">Other (Custom)</option>
-      </select>
-        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
-        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-      </div>
-      </div>
-      <input x-show="ads === 'Custom'" type="text" name="ad_platform_custom" placeholder="Type ad platform..." class="mt-3 w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-zinc-400 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-    </div>
-      
-</div>
-</div>
-      
-<div> 
-    <h3 class="text-sm font-semibold text-zinc-300 mb-4 pb-2 w-full truncate flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Goals & Challenges</h3>
-  <div class="relative">
-    <div x-data="{ val: '' }" class="relative w-full">
-      <input x-model="val" type="text" name="primary_goal" class="text-sm w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-      <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500 text-sm">What is your primary goal for joining?</span></div>
-    </div>
-  </div>
+                                       <div>
+                                         <h3 class="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Socials</h3>
+                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                           <input type="text" name="instagram_handle" placeholder="Instagram handle" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                           <input type="text" name="tiktok_handle" placeholder="TikTok handle" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                           <input type="url" name="website_url" placeholder="https://yourwebsite.com" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200 md:col-span-2">
+                                         </div>
+                                       </div>
 
-<div class="relative mt-4">
-    <div x-data="{ val: '' }" class="relative w-full">
-      <textarea x-model="val" name="biggest_challenge" required rows="2" class="text-sm w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 min-h-[80px] resize-none"></textarea>
-      <div x-show="!val" class="absolute top-3 left-4 right-4 pointer-events-none text-sm text-left"><span class="text-zinc-500">What is the biggest challenge you are facing in your store right now?</span><span class="text-white/70 ml-1 font-bold">*</span></div>
-    </div>
-</div>
+                                       <div>
+                                         <h3 class="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Business profile</h3>
+                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                           <div x-data="{ ind: '' }">
+                                             <div class="relative">
+                                               <select x-model="ind" name="industry" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-zinc-300 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200 appearance-none pr-10">
+                                                 <option value="" selected class="bg-black">Industry</option>
+                                                 <option value="Beauty/Skincare" class="bg-black">Beauty & Skincare</option>
+                                                 <option value="Clothing Brand" class="bg-black">Clothing Brand</option>
+                                                 <option value="Supplement Brand" class="bg-black">Supplement Brand</option>
+                                                 <option value="Home & Kitchen" class="bg-black">Home & Kitchen</option>
+                                                 <option value="Electronics" class="bg-black">Electronics</option>
+                                                 <option value="Food & Beverage" class="bg-black">Food & Beverage</option>
+                                                 <option value="Custom" class="bg-black">Other (Custom)</option>
+                                               </select>
+                                               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
+                                                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                               </div>
+                                             </div>
+                                             <input x-show="ind === 'Custom'" type="text" name="industry_custom" placeholder="Type your industry…" class="mt-3 w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                           </div>
 
-<div class="px-2 mt-6">
-  <p class="text-sm text-zinc-300 leading-snug mb-4 text-left">
-    Is your store currently facing any of these problems? (Check all that apply)
-  </p>
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-      <label for="churn_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group" style="touch-action: manipulation;">
-        <input id="churn_cb" type="checkbox" name="current_churn_problem" value="true" class="checkbox-custom mt-0.5">
-        <span class="leading-relaxed">Customer churn</span>
-      </label>
-      <label for="cart_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group" style="touch-action: manipulation;">
-        <input id="cart_cb" type="checkbox" name="abandoned_cart_problem" value="true" class="checkbox-custom mt-0.5">
-        <span class="leading-relaxed">High abandoned carts</span>
-      </label>
-      <label for="retention_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group" style="touch-action: manipulation;">
-        <input id="retention_cb" type="checkbox" name="retention_problem" value="true" class="checkbox-custom mt-0.5">
-        <span class="leading-relaxed">Retention issues</span>
-      </label>
-      <label for="revenue_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group" style="touch-action: manipulation;">
-        <input id="revenue_cb" type="checkbox" name="revenue_visibility_problem" value="true" class="checkbox-custom mt-0.5">
-        <span class="leading-relaxed">Lack revenue visibility</span>
-      </label>
-    </div>
-  </div>
-</div>
+                                           <div x-data="locationSelect" @click.away="showCountryDropdown = false" class="relative">
+                                             <input type="hidden" name="country" :value="selectedCountry">
+                                             <div class="relative w-full">
+                                               <input type="text" x-model="searchQueryCountry" @focus="showCountryDropdown = true" class="peer w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                               <div x-show="!searchQueryCountry" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500">Country</span></div>
+                                               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
+                                                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                               </div>
+                                             </div>
+                                             <ul x-show="showCountryDropdown" x-transition class="absolute z-50 w-full mt-2 max-h-52 overflow-y-auto bg-black border border-white/10 rounded-xl shadow-2xl custom-scrollbar" style="display: none;">
+                                               <template x-for="country in filteredCountries" :key="country.name">
+                                                 <li @click="selectCountry(country.name)" class="px-4 py-3 text-zinc-300 hover:bg-white/10 hover:text-white cursor-pointer transition-colors" x-text="country.name"></li>
+                                               </template>
+                                               <li x-show="filteredCountries.length === 0" class="px-4 py-3 text-zinc-500">No countries found</li>
+                                             </ul>
+                                           </div>
 
-<div class="pb-2">
-  <div class="relative mb-4">
-    <div x-data="{ val: '' }" class="relative w-full">
-      <input x-model="val" type="text" name="referral_code" class="text-sm w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300">
-      <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500 text-sm">Have a referral code? (Optional)</span></div>
-    </div>
-  </div>
-  <textarea name="why_join_waitlist" rows="2" placeholder="Why do you want to join the waitlist?" class="text-sm placeholder-zinc-500 w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none hover:bg-white/5 hover:border-white/30 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] focus:border-white/50 focus:ring-2 focus:ring-white/10 transition-all duration-300 resize-none mb-4"></textarea>
-  <label for="beta_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors group px-2" style="touch-action: manipulation;">
-    <input id="beta_cb" type="checkbox" name="interested_in_beta" value="true" class="checkbox-custom mt-0.5">
-    <span class="leading-relaxed">I am interested in the Beta program</span>
-  </label>
-</div>
-                            <p x-show="errorMsg" x-text="errorMsg" x-cloak class="text-red-400 text-sm text-center -mt-2 mb-2"></p>
-                            <button 
-  type="submit" 
-  :disabled="!isValid || submitting"
-  :class="(!isValid || submitting) ? 'opacity-50 cursor-not-allowed bg-zinc-400' : 'bg-white hover:bg-zinc-200 active:scale-[0.98] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]'"
-  class="w-full py-4 mt-2 text-black font-bold rounded-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-white/30 shadow-[0_0_20px_rgba(255,255,255,0.1)]">
-                                <span x-show="!submitting">Secure your spot</span>
-                                <span x-show="submitting" x-cloak>Submitting…</span>
-                            </button>
-                          </form>
-                          <div x-show="successPosition !== null" x-cloak class="py-10 text-center">
-                              <div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-green-500/10 border border-green-500/30">
-                                  <svg class="w-10 h-10 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                                  </svg>
-                              </div>
-                              <h3 class="text-2xl md:text-3xl font-display font-bold text-white mb-3">You're #<span x-text="successPosition"></span> on the waitlist</h3>
-                              <p class="text-zinc-400 text-base max-w-md mx-auto mb-4">
-                                  We've saved your spot and sent a confirmation to your email. If you don't see it in a minute or two, check your spam folder.
-                              </p>
-                              
-                              <div class="mb-8 mt-2 p-5 bg-white/5 border border-white/10 rounded-2xl mx-auto max-w-sm">
-                                <p class="text-sm text-zinc-400 mb-2 uppercase tracking-widest font-semibold">Your Referral Code</p>
-                                <div class="text-3xl font-mono font-bold tracking-widest text-white flex items-center justify-center gap-3">
-                                  <span x-text="successReferral"></span>
-                                </div>
-                                <p class="text-xs text-zinc-500 mt-3">Share this code with friends to move up the queue!</p>
-                              </div>
+                                           <div class="relative">
+                                             <select name="team_size" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-zinc-300 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200 appearance-none pr-10">
+                                               <option value="" selected class="bg-black">Team size</option>
+                                               <option value="Solo Founder" class="bg-black">Solo Founder</option>
+                                               <option value="2-10" class="bg-black">2–10</option>
+                                               <option value="11-50" class="bg-black">11–50</option>
+                                               <option value="51+" class="bg-black">51+</option>
+                                             </select>
+                                             <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
+                                               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                             </div>
+                                           </div>
 
-                              <button @click="waitlistModal = false; successPosition = null" class="px-8 py-3 rounded-xl bg-white text-black font-bold hover:bg-zinc-200 transition-colors">
-                                  Done
-                              </button>
-                          </div>
-                         </div>
-                     </div>
+                                           <div class="relative">
+                                             <select name="monthly_revenue_range" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-zinc-300 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200 appearance-none pr-10">
+                                               <option value="" selected class="bg-black">Monthly revenue</option>
+                                               <option value="Under $1k" class="bg-black">Under $1k</option>
+                                               <option value="$1k-$10k" class="bg-black">$1k – $10k</option>
+                                               <option value="$10k-$100k" class="bg-black">$10k – $100k</option>
+                                               <option value="$100k+" class="bg-black">$100k+</option>
+                                             </select>
+                                             <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
+                                               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                             </div>
+                                           </div>
+                                         </div>
+                                       </div>
+
+                                       <div>
+                                         <h3 class="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Tech stack</h3>
+                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                           <div x-data="{ ecom: '' }">
+                                             <div class="relative">
+                                               <select x-model="ecom" name="ecommerce_platform" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-zinc-300 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200 appearance-none pr-10">
+                                                 <option value="" selected class="bg-black">Ecommerce platform</option>
+                                                 <option value="Shopify" class="bg-black">Shopify</option>
+                                                 <option value="WooCommerce" class="bg-black">WooCommerce</option>
+                                                 <option value="BigCommerce" class="bg-black">BigCommerce</option>
+                                                 <option value="Meta" class="bg-black">Meta (FB/IG Shops)</option>
+                                                 <option value="TikTok" class="bg-black">TikTok Shop</option>
+                                                 <option value="Custom" class="bg-black">Other / Custom</option>
+                                               </select>
+                                               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
+                                                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                               </div>
+                                             </div>
+                                             <input x-show="ecom === 'Custom'" type="text" name="ecommerce_platform_custom" placeholder="Type ecommerce platform…" class="mt-3 w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                           </div>
+                                           <div x-data="{ email: '' }">
+                                             <div class="relative">
+                                               <select x-model="email" name="email_platform" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-zinc-300 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200 appearance-none pr-10">
+                                                 <option value="" selected class="bg-black">Email platform</option>
+                                                 <option value="Klaviyo" class="bg-black">Klaviyo</option>
+                                                 <option value="Mailchimp" class="bg-black">Mailchimp</option>
+                                                 <option value="Omnisend" class="bg-black">Omnisend</option>
+                                                 <option value="Custom" class="bg-black">Other (Custom)</option>
+                                               </select>
+                                               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-zinc-500">
+                                                 <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                                               </div>
+                                             </div>
+                                             <input x-show="email === 'Custom'" type="text" name="email_platform_custom" placeholder="Type email platform…" class="mt-3 w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/10 text-white placeholder-zinc-500 focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                           </div>
+                                         </div>
+                                       </div>
+
+                                       <div>
+                                         <h3 class="text-sm font-semibold text-zinc-300 mb-4 flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-white"></span>Goals & challenges</h3>
+                                         <div class="relative mb-4">
+                                           <div x-data="{ val: '' }" class="relative w-full">
+                                             <input x-model="val" type="text" name="primary_goal" class="text-sm w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200">
+                                             <div x-show="!val" class="absolute inset-y-0 left-4 flex items-center pointer-events-none"><span class="text-zinc-500 text-sm">Primary goal for joining?</span></div>
+                                           </div>
+                                         </div>
+                                         <div class="relative mb-5">
+                                           <div x-data="{ val: '' }" class="relative w-full">
+                                             <textarea x-model="val" name="biggest_challenge" rows="2" class="text-sm w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200 min-h-[70px] resize-none"></textarea>
+                                             <div x-show="!val" class="absolute top-3 left-4 right-4 pointer-events-none text-sm text-left"><span class="text-zinc-500">Biggest challenge in your store right now?</span></div>
+                                           </div>
+                                         </div>
+                                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                           <label for="churn_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors" style="touch-action: manipulation;">
+                                             <input id="churn_cb" type="checkbox" name="current_churn_problem" value="true" class="checkbox-custom mt-0.5">
+                                             <span class="leading-relaxed">Customer churn</span>
+                                           </label>
+                                           <label for="cart_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors" style="touch-action: manipulation;">
+                                             <input id="cart_cb" type="checkbox" name="abandoned_cart_problem" value="true" class="checkbox-custom mt-0.5">
+                                             <span class="leading-relaxed">High abandoned carts</span>
+                                           </label>
+                                           <label for="retention_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors" style="touch-action: manipulation;">
+                                             <input id="retention_cb" type="checkbox" name="retention_problem" value="true" class="checkbox-custom mt-0.5">
+                                             <span class="leading-relaxed">Retention issues</span>
+                                           </label>
+                                           <label for="revenue_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors" style="touch-action: manipulation;">
+                                             <input id="revenue_cb" type="checkbox" name="revenue_visibility_problem" value="true" class="checkbox-custom mt-0.5">
+                                             <span class="leading-relaxed">Lack revenue visibility</span>
+                                           </label>
+                                         </div>
+                                       </div>
+
+                                       <div>
+                                         <textarea name="why_join_waitlist" rows="2" placeholder="Why do you want to join the waitlist? (optional)" class="text-sm placeholder-zinc-500 w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none hover:border-white/25 focus:border-white focus:ring-2 focus:ring-white/10 transition-all duration-200 resize-none mb-4"></textarea>
+                                         <label for="beta_cb" class="relative z-10 flex items-start space-x-3 text-zinc-400 text-sm cursor-pointer hover:text-white transition-colors" style="touch-action: manipulation;">
+                                           <input id="beta_cb" type="checkbox" name="interested_in_beta" value="true" class="checkbox-custom mt-0.5">
+                                           <span class="leading-relaxed">I'm interested in the Beta program</span>
+                                         </label>
+                                       </div>
+
+                                       <p x-show="detailsErrorMsg" x-text="detailsErrorMsg" x-cloak class="text-red-400 text-sm text-center"></p>
+
+                                       <div class="flex items-center gap-3 pt-1">
+                                         <button
+                                           type="submit"
+                                           :disabled="detailsSubmitting"
+                                           :class="detailsSubmitting ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-100 active:scale-[0.98] hover:shadow-[0_0_40px_rgba(255,255,255,0.15)]'"
+                                           class="flex-1 py-3.5 bg-white text-black text-[0.9rem] font-bold rounded-xl transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-white/20">
+                                           <span x-show="!detailsSubmitting">Save details</span>
+                                           <span x-show="detailsSubmitting" x-cloak>Saving…</span>
+                                         </button>
+                                         <button @click="skipDetails()" type="button" class="text-sm font-semibold text-zinc-500 hover:text-white transition-colors px-4 py-3.5">
+                                           Skip for now
+                                         </button>
+                                       </div>
+                                     </form>
+                                   </div>
+                                 </template>
+
+                                 <!-- Final confirmation after step 2 submit/skip -->
+                                 <div x-show="detailsDone" x-cloak
+                                      x-transition:enter="transition ease-out duration-300"
+                                      x-transition:enter-start="opacity-0 translate-y-2"
+                                      x-transition:enter-end="opacity-100 translate-y-0"
+                                      class="text-center pt-2 pb-1">
+                                     <p class="text-zinc-400 text-sm max-w-sm mx-auto mb-6">We've saved your spot and sent a confirmation to your email. Share your referral code above to move up the queue.</p>
+                                     <button @click="waitlistModal = false" class="px-8 py-3 rounded-xl bg-white text-black font-bold hover:bg-zinc-100 transition-colors">
+                                         Done
+                                     </button>
+                                 </div>
+                             </div>
+                 </div>
+             </div>
                  </div>
              </div>
         </div>
@@ -2287,7 +2355,7 @@
 
             <!-- Bottom CTA nudge -->
             <div class="mt-10 text-center reveal">
-                <a href="./auth/signUp.html">
+                <a href="./auth/signup.html">
                     <button
                         class="px-8 py-3.5 rounded-2xl border border-white/15 text-sm font-bold text-white hover:bg-white hover:text-black transition-all duration-300">
                         See Revluma in action →
@@ -2707,7 +2775,7 @@
 
                     </ul>
                     <div class="mt-8 flex flex-col sm:flex-row gap-4 items-center justify-center">
-                    <a href="./auth/signUp.html"><button
+                    <a href="./auth/signup.html"><button
                             class="px-8 py-3.5 rounded-full bg-white text-black font-bold text-sm tracking-wide hover:bg-zinc-200 transition-all duration-300 hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] w-full sm:w-auto text-center">Start Free Trial</button></a>
                     </div>
                 </div>
@@ -2734,7 +2802,7 @@
 
 
                     </ul>
-                    <a href="./auth/signUp.html"><button
+                    <a href="./auth/signup.html"><button
                             class="mt-8 w-full py-3 rounded-2xl bg-white text-black text-sm font-bold hover:scale-[1.02] transition-all duration-300">Get
                             Started Free</button></a>
                 </div>
@@ -3058,7 +3126,7 @@
             <p class="text-[#A1A1AA] mb-10 max-w-md mx-auto">Join 2,400+ brands already recovering more revenue than
                 they thought possible.</p>
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <a href="./auth/signUp.html">
+                <a href="./auth/signup.html">
                     <button class="glass-btn text-base font-bold hover:scale-[1.05] transition-all">
                         Get Started Free →
                     </button>
