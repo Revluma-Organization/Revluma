@@ -11,4 +11,19 @@ const waitlistJoinLimiter = rateLimit({
   },
 });
 
-module.exports = { waitlistJoinLimiter };
+// Dedicated, more generous limiter for the live "does this referral code
+// exist" check — this gets hit as people type, so it needs a higher
+// ceiling than the join limiter, but still caps scripted enumeration
+// attempts (someone trying to brute-force valid codes).
+const referralCheckLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,             // 20 checks/min per IP — plenty for real typing
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Too many requests. Please slow down.',
+  },
+});
+
+module.exports = { waitlistJoinLimiter, referralCheckLimiter };

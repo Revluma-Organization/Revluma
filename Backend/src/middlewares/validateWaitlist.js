@@ -1,4 +1,4 @@
-const { body, validationResult } = require('express-validator');
+const { body, param, validationResult } = require('express-validator');
 
 const validateRequest = (req, res, next) => {
   const errors = validationResult(req);
@@ -13,7 +13,11 @@ const validateRequest = (req, res, next) => {
   next();
 };
 
-exports.validateWaitlist = [
+// Step 1 "secure my spot": only the fields needed to create the waitlist
+// row. industry/country/biggest_challenge used to be required here, but
+// they're collected later in the optional step-2 form now, so they're
+// validated (if present) but no longer mandatory at this stage.
+exports.validateWaitlistJoin = [
   body('full_name')
     .trim()
     .notEmpty()
@@ -26,25 +30,26 @@ exports.validateWaitlist = [
   body('company_name')
     .trim()
     .notEmpty()
-    .withMessage('Company name is required'),
-  body('industry')
-    .trim()
-    .notEmpty()
-    .withMessage('Industry is required'),
-  body('country')
-    .trim()
-    .notEmpty()
-    .withMessage('Country is required'),
-  body('biggest_challenge')
-    .trim()
-    .notEmpty()
-    .withMessage('Biggest challenge is required'),
+    .withMessage('Brand name is required'),
   body('phone_number').trim().optional(),
   body('twitter_handle').trim().optional(),
+  body('store_url').trim().optional(),
+  body('industry').trim().optional(),
+  body('country').trim().optional(),
+  body('biggest_challenge').trim().optional(),
+  body('hp_field').optional().isBoolean(), // honeypot real users never see/check this
+  validateRequest,
+];
+
+// Step 2  "tell us more": everything here is optional. This fills in the
+// remaining profile fields on a row already created by step 1.
+exports.validateWaitlistDetails = [
+  param('id').isUUID().withMessage('Invalid waitlist id'),
   body('tiktok_handle').trim().optional(),
   body('instagram_handle').trim().optional(),
   body('website_url').trim().optional(),
-  body('store_url').trim().optional(),
+  body('industry').trim().optional(),
+  body('country').trim().optional(),
   body('state_region').trim().optional(),
   body('team_size').trim().optional(),
   body('monthly_revenue_range').trim().optional(),
@@ -55,12 +60,15 @@ exports.validateWaitlist = [
   body('support_platform').trim().optional(),
   body('ad_platform').trim().optional(),
   body('primary_goal').trim().optional(),
+  body('biggest_challenge').trim().optional(),
   body('why_join_waitlist').trim().optional(),
   body('current_churn_problem').optional().isBoolean(),
   body('abandoned_cart_problem').optional().isBoolean(),
   body('retention_problem').optional().isBoolean(),
   body('revenue_visibility_problem').optional().isBoolean(),
   body('interested_in_beta').optional().isBoolean(),
-  body('hp_field').optional().isBoolean(), // honeypot — real users never see/check this
   validateRequest,
 ];
+
+// Kept for backward compatibility with anything still importing the old name.
+exports.validateWaitlist = exports.validateWaitlistJoin;

@@ -8,9 +8,11 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { motion } from "framer-motion";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { ConnectBanner } from "@/components/dashboard/ConnectBanner";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
+import { GlobalOnboarding } from "@/components/dashboard/GlobalOnboarding";
 import { LiveActivity } from "@/components/dashboard/LiveActivity";
 import { SequencesTable } from "@/components/dashboard/SequencesTable";
 import { AbandonedProducts } from "@/components/dashboard/AbandonedProducts";
@@ -54,6 +56,8 @@ export default function Overview() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  const [showSecondaryInsights, setShowSecondaryInsights] = useState(false);
 
   useEffect(() => {
     async function fetchDashboard() {
@@ -119,61 +123,86 @@ export default function Overview() {
       <ConnectBanner storeConnected={storeConnected} />
 
       {/* Welcome */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.32 }}
-      >
-        <h1 className="display text-[1.6rem] font-extrabold tracking-tight text-t1 sm:text-[1.85rem]">
-          Welcome back,{" "}
-          {loading
-            ? <span className="inline-block h-7 w-28 animate-pulse rounded-md bg-bg-4 align-middle" />
-            : (firstName ?? "--")}{" "}
-          <span className="wave-emoji">👋</span>
-        </h1>
-        <p className="mt-1 text-[0.85rem] text-t2">
-          Here's what's happening with your store today
-        </p>
-      </motion.div>
+      <PageHeader
+        title={
+          <>
+            Welcome back,{" "}
+            {loading
+              ? <span className="inline-block h-7 w-28 animate-pulse rounded-md bg-bg-4 align-middle" />
+              : (firstName ?? "--")}{" "}
+            <span className="wave-emoji">👋</span>
+          </>
+        }
+        subtitle="Here's what's happening with your store today"
+      />
 
-      {/* KPI grid */}
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {kpi
-          ? kpi.map((k, i) => <KpiCard key={k.id} kpi={k} index={i} />)
-          : Array.from({ length: 6 }).map((_, i) => <KpiCardSkeleton key={i} index={i} />)}
-      </section>
+      {!loading && storeConnected === false ? (
+        <GlobalOnboarding />
+      ) : (
+        <>
+          {/* Zone 1: Performance at a Glance */}
+          <div className="mb-8">
+            <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-t3">Performance at a glance</h2>
+            <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-4">
+              {kpi
+                ? kpi.map((k, i) => <KpiCard key={k.id} kpi={k} index={i} />)
+                : Array.from({ length: 6 }).map((_, i) => <KpiCardSkeleton key={i} index={i} />)}
+            </section>
 
-      {/* Chart + Activity */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
-        <RevenueChart chartData={chart} loading={loading} />
-        <LiveActivity items={activity} loading={loading} />
-      </section>
+            <section className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+              <RevenueChart chartData={chart} loading={loading} />
+              <LiveActivity items={activity} loading={loading} />
+            </section>
+          </div>
 
-      {/* Sequences + Products */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
-        <SequencesTable sequences={sequences} loading={loading} />
-        <AbandonedProducts products={abandonedProducts} loading={loading} />
-      </section>
+          {/* Expander for secondary metrics */}
+          {!showSecondaryInsights ? (
+            <div className="flex justify-center py-6">
+              <button
+                onClick={() => setShowSecondaryInsights(true)}
+                className="rounded-full border border-border bg-bg-3 px-6 py-2.5 text-sm font-semibold text-t2 transition-all hover:border-border-md hover:text-t1"
+              >
+                Show deep intelligence &amp; insights
+              </button>
+            </div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className="space-y-5"
+            >
+              {/* Zone 2: Intelligence */}
+              <h2 className="mb-4 mt-2 text-sm font-bold uppercase tracking-widest text-t3">Intelligence &amp; Deep Analytics</h2>
 
-      {/* Insights + Donut + Health */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <AIInsights insights={insights} loading={loading} />
-        <RevenueAttribution slices={donutSlices} total={donutTotal} loading={loading} />
-        <HealthScore health={health} loading={loading} />
-      </section>
+              {/* Sequences + Products */}
+              <section className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+                <SequencesTable sequences={sequences} loading={loading} />
+                <AbandonedProducts products={abandonedProducts} loading={loading} />
+              </section>
 
-      {/* Analytics strip */}
-      <AnalyticsStrip tiles={analytics} loading={loading} />
+              {/* Insights + Donut + Health */}
+              <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <AIInsights insights={insights} loading={loading} />
+                <RevenueAttribution slices={donutSlices} total={donutTotal} loading={loading} />
+                <HealthScore health={health} loading={loading} />
+              </section>
 
-      {/* Innovation row */}
-      <InnovationRow cards={innovation} loading={loading} />
+              {/* Analytics strip */}
+              <AnalyticsStrip tiles={analytics} loading={loading} />
 
-      {/* Bottom grid */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <QuickActions />
-        <TrendingProducts products={trendingProducts} loading={loading} />
-        <WinbackLeaderboard entries={winback} loading={loading} />
-      </section>
+              {/* Innovation row */}
+              <InnovationRow cards={innovation} loading={loading} />
+
+              {/* 3-col bottom grid */}
+              <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <QuickActions />
+                <TrendingProducts products={trendingProducts} loading={loading} />
+                <WinbackLeaderboard entries={winback} loading={loading} />
+              </section>
+            </motion.div>
+          )}
+        </>
+      )}
 
       {/* Global error toast */}
       {error && (

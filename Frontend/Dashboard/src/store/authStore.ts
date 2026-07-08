@@ -142,7 +142,7 @@ export const useAuthStore = create<AuthStore>()(
         }
         localStorage.removeItem('revluma_refresh_token');
         set({ user: null, csrfToken: null });
-        window.location.href = '/auth/loginIn.html';
+        window.location.href = '/auth/login.html';
       },
     }),
     {
