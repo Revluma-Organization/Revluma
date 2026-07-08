@@ -682,35 +682,6 @@ def calculate_css_score(feature_dict: dict) -> int:
     pass
 
 
-def calculate_rfm_scores(customer_id: str, db) -> dict:
-    """
-    Features: rfm_recency_score, rfm_frequency_score, rfm_monetary_score
-
-    Computes all three RFM dimensions for churn risk assessment.
-        Recency (R)  : days since last purchase with exponential decay
-        Frequency (F): total completed orders
-        Monetary (M) : lifetime average order value
-
-    Models: M4 (Churn Risk Scorer), M5 (Offer Value Optimizer)
-    Source: Order table (S6), customer_crm table (S7), Redis cache (S8)
-
-    Args:
-        customer_id: UUID of the customer
-        db: Active database session
-
-    Returns:
-        dict: {
-            'rfm_recency_score'      : float,
-            'rfm_frequency_score'    : float,
-            'rfm_monetary_score'     : float,
-            'days_since_last_purchase': int,   # -1 if no history
-            'past_orders_total'      : int,
-            'avg_order_value'        : float
-        }
-    """
-    pass
-
-
 # ---------------------------------------------------------------------------
 # MASTER FUNCTION — assembles the complete 30-feature vector
 # ---------------------------------------------------------------------------
@@ -738,7 +709,7 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
             "features": {
                 "scroll_depth_pct"          : float,  # 0.0–100.0
                 "tab_switch_count"            : int,    # 0–50
-                "time_on_page_ms"           : float,  # 0.0–3600.0, -1.0 sentinel
+                "time_on_checkout_step_sec"           : float,  # 0.0–3600.0, -1.0 sentinel
                 "cursor_hesitation" : int,   # 0–30000
                 "checkout_step_reached"             : int,    # 0–5
                 "past_orders_total"                   : int,    # 0–1000+
@@ -776,123 +747,6 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
     """
     pass
 
-
-# ---------------------------------------------------------------------------
-# TRANSACTIONAL FEATURES — from database (Customer DB & RFM Layer)
-# ---------------------------------------------------------------------------
-
-def calculate_past_orders_total(customer_id: str, db) -> int:
-    if not customer_id or db is None:
-        return 0
-    try:
-        with db.cursor() as cursor:
-            cursor.execute("SELECT orders_count FROM customers WHERE id = %s", (customer_id,))
-            row = cursor.fetchone()
-            if row is not None and row[0] is not None:
-                return int(row[0])
-    except Exception:
-        pass
-    return 0
-
-def calculate_avg_order_value(customer_id: str, db) -> float:
-    try:
-        with db.cursor() as cursor:
-            cursor.execute("SELECT AVG(total) FROM orders WHERE customer_id = %s", (customer_id,))
-            row = cursor.fetchone()
-            if row and row[0] is not None:
-                return float(row[0])
-    except Exception:
-        pass
-    return 0.0
-
-# ---------------------------------------------------------------------------
-# 2.3 calculate_days_since_last_purchase
-# ---------------------------------------------------------------------------
-
-
-def calculate_days_since_last_purchase(customer_id: str, db) -> int:
-    """
-    Days between today and the customer's most recent order.
-
-    Query: SELECT MAX(ordered_at) FROM orders WHERE customer_id = %s
-
-    Sentinel: -1 means no purchase history. Models must treat this as a
-    distinct feature class, not a numeric zero.
-
-    Args:
-        customer_id: UUID of the customer
-        db: Active database connection
-
-    Returns:
-        int: days since last purchase if orders exist, else -1. Never raises.
-    """
-    if not customer_id or db is None:
-        return -1
-    try:
-        with db.cursor() as cursor:
-            cursor.execute("SELECT MAX(ordered_at) FROM orders WHERE customer_id = %s", (customer_id,))
-            row = cursor.fetchone()
-            if row and row[0] is not None:
-                last_order_date = row[0]
-                if isinstance(last_order_date, str):
-                    last_order_date = datetime.fromisoformat(last_order_date.replace('Z', '+00:00'))
-                
-                # Ensure it's timezone-aware (UTC) before subtracting
-                if not last_order_date.tzinfo:
-                    from datetime import timezone
-                    last_order_date = last_order_date.replace(tzinfo=timezone.utc)
-                
-                from datetime import timezone
-                now = datetime.now(timezone.utc)
-                delta = now - last_order_date
-                return max(0, delta.days)
-    except Exception:
-        pass
-    return -1
-
-def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
-    if not customer_id or db is None:
-        return 0
-     
-    try:
-        with db.cursor() as cursor:
-            query = """
-                SELECT
-                  COUNT(*) FILTER (WHERE ordered_at >= NOW() - INTERVAL '30 days'),
-                  COUNT(*) FILTER (WHERE ordered_at < NOW() - INTERVAL '30 days' AND ordered_at >= NOW() - INTERVAL '60 days')
-                FROM orders WHERE customer_id = %s
-            """
-            cursor.execute(query, (customer_id,))
-            row = cursor.fetchone()
-            if row and row[0] is not None and row[1] is not None:
-                recent = int(row[0])
-                past = int(row[1])
-                if recent > past:
-                    return 1
-                elif recent < past:
-                    return -1
-    except Exception:
-        pass
-    return 0
-
-def calculate_coupon_usage_pct(customer_id: str, db) -> float:
-    if not customer_id or db is None:
-        return 0.0
-    try:
-        with db.cursor() as cursor:
-            query = """
-                SELECT
-                  COUNT(*) FILTER (WHERE coupon_used = true)::float / NULLIF(COUNT(*), 0)
-                FROM orders
-                WHERE customer_id = %s
-            """
-            cursor.execute(query, (customer_id,))
-            row = cursor.fetchone()
-            if row and row[0] is not None:
-                return float(row[0])
-    except Exception:
-        pass
-    return 0.0
 
 def calculate_rfm_scores(customer_id: str, db) -> dict:
     days = calculate_days_since_last_purchase(customer_id, db)
