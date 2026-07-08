@@ -1,6 +1,11 @@
 const { validationResult } = require("express-validator");
+const {generateVerificationCode,getVerificationExpiry,} = require("../utils/otp");
+
+const code = generateVerificationCode();
+const expiry = getVerificationExpiry();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+
 
 const dbConfig = require("../configs/database");
 const prisma = dbConfig.prisma;

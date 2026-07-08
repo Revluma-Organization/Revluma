@@ -25,20 +25,20 @@ exports.installShopify = async (req, res, next) => {
 
     // Store OAuth state
     res.cookie("shopify_state", state, {
-      signed: true,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 10 * 60 * 1000, // 10 minutes
+    signed: true,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 10 * 60 * 1000,
     });
 
     // Store authenticated user ID
     res.cookie("shopify_user", req.user.id, {
-      signed: true,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 10 * 60 * 1000,
+    signed: true,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    maxAge: 10 * 60 * 1000,
     });
 
     const installUrl = buildInstallUrl({
@@ -46,7 +46,11 @@ exports.installShopify = async (req, res, next) => {
       state,
     });
 
-    return res.redirect(installUrl);
+    // Return the URL instead of redirecting
+    return res.status(200).json({
+      success: true,
+      install_url: installUrl,
+    });
   } catch (error) {
     next(error);
   }
@@ -132,22 +136,22 @@ exports.shopifyCallback = async (req, res, next) => {
 
     // Clear OAuth cookies
     res.clearCookie("shopify_state", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     res.clearCookie("shopify_user", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     // Redirect merchant back to frontend
     return res.redirect(
       `${process.env.FRONTEND_URL}/dashboard/integrations?connected=shopify`
     );
-  } catch (error) {
+    } catch (error) {
     next(error);
-  }
+    }
 };
