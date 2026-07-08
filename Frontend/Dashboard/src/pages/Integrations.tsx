@@ -214,12 +214,22 @@ export default function Integrations() {
     }
   }
 
-  function handleShopifySubmit(e: React.FormEvent) {
+  async function handleShopifySubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!shopDomain.trim()) return;
-    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-    const base = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
-    window.location.href = `${base}/shopify/install?shop=${shopDomain.trim()}`;
+    try {
+      const response = await api.get(
+        `/shopify/install?shop=${shopDomain.trim()}`,
+        {
+          withCredentials: true,
+        }
+      );
+      if (response.data?.install_url) {
+        window.location.href = response.data.install_url;
+      }
+    } catch (e) {
+      console.error("Shopify connect failed", e);
+    }
   }
 
   async function handleWooSubmit(e: React.FormEvent) {
