@@ -214,23 +214,34 @@ export default function Integrations() {
     }
   }
 
-  async function handleShopifySubmit(e: React.FormEvent) {
+    async function handleShopifySubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!shopDomain.trim()) return;
+
+    // Clean the input, remove trailing dots, and append the Shopify suffix
+    let cleanShop = shopDomain.trim();
+    if (cleanShop.endsWith('.')) {
+      cleanShop = cleanShop.slice(0, -1);
+    }
+    if (!cleanShop.endsWith('.myshopify.com')) {
+      cleanShop = `${cleanShop}.myshopify.com`;
+    }
+
     try {
-      const response = await api.get(
-        `/shopify/install?shop=${shopDomain.trim()}`,
-        {
-          withCredentials: true,
-        }
-      );
+      const response = await api.get('/shopify/install', {
+        params: {
+          shop: cleanShop
+        },
+        withCredentials: true
+      });
+
       if (response.data?.install_url) {
         window.location.href = response.data.install_url;
       }
     } catch (e) {
       console.error("Shopify connect failed", e);
     }
-  }
+}
 
   async function handleWooSubmit(e: React.FormEvent) {
     e.preventDefault();
