@@ -1,16 +1,17 @@
 const { validationResult } = require("express-validator");
 const {generateVerificationCode,getVerificationExpiry,} = require("../utils/otp");
+const emailService = require("../utils/emailService");
 
-const code = generateVerificationCode();
-const expiry = getVerificationExpiry();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
 
 const dbConfig = require("../configs/database");
+const { error } = require("node:console");
 const prisma = dbConfig.prisma;
 
 const SALT_ROUNDS = 12;
+
 
 // REGISTER
 exports.register = async (req, res, next) => {
@@ -39,8 +40,13 @@ exports.register = async (req, res, next) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(account.password, SALT_ROUNDS
+    const hashedPassword = await bcrypt.hash(
+      account.password,
+      SALT_ROUNDS
     );
+
+    const code = generateVerificationCode();
+    const expiry = getVerificationExpiry();
 
     const result = await prisma.$transaction(async (tx) => {
       const user = await tx.users.create({
@@ -48,6 +54,11 @@ exports.register = async (req, res, next) => {
           full_name: `${account.firstName} ${account.lastName}`.trim(),
           email: account.email,
           password_hash: hashedPassword,
+
+          email_verified: false,
+          verification_code: code,
+          verification_expires_at: expiry,
+
           accepted_terms: account.termsAgreed,
           accepted_privacy_policy: account.termsAgreed,
         },
@@ -73,46 +84,103 @@ exports.register = async (req, res, next) => {
         },
       });
 
-      return { user, organization, };
-
+      return {
+        user,
+        organization,
+      };
     });
 
-   const accessToken = jwt.sign(
-    {
-    userId: result.user.id,
-    email: result.user.email,
-    tenantId: result.organization.id,
-     },
-     process.env.JWT_SECRET,
-      { expiresIn: "15m", }
-     );
-
-    const refreshToken = jwt.sign(
-      {
-        userId: result.user.id,
-      },
-      process.env.JWT_REFRESH_SECRET,
-      {
-        expiresIn: "7d",
-      }
+    await emailService.sendVerificationEmail(
+      result.user.email,
+      result.user.full_name,
+      code
     );
 
     return res.status(201).json({
       success: true,
+      message: "Verification code sent to your email.",
       data: {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        user: {
-          id: result.user.id,
-          full_name: result.user.full_name,
-          email: result.user.email,
-        },
-        organization: {
-          id: result.organization.id,
-          company_name: result.organization.company_name,
-        },
+        email: result.user.email,
       },
     });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+//VerifyEmail
+exports.verifyEmail = async (req, res, next) => {
+  try {
+    const { email, code } = req.body;
+
+    // Check if required fields are provided
+    if (!email || !code) {
+      return res.status(400).json({
+        success: false,
+        error: "Email and verification code are required.",
+      });
+    }
+
+    // Find user by email
+    const user = await prisma.users.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    // User not found
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found.",
+      });
+    }
+
+    // Already verified
+    if (user.email_verified) {
+      return res.status(400).json({
+        success: false,
+        error: "Email has already been verified.",
+      });
+    }
+
+    // Invalid verification code
+    if (user.verification_code !== code.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid verification code.",
+      });
+    }
+
+    // Expired verification code
+    if (
+      !user.verification_expires_at ||
+      new Date() > user.verification_expires_at
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Verification code has expired.",
+      });
+    }
+
+    // Update user
+    await prisma.users.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        email_verified: true,
+        verification_code: null,
+        verification_expires_at: null,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully.",
+    });
+
   } catch (error) {
     next(error);
   }
@@ -155,30 +223,38 @@ exports.login = async (req, res, next) => {
         success: false,
         error: "Invalid credentials",
       });
-    };
+    }
 
-  const organization = await prisma.organizations.findFirst({
-  where: {
-    owner_id: user.id,
-  },
+    // Check if email has been verified
+    if (!user.email_verified) {
+      return res.status(403).json({
+        success: false,
+        error: "Please verify your email before logging in.",
+      });
+    }
 
-  select: {
-    id: true,
-  },
-  });
+    const organization = await prisma.organizations.findFirst({
+      where: {
+        owner_id: user.id,
+      },
 
-const accessToken = jwt.sign(
-  {
-    userId: user.id,
-    email: user.email,
-    tenantId: organization?.id || null,
-  },
-  
-  process.env.JWT_SECRET,
-  {
-    expiresIn: "15m",
-  }
-);
+      select: {
+        id: true,
+      },
+    });
+
+    const accessToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        tenantId: organization?.id || null,
+      },
+
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "15m",
+      }
+    );
 
     const refreshToken = jwt.sign(
       {
@@ -207,6 +283,68 @@ const accessToken = jwt.sign(
   }
 };
 
+//ResendVerificationEmail
+exports.resendVerification = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: "Email is required.",
+      });
+    }
+
+    const user = await prisma.users.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found.",
+      });
+    }
+
+    if (user.email_verified) {
+      return res.status(400).json({
+        success: false,
+        error: "Email has already been verified.",
+      });
+    }
+
+    const code = generateVerificationCode();
+    const expiry = getVerificationExpiry();
+
+    await prisma.users.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        verification_code: code,
+        verification_expires_at: expiry,
+      },
+    });
+
+    await emailService.sendVerificationEmail(
+      user.email,
+      user.full_name,
+      code
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "A new verification code has been sent to your email.",
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 // GET CURRENT USER PROFILE
 exports.getProfile = async (req, res) => {
   try {
@@ -232,8 +370,6 @@ exports.getProfile = async (req, res) => {
             country: true,
           },
         },
-          }
-        }
       },
     });
 
@@ -273,23 +409,80 @@ exports.logout = async (req, res, next) => {
   }
 };
 
-
-
 // REFRESH TOKEN
 exports.refresh = async (req, res, next) => {
   try {
     const { refresh_token } = req.body;
+
     if (!refresh_token) {
-      return res.status(400).json({ success: false, error: 'Refresh token required' });
+      return res.status(400).json({
+        success: false,
+        error: "Refresh token is required.",
+      });
     }
-    const decoded = jwt.verify(refresh_token, process.env.JWT_REFRESH_SECRET);
-    const accessToken = jwt.sign(
-      { userId: decoded.userId, email: decoded.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '15m' }
+
+    // Verify refresh token
+    const decoded = jwt.verify(
+      refresh_token,
+      process.env.JWT_REFRESH_SECRET
     );
-    return res.status(200).json({ success: true, data: { access_token: accessToken } });
+
+    // Find user
+    const user = await prisma.users.findUnique({
+      where: {
+        id: decoded.userId,
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: "User not found.",
+      });
+    }
+
+    // Prevent unverified users from getting new access tokens
+    if (!user.email_verified) {
+      return res.status(403).json({
+        success: false,
+        error: "Please verify your email before continuing.",
+      });
+    }
+
+    // Get organization
+    const organization = await prisma.organizations.findFirst({
+      where: {
+        owner_id: user.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    // Generate new access token
+    const accessToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        tenantId: organization?.id || null,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "15m",
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        access_token: accessToken,
+      },
+    });
+
   } catch (error) {
-    return res.status(401).json({ success: false, error: 'Refresh token expired or invalid' });
+    return res.status(401).json({
+      success: false,
+      error: "Refresh token expired or invalid.",
+    });
   }
 };
