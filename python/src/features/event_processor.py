@@ -113,8 +113,8 @@ def filter_events_by_type(events: list, event_type: str) -> list:
     the events they need without re-scanning the full session list.
 
     Example usage:
-        scroll_events = filter_events_by_type(session_events, 'scroll_depth')
-        tab_events    = filter_events_by_type(session_events, 'tab_visibility')
+        scroll_events = filter_events_by_type(session_events, 'scroll')
+        tab_events    = filter_events_by_type(session_events, 'tab_switch')
 
     Args:
         events     (list): Full list of raw parsed events for a session

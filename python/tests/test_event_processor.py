@@ -28,13 +28,13 @@ class TestParseRawEvent(unittest.TestCase):
 
     def test_valid_payload(self):
         payload = {
-            "event_type": "scroll_depth",
+            "event_type": "scroll",
             "session_id": "sess_1",
             "timestamp": "2026-06-26T10:00:00Z",
             "payload": {"depth_pct": 45.0}
         }
         result = parse_raw_event(payload)
-        self.assertEqual(result["event_type"], "scroll_depth")
+        self.assertEqual(result["event_type"], "scroll")
         self.assertEqual(result["session_id"], "sess_1")
         self.assertTrue(result["_valid"])
 
@@ -45,7 +45,7 @@ class TestParseRawEvent(unittest.TestCase):
         self.assertFalse(result["_valid"])
 
     def test_missing_timestamp(self):
-        payload = {"event_type": "scroll_depth", "session_id": "sess_1"}
+        payload = {"event_type": "scroll", "session_id": "sess_1"}
         result = parse_raw_event(payload)
         self.assertIsNone(result["timestamp"])
         self.assertFalse(result["_valid"])
@@ -68,7 +68,7 @@ class TestParseRawEvent(unittest.TestCase):
 
     def test_invalid_timestamp_format(self):
         payload = {
-            "event_type": "scroll_depth",
+            "event_type": "scroll",
             "session_id": "sess_1",
             "timestamp": "not-a-real-timestamp"
         }
@@ -77,7 +77,7 @@ class TestParseRawEvent(unittest.TestCase):
 
     def test_corrupted_payload_field(self):
         payload = {
-            "event_type": "scroll_depth",
+            "event_type": "scroll",
             "session_id": "sess_1",
             "timestamp": "2026-06-26T10:00:00Z",
             "payload": "not a dict"
@@ -99,33 +99,33 @@ class TestFilterEventsByType(unittest.TestCase):
 
     def test_normal_filter(self):
         events = [
-            {"event_type": "scroll_depth"},
+            {"event_type": "scroll"},
             {"event_type": "tab_switch"},
-            {"event_type": "scroll_depth"}
+            {"event_type": "scroll"}
         ]
-        result = filter_events_by_type(events, "scroll_depth")
+        result = filter_events_by_type(events, "scroll")
         self.assertEqual(len(result), 2)
 
     def test_empty_list(self):
-        result = filter_events_by_type([], "scroll_depth")
+        result = filter_events_by_type([], "scroll")
         self.assertEqual(result, [])
 
     def test_no_matches(self):
         events = [{"event_type": "tab_switch"}]
-        result = filter_events_by_type(events, "scroll_depth")
+        result = filter_events_by_type(events, "scroll")
         self.assertEqual(result, [])
 
     def test_malformed_events_list(self):
-        events = ["not a dict", None, {"event_type": "scroll_depth"}, 42]
-        result = filter_events_by_type(events, "scroll_depth")
+        events = ["not a dict", None, {"event_type": "scroll"}, 42]
+        result = filter_events_by_type(events, "scroll")
         self.assertEqual(len(result), 1)
 
     def test_non_list_input(self):
-        result = filter_events_by_type("not a list", "scroll_depth")
+        result = filter_events_by_type("not a list", "scroll")
         self.assertEqual(result, [])
 
     def test_none_input(self):
-        result = filter_events_by_type(None, "scroll_depth")
+        result = filter_events_by_type(None, "scroll")
         self.assertEqual(result, [])
 
 
