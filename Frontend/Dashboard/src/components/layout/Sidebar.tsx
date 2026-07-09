@@ -65,7 +65,10 @@ export function Sidebar() {
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.022] to-transparent" />
 
         {/* Logo + controls */}
-        <div className={cn('relative z-[1] flex shrink-0 items-center justify-between px-4 pb-3.5 pt-4', sidebarCollapsed && 'md:justify-center md:px-2')}>
+        <div className={cn(
+          'relative z-[1] flex shrink-0 items-center justify-between px-4 pb-3.5 pt-4', 
+          sidebarCollapsed && 'md:flex-col md:px-2 md:gap-4 md:items-center'
+        )}>
           <div className="flex items-center gap-2.5">
             <img
               src={revlumaIcon}
@@ -74,6 +77,7 @@ export function Sidebar() {
             />
             {!sidebarCollapsed && <span className="display text-[1.18rem] font-extrabold text-t1">Revluma</span>}
           </div>
+          
           <div className={cn('flex items-center gap-1', sidebarCollapsed && 'md:hidden')}>
             <button
               onClick={toggleTheme}
@@ -108,6 +112,16 @@ export function Sidebar() {
               <X className="h-3 w-3" />
             </button>
           </div>
+
+          {sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-white/[0.065] md:flex"
+              aria-label="Expand sidebar"
+            >
+              <ChevronRight className="h-3 w-3" />
+            </button>
+          )}
         </div>
 
         {/* Nav */}
@@ -171,16 +185,6 @@ export function Sidebar() {
             </div>
           ))}
         </nav>
-
-        {sidebarCollapsed && (
-          <button
-            onClick={() => setSidebarCollapsed(false)}
-            className="mx-auto my-2 hidden h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-white/[0.065] md:flex"
-            aria-label="Expand sidebar"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        )}
 
         {/* Upgrade banner */}
         {!sidebarCollapsed && (
