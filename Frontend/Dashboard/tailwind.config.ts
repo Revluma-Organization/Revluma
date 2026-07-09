@@ -21,7 +21,7 @@ export default {
         background: "hsl(var(--bg))",
         foreground: "hsl(var(--t1))",
 
-        bg: {
+                bg: {
           DEFAULT: "hsl(var(--bg))",
           2: "hsl(var(--bg-2))",
           3: "hsl(var(--bg-3))",
@@ -30,6 +30,10 @@ export default {
           sidebar: "hsl(var(--sidebar-bg))",
           notif: "hsl(var(--notif-bg))",
         },
+        t1: "hsl(var(--t1))",
+        t2: "hsl(var(--t2))",
+        t3: "hsl(var(--t3))",
+        t4: "hsl(var(--t4)),
 
         primary: {
           DEFAULT: "hsl(var(--accent))",

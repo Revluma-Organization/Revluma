@@ -25,7 +25,7 @@ const Profile: FC = () => {
             </div>
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-3">
-                <Button className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] text-black border-none font-bold shadow-[0_0_15px_hsl(var(--accent)/0.3)] flex items-center gap-2 rounded-lg text-xs h-8 px-4">
+                <Button className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-black border-none font-bold shadow-[0_0_15px_hsl(var(--accent)/0.3)] flex items-center gap-2 rounded-lg text-xs h-8 px-4">
                   <Upload className="h-3.5 w-3.5" />
                   Upload Image
                 </Button>
@@ -81,7 +81,7 @@ const Profile: FC = () => {
         <Button variant="ghost" className="rounded-lg text-t2 hover:text-t1 hover:bg-white/[0.065] h-9 px-6 font-medium text-xs">
           Cancel
         </Button>
-        <Button className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] text-black font-bold h-9 px-8 rounded-lg text-xs shadow-[0_0_15px_hsl(var(--accent)/0.2)]">
+        <Button className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-black font-bold h-9 px-8 rounded-lg text-xs shadow-[0_0_15px_hsl(var(--accent)/0.2)]">
           Save Changes
         </Button>
       </div>
