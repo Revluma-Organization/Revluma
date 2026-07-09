@@ -1,6 +1,6 @@
 import { FC } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 // Groupings based on the user document + image layout logic
@@ -84,7 +84,7 @@ const SettingsLayout: FC = () => {
         <div className="sticky top-6 flex flex-col gap-6 md:h-[calc(100vh-120px)] md:overflow-y-auto pr-2 pb-10 scrollbar-hide">
           {SIDEBAR_SECTIONS.map((section, idx) => (
             <div key={idx} className="flex flex-col gap-1">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 px-3">
+              <h4 className="text-[0.65rem] font-bold text-t4 uppercase tracking-[0.11em] mb-2 px-3">
                 {section.title}
               </h4>
               <nav className="flex flex-col gap-1">
@@ -95,21 +95,24 @@ const SettingsLayout: FC = () => {
                       key={link.path}
                       to={link.path}
                       className={cn(
-                        "relative px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-between",
+                        "relative px-3 py-2 text-[0.82rem] font-medium rounded-md transition-colors flex items-center justify-between border",
                         isActive
-                          ? "text-gray-900 bg-gray-100/80"
-                          : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
+                          ? "text-t1 bg-[hsl(var(--accent)/0.1)] border-[hsl(var(--accent)/0.2)]"
+                          : "text-t2 border-transparent hover:text-t1 hover:bg-white/[0.065]"
                       )}
                     >
                       {isActive && (
                         <motion.div
                           layoutId="settings-active-pill"
-                          className="absolute inset-0 bg-gray-100 rounded-lg -z-10"
+                          className="absolute inset-0 bg-[hsl(var(--accent)/0.05)] rounded-md -z-10"
                           initial={false}
                           transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         />
                       )}
-                      <span className="relative z-10">{link.label}</span>
+                      <span className="relative z-10 font-semibold">{link.label}</span>
+                      {isActive && (
+                        <span className="absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r bg-[hsl(var(--accent))]" />
+                      )}
                     </NavLink>
                   );
                 })}
@@ -121,8 +124,18 @@ const SettingsLayout: FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 w-full pb-20">
-        <div className="max-w-4xl border-l pl-8 min-h-full">
-          <Outlet />
+        <div className="max-w-4xl border-l border-border pl-8 min-h-full">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.15 }}
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
     </div>

@@ -25,6 +25,8 @@ export function DashboardLayout() {
   const { startTour } = useUI();
   const theme = useThemeStore((s) => s.theme);
   const { pathname } = useLocation();
+  // Use basePath for animation key to prevent re-mounting the entire layout for nested routes
+  const basePath = pathname.split('/').slice(0, 3).join('/');
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", theme === "light");
@@ -47,7 +49,7 @@ export function DashboardLayout() {
         <div className="px-4 py-5 sm:px-6 sm:py-6">
           <AnimatePresence mode="wait">
             <motion.div
-              key={pathname}
+              key={basePath}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
