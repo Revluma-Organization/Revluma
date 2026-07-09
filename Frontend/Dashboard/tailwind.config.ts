@@ -33,7 +33,7 @@ export default {
         t1: "hsl(var(--t1))",
         t2: "hsl(var(--t2))",
         t3: "hsl(var(--t3))",
-        t4: "hsl(var(--t4)),
+        t4: "hsl(var(--t4))",
 
         primary: {
           DEFAULT: "hsl(var(--accent))",
