@@ -1,6 +1,7 @@
-import { FC } from "react";
+import { FC, useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Groupings based on the user document + image layout logic
@@ -76,49 +77,90 @@ const SIDEBAR_SECTIONS = [
 const SettingsLayout: FC = () => {
   const location = useLocation();
 
+  // Find the initially active section to keep it open
+  const [expanded, setExpanded] = useState<string[]>(() => {
+    const activeSection = SIDEBAR_SECTIONS.find(section =>
+      section.links.some(link => location.pathname.startsWith(link.path))
+    );
+    return activeSection ? [activeSection.title] : [SIDEBAR_SECTIONS[0].title];
+  });
+
+  const toggleSection = (title: string) => {
+    setExpanded(prev =>
+      prev.includes(title)
+        ? prev.filter(t => t !== title)
+        : [...prev, title]
+    );
+  };
+
   return (
     <div className="flex flex-col md:flex-row gap-8 w-full max-w-[1400px] mx-auto min-h-[80vh]">
       
       {/* Sidebar - Scrollable independently on desktop */}
       <aside className="w-full md:w-64 lg:w-72 flex-shrink-0">
-        <div className="sticky top-6 flex flex-col gap-6 md:h-[calc(100vh-120px)] md:overflow-y-auto pr-2 pb-10 scrollbar-hide">
-          {SIDEBAR_SECTIONS.map((section, idx) => (
-            <div key={idx} className="flex flex-col gap-1">
-              <h4 className="text-[0.65rem] font-bold text-t4 uppercase tracking-[0.11em] mb-2 px-3">
-                {section.title}
-              </h4>
-              <nav className="flex flex-col gap-1">
-                {section.links.map((link) => {
-                  const isActive = location.pathname.startsWith(link.path);
-                  return (
-                    <NavLink
-                      key={link.path}
-                      to={link.path}
-                      className={cn(
-                        "relative px-3 py-2 text-[0.82rem] font-medium rounded-md transition-colors flex items-center justify-between border",
-                        isActive
-                          ? "text-t1 bg-[hsl(var(--accent)/0.1)] border-[hsl(var(--accent)/0.2)]"
-                          : "text-t2 border-transparent hover:text-t1 hover:bg-white/[0.065]"
-                      )}
+        <div className="sticky top-6 flex flex-col gap-2 md:h-[calc(100vh-120px)] md:overflow-y-auto pr-2 pb-10 scrollbar-hide">
+          {SIDEBAR_SECTIONS.map((section, idx) => {
+            const isExpanded = expanded.includes(section.title);
+            
+            return (
+              <div key={idx} className="flex flex-col">
+                <button
+                  onClick={() => toggleSection(section.title)}
+                  className="flex items-center justify-between w-full px-3 py-2 text-left group"
+                >
+                  <h4 className="text-[0.65rem] font-bold text-t4 uppercase tracking-[0.11em] group-hover:text-t3 transition-colors">
+                    {section.title}
+                  </h4>
+                  {isExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 text-t4 group-hover:text-t3 transition-colors" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 text-t4 group-hover:text-t3 transition-colors" />
+                  )}
+                </button>
+                
+                <AnimatePresence initial={false}>
+                  {isExpanded && (
+                    <motion.nav
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.25, ease: [0.04, 0.62, 0.23, 0.98] }}
+                      className="flex flex-col gap-1 overflow-hidden"
                     >
-                      {isActive && (
-                        <motion.div
-                          layoutId="settings-active-pill"
-                          className="absolute inset-0 bg-[hsl(var(--accent)/0.05)] rounded-md -z-10"
-                          initial={false}
-                          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        />
-                      )}
-                      <span className="relative z-10 font-semibold">{link.label}</span>
-                      {isActive && (
-                        <span className="absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r bg-[hsl(var(--accent))]" />
-                      )}
-                    </NavLink>
-                  );
-                })}
-              </nav>
-            </div>
-          ))}
+                      {section.links.map((link) => {
+                        const isActive = location.pathname.startsWith(link.path);
+                        return (
+                          <NavLink
+                            key={link.path}
+                            to={link.path}
+                            className={cn(
+                              "relative px-3 py-2 text-[0.82rem] font-medium rounded-md transition-colors flex items-center justify-between border",
+                              isActive
+                                ? "text-t1 bg-[hsl(var(--accent)/0.1)] border-[hsl(var(--accent)/0.2)]"
+                                : "text-t2 border-transparent hover:text-t1 hover:bg-white/[0.065]"
+                            )}
+                          >
+                            {isActive && (
+                              <motion.div
+                                layoutId="settings-active-pill"
+                                className="absolute inset-0 bg-[hsl(var(--accent)/0.05)] rounded-md -z-10"
+                                initial={false}
+                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                              />
+                            )}
+                            <span className="relative z-10 font-semibold">{link.label}</span>
+                            {isActive && (
+                              <span className="absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r bg-[hsl(var(--accent))]" />
+                            )}
+                          </NavLink>
+                        );
+                      })}
+                    </motion.nav>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
         </div>
       </aside>
 
