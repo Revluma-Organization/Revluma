@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft, ChevronRight, Sun, Moon, X, Rocket,
   ChevronDown, LogOut, Settings, CreditCard, Users as UsersIcon, HelpCircle,
@@ -29,6 +29,7 @@ export function Sidebar() {
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [userOpen, setUserOpen] = useState(false);
 
   useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname, setMobileSidebarOpen]);
@@ -207,10 +208,10 @@ export function Sidebar() {
         <div className={cn('relative z-[1] shrink-0 border-t border-border p-2.5', sidebarCollapsed && 'md:flex md:justify-center')}>
           {userOpen && !sidebarCollapsed && (
             <div className="absolute bottom-[calc(100%+6px)] left-2.5 right-2.5 z-[200] overflow-hidden rounded-xl border border-border-md bg-bg-notif shadow-elegant">
-              <DDItem icon={Settings} label="Account Settings" />
-              <DDItem icon={CreditCard} label="Billing & Plans" />
-              <DDItem icon={UsersIcon} label="Team Members" />
-              <DDItem icon={HelpCircle} label="Help & Support" />
+              <DDItem icon={Settings} label="Account Settings" onClick={() => { navigate('/dashboard/settings/profile'); setUserOpen(false); }} />
+              <DDItem icon={CreditCard} label="Billing & Plans" onClick={() => { navigate('/dashboard/settings/billing'); setUserOpen(false); }} />
+              <DDItem icon={UsersIcon} label="Team Members" onClick={() => { navigate('/dashboard/settings/team'); setUserOpen(false); }} />
+              <DDItem icon={HelpCircle} label="Help & Support" onClick={() => { setUserOpen(false); }} />
               <div className="my-1 h-px bg-border" />
               <DDItem icon={LogOut} label="Log out" danger onClick={logout} />
             </div>
