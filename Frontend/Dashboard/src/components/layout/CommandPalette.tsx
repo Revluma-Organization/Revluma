@@ -59,7 +59,7 @@ export function CommandPalette() {
                   key={n.to}
                   value={`${n.label} ${n.group}`}
                   onSelect={() => go(n.to)}
-                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-t2 aria-selected:bg-white/[0.065] aria-selected:text-t1"
+                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-t2 aria-selected:bg-glass/[0.065] aria-selected:text-t1"
                 >
                   <Icon className="h-4 w-4" />
                   <span>{n.label}</span>
@@ -80,7 +80,7 @@ export function CommandPalette() {
                 key={a.label}
                 value={a.label}
                 onSelect={() => setCmdOpen(false)}
-                className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-t2 aria-selected:bg-white/[0.065] aria-selected:text-t1"
+                className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-t2 aria-selected:bg-glass/[0.065] aria-selected:text-t1"
               >
                 <a.icon className="h-4 w-4" />
                 <span>{a.label}</span>

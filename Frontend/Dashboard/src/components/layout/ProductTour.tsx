@@ -211,7 +211,7 @@ export function ProductTour() {
                   </span>
                   <button
                     onClick={endTour}
-                    className="rounded p-1 text-t3 transition-colors hover:bg-white/[0.06] hover:text-t1"
+                    className="rounded p-1 text-t3 transition-colors hover:bg-glass/[0.06] hover:text-t1"
                     aria-label="Close tour"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -227,7 +227,7 @@ export function ProductTour() {
 
             {/* Progress bar */}
             <div className="px-4">
-              <div className="h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
+              <div className="h-1 w-full overflow-hidden rounded-full bg-glass/[0.06]">
                 <motion.div
                   className="h-full rounded-full"
                   style={{ background: "hsl(0 0% 100% / 0.85)" }}
@@ -250,7 +250,7 @@ export function ProductTour() {
                   onClick={prev}
                   disabled={tourStep === 0}
                   className={cn(
-                    "flex h-8 items-center gap-1 rounded-md border border-border bg-white/[0.04] px-2.5 text-[0.74rem] font-medium text-t1 transition-colors hover:border-border-md",
+                    "flex h-8 items-center gap-1 rounded-md border border-border bg-glass/[0.04] px-2.5 text-[0.74rem] font-medium text-t1 transition-colors hover:border-border-md",
                     tourStep === 0 && "cursor-not-allowed opacity-40",
                   )}
                 >

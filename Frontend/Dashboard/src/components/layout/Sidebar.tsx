@@ -63,7 +63,7 @@ export function Sidebar() {
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
       >
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.022] to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-glass/[0.022] to-transparent" />
 
         {/* Logo + controls */}
         <div className={cn(
@@ -100,7 +100,7 @@ export function Sidebar() {
             </button>
             <button
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-white/[0.065] md:flex"
+              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
               aria-label="Collapse sidebar"
             >
               <ChevronLeft className="h-3 w-3" />
@@ -117,7 +117,7 @@ export function Sidebar() {
           {sidebarCollapsed && (
             <button
               onClick={() => setSidebarCollapsed(false)}
-              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-white/[0.065] md:flex"
+              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
               aria-label="Expand sidebar"
             >
               <ChevronRight className="h-3 w-3" />
@@ -143,8 +143,8 @@ export function Sidebar() {
                     end={item.to === '/'}
                     className={({ isActive }) =>
                       cn(
-                        'group relative my-px flex items-center gap-2.5 rounded-md border border-transparent px-2.5 py-2 transition-all hover:translate-x-[1.5px] hover:bg-white/[0.065]',
-                        isActive && 'border-white/[0.13] bg-white/[0.08]',
+                        'group relative my-px flex items-center gap-2.5 rounded-md border border-transparent px-2.5 py-2 transition-all hover:translate-x-[1.5px] hover:bg-glass/[0.065]',
+                        isActive && 'border-glass/[0.13] bg-glass/[0.08]',
                         sidebarCollapsed && 'md:justify-center md:px-2.5 md:py-2.5',
                       )
                     }
@@ -198,7 +198,7 @@ export function Sidebar() {
             </div>
             <div className="mb-1 text-[0.8rem] font-semibold text-t1">Unlock full automation</div>
             <div className="mb-3 text-[0.7rem] leading-[1.5] text-t3">Advanced recovery &amp; AI intelligence</div>
-            <button className="w-full rounded-md bg-white px-0 py-1.5 text-[0.75rem] font-bold text-black transition-all hover:-translate-y-px hover:opacity-90">
+            <button className="w-full rounded-md bg-t1 px-0 py-1.5 text-[0.75rem] font-bold text-bg transition-all hover:-translate-y-px hover:opacity-90">
               Upgrade to Pro →
             </button>
           </div>
@@ -219,7 +219,7 @@ export function Sidebar() {
           <button
             onClick={() => setUserOpen((v) => !v)}
             className={cn(
-              'flex w-full items-center gap-2.5 rounded-md p-2 transition-colors hover:bg-white/[0.065]',
+              'flex w-full items-center gap-2.5 rounded-md p-2 transition-colors hover:bg-glass/[0.065]',
               sidebarCollapsed && 'md:w-[42px] md:justify-center md:rounded-full md:p-1.5',
             )}
           >
@@ -270,7 +270,7 @@ function DDItem({ icon: Icon, label, danger, onClick }: { icon: React.ElementTyp
       onClick={onClick}
       type="button"
       className={cn(
-        'flex w-full items-center gap-2.5 px-3.5 py-2.5 text-[0.8rem] font-medium text-t2 transition-colors hover:bg-white/[0.065] hover:text-t1',
+        'flex w-full items-center gap-2.5 px-3.5 py-2.5 text-[0.8rem] font-medium text-t2 transition-colors hover:bg-glass/[0.065] hover:text-t1',
         danger && 'hover:!text-red'
       )}
     >

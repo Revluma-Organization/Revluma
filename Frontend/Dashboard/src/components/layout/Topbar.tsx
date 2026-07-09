@@ -39,7 +39,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
       <div className="flex items-center gap-3.5">
         <button
           onClick={() => setMobileSidebarOpen(true)}
-          className="flex h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-white/[0.035] md:hidden"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-glass/[0.035] md:hidden"
           aria-label="Open menu"
         >
           <Menu className="h-4 w-4 text-t1" />
@@ -58,7 +58,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
           <div data-tour="topbar-date" className="relative">
             <button
               onClick={() => setDateOpen((v) => !v)}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-white/[0.045] px-2.5 py-1.5 text-[0.76rem] text-t1 transition-colors hover:border-border-md"
+              className="flex items-center gap-1.5 rounded-md border border-border bg-glass/[0.045] px-2.5 py-1.5 text-[0.76rem] text-t1 transition-colors hover:border-border-md"
             >
               <Calendar className="h-3 w-3 text-t3" />
               <span className="hidden md:inline">{dateRange}</span>
@@ -75,7 +75,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
                       key={r}
                       onClick={() => { setDateRange(r); setDateOpen(false); }}
                       className={cn(
-                        'flex w-full items-center justify-between gap-3.5 whitespace-nowrap px-3.5 py-2.5 text-[0.79rem] text-t2 transition-colors hover:bg-white/[0.065] hover:text-t1',
+                        'flex w-full items-center justify-between gap-3.5 whitespace-nowrap px-3.5 py-2.5 text-[0.79rem] text-t2 transition-colors hover:bg-glass/[0.065] hover:text-t1',
                         r === dateRange && 'font-semibold text-t1',
                       )}
                     >
@@ -93,7 +93,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
         <button
           data-tour="topbar-search"
           onClick={() => setCmdOpen(true)}
-          className="hidden items-center gap-2 rounded-md border border-border bg-white/[0.045] px-2.5 py-1.5 text-[0.76rem] text-t3 transition-colors hover:border-border-md sm:flex"
+          className="hidden items-center gap-2 rounded-md border border-border bg-glass/[0.045] px-2.5 py-1.5 text-[0.76rem] text-t3 transition-colors hover:border-border-md sm:flex"
         >
           <Search className="h-3 w-3" />
           <span>Search or jump to…</span>
@@ -116,7 +116,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
         <button
           data-tour="topbar-tour"
           onClick={startTour}
-          className="hidden h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-white/[0.035] text-t1 transition-colors hover:border-border-md sm:flex"
+          className="hidden h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-glass/[0.035] text-t1 transition-colors hover:border-border-md sm:flex"
           aria-label="Start product tour"
           title="Take a tour"
         >
@@ -127,7 +127,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
         <button
           data-tour="topbar-notif"
           onClick={() => setNotifOpen(!notifOpen)}
-          className="relative flex h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-white/[0.035] text-t1 transition-colors hover:border-border-md"
+          className="relative flex h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-glass/[0.035] text-t1 transition-colors hover:border-border-md"
           aria-label="Notifications"
         >
           <Bell className="h-3.5 w-3.5" />
@@ -141,7 +141,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
 
         {/* Help */}
         <button
-          className="hidden h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-white/[0.035] text-t1 transition-colors hover:border-border-md sm:flex"
+          className="hidden h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-glass/[0.035] text-t1 transition-colors hover:border-border-md sm:flex"
           aria-label="Help"
         >
           <HelpCircle className="h-3.5 w-3.5" />
@@ -153,7 +153,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                className="relative h-[34px] w-[34px] rounded-full border border-border bg-white/[0.035] p-0 hover:bg-white/[0.065] hover:border-border-md"
+                className="relative h-[34px] w-[34px] rounded-full border border-border bg-glass/[0.035] p-0 hover:bg-glass/[0.065] hover:border-border-md"
                 aria-label="User menu"
               >
                 <Avatar className="h-[26px] w-[26px] border border-border">

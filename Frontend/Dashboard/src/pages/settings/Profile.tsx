@@ -14,7 +14,7 @@ const Profile: FC = () => {
 
       <div className="space-y-8 border border-border-md rounded-xl p-6 bg-bg-2 shadow-sm relative overflow-hidden">
         {/* Subtle glass gradient effect */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.015] to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-glass/[0.015] to-transparent" />
 
         {/* Profile Picture Section */}
         <div className="relative z-10 flex flex-col gap-2">
@@ -29,7 +29,7 @@ const Profile: FC = () => {
                   <Upload className="h-3.5 w-3.5" />
                   Upload Image
                 </Button>
-                <Button variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-white/[0.065] text-xs h-8 px-4 font-medium transition-colors">
+                <Button variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-glass/[0.065] text-xs h-8 px-4 font-medium transition-colors">
                   Remove
                 </Button>
               </div>
@@ -55,7 +55,7 @@ const Profile: FC = () => {
           <Label htmlFor="email" className="text-[0.8rem] font-semibold text-t2">Email</Label>
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <Input id="email" defaultValue="russel@hey.com" readOnly className="max-w-md rounded-lg border-border bg-bg-4 text-t3 h-9 font-medium" />
-            <Button variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-white/[0.065] text-xs h-9 px-4 font-medium transition-colors">
+            <Button variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-glass/[0.065] text-xs h-9 px-4 font-medium transition-colors">
               Edit Email
             </Button>
           </div>
@@ -70,7 +70,7 @@ const Profile: FC = () => {
             <h3 className="font-semibold text-[0.85rem] text-t1">Password</h3>
             <p className="text-[0.75rem] text-t3">Log in with your password instead of using temporary login codes</p>
           </div>
-          <Button variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-white/[0.065] text-xs h-9 px-4 font-medium transition-colors shrink-0">
+          <Button variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-glass/[0.065] text-xs h-9 px-4 font-medium transition-colors shrink-0">
             Change Password
           </Button>
         </div>
@@ -78,7 +78,7 @@ const Profile: FC = () => {
 
       {/* Save / Cancel Bar */}
       <div className="flex items-center justify-end gap-3 pt-4">
-        <Button variant="ghost" className="rounded-lg text-t2 hover:text-t1 hover:bg-white/[0.065] h-9 px-6 font-medium text-xs">
+        <Button variant="ghost" className="rounded-lg text-t2 hover:text-t1 hover:bg-glass/[0.065] h-9 px-6 font-medium text-xs">
           Cancel
         </Button>
         <Button className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-black font-bold h-9 px-8 rounded-lg text-xs shadow-[0_0_15px_hsl(var(--accent)/0.2)]">

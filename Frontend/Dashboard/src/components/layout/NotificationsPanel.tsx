@@ -136,8 +136,8 @@ export function NotificationsPanel() {
                 key={n.id}
                 onClick={() => markRead(n.id)}
                 className={cn(
-                  'flex cursor-pointer items-start gap-2.5 border-b border-border px-4 py-3 transition-colors hover:bg-white/[0.035]',
-                  n.unread && 'bg-white/[0.018]'
+                  'flex cursor-pointer items-start gap-2.5 border-b border-border px-4 py-3 transition-colors hover:bg-glass/[0.035]',
+                  n.unread && 'bg-glass/[0.018]'
                 )}
               >
                 <span

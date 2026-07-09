@@ -350,7 +350,7 @@ export default function Integrations() {
                 {!(platform.id === "woocommerce" && wooFormOpen) && (
                   <>
                     <p className="text-[0.82rem] leading-relaxed text-t2">{platform.description}</p>
-                    <div className="grid grid-cols-1 gap-x-3 gap-y-2.5 rounded-xl border border-border bg-white/[0.015] p-3.5 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-x-3 gap-y-2.5 rounded-xl border border-border bg-glass/[0.015] p-3.5 sm:grid-cols-2">
                       {platform.features.map((f) => (
                         <div key={f} className="flex items-start gap-2 text-[0.76rem] leading-snug text-t2">
                           <CheckCircle2 className="mt-[1px] h-3.5 w-3.5 shrink-0" style={{ color: platform.accentColor }} />
@@ -364,7 +364,7 @@ export default function Integrations() {
                 {/* WooCommerce Inline Form */}
                 {platform.id === "woocommerce" && wooFormOpen && !isConnected && (
                   <form onSubmit={handleWooSubmit} className="flex flex-col gap-3.5 mt-1">
-                    <div className="flex items-start gap-2 rounded-lg border border-border-md bg-white/[0.02] px-3 py-2.5 text-[0.72rem] leading-relaxed text-t3">
+                    <div className="flex items-start gap-2 rounded-lg border border-border-md bg-glass/[0.02] px-3 py-2.5 text-[0.72rem] leading-relaxed text-t3">
                       <ShieldCheck className="mt-[1px] h-3.5 w-3.5 shrink-0" style={{ color: platform.accentColor }} />
                       Your credentials are encrypted and only ever used to sync orders and customers from your store.
                     </div>
@@ -428,7 +428,7 @@ export default function Integrations() {
                     </div>
 
                     <div className="flex gap-2 mt-1">
-                      <button type="button" onClick={() => setWooFormOpen(false)} className="flex-1 rounded-md border border-border bg-bg-2 py-2 text-[0.82rem] font-medium text-t2 hover:bg-white/[0.04]">Cancel</button>
+                      <button type="button" onClick={() => setWooFormOpen(false)} className="flex-1 rounded-md border border-border bg-bg-2 py-2 text-[0.82rem] font-medium text-t2 hover:bg-glass/[0.04]">Cancel</button>
                       <button type="submit" disabled={wooSubmitting} className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-[0.82rem] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50" style={{ background: platform.accentColor }}>
                         {wooSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
                         Connect
@@ -441,7 +441,7 @@ export default function Integrations() {
                 {!(platform.id === "woocommerce" && wooFormOpen) && (
                   <div className="mt-auto flex items-center gap-2 pt-1">
                     {isConnected ? (
-                      <button className="flex flex-1 items-center justify-center gap-2 rounded-md border border-border bg-white/[0.035] py-2 text-[0.82rem] font-semibold text-t1 transition-colors hover:border-border-md hover:bg-white/[0.06]">
+                      <button className="flex flex-1 items-center justify-center gap-2 rounded-md border border-border bg-glass/[0.035] py-2 text-[0.82rem] font-semibold text-t1 transition-colors hover:border-border-md hover:bg-glass/[0.06]">
                         <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "hsl(var(--green))" }} />
                         Manage Connection
                       </button>
@@ -460,7 +460,7 @@ export default function Integrations() {
                       target="_blank"
                       rel="noopener noreferrer"
                       title={`${platform.name} developer docs`}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-white/[0.025] text-t3 transition-colors hover:border-border-md hover:text-t1"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-glass/[0.025] text-t3 transition-colors hover:border-border-md hover:text-t1"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>

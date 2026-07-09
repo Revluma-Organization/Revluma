@@ -39,7 +39,7 @@ export function ConnectBanner({ storeConnected }: Props) {
         </button>
         <button
           onClick={() => setDismissed(true)}
-          className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-white/[0.035] text-t3 transition-colors hover:text-t1"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-border bg-glass/[0.035] text-t3 transition-colors hover:text-t1"
           aria-label="Dismiss"
         >
           <X className="h-3.5 w-3.5" />

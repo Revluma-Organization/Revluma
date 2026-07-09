@@ -48,7 +48,7 @@ export function AbandonedProducts({ products, loading }: Props) {
               return (
                 <div
                   key={p.rank}
-                  className="flex items-center gap-3 rounded-lg border border-transparent px-2 py-2.5 transition-colors hover:border-border hover:bg-white/[0.025]"
+                  className="flex items-center gap-3 rounded-lg border border-transparent px-2 py-2.5 transition-colors hover:border-border hover:bg-glass/[0.025]"
                 >
                   <span className="w-5 text-center text-[0.72rem] font-bold text-t3">{p.rank}</span>
                   <span

@@ -16,7 +16,7 @@ const SettingsPlaceholder: FC<Props> = ({ title }) => {
       </div>
 
       <div className="border border-border border-dashed rounded-xl h-64 flex flex-col items-center justify-center bg-bg-2 relative overflow-hidden group">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.015] to-transparent" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-glass/[0.015] to-transparent" />
         
         <div className="h-12 w-12 rounded-full bg-[hsl(var(--accent)/0.1)] border border-[hsl(var(--accent)/0.2)] flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-500">
           <Lock className="h-5 w-5 text-[hsl(var(--accent))]" />

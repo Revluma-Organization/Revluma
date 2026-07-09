@@ -143,7 +143,7 @@ export default function CartRecovery() {
                     <td className="py-3 text-right text-t3">{c.abandoned_at}</td>
                     <td className="py-3 pr-1 text-right">
                       <button
-                        className="rounded-md border border-border bg-white/[0.035] px-2.5 py-1 text-[0.72rem] font-medium text-t2 transition-colors hover:border-border-md hover:text-t1"
+                        className="rounded-md border border-border bg-glass/[0.035] px-2.5 py-1 text-[0.72rem] font-medium text-t2 transition-colors hover:border-border-md hover:text-t1"
                       >
                         Recover
                       </button>

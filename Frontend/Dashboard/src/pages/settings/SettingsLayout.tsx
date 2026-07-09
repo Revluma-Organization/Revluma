@@ -137,7 +137,7 @@ const SettingsLayout: FC = () => {
                               "relative px-3 py-2 text-[0.82rem] font-medium rounded-md transition-colors flex items-center justify-between border",
                               isActive
                                 ? "text-t1 bg-[hsl(var(--accent)/0.1)] border-[hsl(var(--accent)/0.2)]"
-                                : "text-t2 border-transparent hover:text-t1 hover:bg-white/[0.065]"
+                                : "text-t2 border-transparent hover:text-t1 hover:bg-glass/[0.065]"
                             )}
                           >
                             {isActive && (

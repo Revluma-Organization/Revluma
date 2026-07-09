@@ -24,14 +24,14 @@ export function RevenueChart({ chartData, loading }: Props) {
     <section className="glass-card p-5">
       <header className="mb-4 flex items-center justify-between gap-3">
         <h3 className="section-title">Revenue Recovery Performance</h3>
-        <div className="inline-flex rounded-md border border-border bg-white/[0.035] p-0.5">
+        <div className="inline-flex rounded-md border border-border bg-glass/[0.035] p-0.5">
           {(["7d", "30d", "90d"] as Period[]).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
               className={cn(
                 "rounded px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-wider text-t3 transition-colors",
-                period === p && "bg-white/[0.08] text-t1",
+                period === p && "bg-glass/[0.08] text-t1",
               )}
             >
               {p}

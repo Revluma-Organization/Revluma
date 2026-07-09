@@ -47,8 +47,8 @@ export function LiveActivity({ items, loading }: Props) {
             className={cn(
               "shrink-0 rounded-full border px-2.5 py-1 text-[0.7rem] font-medium transition-colors",
               filter === f.id
-                ? "border-border-md bg-white/[0.08] text-t1"
-                : "border-border bg-white/[0.035] text-t3 hover:text-t1",
+                ? "border-border-md bg-glass/[0.08] text-t1"
+                : "border-border bg-glass/[0.035] text-t3 hover:text-t1",
             )}
           >
             {f.label}
@@ -68,7 +68,7 @@ export function LiveActivity({ items, loading }: Props) {
               </div>
             ))
           : filtered.map((i) => (
-              <div key={i.id} className="flex items-center gap-2.5 rounded-md px-2 py-2 transition-colors hover:bg-white/[0.035]">
+              <div key={i.id} className="flex items-center gap-2.5 rounded-md px-2 py-2 transition-colors hover:bg-glass/[0.035]">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: TAG_TONE[i.tag] }} />
                 <span
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[0.65rem] font-bold"

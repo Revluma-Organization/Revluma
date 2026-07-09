@@ -34,6 +34,7 @@ export default {
         t2: "hsl(var(--t2))",
         t3: "hsl(var(--t3))",
         t4: "hsl(var(--t4))",
+        glass: "hsl(var(--glass))",
 
         primary: {
           DEFAULT: "hsl(var(--accent))",

@@ -25,7 +25,7 @@ export function QuickActions() {
         {QUICK_ACTIONS.map((a) => (
           <button
             key={a.label}
-            className="flex w-full items-center gap-3 rounded-lg border border-border bg-white/[0.025] px-3 py-2.5 text-left transition-colors hover:border-border-md hover:bg-white/[0.045]"
+            className="flex w-full items-center gap-3 rounded-lg border border-border bg-glass/[0.025] px-3 py-2.5 text-left transition-colors hover:border-border-md hover:bg-glass/[0.045]"
           >
             <span
               className="flex h-8 w-8 items-center justify-center rounded-md border"
@@ -81,7 +81,7 @@ export function TrendingProducts({ products, loading }: TrendingProps) {
           : products.map((t) => {
               const Icon = PROD_ICONS[t.iconKey] ?? Monitor;
               return (
-                <div key={t.rank} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-white/[0.025]">
+                <div key={t.rank} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-glass/[0.025]">
                   <span className="w-5 text-center text-[0.72rem] font-bold text-t3">{t.rank}</span>
                   <span
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border"
@@ -140,7 +140,7 @@ export function WinbackLeaderboard({ entries, loading }: WinbackProps) {
               </div>
             ))
           : entries.map((w, i) => (
-              <div key={w.name} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-white/[0.025]">
+              <div key={w.name} className="flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-glass/[0.025]">
                 <span className="w-5 text-center text-[0.72rem] font-bold text-t3">{i + 1}</span>
                 <span
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[0.66rem] font-bold"
