@@ -329,25 +329,25 @@
         verifyBtnSpinner.classList.remove('hidden');
 
         try {
-          // ── Backend Integration Point ──
-          // Replace this with your actual API call:
-          // const res = await fetch(`${API_BASE}/auth/verify-email`, {
-          //   method: 'POST',
-          //   headers: { 'Content-Type': 'application/json' },
-          //   body: JSON.stringify({ email, code })
-          // });
-          // const data = await res.json();
-          // if (!res.ok) throw new Error(data.message || 'Invalid code');
+                  // --- Backend Integration Point ---
+        
+        // 1 & 2: Call the exact endpoint and send both email and code
+        const res = await fetch(`${API_BASE}/auth/verify-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, code: code })
+        });
 
-          // Simulated verification (2 second delay)
-          await new Promise(resolve => setTimeout(resolve, 1500));
+        const data = await res.json();
 
-          // For demo: accept any 6-digit code
-          // In production, validate against your backend response
+        // 3: Stop the redirect if the backend says the code is invalid
+        if (!res.ok) {
+            throw new Error(data.message || 'Invalid verification code.');
+        }
 
-          // Success — redirect to onboarding
-          window.location.href = 'onboarding.html';
-
+        // 4: Success - redirect to login page instead of onboarding/dashboard
+        window.location.href = 'login.html'; 
+          
         } catch (err) {
           // Show error
           codeError.textContent = err.message || 'Invalid verification code. Please try again.';
