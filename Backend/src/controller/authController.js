@@ -163,23 +163,31 @@ exports.verifyEmail = async (req, res, next) => {
         error: "Verification code has expired.",
       });
     }
+    
+  //Update user
+  const updatedUser = await prisma.users.update({
+  where: {
+    id: user.id,
+  },
+  data: {
+    email_verified: true,
+    verification_code: null,
+    verification_expires_at: null,
+  },
+});
 
-    // Update user
-    await prisma.users.update({
-      where: {
-        id: user.id,
-      },
-      data: {
-        email_verified: true,
-        verification_code: null,
-        verification_expires_at: null,
-      },
-    });
+const checkUser = await prisma.users.findUnique({
+  where: {
+    id: user.id,
+  },
+});
 
-    return res.status(200).json({
-      success: true,
-      message: "Email verified successfully.",
-    });
+return res.status(200).json({
+  success: true,
+  message: "Email verified successfully.",
+  updatedUser,
+  checkUser,
+});
 
   } catch (error) {
     next(error);
@@ -344,8 +352,6 @@ exports.resendVerification = async (req, res, next) => {
   }
 };
 
-
-// GET CURRENT USER PROFILE
 // GET CURRENT USER PROFILE
 exports.getProfile = async (req, res) => {
   try {
