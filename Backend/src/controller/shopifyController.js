@@ -56,6 +56,7 @@ exports.installShopify = async (req, res, next) => {
   }
 };
 
+
 /**GET /api/v1/shopify/callback, Handle Shopify OAuth callback.*/
 exports.shopifyCallback = async (req, res, next) => {
   try {
@@ -89,6 +90,14 @@ exports.shopifyCallback = async (req, res, next) => {
         error: "Invalid Shopify HMAC",
       });
     }
+
+    // DEBUG LOGS
+    console.log("========== SHOPIFY CALLBACK ==========");
+    console.log("Headers Cookie:", req.headers.cookie);
+    console.log("Signed Cookies:", req.signedCookies);
+    console.log("Unsigned Cookies:", req.cookies);
+    console.log("Query Params:", req.query);
+    console.log("======================================");
 
     // Read signed cookies
     const storedState = req.signedCookies.shopify_state;
@@ -136,22 +145,24 @@ exports.shopifyCallback = async (req, res, next) => {
 
     // Clear OAuth cookies
     res.clearCookie("shopify_state", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
     });
 
     res.clearCookie("shopify_user", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
     });
 
     // Redirect merchant back to frontend
     return res.redirect(
       `${process.env.FRONTEND_URL}/dashboard/integrations?connected=shopify`
     );
-    } catch (error) {
+  } catch (error) {
     next(error);
-    }
+  }
 };
