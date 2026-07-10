@@ -33,13 +33,57 @@ exports.register = async (req, res, next) => {
       },
     });
 
+  
+    // HANDLE EXISTING USER
     if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        error: "Email already exists",
+      // If the user has already verified their email,
+      // don't allow another registration.
+      if (existingUser.email_verified) {
+        return res.status(400).json({
+          success: false,
+          error: "Email already exists",
+        });
+      }
+
+      // User exists but has NOT verified.
+      // Generate a fresh verification code.
+      const code = generateVerificationCode();
+      const expiry = getVerificationExpiry();
+
+      await prisma.users.update({
+        where: {
+          id: existingUser.id,
+        },
+        data: {
+          full_name: `${account.firstName} ${account.lastName}`.trim(),
+          password_hash: await bcrypt.hash(
+            account.password,
+            SALT_ROUNDS
+          ),
+          verification_code: code,
+          verification_expires_at: expiry,
+          accepted_terms: account.termsAgreed,
+          accepted_privacy_policy: account.termsAgreed,
+        },
+      });
+
+      await emailService.sendVerificationEmail(
+        existingUser.email,
+        `${account.firstName} ${account.lastName}`.trim(),
+        code
+      );
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "Your account has not been verified, a new verification code has been sent",
+        data: {
+          email: existingUser.email,
+        },
       });
     }
 
+    // CREATE NEW USER
     const hashedPassword = await bcrypt.hash(
       account.password,
       SALT_ROUNDS

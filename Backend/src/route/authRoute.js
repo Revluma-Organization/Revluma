@@ -1,23 +1,29 @@
 const express = require('express');
 const router = express.Router();
+
 const authController = require('../controller/authController');
-const {registerLimiter, loginLimiter } = require ("../middlewares/rateLimiters");
+const { registerLimiter, loginLimiter } = require("../middlewares/rateLimiters");
 const { validateRegister, validateLogin } = require('../middlewares/validateAuth');
 const { authenticateToken } = require('../middlewares/authMiddleware');
 
-// Protected Auth Route Entries
+// Temporary test route
+router.get("/test", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Auth router is working",
+  });
+});
 
-// /auth/me — canonical profile endpoint (frontend uses this)
-router.get('/me', authenticateToken, authController.getProfile);
-// /auth/getProfile — legacy alias (keep for backwards compatibility)
-router.get('/getProfile', authenticateToken, authController.getProfile);
-// New endpoint (frontend uses this)
-router.get("/me",authenticateToken,authController.getProfile);
+// Authentication routes
 router.post('/register', validateRegister, registerLimiter, authController.register);
-router.post("/verifyemail", authController.verifyEmail);
-router.post("/resendverification", authController.resendVerification);
-router.post('/login', validateLogin,loginLimiter,  authController.login);
-router.post('/logout', authenticateToken, authController.logout);
+router.post('/verifyemail', authController.verifyEmail);
+router.post('/resendverification', authController.resendVerification);
+router.post('/login', validateLogin, loginLimiter, authController.login);
 router.post('/refresh', authController.refresh);
+router.post('/logout', authenticateToken, authController.logout);
+
+// Protected profile routes
+router.get('/me', authenticateToken, authController.getProfile);
+router.get('/getProfile', authenticateToken, authController.getProfile);
 
 module.exports = router;
