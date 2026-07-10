@@ -28,8 +28,8 @@ function getToken(): string | null {
   try {
     const raw = localStorage.getItem("rv-auth");
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as { state?: { csrfToken?: string | null } };
-    return parsed?.state?.csrfToken ?? null;
+const parsed = JSON.parse(raw) as { state?: { accessToken?: string, csrfToken?: string } };
+return parsed?.state?.accessToken ?? parsed?.state?.csrfToken ?? null;
   } catch {
     return null;
   }
@@ -43,7 +43,7 @@ function handleUnauthorized(): void {
     if (raw) {
       const parsed = JSON.parse(raw) as { state?: object; version?: number };
       if (parsed?.state) {
-        parsed.state = { ...parsed.state, user: null, csrfToken: null };
+parsed.state = { ...parsed.state, user: null, accessToken: null, csrfToken: null };
         localStorage.setItem("rv-auth", JSON.stringify(parsed));
       }
     }
