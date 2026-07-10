@@ -1,39 +1,116 @@
-# M5 — Offer Value Optimizer
+# Offer Value Model — Training & System Spec
 
-## What this model does
-Once M2 confirms a shopper is price-sensitive, this model calculates the **minimum discount percentage** needed to convert them — protecting the merchant's margins while maximising recovery.
+## 1. Problem Statement
+This model determines the optimal discount percentage required to recover an abandoning or hesitant customer.
+It predicts:
+"What discount % (0–30%) would have converted this user?"
+This is a revenue optimization regression problem.
 
-## Model type
-Gradient Boosting (regressor)
+## 2. Target Variable Definition
+**Target:** `discount_pct`
+**Continuous regression target:**
+- Range: 0 → 30
+**Definition:**
+The discount percentage that historically:
+- led to conversion OR recovery
+- prevented abandonment
 
-## Dependency
-**M2 must run first.** M5 requires `pss_score` and `css_score` from `abandoned_carts` as inputs. M2 output → M5 input is a hard dependency in the inference pipeline.
+**Important:**
+- 0 means: no discount needed
+- >0 means: discount required to influence conversion
 
-## What it predicts
-- `recommended_discount_pct` (int) — clipped to merchant's `max_discount_pct` (default 20%)
+## 3. Feature Inputs (Must Match Pipeline)
+Must use exact function names mapping directly to `python/src/features/pipeline.py`:
 
-## Features consumed (10)
+**3.1 Behavioral Features**
+- `calculate_scroll_depth(events)`
+- `calculate_cursor_hesitation_count(events)`
+- `calculate_time_on_page_ms(events)`
+- `calculate_checkout_step_reached(events)`
 
-| Feature | Type | Source |
-|---|---|---|
-| `pss_score` | float | M2 output → `abandoned_carts.pss_score` |
-| `css_score` | float | M2 output → `abandoned_carts.css_score` |
-| `cursor_hesitation` | int | Tracking pixel |
-| `past_orders_total` | int | Order table |
-| `past_orders_with_coupon_pct` | float | Order table |
-| `days_since_last_purchase` | int | Order table |
-| `avg_order_value` | float | Order table |
-| `visited_coupon_page` | bool | Tracking pixel |
-| `searched_discount_terms` | bool | Tracking pixel |
-| `failed_coupon_attempt` | bool | Tracking pixel |
+**3.2 Purchase History Features**
+- `calculate_avg_order_value(customer_id, db)`
+- `calculate_past_orders_total(customer_id, db)`
+- `calculate_coupon_usage_pct(customer_id, db)`
 
-## Merchant constraints
-- `store_config.max_discount_pct` — hard cap (default 20%). **P0 gap: verify this column exists.**
-- `store_config.min_margin_pct` — optional margin floor. **❌ MISSING — P2 addition.**
+**3.3 Risk Features**
+- `calculate_days_since_last_purchase(customer_id, db)`
+- `calculate_purchase_frequency_trend(customer_id, db)`
 
-## Schema gaps (Backend Engineer 1 action needed)
-- `abandoned_carts.pss_score` (FLOAT) — needs adding (P0)
-- `abandoned_carts.css_score` (FLOAT) — needs adding (P0)
-- `Order.coupon_used` / `coupon_code` — verify populated from webhooks (P0)
-- `store_config.max_discount_pct` — verify exists (P1)
-- `store_config.min_margin_pct` — add if possible (P2, not a blocker)
+**3.4 RFM Features (Critical)**
+- `calculate_rfm_scores(customer_id, db)`
+
+## 4. Model Type
+**Algorithm:** GradientBoostingRegressor
+
+**Recommended Hyperparameters:**
+- `n_estimators = 200`
+- `max_depth = 4`
+- `learning_rate = 0.05`
+- `random_state = 42`
+
+## 5. Hard Business Constraints
+MUST enforce:
+
+**5.1 Upper Bound**
+- Never recommend discount > 30%
+`clip(predicted_discount, 0, 30)`
+
+**5.2 PSS Guardrail**
+If: `pss_score < 30`
+Then: DO NOT recommend any discount (return 0.0)
+
+## 6. Schema Dependency Warning
+A new DB field is required:
+`orders` table update required
+
+```sql
+ALTER TABLE orders ADD COLUMN discount_pct FLOAT;
+```
+
+**Purpose:**
+- store historical discount effectiveness
+- train regression target
+- enable causal learning
+
+## 7. Output Schema
+**Model Output**
+```json
+{
+  "recommended_discount_pct": 0.0 - 30.0,
+  "confidence": 0.0 - 1.0
+}
+```
+
+**Interpretation:**
+- 0.0 = no discount required
+- higher values = stronger incentive needed
+
+## 8. Business Logic Constraints
+- Must not recommend unnecessary discounting
+- Must prioritize margin preservation
+- Must align with behavioral signals (hesitation, abandonment, RFM risk)
+
+## 9. Training Requirements
+- Requires labeled historical recovery data
+- Must include:
+  - discount offered
+  - conversion outcome
+  - behavioral state at decision time
+
+## 10. Validation Checklist
+- [ ] Uses correct pipeline functions
+- [ ] Uses GradientBoostingRegressor
+- [ ] Enforces 0–30 clipping
+- [ ] Implements PSS guardrail
+- [ ] Requires orders.discount_pct field
+- [ ] Produces valid regression output
+- [ ] Includes confidence score
+
+## 11. Business Objective
+**Maximize:**
+- recovered revenue
+- conversion rate
+**Minimize:**
+- unnecessary discount leakage
+- margin loss

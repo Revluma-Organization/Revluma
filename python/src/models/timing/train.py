@@ -2,8 +2,7 @@
 M3 — Optimal Send-Time Predictor: Training Script
 ===================================================
 Model type  : Gradient Boosting (Calibrated)
-Purpose     : Predicts the best hour and day to send recovery messages
-              for each individual customer, maximising open and click rates.
+Purpose     : Predicts the best time to send lifecycle messages based on behavior.
 """
 
 import mlflow
@@ -20,56 +19,78 @@ from src.config.mlflow_config import get_or_create_experiment
 
 def load_training_data(n=2000):
     """
-    Generates synthetic historical message engagement data.
-    Features: send_hour, send_day, channel (0=email, 1=sms), historical_open_rate
-    Target: opened_and_clicked_within_120m
+    Generates synthetic historical message engagement data with all 11 required features.
+    Target: conversion_within_120min
     """
     np.random.seed(42)
     
-    # Features
-    send_hour = np.random.randint(0, 24, n)
-    send_day = np.random.randint(0, 7, n)
-    channel = np.random.randint(0, 2, n) # 0 for email, 1 for sms
-    historical_open_rate = np.random.uniform(0.0, 1.0, n)
+    # 3.1 Time-Based Features
+    local_hour_of_session = np.random.randint(0, 24, n)
+    day_of_week_session = np.random.randint(0, 7, n)
+    time_on_page_ms = np.random.randint(5000, 300000, n)
+    days_since_last_purchase = np.random.randint(1, 365, n)
+    
+    # 3.2 Engagement Features
+    scroll_depth = np.random.uniform(10.0, 100.0, n)
+    cursor_hesitation_count = np.random.randint(0, 10, n)
+    tab_switch_count = np.random.randint(0, 5, n)
+    
+    # 3.3 Behavioral Strength Features
+    checkout_step_reached = np.random.randint(0, 4, n)
+    purchase_frequency_trend = np.random.uniform(0.1, 5.0, n)
+    
+    # 3.4 Customer Value Features
+    avg_order_value = np.random.uniform(20.0, 500.0, n)
+    past_orders_total = np.random.randint(1, 50, n)
     
     # Synthetic target generation
-    # higher engagement typically seen during daytime hours (10-14) or evening (18-21)
-    # and slightly better on weekdays (0-4) compared to weekends (5-6)
-    
-    prob = (historical_open_rate * 0.4)
-    prob += np.where((send_hour >= 10) & (send_hour <= 14), 0.2, 0.0)
-    prob += np.where((send_hour >= 18) & (send_hour <= 21), 0.25, 0.0)
-    prob -= np.where((send_day >= 5), 0.1, 0.0)
-    prob += np.where((channel == 1), 0.1, 0.0) # SMS generally has higher open rates
+    # Higher engagement implies higher chance of opening/clicking within 120min
+    prob = 0.2 + (scroll_depth / 100.0) * 0.2
+    prob += np.where(checkout_step_reached >= 2, 0.15, 0.0)
+    prob += np.where((local_hour_of_session >= 10) & (local_hour_of_session <= 14), 0.1, 0.0)
+    prob -= np.where(tab_switch_count > 2, 0.1, 0.0)
+    prob -= np.where(days_since_last_purchase > 100, 0.15, 0.0)
     
     prob = np.clip(prob, 0.0, 1.0)
     y = np.random.binomial(1, prob)
     
     X = pd.DataFrame({
-        'send_hour': send_hour,
-        'send_day': send_day,
-        'channel': channel,
-        'historical_open_rate': historical_open_rate
+        'local_hour_of_session': local_hour_of_session,
+        'day_of_week_session': day_of_week_session,
+        'time_on_page_ms': time_on_page_ms,
+        'days_since_last_purchase': days_since_last_purchase,
+        'scroll_depth': scroll_depth,
+        'cursor_hesitation_count': cursor_hesitation_count,
+        'tab_switch_count': tab_switch_count,
+        'checkout_step_reached': checkout_step_reached,
+        'purchase_frequency_trend': purchase_frequency_trend,
+        'avg_order_value': avg_order_value,
+        'past_orders_total': past_orders_total
     })
     
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     return X_train, X_test, y_train, y_test
 
 def build_model():
-    """Gradient Boosting classifier with probability calibration."""
-    base_clf = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
+    """Gradient Boosting classifier with probability calibration and exact hyperparameters."""
+    base_clf = GradientBoostingClassifier(
+        n_estimators=150, 
+        learning_rate=0.05, 
+        max_depth=3, 
+        random_state=42
+    )
     # Wrap in CalibratedClassifierCV for Platt scaling (sigmoid)
     calibrated_clf = CalibratedClassifierCV(base_clf, method='sigmoid', cv=3)
     return calibrated_clf
 
-def train(run_name: str = "m3-sendtime-training"):
+def train(run_name: str = "m3-sendtime-training-v2"):
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
     
     print("Loading synthetic training data (N=2000)...")
     X_train, X_test, y_train, y_test = load_training_data(n=2000)
     
-    print("Building GradientBoostingClassifier with Platt Scaling...")
+    print("Building GradientBoostingClassifier (n_estimators=150) with Platt Scaling...")
     model = build_model()
     
     with mlflow.start_run(run_name=run_name) as run:
@@ -89,9 +110,10 @@ def train(run_name: str = "m3-sendtime-training"):
         auc = roc_auc_score(y_test, y_prob)
         
         mlflow.log_params({
-            "n_estimators": 100,
-            "learning_rate": 0.1,
+            "n_estimators": 150,
+            "learning_rate": 0.05,
             "max_depth": 3,
+            "random_state": 42,
             "calibration_method": "sigmoid",
             "cv_folds": 3
         })
