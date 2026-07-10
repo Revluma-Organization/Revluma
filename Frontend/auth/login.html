@@ -1306,9 +1306,20 @@
         userEmail: user?.email,
         hasToken: !!token
       });
-      const store = remember ? localStorage : sessionStorage;
-      store.setItem('revluma_token', token);
-      store.setItem('revluma_user', JSON.stringify(user));
+      // Inside storeSession(token, user, remember)
+const storage = remember ? localStorage : sessionStorage;
+
+// Create the object structure that api.ts expects
+const authData = {
+  state: {
+    user: user,
+    accessToken: token, // This maps to the key api.ts needs
+    csrfToken: token // If you still need this for backward compatibility
+  },
+  version: 0
+};
+
+storage.setItem('rv-auth', JSON.stringify(authData));
       console.log('[AUTH STEP 7] Session stored in ' + (remember ? 'localStorage' : 'sessionStorage'));
       // Mirror to localStorage so other pages can find it
       if (!remember) {
