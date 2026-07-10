@@ -235,9 +235,9 @@ export default function Integrations() {
 
     try {
       const response = await api.get<ShopifyInstallResponse>('/shopify/install', {
-        shop: cleanShop,
-      });
-
+  params: { shop: cleanShop },
+  withCredentials: true 
+});
       const installUrl = response.data?.install_url?.trim();
       if (!installUrl) {
         throw new Error(response.data?.message ?? 'Shopify install URL was not returned by the server.');
