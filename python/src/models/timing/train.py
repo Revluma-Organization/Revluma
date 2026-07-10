@@ -45,9 +45,9 @@ def load_training_data(n=2000):
     
     # Synthetic target generation
     # Higher engagement implies higher chance of opening/clicking within 120min
-    prob = 0.2 + (scroll_depth / 100.0) * 0.2
-    prob += np.where(checkout_step_reached >= 2, 0.15, 0.0)
-    prob += np.where((local_hour_of_session >= 10) & (local_hour_of_session <= 14), 0.1, 0.0)
+    prob = 0.45 + (scroll_depth / 100.0) * 0.25
+    prob += np.where(checkout_step_reached >= 2, 0.2, 0.0)
+    prob += np.where((local_hour_of_session >= 10) & (local_hour_of_session <= 14), 0.15, 0.0)
     prob -= np.where(tab_switch_count > 2, 0.1, 0.0)
     prob -= np.where(days_since_last_purchase > 100, 0.15, 0.0)
     
