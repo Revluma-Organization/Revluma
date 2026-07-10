@@ -1046,7 +1046,15 @@
       if (form3) {
         form3.addEventListener('submit', (e) => {
           e.preventDefault();
-          window.location.href = '/dashboard/overview';
+          // 1. Mark the user as fully onboarded in localStorage
+const auth = JSON.parse(localStorage.getItem('rv-auth') || '{}');
+if (auth.state) {
+    auth.state.onboarding_completed = true;
+    localStorage.setItem('rv-auth', JSON.stringify(auth));
+}
+
+// 2. Then redirect to the dashboard
+window.location.href = '/dashboard/overview';
         });
       }
 
