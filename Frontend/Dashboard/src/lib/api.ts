@@ -59,11 +59,14 @@ const BASE_URL: string =
 
 // Core request 
 
-async function request<T = unknown>(
+// Add isRetry: boolean = false to the arguments
+async function request<T>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   options: { params?: Record<string, unknown>; body?: unknown } = {},
+  isRetry: boolean = false 
 ): Promise<ApiResponse<T>> {
+  
   const url = new URL(
     path.startsWith("/") ? `${BASE_URL}${path}` : `${BASE_URL}/${path}`,
   );
@@ -96,11 +99,43 @@ async function request<T = unknown>(
     throw new ApiError(0, `Network error: ${(networkError as Error).message}`);
   }
 
-  if (response.status === 401) {
-    handleUnauthorized();
-    throw new ApiError(401, "Unauthorized — redirecting to login");
-  }
+      // --- START REFRESH LOGIC ---
+    if (response.status === 401 && !isRetry) {
+      try {
+        // Attempt to refresh the token using the HttpOnly cookie
+        const refreshResponse = await fetch(`${BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include', // This sends the cookie
+        });
 
+        if (refreshResponse.ok) {
+          // If successful, the backend should return the new token
+          const { accessToken } = await refreshResponse.json();
+          
+          // Update localStorage so getToken() works next time
+          const raw = localStorage.getItem("rv-auth");
+          if (raw) {
+             const parsed = JSON.parse(raw);
+             // Update the token in your storage object (adjust if your structure differs)
+             parsed.state.accessToken = accessToken; 
+             localStorage.setItem("rv-auth", JSON.stringify(parsed));
+          }
+
+          // RETRY the original request!
+          return await request(method, path, options, true);
+        }
+      } catch (e) {
+        // Refresh failed, proceed to logout
+      }
+    }
+    // --- END REFRESH LOGIC ---
+
+    // If we get here, it's a real 401, or refresh failed
+    if (response.status === 401) {
+      handleUnauthorized();
+      throw new ApiError(401, "Unauthorized – redirecting to login");
+          }
+  
   const ct = response.headers.get("content-type") ?? "";
   const data = ct.includes("application/json")
     ? ((await response.json()) as T)
