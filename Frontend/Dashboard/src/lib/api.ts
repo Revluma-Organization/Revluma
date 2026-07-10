@@ -85,11 +85,12 @@ async function request<T = unknown>(
 
   let response: Response;
   try {
-    response = await fetch(url.toString(), {
-      method,
-      headers,
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    });
+            response = await fetch(url.toString(), {
+          method,
+          headers,
+          credentials: "include", 
+          body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        });
   } catch (networkError) {
     // Network error (backend unreachable, CORS preflight failed, etc.)
     throw new ApiError(0, `Network error: ${(networkError as Error).message}`);
