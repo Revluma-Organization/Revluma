@@ -24,8 +24,15 @@ const buildInstallUrl = ({ shop, state }) => {
   return `https://${shop}/admin/oauth/authorize?${params.toString()}`;
 };
 
-/**Verify Shopify HMAC*/
+/* Verify Shopify HMAC */
 const verifyHmac = (query) => {
+  // Make sure the Shopify API secret exists
+  if (!process.env.SHOPIFY_API_SECRET) {
+    throw new Error(
+      "SHOPIFY_API_SECRET environment variable is missing."
+    );
+  }
+
   const { hmac, signature, ...params } = query;
 
   const message = Object.keys(params)
