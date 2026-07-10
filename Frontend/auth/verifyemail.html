@@ -345,8 +345,8 @@
             throw new Error(data.message || 'Invalid verification code.');
         }
 
-        // 4: Success - redirect to login page instead of onboarding/dashboard
-        window.location.href = 'login.html'; 
+        // 4: Success - redirect to onboarding/dashboard
+        window.location.href = 'onboarding.html';
           
         } catch (err) {
           // Show error
