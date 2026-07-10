@@ -679,7 +679,7 @@
           
           window.revlumaAuth.register(payload)
           .then(() => {
-            localStorage.setItem('signup_email', payload.email);
+localStorage.setItem('signup_email', document.querySelector('input[type="email"]').value);
               window.location.href = 'verifyemail.html';
             })
             .catch(err => {
