@@ -56,9 +56,9 @@ def get_tracking_info() -> dict:
 
 def get_or_create_experiment() -> str:
     if IS_REMOTE:
-        print(f"MLflow → Remote server : {MLFLOW_TRACKING_URI}")
+        print(f"MLflow -> Remote server : {MLFLOW_TRACKING_URI}")
     else:
-        print(f"MLflow → Local mlruns  : {MLFLOW_TRACKING_URI}")
+        print(f"MLflow -> Local mlruns  : {MLFLOW_TRACKING_URI}")
 
     experiment = mlflow.get_experiment_by_name(EXPERIMENT_NAME)
 

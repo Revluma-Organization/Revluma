@@ -41,4 +41,13 @@ Thumbs.db
 __pycache__/
 *.pyc
 
+# Python virtual environment (NEVER PUSH)
+venv/
+python/venv/
+.venv/
+
+# MLflow local artifacts and tracking (NEVER PUSH)
+artifacts/
+mlruns/
+
 .agents/
