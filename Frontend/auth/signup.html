@@ -677,9 +677,9 @@
           }
           globalError.classList.add('hidden');
           
-         localStorage.setItem('signup_email', payload.email);
           window.revlumaAuth.register(payload)
-            .then(() => {
+          .then(() => {
+            localStorage.setItem('signup_email', payload.email);
               window.location.href = 'verifyemail.html';
             })
             .catch(err => {
