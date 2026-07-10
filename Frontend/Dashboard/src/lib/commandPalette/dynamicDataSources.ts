@@ -1,5 +1,6 @@
 import { Plug, CheckCircle2, WifiOff } from "lucide-react";
 import { api } from "@/lib/api";
+import { resolveDashboardRoute } from "./routes";
 import type { PaletteCommand, CommandContext } from "./types";
 
 interface StoreRecord {
@@ -31,7 +32,7 @@ export async function fetchStoreCommands(): Promise<PaletteCommand[]> {
         icon: connected ? CheckCircle2 : WifiOff,
         keywords: [s.platform, "store", "integration", "connect"],
         perform: ({ navigate, close }: CommandContext) => {
-          navigate("/dashboard/integrations");
+          navigate(resolveDashboardRoute("/dashboard/integrations"));
           close();
         },
       } satisfies PaletteCommand;

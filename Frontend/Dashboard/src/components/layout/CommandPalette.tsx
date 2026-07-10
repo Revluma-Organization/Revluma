@@ -7,8 +7,9 @@ import { useCommandPaletteHistory } from "@/store/commandPaletteHistoryStore";
 import { buildStaticCommands } from "@/lib/commandPalette/staticCommands";
 import { fetchStoreCommands } from "@/lib/commandPalette/dynamicDataSources";
 import { scoreCommand } from "@/lib/commandPalette/fuzzy";
+import { resolveDashboardRoute } from "@/lib/commandPalette/routes";
 import { CATEGORY_LABEL, type CommandCategory, type PaletteCommand } from "@/lib/commandPalette/types";
-import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from "react";
+import { useEffect, useMemo, useState, useCallback, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search, Sparkles, Star, Clock, X, CornerDownLeft,
@@ -108,7 +109,7 @@ export function CommandPalette() {
   const close = useCallback(() => setCmdOpen(false), [setCmdOpen]);
 
   const allCommands = useMemo<PaletteCommand[]>(() => {
-    const staticCmds = buildStaticCommands({ theme, toggleTheme, startTour, setNotifOpen, openCopilotWithQuery, logout });
+    const staticCmds = buildStaticCommands({ theme, toggleTheme, startTour, setNotifOpen, openCopilotWithQuery, openPalette: () => setCmdOpen(true), logout });
     // Dynamic (self-registered) commands take precedence over static ones with the same id,
     // so a page can override a built-in default when it wants a more specific action.
     const byId = new Map<string, PaletteCommand>();
@@ -186,7 +187,16 @@ export function CommandPalette() {
   function runCommand(cmd: PaletteCommand) {
     if (debouncedQuery.trim()) recordQuery(debouncedQuery);
     if (!cmd.skipRecentTracking) recordCommandUse(cmd.id);
-    cmd.perform({ navigate, close });
+
+    const safeNavigate = (to: string | number, options?: { replace?: boolean; state?: unknown }) => {
+      if (typeof to === "number") {
+        navigate(to);
+        return;
+      }
+      navigate(resolveDashboardRoute(to), options);
+    };
+
+    cmd.perform({ navigate: safeNavigate, close });
   }
 
   function handleAskAI() {

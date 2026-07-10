@@ -102,12 +102,13 @@ function scoreToken(q: string, item: Scorable, title: string): FuzzyMatch | null
   if (sub && (!best || sub.score > best.score)) best = sub;
 
   // 3. Keyword / alias matching (slightly lower weight than title matches)
-  for (const kw of item.keywords ?? []) {
+  const keywordSources = [...(item.keywords ?? []), ...(item.aliases ?? [])];
+  for (const kw of keywordSources) {
     const nkw = normalize(kw);
     if (nkw === q) {
       const score = 55;
       if (!best || score > best.score) best = { score, titleIndices: best?.titleIndices ?? [] };
-    } else if (nkw.includes(q)) {
+    } else if (nkw.includes(q) || q.includes(nkw)) {
       const score = 42 - (nkw.length - q.length) * 0.2;
       if (!best || score > best.score) best = { score, titleIndices: best?.titleIndices ?? [] };
     } else if (q.length >= 4) {
@@ -138,8 +139,14 @@ function scoreToken(q: string, item: Scorable, title: string): FuzzyMatch | null
     if (!best || score > best.score) best = { score, titleIndices: best?.titleIndices ?? [] };
   }
 
-  // 6. Word-level typo tolerance against the title itself
+  // 6. Word-level typo tolerance and prefix matching against the title itself
   for (const word of title.split(/\s+/)) {
+    const prefixMatch = word.startsWith(q) || q.startsWith(word);
+    if (prefixMatch) {
+      const score = 35;
+      if (!best || score > best.score) best = { score, titleIndices: best?.titleIndices ?? [] };
+      continue;
+    }
     if (q.length < 4 || word.length < 4) continue;
     const maxAllowed = word.length <= 5 ? 1 : 2;
     const dist = boundedLevenshtein(q, word, maxAllowed);
@@ -157,6 +164,7 @@ export interface Scorable {
   description?: string;
   category: string;
   keywords?: string[];
+  aliases?: string[];
 }
 
 /**

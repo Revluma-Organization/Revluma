@@ -1,32 +1,84 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { Search, Bell, Sparkles, Compass } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { CommandPalette } from "./CommandPalette";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { CopilotPanel } from "./CopilotPanel";
 import { ProductTour } from "./ProductTour";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useUI } from "@/store/ui";
 import { useThemeStore } from "@/store";
+import { useRegisterCommands } from "@/store/commandRegistryStore";
+import type { PaletteCommand } from "@/lib/commandPalette/types";
 
 const SECTION_TITLES: Record<string, string> = {
-  "/dashboard/overview":     "Overview",
+  "/dashboard/overview": "Overview",
   "/dashboard/intelligence": "Intelligence",
-  "/dashboard/cart-recovery":"Cart Recovery",
-  "/dashboard/campaigns":    "Campaigns",
-  "/dashboard/customers":    "Customers",
-  "/dashboard/analytics":    "Analytics",
+  "/dashboard/cart-recovery": "Cart Recovery",
+  "/dashboard/campaigns": "Campaigns",
+  "/dashboard/customers": "Customers",
+  "/dashboard/analytics": "Analytics",
   "/dashboard/integrations": "Integrations",
-  "/dashboard/beta":         "Beta Features",
+  "/dashboard/beta": "Beta Features",
 };
 
 export function DashboardLayout() {
-  const { startTour } = useUI();
+  const { startTour, setCmdOpen, setNotifOpen, setCopilotOpen } = useUI();
   const theme = useThemeStore((s) => s.theme);
   const { pathname } = useLocation();
   // Use basePath for animation key to prevent re-mounting the entire layout for nested routes
   const basePath = pathname.split('/').slice(0, 3).join('/');
+
+  const globalCommands = useMemo<PaletteCommand[]>(() => [
+    {
+      id: "layout-open-palette",
+      title: "Open Command Palette",
+      description: "Search pages, actions, and tools instantly",
+      category: "actions",
+      icon: Search,
+      shortcut: "⌘K",
+      keywords: ["search", "palette", "jump", "find"],
+      aliases: ["global search", "quick search"],
+      perform: ({ close }) => { setCmdOpen(true); close(); },
+    },
+    {
+      id: "layout-open-notifications",
+      title: "View Notifications",
+      description: "Open your inbox and activity feed",
+      category: "actions",
+      icon: Bell,
+      shortcut: "⌘⇧N",
+      keywords: ["notifications", "alerts", "inbox"],
+      aliases: ["alerts", "messages"],
+      perform: ({ close }) => { setNotifOpen(true); close(); },
+    },
+    {
+      id: "layout-open-copilot",
+      title: "Ask Revluma Copilot",
+      description: "Open the AI assistant with your current context",
+      category: "ai",
+      icon: Sparkles,
+      shortcut: "⌘⇧A",
+      keywords: ["ai", "copilot", "assistant", "chat"],
+      aliases: ["intelligence", "ask ai"],
+      perform: ({ close }) => { setCopilotOpen(true); close(); },
+    },
+    {
+      id: "layout-start-tour",
+      title: "Take a Product Tour",
+      description: "Launch the guided onboarding walkthrough",
+      category: "actions",
+      icon: Compass,
+      shortcut: "⌘⇧T",
+      keywords: ["tour", "onboarding", "walkthrough", "guide"],
+      aliases: ["guided tour"],
+      perform: ({ close }) => { startTour(); close(); },
+    },
+  ], [setCmdOpen, setNotifOpen, setCopilotOpen, startTour]);
+
+  useRegisterCommands(globalCommands);
 
   useEffect(() => {
     document.documentElement.classList.toggle("light", theme === "light");

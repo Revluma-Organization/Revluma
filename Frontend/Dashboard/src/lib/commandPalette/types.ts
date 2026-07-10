@@ -1,10 +1,9 @@
 import type { LucideIcon } from "lucide-react";
-import type { NavigateFunction } from "react-router-dom";
 
 export type CommandCategory = "recent" | "pages" | "actions" | "integrations" | "settings" | "ai" | "help";
 
 export interface CommandContext {
-    navigate: NavigateFunction;
+    navigate: (to: string | number, options?: { replace?: boolean; state?: unknown }) => void;
     close: () => void;
 }
 
@@ -17,6 +16,7 @@ export interface PaletteCommand {
     /** Optional visual keyboard shortcut label shown in the palette UI (e.g. "⌘K") */
     shortcut?: string;
     keywords?: string[];
+    aliases?: string[];
     badge?: string;
     skipRecentTracking?: boolean;
     perform: (ctx: CommandContext) => void | Promise<void>;

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useEffect, useMemo } from "react";
 import type { PaletteCommand } from "@/lib/commandPalette/types";
 
 /**
@@ -60,4 +61,21 @@ export const useCommandRegistry = create<CommandRegistryState>((set) => ({
 /** Selector helper — returns a flat, stable-order array of registered commands. */
 export function selectDynamicCommands(state: CommandRegistryState): PaletteCommand[] {
   return Object.values(state.commands);
+}
+
+export function useRegisterCommands(commands: PaletteCommand | PaletteCommand[] | null | undefined) {
+  const registerMany = useCommandRegistry((state) => state.registerMany);
+  const unregisterMany = useCommandRegistry((state) => state.unregisterMany);
+
+  const normalized = useMemo(() => {
+    if (!commands) return [] as PaletteCommand[];
+    return Array.isArray(commands) ? commands : [commands];
+  }, [commands]);
+
+  useEffect(() => {
+    if (!normalized.length) return;
+    const ids = normalized.map((command) => command.id);
+    registerMany(normalized);
+    return () => unregisterMany(ids);
+  }, [normalized, registerMany, unregisterMany]);
 }
