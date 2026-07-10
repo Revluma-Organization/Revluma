@@ -38,6 +38,12 @@ interface ComingSoonPlatform {
   accentColor: string;
 }
 
+interface ShopifyInstallResponse {
+  install_url?: string | null;
+  message?: string;
+  error?: string;
+}
+
 //Platform config
 
 const PLATFORMS: Platform[] = [
@@ -91,16 +97,16 @@ const COMING_SOON: ComingSoonPlatform[] = [
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
   not_connected: "Not Connected",
-  connecting:    "Connecting…",
-  connected:     "Connected",
-  error:         "Connection Error",
+  connecting: "Connecting…",
+  connected: "Connected",
+  error: "Connection Error",
 };
 
 const STATUS_STYLE: Record<ConnectionStatus, { color: string; bg: string }> = {
-  not_connected: { color: "hsl(var(--t3))",   bg: "hsl(var(--bg-4))" },
-  connecting:    { color: "hsl(var(--amber))", bg: "hsl(var(--amber)  / 0.12)" },
-  connected:     { color: "hsl(var(--green))", bg: "hsl(var(--green)  / 0.12)" },
-  error:         { color: "hsl(var(--red))",   bg: "hsl(var(--red)    / 0.12)" },
+  not_connected: { color: "hsl(var(--t3))", bg: "hsl(var(--bg-4))" },
+  connecting: { color: "hsl(var(--amber))", bg: "hsl(var(--amber)  / 0.12)" },
+  connected: { color: "hsl(var(--green))", bg: "hsl(var(--green)  / 0.12)" },
+  error: { color: "hsl(var(--red))", bg: "hsl(var(--red)    / 0.12)" },
 };
 
 function StatusBadge({ status }: { status: ConnectionStatus }) {
@@ -168,7 +174,7 @@ function LogoTile({ src, alt, size = 14 }: { src: string; alt: string; size?: nu
 
 export default function Integrations() {
   const [statuses, setStatuses] = useState<Record<Platform["id"], ConnectionStatus>>({
-    shopify:     "not_connected",
+    shopify: "not_connected",
     woocommerce: "not_connected",
   });
   const [loading, setLoading] = useState(true);
@@ -188,7 +194,7 @@ export default function Integrations() {
       const res = await api.get<{ data: { stores: { platform: "shopify" | "woocommerce"; status: string }[] } }>('/stores');
       const stores = res.data?.data?.stores || [];
       const newStatuses = { shopify: "not_connected", woocommerce: "not_connected" } as Record<Platform["id"], ConnectionStatus>;
-      
+
       stores.forEach(store => {
         if (store.status === "active") {
           newStatuses[store.platform] = "connected";
@@ -214,7 +220,7 @@ export default function Integrations() {
     }
   }
 
-    async function handleShopifySubmit(e: React.FormEvent) {
+  async function handleShopifySubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!shopDomain.trim()) return;
 
@@ -228,17 +234,20 @@ export default function Integrations() {
     }
 
     try {
-          const response = await api.get('/shopify/install', {
-      shop: cleanShop
-    });
+      const response = await api.get<ShopifyInstallResponse>('/shopify/install', {
+        shop: cleanShop,
+      });
 
-      if (response.data?.install_url) {
-        window.location.href = response.data.install_url;
+      const installUrl = response.data?.install_url?.trim();
+      if (!installUrl) {
+        throw new Error(response.data?.message ?? 'Shopify install URL was not returned by the server.');
       }
+
+      window.location.assign(installUrl);
     } catch (e) {
-      console.error("Shopify connect failed", e);
+      console.error('Shopify connect failed', e);
     }
-}
+  }
 
   async function handleWooSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -263,7 +272,7 @@ export default function Integrations() {
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
-      
+
       {/* Page header */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -308,7 +317,7 @@ export default function Integrations() {
         {PLATFORMS.map((platform) => {
           const status = statuses[platform.id];
           const isConnected = status === "connected";
-          
+
           return (
             <motion.div
               key={platform.id}
@@ -377,14 +386,14 @@ export default function Integrations() {
                           <p className="text-t3">Example: https://yourstore.com</p>
                         </FieldInfo>
                       </label>
-                      <input 
-                        type="url" 
+                      <input
+                        type="url"
                         placeholder="https://yourstore.com"
                         required
                         className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none transition-colors focus:border-[color:var(--woo-focus)]"
                         style={{ ["--woo-focus" as string]: platform.accentColor }}
                         value={wooData.shop_url}
-                        onChange={e => setWooData({...wooData, shop_url: e.target.value})}
+                        onChange={e => setWooData({ ...wooData, shop_url: e.target.value })}
                       />
                     </div>
 
@@ -397,14 +406,14 @@ export default function Integrations() {
                           <p>Click <span className="text-t1">Add key</span>, set permissions to <span className="text-t1">Read/Write</span>, then generate. It starts with <span className="text-t1">ck_</span>.</p>
                         </FieldInfo>
                       </label>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         required
                         placeholder="ck_..."
                         className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none transition-colors focus:border-[color:var(--woo-focus)]"
                         style={{ ["--woo-focus" as string]: platform.accentColor }}
                         value={wooData.consumer_key}
-                        onChange={e => setWooData({...wooData, consumer_key: e.target.value})}
+                        onChange={e => setWooData({ ...wooData, consumer_key: e.target.value })}
                       />
                     </div>
 
@@ -416,14 +425,14 @@ export default function Integrations() {
                           <p className="text-t3">Lost it? Just generate a new key pair and paste the new values here.</p>
                         </FieldInfo>
                       </label>
-                      <input 
-                        type="password" 
+                      <input
+                        type="password"
                         required
                         placeholder="cs_..."
                         className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none transition-colors focus:border-[color:var(--woo-focus)]"
                         style={{ ["--woo-focus" as string]: platform.accentColor }}
                         value={wooData.consumer_secret}
-                        onChange={e => setWooData({...wooData, consumer_secret: e.target.value})}
+                        onChange={e => setWooData({ ...wooData, consumer_secret: e.target.value })}
                       />
                     </div>
 
@@ -489,13 +498,13 @@ export default function Integrations() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="fixed left-1/2 top-1/2 z-50 w-full max-w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-bg p-6 shadow-2xl"
             >
-              <button 
+              <button
                 onClick={() => setShopifyModalOpen(false)}
                 className="absolute right-4 top-4 text-t3 hover:text-t1 transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>
-              
+
               <div className="mb-5 flex items-center gap-3">
                 <LogoTile src={shopifyLogo} alt="Shopify" size={10} />
                 <div>
@@ -514,8 +523,8 @@ export default function Integrations() {
                     </FieldInfo>
                   </label>
                   <div className="relative">
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="mystore"
                       autoFocus
                       required
@@ -528,8 +537,8 @@ export default function Integrations() {
                     </div>
                   </div>
                 </div>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   disabled={!shopDomain.trim()}
                   className="w-full rounded-md py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
                   style={{ background: "#5C8F4D" }}

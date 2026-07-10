@@ -9,6 +9,7 @@ interface UIState {
   cmdOpen: boolean;
   notifOpen: boolean;
   copilotOpen: boolean;
+  copilotPrefill: string;
   tourOpen: boolean;
   tourStep: number;
   tourDismissed: boolean;
@@ -22,6 +23,9 @@ interface UIActions {
   setCmdOpen: (v: boolean) => void;
   setNotifOpen: (v: boolean) => void;
   setCopilotOpen: (v: boolean) => void;
+  /** Opens the Copilot panel with a query pre-filled — used by the command palette's "Ask AI" fallback. */
+  openCopilotWithQuery: (query: string) => void;
+  clearCopilotPrefill: () => void;
   startTour: () => void;
   endTour: () => void;
   setTourStep: (n: number) => void;
@@ -39,6 +43,7 @@ export const useUIStore = create<UIStore>()(
       cmdOpen: false,
       notifOpen: false,
       copilotOpen: false,
+      copilotPrefill: '',
       tourOpen: false,
       tourStep: 0,
       tourDismissed: false,
@@ -50,6 +55,8 @@ export const useUIStore = create<UIStore>()(
       setCmdOpen: (v) => set({ cmdOpen: v }),
       setNotifOpen: (v) => set({ notifOpen: v }),
       setCopilotOpen: (v) => set({ copilotOpen: v }),
+      openCopilotWithQuery: (query) => set({ copilotOpen: true, copilotPrefill: query }),
+      clearCopilotPrefill: () => set({ copilotPrefill: '' }),
       startTour: () => set({ tourOpen: true, tourStep: 0 }),
       endTour: () => set({ tourOpen: false, tourDismissed: true }),
       setTourStep: (n) => set({ tourStep: n }),

@@ -11,8 +11,15 @@ const STARTERS = [
 ];
 
 export function CopilotPanel() {
-  const { copilotOpen, setCopilotOpen } = useUI();
+  const { copilotOpen, setCopilotOpen, copilotPrefill, clearCopilotPrefill } = useUI();
   const [input, setInput] = useState("");
+
+  useEffect(() => {
+    if (copilotOpen && copilotPrefill) {
+      setInput(copilotPrefill);
+      clearCopilotPrefill();
+    }
+  }, [copilotOpen, copilotPrefill, clearCopilotPrefill]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -74,7 +81,7 @@ export function CopilotPanel() {
                 <button
                   key={s}
                   onClick={() => setInput(s)}
-                  className="w-full rounded-md border border-border bg-glass/[0.035] px-3 py-2 text-left text-[0.78rem] text-t2 transition-colors hover:border-border-md hover:text-t1"
+                  className="w-full rounded-md border border-border bg-white/[0.035] px-3 py-2 text-left text-[0.78rem] text-t2 transition-colors hover:border-border-md hover:text-t1"
                 >
                   {s}
                 </button>
@@ -87,7 +94,7 @@ export function CopilotPanel() {
           onSubmit={(e) => { e.preventDefault(); setInput(""); }}
           className="border-t border-border p-3"
         >
-          <div className="flex items-center gap-2 rounded-lg border border-border-md bg-glass/[0.035] px-3 py-2 focus-within:border-border-hv">
+          <div className="flex items-center gap-2 rounded-lg border border-border-md bg-white/[0.035] px-3 py-2 focus-within:border-border-hv">
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
