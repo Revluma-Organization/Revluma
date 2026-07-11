@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 
 import shopifyLogo from "@/assets/brand/shopify-logo.png";
 import woocommerceLogo from "@/assets/brand/woocommerce-logo.webp";
@@ -456,8 +457,7 @@ export default function Integrations() {
                     ) : (
                       <button
                         onClick={() => handleConnectClick(platform.id)}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 text-[0.82rem] font-bold transition-opacity hover:opacity-90"
-                        style={{ background: platform.accentColor, color: "#fff" }}
+                        className={`flex flex-1 items-center justify-center gap-2 rounded-md py-2.5 text-[0.82rem] transition-opacity hover:opacity-90 ${DESIGN_TOKENS.buttonPrimary}`}
                       >
                         <Plug className="h-3.5 w-3.5" />
                         Connect {platform.name}

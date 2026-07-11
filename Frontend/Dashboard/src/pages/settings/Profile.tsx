@@ -3,16 +3,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Upload } from "lucide-react";
+import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 
 const Profile: FC = () => {
   return (
     <div className="max-w-4xl space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-t1 display">Account</h1>
-        <p className="text-[0.85rem] text-t3 mt-1">Manage your personal profile and account settings.</p>
+        <h1 className={`text-2xl font-bold tracking-tight display ${DESIGN_TOKENS.primaryText}`}>Account</h1>
+        <p className={`text-[0.85rem] mt-1 ${DESIGN_TOKENS.secondaryText}`}>Manage your personal profile and account settings.</p>
       </div>
 
-      <div className="space-y-8 border border-border-md rounded-xl p-6 bg-bg-2 shadow-sm relative overflow-hidden">
+      <div className={`space-y-8 p-6 shadow-sm relative overflow-hidden ${DESIGN_TOKENS.card}`}>
         {/* Subtle glass gradient effect */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-glass/[0.015] to-transparent" />
 
@@ -41,21 +42,21 @@ const Profile: FC = () => {
         {/* Name Section */}
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <Label htmlFor="firstName" className="text-[0.8rem] font-semibold text-t2">First Name</Label>
-            <Input id="firstName" defaultValue="Dianne" className="rounded-lg border-border bg-bg-3 text-t1 h-9 focus-visible:ring-[hsl(var(--accent)/0.5)] transition-all" />
+            <Label htmlFor="firstName" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>First Name</Label>
+            <Input id="firstName" defaultValue="Dianne" className={`h-9 transition-all ${DESIGN_TOKENS.input}`} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="lastName" className="text-[0.8rem] font-semibold text-t2">Last Name</Label>
-            <Input id="lastName" defaultValue="Russell" className="rounded-lg border-border bg-bg-3 text-t1 h-9 focus-visible:ring-[hsl(var(--accent)/0.5)] transition-all" />
+            <Label htmlFor="lastName" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Last Name</Label>
+            <Input id="lastName" defaultValue="Russell" className={`h-9 transition-all ${DESIGN_TOKENS.input}`} />
           </div>
         </div>
 
         {/* Email Section */}
         <div className="relative z-10 space-y-2">
-          <Label htmlFor="email" className="text-[0.8rem] font-semibold text-t2">Email</Label>
+          <Label htmlFor="email" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Email</Label>
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <Input id="email" defaultValue="russel@hey.com" readOnly className="max-w-md rounded-lg border-border bg-bg-4 text-t3 h-9 font-medium" />
-            <Button variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-glass/[0.065] text-xs h-9 px-4 font-medium transition-colors">
+            <Input id="email" defaultValue="russel@hey.com" readOnly className={`max-w-md h-9 font-medium opacity-70 ${DESIGN_TOKENS.input}`} />
+            <Button variant="outline" className={`h-9 px-4 text-xs ${DESIGN_TOKENS.buttonSecondary}`}>
               Edit Email
             </Button>
           </div>
@@ -78,10 +79,10 @@ const Profile: FC = () => {
 
       {/* Save / Cancel Bar */}
       <div className="flex items-center justify-end gap-3 pt-4">
-        <Button variant="ghost" className="rounded-lg text-t2 hover:text-t1 hover:bg-glass/[0.065] h-9 px-6 font-medium text-xs">
+        <Button variant="ghost" className={`h-9 px-6 text-xs ${DESIGN_TOKENS.secondaryText} hover:${DESIGN_TOKENS.primaryText}`}>
           Cancel
         </Button>
-        <Button className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-black font-bold h-9 px-8 rounded-lg text-xs shadow-[0_0_15px_hsl(var(--accent)/0.2)]">
+        <Button className={`h-9 px-8 text-xs ${DESIGN_TOKENS.buttonPrimary}`}>
           Save Changes
         </Button>
       </div>

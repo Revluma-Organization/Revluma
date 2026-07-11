@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { ShoppingCart, TrendingUp, RefreshCw } from "lucide-react";
+import { ShoppingCart, TrendingUp, RefreshCw, PackageOpen } from "lucide-react";
+import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 
 interface CartRow {
   id: string;
@@ -111,15 +112,15 @@ export default function CartRecovery() {
               {!loading && (!carts || carts.length === 0) && (
                 <tr>
                   <td colSpan={5} className="py-20 text-center">
-                    <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
-                      <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl" style={{ background: "hsl(var(--accent) / 0.08)", border: "1px solid hsl(var(--accent) / 0.15)" }}>
-                        <ShoppingCart className="h-8 w-8" style={{ color: "hsl(var(--accent))" }} />
+                    <div className={DESIGN_TOKENS.emptyState.container}>
+                      <div className={DESIGN_TOKENS.emptyState.iconWrapper}>
+                        <PackageOpen className={DESIGN_TOKENS.emptyState.icon} />
                       </div>
-                      <h4 className="text-lg font-bold text-t1 mb-2">No abandoned carts yet</h4>
-                      <p className="text-[0.85rem] text-t3 mb-6">
+                      <h4 className={DESIGN_TOKENS.emptyState.title}>No abandoned carts yet</h4>
+                      <p className={DESIGN_TOKENS.emptyState.description}>
                         Once you connect your store, Revluma will automatically start tracking and recovering abandoned carts.
                       </p>
-                      <button className="rounded-lg px-5 py-2.5 text-sm font-semibold transition-transform hover:-translate-y-0.5" style={{ background: "hsl(var(--t1))", color: "hsl(var(--bg))" }}>
+                      <button className={`rounded-lg px-6 py-2.5 ${DESIGN_TOKENS.buttonPrimary}`}>
                         Connect your store
                       </button>
                     </div>

@@ -7,6 +7,7 @@ import {
   Mail, ShoppingCart, TrendingUp, Users,
   ChevronRight, Monitor, ShoppingBag, Globe,
 } from "lucide-react";
+import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 
 // ── Quick Actions — UNCHANGED (static navigation, no data) ───────────────────
 
@@ -90,8 +91,8 @@ export function TrendingProducts({ products, loading }: TrendingProps) {
                     <Icon className="h-4 w-4 text-t2" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[0.8rem] font-medium text-t1">{t.name}</div>
-                    <div className="truncate text-[0.66rem] text-t3">{t.stats}</div>
+                    <div className={`truncate text-[0.8rem] font-medium ${DESIGN_TOKENS.primaryText}`}>{t.name}</div>
+                    <div className={`truncate text-[0.66rem] ${DESIGN_TOKENS.secondaryText}`}>{t.stats}</div>
                   </div>
                   <span
                     className="rounded-full px-1.5 py-0.5 text-[0.65rem] font-bold"

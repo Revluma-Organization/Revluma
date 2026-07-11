@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { motion } from "framer-motion";
+import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 
 interface PageHeaderProps {
   title: ReactNode;
@@ -18,13 +19,13 @@ export function PageHeader({ title, subtitle, badge, actions }: PageHeaderProps)
     >
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="display text-[1.6rem] font-extrabold tracking-tight text-t1 sm:text-[1.85rem]">
+          <h1 className={`display text-[1.6rem] font-extrabold tracking-tight sm:text-[1.85rem] ${DESIGN_TOKENS.primaryText}`}>
             {title}
           </h1>
           {badge && <div>{badge}</div>}
         </div>
         {subtitle && (
-          <p className="mt-1 text-[0.85rem] text-t2 max-w-2xl">
+          <p className={`mt-1 text-[0.85rem] max-w-2xl ${DESIGN_TOKENS.secondaryText}`}>
             {subtitle}
           </p>
         )}
