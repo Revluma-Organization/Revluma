@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
+import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 import { motion } from "framer-motion";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ConnectBanner } from "@/components/dashboard/ConnectBanner";
@@ -221,16 +222,16 @@ function KpiCardSkeleton({ index }: { index: number }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.04 + index * 0.04, duration: 0.32 }}
-      className="relative flex flex-col overflow-hidden rounded-xl border border-border bg-bg-2 p-4"
+      className={`relative flex flex-col overflow-hidden p-5 ${DESIGN_TOKENS.card}`}
     >
-      <div className="mb-3 flex items-start justify-between">
-        <div className="h-7 w-7 animate-pulse rounded-md bg-bg-4" />
-        <div className="h-5 w-14 animate-pulse rounded-full bg-bg-4" />
+      <div className="mb-4 flex items-start justify-between">
+        <div className="h-10 w-10 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
+        <div className="h-5 w-14 animate-pulse rounded-full bg-slate-200 dark:bg-slate-800" />
       </div>
-      <div className="h-8 w-24 animate-pulse rounded-md bg-bg-4" />
-      <div className="mt-2 h-3 w-28 animate-pulse rounded-md bg-bg-4" />
-      <div className="mt-1 h-2.5 w-20 animate-pulse rounded-md bg-bg-4" />
-      <div className="mt-3 h-9 w-full animate-pulse rounded-md bg-bg-4" />
+      <div className="h-8 w-24 animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
+      <div className="mt-2 h-3 w-28 animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
+      <div className="mt-1 h-2.5 w-20 animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
+      <div className="mt-3 h-9 w-full animate-pulse rounded-md bg-slate-200 dark:bg-slate-800" />
     </motion.div>
   );
 }

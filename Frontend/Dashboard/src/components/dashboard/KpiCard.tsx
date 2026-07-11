@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import type { KPI, KpiIconKey } from "@/data/mockOverview";
 import { cn } from "@/lib/utils";
+import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 
 const ICON_MAP: Record<KpiIconKey, React.ElementType> = {
   dollar: DollarSign, cart: ShoppingCart, trend: TrendingUp,
@@ -47,19 +48,19 @@ export function KpiCard({ kpi, index }: { kpi: KPI; index: number }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.04 + index * 0.04, duration: 0.32, ease: [0.4, 0, 0.2, 1] }}
-      className="relative flex flex-col overflow-hidden rounded-xl border border-border bg-bg-2 p-4 transition-colors hover:border-border-md"
+      className={`relative flex flex-col overflow-hidden p-5 transition-colors hover:border-slate-300 dark:hover:border-slate-700 ${DESIGN_TOKENS.card}`}
     >
       {/* subtle hover glow */}
       <div
         className="pointer-events-none absolute inset-x-0 top-0 h-px opacity-0 transition-opacity group-hover:opacity-100"
         style={{ background: `linear-gradient(90deg, transparent, ${tone.color}, transparent)` }}
       />
-      <div className="mb-3 flex items-start justify-between">
+      <div className="mb-4 flex items-start justify-between">
         <div
-          className="flex h-7 w-7 items-center justify-center rounded-md border"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border"
           style={{ background: tone.bg, borderColor: tone.border }}
         >
-          <Icon className="h-3.5 w-3.5" style={{ color: tone.color, strokeWidth: 2 }} />
+          <Icon className="h-5 w-5" style={{ color: tone.color }} strokeWidth={1.5} />
         </div>
         {kpi.delta && (
           <div
@@ -77,9 +78,9 @@ export function KpiCard({ kpi, index }: { kpi: KPI; index: number }) {
           </div>
         )}
       </div>
-      <div className="display text-[1.6rem] font-extrabold leading-none text-t1">{kpi.value}</div>
-      <div className="mt-2 text-[0.72rem] font-medium text-t2">{kpi.label}</div>
-      <div className={cn("mt-1 text-[0.66rem]", kpi.atRisk ? "text-amber" : "text-t3")}>
+      <div className={`display text-[1.6rem] font-extrabold leading-none ${DESIGN_TOKENS.primaryText}`}>{kpi.value}</div>
+      <div className={`mt-2 text-[0.72rem] font-medium ${DESIGN_TOKENS.secondaryText}`}>{kpi.label}</div>
+      <div className={cn("mt-1 text-[0.66rem]", kpi.atRisk ? "text-amber-500 dark:text-amber-400" : DESIGN_TOKENS.secondaryText)}>
         {kpi.atRisk || kpi.bench || ""}
       </div>
       {kpi.spark && <Sparkline data={kpi.spark} color={tone.color} />}
