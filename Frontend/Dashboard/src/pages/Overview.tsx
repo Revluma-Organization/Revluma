@@ -97,17 +97,17 @@ export default function Overview() {
       const [kpiResult, chartResult, activityResult, storesResult] = settled;
 
       if (kpiResult.status === "fulfilled") {
-        setKpi(kpiResult.value.data.data?.kpi ?? null);
+        setKpi(kpiResult.value.data?.data?.kpi ?? null);
       }
       if (chartResult.status === "fulfilled") {
-        setChart(chartResult.value.data.data?.chart ?? null);
+        setChart(chartResult.value.data?.data?.chart ?? null);
       }
       if (activityResult.status === "fulfilled") {
-        setActivity(activityResult.value.data.data?.activity ?? null);
+        setActivity(activityResult.value.data?.data?.activity ?? null);
       }
       if (storesResult.status === "fulfilled") {
         setStoreConnected(
-          storesResult.value.data.data?.stores?.some((s) => s.status === "active") ?? false
+          storesResult.value.data?.data?.stores?.some((s) => s.status === "active") ?? false
         );
       }
 

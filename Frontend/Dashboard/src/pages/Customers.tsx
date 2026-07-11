@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Users, TrendingUp, Star, Inbox } from "lucide-react";
+import { Users, TrendingUp, Star, Inbox, Mail } from "lucide-react";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 
 interface CustomerRow {
