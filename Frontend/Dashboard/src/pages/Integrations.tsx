@@ -9,10 +9,6 @@ import { api } from "@/lib/api";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 
-import shopifyLogo from "@/assets/brand/shopify-logo.png";
-import woocommerceLogo from "@/assets/brand/woocommerce-logo.webp";
-import bigcommerceLogo from "@/assets/brand/bigcommerce-logo.png";
-
 //Types
 
 type ConnectionStatus = "not_connected" | "connecting" | "connected" | "error";
@@ -54,7 +50,7 @@ const PLATFORMS: Platform[] = [
     tagline: "The world's leading e-commerce platform",
     description:
       "Connect your Shopify store to automatically detect abandoned carts, sync customer profiles, and fire recovery sequences — no code required.",
-    logo: shopifyLogo,
+    logo: "https://cdn.simpleicons.org/shopify/5C8F4D",
     accentColor: "#5C8F4D",
     accentBg: "hsl(142 40% 42% / 0.10)",
     accentBorder: "hsl(142 40% 42% / 0.28)",
@@ -73,7 +69,7 @@ const PLATFORMS: Platform[] = [
     tagline: "The open-source commerce platform for WordPress",
     description:
       "Connect your WooCommerce store via REST API to start recovering abandoned carts and unlocking customer intelligence across your catalogue.",
-    logo: woocommerceLogo,
+    logo: "https://cdn.simpleicons.org/woocommerce/7C5CBF",
     accentColor: "#7C5CBF",
     accentBg: "hsl(258 45% 55% / 0.10)",
     accentBorder: "hsl(258 45% 55% / 0.28)",
@@ -88,9 +84,9 @@ const PLATFORMS: Platform[] = [
 ];
 
 const COMING_SOON: ComingSoonPlatform[] = [
-  { name: "BigCommerce", tagline: "Open SaaS commerce", logo: bigcommerceLogo, accentColor: "#34313F" },
-  { name: "Magento", tagline: "Adobe Commerce", icon: Layers, accentColor: "#F46F25" },
-  { name: "Squarespace", tagline: "All-in-one website builder", icon: LayoutTemplate, accentColor: "#111111" },
+  { name: "BigCommerce", tagline: "Open SaaS commerce", logo: "https://cdn.simpleicons.org/bigcommerce/34313F", accentColor: "#34313F" },
+  { name: "Magento", tagline: "Adobe Commerce", logo: "https://cdn.simpleicons.org/magento/F46F25", accentColor: "#F46F25" },
+  { name: "Squarespace", tagline: "All-in-one website builder", logo: "https://cdn.simpleicons.org/squarespace/111111", accentColor: "#111111" },
   { name: "Custom API", tagline: "Bring your own stack", icon: Code2, accentColor: "#4C8DFF" },
 ];
 
@@ -297,18 +293,26 @@ export default function Integrations() {
         </div>
       </motion.div>
 
-      {/* No-store warning */}
+      {/* No-store warning -> Premium Empty State */}
       {!loading && !anyConnected && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex items-center gap-3 rounded-xl border border-border bg-bg-2 px-4 py-3"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className={DESIGN_TOKENS.emptyState.container}
         >
-          <WifiOff className="h-4 w-4 shrink-0 text-t3" />
-          <p className="text-[0.82rem] text-t2">
-            <strong className="text-t1">No store connected.</strong>{" "}
-            Connect at least one store to activate recovery sequences and unlock your live dashboard.
+          <div className={DESIGN_TOKENS.emptyState.iconWrapper}>
+            <WifiOff className={DESIGN_TOKENS.emptyState.icon} strokeWidth={1.5} />
+          </div>
+          <h3 className={DESIGN_TOKENS.emptyState.title}>No Store Connected</h3>
+          <p className={DESIGN_TOKENS.emptyState.description}>
+            Connect your Shopify or WooCommerce store to activate recovery sequences and unlock your live dashboard.
           </p>
+          <button
+            onClick={() => handleConnectClick('shopify')}
+            className={`mt-2 px-6 py-2.5 rounded-lg font-bold text-sm transition-opacity hover:opacity-90 ${DESIGN_TOKENS.buttonPrimary}`}
+          >
+            Connect Store
+          </button>
         </motion.div>
       )}
 
@@ -324,7 +328,7 @@ export default function Integrations() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-bg-2 transition-all duration-300 hover:border-border-md hover:shadow-elegant"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-950 transition-all duration-300 hover:border-slate-400 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-900 shadow-sm"
             >
               {/* accent hairline */}
               <div
@@ -505,7 +509,7 @@ export default function Integrations() {
               </button>
 
               <div className="mb-5 flex items-center gap-3">
-                <LogoTile src={shopifyLogo} alt="Shopify" size={10} />
+                <LogoTile src="https://cdn.simpleicons.org/shopify/5C8F4D" alt="Shopify" size={10} />
                 <div>
                   <h3 className="text-lg font-bold text-t1">Connect Shopify</h3>
                   <p className="text-sm text-t3">Enter your store domain</p>
@@ -561,7 +565,7 @@ export default function Integrations() {
           {COMING_SOON.map((p) => (
             <div
               key={p.name}
-              className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border bg-bg-2 px-4 py-3.5 transition-colors hover:border-border-md"
+              className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-950 px-4 py-3.5 transition-all hover:border-slate-400 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-900 shadow-sm"
             >
               {p.logo ? (
                 <LogoTile src={p.logo} alt={p.name} size={10} />
