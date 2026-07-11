@@ -57,7 +57,7 @@ export function Sidebar() {
       <aside
         data-tour="sidebar"
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-bg-sidebar transition-[width,transform] duration-300 ease-out md:relative md:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-950 transition-[width,transform] duration-300 ease-out md:relative md:translate-x-0',
           sidebarCollapsed ? 'md:w-[var(--sidebar-w-collapsed)]' : 'md:w-[var(--sidebar-w)]',
           'w-[var(--sidebar-w)]',
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
@@ -76,7 +76,7 @@ export function Sidebar() {
               alt="Revluma"
               className="h-8 w-8 shrink-0 object-contain md:h-10 md:w-10"
             />
-            {!sidebarCollapsed && <span className="display text-[1.18rem] font-extrabold text-t1">Revluma</span>}
+            {!sidebarCollapsed && <span className="display text-[1.18rem] font-extrabold text-slate-900 dark:text-white">Revluma</span>}
           </div>
           
           <div className={cn('flex items-center gap-1', sidebarCollapsed && 'md:hidden')}>
@@ -143,36 +143,25 @@ export function Sidebar() {
                     end={item.to === '/'}
                     className={({ isActive }) =>
                       cn(
-                        'group relative my-px flex items-center gap-2.5 rounded-md border border-transparent px-2.5 py-2 transition-all hover:translate-x-[1.5px] hover:bg-glass/[0.065]',
-                        isActive && 'border-glass/[0.13] bg-glass/[0.08]',
+                        'group relative my-px flex items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 transition-all hover:bg-black/5 dark:hover:bg-white/5',
+                        isActive && 'bg-black/5 dark:bg-white/5',
                         sidebarCollapsed && 'md:justify-center md:px-2.5 md:py-2.5',
                       )
                     }
                   >
                     {({ isActive }) => (
                       <>
-                        {isActive && (
-                          <span
-                            className={cn('absolute left-0 top-1/2 h-4 w-[2.5px] -translate-y-1/2 rounded-r', sidebarCollapsed && 'md:hidden')}
-                            style={{ background: 'hsl(var(--accent))' }}
-                          />
-                        )}
                         <span
                           className={cn(
-                            'flex shrink-0 items-center justify-center rounded-md border transition-colors',
+                            'flex shrink-0 items-center justify-center rounded-lg transition-colors',
                             sidebarCollapsed ? 'md:h-[38px] md:w-[38px] h-[30px] w-[30px]' : 'h-[30px] w-[30px]',
                           )}
-                          style={
-                            isActive
-                              ? { background: 'hsl(var(--accent) / 0.12)', borderColor: 'hsl(var(--accent) / 0.25)' }
-                              : { background: 'hsl(var(--glass) / 0.035)', borderColor: 'hsl(var(--border-soft) / 0.07)' }
-                          }
                         >
-                          <Icon className="h-3.5 w-3.5" style={{ color: isActive ? 'hsl(var(--accent))' : 'hsl(var(--t2))', strokeWidth: 1.8 }} />
+                          <Icon className={cn('h-4 w-4', isActive ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400')} strokeWidth={1.8} />
                         </span>
                         {!sidebarCollapsed && (
                           <>
-                            <span className={cn('flex-1 truncate text-[0.82rem] font-medium text-t2 transition-colors', isActive && 'font-semibold text-t1')}>
+                            <span className={cn('flex-1 truncate text-[0.82rem] transition-colors', isActive ? 'font-medium text-slate-900 dark:text-white' : 'font-normal text-slate-500 dark:text-slate-400')}>
                               {item.label}
                             </span>
                             {item.badge && <NavBadge tone={item.badge.tone} text={item.badge.text} />}
@@ -225,14 +214,9 @@ export function Sidebar() {
           >
             <div
               className={cn(
-                'flex shrink-0 items-center justify-center rounded-full text-[0.72rem] font-bold',
+                'flex shrink-0 items-center justify-center rounded-full text-[0.72rem] font-bold border border-slate-200 dark:border-slate-800 bg-black/5 dark:bg-white/5 text-slate-900 dark:text-white',
                 sidebarCollapsed ? 'md:h-[34px] md:w-[34px] h-[30px] w-[30px]' : 'h-[30px] w-[30px]',
               )}
-              style={{
-                background: 'hsl(var(--accent) / 0.12)',
-                border: '1.5px solid hsl(var(--accent) / 0.25)',
-                color: 'hsl(var(--accent))',
-              }}
             >
               {initials}
             </div>
