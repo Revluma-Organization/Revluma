@@ -328,13 +328,12 @@ exports.login = async (req, res, next) => {
       success: true,
       data: {
         access_token: accessToken,
-        refresh_token: refreshToken,
         user: {
-          id: user.id,
-          full_name: user.full_name,
-          email: user.email,
-        },
-      },
+         id: user.id,
+        full_name: user.full_name,
+        email: user.email,
+  },
+}
     });
 
   } catch (error) {
