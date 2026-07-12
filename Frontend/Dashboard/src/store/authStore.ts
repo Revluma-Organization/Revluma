@@ -68,9 +68,6 @@ export const useAuthStore = create<AuthStore>()(
 
           const { access_token, refresh_token, user } = res.data.data;
 
-          // Store refresh token separately for the refresh endpoint
-          localStorage.setItem('revluma_refresh_token', refresh_token);
-
           set({
             csrfToken: access_token,
             user: {
