@@ -177,7 +177,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <a href="/profile" className="flex items-center gap-2 cursor-pointer">
+                <a href="/dashboard/settings/profile" className="flex items-center gap-2 cursor-pointer">
                   <UserCircle className="h-3.5 w-3.5" />
                   <span>Profile</span>
                 </a>
