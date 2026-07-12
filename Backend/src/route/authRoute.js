@@ -6,20 +6,11 @@ const { registerLimiter, loginLimiter } = require("../middlewares/rateLimiters")
 const { validateRegister, validateLogin } = require('../middlewares/validateAuth');
 const { authenticateToken } = require('../middlewares/authMiddleware');
 
-// Temporary test route
-router.get("/test", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Auth router is working",
-  });
-});
-
-
 
 // Authentication routes
 router.post('/register', validateRegister, registerLimiter, authController.register);
-router.post('/verify-email', authController.verifyEmail);
-router.post('/resend-verification', authController.resendVerification);
+router.post('/verify-email',  authController.verifyEmail);
+router.post('/resend-verification',authenticateToken, authController.resendVerification);
 router.post('/login', validateLogin, loginLimiter, authController.login);
 router.post('/refresh', authController.refresh);
 router.post('/logout', authenticateToken, authController.logout);

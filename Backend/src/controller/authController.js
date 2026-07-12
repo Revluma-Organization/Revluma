@@ -32,13 +32,12 @@ exports.register = async (req, res, next) => {
         email: account.email,
       },
     });
-
   
     // HANDLE EXISTING USER
     if (existingUser) {
       // If the user has already verified their email,
       // don't allow another registration.
-      if (existingUser.email_verified) {
+      if (existingUser.email_verified == true) {
         return res.status(400).json({
           success: false,
           error: "Email already exists",
@@ -287,6 +286,8 @@ exports.login = async (req, res, next) => {
       },
     });
 
+
+    // Generate Access Token
     const accessToken = jwt.sign(
       {
         userId: user.id,
@@ -300,6 +301,8 @@ exports.login = async (req, res, next) => {
       }
     );
 
+
+    // Generate Access Token
     const refreshToken = jwt.sign(
       {
         userId: user.id,
@@ -310,6 +313,17 @@ exports.login = async (req, res, next) => {
       }
     );
 
+    // Store Refresh Token as HttpOnly Cookie
+    res.cookie("refresh_token", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite:
+        process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/",
+    });
+
+    //Response 
     return res.status(200).json({
       success: true,
       data: {
@@ -322,6 +336,7 @@ exports.login = async (req, res, next) => {
         },
       },
     });
+
   } catch (error) {
     next(error);
   }
@@ -437,24 +452,13 @@ exports.getProfile = async (req, res) => {
   }
 };
 
-// LOGOUT
-exports.logout = async (req, res, next) => {
-  try {
-    return res.status(200).json({
-      success: true,
-      message: "Logged out successfully",
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 // REFRESH TOKEN
 exports.refresh = async (req, res, next) => {
   try {
-    const { refresh_token } = req.body;
+    const refreshToken = req.cookies.refresh_token
 
-    if (!refresh_token) {
+    if (!refreshToken) {
       return res.status(400).json({
         success: false,
         error: "Refresh token is required.",
@@ -463,7 +467,7 @@ exports.refresh = async (req, res, next) => {
 
     // Verify refresh token
     const decoded = jwt.verify(
-      refresh_token,
+      refreshToken,
       process.env.JWT_REFRESH_SECRET
     );
 
@@ -524,5 +528,26 @@ exports.refresh = async (req, res, next) => {
       success: false,
       error: "Refresh token expired or invalid.",
     });
+  }
+};
+
+// LOGOUT
+exports.logout = async (req, res, next) => {
+  try {
+    res.clearCookie("refresh_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite:
+        process.env.NODE_ENV === "production" ? "none" : "lax",
+      path: "/",
+    }); 
+    
+     return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+
+  } catch (error) {
+    next(error);
   }
 };
