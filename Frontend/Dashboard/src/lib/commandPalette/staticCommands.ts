@@ -161,7 +161,7 @@ function buildSettingsCommands(): PaletteCommand[] {
       category: "settings",
       icon: UserCircle,
       keywords: ["profile", "account", "name", "email"],
-      perform: ({ close }) => { window.location.href = "/profile"; close(); },
+      perform: ({ close }) => { window.location.href = "/dashboard/settings/profile"; close(); },
     },
   ];
 }
