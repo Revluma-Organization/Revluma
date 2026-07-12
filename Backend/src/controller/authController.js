@@ -322,6 +322,10 @@ exports.login = async (req, res, next) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: "/",
     });
+    
+    console.log("NODE_ENV =", process.env.NODE_ENV);
+    console.log("COOKIE_SECRET exists =", !!process.env.COOKIE_SECRET);
+    console.log("Set-Cookie Header:", res.getHeader("Set-Cookie"));
 
     //Response 
     return res.status(200).json({
