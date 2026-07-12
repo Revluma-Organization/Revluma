@@ -103,9 +103,6 @@ class RevlumaAuth {
             };
             localStorage.setItem('rv-auth', JSON.stringify(authState));
         }
-        if (refreshToken) {
-            localStorage.setItem('revluma_refresh_token', refreshToken);
-        }
     }
 
     getStoredToken() {
