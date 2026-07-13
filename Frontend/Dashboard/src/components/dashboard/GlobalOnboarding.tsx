@@ -33,7 +33,7 @@ export function GlobalOnboarding() {
             <div key={i} className="rounded-xl border border-border-soft bg-bg-3 p-4">
               <item.icon className="mb-3 h-5 w-5" style={{ color: "hsl(var(--accent))" }} />
               <h4 className="mb-1 text-sm font-bold text-t1">{item.title}</h4>
-              <p className="text-[0.75rem] text-t3 leading-tight">{item.desc}</p>
+              <p className="text-[0.75rem] text-slate-500 dark:text-slate-400 leading-tight">{item.desc}</p>
             </div>
           ))}
         </div>

@@ -120,7 +120,7 @@ export default function CartRecovery() {
                       <p className={DESIGN_TOKENS.emptyState.description}>
                         Once you connect your store, Revluma will automatically start tracking and recovering abandoned carts.
                       </p>
-                      <button className={`rounded-lg px-6 py-2.5 ${DESIGN_TOKENS.buttonPrimary}`}>
+                      <button className="bg-[#00D084] text-slate-950 font-semibold px-5 py-2.5 rounded-lg hover:bg-[#00B370] transition-colors mt-4 inline-flex">
                         Connect your store
                       </button>
                     </div>

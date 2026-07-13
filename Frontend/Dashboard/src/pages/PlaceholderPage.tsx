@@ -24,14 +24,11 @@ export function PlaceholderPage({ title, description }: { title: string; descrip
         {description} We're working hard to bring this feature to life. Join the waitlist to get early access and exclusive updates before the public release.
       </p>
       
-      <div className={`flex w-full max-w-md items-center gap-2 p-2 ${DESIGN_TOKENS.card}`}>
-        <div className="flex items-center pl-3">
-          <BellRing className="h-4 w-4 text-slate-400" />
-        </div>
+      <div className="flex flex-row w-full max-w-md items-center p-1 border border-slate-800 bg-slate-950 rounded-lg">
         <input 
           type="email" 
           placeholder="Enter your email address" 
-          className="flex-1 bg-transparent px-2 py-2 text-[0.85rem] text-slate-900 dark:text-white placeholder:text-slate-500 focus:outline-none"
+          className="bg-transparent outline-none flex-1 px-3 text-sm text-white placeholder:text-slate-500"
         />
         <button 
           onClick={(e) => {
@@ -41,10 +38,9 @@ export function PlaceholderPage({ title, description }: { title: string; descrip
               alert("You're on the list! We'll notify you when " + title + " is ready.");
             }
           }}
-          className={DESIGN_TOKENS.buttonPrimary + " flex items-center gap-2 rounded-md px-4 py-2 text-[0.8rem] transition-transform active:scale-95"}
+          className="bg-white text-slate-900 px-4 py-1.5 rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
         >
-          Notify me
-          <ArrowRight className="h-3.5 w-3.5" />
+          Notify Me
         </button>
       </div>
 

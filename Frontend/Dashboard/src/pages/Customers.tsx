@@ -125,7 +125,7 @@ export default function Customers() {
                       <p className={DESIGN_TOKENS.emptyState.description}>
                         Once you connect your store, Revluma will import and automatically segment your customer data.
                       </p>
-                      <button className={`rounded-lg px-6 py-2.5 ${DESIGN_TOKENS.buttonPrimary}`}>
+                      <button className="bg-[#00D084] text-slate-950 font-semibold px-5 py-2.5 rounded-lg hover:bg-[#00B370] transition-colors mt-4 inline-flex">
                         Connect your store
                       </button>
                     </div>
