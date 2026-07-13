@@ -322,6 +322,9 @@ exports.login = async (req, res, next) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: "/",
     });
+
+    console.log("Cookie about to be sent");
+    console.log(res.getHeader("Set-Cookie"));
     
     console.log("NODE_ENV =", process.env.NODE_ENV);
     console.log("COOKIE_SECRET exists =", !!process.env.COOKIE_SECRET);
@@ -461,6 +464,7 @@ exports.refresh = async (req, res, next) => {
   try {
 
     console.log("========== REFRESH ==========");
+    console.log("Origin:", req.headers.origin);
     console.log("req.cookies:", req.cookies);
     console.log("req.headers.cookie:", req.headers.cookie);
 
