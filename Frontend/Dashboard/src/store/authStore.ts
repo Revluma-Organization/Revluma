@@ -35,6 +35,10 @@ interface AuthActions {
   logout: (allSessions?: boolean) => Promise<void>;
   checkSession: () => Promise<void>;
   clearError: () => void;
+  changePassword: (current: string, newPass: string, confirm: string) => Promise<void>;
+  requestOtp: (email: string) => Promise<void>;
+  verifyOtp: (email: string, otp: string) => Promise<{ resetToken: string }>;
+  resetPassword: (email: string, resetToken: string, newPassword: string) => Promise<void>;
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -54,6 +58,51 @@ export const useAuthStore = create<AuthStore>()(
       setCsrfToken: (csrfToken) => set({ csrfToken }),
       setHydrated: (isHydrated) => set({ isHydrated }),
       clearError: () => set({ error: null }),
+
+      changePassword: async (currentPassword, newPassword, confirmNewPassword) => {
+        set({ loading: true, error: null });
+        try {
+          await api.post('/auth/change-password', { currentPassword, newPassword, confirmNewPassword });
+          set({ loading: false });
+        } catch (err: any) {
+          set({ loading: false, error: err?.message || 'Failed to change password. Please try again.' });
+          throw err;
+        }
+      },
+
+      requestOtp: async (email) => {
+        set({ loading: true, error: null });
+        try {
+          await api.post('/auth/forgot-password', { email });
+          set({ loading: false });
+        } catch (err: any) {
+          set({ loading: false, error: err?.message || 'Failed to send OTP.' });
+          throw err;
+        }
+      },
+
+      verifyOtp: async (email, otp) => {
+        set({ loading: true, error: null });
+        try {
+          const res = await api.post<{ data: { resetToken: string } }>('/auth/verify-otp', { email, otp });
+          set({ loading: false });
+          return { resetToken: res.data.data.resetToken };
+        } catch (err: any) {
+          set({ loading: false, error: err?.message || 'Invalid or expired OTP.' });
+          throw err;
+        }
+      },
+
+      resetPassword: async (email, resetToken, newPassword) => {
+        set({ loading: true, error: null });
+        try {
+          await api.post('/auth/reset-password', { email, resetToken, newPassword });
+          set({ loading: false });
+        } catch (err: any) {
+          set({ loading: false, error: err?.message || 'Failed to reset password.' });
+          throw err;
+        }
+      },
 
       login: async (email, password) => {
         set({ loading: true, error: null });

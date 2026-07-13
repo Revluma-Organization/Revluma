@@ -1,4 +1,6 @@
-import { FC } from "react";
+import { FC, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { ChangePasswordForm } from "./components/ChangePasswordForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -6,6 +8,13 @@ import { Upload } from "lucide-react";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 
 const Profile: FC = () => {
+  const { user } = useAuth();
+  const [showChangePassword, setShowChangePassword] = useState(false);
+
+  const nameParts = user?.full_name?.split(" ") || ["", ""];
+  const firstName = nameParts[0];
+  const lastName = nameParts.slice(1).join(" ");
+
   return (
     <div className="max-w-4xl space-y-8">
       <div>
@@ -43,11 +52,11 @@ const Profile: FC = () => {
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <Label htmlFor="firstName" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>First Name</Label>
-            <Input id="firstName" defaultValue="Dianne" className={`h-9 transition-all ${DESIGN_TOKENS.input}`} />
+            <Input id="firstName" defaultValue={firstName} className={`h-9 transition-all ${DESIGN_TOKENS.input}`} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="lastName" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Last Name</Label>
-            <Input id="lastName" defaultValue="Russell" className={`h-9 transition-all ${DESIGN_TOKENS.input}`} />
+            <Input id="lastName" defaultValue={lastName} className={`h-9 transition-all ${DESIGN_TOKENS.input}`} />
           </div>
         </div>
 
@@ -55,10 +64,7 @@ const Profile: FC = () => {
         <div className="relative z-10 space-y-2">
           <Label htmlFor="email" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Email</Label>
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <Input id="email" defaultValue="russel@hey.com" readOnly className={`max-w-md h-9 font-medium opacity-70 ${DESIGN_TOKENS.input}`} />
-            <Button variant="outline" className={`h-9 px-4 text-xs ${DESIGN_TOKENS.buttonSecondary}`}>
-              Edit Email
-            </Button>
+            <Input id="email" defaultValue={user?.email || ""} readOnly disabled className={`max-w-md h-9 font-medium opacity-70 cursor-not-allowed ${DESIGN_TOKENS.input}`} />
           </div>
           <p className="text-[0.7rem] text-t3 font-medium pt-1">Used to log in to your account</p>
         </div>
@@ -66,14 +72,21 @@ const Profile: FC = () => {
         <hr className="relative z-10 border-border" />
 
         {/* Password Section */}
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h3 className="font-semibold text-[0.85rem] text-t1">Password</h3>
-            <p className="text-[0.75rem] text-t3">Log in with your password instead of using temporary login codes</p>
+        <div className="relative z-10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="font-semibold text-[0.85rem] text-t1">Password</h3>
+              <p className="text-[0.75rem] text-t3">Log in with your password instead of using temporary login codes</p>
+            </div>
+            {!showChangePassword && (
+              <Button onClick={() => setShowChangePassword(true)} variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-glass/[0.065] text-xs h-9 px-4 font-medium transition-colors shrink-0">
+                Change Password
+              </Button>
+            )}
           </div>
-          <Button variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-glass/[0.065] text-xs h-9 px-4 font-medium transition-colors shrink-0">
-            Change Password
-          </Button>
+          {showChangePassword && (
+            <ChangePasswordForm onCancel={() => setShowChangePassword(false)} />
+          )}
         </div>
       </div>
 
