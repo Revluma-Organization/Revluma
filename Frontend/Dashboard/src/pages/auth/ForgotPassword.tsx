@@ -20,7 +20,7 @@ export default function ForgotPassword() {
 
   // Helpers
   const handleError = (err: any, fallback: string) => {
-    setError(err?.response?.data?.message || err?.message || fallback);
+    setError(err?.body?.message || err?.response?.data?.message || err?.message || fallback);
   };
 
   const handleStep1 = async (e: React.FormEvent) => {
@@ -33,7 +33,7 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      await api.post("/api/v1/auth/forgot-password", { email });
+      await api.post<any>("/api/v1/auth/forgot-password", { email });
       setStep(2);
     } catch (err) {
       handleError(err, "Failed to send OTP. Please try again.");
@@ -84,7 +84,7 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      const res = await api.post("/api/v1/auth/verify-otp", { email, otp: otpString });
+      const res = await api.post<any>("/api/v1/auth/verify-otp", { email, otp: otpString });
       if (res.data?.resetToken) {
         setResetToken(res.data.resetToken);
       } else {
@@ -113,7 +113,7 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      await api.post("/api/v1/auth/reset-password", {
+      await api.post<any>("/api/v1/auth/reset-password", {
         email,
         resetToken,
         newPassword,
