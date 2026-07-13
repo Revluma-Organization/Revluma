@@ -94,7 +94,7 @@ export function ChangePasswordForm({ onCancel }: { onCancel: () => void }) {
       )}
 
       <div className="flex flex-col items-end gap-2 pt-2">
-        <Button type="submit" disabled={loading} className="bg-green-500 hover:bg-green-400 text-black font-semibold h-8 px-6 text-xs transition-colors rounded-md">
+        <Button type="submit" disabled={loading} className="!bg-[#00D084] hover:!bg-[#00B370] !text-slate-950 font-semibold h-8 px-6 text-xs transition-colors rounded-md border-none">
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Update Password"}
         </Button>
         <Button type="button" onClick={onCancel} variant="ghost" className="text-gray-400 hover:text-white h-8 px-4 text-xs transition-colors rounded-md">
