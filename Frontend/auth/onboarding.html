@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="../assets/images/Revluma-icon.png">
   <title>Revluma - Onboarding</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -616,30 +617,9 @@
 
             <!-- Platform -->
             <div>
-              <p class="section-label mb-3">Your platform</p>
-              <div class="grid grid-cols-4 gap-2.5">
-                <button type="button" data-platform="shopify" class="platform-card">
-                  <img src="../assets/images/shopifyLoog.png" alt="Shopify">
-                  <span>Shopify</span>
-                </button>
-                <button type="button" data-platform="woocommerce" class="platform-card">
-                  <img src="../assets/images/woocomrceLogo.webp" alt="WooCommerce">
-                  <span>Woo</span>
-                </button>
-
-                <button type="button" data-platform="bigcommerce" class="platform-card">
-                  <img src="../assets/images/bigCommerce-icon.png" alt="BigCommerce">
-                  <span>BigC</span>
-                </button>
-                <button type="button" data-platform="other" class="platform-card">
-                  <svg class="w-5 h-5" style="color: var(--muted);" fill="none" stroke="currentColor"
-                    viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
-                      d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z">
-                    </path>
-                  </svg>
-                  <span>Other</span>
-                </button>
+              <p class="section-label mb-3 text-slate-400">Your platform</p>
+              <div id="platforms-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <!-- Dynamically rendered by JS to prevent duplicates -->
               </div>
               <input type="hidden" id="platform" name="platform" required>
               <p id="platformError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
@@ -659,35 +639,43 @@
 
             <!-- Store Category -->
             <div>
-              <p class="section-label mb-3">Store category <span class="normal-case font-normal"
-                  style="color: #888;">— pick your closest niche</span></p>
-              <div class="grid grid-cols-3 gap-2">
-                <button type="button" data-category="fashion" class="pill-btn flex items-center gap-1.5">
-                  <span>👗</span><span>Fashion</span>
+              <p class="section-label mb-3 text-slate-400">Store category <span class="normal-case font-normal" style="color: #888;">— pick your closest niche</span></p>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <button type="button" data-category="fashion" class="cat-btn flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+                  <i data-lucide="shirt" class="w-4 h-4 text-slate-400"></i>
+                  <span class="text-sm font-medium text-slate-300">Fashion</span>
                 </button>
-                <button type="button" data-category="beauty" class="pill-btn flex items-center gap-1.5">
-                  <span>✨</span><span>Beauty</span>
+                <button type="button" data-category="beauty" class="cat-btn flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+                  <i data-lucide="sparkles" class="w-4 h-4 text-slate-400"></i>
+                  <span class="text-sm font-medium text-slate-300">Beauty</span>
                 </button>
-                <button type="button" data-category="electronics" class="pill-btn flex items-center gap-1.5">
-                  <span>💻</span><span>Electronics</span>
+                <button type="button" data-category="electronics" class="cat-btn flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+                  <i data-lucide="laptop" class="w-4 h-4 text-slate-400"></i>
+                  <span class="text-sm font-medium text-slate-300">Electronics</span>
                 </button>
-                <button type="button" data-category="home_living" class="pill-btn flex items-center gap-1.5">
-                  <span>🏠</span><span>Home & Living</span>
+                <button type="button" data-category="home_living" class="cat-btn flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+                  <i data-lucide="home" class="w-4 h-4 text-slate-400"></i>
+                  <span class="text-sm font-medium text-slate-300">Home & Living</span>
                 </button>
-                <button type="button" data-category="health_wellness" class="pill-btn flex items-center gap-1.5">
-                  <span>💊</span><span>Health</span>
+                <button type="button" data-category="health_wellness" class="cat-btn flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+                  <i data-lucide="activity" class="w-4 h-4 text-slate-400"></i>
+                  <span class="text-sm font-medium text-slate-300">Health</span>
                 </button>
-                <button type="button" data-category="sports" class="pill-btn flex items-center gap-1.5">
-                  <span>🏃</span><span>Sports</span>
+                <button type="button" data-category="sports" class="cat-btn flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+                  <i data-lucide="dumbbell" class="w-4 h-4 text-slate-400"></i>
+                  <span class="text-sm font-medium text-slate-300">Sports</span>
                 </button>
-                <button type="button" data-category="food_beverage" class="pill-btn flex items-center gap-1.5">
-                  <span>🍽️</span><span>Food & Drink</span>
+                <button type="button" data-category="food_beverage" class="cat-btn flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+                  <i data-lucide="coffee" class="w-4 h-4 text-slate-400"></i>
+                  <span class="text-sm font-medium text-slate-300">Food & Drink</span>
                 </button>
-                <button type="button" data-category="pets" class="pill-btn flex items-center gap-1.5">
-                  <span>🐾</span><span>Pets</span>
+                <button type="button" data-category="pets" class="cat-btn flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+                  <i data-lucide="paw-print" class="w-4 h-4 text-slate-400"></i>
+                  <span class="text-sm font-medium text-slate-300">Pets</span>
                 </button>
-                <button type="button" data-category="other_niche" class="pill-btn flex items-center gap-1.5">
-                  <span>📦</span><span>Other</span>
+                <button type="button" data-category="other_niche" class="cat-btn flex items-center gap-2 p-3 rounded-xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+                  <i data-lucide="package" class="w-4 h-4 text-slate-400"></i>
+                  <span class="text-sm font-medium text-slate-300">Other</span>
                 </button>
               </div>
               <input type="hidden" id="storeCategory" name="storeCategory" required>
@@ -1076,14 +1064,85 @@ window.location.href = '/auth/login.html';
       setupPills('[data-traffic]', 'monthlyTraffic');
       setupPills('[data-revenue]', 'monthlyRevenue');
 
-      const platforms = document.querySelectorAll('.platform-card');
+      const platformData = [
+        { id: 'shopify', name: 'Shopify', logo: 'https://cdn.simpleicons.org/shopify/5C8F4D' },
+        { id: 'woocommerce', name: 'WooCommerce', logo: 'https://cdn.simpleicons.org/woocommerce/7C5CBF' },
+        { id: 'bigcommerce', name: 'BigCommerce', logo: 'https://cdn.simpleicons.org/bigcommerce/34313F' },
+        { id: 'magento', name: 'Magento', logo: 'https://cdn.simpleicons.org/magento/F46F25' },
+        { id: 'squarespace', name: 'Squarespace', logo: 'https://cdn.simpleicons.org/squarespace/111111' },
+        { id: 'other', name: 'Custom / Other', icon: 'code-2' }
+      ];
+
+      const platformsGrid = document.getElementById('platforms-grid');
       const platformInput = document.getElementById('platform');
-      platforms.forEach(btn => {
-        btn.addEventListener('click', () => {
-          platforms.forEach(b => b.classList.remove('selected'));
-          btn.classList.add('selected');
-          if (platformInput) platformInput.value = btn.dataset.platform;
+
+      // Prevent duplicate rendering
+      const uniquePlatforms = Array.from(new Map(platformData.map(item => [item.id, item])).values());
+
+      const renderPlatforms = () => {
+        if (!platformsGrid) return;
+        platformsGrid.innerHTML = uniquePlatforms.map(p => `
+          <button type="button" data-platform="${p.id}" class="platform-btn flex flex-col items-center justify-center gap-3 p-4 rounded-2xl border border-white/5 bg-white/[0.02] transition-all duration-300 hover:border-white/20 hover:bg-white/[0.04] shadow-sm">
+            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-black/[0.06] p-2.5">
+              ${p.logo 
+                ? `<img src="${p.logo}" alt="${p.name}" class="h-full w-full object-contain">`
+                : `<i data-lucide="${p.icon}" class="w-6 h-6 text-slate-900"></i>`
+              }
+            </div>
+            <span class="text-xs font-semibold text-slate-300 tracking-wide">${p.name}</span>
+          </button>
+        `).join('');
+
+        const buttons = document.querySelectorAll('.platform-btn');
+        buttons.forEach(btn => {
+          btn.addEventListener('click', () => {
+            buttons.forEach(b => {
+              b.classList.remove('!border-white/60', '!bg-white/10', 'ring-1', 'ring-white/20');
+              const span = b.querySelector('span');
+              if(span) {
+                span.classList.remove('text-white');
+                span.classList.add('text-slate-300');
+              }
+            });
+            btn.classList.add('!border-white/60', '!bg-white/10', 'ring-1', 'ring-white/20');
+            const span = btn.querySelector('span');
+            if(span) {
+              span.classList.remove('text-slate-300');
+              span.classList.add('text-white');
+            }
+            if (platformInput) platformInput.value = btn.dataset.platform;
+          });
         });
+      };
+      renderPlatforms();
+      
+      // Update Category Buttons Selection logic
+      const catBtns = document.querySelectorAll('.cat-btn');
+      const catInput = document.getElementById('storeCategory');
+      catBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          catBtns.forEach(b => {
+            b.classList.remove('!border-white/60', '!bg-white/10', 'ring-1', 'ring-white/20');
+            const icon = b.querySelector('i');
+            const span = b.querySelector('span');
+            if(icon) { icon.classList.remove('text-white'); icon.classList.add('text-slate-400'); }
+            if(span) { span.classList.remove('text-white'); span.classList.add('text-slate-300'); }
+          });
+          btn.classList.add('!border-white/60', '!bg-white/10', 'ring-1', 'ring-white/20');
+          const icon = btn.querySelector('i');
+          const span = btn.querySelector('span');
+          if(icon) { icon.classList.remove('text-slate-400'); icon.classList.add('text-white'); }
+          if(span) { span.classList.remove('text-slate-300'); span.classList.add('text-white'); }
+          
+          if (catInput) catInput.value = btn.dataset.category;
+        });
+      });
+      
+      // Initialize Lucide Icons
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons({ strokeWidth: 1.5 });
+      }
+
       });
 
       const goals = document.querySelectorAll('[data-goal]');
