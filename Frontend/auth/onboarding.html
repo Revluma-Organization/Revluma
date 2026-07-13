@@ -621,7 +621,7 @@
               <div id="platforms-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <!-- Dynamically rendered by JS to prevent duplicates -->
               </div>
-              <input type="hidden" id="platform" name="platform" required>
+              <input type="hidden" id="platform" name="platform">
               <p id="platformError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
             </div>
 
@@ -678,7 +678,7 @@
                   <span class="text-sm font-medium text-slate-300">Other</span>
                 </button>
               </div>
-              <input type="hidden" id="storeCategory" name="storeCategory" required>
+              <input type="hidden" id="storeCategory" name="storeCategory">
               <p id="categoryError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
             </div>
 
@@ -691,7 +691,7 @@
                 <button type="button" data-revenue="10k-50k" class="pill-btn">$10K–$50K</button>
                 <button type="button" data-revenue="50k+" class="pill-btn">$50K+</button>
               </div>
-              <input type="hidden" id="monthlyRevenue" name="monthlyRevenue" required>
+              <input type="hidden" id="monthlyRevenue" name="monthlyRevenue">
               <p id="revenueError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
             </div>
 
@@ -953,7 +953,7 @@
                 </button>
 
               </div>
-              <input type="hidden" id="recoveryChannel" name="recoveryChannel" required>
+              <input type="hidden" id="recoveryChannel" name="recoveryChannel">
               <p id="channelError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
             </div>
 
@@ -1012,7 +1012,35 @@
       // Form Navigations
       const form1 = document.getElementById('step1Form');
       if (form1) {
-        form1.addEventListener('submit', (e) => { e.preventDefault(); currentStep = 2; updateUI(); });
+        form1.addEventListener('submit', (e) => { 
+          e.preventDefault(); 
+          let isValid = true;
+          
+          const platform = document.getElementById('platform').value;
+          const platformError = document.getElementById('platformError');
+          if (!platform) { platformError.textContent = 'Please select a platform'; platformError.classList.remove('hidden'); isValid = false; }
+          else { platformError.classList.add('hidden'); }
+
+          const storeUrl = document.getElementById('storeUrl').value;
+          const storeUrlError = document.getElementById('storeUrlError');
+          if (!storeUrl) { storeUrlError.textContent = 'Please enter your store URL'; storeUrlError.classList.remove('hidden'); isValid = false; }
+          else { storeUrlError.classList.add('hidden'); }
+
+          const storeCategory = document.getElementById('storeCategory').value;
+          const categoryError = document.getElementById('categoryError');
+          if (!storeCategory) { categoryError.textContent = 'Please select a category'; categoryError.classList.remove('hidden'); isValid = false; }
+          else { categoryError.classList.add('hidden'); }
+
+          const monthlyRevenue = document.getElementById('monthlyRevenue').value;
+          const revenueError = document.getElementById('revenueError');
+          if (!monthlyRevenue) { revenueError.textContent = 'Please select your monthly revenue'; revenueError.classList.remove('hidden'); isValid = false; }
+          else { revenueError.classList.add('hidden'); }
+
+          if (isValid) {
+            currentStep = 2; 
+            updateUI(); 
+          }
+        });
       }
       
       const back2 = document.getElementById('step2Back');
@@ -1034,15 +1062,25 @@
       if (form3) {
         form3.addEventListener('submit', (e) => {
           e.preventDefault();
-          // 1. Mark the user as fully onboarded in localStorage
-const auth = JSON.parse(localStorage.getItem('rv-auth') || '{}');
-if (auth.state) {
-    auth.state.onboarding_completed = true;
-    localStorage.setItem('rv-auth', JSON.stringify(auth));
-}
+          const channel = document.getElementById('recoveryChannel').value;
+          const channelError = document.getElementById('channelError');
+          if (!channel) {
+            channelError.textContent = 'Please select a recovery channel';
+            channelError.classList.remove('hidden');
+            return;
+          } else {
+            channelError.classList.add('hidden');
+          }
 
-// 2. Then redirect to the signin
-window.location.href = '/auth/login.html';
+          // 1. Mark the user as fully onboarded in localStorage
+          const auth = JSON.parse(localStorage.getItem('rv-auth') || '{}');
+          if (auth.state) {
+              auth.state.onboarding_completed = true;
+              localStorage.setItem('rv-auth', JSON.stringify(auth));
+          }
+
+          // 2. Then redirect to the signin
+          window.location.href = '/auth/login.html';
         });
       }
 
@@ -1142,8 +1180,6 @@ window.location.href = '/auth/login.html';
       if (typeof lucide !== 'undefined') {
         lucide.createIcons({ strokeWidth: 1.5 });
       }
-
-      });
 
       const goals = document.querySelectorAll('[data-goal]');
       goals.forEach(btn => {
