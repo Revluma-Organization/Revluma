@@ -120,6 +120,7 @@ model users {
   created_at              DateTime?            @default(now()) @db.Timestamptz(6)
   updated_at              DateTime?            @default(now()) @db.Timestamptz(6)
   notifications           notifications[]
+  refresh_tokens          refresh_tokens[]
   onboarding_profiles     onboarding_profiles?
   organizations           organizations[]
 
@@ -416,4 +417,39 @@ model ml_session_features {
   @@index([customer_id], map: "idx_ml_features_customer")
   @@index([session_id], map: "idx_ml_features_session")
   @@index([anonymous_id], map: "idx_ml_features_anonymous")
+}
+
+
+/// Persisted refresh tokens — enables real logout and token rotation.
+/// On every refresh: old token is deleted, new one is created.
+/// On logout: all tokens for the session (or all sessions) are deleted.
+model refresh_tokens {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String    @db.Uuid
+  token_hash   String    @unique // SHA-256 hash of the raw token — never store raw
+  family_id    String    @db.Uuid // Groups a chain of rotated tokens — reuse = theft
+  device_hint  String?   // Browser/device info for display in "active sessions"
+  ip_address   String?
+  expires_at   DateTime  @db.Timestamptz(6)
+  created_at   DateTime? @default(now()) @db.Timestamptz(6)
+  last_used_at DateTime? @db.Timestamptz(6)
+  is_revoked   Boolean   @default(false)
+  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_refresh_tokens_user")
+  @@index([token_hash], map: "idx_refresh_tokens_hash")
+  @@index([family_id], map: "idx_refresh_tokens_family")
+  @@index([expires_at], map: "idx_refresh_tokens_expires")
+}
+
+/// Tracks failed login attempts per email for account lockout.
+model login_attempts {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String
+  ip_address   String?
+  attempted_at DateTime? @default(now()) @db.Timestamptz(6)
+  success      Boolean   @default(false)
+
+  @@index([email], map: "idx_login_attempts_email")
+  @@index([attempted_at], map: "idx_login_attempts_time")
 }

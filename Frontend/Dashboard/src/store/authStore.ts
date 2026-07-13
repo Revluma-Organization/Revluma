@@ -180,15 +180,18 @@ export const useAuthStore = create<AuthStore>()(
           set({ user: null, csrfToken: null, loading: false });
         }
       },
-      logout: async () => {
+      logout: async (allSessions = false) => {
         try {
-          await api.post('/auth/logout');
+          const refreshToken = localStorage.getItem('revluma_refresh_token');
+          // Send refresh_token so the server can revoke it from the DB — real logout
+          const endpoint = allSessions ? '/auth/logout-all' : '/auth/logout';
+          await api.post(endpoint, { refresh_token: refreshToken });
         } catch {
-          // ignore — clear session regardless
+          // Network failure — still clear locally so user is signed out in browser
         }
         localStorage.removeItem('revluma_refresh_token');
         set({ user: null, csrfToken: null });
-        window.location.href = '/auth/login.html';
+        window.location.href = '/login';
       },
     }),
     {

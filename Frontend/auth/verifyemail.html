@@ -28,9 +28,16 @@
       --green: #34d399;
     }
 
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-    html, body {
+    html,
+    body {
       height: 100%;
       font-family: 'DM Sans', system-ui, sans-serif;
       background: var(--bg);
@@ -50,18 +57,34 @@
     }
 
     .glow-1 {
-      position: fixed; width: 500px; height: 500px; top: -160px; left: -160px;
+      position: fixed;
+      width: 500px;
+      height: 500px;
+      top: -160px;
+      left: -160px;
       background: radial-gradient(circle, rgba(124, 111, 255, 0.055) 0%, transparent 70%);
-      border-radius: 50%; filter: blur(100px); pointer-events: none; z-index: 0;
+      border-radius: 50%;
+      filter: blur(100px);
+      pointer-events: none;
+      z-index: 0;
     }
+
     .glow-2 {
-      position: fixed; width: 400px; height: 400px; bottom: -100px; right: -100px;
+      position: fixed;
+      width: 400px;
+      height: 400px;
+      bottom: -100px;
+      right: -100px;
       background: radial-gradient(circle, rgba(255, 255, 255, 0.025) 0%, transparent 70%);
-      border-radius: 50%; filter: blur(100px); pointer-events: none; z-index: 0;
+      border-radius: 50%;
+      filter: blur(100px);
+      pointer-events: none;
+      z-index: 0;
     }
 
     .code-box {
-      width: 48px; height: 56px;
+      width: 48px;
+      height: 56px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
@@ -73,36 +96,70 @@
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
       caret-color: var(--accent);
     }
+
     .code-box:focus {
       border-color: var(--border-focus);
       box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
     }
+
     .code-box.filled {
       border-color: var(--green);
     }
+
     .code-box.error {
       border-color: var(--red) !important;
       animation: shake 0.3s ease;
     }
 
     @keyframes shake {
-      0%, 100% { transform: translateX(0); }
-      25% { transform: translateX(-4px); }
-      75% { transform: translateX(4px); }
+
+      0%,
+      100% {
+        transform: translateX(0);
+      }
+
+      25% {
+        transform: translateX(-4px);
+      }
+
+      75% {
+        transform: translateX(4px);
+      }
     }
 
     @keyframes fadeSlideIn {
-      from { opacity: 0; transform: translateY(14px); }
-      to { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(14px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
-    .animate-in { animation: fadeSlideIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+
+    .animate-in {
+      animation: fadeSlideIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
 
     @keyframes pulse-ring {
-      0% { box-shadow: 0 0 0 0 rgba(124, 111, 255, 0.25); }
-      70% { box-shadow: 0 0 0 12px rgba(124, 111, 255, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(124, 111, 255, 0); }
+      0% {
+        box-shadow: 0 0 0 0 rgba(124, 111, 255, 0.25);
+      }
+
+      70% {
+        box-shadow: 0 0 0 12px rgba(124, 111, 255, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(124, 111, 255, 0);
+      }
     }
-    .pulse-icon { animation: pulse-ring 2s ease infinite; }
+
+    .pulse-icon {
+      animation: pulse-ring 2s ease infinite;
+    }
 
     .btn-primary {
       background: linear-gradient(135deg, #ffffff, #e0e0e0);
@@ -114,9 +171,21 @@
       cursor: pointer;
       transition: all 0.2s ease;
     }
-    .btn-primary:hover { opacity: 0.92; transform: translateY(-1px); }
-    .btn-primary:active { transform: scale(0.98); }
-    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .btn-primary:hover {
+      opacity: 0.92;
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+    }
 
     .btn-secondary {
       background: var(--surface);
@@ -128,17 +197,32 @@
       cursor: pointer;
       transition: all 0.2s ease;
     }
-    .btn-secondary:hover { background: var(--surface-hover); border-color: rgba(255,255,255,0.15); }
+
+    .btn-secondary:hover {
+      background: var(--surface-hover);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
 
     .spinner {
       animation: spin 0.9s linear infinite;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
-    .countdown { font-variant-numeric: tabular-nums; }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .countdown {
+      font-variant-numeric: tabular-nums;
+    }
 
     @media (max-width: 480px) {
-      .code-box { width: 42px; height: 50px; font-size: 1.25rem; }
+      .code-box {
+        width: 42px;
+        height: 50px;
+        font-size: 1.25rem;
+      }
     }
   </style>
 
@@ -151,6 +235,184 @@
 </head>
 
 <body>
+  <!-- Glassmorphism Card Component -->
+  <style>
+    .glassmorphism-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      animation: fadeIn 0.3s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    .glassmorphism-card {
+      background: rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      padding: 2rem;
+      max-width: 420px;
+      width: 90%;
+      box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.3),
+        inset 0 1px 1px rgba(255, 255, 255, 0.2);
+      animation: slideUp 0.4s cubic-bezier(0.23, 1, 0.320, 1);
+      text-align: center;
+      color: #f0f0f5;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(30px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .glassmorphism-card.success {
+      border-color: rgba(52, 211, 153, 0.3);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(52, 211, 153, 0.05) 100%),
+        rgba(255, 255, 255, 0.08);
+    }
+
+    .glassmorphism-card.error {
+      border-color: rgba(248, 113, 113, 0.3);
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(248, 113, 113, 0.05) 100%),
+        rgba(255, 255, 255, 0.08);
+    }
+
+    .card-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes popIn {
+      0% {
+        transform: scale(0);
+        opacity: 0;
+      }
+
+      50% {
+        transform: scale(1.1);
+      }
+
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .card-icon.success {
+      background: rgba(52, 211, 153, 0.2);
+      color: #34d399;
+    }
+
+    .card-icon.error {
+      background: rgba(248, 113, 113, 0.2);
+      color: #f87171;
+    }
+
+    .card-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.5px;
+    }
+
+    .card-message {
+      font-size: 0.95rem;
+      color: #d0d0d8;
+      margin-bottom: 2rem;
+      line-height: 1.5;
+    }
+
+    .card-button {
+      background: rgba(255, 255, 255, 0.15);
+      color: #f0f0f5;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 0.75rem 1.5rem;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      width: 100%;
+    }
+
+    .card-button:hover {
+      background: rgba(255, 255, 255, 0.25);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+
+    .card-button.success-btn {
+      background: linear-gradient(135deg, rgba(52, 211, 153, 0.4), rgba(16, 185, 129, 0.3));
+      border-color: rgba(52, 211, 153, 0.4);
+      color: #34d399;
+    }
+
+    .card-button.success-btn:hover {
+      background: linear-gradient(135deg, rgba(52, 211, 153, 0.5), rgba(16, 185, 129, 0.4));
+      box-shadow: 0 12px 30px rgba(52, 211, 153, 0.2);
+    }
+
+    .card-button.error-btn {
+      background: linear-gradient(135deg, rgba(248, 113, 113, 0.4), rgba(239, 68, 68, 0.3));
+      border-color: rgba(248, 113, 113, 0.4);
+      color: #f87171;
+    }
+
+    .card-button.error-btn:hover {
+      background: linear-gradient(135deg, rgba(248, 113, 113, 0.5), rgba(239, 68, 68, 0.4));
+      box-shadow: 0 12px 30px rgba(248, 113, 113, 0.2);
+    }
+
+    .hidden-card {
+      display: none !important;
+    }
+  </style>
+
+  <div id="glassmorphism-overlay" class="glassmorphism-overlay hidden-card">
+    <div class="glassmorphism-card" id="glassmorphism-card">
+      <div class="card-icon" id="card-icon">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path id="icon-path"
+            d="M16 2C8.26875 2 2 8.26875 2 16C2 23.7313 8.26875 30 16 30C23.7313 30 30 23.7313 30 16C30 8.26875 23.7313 2 16 2ZM13 22L7 16L8.7 14.3L13 18.6L23.3 8.3L25 10L13 22Z"
+            fill="currentColor" />
+        </svg>
+      </div>
+      <h2 class="card-title" id="card-title">Account Created!</h2>
+      <p class="card-message" id="card-message">Your email has been verified. You're all set!</p>
+      <button class="card-button success-btn" id="card-button" onclick="handleCardButtonClick()">Continue to
+        Login</button>
+    </div>
+  </div>
+
   <div class="glow-1"></div>
   <div class="glow-2"></div>
 
@@ -160,10 +422,12 @@
     <div class="w-full flex justify-between items-center py-5 px-6 sm:px-8 absolute top-0 left-0">
       <a href="/" class="flex items-center gap-2.5" style="text-decoration:none;">
         <div class="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center">
-          <img src="../assets/images/Revluma-icon.png" alt="Revluma Logo" class="w-full h-full object-contain mix-blend-screen">
+          <img src="../assets/images/Revluma-icon.png" alt="Revluma Logo"
+            class="w-full h-full object-contain mix-blend-screen">
         </div>
         <div>
-          <span class="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Revluma</span>
+          <span
+            class="text-lg font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Revluma</span>
         </div>
       </a>
     </div>
@@ -174,9 +438,12 @@
 
         <!-- Mail Icon -->
         <div class="flex justify-center mb-8">
-          <div class="w-16 h-16 rounded-2xl flex items-center justify-center pulse-icon" style="background: var(--surface); border: 1px solid var(--border);">
+          <div class="w-16 h-16 rounded-2xl flex items-center justify-center pulse-icon"
+            style="background: var(--surface); border: 1px solid var(--border);">
             <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="color: var(--accent);">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+              </path>
             </svg>
           </div>
         </div>
@@ -191,9 +458,11 @@
         <!-- Code Input -->
         <form id="verifyForm" class="space-y-6">
           <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider mb-3" style="color: var(--muted);">Verification Code</label>
+            <label class="block text-xs font-semibold uppercase tracking-wider mb-3"
+              style="color: var(--muted);">Verification Code</label>
             <div class="flex justify-center gap-3" id="codeContainer">
-              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="0" autocomplete="one-time-code">
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="0"
+                autocomplete="one-time-code">
               <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="1">
               <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="2">
               <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="code-box" data-index="3">
@@ -205,17 +474,21 @@
 
           <!-- Timer & Resend -->
           <div class="flex items-center justify-between text-xs" style="color: var(--muted);">
-            <span id="timerText">Code expires in <span id="expiryTimer" class="countdown font-semibold" style="color: var(--text);">15:00</span></span>
-            <button type="button" id="resendBtn" class="font-medium transition-colors disabled:opacity-40" style="color: var(--accent);" disabled>
+            <span id="timerText">Code expires in <span id="expiryTimer" class="countdown font-semibold"
+                style="color: var(--text);">15:00</span></span>
+            <button type="button" id="resendBtn" class="font-medium transition-colors disabled:opacity-40"
+              style="color: var(--accent);" disabled>
               Resend (<span id="resendCountdown" class="countdown">60</span>s)
             </button>
           </div>
 
           <!-- Verify Button -->
-          <button type="submit" id="verifyBtn" class="btn-primary w-full py-3.5 flex items-center justify-center gap-2" disabled>
+          <button type="submit" id="verifyBtn" class="btn-primary w-full py-3.5 flex items-center justify-center gap-2"
+            disabled>
             <span id="verifyBtnText">Verify & Continue</span>
             <svg id="verifyBtnSpinner" class="w-4 h-4 spinner hidden" fill="none" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="40" stroke-dashoffset="10" stroke-linecap="round"/>
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="40"
+                stroke-dashoffset="10" stroke-linecap="round" />
             </svg>
           </button>
 
@@ -223,7 +496,8 @@
           <div class="flex items-center justify-between">
             <button type="button" id="backBtn" class="btn-secondary px-5 py-2.5 text-sm">← Back</button>
             <p class="text-sm" style="color: var(--muted);">
-              Wrong email? <a href="signup.html" class="font-medium hover:underline" style="color: var(--text);">Change it</a>
+              Wrong email? <a href="signup.html" class="font-medium hover:underline" style="color: var(--text);">Change
+                it</a>
             </p>
           </div>
         </form>
@@ -329,25 +603,34 @@
         verifyBtnSpinner.classList.remove('hidden');
 
         try {
-                  // --- Backend Integration Point ---
-        
-        // 1 & 2: Call the exact endpoint and send both email and code
-        const res = await fetch('https://revluma-backend.onrender.com/api/v1/auth/verify-email', {
+          // --- Backend Integration Point ---
+
+          // 1 & 2: Call the exact endpoint and send both email and code
+          const res = await fetch('https://revluma-backend.onrender.com/api/v1/auth/verify-email', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: email, code: code })
-        });
+          });
 
-        const data = await res.json();
+          const data = await res.json();
 
-        // 3: Stop the redirect if the backend says the code is invalid
-        if (!res.ok) {
+          // 3: Stop the redirect if the backend says the code is invalid
+          if (!res.ok) {
             throw new Error(data.message || 'Invalid verification code.');
-        }
+          }
 
-        // 4: Success - redirect to onboarding/dashboard
-        window.location.href = 'onboarding.html';
-          
+          // 4: Success - show glassmorphism card then redirect to onboarding
+          showGlassmorphismCard('success',
+            'Email Verified!',
+            'Your account has been successfully verified. Redirecting you to login...',
+            () => window.location.href = 'onboarding.html'
+          );
+
+          // Auto-redirect after 3 seconds
+          setTimeout(() => {
+            window.location.href = 'onboarding.html';
+          }, 3000);
+
         } catch (err) {
           // Show error
           codeError.textContent = err.message || 'Invalid verification code. Please try again.';
@@ -437,6 +720,60 @@
       document.getElementById('backBtn').addEventListener('click', () => {
         window.history.back();
       });
+
+      // ================================================================
+      //  GLASSMORPHISM CARD FUNCTIONS
+      // ================================================================
+      window.showGlassmorphismCard = function (type, title, message, onClose) {
+        const overlay = document.getElementById('glassmorphism-overlay');
+        const card = document.getElementById('glassmorphism-card');
+        const icon = document.getElementById('card-icon');
+        const titleEl = document.getElementById('card-title');
+        const messageEl = document.getElementById('card-message');
+        const button = document.getElementById('card-button');
+
+        // Set type-specific styling
+        card.classList.remove('success', 'error');
+        icon.classList.remove('success', 'error');
+        button.classList.remove('success-btn', 'error-btn');
+
+        if (type === 'success') {
+          card.classList.add('success');
+          icon.classList.add('success');
+          button.classList.add('success-btn');
+          // Success icon
+          icon.innerHTML = '<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C8.26875 2 2 8.26875 2 16C2 23.7313 8.26875 30 16 30C23.7313 30 30 23.7313 30 16C30 8.26875 23.7313 2 16 2ZM13 22L7 16L8.7 14.3L13 18.6L23.3 8.3L25 10L13 22Z" fill="currentColor"/></svg>';
+        } else if (type === 'error') {
+          card.classList.add('error');
+          icon.classList.add('error');
+          button.classList.add('error-btn');
+          // Error icon
+          icon.innerHTML = '<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2C8.26875 2 2 8.26875 2 16C2 23.7313 8.26875 30 16 30C23.7313 30 30 23.7313 30 16C30 8.26875 23.7313 2 16 2ZM16 25C15.4 25 15 24.6 15 24C15 23.4 15.4 23 16 23C16.6 23 17 23.4 17 24C17 24.6 16.6 25 16 25ZM17 19H15V10H17V19Z" fill="currentColor"/></svg>';
+          button.textContent = 'Try Again';
+        }
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+
+        // Store the callback for when button is clicked
+        window.cardOnClose = onClose;
+
+        // Show overlay
+        overlay.classList.remove('hidden-card');
+      };
+
+      window.hideGlassmorphismCard = function () {
+        const overlay = document.getElementById('glassmorphism-overlay');
+        overlay.classList.add('hidden-card');
+      };
+
+      window.handleCardButtonClick = function () {
+        if (window.cardOnClose) {
+          window.cardOnClose();
+        } else {
+          window.hideGlassmorphismCard();
+        }
+      };
     });
   </script>
 </body>
