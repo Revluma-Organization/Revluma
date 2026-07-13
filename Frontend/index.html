@@ -3153,12 +3153,15 @@
                     </div>
                     <p class="text-[#888] text-[11px] leading-relaxed max-w-[220px]">The revenue intelligence platform
                         for modern e-commerce teams.</p>
-                    <div class="flex gap-1.5 mt-2">
-                        <input type="email" placeholder="Your email"
-                            class="flex-1 max-w-[160px] bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-white placeholder-[#444] outline-none focus:border-white/25 transition-colors">
-                        <button
-                            class="bg-white text-black px-3 py-1.5 rounded-lg text-[11px] font-bold hover:scale-[1.02] transition-all">Join</button>
-                    </div>
+                    <form id="newsletter-form" class="mt-2 relative">
+                        <div class="flex gap-1.5">
+                            <input type="email" id="newsletter-email" placeholder="Your email" required
+                                class="flex-1 max-w-[160px] bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-white placeholder-[#444] outline-none focus:border-white/25 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button type="submit" id="newsletter-btn"
+                                class="bg-white text-black px-3 py-1.5 rounded-lg text-[11px] font-bold hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[50px] flex justify-center items-center">Join</button>
+                        </div>
+                        <div id="newsletter-msg" class="absolute top-full left-0 mt-1.5 text-[10px] hidden font-medium transition-opacity w-full pr-4 leading-tight"></div>
+                    </form>
                 </div>
 
                 <!-- Product -->
@@ -3435,5 +3438,71 @@
     </div>
 </div>
 
+
+    <script>
+        // Newsletter Subscription Handler
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('newsletter-form');
+            const emailInput = document.getElementById('newsletter-email');
+            const submitBtn = document.getElementById('newsletter-btn');
+            const msgDiv = document.getElementById('newsletter-msg');
+
+            if (form) {
+                // Clear message on typing
+                emailInput.addEventListener('input', () => {
+                    msgDiv.classList.add('hidden');
+                });
+
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const email = emailInput.value.trim();
+                    if (!email) return;
+
+                    // Set loading state
+                    emailInput.disabled = true;
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = '...';
+                    msgDiv.classList.add('hidden');
+                    msgDiv.className = 'absolute top-full left-0 mt-1.5 text-[10px] hidden font-medium transition-opacity w-full pr-4 leading-tight';
+
+                    try {
+                        // Call the API (using a relative fallback if global api isn't present)
+                        if (typeof api !== 'undefined' && api.post) {
+                            await api.post('/newsletter/subscribe', { email });
+                        } else {
+                            const res = await fetch('/api/newsletter/subscribe', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email })
+                            });
+                            if (!res.ok) {
+                                const data = await res.json().catch(() => ({}));
+                                throw new Error(data.message || 'Subscription failed');
+                            }
+                        }
+
+                        // Success state
+                        emailInput.value = '';
+                        msgDiv.textContent = 'Thanks for subscribing! Keep an eye on your inbox.';
+                        msgDiv.classList.remove('hidden', 'text-red-400');
+                        msgDiv.classList.add('text-emerald-400');
+
+                    } catch (error) {
+                        // Error state
+                        msgDiv.textContent = (error.response && error.response.data && error.response.data.message) 
+                            ? error.response.data.message 
+                            : (error.message || 'Something went wrong. Please try again.');
+                        msgDiv.classList.remove('hidden', 'text-emerald-400');
+                        msgDiv.classList.add('text-red-400');
+                    } finally {
+                        // Reset loading state
+                        emailInput.disabled = false;
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Join';
+                    }
+                });
+            }
+        });
+    </script>
 </body>
 </html>
