@@ -5,6 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 import { Loader2 } from "lucide-react";
+import { motion } from "framer-motion";
+
+const MotionButton = motion.create(Button);
 
 export function ChangePasswordForm({ onCancel }: { onCancel: () => void }) {
   const { changePassword, loading, error, clearError } = useAuthStore();
@@ -51,7 +54,7 @@ export function ChangePasswordForm({ onCancel }: { onCancel: () => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mt-4 p-4 border border-border rounded-lg bg-bg-2 shadow-sm space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+    <form onSubmit={handleSubmit} className="mt-4 p-4 border border-border rounded-lg bg-bg-2 shadow-sm space-y-4">
       <div className="space-y-2">
         <Label htmlFor="currentPassword" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Current Password</Label>
         <Input 
@@ -94,12 +97,12 @@ export function ChangePasswordForm({ onCancel }: { onCancel: () => void }) {
       )}
 
       <div className="flex flex-col items-end gap-2 pt-2">
-        <Button type="submit" disabled={loading} className="!bg-[#00D084] hover:!bg-[#00B370] !text-slate-950 font-semibold h-8 px-6 text-xs transition-colors rounded-md border-none">
+        <MotionButton whileTap={{ scale: 0.98 }} type="submit" disabled={loading} className="!bg-[#00D084] hover:!bg-[#00B370] !text-slate-950 font-semibold h-8 px-6 text-xs transition-colors rounded-md border-none">
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Update Password"}
-        </Button>
-        <Button type="button" onClick={onCancel} variant="ghost" className="text-gray-400 hover:text-white h-8 px-4 text-xs transition-colors rounded-md">
+        </MotionButton>
+        <MotionButton whileTap={{ scale: 0.98 }} type="button" onClick={onCancel} variant="ghost" className="text-gray-400 hover:text-white h-8 px-4 text-xs transition-colors rounded-md">
           Cancel
-        </Button>
+        </MotionButton>
       </div>
     </form>
   );

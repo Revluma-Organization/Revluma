@@ -6,6 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Upload, X } from "lucide-react";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
+import { motion } from "framer-motion";
+import { PageTransition, StaggeredList, StaggeredItem } from "@/components/MotionWrappers";
+
+const MotionButton = motion.create(Button);
 
 const Profile: FC = () => {
   const { user } = useAuth();
@@ -41,25 +45,25 @@ const Profile: FC = () => {
   };
 
   return (
-    <div className="max-w-4xl space-y-8 relative">
-      <div className="flex items-center justify-between">
+    <PageTransition className="max-w-4xl space-y-8 relative">
+      <motion.div layout className="flex items-center justify-between">
         <div>
-          <h1 className={`text-2xl font-bold tracking-tight display ${DESIGN_TOKENS.primaryText}`}>Account</h1>
-          <p className={`text-[0.85rem] mt-1 ${DESIGN_TOKENS.secondaryText}`}>Manage your personal profile and account settings.</p>
+          <motion.h1 layout className={`text-2xl font-bold tracking-tight display ${DESIGN_TOKENS.primaryText}`}>Account</motion.h1>
+          <motion.p layout className={`text-[0.85rem] mt-1 ${DESIGN_TOKENS.secondaryText}`}>Manage your personal profile and account settings.</motion.p>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors">
+        <MotionButton whileTap={{ scale: 0.98 }} variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors">
           <X className="h-5 w-5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white" />
-        </Button>
-      </div>
+        </MotionButton>
+      </motion.div>
 
-      <div className={`space-y-0 shadow-sm relative overflow-hidden ${DESIGN_TOKENS.card}`}>
+      <StaggeredList className={`space-y-0 shadow-sm relative overflow-hidden ${DESIGN_TOKENS.card}`}>
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-glass/[0.015] to-transparent" />
 
         {/* Profile Picture Section */}
-        <div className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
-          <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-slate-200 mb-4">Profile Picture</h3>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-            <div className="h-16 w-16 rounded-full bg-bg-3 overflow-hidden flex items-center justify-center border border-border shrink-0">
+        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
+          <motion.h3 layout className="font-semibold text-[0.85rem] text-slate-800 dark:text-slate-200 mb-4">Profile Picture</motion.h3>
+          <motion.div layout className="flex flex-col sm:flex-row sm:items-center gap-6">
+            <motion.div layout className="h-16 w-16 rounded-full bg-bg-3 overflow-hidden flex items-center justify-center border border-border shrink-0">
               {avatarPreview ? (
                 <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
               ) : (
@@ -67,26 +71,26 @@ const Profile: FC = () => {
                   {((firstName?.[0] || "") + (lastName?.[0] || "")).toUpperCase() || "?"}
                 </div>
               )}
-            </div>
-            <div className="flex flex-col gap-2">
+            </motion.div>
+            <motion.div layout className="flex flex-col gap-2">
               <div className="flex items-center gap-3">
                 <input type="file" accept="image/png, image/jpeg, image/gif" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
-                <Button onClick={() => fileInputRef.current?.click()} className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-black border-none font-bold shadow-[0_0_15px_hsl(var(--accent)/0.3)] flex items-center gap-2 rounded-lg text-xs h-8 px-4">
+                <MotionButton whileTap={{ scale: 0.98 }} onClick={() => fileInputRef.current?.click()} className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-black border-none font-bold shadow-[0_0_15px_hsl(var(--accent)/0.3)] flex items-center gap-2 rounded-lg text-xs h-8 px-4">
                   <Upload className="h-3.5 w-3.5" />
                   Upload Image
-                </Button>
-                <Button onClick={() => setAvatarPreview(null)} variant="outline" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs h-8 px-4 font-medium transition-colors">
+                </MotionButton>
+                <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setAvatarPreview(null)} variant="outline" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs h-8 px-4 font-medium transition-colors">
                   Remove
-                </Button>
+                </MotionButton>
               </div>
               <p className="text-[0.75rem] text-slate-600 dark:text-slate-400 font-medium">Accepted formats: PNG, JPEG, GIF (Max 10MB)</p>
-            </div>
-          </div>
-        </div>
+            </motion.div>
+          </motion.div>
+        </StaggeredItem>
 
         {/* Name Section */}
-        <div className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
+          <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
             <div className="space-y-2">
               <Label htmlFor="firstName" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>First Name</Label>
               <Input 
@@ -107,51 +111,51 @@ const Profile: FC = () => {
                 className={`h-9 transition-all ${DESIGN_TOKENS.input} ${!isEditingNames ? 'opacity-70 cursor-not-allowed bg-slate-50 dark:bg-slate-900/50' : ''}`} 
               />
             </div>
-          </div>
-          <div className="flex justify-end">
+          </motion.div>
+          <motion.div layout className="flex justify-end">
             {!isEditingNames ? (
-              <Button onClick={() => setIsEditingNames(true)} variant="outline" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs h-9 px-6 font-medium transition-colors">
+              <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setIsEditingNames(true)} variant="outline" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs h-9 px-6 font-medium transition-colors">
                 Edit
-              </Button>
+              </MotionButton>
             ) : (
-              <Button onClick={handleSaveNames} className="bg-[#00D084] hover:bg-[#00B370] text-slate-950 font-semibold transition-colors text-xs h-9 px-6 rounded-lg">
+              <MotionButton whileTap={{ scale: 0.98 }} onClick={handleSaveNames} className="bg-[#00D084] hover:bg-[#00B370] text-slate-950 font-semibold transition-colors text-xs h-9 px-6 rounded-lg">
                 Save
-              </Button>
+              </MotionButton>
             )}
-          </div>
-        </div>
+          </motion.div>
+        </StaggeredItem>
 
         {/* Email Section */}
-        <div className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
-          <div className="space-y-2">
+        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
+          <motion.div layout className="space-y-2">
             <Label htmlFor="email" className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Email</Label>
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <Input id="email" defaultValue={user?.email || ""} readOnly disabled className={`max-w-md h-9 font-medium opacity-70 cursor-not-allowed ${DESIGN_TOKENS.input}`} />
             </div>
             <p className="text-[0.75rem] text-slate-600 dark:text-slate-400 font-medium pt-1">Used to log in to your account</p>
-          </div>
-        </div>
+          </motion.div>
+        </StaggeredItem>
 
         {/* Password Section */}
-        <div className="relative z-10 p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <StaggeredItem className="relative z-10 p-6">
+          <motion.div layout className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-slate-200">Password</h3>
             </div>
             {!showChangePassword && (
-              <Button onClick={() => setShowChangePassword(true)} variant="outline" className="border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs h-9 px-4 font-medium transition-colors shrink-0">
+              <MotionButton whileTap={{ scale: 0.98 }} onClick={() => setShowChangePassword(true)} variant="outline" className="border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs h-9 px-4 font-medium transition-colors shrink-0">
                 Change Password
-              </Button>
+              </MotionButton>
             )}
-          </div>
+          </motion.div>
           {showChangePassword && (
-            <div className="w-full mt-2">
+            <motion.div layout initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="w-full mt-2 overflow-hidden">
               <ChangePasswordForm onCancel={() => setShowChangePassword(false)} />
-            </div>
+            </motion.div>
           )}
-        </div>
-      </div>
-    </div>
+        </StaggeredItem>
+      </StaggeredList>
+    </PageTransition>
   );
 };
 
