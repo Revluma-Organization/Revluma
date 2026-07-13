@@ -310,7 +310,7 @@ export default function Integrations() {
           </p>
           <button
             onClick={() => handleConnectClick('shopify')}
-            className={`mt-2 px-6 py-2.5 rounded-lg font-bold text-sm transition-opacity hover:opacity-90 ${DESIGN_TOKENS.buttonPrimary}`}
+            className={`mt-4 px-6 py-2 rounded-md font-semibold bg-[#00D084] text-slate-950 transition-colors hover:bg-[#00E591] shadow-md`}
           >
             Connect Store
           </button>
