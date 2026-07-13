@@ -1106,7 +1106,7 @@
         { id: 'shopify', name: 'Shopify', logo: 'https://cdn.simpleicons.org/shopify/5C8F4D' },
         { id: 'woocommerce', name: 'WooCommerce', logo: 'https://cdn.simpleicons.org/woocommerce/7C5CBF' },
         { id: 'bigcommerce', name: 'BigCommerce', logo: 'https://cdn.simpleicons.org/bigcommerce/34313F' },
-        { id: 'magento', name: 'Magento', logo: 'https://cdn.simpleicons.org/magento/F46F25' },
+        { id: 'magento', name: 'Magento', logo: '../assets/images/magento-logo.png' },
         { id: 'squarespace', name: 'Squarespace', logo: 'https://cdn.simpleicons.org/squarespace/111111' },
         { id: 'other', name: 'Custom / Other', icon: 'code-2' }
       ];
@@ -1194,7 +1194,7 @@
       });
 
       const channels = document.querySelectorAll('[data-channel]');
-      const channelInput = document.getElementById('preferredChannel');
+      const channelInput = document.getElementById('recoveryChannel');
       channels.forEach(btn => {
         btn.addEventListener('click', () => {
           channels.forEach(b => {
