@@ -57,8 +57,8 @@ const Profile: FC = () => {
 
         {/* Profile Picture Section */}
         <div className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
-          <h3 className="font-semibold text-[0.85rem] text-t1 mb-4">Profile Picture</h3>
-          <div className="flex items-center gap-6 mb-4">
+          <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-slate-200 mb-4">Profile Picture</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-6">
             <div className="h-16 w-16 rounded-full bg-bg-3 overflow-hidden flex items-center justify-center border border-border shrink-0">
               {avatarPreview ? (
                 <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
@@ -68,17 +68,19 @@ const Profile: FC = () => {
                 </div>
               )}
             </div>
-            <p className="text-[0.7rem] text-t3 font-medium">Accepted formats: PNG, JPEG, GIF (Max 10MB)</p>
-          </div>
-          <div className="flex items-center justify-end gap-3">
-            <input type="file" accept="image/png, image/jpeg, image/gif" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
-            <Button onClick={() => setAvatarPreview(null)} variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-glass/[0.065] text-xs h-9 px-4 font-medium transition-colors">
-              Remove
-            </Button>
-            <Button onClick={() => fileInputRef.current?.click()} className="bg-[#00D084] hover:bg-[#00B370] text-slate-950 font-semibold transition-colors text-xs h-9 px-4 rounded-lg flex items-center gap-2">
-              <Upload className="h-3.5 w-3.5" />
-              Upload Image
-            </Button>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3">
+                <input type="file" accept="image/png, image/jpeg, image/gif" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
+                <Button onClick={() => fileInputRef.current?.click()} className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-black border-none font-bold shadow-[0_0_15px_hsl(var(--accent)/0.3)] flex items-center gap-2 rounded-lg text-xs h-8 px-4">
+                  <Upload className="h-3.5 w-3.5" />
+                  Upload Image
+                </Button>
+                <Button onClick={() => setAvatarPreview(null)} variant="outline" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs h-8 px-4 font-medium transition-colors">
+                  Remove
+                </Button>
+              </div>
+              <p className="text-[0.75rem] text-slate-600 dark:text-slate-400 font-medium">Accepted formats: PNG, JPEG, GIF (Max 10MB)</p>
+            </div>
           </div>
         </div>
 
@@ -108,7 +110,7 @@ const Profile: FC = () => {
           </div>
           <div className="flex justify-end">
             {!isEditingNames ? (
-              <Button onClick={() => setIsEditingNames(true)} variant="outline" className="rounded-lg border-border bg-bg-3 text-t2 hover:text-t1 hover:bg-glass/[0.065] text-xs h-9 px-6 font-medium transition-colors">
+              <Button onClick={() => setIsEditingNames(true)} variant="outline" className="rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs h-9 px-6 font-medium transition-colors">
                 Edit
               </Button>
             ) : (
@@ -126,19 +128,24 @@ const Profile: FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <Input id="email" defaultValue={user?.email || ""} readOnly disabled className={`max-w-md h-9 font-medium opacity-70 cursor-not-allowed ${DESIGN_TOKENS.input}`} />
             </div>
-            <p className="text-[0.7rem] text-t3 font-medium pt-1">Used to log in to your account</p>
+            <p className="text-[0.75rem] text-slate-600 dark:text-slate-400 font-medium pt-1">Used to log in to your account</p>
           </div>
         </div>
 
         {/* Password Section */}
-        <div className="relative z-10 p-6 flex flex-col items-end">
-          {!showChangePassword && (
-            <Button onClick={() => setShowChangePassword(true)} className="bg-[#00D084] hover:bg-[#00B370] text-slate-950 font-semibold transition-colors text-xs h-9 px-6 rounded-lg">
-              Change Password
-            </Button>
-          )}
+        <div className="relative z-10 p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="font-semibold text-[0.85rem] text-slate-800 dark:text-slate-200">Password</h3>
+            </div>
+            {!showChangePassword && (
+              <Button onClick={() => setShowChangePassword(true)} variant="outline" className="border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs h-9 px-4 font-medium transition-colors shrink-0">
+                Change Password
+              </Button>
+            )}
+          </div>
           {showChangePassword && (
-            <div className="w-full">
+            <div className="w-full mt-2">
               <ChangePasswordForm onCancel={() => setShowChangePassword(false)} />
             </div>
           )}

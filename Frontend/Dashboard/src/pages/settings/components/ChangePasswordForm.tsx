@@ -93,12 +93,12 @@ export function ChangePasswordForm({ onCancel }: { onCancel: () => void }) {
         <p className="text-[#00D084] text-[0.75rem] font-medium">Password changed successfully!</p>
       )}
 
-      <div className="flex items-center justify-end gap-3 pt-2">
-        <Button type="button" onClick={onCancel} variant="ghost" className={`h-8 px-4 text-xs ${DESIGN_TOKENS.secondaryText} hover:${DESIGN_TOKENS.primaryText}`}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={loading} className={`h-8 px-6 text-xs ${DESIGN_TOKENS.buttonPrimary}`}>
+      <div className="flex flex-col items-end gap-2 pt-2">
+        <Button type="submit" disabled={loading} className="bg-green-500 hover:bg-green-400 text-black font-semibold h-8 px-6 text-xs transition-colors rounded-md">
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Update Password"}
+        </Button>
+        <Button type="button" onClick={onCancel} variant="ghost" className="text-gray-400 hover:text-white h-8 px-4 text-xs transition-colors rounded-md">
+          Cancel
         </Button>
       </div>
     </form>
