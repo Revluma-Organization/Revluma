@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
+import magentoLogo from "@/assets/magento-logo.png";
 
 //Types
 
@@ -85,7 +86,7 @@ const PLATFORMS: Platform[] = [
 
 const COMING_SOON: ComingSoonPlatform[] = [
   { name: "BigCommerce", tagline: "Open SaaS commerce", logo: "https://cdn.simpleicons.org/bigcommerce/34313F", accentColor: "#34313F" },
-  { name: "Magento", tagline: "Adobe Commerce", logo: "/magento-logo.png", accentColor: "#F46F25" },
+  { name: "Magento", tagline: "Adobe Commerce", logo: magentoLogo, accentColor: "#F46F25" },
   { name: "Squarespace", tagline: "All-in-one website builder", logo: "https://cdn.simpleicons.org/squarespace/111111", accentColor: "#111111" },
   { name: "Custom API", tagline: "Bring your own stack", icon: Code2, accentColor: "#4C8DFF" },
 ];
