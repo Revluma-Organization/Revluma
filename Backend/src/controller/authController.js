@@ -459,6 +459,11 @@ exports.getProfile = async (req, res) => {
 // REFRESH TOKEN
 exports.refresh = async (req, res, next) => {
   try {
+
+    console.log("========== REFRESH ==========");
+    console.log("req.cookies:", req.cookies);
+    console.log("req.headers.cookie:", req.headers.cookie);
+
     const refreshToken = req.cookies.refresh_token
 
     if (!refreshToken) {
