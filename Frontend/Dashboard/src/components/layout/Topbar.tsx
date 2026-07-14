@@ -1,5 +1,6 @@
 import { Bell, HelpCircle, Calendar, Search, Menu, Sparkles, Compass, LogOut, UserCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -22,6 +23,22 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
   const { setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, setCopilotOpen, dateRange, setDateRange, startTour } = useUI();
   const { user, logout } = useAuth();
   const [dateOpen, setDateOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // Logout can involve a network call to revoke the refresh token, and the
+  // page navigation that follows isn't always instant — without this, the
+  // dropdown just closes and the screen appears to freeze for a moment
+  // with zero indication anything is happening.
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+    } catch {
+      // logout() already clears local session state and redirects even on
+      // network failure — nothing further to do here.
+      setIsLoggingOut(false);
+    }
+  };
 
   // Real unread notification count from API
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
@@ -184,7 +201,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onSelect={() => { void logout(); }}   // ← wrap in a no-arg callback
+                onSelect={() => { void handleLogout(); }}
                 className="flex items-center gap-2 text-destructive focus:text-destructive cursor-pointer"
               >
                 <LogOut className="h-3.5 w-3.5" />
@@ -194,6 +211,33 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
           </DropdownMenu>
         )}
       </div>
+
+      {/* Very visible, strictly black-and-white loading overlay while
+          logout's network call resolves and the redirect to /login fires.
+          Without this, clicking "Log out" looked like nothing happened. */}
+      <AnimatePresence>
+        {isLoggingOut && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 12, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+              className="flex flex-col items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.06] px-10 py-8 backdrop-blur-2xl shadow-2xl"
+            >
+              <div
+                className="h-10 w-10 rounded-full border-[3px] border-white/15 border-t-white animate-spin"
+                aria-hidden="true"
+              />
+              <p className="text-sm font-semibold text-white tracking-tight">Signing you out…</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }

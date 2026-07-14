@@ -51,15 +51,37 @@
     }
 
     .glassmorphism-card.success {
-        border-color: rgba(52, 211, 153, 0.3);
-        background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(52, 211, 153, 0.05) 100%),
-            rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.28);
+        background: rgba(255, 255, 255, 0.1);
     }
 
     .glassmorphism-card.error {
-        border-color: rgba(248, 113, 113, 0.3);
-        background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(248, 113, 113, 0.05) 100%),
-            rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.14);
+        background: rgba(0, 0, 0, 0.35);
+    }
+
+    .glassmorphism-card.loading {
+        border-color: rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* Big, unmistakable spinner for the loading state — bigger and more
+       visible than any inline button spinner, so a person never has to
+       wonder whether something is happening. */
+    .card-spinner {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 1.5rem;
+        border: 3px solid rgba(255, 255, 255, 0.15);
+        border-top-color: #ffffff;
+        border-radius: 50%;
+        animation: cardSpin 0.8s linear infinite;
+    }
+
+    @keyframes cardSpin {
+        to {
+            transform: rotate(360deg);
+        }
     }
 
     .card-icon {
@@ -89,14 +111,17 @@
         }
     }
 
+    /* Strictly monochrome — success and error are told apart by icon
+       shape (check vs. X) and fill weight, never by hue. */
     .card-icon.success {
-        background: rgba(52, 211, 153, 0.2);
-        color: #34d399;
+        background: #ffffff;
+        color: #0a0a0a;
     }
 
     .card-icon.error {
-        background: rgba(248, 113, 113, 0.2);
-        color: #f87171;
+        background: rgba(255, 255, 255, 0.12);
+        color: #ffffff;
+        border: 1.5px solid rgba(255, 255, 255, 0.35);
     }
 
     .card-title {
@@ -104,18 +129,19 @@
         font-weight: 700;
         margin-bottom: 0.75rem;
         letter-spacing: -0.5px;
+        color: #ffffff;
     }
 
     .card-message {
         font-size: 0.95rem;
-        color: #d0d0d8;
+        color: rgba(255, 255, 255, 0.62);
         margin-bottom: 2rem;
         line-height: 1.5;
     }
 
     .card-button {
         background: rgba(255, 255, 255, 0.15);
-        color: #f0f0f5;
+        color: #ffffff;
         border: 1px solid rgba(255, 255, 255, 0.2);
         padding: 0.75rem 1.5rem;
         border-radius: 10px;
@@ -130,29 +156,31 @@
         background: rgba(255, 255, 255, 0.25);
         border-color: rgba(255, 255, 255, 0.3);
         transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     }
 
+    /* Solid white, black text — the strongest possible affordance for the
+       primary/success action, staying inside the monochrome palette. */
     .card-button.success-btn {
-        background: linear-gradient(135deg, rgba(52, 211, 153, 0.4), rgba(16, 185, 129, 0.3));
-        border-color: rgba(52, 211, 153, 0.4);
-        color: #34d399;
+        background: #ffffff;
+        border-color: #ffffff;
+        color: #0a0a0a;
     }
 
     .card-button.success-btn:hover {
-        background: linear-gradient(135deg, rgba(52, 211, 153, 0.5), rgba(16, 185, 129, 0.4));
-        box-shadow: 0 12px 30px rgba(52, 211, 153, 0.2);
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: 0 12px 30px rgba(255, 255, 255, 0.15);
     }
 
     .card-button.error-btn {
-        background: linear-gradient(135deg, rgba(248, 113, 113, 0.4), rgba(239, 68, 68, 0.3));
-        border-color: rgba(248, 113, 113, 0.4);
-        color: #f87171;
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.3);
+        color: #ffffff;
     }
 
     .card-button.error-btn:hover {
-        background: linear-gradient(135deg, rgba(248, 113, 113, 0.5), rgba(239, 68, 68, 0.4));
-        box-shadow: 0 12px 30px rgba(248, 113, 113, 0.2);
+        background: rgba(255, 255, 255, 0.18);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
     }
 
     .card-loading {
@@ -187,6 +215,7 @@
 
 <div id="glassmorphism-overlay" class="glassmorphism-overlay hidden">
     <div class="glassmorphism-card" id="glassmorphism-card">
+        <div class="card-spinner hidden" id="card-spinner"></div>
         <div class="card-icon" id="card-icon">
             <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path id="icon-path"
@@ -204,18 +233,27 @@
     function showGlassmorphismCard(type, title, message, onClose, buttonText) {
         const overlay = document.getElementById('glassmorphism-overlay');
         const card = document.getElementById('glassmorphism-card');
+        const spinner = document.getElementById('card-spinner');
         const icon = document.getElementById('card-icon');
         const titleEl = document.getElementById('card-title');
         const messageEl = document.getElementById('card-message');
         const button = document.getElementById('card-button');
 
         // Set type-specific styling
-        card.classList.remove('success', 'error');
+        card.classList.remove('success', 'error', 'loading');
         icon.classList.remove('success', 'error');
         button.classList.remove('success-btn', 'error-btn');
 
-        if (type === 'success') {
+        if (type === 'loading') {
+            card.classList.add('loading');
+            spinner.classList.remove('hidden');
+            icon.classList.add('hidden');
+            button.classList.add('hidden');
+        } else if (type === 'success') {
             card.classList.add('success');
+            spinner.classList.add('hidden');
+            icon.classList.remove('hidden');
+            button.classList.remove('hidden');
             icon.classList.add('success');
             button.classList.add('success-btn');
             // Success icon
@@ -223,6 +261,9 @@
             button.textContent = buttonText || 'Continue';
         } else if (type === 'error') {
             card.classList.add('error');
+            spinner.classList.add('hidden');
+            icon.classList.remove('hidden');
+            button.classList.remove('hidden');
             icon.classList.add('error');
             button.classList.add('error-btn');
             // Error icon

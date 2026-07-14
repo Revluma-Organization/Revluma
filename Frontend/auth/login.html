@@ -811,6 +811,42 @@
 </head>
 
 <body>
+  <!-- Glassmorphism Card Component: loaded dynamically from the shared
+       components/GlassmorphismCard.html so this page, the rest of the auth
+       flow, and the React version in the Dashboard app all stay in sync
+       with a single source of truth instead of duplicated copies. -->
+  <script>
+    async function loadGlassmorphismCard() {
+      try {
+        const res = await fetch('components/GlassmorphismCard.html');
+        if (!res.ok) throw new Error('Component fetch failed: ' + res.status);
+        const html = await res.text();
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+
+        Array.from(temp.childNodes).forEach((node) => {
+          if (node.nodeType === 1 && node.tagName === 'SCRIPT') return;
+          document.body.appendChild(node);
+        });
+
+        Array.from(temp.querySelectorAll('script')).forEach((oldScript) => {
+          const newScript = document.createElement('script');
+          newScript.textContent = oldScript.textContent;
+          document.body.appendChild(newScript);
+        });
+
+        return true;
+      } catch (err) {
+        console.error('Could not load shared glassmorphism card component:', err);
+        window.showGlassmorphismCard = (_type, _title, _message, onClose) => { if (onClose) onClose(); };
+        window.hideGlassmorphismCard = () => {};
+        return false;
+      }
+    }
+    // Fire immediately (not tied to DOMContentLoaded) so it's ready well
+    // before the user could possibly finish typing and submit the form.
+    window.glassCardReady = loadGlassmorphismCard();
+  </script>
   <div class="glow glow-1"></div>
   <div class="glow glow-2"></div>
 
@@ -1560,11 +1596,25 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       const password = el.password.value;
 
       setLoading(true);
+      await window.glassCardReady;
+      showGlassmorphismCard('loading', 'Signing you in…', 'Just a moment while we verify your details.');
 
       try {
         await window.revlumaAuth.login(email, password);
-        window.location.href = '/dashboard/overview';
+
+        showGlassmorphismCard('success',
+          'Welcome back!',
+          "You're signed in. Taking you to your dashboard…",
+          () => window.location.href = '/dashboard/overview',
+          'Continue to Dashboard'
+        );
+
+        // Auto-redirect shortly after, in case the user doesn't click through
+        setTimeout(() => {
+          window.location.href = '/dashboard/overview';
+        }, 1200);
       } catch (err) {
+        hideGlassmorphismCard();
         showError(err.message || 'An error occurred during sign in. Please try again.');
         console.error('Login failed:', err);
       } finally {

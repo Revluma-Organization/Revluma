@@ -595,7 +595,7 @@
       const termsError = document.getElementById('termsError');
 
       if (form) {
-        form.addEventListener('submit', (e) => {
+        form.addEventListener('submit', async (e) => {
           e.preventDefault();
 
           // Validate terms checkbox
@@ -663,7 +663,7 @@
           const btn = form.querySelector('button[type="submit"]');
           const originalText = btn.innerHTML;
           btn.disabled = true;
-          btn.innerHTML = 'Creating account...';
+          btn.innerHTML = 'Creating account…';
 
           let globalError = document.getElementById('globalAuthError');
           if (!globalError) {
@@ -676,19 +676,33 @@
             form.insertBefore(globalError, form.firstChild);
           }
           globalError.classList.add('hidden');
-          
-          window.revlumaAuth.register(payload)
-          .then(() => {
-localStorage.setItem('signup_email', document.querySelector('input[type="email"]').value);
+
+          await window.glassCardReady;
+          showGlassmorphismCard('loading', 'Creating your account…', "This won't take long.");
+
+          try {
+            await window.revlumaAuth.register(payload);
+            localStorage.setItem('signup_email', document.querySelector('input[type="email"]').value);
+
+            showGlassmorphismCard('success',
+              'Account Created!',
+              "Check your email for a verification code to continue.",
+              () => window.location.href = 'verifyemail.html',
+              'Continue to Verification'
+            );
+
+            // Auto-redirect shortly after, in case the user doesn't click through
+            setTimeout(() => {
               window.location.href = 'verifyemail.html';
-            })
-            .catch(err => {
-              globalError.textContent = err.message || 'An error occurred during registration.';
-              globalError.classList.remove('hidden');
-              btn.disabled = false;
-              btn.innerHTML = originalText;
-              console.error('Registration failed:', err);
-            });
+            }, 1200);
+          } catch (err) {
+            hideGlassmorphismCard();
+            globalError.textContent = err.message || 'An error occurred during registration.';
+            globalError.classList.remove('hidden');
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            console.error('Registration failed:', err);
+          }
         });
       }
 
@@ -820,6 +834,40 @@ localStorage.setItem('signup_email', document.querySelector('input[type="email"]
 </head>
 
 <body class="min-h-screen" style="background: var(--bg); color: var(--text);">
+  <!-- Glassmorphism Card Component: loaded dynamically from the shared
+       components/GlassmorphismCard.html so this page, the rest of the auth
+       flow, and the React version in the Dashboard app all stay in sync
+       with a single source of truth instead of duplicated copies. -->
+  <script>
+    async function loadGlassmorphismCard() {
+      try {
+        const res = await fetch('components/GlassmorphismCard.html');
+        if (!res.ok) throw new Error('Component fetch failed: ' + res.status);
+        const html = await res.text();
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+
+        Array.from(temp.childNodes).forEach((node) => {
+          if (node.nodeType === 1 && node.tagName === 'SCRIPT') return;
+          document.body.appendChild(node);
+        });
+
+        Array.from(temp.querySelectorAll('script')).forEach((oldScript) => {
+          const newScript = document.createElement('script');
+          newScript.textContent = oldScript.textContent;
+          document.body.appendChild(newScript);
+        });
+
+        return true;
+      } catch (err) {
+        console.error('Could not load shared glassmorphism card component:', err);
+        window.showGlassmorphismCard = (_type, _title, _message, onClose) => { if (onClose) onClose(); };
+        window.hideGlassmorphismCard = () => {};
+        return false;
+      }
+    }
+    window.glassCardReady = loadGlassmorphismCard();
+  </script>
   <div class="glow-1"></div>
   <div class="glow-2"></div>
 

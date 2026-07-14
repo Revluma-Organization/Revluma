@@ -465,6 +465,7 @@
         verifyBtn.disabled = true;
         verifyBtnText.textContent = 'Verifying...';
         verifyBtnSpinner.classList.remove('hidden');
+        showGlassmorphismCard('loading', 'Verifying your code…', 'Just a moment.');
 
         try {
           // --- Backend Integration Point ---
