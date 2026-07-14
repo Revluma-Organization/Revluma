@@ -5,10 +5,11 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 import magentoLogo from "@/assets/magento-logo.png";
+import GlassmorphismCard from "@/components/GlassmorphismCard";
 
 //Types
 
@@ -186,6 +187,33 @@ export default function Integrations() {
   const [wooData, setWooData] = useState({ shop_url: "", consumer_key: "", consumer_secret: "" });
   const [wooSubmitting, setWooSubmitting] = useState(false);
 
+  // Connect success/failure feedback (Shopify redirect failures, WooCommerce connect result)
+  const [statusCard, setStatusCard] = useState<{
+    open: boolean;
+    type: "success" | "error";
+    title: string;
+    message: string;
+    buttonText?: string;
+  }>({ open: false, type: "success", title: "", message: "" });
+
+  function showStatusCard(type: "success" | "error", title: string, message: string, buttonText?: string) {
+    setStatusCard({ open: true, type, title, message, buttonText });
+  }
+
+  function closeStatusCard() {
+    setStatusCard((prev) => ({ ...prev, open: false }));
+  }
+
+  /** Pulls the real backend-provided message out of an ApiError body when available. */
+  function getErrorMessage(e: unknown, fallback: string): string {
+    if (e instanceof ApiError) {
+      const body = e.body as { error?: string; message?: string } | null;
+      return body?.error || body?.message || fallback;
+    }
+    if (e instanceof Error && e.message) return e.message;
+    return fallback;
+  }
+
   // Fetch initial statuses
   const fetchStatuses = async () => {
     try {
@@ -243,6 +271,12 @@ export default function Integrations() {
       window.location.assign(installUrl);
     } catch (e) {
       console.error('Shopify connect failed', e);
+      showStatusCard(
+        'error',
+        'Shopify Connection Failed',
+        getErrorMessage(e, "We couldn't start the Shopify connection. Please check your store domain and try again."),
+        'Try Again',
+      );
     }
   }
 
@@ -256,9 +290,21 @@ export default function Integrations() {
       setStatuses(prev => ({ ...prev, woocommerce: "connected" }));
       // Optional: re-fetch statuses
       fetchStatuses();
+      showStatusCard(
+        'success',
+        'WooCommerce Connected!',
+        'Your store is connected. Cart recovery sequences are ready to activate.',
+        'Got it',
+      );
     } catch (e) {
       console.error("WooCommerce connect failed", e);
       setStatuses(prev => ({ ...prev, woocommerce: "error" }));
+      showStatusCard(
+        'error',
+        'WooCommerce Connection Failed',
+        getErrorMessage(e, "We couldn't connect your WooCommerce store. Please check your Store URL and API keys and try again."),
+        'Try Again',
+      );
     } finally {
       setWooSubmitting(false);
     }
@@ -554,6 +600,16 @@ export default function Integrations() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Connect success/failure feedback */}
+      <GlassmorphismCard
+        isOpen={statusCard.open}
+        type={statusCard.type}
+        title={statusCard.title}
+        message={statusCard.message}
+        buttonText={statusCard.buttonText}
+        onClose={closeStatusCard}
+      />
 
       {/* Coming soon */}
       <section>
