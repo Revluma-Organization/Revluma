@@ -564,6 +564,44 @@
 </head>
 
 <body class="min-h-screen" style="background: var(--bg); color: var(--text);">
+  <!-- Glassmorphism Card Component: loaded dynamically from the shared
+       components/GlassmorphismCard.html so this page, the rest of the auth
+       flow, and the React version in the Dashboard app all stay in sync
+       with a single source of truth instead of duplicated copies. -->
+  <script>
+    async function loadGlassmorphismCard() {
+      try {
+        const res = await fetch('components/GlassmorphismCard.html');
+        if (!res.ok) throw new Error('Component fetch failed: ' + res.status);
+        const html = await res.text();
+        const temp = document.createElement('div');
+        temp.innerHTML = html;
+
+        // Append the <style> and markup nodes as-is
+        Array.from(temp.childNodes).forEach((node) => {
+          if (node.nodeType === 1 && node.tagName === 'SCRIPT') return;
+          document.body.appendChild(node);
+        });
+
+        // <script> tags inserted via innerHTML never execute — recreate and
+        // append them so the component's show/hide functions actually run.
+        Array.from(temp.querySelectorAll('script')).forEach((oldScript) => {
+          const newScript = document.createElement('script');
+          newScript.textContent = oldScript.textContent;
+          document.body.appendChild(newScript);
+        });
+
+        return true;
+      } catch (err) {
+        // Degrade gracefully: a network hiccup loading the shared component
+        // should never block onboarding completion or the redirect to login.
+        console.error('Could not load shared glassmorphism card component:', err);
+        window.showGlassmorphismCard = (_type, _title, _message, onClose) => { if (onClose) onClose(); };
+        window.hideGlassmorphismCard = () => {};
+        return false;
+      }
+    }
+  </script>
   <div class="glow-1"></div>
   <div class="glow-2"></div>
 
@@ -974,7 +1012,10 @@
     </div>
 
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Load the shared glassmorphism card component before anything can trigger it.
+      await loadGlassmorphismCard();
+
       let currentStep = 1;
       const totalSteps = 3;
 
@@ -1079,8 +1120,21 @@
               localStorage.setItem('rv-auth', JSON.stringify(auth));
           }
 
-          // 2. Then redirect to the signin
-          window.location.href = '/auth/login.html';
+          // 2. Show the glassmorphism confirmation card, then redirect to
+          // sign in. Without this, the page used to jump straight to
+          // login.html with zero feedback — easy to mistake for the app
+          // crashing right after finishing setup.
+          showGlassmorphismCard('success',
+            "You're All Set!",
+            'Your store is ready to go. Please sign in to access your dashboard.',
+            () => window.location.href = '/auth/login.html',
+            'Continue to Sign In'
+          );
+
+          // Auto-redirect after 3 seconds in case the user doesn't click the button
+          setTimeout(() => {
+            window.location.href = '/auth/login.html';
+          }, 3000);
         });
       }
 
