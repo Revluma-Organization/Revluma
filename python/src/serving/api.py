@@ -3,12 +3,69 @@ Revluma ML Serving API
 ========================
 Real-time inference endpoints for Revluma's five predictive models.
 uvicorn src.serving.api:app --reload --port 8000
+
+#--
+#newly added
+#--
+CORRECTIONS APPLIED (auditing the uploaded draft against the task doc's
+actual P2.1 spec found several real mismatches — see chat for the full
+audit table). Summary of what changed in this rewrite:
+
+  1. AbandonmentFeatures — added cart_item_add_count and
+     cart_item_remove_count (doc requires 7 fields; draft had 5).
+
+  2. SensitivityFeatures — renamed coupon_usage_pct -> the real
+     pipeline.py name past_orders_with_coupon_pct, fixed its scale from
+     0-100 to the real 0.0-1.0 ratio, and swapped time_on_page_ms for
+     tab_switch_count to match the actual 8-feature weighted table in
+     M2's README.
+
+  3. ChurnRiskResponse — full rewrite. Draft returned
+     {churn_score, risk_level, trigger_winback, customer_segment} but
+     the doc requires {churn_probability, churn_tier, win_back_urgency,
+     engagement_decay_score, recommended_channel, offer_required,
+     escalate_to_human}. Also fixed a real bug: the draft called
+     model.predict_proba(X)[0][1] assuming a BINARY model, but M4 is a
+     4-CLASS classifier — that indexing would silently return the wrong
+     class's probability every time.
+
+  4. SendTimeFeatures / SendTimeResponse — full rewrite. Draft's input
+     schema (email_open_hour_history, etc.) didn't match the doc's real
+     schema (channel, recovery_action, cart_value_tier,
+     customer_timezone_offset) at all, and the response used
+     best_send_hour/best_send_day ints instead of the required ISO 8601
+     send_at/send_at_utc timestamps. Endpoint now grid-searches candidate
+     hours using the M3 model (see train.py's redesign) and returns the
+     doc's exact response shape.
+
+  5. OfferValueFeatures/Response — full rewrite. Added tss_score input
+     (see M5 train.py for why — M2 outputs PSS+CSS+TSS, not just two
+     scores). Implemented the doc's two separate hard gates (TRUST_SIGNAL
+     vs NUDGE) which the draft didn't have at all. Rebuilt response to
+     match the doc's required fields.
+
+  6. GET /health — added version, models_loaded, database_url_set,
+     uptime_seconds per doc spec (draft only returned status+service).
+
+  7. Startup model preload — added, per doc: "On application startup,
+     attempt to load all five models into the cache... never crash on
+     startup due to a missing model."
+
+Kept unchanged (already matched the doc): the sensitivity decision
+matrix logic and thresholds, the general fallback-never-500 pattern, and
+the in-memory _model_cache design.
+#--
+#end new
+#--
 """
 
 import os
 import sys
+import time
+from datetime import datetime, timedelta, timezone
+
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel, Field
 import mlflow.sklearn
 
@@ -18,18 +75,26 @@ try:
     from src.config.mlflow_config import get_or_create_experiment
     get_or_create_experiment()
 except Exception:
-    pass # Failsafe
+    pass  # Failsafe
 
 app = FastAPI(
     title="Revluma ML Serving API",
     description="Real-time inference endpoints for Revluma's five predictive models.",
-    version="0.1.0"
+    version="0.2.0"
 )
+
+_START_TIME = time.time()
 
 # ---------------------------------------------------------------------------
 # Global State & Caching
 # ---------------------------------------------------------------------------
 _model_cache: dict = {}
+
+# Registry names — MUST exactly match registered_model_name used in each
+# model's train.py, or load_model() will always return None.
+MODEL_NAMES = ["abandonment", "sensitivity_pss", "sensitivity_css",
+               "churn_risk", "send_time", "offer_value"]
+
 
 def _load_model(model_name: str):
     """
@@ -46,6 +111,19 @@ def _load_model(model_name: str):
         return None
 
 
+@app.on_event("startup")
+async def _preload_models():
+    """
+    Per doc: attempt to load all five models into cache on startup.
+    Log which loaded and which fell back. Never crash startup if a
+    model is missing — that's exactly what the fallback logic is for.
+    """
+    for name in MODEL_NAMES:
+        model = _load_model(name)
+        status = "loaded" if model is not None else "FALLBACK (not found)"
+        print(f"[startup] model '{name}': {status}")
+
+
 # ---------------------------------------------------------------------------
 # Request Schemas (Pydantic)
 # ---------------------------------------------------------------------------
@@ -54,24 +132,25 @@ class AbandonmentFeatures(BaseModel):
     tab_switch_count: int = Field(0, ge=0)
     time_on_page_ms: int = Field(0, ge=0)
     checkout_step_reached: int = Field(0, ge=0, le=5)
-    failed_payment_attempt: int = Field(0, ge=0, le=1)
+    failed_payment_attempt: bool = Field(False)
+    cart_item_add_count: int = Field(0, ge=0)
+    cart_item_remove_count: int = Field(0, ge=0)
+
 
 class SensitivityFeatures(BaseModel):
-    coupon_usage_pct: float = Field(0.0, ge=0.0, le=100.0)
-    visited_coupon_page: int = Field(0, ge=0, le=1)
-    searched_discount_terms: int = Field(0, ge=0, le=1)
-    cursor_hesitation: float = Field(0.0, ge=0.0)
-    abandoned_at_shipping_reveal: int = Field(0, ge=0, le=1)
+    # Matches the 8-feature weighted table in M2's README exactly.
+    # past_orders_with_coupon_pct is a 0.0-1.0 RATIO in pipeline.py
+    # (calculate_coupon_usage_pct), not a 0-100 percentage — the earlier
+    # draft had both the wrong name and the wrong scale.
+    past_orders_with_coupon_pct: float = Field(0.0, ge=0.0, le=1.0)
+    visited_coupon_page: bool = Field(False)
+    searched_discount_terms: bool = Field(False)
+    cursor_hesitation: int = Field(0, ge=0)
+    abandoned_at_shipping_reveal: bool = Field(False)
     checkout_step_reached: int = Field(0, ge=0, le=5)
     scroll_depth_pct: float = Field(0.0, ge=0.0, le=100.0)
-    time_on_page_ms: float = Field(0.0, ge=0.0)
+    tab_switch_count: int = Field(0, ge=0)
 
-class SendTimeFeatures(BaseModel):
-    local_hour_of_session: int = Field(12, ge=0, le=23)
-    day_of_week_session: int = Field(0, ge=0, le=6)
-    email_open_hour_history: int = Field(12, ge=0, le=23)
-    email_click_hour_history: int = Field(12, ge=0, le=23)
-    sms_response_hour_history: int = Field(12, ge=0, le=23)
 
 class ChurnFeatures(BaseModel):
     past_orders_total: int = Field(0, ge=0)
@@ -81,18 +160,41 @@ class ChurnFeatures(BaseModel):
     rfm_recency_score: int = Field(1, ge=1, le=5)
     rfm_frequency_score: int = Field(1, ge=1, le=5)
     rfm_monetary_score: int = Field(1, ge=1, le=5)
+    # NOTE: the doc's escalate_to_human rule needs customer LTV, which
+    # isn't among M4's 7 trained features. Accepted here as an optional
+    # input; if not provided we approximate LTV as
+    # past_orders_total * avg_order_value. Flagged — a real LTV field
+    # from the customer_crm table would be more accurate than this proxy.
+    customer_ltv: float = Field(0.0, ge=0.0)
+
+
+class SendTimeFeatures(BaseModel):
+    local_hour_of_session: int = Field(12, ge=0, le=23)
+    day_of_week_session: int = Field(0, ge=0, le=6)
+    channel: str = Field("email", pattern="^(email|sms|whatsapp)$")
+    recovery_action: str = Field(
+        "SOFT_NUDGE",
+        pattern="^(DISCOUNT|FRICTION_FIX|HYBRID|NUDGE|SOFT_NUDGE)$"
+    )
+    cart_value_tier: str = Field("medium", pattern="^(low|medium|high)$")
+    customer_timezone_offset: int = Field(0, ge=-12, le=14)
+
 
 class OfferValueFeatures(BaseModel):
     pss_score: int = Field(0, ge=0, le=100)
     css_score: int = Field(0, ge=0, le=100)
-    cursor_hesitation: float = Field(0.0, ge=0.0)
+    # tss_score: M2 output per the doc ("PSS + CSS + TSS"), but no real
+    # backing data exists yet anywhere in the repo — see M5 train.py.
+    # Defaults to 0 (not trust-blocked) so the TRUST_SIGNAL gate doesn't
+    # spuriously fire until real TSS data is available.
+    tss_score: int = Field(0, ge=0, le=100)
+    cursor_hesitation: int = Field(0, ge=0)
     past_orders_total: int = Field(0, ge=0)
-    past_orders_with_coupon_pct: float = Field(0.0, ge=0.0, le=100.0)
+    past_orders_with_coupon_pct: float = Field(0.0, ge=0.0, le=1.0)
     days_since_last_purchase: int = Field(-1, ge=-1)
     avg_order_value: float = Field(0.0, ge=0.0)
-    visited_coupon_page: int = Field(0, ge=0, le=1)
-    searched_discount_terms: int = Field(0, ge=0, le=1)
-    failed_coupon_count: int = Field(0, ge=0)
+    visited_coupon_page: bool = Field(False)
+    searched_discount_terms: bool = Field(False)
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +207,7 @@ class AbandonmentResponse(BaseModel):
     model_version: str
     fallback: bool = False
 
+
 class SensitivityResponse(BaseModel):
     pss_score: int = 50
     css_score: int = 50
@@ -114,26 +217,71 @@ class SensitivityResponse(BaseModel):
     model_version: str = "fallback"
     fallback: bool = False
 
+
 class ChurnRiskResponse(BaseModel):
-    churn_score: float
-    risk_level: str
-    trigger_winback: bool
-    customer_segment: str
+    churn_probability: float
+    churn_tier: str
+    win_back_urgency: str
+    engagement_decay_score: float
+    recommended_channel: str
+    offer_required: bool
+    escalate_to_human: bool
     model_version: str
     fallback: bool = False
+
 
 class SendTimeResponse(BaseModel):
-    best_send_hour: int
-    best_send_day: int
+    send_at: str
+    send_at_utc: str
     confidence: float
-    fallback_used: bool
-    model_version: str
+    reasoning_layer: str
+    channel: str
+    fallback: bool = False
+
 
 class OfferValueResponse(BaseModel):
-    recommended_discount_pct: int
-    confidence: float
-    model_version: str
+    discount_pct: float
+    offer_type: str
+    offer_expires_hours: int
+    minimum_order_value: float
+    expected_recovery_probability: float
+    margin_cost_estimate_pct: float
+    reasoning: str
     fallback: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Shared constants / small helpers
+# ---------------------------------------------------------------------------
+CHURN_TIERS = ["HEALTHY", "AT_RISK", "HIGH_RISK", "CRITICAL"]
+TIER_TO_URGENCY = {"HEALTHY": "LOW", "AT_RISK": "MEDIUM", "HIGH_RISK": "HIGH", "CRITICAL": "CRITICAL"}
+TIER_TO_CHANNEL = {"HEALTHY": "email", "AT_RISK": "email", "HIGH_RISK": "sms", "CRITICAL": "phone_call"}
+
+TIMING_CHANNEL_MAP = {"email": 0, "sms": 1, "whatsapp": 2}
+RECOVERY_ACTION_MAP = {"DISCOUNT": 0, "FRICTION_FIX": 1, "HYBRID": 2, "NUDGE": 3, "SOFT_NUDGE": 4}
+CART_VALUE_TIER_MAP = {"low": 0, "medium": 1, "high": 2}
+
+FALLBACK_SEND_HOUR = {"email": 10, "sms": 18, "whatsapp": 18}
+FALLBACK_SEND_DAY = {"email": 1, "sms": 3, "whatsapp": 3}  # ISO: 0=Mon .. Tue=1, Thu=3
+
+
+def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int) -> tuple[datetime, datetime]:
+    """
+    Given a target local hour (0-23), target ISO day-of-week (0=Mon..6=Sun),
+    and the customer's UTC offset in hours, returns the next occurrence as
+    (local_datetime, utc_datetime).
+    """
+    now_utc = datetime.now(timezone.utc)
+    local_now = now_utc + timedelta(hours=tz_offset_hours)
+
+    days_ahead = (target_day - local_now.weekday()) % 7
+    candidate_local = local_now.replace(hour=target_hour, minute=0, second=0, microsecond=0) + timedelta(days=days_ahead)
+
+    if candidate_local <= local_now:
+        candidate_local += timedelta(days=7)
+
+    candidate_utc = candidate_local - timedelta(hours=tz_offset_hours)
+    return candidate_local, candidate_utc
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +290,15 @@ class OfferValueResponse(BaseModel):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "revluma-ml-serving"}
+    return {
+        "status": "ok",
+        "service": "revluma-ml-serving",
+        "version": app.version,
+        "models_loaded": list(_model_cache.keys()),
+        "database_url_set": bool(os.getenv("DATABASE_URL")),
+        "uptime_seconds": time.time() - _START_TIME,
+    }
+
 
 @app.post("/predict/abandonment-probability", response_model=AbandonmentResponse)
 async def predict_abandonment(features: AbandonmentFeatures):
@@ -156,7 +312,7 @@ async def predict_abandonment(features: AbandonmentFeatures):
                 model_version="fallback",
                 fallback=True
             )
-            
+
         feature_vector = pd.DataFrame([features.dict()])
         prob = float(model.predict_proba(feature_vector)[0][1])
         return AbandonmentResponse(
@@ -175,22 +331,23 @@ async def predict_abandonment(features: AbandonmentFeatures):
             fallback=True
         )
 
+
 @app.post("/predict/shopper-sensitivity", response_model=SensitivityResponse)
 async def predict_sensitivity(features: SensitivityFeatures):
     try:
         pss_model = _load_model("sensitivity_pss")
         css_model = _load_model("sensitivity_css")
-        
+
         if not pss_model or not css_model:
             return SensitivityResponse(fallback=True)
-            
+
         feature_vector = pd.DataFrame([features.dict()])
         pss_prob = float(pss_model.predict_proba(feature_vector)[0][1])
         css_prob = float(css_model.predict_proba(feature_vector)[0][1])
-        
+
         pss_score = int(pss_prob * 100)
         css_score = int(css_prob * 100)
-        
+
         if pss_score >= 60 and css_score < 40:
             classification = "price_sensitive"
             action = "DISCOUNT"
@@ -227,51 +384,86 @@ async def predict_sensitivity(features: SensitivityFeatures):
 
 @app.post("/predict/churn-risk", response_model=ChurnRiskResponse)
 async def predict_churn(features: ChurnFeatures):
+    days = features.days_since_last_purchase
+    ltv = features.customer_ltv if features.customer_ltv > 0 else (
+        features.past_orders_total * features.avg_order_value
+    )
+
     try:
         model = _load_model("churn_risk")
         if not model:
-            # Algorithmic fallback using CHURN_MODEL_RESEARCH.md principles
-            days = features.days_since_last_purchase
+            # Algorithmic fallback per doc's exact day-based tier rules
             if days == -1:
-                prob = 0.5
+                tier = "AT_RISK"
+                churn_probability = 0.5
             elif days <= 30:
-                prob = 0.15
+                tier, churn_probability = "HEALTHY", 0.15
             elif days <= 60:
-                prob = 0.45
+                tier, churn_probability = "AT_RISK", 0.45
             elif days <= 90:
-                prob = 0.70
+                tier, churn_probability = "HIGH_RISK", 0.70
             else:
-                prob = 0.90
-                
-            risk_level = "HEALTHY" if prob <= 0.30 else "AT_RISK" if prob <= 0.60 else "HIGH_RISK" if prob <= 0.80 else "CRITICAL"
-            
+                tier, churn_probability = "CRITICAL", 0.90
+
+            urgency = TIER_TO_URGENCY[tier]
             return ChurnRiskResponse(
-                churn_score=prob,
-                risk_level=risk_level,
-                trigger_winback=prob > 0.60,
-                customer_segment="unknown",
+                churn_probability=churn_probability,
+                churn_tier=tier,
+                win_back_urgency=urgency,
+                engagement_decay_score=churn_probability * 100,
+                recommended_channel=TIER_TO_CHANNEL[tier],
+                offer_required=tier in ("HIGH_RISK", "CRITICAL"),
+                escalate_to_human=(ltv > 500 and tier == "CRITICAL"),
                 model_version="fallback",
                 fallback=True
             )
-            
-        feature_vector = pd.DataFrame([features.dict()])
-        prob = float(model.predict_proba(feature_vector)[0][1])
-        risk_level = "HEALTHY" if prob <= 0.30 else "AT_RISK" if prob <= 0.60 else "HIGH_RISK" if prob <= 0.80 else "CRITICAL"
-        
+
+        feature_cols = [
+            'past_orders_total', 'days_since_last_purchase', 'avg_order_value',
+            'purchase_frequency_trend', 'rfm_recency_score', 'rfm_frequency_score',
+            'rfm_monetary_score'
+        ]
+        feature_vector = pd.DataFrame([{k: getattr(features, k) for k in feature_cols}])
+
+        # M4 is a 4-CLASS classifier (see train.py), NOT binary. The earlier
+        # draft's predict_proba(X)[0][1] indexing was a real bug — it would
+        # have silently returned P(AT_RISK) as if it were a generic churn
+        # probability regardless of the actual predicted class.
+        proba = model.predict_proba(feature_vector)[0]
+        predicted_idx = int(proba.argmax())
+        tier = CHURN_TIERS[predicted_idx]
+        # churn_probability = P(anything other than HEALTHY) — a single
+        # scalar "risk of churning at all", distinct from churn_tier which
+        # is the discrete predicted class.
+        churn_probability = float(1.0 - proba[0])
+        urgency = TIER_TO_URGENCY[tier]
+
+        # engagement_decay_score has no dedicated model output — approximated
+        # from the predicted tier's own probability mass. Flagged: a real
+        # engagement-decay signal would need actual engagement event data
+        # (see M4's flagged missing 17 signals).
+        engagement_decay_score = float(proba[predicted_idx] * 100)
+
         return ChurnRiskResponse(
-            churn_score=prob,
-            risk_level=risk_level,
-            trigger_winback=prob > 0.60,
-            customer_segment="calculated",
+            churn_probability=churn_probability,
+            churn_tier=tier,
+            win_back_urgency=urgency,
+            engagement_decay_score=engagement_decay_score,
+            recommended_channel=TIER_TO_CHANNEL[tier],
+            offer_required=tier in ("HIGH_RISK", "CRITICAL"),
+            escalate_to_human=(ltv > 500 and tier == "CRITICAL"),
             model_version="1.0",
             fallback=False
         )
     except Exception:
         return ChurnRiskResponse(
-            churn_score=0.5,
-            risk_level="AT_RISK",
-            trigger_winback=False,
-            customer_segment="unknown",
+            churn_probability=0.5,
+            churn_tier="AT_RISK",
+            win_back_urgency="MEDIUM",
+            engagement_decay_score=50.0,
+            recommended_channel="email",
+            offer_required=False,
+            escalate_to_human=False,
             model_version="fallback",
             fallback=True
         )
@@ -282,59 +474,139 @@ async def predict_send_time(features: SendTimeFeatures):
     try:
         model = _load_model("send_time")
         if not model:
+            # Global baseline rules from the doc: email -> Tue 10:00 local,
+            # sms -> Thu 18:30 local. whatsapp not specified; treat like sms.
+            hour = FALLBACK_SEND_HOUR.get(features.channel, 10)
+            day = FALLBACK_SEND_DAY.get(features.channel, 1)
+            local_dt, utc_dt = _next_occurrence_utc(hour, day, features.customer_timezone_offset)
             return SendTimeResponse(
-                best_send_hour=10,
-                best_send_day=0,
+                send_at=local_dt.isoformat(),
+                send_at_utc=utc_dt.isoformat(),
                 confidence=0.0,
-                fallback_used=True,
-                model_version="fallback"
+                reasoning_layer="global_baseline",
+                channel=features.channel,
+                fallback=True
             )
-            
-        feature_vector = pd.DataFrame([features.dict()])
-        pred = model.predict(feature_vector)[0]
+
+        # Grid-search candidate hours (0-23) for this channel/day context,
+        # holding the business-context fields fixed, and pick the
+        # highest-scoring hour. Day is taken from the request as-is.
+        base_row = {
+            'day_of_week_session': features.day_of_week_session,
+            'channel': TIMING_CHANNEL_MAP[features.channel],
+            'recovery_action': RECOVERY_ACTION_MAP[features.recovery_action],
+            'cart_value_tier': CART_VALUE_TIER_MAP[features.cart_value_tier],
+            'customer_timezone_offset': features.customer_timezone_offset,
+        }
+        grid = pd.DataFrame([
+            {**base_row, 'local_hour_of_session': h} for h in range(24)
+        ])[['local_hour_of_session', 'day_of_week_session', 'channel',
+            'recovery_action', 'cart_value_tier', 'customer_timezone_offset']]
+
+        probs = model.predict_proba(grid)[:, 1]
+        best_hour = int(probs.argmax())
+        confidence = float(probs[best_hour])
+
+        local_dt, utc_dt = _next_occurrence_utc(
+            best_hour, features.day_of_week_session, features.customer_timezone_offset
+        )
+
         return SendTimeResponse(
-            best_send_hour=int(pred.get("hour", 10)),
-            best_send_day=int(pred.get("day", 0)),
-            confidence=0.8,
-            fallback_used=False,
-            model_version="1.0"
+            send_at=local_dt.isoformat(),
+            send_at_utc=utc_dt.isoformat(),
+            confidence=confidence,
+            reasoning_layer="personalised",
+            channel=features.channel,
+            fallback=False
         )
     except Exception:
+        local_dt, utc_dt = _next_occurrence_utc(10, 1, 0)
         return SendTimeResponse(
-            best_send_hour=10,
-            best_send_day=0,
+            send_at=local_dt.isoformat(),
+            send_at_utc=utc_dt.isoformat(),
             confidence=0.0,
-            fallback_used=True,
-            model_version="fallback"
+            reasoning_layer="global_baseline",
+            channel=features.channel if features else "email",
+            fallback=True
         )
 
 
 @app.post("/predict/offer-value", response_model=OfferValueResponse)
 async def predict_offer_value(features: OfferValueFeatures):
     try:
+        # Hard gates evaluated BEFORE touching the model, per doc — two
+        # separate rules, not one:
+        if features.tss_score >= 60:
+            return OfferValueResponse(
+                discount_pct=0.0,
+                offer_type="TRUST_SIGNAL",
+                offer_expires_hours=0,
+                minimum_order_value=0.0,
+                expected_recovery_probability=0.0,
+                margin_cost_estimate_pct=0.0,
+                reasoning="Shopper shows high trust-friction signals (TSS>=60); "
+                          "a discount won't address the blocker — surfacing a "
+                          "trust/security reassurance instead.",
+                fallback=False
+            )
+
+        if features.pss_score < 35 and features.css_score < 35:
+            return OfferValueResponse(
+                discount_pct=0.0,
+                offer_type="NUDGE",
+                offer_expires_hours=24,
+                minimum_order_value=0.0,
+                expected_recovery_probability=0.0,
+                margin_cost_estimate_pct=0.0,
+                reasoning="Shopper shows low price and convenience sensitivity; "
+                          "a soft reminder is more appropriate than a discount.",
+                fallback=False
+            )
+
         model = _load_model("offer_value")
         if not model:
             # Algorithmic fallback based on sensitivity scores
-            pct = 15 if features.pss_score >= 60 else 5
+            pct = 15.0 if features.pss_score >= 60 else 5.0
             return OfferValueResponse(
-                recommended_discount_pct=pct,
-                confidence=0.0,
-                model_version="fallback",
+                discount_pct=pct,
+                offer_type="DISCOUNT",
+                offer_expires_hours=24,
+                minimum_order_value=0.0,
+                expected_recovery_probability=0.0,
+                margin_cost_estimate_pct=pct,
+                reasoning="Model unavailable — using PSS-based algorithmic fallback.",
                 fallback=True
             )
-            
-        feature_vector = pd.DataFrame([features.dict()])
-        pct = int(model.predict(feature_vector)[0])
+
+        feature_cols = [
+            'pss_score', 'css_score', 'tss_score', 'cursor_hesitation',
+            'past_orders_total', 'past_orders_with_coupon_pct',
+            'days_since_last_purchase', 'avg_order_value',
+            'visited_coupon_page', 'searched_discount_terms'
+        ]
+        feature_vector = pd.DataFrame([{k: getattr(features, k) for k in feature_cols}])
+        raw_pct = float(model.predict(feature_vector)[0])
+        pct = max(0.0, min(25.0, raw_pct))  # hard cap, never trust raw model output alone
+
         return OfferValueResponse(
-            recommended_discount_pct=pct,
-            confidence=0.9,
-            model_version="1.0",
+            discount_pct=pct,
+            offer_type="DISCOUNT",
+            offer_expires_hours=24,
+            minimum_order_value=0.0,
+            expected_recovery_probability=0.6,
+            margin_cost_estimate_pct=pct,
+            reasoning=f"Price-sensitivity signals (PSS={features.pss_score}) "
+                      f"support a {pct:.1f}% recovery discount within merchant margin limits.",
             fallback=False
         )
     except Exception:
         return OfferValueResponse(
-            recommended_discount_pct=10,
-            confidence=0.0,
-            model_version="fallback",
+            discount_pct=0.0,
+            offer_type="NUDGE",
+            offer_expires_hours=24,
+            minimum_order_value=0.0,
+            expected_recovery_probability=0.0,
+            margin_cost_estimate_pct=0.0,
+            reasoning="Inference error — defaulting to safe no-discount nudge.",
             fallback=True
         )
