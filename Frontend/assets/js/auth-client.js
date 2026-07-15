@@ -1,6 +1,7 @@
 class RevlumaAuth {
     constructor() {
         this.apiBase = window.REVLUMA_API_BASE || 'https://revluma-backend.onrender.com/api/v1';
+        this.loginPath = '/auth/login.html';
     }
 
     async register(payload) {
@@ -9,6 +10,7 @@ class RevlumaAuth {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify(payload)
         });
 
@@ -19,10 +21,8 @@ class RevlumaAuth {
             if (result.errors && Array.isArray(result.errors)) {
                 errorMsg = result.errors.join(', ');
             }
-            // Log full backend response so backend devs can debug
             console.error('Backend validation error data:', result);
-            
-            // To simulate axios error.response.data for anyone checking console
+
             const simulatedAxiosError = new Error(errorMsg);
             simulatedAxiosError.response = { data: result };
             throw simulatedAxiosError;
@@ -43,6 +43,7 @@ class RevlumaAuth {
             headers: {
                 'Content-Type': 'application/json',
             },
+            credentials: 'include',
             body: JSON.stringify({
                 account: {
                     email: email,
@@ -59,7 +60,7 @@ class RevlumaAuth {
                 errorMsg = result.errors.join(', ');
             }
             console.error('Backend validation error data:', result);
-            
+
             const simulatedAxiosError = new Error(errorMsg);
             simulatedAxiosError.response = { data: result };
             throw simulatedAxiosError;
@@ -75,20 +76,24 @@ class RevlumaAuth {
     }
 
     async logout() {
+        const token = this.getStoredToken();
+        const refreshToken = this.getStoredRefreshToken();
         try {
-            const token = this.getStoredToken();
-            if (token) {
-                await fetch(`${this.apiBase}/auth/logout`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-            }
+            await fetch(`${this.apiBase}/auth/logout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                credentials: 'include',
+                body: JSON.stringify({ refresh_token: refreshToken }),
+            });
         } catch (e) {
             console.warn('Backend logout failed or was unreachable', e);
         } finally {
             this.clearStoredToken();
+            this._broadcastLogout();
+            window.location.replace(this.loginPath);
         }
     }
 
@@ -97,33 +102,51 @@ class RevlumaAuth {
             const authState = {
                 state: {
                     user: user || null,
-                    csrfToken: accessToken
+                    csrfToken: accessToken,
+                    accessToken: accessToken,
                 },
                 version: 0
             };
             localStorage.setItem('rv-auth', JSON.stringify(authState));
         }
+        if (refreshToken) {
+            localStorage.setItem('revluma_refresh_token', refreshToken);
+        }
     }
 
     getStoredToken() {
         try {
-            const authStr = localStorage.getItem('rv-auth');
-            if (authStr) {
+            for (const storage of [localStorage, sessionStorage]) {
+                const authStr = storage.getItem('rv-auth');
+                if (!authStr) continue;
                 const parsed = JSON.parse(authStr);
-                return parsed?.state?.csrfToken || null;
+                const token = parsed?.state?.accessToken || parsed?.state?.csrfToken || null;
+                if (token) return token;
             }
         } catch (e) {
             return null;
         }
         return null;
     }
-    
+
+    getStoredRefreshToken() {
+        try {
+            return (
+                localStorage.getItem('revluma_refresh_token') ||
+                sessionStorage.getItem('revluma_refresh_token')
+            );
+        } catch (e) {
+            return null;
+        }
+    }
+
     getUser() {
         try {
-            const authStr = localStorage.getItem('rv-auth');
-            if (authStr) {
+            for (const storage of [localStorage, sessionStorage]) {
+                const authStr = storage.getItem('rv-auth');
+                if (!authStr) continue;
                 const parsed = JSON.parse(authStr);
-                return parsed?.state?.user || null;
+                if (parsed?.state?.user) return parsed.state.user;
             }
         } catch (e) {
             return null;
@@ -132,16 +155,48 @@ class RevlumaAuth {
     }
 
     clearStoredToken() {
-        localStorage.removeItem('rv-auth');
-        localStorage.removeItem('revluma_refresh_token');
-        localStorage.removeItem('revluma_token'); // Cleanup legacy mock token
+        const keys = [
+            'rv-auth',
+            'revluma_refresh_token',
+            'revluma_token',
+            'revluma_user',
+            'revluma_pending_token',
+        ];
+        keys.forEach((key) => {
+            try {
+                localStorage.removeItem(key);
+                sessionStorage.removeItem(key);
+            } catch (e) {
+                // ignore
+            }
+        });
+    }
+
+    _broadcastLogout() {
+        try {
+            if (typeof BroadcastChannel !== 'undefined') {
+                const channel = new BroadcastChannel('revluma-auth');
+                channel.postMessage({ type: 'logout', at: Date.now() });
+                channel.close();
+            }
+        } catch (e) {
+            // ignore
+        }
+        try {
+            localStorage.setItem(
+                'revluma_auth_event',
+                JSON.stringify({ type: 'logout', at: Date.now() })
+            );
+            localStorage.removeItem('revluma_auth_event');
+        } catch (e) {
+            // ignore
+        }
     }
 
     isAuthenticated() {
         return !!this.getStoredToken();
     }
 
-    // Helper methods preserved for UI compatibility
     hasRole(role) {
         const user = this.getUser();
         return user && user.role === role;
@@ -160,7 +215,7 @@ class RevlumaAuth {
         const user = this.getUser();
         return user ? user.tenant_id : null;
     }
-    
+
     async requestPasswordReset(email) {
         const response = await fetch(`${this.apiBase}/auth/reset-password`, {
             method: 'POST',

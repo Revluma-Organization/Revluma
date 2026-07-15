@@ -1,5 +1,6 @@
 (function() {
   const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  // Local backend typically uses PORT=8000 so it does not collide with Vite (8080).
   window.REVLUMA_API_BASE = isLocal
     ? 'http://localhost:8000/api/v1'
     : 'https://revluma-backend.onrender.com/api/v1';

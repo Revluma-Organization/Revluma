@@ -5,6 +5,15 @@
   "cleanUrls": true,
   "headers": [
     {
+      "source": "/dashboard/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, private"
+        }
+      ]
+    },
+    {
       "source": "/assets/videos/(.*)\\.mp4",
       "headers": [
         {
@@ -42,11 +51,19 @@
     },
     {
       "source": "/login",
-      "destination": "/auth/loginIn"
+      "destination": "/auth/login.html"
+    },
+    {
+      "source": "/auth/login",
+      "destination": "/auth/login.html"
+    },
+    {
+      "source": "/auth/signup",
+      "destination": "/auth/signup.html"
     },
     {
       "source": "/auth/signUp",
-      "destination": "/auth/signUp"
+      "destination": "/auth/signup.html"
     }
   ]
 }

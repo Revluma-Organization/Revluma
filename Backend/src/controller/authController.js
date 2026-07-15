@@ -341,22 +341,15 @@ exports.login = async (req, res, next) => {
     // Record successful login
     await recordLoginAttempt(email, true, ip);
 
-    // Store Refresh Token as HttpOnly Cookie
-    res.cookie("refresh_token", refreshToken, {
+    // Store Refresh Token as HttpOnly Cookie (raw value — never the hash)
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite:
-        process.env.NODE_ENV === "production" ? "none" : "lax",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       path: "/",
-    });
-
-    console.log("Cookie about to be sent");
-    console.log(res.getHeader("Set-Cookie"));
-
-    console.log("NODE_ENV =", process.env.NODE_ENV);
-    console.log("COOKIE_SECRET exists =", !!process.env.COOKIE_SECRET);
-    console.log("Set-Cookie Header:", res.getHeader("Set-Cookie"));
+    };
+    res.cookie("refresh_token", rawRefresh, cookieOptions);
 
     return res.status(200).json({
       success: true,
@@ -376,11 +369,28 @@ exports.login = async (req, res, next) => {
   }
 };
 
+function getRefreshCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    path: "/",
+  };
+}
+
+function readRefreshTokenFromRequest(req) {
+  return (
+    req.body?.refresh_token ||
+    req.cookies?.refresh_token ||
+    null
+  );
+}
+
 // ─── REFRESH TOKEN ────────────────────────────────────────────────────────────
 
 exports.refresh = async (req, res, next) => {
   try {
-    const { refresh_token } = req.body;
+    const refresh_token = readRefreshTokenFromRequest(req);
 
     if (!refresh_token) {
       return res.status(400).json({ success: false, error: 'Refresh token required.' });
@@ -462,6 +472,12 @@ exports.refresh = async (req, res, next) => {
       sessionId: sessionId,
     });
 
+    // Rotate the HttpOnly cookie alongside the body token
+    res.cookie("refresh_token", newRawRefresh, {
+      ...getRefreshCookieOptions(),
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
     return res.status(200).json({
       success: true,
       data: {
@@ -477,17 +493,30 @@ exports.refresh = async (req, res, next) => {
 
 // ─── LOGOUT ───────────────────────────────────────────────────────────────────
 
+/**
+ * Logout current session.
+ * Accepts refresh token from JSON body or HttpOnly cookie so logout still
+ * works when the access token has already expired.
+ * Always clears the refresh_token cookie and returns 200 when local cleanup
+ * succeeds — clients must never see a 404 from this endpoint.
+ */
 exports.logout = async (req, res, next) => {
   try {
-    const { refresh_token } = req.body;
+    const refresh_token = readRefreshTokenFromRequest(req);
 
     if (refresh_token) {
       const tokenHash = hashRefreshToken(refresh_token);
-      // Delete this specific session's refresh token
-      await prisma.refresh_tokens.deleteMany({
-        where: { token_hash: tokenHash, user_id: req.user.id },
-      }).catch(() => { }); // Already deleted or expired — fine
+      const where = { token_hash: tokenHash };
+      // If a valid access token identified the user, scope the revoke to them.
+      if (req.user?.id) {
+        where.user_id = req.user.id;
+      }
+      await prisma.refresh_tokens.deleteMany({ where }).catch(() => { });
+    } else if (req.user?.id) {
+      // No refresh token supplied — revoke nothing specific, but still clear cookie.
     }
+
+    res.clearCookie("refresh_token", getRefreshCookieOptions());
 
     return res.status(200).json({
       success: true,
@@ -502,12 +531,15 @@ exports.logout = async (req, res, next) => {
 /**
  * Logout from ALL devices — revokes every refresh token for this user.
  * Used when a user suspects their account has been compromised.
+ * Requires a valid access token.
  */
 exports.logoutAll = async (req, res, next) => {
   try {
     await prisma.refresh_tokens.deleteMany({
       where: { user_id: req.user.id },
     });
+
+    res.clearCookie("refresh_token", getRefreshCookieOptions());
 
     return res.status(200).json({
       success: true,
@@ -594,26 +626,5 @@ exports.getProfile = async (req, res) => {
 
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Failed to fetch profile.' });
-  }
-};
-
-// LOGOUT
-exports.logout = async (req, res, next) => {
-  try {
-    res.clearCookie("refresh_token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite:
-        process.env.NODE_ENV === "production" ? "none" : "lax",
-      path: "/",
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Logged out successfully",
-    });
-
-  } catch (error) {
-    next(error);
   }
 };

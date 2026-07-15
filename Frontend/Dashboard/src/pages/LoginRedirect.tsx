@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
+import { LOGIN_PATH } from '@/lib/auth/constants';
 
-// Thin redirect component: sends unauthenticated users to the HTML login page.
-// When a proper React login page is built in Phase 2, swap the href here — one place.
+/**
+ * Thin redirect: sends users to the HTML login page.
+ * Single source of truth for the path: LOGIN_PATH.
+ */
 export default function LoginRedirect() {
   useEffect(() => {
-    window.location.href = '/auth/login.html';
+    window.location.replace(LOGIN_PATH);
   }, []);
 
   return null;

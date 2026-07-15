@@ -1335,49 +1335,39 @@
     window.addEventListener('unhandledrejection', function (event) {
       console.error('[UNHANDLED REJECTION]', event.reason);
     });
-    function storeSession(token, user, remember) {
+    function storeSession(token, user, remember, refreshToken) {
       console.log('[AUTH STEP 6] Storing session locally', {
         remember,
         userId: user?.id,
         userEmail: user?.email,
         hasToken: !!token
       });
-      // Inside storeSession(token, user, remember)
-const storage = remember ? localStorage : sessionStorage;
-
-// Create the object structure that api.ts expects
-const authData = {
-  state: {
-    user: user,
-    accessToken: token, // This maps to the key api.ts needs
-    csrfToken: token // If you still need this for backward compatibility
-  },
-  version: 0
-};
-
-storage.setItem('rv-auth', JSON.stringify(authData));
+      const storage = remember ? localStorage : sessionStorage;
+      const authData = {
+        state: {
+          user: user,
+          accessToken: token,
+          csrfToken: token
+        },
+        version: 0
+      };
+      storage.setItem('rv-auth', JSON.stringify(authData));
+      try {
+        const rt = refreshToken || localStorage.getItem('revluma_refresh_token');
+        if (rt) storage.setItem('revluma_refresh_token', rt);
+      } catch (e) { /* ignore */ }
       console.log('[AUTH STEP 7] Session stored in ' + (remember ? 'localStorage' : 'sessionStorage'));
-      // Mirror to localStorage so other pages can find it
       if (!remember) {
-        // sessionStorage only — remove from localStorage to avoid stale tokens
         localStorage.removeItem('revluma_token');
         localStorage.removeItem('revluma_user');
+        localStorage.removeItem('rv-auth');
         console.log('[AUTH STEP 8] Cleared localStorage to use sessionStorage only');
-      }
-      // Safety: ensure session writes succeeded
-      try {
-        const checkToken = remember ? localStorage.getItem('revluma_token') : sessionStorage.getItem('revluma_token');
-        if (!checkToken) {
-          console.error('[AUTH ERROR] Session token not present after storeSession', { remember, userId: user?.id });
-        }
-      } catch (err) {
-        console.error('[AUTH ERROR] storeSession validation failed', err);
       }
     }
 
     function clearSession() {
       console.log('[AUTH] Clearing all session data');
-      ['revluma_token', 'revluma_user', 'revluma_pending_token'].forEach(k => {
+      ['rv-auth', 'revluma_refresh_token', 'revluma_token', 'revluma_user', 'revluma_pending_token'].forEach(k => {
         localStorage.removeItem(k);
         sessionStorage.removeItem(k);
       });
@@ -1401,7 +1391,7 @@ storage.setItem('rv-auth', JSON.stringify(authData));
         console.warn('[AUTH ERROR] redirectAfterLogin called without user object');
         console.log('[AUTH] Falling back to login page');
         try {
-          const abs = new URL('/auth/login', window.location.origin).href;
+          const abs = new URL('/auth/login.html', window.location.origin).href;
           window.location.replace(abs);
         } catch (err) {
           console.error('[AUTH ERROR] redirect fallback failed', err);

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { api } from '@/lib/api';
+import { performLogout } from '@/lib/auth/logout';
+import { broadcastLogin, storeRefreshToken } from '@/lib/auth/session';
 
 export interface User {
   id: string;
@@ -39,6 +41,8 @@ interface AuthActions {
   requestOtp: (email: string) => Promise<void>;
   verifyOtp: (email: string, otp: string) => Promise<{ resetToken: string }>;
   resetPassword: (email: string, resetToken: string, newPassword: string) => Promise<void>;
+  /** Reset in-memory auth state after a cross-tab logout (storage already cleared). */
+  resetLocalAuthState: () => void;
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -58,14 +62,16 @@ export const useAuthStore = create<AuthStore>()(
       setCsrfToken: (csrfToken) => set({ csrfToken }),
       setHydrated: (isHydrated) => set({ isHydrated }),
       clearError: () => set({ error: null }),
+      resetLocalAuthState: () => set({ user: null, csrfToken: null, loading: false, error: null }),
 
       changePassword: async (currentPassword, newPassword, confirmNewPassword) => {
         set({ loading: true, error: null });
         try {
           await api.post('/auth/change-password', { currentPassword, newPassword, confirmNewPassword });
           set({ loading: false });
-        } catch (err: any) {
-          set({ loading: false, error: err?.message || 'Failed to change password. Please try again.' });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Failed to change password. Please try again.';
+          set({ loading: false, error: message });
           throw err;
         }
       },
@@ -75,8 +81,9 @@ export const useAuthStore = create<AuthStore>()(
         try {
           await api.post('/auth/forgot-password', { email });
           set({ loading: false });
-        } catch (err: any) {
-          set({ loading: false, error: err?.message || 'Failed to send OTP.' });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Failed to send OTP.';
+          set({ loading: false, error: message });
           throw err;
         }
       },
@@ -87,8 +94,9 @@ export const useAuthStore = create<AuthStore>()(
           const res = await api.post<{ data: { resetToken: string } }>('/auth/verify-otp', { email, otp });
           set({ loading: false });
           return { resetToken: res.data.data.resetToken };
-        } catch (err: any) {
-          set({ loading: false, error: err?.message || 'Invalid or expired OTP.' });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Invalid or expired OTP.';
+          set({ loading: false, error: message });
           throw err;
         }
       },
@@ -98,8 +106,9 @@ export const useAuthStore = create<AuthStore>()(
         try {
           await api.post('/auth/reset-password', { email, resetToken, newPassword });
           set({ loading: false });
-        } catch (err: any) {
-          set({ loading: false, error: err?.message || 'Failed to reset password.' });
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : 'Failed to reset password.';
+          set({ loading: false, error: message });
           throw err;
         }
       },
@@ -116,6 +125,9 @@ export const useAuthStore = create<AuthStore>()(
           }>('/auth/login', { account: { email, password } });
 
           const { access_token, refresh_token, user } = res.data.data;
+
+          storeRefreshToken(refresh_token);
+          broadcastLogin();
 
           set({
             csrfToken: access_token,
@@ -141,7 +153,6 @@ export const useAuthStore = create<AuthStore>()(
       checkSession: async () => {
         set({ loading: true });
         try {
-          // Try /auth/me first (preferred), fall back to legacy /auth/getProfile
           type ProfileData = {
             id: string;
             full_name: string;
@@ -176,22 +187,15 @@ export const useAuthStore = create<AuthStore>()(
             loading: false,
           });
         } catch {
-          // 401 handled by api.ts. Any other error: clear session.
+          // 401 already clears storage + redirects via api.ts.
           set({ user: null, csrfToken: null, loading: false });
         }
       },
+
       logout: async (allSessions = false) => {
-        try {
-          const refreshToken = localStorage.getItem('revluma_refresh_token');
-          // Send refresh_token so the server can revoke it from the DB — real logout
-          const endpoint = allSessions ? '/auth/logout-all' : '/auth/logout';
-          await api.post(endpoint, { refresh_token: refreshToken });
-        } catch {
-          // Network failure — still clear locally so user is signed out in browser
-        }
-        localStorage.removeItem('revluma_refresh_token');
-        set({ user: null, csrfToken: null });
-        window.location.href = '/login';
+        // Clear Zustand state first so ProtectedRoute cannot flash auth UI during redirect.
+        set({ user: null, csrfToken: null, loading: false, error: null });
+        await performLogout({ allSessions });
       },
     }),
     {

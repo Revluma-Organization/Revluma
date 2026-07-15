@@ -202,7 +202,7 @@ export function Sidebar() {
               <DDItem icon={UsersIcon} label="Team Members" onClick={() => { navigate('/dashboard/settings/team'); setUserOpen(false); }} />
               <DDItem icon={HelpCircle} label="Help & Support" onClick={() => { setUserOpen(false); }} />
               <div className="my-1 h-px bg-border" />
-              <DDItem icon={LogOut} label="Log out" danger onClick={logout} />
+              <DDItem icon={LogOut} label="Log out" danger onClick={() => { void logout(); }} />
             </div>
           )}
           <button
