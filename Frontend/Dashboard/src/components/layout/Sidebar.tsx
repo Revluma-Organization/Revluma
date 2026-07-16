@@ -57,16 +57,32 @@ export function Sidebar() {
 
       <motion.aside
         data-tour="sidebar"
-        initial={{ x: -24, opacity: 0 }}
+        initial={{ x: -32, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 260, damping: 30 }}
+        transition={{ type: 'spring', stiffness: 220, damping: 28 }}
         className={cn(
-          'glass-sidebar fixed inset-y-0 left-0 z-50 flex flex-col transition-[width,transform] duration-300 ease-out md:relative md:translate-x-0',
+          'glass-sidebar fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden transition-[width,transform] duration-300 ease-out md:relative md:translate-x-0',
           sidebarCollapsed ? 'md:w-[var(--sidebar-w-collapsed)]' : 'md:w-[var(--sidebar-w)]',
           'w-[var(--sidebar-w)]',
           mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
       >
+        {/* Ambient drifting orbs — makes the glass actually feel glassy */}
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full blur-3xl opacity-40"
+          style={{ background: 'radial-gradient(circle, hsl(var(--glass-surface-border) / 0.20), transparent 70%)' }}
+          animate={{ x: [0, 40, 0], y: [0, 30, 0] }}
+          transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <motion.div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-24 -right-16 h-64 w-64 rounded-full blur-3xl opacity-30"
+          style={{ background: 'radial-gradient(circle, hsl(var(--glass-surface-border) / 0.18), transparent 70%)' }}
+          animate={{ x: [0, -30, 0], y: [0, -20, 0] }}
+          transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
+        />
+
         {/* Logo + controls */}
         <div className={cn(
           'relative z-[1] flex shrink-0 items-center justify-between px-4 pb-3.5 pt-4',
@@ -76,11 +92,23 @@ export function Sidebar() {
             <motion.img
               src={revlumaIcon}
               alt="Revluma"
-              whileHover={{ scale: 1.08, rotate: -4 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-              className="h-8 w-8 shrink-0 object-contain md:h-10 md:w-10"
+              whileHover={{ scale: 1.12, rotate: -6 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 14 }}
+              className="h-8 w-8 shrink-0 object-contain md:h-10 md:w-10 drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
             />
-            {!sidebarCollapsed && <span className="display text-[1.18rem] font-extrabold text-t1">Revluma</span>}
+            <AnimatePresence>
+              {!sidebarCollapsed && (
+                <motion.span
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -8 }}
+                  transition={{ duration: 0.2 }}
+                  className="display text-[1.18rem] font-extrabold text-t1"
+                >
+                  Revluma
+                </motion.span>
+              )}
+            </AnimatePresence>
           </div>
 
           <div className={cn('flex items-center gap-1', sidebarCollapsed && 'md:hidden')}>
@@ -105,8 +133,8 @@ export function Sidebar() {
               </motion.span>
             </button>
             <motion.button
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.08, rotate: -4 }}
+              whileTap={{ scale: 0.9 }}
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
               aria-label="Collapse sidebar"
@@ -124,8 +152,8 @@ export function Sidebar() {
 
           {sidebarCollapsed && (
             <motion.button
-              whileHover={{ scale: 1.06 }}
-              whileTap={{ scale: 0.92 }}
+              whileHover={{ scale: 1.08, rotate: 4 }}
+              whileTap={{ scale: 0.9 }}
               onClick={() => setSidebarCollapsed(false)}
               className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
               aria-label="Expand sidebar"
@@ -140,22 +168,27 @@ export function Sidebar() {
           {Object.entries(groups).map(([group, items], groupIdx) => (
             <div key={group}>
               {!sidebarCollapsed && (
-                <div className="mb-1 mt-3.5 px-2 text-[0.62rem] font-bold uppercase tracking-[0.11em] text-t4 first:mt-1">
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05 + groupIdx * 0.04 }}
+                  className="mb-1 mt-3.5 px-2 text-[0.62rem] font-bold uppercase tracking-[0.11em] text-t4 first:mt-1"
+                >
                   {group}
-                </div>
+                </motion.div>
               )}
               {items.map((item, itemIdx) => {
                 const Icon = item.icon;
                 return (
                   <motion.div
                     key={item.to}
-                    initial={{ opacity: 0, x: -10 }}
+                    initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{
-                      delay: 0.03 * (groupIdx * 4 + itemIdx),
+                      delay: 0.04 * (groupIdx * 4 + itemIdx),
                       type: 'spring',
-                      stiffness: 320,
-                      damping: 28,
+                      stiffness: 300,
+                      damping: 26,
                     }}
                   >
                     <NavLink
@@ -165,8 +198,8 @@ export function Sidebar() {
                     >
                       {({ isActive }) => (
                         <motion.div
-                          whileHover={!isActive ? { x: 2 } : undefined}
-                          whileTap={{ scale: 0.98 }}
+                          whileHover={!isActive ? { x: 3 } : undefined}
+                          whileTap={{ scale: 0.97 }}
                           className={cn(
                             'glass-row relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2',
                             sidebarCollapsed && 'md:justify-center md:px-2.5 md:py-2.5',
@@ -175,7 +208,7 @@ export function Sidebar() {
                           {isActive && (
                             <motion.span
                               layoutId="sidebar-active-pill"
-                              transition={{ type: 'spring', stiffness: 480, damping: 38 }}
+                              transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                               className="glass-pill-active absolute inset-0 rounded-lg"
                             >
                               <span className="nav-active-rail absolute inset-y-1.5 left-0 w-[3px] rounded-full" />
@@ -188,17 +221,23 @@ export function Sidebar() {
                               sidebarCollapsed ? 'md:h-[38px] md:w-[38px] h-[30px] w-[30px]' : 'h-[30px] w-[30px]',
                             )}
                           >
-                            <Icon
-                              className={cn('h-4 w-4 transition-colors', isActive ? 'nav-blue-icon' : 'text-t3')}
-                              strokeWidth={1.8}
-                            />
+                            <motion.span
+                              animate={isActive ? { rotate: [0, -10, 8, 0], scale: [1, 1.15, 1] } : { rotate: 0, scale: 1 }}
+                              transition={{ duration: 0.55, ease: 'easeOut' }}
+                              className="flex items-center justify-center"
+                            >
+                              <Icon
+                                className={cn('h-4 w-4 transition-colors', isActive ? 'nav-blue-icon' : 'text-t3 group-hover:text-t1')}
+                                strokeWidth={1.8}
+                              />
+                            </motion.span>
                           </span>
                           {!sidebarCollapsed && (
                             <>
-                              <span className={cn('relative z-[1] flex-1 truncate text-[0.82rem] transition-colors', isActive ? 'nav-blue-text font-semibold' : 'font-normal text-t2')}>
+                              <span className={cn('relative z-[1] flex-1 truncate text-[0.82rem] transition-colors', isActive ? 'nav-blue-text font-semibold' : 'font-normal text-t2 group-hover:text-t1')}>
                                 {item.label}
                               </span>
-                              {item.badge && <span className="relative z-[1]"><NavBadge tone={item.badge.tone} text={item.badge.text} /></span>}
+                              {item.badge && <span className="relative z-[1]"><NavBadge tone={item.badge.tone} text={item.badge.text} isActive={isActive} /></span>}
                             </>
                           )}
                         </motion.div>
@@ -212,25 +251,35 @@ export function Sidebar() {
         </nav>
 
         {/* Upgrade banner */}
-        {!sidebarCollapsed && (
-          <motion.div
-            whileHover={{ y: -2 }}
-            className="glass-card-soft relative z-[1] mx-2.5 mb-2.5 overflow-hidden rounded-xl p-3.5 text-center"
-          >
-            <div className="mb-2.5 flex justify-center">
-              <Rocket className="h-9 w-9" style={{ color: 'hsl(var(--accent))' }} />
-            </div>
-            <div className="mb-1 text-[0.8rem] font-semibold text-t1">Unlock full automation</div>
-            <div className="mb-3 text-[0.7rem] leading-[1.5] text-t3">Advanced recovery &amp; AI intelligence</div>
-            <motion.button
-              whileHover={{ scale: 1.015 }}
-              whileTap={{ scale: 0.985 }}
-              className="w-full rounded-md bg-t1 px-0 py-1.5 text-[0.75rem] font-bold text-bg transition-colors hover:opacity-90"
+        <AnimatePresence>
+          {!sidebarCollapsed && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              whileHover={{ y: -3 }}
+              transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+              className="glass-card-soft relative z-[1] mx-2.5 mb-2.5 overflow-hidden rounded-xl p-3.5 text-center"
             >
-              Upgrade to Pro →
-            </motion.button>
-          </motion.div>
-        )}
+              <motion.div
+                className="mb-2.5 flex justify-center"
+                animate={{ y: [0, -3, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                <Rocket className="h-9 w-9" style={{ color: 'hsl(var(--accent))' }} />
+              </motion.div>
+              <div className="mb-1 text-[0.8rem] font-semibold text-t1">Unlock full automation</div>
+              <div className="mb-3 text-[0.7rem] leading-[1.5] text-t3">Advanced recovery &amp; AI intelligence</div>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="w-full rounded-md bg-t1 px-0 py-1.5 text-[0.75rem] font-bold text-bg transition-colors hover:opacity-90"
+              >
+                Upgrade to Pro →
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* User panel — real auth data */}
         <div className={cn('relative z-[1] shrink-0 border-t border-border p-2.5', sidebarCollapsed && 'md:flex md:justify-center')}>
@@ -253,7 +302,7 @@ export function Sidebar() {
             )}
           </AnimatePresence>
           <motion.button
-            whileHover={{ scale: 1.01 }}
+            whileHover={{ scale: 1.015 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setUserOpen((v) => !v)}
             className={cn(
@@ -287,7 +336,22 @@ export function Sidebar() {
   );
 }
 
-function NavBadge({ tone, text }: { tone: 'new' | 'beta' | 'count'; text: string }) {
+function NavBadge({ tone, text, isActive }: { tone: 'new' | 'beta' | 'count'; text: string; isActive?: boolean }) {
+  // When the row is active (inverse glass), flip badge to match inverse theme
+  if (isActive) {
+    return (
+      <span
+        className="shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[0.58rem] font-bold uppercase tracking-[0.04em]"
+        style={{
+          background: 'hsl(var(--nav-active-fg) / 0.15)',
+          color: 'hsl(var(--nav-active-fg))',
+          border: '1px solid hsl(var(--nav-active-fg) / 0.25)',
+        }}
+      >
+        {text}
+      </span>
+    );
+  }
   const styles =
     tone === 'new' ? { background: 'hsl(var(--nav-blue))', color: '#fff' }
       : tone === 'beta' ? { background: 'hsl(var(--purple))', color: '#fff' }
@@ -302,7 +366,7 @@ function NavBadge({ tone, text }: { tone: 'new' | 'beta' | 'count'; text: string
 function DDItem({ icon: Icon, label, danger, onClick }: { icon: React.ElementType; label: string; danger?: boolean; onClick?: () => void }) {
   return (
     <motion.button
-      whileHover={{ x: 2 }}
+      whileHover={{ x: 3 }}
       onClick={onClick}
       type="button"
       className={cn(

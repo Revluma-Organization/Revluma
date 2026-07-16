@@ -18,8 +18,8 @@
     --radius: 0.75rem;
 
     /* Brand accent (Revluma green) */
-    --accent: 158 100% 45%;             /* #00e5a0 */
-    --accent-2: 162 100% 36%;            /* #00b87d */
+    --accent: 158 100% 45%;
+    --accent-2: 162 100% 36%;
     --accent-foreground: 0 0% 0%;
 
     /* Status palette */
@@ -30,12 +30,12 @@
     --purple: 252 95% 76%;
 
     /* DARK SURFACES (default theme) */
-    --bg: 0 0% 3.5%;                     /* #090909 */
-    --bg-2: 0 0% 6.7%;                   /* #111111 */
-    --bg-3: 0 0% 9.4%;                   /* #181818 */
-    --bg-4: 0 0% 13.3%;                  /* #222222 */
-    --bg-5: 0 0% 17.3%;                  /* #2c2c2c */
-    --sidebar-bg: 0 0% 2%;               /* #050505 */
+    --bg: 0 0% 3.5%;
+    --bg-2: 0 0% 6.7%;
+    --bg-3: 0 0% 9.4%;
+    --bg-4: 0 0% 13.3%;
+    --bg-5: 0 0% 17.3%;
+    --sidebar-bg: 0 0% 2%;
     --notif-bg: 0 0% 6.7%;
 
     /* Text */
@@ -45,51 +45,42 @@
     --t4: 0 0% 18%;
 
     /* Glass */
-    --glass: 0 0% 100%;                   /* used with /opacity */
-    --border-soft: 0 0% 100%;             /* used with /opacity */
+    --glass: 0 0% 100%;
+    --border-soft: 0 0% 100%;
 
-    /* shadcn semantic mapping (so existing UI primitives just work) */
+    /* shadcn semantic mapping */
     --background: var(--bg);
     --foreground: var(--t1);
-
     --card: var(--bg-2);
     --card-foreground: var(--t1);
-
     --popover: var(--notif-bg);
     --popover-foreground: var(--t1);
-
     --primary: var(--accent);
     --primary-foreground: var(--accent-foreground);
-
     --secondary: var(--bg-3);
     --secondary-foreground: var(--t1);
-
     --muted: var(--bg-3);
     --muted-foreground: var(--t2);
-
     --accent-color: var(--bg-3);
     --accent-foreground-color: var(--t1);
-
     --destructive: var(--red);
     --destructive-foreground: 0 0% 100%;
-
-    --border: 0 0% 100%;                  /* paired with /7 in components via tw token below */
+    --border: 0 0% 100%;
     --input: 0 0% 100%;
     --ring: var(--accent);
-
-    /* shadcn expects --accent token name */
     --accent: 158 100% 45%;
 
-    /* ── Glassmorphism · Sidebar (dark = black glass) ── */
-    --glass-surface: 0 0% 0%;          /* black glass base */
-    --glass-surface-border: 0 0% 100%; /* white hairline */
-    --glass-sheen: 0 0% 100%;          /* top highlight sheen */
+    /* ── Glassmorphism · Sidebar (dark = black glass, active = WHITE glass) ── */
+    --glass-surface: 0 0% 0%;
+    --glass-surface-border: 0 0% 100%;
+    --glass-sheen: 0 0% 100%;
 
     /* Active tab inverts to a LIGHT glass chip on the dark sidebar */
     --nav-active-surface: 0 0% 100%;
     --nav-active-border: 0 0% 100%;
+    --nav-active-fg: 0 0% 0%;
 
-    /* Premium "Facebook-like" blue accent, tuned bright for dark bg */
+    /* Retained for badges */
     --nav-blue: 217 91% 60%;
     --nav-blue-soft: 217 91% 60%;
   }
@@ -117,7 +108,7 @@
     --glass: 0 0% 0%;
     --border-soft: 0 0% 0%;
 
-    /* ── Glassmorphism · Sidebar (light = white glass) ── */
+    /* ── Glassmorphism · Sidebar (light = white glass, active = BLACK glass) ── */
     --glass-surface: 0 0% 100%;
     --glass-surface-border: 0 0% 0%;
     --glass-sheen: 0 0% 100%;
@@ -125,8 +116,8 @@
     /* Active tab inverts to a DARK glass chip on the light sidebar */
     --nav-active-surface: 0 0% 0%;
     --nav-active-border: 0 0% 0%;
+    --nav-active-fg: 0 0% 100%;
 
-    /* Deeper blue for legibility on white glass */
     --nav-blue: 217 91% 52%;
     --nav-blue-soft: 217 91% 52%;
   }
@@ -149,7 +140,6 @@
     overflow-x: hidden;
   }
 
-  /* Slim scrollbars matching reference */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: hsl(var(--border-soft) / 0.12); border-radius: 99px; }
@@ -201,58 +191,104 @@
   .display { font-family: 'DM Sans', system-ui, sans-serif; letter-spacing: -0.035em; }
 
   /* ──────────────────────────────────────────────
-     Glassmorphism · Sidebar
+     Ultra Glassmorphism · Sidebar
      ────────────────────────────────────────────── */
 
-  /* Outer sidebar shell — black glass on dark, white glass on light */
+  /* Outer sidebar shell — black glass on dark, white glass on light.
+     Layered: top sheen, radial highlight, base glass tint. */
   .glass-sidebar {
+    position: relative;
     background:
-      linear-gradient(180deg, hsl(var(--glass-sheen) / 0.05), transparent 18%),
-      hsl(var(--glass-surface) / 0.55);
-    backdrop-filter: blur(28px) saturate(180%);
-    -webkit-backdrop-filter: blur(28px) saturate(180%);
-    border-right: 1px solid hsl(var(--glass-surface-border) / 0.09);
+      radial-gradient(120% 60% at 0% 0%, hsl(var(--glass-sheen) / 0.10), transparent 55%),
+      linear-gradient(180deg, hsl(var(--glass-sheen) / 0.08), transparent 22%),
+      hsl(var(--glass-surface) / 0.45);
+    backdrop-filter: blur(32px) saturate(200%);
+    border-right: 1px solid hsl(var(--glass-surface-border) / 0.10);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--glass-surface-border) / 0.10),
+      inset -1px 0 0 hsl(var(--glass-surface-border) / 0.05),
+      0 30px 80px -20px hsl(0 0% 0% / 0.55);
   }
 
-  /* Resting nav row — faint glass, barely-there */
+  /* Animated top-edge sheen sweep — subtle, continuous */
+  .glass-sidebar::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      100deg,
+      transparent 30%,
+      hsl(var(--glass-surface-border) / 0.06) 50%,
+      transparent 70%
+    );
+    background-size: 220% 100%;
+    animation: glass-sheen 9s ease-in-out infinite;
+    mix-blend-mode: overlay;
+  }
+
+  /* Resting nav row — invisible until hover */
   .glass-row {
     background: hsl(var(--glass-surface) / 0);
     border: 1px solid transparent;
-    transition: background-color .25s ease, border-color .25s ease, transform .2s ease;
+    transition:
+      background-color .25s ease,
+      border-color .25s ease,
+      transform .2s ease,
+      box-shadow .25s ease;
   }
   .glass-row:hover {
-    background: hsl(var(--glass-surface-border) / 0.045);
-    border-color: hsl(var(--glass-surface-border) / 0.07);
+    background: hsl(var(--glass-surface-border) / 0.055);
+    border-color: hsl(var(--glass-surface-border) / 0.09);
+    box-shadow: inset 0 1px 0 hsl(var(--glass-surface-border) / 0.08);
   }
 
-  /* Active nav pill — inverted glass chip + premium blue accent */
+  /* Active nav pill — INVERSE glass chip (dark on light, light on dark).
+     Pure black/white, no blue tint. Heavy blur + inset highlight = real glass. */
   .glass-pill-active {
-    background: hsl(var(--nav-active-surface) / 0.82);
-    backdrop-filter: blur(18px) saturate(200%);
-    -webkit-backdrop-filter: blur(18px) saturate(200%);
-    border: 1px solid hsl(var(--nav-blue) / 0.45);
+    background: hsl(var(--nav-active-surface) / 0.92);
+    backdrop-filter: blur(22px) saturate(220%);
+    border: 1px solid hsl(var(--nav-active-border) / 0.85);
     box-shadow:
-      0 0 0 1px hsl(var(--nav-blue) / 0.12),
-      0 6px 22px -4px hsl(var(--nav-blue) / 0.45),
-      inset 0 1px 0 hsl(var(--nav-active-border) / 0.10);
+      0 1px 0 hsl(var(--glass-surface-border) / 0.10) inset,
+      0 10px 30px -8px hsl(var(--nav-active-surface) / 0.55),
+      0 0 0 1px hsl(var(--nav-active-border) / 0.15);
   }
 
-  /* Thin glowing rail on the leading edge of the active tab */
+  /* Leading rail on active tab — pure inverse, no blue */
   .nav-active-rail {
-    background: linear-gradient(180deg, hsl(var(--nav-blue) / 0.9), hsl(var(--nav-blue) / 0.35));
-    box-shadow: 0 0 10px 1px hsl(var(--nav-blue) / 0.7);
+    background: linear-gradient(
+      180deg,
+      hsl(var(--nav-active-fg) / 0.95),
+      hsl(var(--nav-active-fg) / 0.35)
+    );
+    box-shadow: 0 0 10px 1px hsl(var(--nav-active-fg) / 0.35);
   }
 
-  .nav-blue-text { color: hsl(var(--nav-blue)); }
-  .nav-blue-icon { color: hsl(var(--nav-blue)); filter: drop-shadow(0 0 6px hsl(var(--nav-blue) / 0.55)); }
+  /* Active text + icon flip to the INVERSE foreground */
+  .nav-blue-text { color: hsl(var(--nav-active-fg)); }
+  .nav-blue-icon {
+    color: hsl(var(--nav-active-fg));
+    filter: drop-shadow(0 0 6px hsl(var(--nav-active-fg) / 0.35));
+  }
 
-  /* Card used for the collapsed user-panel / upgrade banner glass */
+  /* Soft glass card — upgrade banner / user dropdown */
   .glass-card-soft {
-    background: hsl(var(--glass-surface) / 0.5);
-    backdrop-filter: blur(20px) saturate(160%);
-    -webkit-backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid hsl(var(--glass-surface-border) / 0.09);
+    background:
+      linear-gradient(180deg, hsl(var(--glass-sheen) / 0.08), transparent 30%),
+      hsl(var(--glass-surface) / 0.55);
+    backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid hsl(var(--glass-surface-border) / 0.10);
+    box-shadow:
+      inset 0 1px 0 hsl(var(--glass-surface-border) / 0.10),
+      0 20px 50px -15px hsl(0 0% 0% / 0.45);
   }
+}
+
+@keyframes glass-sheen {
+  0%   { background-position: -60% 0; }
+  50%  { background-position: 160% 0; }
+  100% { background-position: 160% 0; }
 }
 
 @keyframes sheen-sweep {
