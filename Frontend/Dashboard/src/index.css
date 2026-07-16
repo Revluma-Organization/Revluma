@@ -79,6 +79,19 @@
 
     /* shadcn expects --accent token name */
     --accent: 158 100% 45%;
+
+    /* ── Glassmorphism · Sidebar (dark = black glass) ── */
+    --glass-surface: 0 0% 0%;          /* black glass base */
+    --glass-surface-border: 0 0% 100%; /* white hairline */
+    --glass-sheen: 0 0% 100%;          /* top highlight sheen */
+
+    /* Active tab inverts to a LIGHT glass chip on the dark sidebar */
+    --nav-active-surface: 0 0% 100%;
+    --nav-active-border: 0 0% 100%;
+
+    /* Premium "Facebook-like" blue accent, tuned bright for dark bg */
+    --nav-blue: 217 91% 60%;
+    --nav-blue-soft: 217 91% 60%;
   }
 
   /* Light theme override */
@@ -103,6 +116,19 @@
     --purple: 262 83% 58%;
     --glass: 0 0% 0%;
     --border-soft: 0 0% 0%;
+
+    /* ── Glassmorphism · Sidebar (light = white glass) ── */
+    --glass-surface: 0 0% 100%;
+    --glass-surface-border: 0 0% 0%;
+    --glass-sheen: 0 0% 100%;
+
+    /* Active tab inverts to a DARK glass chip on the light sidebar */
+    --nav-active-surface: 0 0% 0%;
+    --nav-active-border: 0 0% 0%;
+
+    /* Deeper blue for legibility on white glass */
+    --nav-blue: 217 91% 52%;
+    --nav-blue-soft: 217 91% 52%;
   }
 
   * {
@@ -173,6 +199,65 @@
   }
   .serif { font-family: 'Instrument Serif', serif; }
   .display { font-family: 'DM Sans', system-ui, sans-serif; letter-spacing: -0.035em; }
+
+  /* ──────────────────────────────────────────────
+     Glassmorphism · Sidebar
+     ────────────────────────────────────────────── */
+
+  /* Outer sidebar shell — black glass on dark, white glass on light */
+  .glass-sidebar {
+    background:
+      linear-gradient(180deg, hsl(var(--glass-sheen) / 0.05), transparent 18%),
+      hsl(var(--glass-surface) / 0.55);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border-right: 1px solid hsl(var(--glass-surface-border) / 0.09);
+  }
+
+  /* Resting nav row — faint glass, barely-there */
+  .glass-row {
+    background: hsl(var(--glass-surface) / 0);
+    border: 1px solid transparent;
+    transition: background-color .25s ease, border-color .25s ease, transform .2s ease;
+  }
+  .glass-row:hover {
+    background: hsl(var(--glass-surface-border) / 0.045);
+    border-color: hsl(var(--glass-surface-border) / 0.07);
+  }
+
+  /* Active nav pill — inverted glass chip + premium blue accent */
+  .glass-pill-active {
+    background: hsl(var(--nav-active-surface) / 0.82);
+    backdrop-filter: blur(18px) saturate(200%);
+    -webkit-backdrop-filter: blur(18px) saturate(200%);
+    border: 1px solid hsl(var(--nav-blue) / 0.45);
+    box-shadow:
+      0 0 0 1px hsl(var(--nav-blue) / 0.12),
+      0 6px 22px -4px hsl(var(--nav-blue) / 0.45),
+      inset 0 1px 0 hsl(var(--nav-active-border) / 0.10);
+  }
+
+  /* Thin glowing rail on the leading edge of the active tab */
+  .nav-active-rail {
+    background: linear-gradient(180deg, hsl(var(--nav-blue) / 0.9), hsl(var(--nav-blue) / 0.35));
+    box-shadow: 0 0 10px 1px hsl(var(--nav-blue) / 0.7);
+  }
+
+  .nav-blue-text { color: hsl(var(--nav-blue)); }
+  .nav-blue-icon { color: hsl(var(--nav-blue)); filter: drop-shadow(0 0 6px hsl(var(--nav-blue) / 0.55)); }
+
+  /* Card used for the collapsed user-panel / upgrade banner glass */
+  .glass-card-soft {
+    background: hsl(var(--glass-surface) / 0.5);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid hsl(var(--glass-surface-border) / 0.09);
+  }
+}
+
+@keyframes sheen-sweep {
+  0%   { transform: translateX(-120%) skewX(-12deg); }
+  100% { transform: translateX(220%) skewX(-12deg); }
 }
 
 @keyframes live-pulse {
