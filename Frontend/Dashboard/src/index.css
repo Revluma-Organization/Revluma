@@ -17,10 +17,10 @@
     --topbar-h: 64px;
     --radius: 0.75rem;
 
-    /* Brand accent (Revluma green) */
-    --accent: 158 100% 45%;
-    --accent-2: 162 100% 36%;
-    --accent-foreground: 0 0% 0%;
+    /* Brand accent (Azure Radiance) */
+    --accent: 210 100% 50%;
+    --accent-2: 210 100% 40%;
+    --accent-foreground: 0 0% 100%;
 
     /* Status palette */
     --green: 158 100% 45%;
@@ -68,7 +68,7 @@
     --border: 0 0% 100%;
     --input: 0 0% 100%;
     --ring: var(--accent);
-    --accent: 158 100% 45%;
+    --accent: 210 100% 50%;
 
     /* ── Glassmorphism · Sidebar (dark = black glass, active = WHITE glass) ── */
     --glass-surface: 0 0% 0%;
@@ -98,8 +98,8 @@
     --t2: 0 0% 30%;
     --t3: 0 0% 45%;
     --t4: 0 0% 55%;
-    --accent: 161 100% 31%;
-    --accent-2: 161 100% 26%;
+    --accent: 210 100% 50%;
+    --accent-2: 210 100% 40%;
     --green: 161 100% 31%;
     --amber: 35 100% 38%;
     --red: 0 68% 53%;
