@@ -61,12 +61,11 @@ export function Sidebar() {
   animate={{ x: 0, opacity: 1 }}
   transition={{ type: 'spring', stiffness: 220, damping: 28 }}
   className={cn(
-    'fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-colors duration-300',
-    // Theme-aware backgrounds: Light mode = White, Dark mode = Black
-    theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
-    sidebarCollapsed ? 'md:w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
-    mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-  )}
+  'fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width,transform,background-color] duration-300 ease-out md:relative md:translate-x-0',
+  theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
+  sidebarCollapsed ? 'md:w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
+  mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+)}
 >
         {/* Ambient drifting orbs — makes the glass actually feel glassy */}
         <motion.div
@@ -144,10 +143,10 @@ export function Sidebar() {
             </motion.button>
             <button
   onClick={(e) => {
-    e.stopPropagation(); // Stops the event from hitting the overlay behind it
+    e.stopPropagation();
     setMobileSidebarOpen(false);
   }}
-  className="relative z-[100] flex h-[26px] w-[26px] items-center justify-center cursor-pointer rounded-md hover:bg-slate-200/20 transition-colors"
+  className="relative z-[100] flex h-[26px] w-[26px] items-center justify-center cursor-pointer rounded-md hover:bg-slate-200/20 transition-colors md:hidden"
   aria-label="Close sidebar"
 >
   <X className="h-4 w-4" />
@@ -270,8 +269,12 @@ export function Sidebar() {
       >
         <Rocket className="h-9 w-9 text-[#007FFF]" />
       </motion.div>
-      <div className="mb-1 text-center text-[0.8rem] font-semibold text-white">Unlock full automation</div>
-      <div className="mb-3 text-center text-[0.7rem] text-slate-400">Advanced recovery &amp; AI intelligence</div>
+      <div className={cn("mb-1 text-center text-[0.8rem] font-semibold", theme === 'light' ? 'text-slate-900' : 'text-white')}>
+  Unlock full automation
+</div>
+<div className={cn("mb-3 text-center text-[0.7rem]", theme === 'light' ? 'text-slate-600' : 'text-slate-400')}>
+  Advanced recovery &amp; AI intelligence
+</div>
       <motion.button
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
