@@ -1,5 +1,5 @@
 """
-M3 - Optimal Send-Time Predictor: Inference Script
+M3 — Optimal Send-Time Predictor: Inference Script
 Runs at message send time, per customer, per recovery event.
 """
 

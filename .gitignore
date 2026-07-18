@@ -40,3 +40,9 @@ Thumbs.db
 .pytest_cache/
 __pycache__/
 *.pyc
+
+# Local folders to ignore
+venv/
+.agents/
+artifacts/
+python/artifacts/

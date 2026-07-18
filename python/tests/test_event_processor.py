@@ -8,18 +8,20 @@ Each function tested for:
     3. Malformed input (missing keys, invalid timestamps, corrupted payload)
 """
 
-import os
-import sys
 import unittest
+import sys
+import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from src.features.event_processor import (detect_platform,
-                                          extract_session_timeline,
-                                          filter_events_by_type,
-                                          group_events_by_session,
-                                          normalize_checkout_step,
-                                          parse_raw_event)
+from src.features.event_processor import (
+    parse_raw_event,
+    filter_events_by_type,
+    extract_session_timeline,
+    detect_platform,
+    normalize_checkout_step,
+    group_events_by_session,
+)
 
 
 class TestParseRawEvent(unittest.TestCase):
@@ -29,7 +31,7 @@ class TestParseRawEvent(unittest.TestCase):
             "event_type": "scroll",
             "session_id": "sess_1",
             "timestamp": "2026-06-26T10:00:00Z",
-            "payload": {"depth_pct": 45.0},
+            "payload": {"depth_pct": 45.0}
         }
         result = parse_raw_event(payload)
         self.assertEqual(result["event_type"], "scroll")
@@ -68,7 +70,7 @@ class TestParseRawEvent(unittest.TestCase):
         payload = {
             "event_type": "scroll",
             "session_id": "sess_1",
-            "timestamp": "not-a-real-timestamp",
+            "timestamp": "not-a-real-timestamp"
         }
         result = parse_raw_event(payload)
         self.assertFalse(result["_valid"])
@@ -78,7 +80,7 @@ class TestParseRawEvent(unittest.TestCase):
             "event_type": "scroll",
             "session_id": "sess_1",
             "timestamp": "2026-06-26T10:00:00Z",
-            "payload": "not a dict",
+            "payload": "not a dict"
         }
         result = parse_raw_event(payload)
         self.assertEqual(result["payload"], {})
@@ -99,7 +101,7 @@ class TestFilterEventsByType(unittest.TestCase):
         events = [
             {"event_type": "scroll"},
             {"event_type": "tab_switch"},
-            {"event_type": "scroll"},
+            {"event_type": "scroll"}
         ]
         result = filter_events_by_type(events, "scroll")
         self.assertEqual(len(result), 2)
@@ -133,11 +135,8 @@ class TestExtractSessionTimeline(unittest.TestCase):
         events = [
             {"event_type": "session_start", "timestamp": "2026-06-26T10:00:00Z"},
             {"event_type": "checkout_step", "timestamp": "2026-06-26T10:01:00Z"},
-            {
-                "event_type": "tab_switch",
-                "timestamp": "2026-06-26T10:02:00Z",
-                "payload": {"direction": "blur"},
-            },
+            {"event_type": "tab_switch", "timestamp": "2026-06-26T10:02:00Z",
+             "payload": {"direction": "blur"}},
             {"event_type": "exit_intent", "timestamp": "2026-06-26T10:03:00Z"},
             {"event_type": "failed_payment", "timestamp": "2026-06-26T10:04:00Z"},
         ]
@@ -276,21 +275,9 @@ class TestGroupEventsBySession(unittest.TestCase):
 
     def test_multiple_sessions(self):
         events = [
-            {
-                "event_type": "a",
-                "session_id": "s1",
-                "timestamp": "2026-06-26T10:01:00Z",
-            },
-            {
-                "event_type": "b",
-                "session_id": "s2",
-                "timestamp": "2026-06-26T10:00:00Z",
-            },
-            {
-                "event_type": "c",
-                "session_id": "s1",
-                "timestamp": "2026-06-26T10:00:00Z",
-            },
+            {"event_type": "a", "session_id": "s1", "timestamp": "2026-06-26T10:01:00Z"},
+            {"event_type": "b", "session_id": "s2", "timestamp": "2026-06-26T10:00:00Z"},
+            {"event_type": "c", "session_id": "s1", "timestamp": "2026-06-26T10:00:00Z"},
         ]
         result = group_events_by_session(events)
         self.assertEqual(len(result), 2)

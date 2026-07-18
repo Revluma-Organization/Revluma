@@ -1,5 +1,5 @@
 """
-M2 - Price vs. Convenience Sensitivity Classifier: Inference Script
+M2 — Price vs. Convenience Sensitivity Classifier: Inference Script
 """
 
 

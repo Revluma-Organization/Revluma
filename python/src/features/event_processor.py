@@ -15,15 +15,13 @@ This sits between:
 """
 
 from __future__ import annotations
-
 from datetime import datetime
 from typing import Any
-
 
 def _safe_parse_timestamp(ts):
     """
     Attempts to parse an ISO 8601 timestamp string into a datetime object.
-    Returns None on any failure - never raises.
+    Returns None on any failure — never raises.
     """
     if not ts or not isinstance(ts, str):
         return None
@@ -32,8 +30,7 @@ def _safe_parse_timestamp(ts):
         return datetime.fromisoformat(normalized)
     except (ValueError, TypeError):
         return None
-
-
+    
 def parse_raw_event(raw_payload: dict) -> dict:
     """
     Validates and normalises a single raw event payload from the tracking pixel.
@@ -60,7 +57,7 @@ def parse_raw_event(raw_payload: dict) -> dict:
               so they can be logged without crashing the pipeline.
 
     Engineering note:
-        Pixel gap - the generic POST /api/tracking/event endpoint is marked
+        Pixel gap — the generic POST /api/tracking/event endpoint is marked
         "TO BUILD" in the engineering spec. This processor must handle
         malformed or partial payloads gracefully (missing fields, null values).
     """
@@ -70,7 +67,7 @@ def parse_raw_event(raw_payload: dict) -> dict:
             "session_id": None,
             "timestamp": None,
             "payload": {},
-            "_valid": False,
+            "_valid": False
         }
 
     event_type = raw_payload.get("event_type")
@@ -102,7 +99,7 @@ def parse_raw_event(raw_payload: dict) -> dict:
         "session_id": session_id,
         "timestamp": timestamp,
         "payload": payload,
-        "_valid": is_valid,
+        "_valid": is_valid
     }
 
     # pass
@@ -146,10 +143,10 @@ def extract_session_timeline(events: list) -> dict:
     used by features that depend on event sequencing and time deltas.
 
     Features that need this:
-        - time_on_checkout_step_sec (Feature 3) - needs step start/end timestamps
-        - cursor_hesitation_ms_on_price_field (Feature 4) - needs focus/blur pairs
-        - abandoned_at_shipping_reveal (Feature 13) - needs step 2→exit sequence
-        - failed_payment_attempt (Feature 14) - needs payment_failed event timing
+        - time_on_checkout_step_sec (Feature 3) — needs step start/end timestamps
+        - cursor_hesitation_ms_on_price_field (Feature 4) — needs focus/blur pairs
+        - abandoned_at_shipping_reveal (Feature 13) — needs step 2→exit sequence
+        - failed_payment_attempt (Feature 14) — needs payment_failed event timing
 
     Args:
         events (list): Full list of parsed events for a session,
@@ -173,7 +170,7 @@ def extract_session_timeline(events: list) -> dict:
         }
 
     Engineering note:
-        Tab visibility events should be debounced - ignore duplicate hidden
+        Tab visibility events should be debounced — ignore duplicate hidden
         transitions within 1 second of each other (per pixel spec).
         time_on_checkout_step_sec for MVP includes hidden (tab-away) time.
         Future refinement: subtract hidden duration for true active time.
@@ -184,7 +181,7 @@ def extract_session_timeline(events: list) -> dict:
         "checkout_steps": [],
         "tab_hidden_events": [],
         "exit_intent_at": None,
-        "payment_failed_at": None,
+        "payment_failed_at": None
     }
 
     if not isinstance(events, list) or len(events) == 0:
@@ -200,36 +197,22 @@ def extract_session_timeline(events: list) -> dict:
 
     sorted_events = sorted(valid_events, key=_sort_key)
 
-    timestamped = [
-        e
-        for e in sorted_events
-        if _safe_parse_timestamp(e.get("timestamp")) is not None
-    ]
+    timestamped = [e for e in sorted_events if _safe_parse_timestamp(e.get("timestamp")) is not None]
     session_start = timestamped[0]["timestamp"] if timestamped else None
     session_end = timestamped[-1]["timestamp"] if timestamped else None
 
-    checkout_steps = [
-        e for e in sorted_events if e.get("event_type") == "checkout_step"
-    ]
+    checkout_steps = [e for e in sorted_events if e.get("event_type") == "checkout_step"]
 
     tab_hidden_events = [
-        e
-        for e in sorted_events
-        if e.get("event_type") == "tab_switch"
-        and e.get("payload", {}).get("direction") == "blur"
+        e for e in sorted_events
+        if e.get("event_type") == "tab_switch" and e.get("payload", {}).get("direction") == "blur"
     ]
 
-    exit_intent_events = [
-        e for e in sorted_events if e.get("event_type") == "exit_intent"
-    ]
+    exit_intent_events = [e for e in sorted_events if e.get("event_type") == "exit_intent"]
     exit_intent_at = exit_intent_events[0]["timestamp"] if exit_intent_events else None
 
-    failed_payment_events = [
-        e for e in sorted_events if e.get("event_type") == "failed_payment"
-    ]
-    payment_failed_at = (
-        failed_payment_events[0]["timestamp"] if failed_payment_events else None
-    )
+    failed_payment_events = [e for e in sorted_events if e.get("event_type") == "failed_payment"]
+    payment_failed_at = failed_payment_events[0]["timestamp"] if failed_payment_events else None
 
     return {
         "session_start": session_start,
@@ -237,7 +220,7 @@ def extract_session_timeline(events: list) -> dict:
         "checkout_steps": checkout_steps,
         "tab_hidden_events": tab_hidden_events,
         "exit_intent_at": exit_intent_at,
-        "payment_failed_at": payment_failed_at,
+        "payment_failed_at": payment_failed_at
     }
     # pass
 
@@ -278,7 +261,8 @@ def detect_platform(merchant_id: str, db) -> str:
     try:
         cursor = db.cursor()
         cursor.execute(
-            "SELECT platform FROM stores WHERE merchant_id = %s", (merchant_id,)
+            "SELECT platform FROM stores WHERE merchant_id = %s",
+            (merchant_id,)
         )
         row = cursor.fetchone()
 
@@ -291,7 +275,6 @@ def detect_platform(merchant_id: str, db) -> str:
     except Exception:
         return "unknown"
     # pass
-
 
 _SHOPIFY_STEP_MAP = {
     "product": 0,
@@ -340,7 +323,7 @@ def normalize_checkout_step(platform: str, platform_step: Any) -> int:
     Engineering note:
         Full mapping tables to be defined in Week 4 once platform adapter
         code is reviewed. The adapters should emit a normalised step number
-        directly - this function is a safety fallback for any cases where
+        directly — this function is a safety fallback for any cases where
         the raw platform value leaks through.
     """
     if isinstance(platform_step, int) and 0 <= platform_step <= 5:

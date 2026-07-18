@@ -1,5 +1,5 @@
 """
-M5 - Offer Value Optimizer: Inference Script
+M5 — Offer Value Optimizer: Inference Script
 Runs after M2 classifies a shopper as price-sensitive.
 """
 

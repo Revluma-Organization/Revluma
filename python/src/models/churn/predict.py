@@ -1,5 +1,5 @@
 """
-M4 - Churn Risk Scorer: Inference Script
+M4 — Churn Risk Scorer: Inference Script
 Runs daily as a cron job across all customer profiles.
 """
 

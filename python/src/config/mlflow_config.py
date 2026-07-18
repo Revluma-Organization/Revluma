@@ -1,18 +1,18 @@
 """
 Revluma MLflow Configuration
 Remote tracking server: https://dagshub.com/yourusername/revluma-ml.mlflow
-Set credentials in .env - never hardcode them here.
+Set credentials in .env — never hardcode them here.
 """
 
 import os
-
 import mlflow
 
 # Load .env from backend/ root (one level above python/)
 try:
     from dotenv import load_dotenv
-
-    _env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.env"))
+    _env_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../.env")
+    )
     load_dotenv(_env_path)
 except ImportError:
     pass
@@ -26,7 +26,9 @@ _LOCAL_MLRUNS = os.path.abspath(
 )
 
 MLFLOW_TRACKING_URI = (
-    os.getenv("MLFLOW_TRACKING_URI") or os.getenv("MLFLOW_REMOTE_URL") or _LOCAL_MLRUNS
+    os.getenv("MLFLOW_TRACKING_URI")
+    or os.getenv("MLFLOW_REMOTE_URL")
+    or _LOCAL_MLRUNS
 )
 
 # Auth for DagsHub remote server
@@ -45,10 +47,10 @@ mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 def get_tracking_info() -> dict:
     return {
-        "tracking_uri": MLFLOW_TRACKING_URI,
-        "is_remote": IS_REMOTE,
+        "tracking_uri"   : MLFLOW_TRACKING_URI,
+        "is_remote"      : IS_REMOTE,
         "experiment_name": EXPERIMENT_NAME,
-        "auth_enabled": bool(_USERNAME and _PASSWORD),
+        "auth_enabled"   : bool(_USERNAME and _PASSWORD)
     }
 
 
