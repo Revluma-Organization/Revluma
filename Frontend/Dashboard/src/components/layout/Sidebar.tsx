@@ -56,17 +56,18 @@ export function Sidebar() {
       />
 
       <motion.aside
-        data-tour="sidebar"
-        initial={{ x: -32, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 220, damping: 28 }}
-        className={cn(
-          'glass-sidebar fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden transition-[width,transform] duration-300 ease-out md:relative md:translate-x-0',
-          sidebarCollapsed ? 'md:w-[var(--sidebar-w-collapsed)]' : 'md:w-[var(--sidebar-w)]',
-          'w-[var(--sidebar-w)]',
-          mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
-        )}
-      >
+  data-tour="sidebar"
+  initial={{ x: -32, opacity: 0 }}
+  animate={{ x: 0, opacity: 1 }}
+  transition={{ type: 'spring', stiffness: 220, damping: 28 }}
+  className={cn(
+    'fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-colors duration-300',
+    // Theme-aware backgrounds: Light mode = White, Dark mode = Black
+    theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
+    sidebarCollapsed ? 'md:w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
+    mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+  )}
+>
         {/* Ambient drifting orbs — makes the glass actually feel glassy */}
         <motion.div
           aria-hidden
@@ -142,12 +143,15 @@ export function Sidebar() {
               <ChevronLeft className="h-3 w-3" />
             </motion.button>
             <button
-              onClick={() => setMobileSidebarOpen(false)}
-              className="flex h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 md:hidden"
-              aria-label="Close sidebar"
-            >
-              <X className="h-3 w-3" />
-            </button>
+  onClick={(e) => {
+    e.stopPropagation(); // Stops the event from hitting the overlay behind it
+    setMobileSidebarOpen(false);
+  }}
+  className="relative z-[100] flex h-[26px] w-[26px] items-center justify-center cursor-pointer rounded-md hover:bg-slate-200/20 transition-colors"
+  aria-label="Close sidebar"
+>
+  <X className="h-4 w-4" />
+</button>
           </div>
 
           {sidebarCollapsed && (
@@ -206,14 +210,13 @@ export function Sidebar() {
                           )}
                         >
                           {isActive && (
-                            <motion.span
-                              layoutId="sidebar-active-pill"
-                              transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                              className="glass-pill-active absolute inset-0 rounded-lg"
-                            >
+                         <motion.span
+                         layoutId="sidebar-active-pill"
+                          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                             className="absolute inset-0 rounded-md bg-[#007FFF]" 
+                           />
+                            )}
                               <span className="nav-active-rail absolute inset-y-1.5 left-0 w-[3px] rounded-full" />
-                            </motion.span>
-                          )}
 
                           <span
                             className={cn(
@@ -262,22 +265,25 @@ export function Sidebar() {
               className="glass-card-soft relative z-[1] mx-2.5 mb-2.5 overflow-hidden rounded-xl p-3.5 text-center"
             >
               <motion.div
-                className="mb-2.5 flex justify-center"
-                animate={{ y: [0, -3, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <Rocket className="h-9 w-9" style={{ color: 'hsl(var(--accent))' }} />
-              </motion.div>
-              <div className="mb-1 text-[0.8rem] font-semibold text-t1">Unlock full automation</div>
-              <div className="mb-3 text-[0.7rem] leading-[1.5] text-t3">Advanced recovery &amp; AI intelligence</div>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="w-full rounded-md bg-t1 px-0 py-1.5 text-[0.75rem] font-bold text-bg transition-colors hover:opacity-90"
-              >
-                Upgrade to Pro →
-              </motion.button>
-            </motion.div>
+  className="relative z-[1] mx-2.5 mb-4 rounded-xl bg-[#007FFF]/10 border border-[#007FFF]/20 p-4"
+>
+  <motion.div
+    className="mb-2.5 flex justify-center"
+    animate={{ y: [0, -3, 0] }}
+    transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+  >
+    <Rocket className="h-9 w-9 text-[#007FFF]" />
+  </motion.div>
+  <div className="mb-1 text-center text-[0.8rem] font-semibold text-white">Unlock full automation</div>
+  <div className="mb-3 text-center text-[0.7rem] text-slate-400">Advanced recovery & AI intelligence</div>
+  <motion.button
+    whileHover={{ scale: 1.02 }}
+    whileTap={{ scale: 0.98 }}
+    className="w-full rounded-md bg-[#007FFF] px-0 py-1.5 text-xs font-medium text-white transition hover:bg-[#007FFF]/90"
+  >
+    Upgrade to Pro →
+  </motion.button>
+</motion.div>
           )}
         </AnimatePresence>
 
