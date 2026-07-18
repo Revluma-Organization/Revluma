@@ -86,10 +86,10 @@ export function Sidebar() {
 
         {/* Logo + controls */}
         <div className={cn(
-          'relative z-[1] flex shrink-0 items-center justify-between px-4 pb-3.5 pt-4',
+          'relative z-[1] flex shrink-0 items-center justify-between px-2 md:px-4 pb-3.5 pt-4',
           sidebarCollapsed && 'md:flex-col md:px-2 md:gap-4 md:items-center'
         )}>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 md:gap-2.5">
             <motion.img
               src={revlumaIcon}
               alt="Revluma"
