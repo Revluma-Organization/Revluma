@@ -63,7 +63,8 @@ export function Sidebar() {
   className={cn(
   'fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width,transform,background-color] duration-300 ease-out md:relative md:translate-x-0',
   theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
-  sidebarCollapsed ? 'md:w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
+  // FIX: Force full width on mobile ALWAYS. Only collapse on desktop.
+  sidebarCollapsed ? 'w-[var(--sidebar-w)] md:w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
   mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
 )}
 >
@@ -142,14 +143,12 @@ export function Sidebar() {
               <ChevronLeft className="h-3 w-3" />
             </motion.button>
             <button
-  onClick={(e) => {
-    e.stopPropagation();
-    setMobileSidebarOpen(false);
-  }}
-  className="relative z-[100] flex h-[26px] w-[26px] items-center justify-center cursor-pointer rounded-md hover:bg-slate-200/20 transition-colors md:hidden"
+  onClick={() => setMobileSidebarOpen(false)}
+  onTouchStart={() => setMobileSidebarOpen(false)}
+  className="relative z-[9999] pointer-events-auto flex h-10 w-10 items-center justify-center cursor-pointer rounded-md bg-slate-500/10 active:bg-slate-500/30 md:hidden"
   aria-label="Close sidebar"
 >
-  <X className="h-4 w-4" />
+  <X className="h-6 w-6 pointer-events-none" />
 </button>
           </div>
 
@@ -195,10 +194,11 @@ export function Sidebar() {
                     }}
                   >
                     <NavLink
-                      to={item.to}
-                      end={item.to === '/'}
-                      className="group relative my-px flex items-center gap-2.5 rounded-lg px-2.5 py-2"
-                    >
+  to={item.to}
+  end={item.to === '/'}
+  onClick={() => setMobileSidebarOpen(false)}
+  className="group relative my-px flex items-center gap-2.5 rounded-lg px-2.5 py-2"
+>
                       {({ isActive }) => (
                         <motion.div
                           whileHover={!isActive ? { x: 3 } : undefined}
