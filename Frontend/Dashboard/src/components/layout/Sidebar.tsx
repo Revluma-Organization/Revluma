@@ -143,13 +143,20 @@ export function Sidebar() {
               <ChevronLeft className="h-3 w-3" />
             </motion.button>
             <button
-  onClick={() => setMobileSidebarOpen(false)}
-  onTouchStart={() => setMobileSidebarOpen(false)}
-  className="relative z-[9999] pointer-events-auto flex h-10 w-10 items-center justify-center cursor-pointer rounded-md bg-slate-500/10 active:bg-slate-500/30 md:hidden"
-  aria-label="Close sidebar"
->
-  <X className="h-6 w-6 pointer-events-none" />
-</button>
+              onClick={(e) => {
+                e.stopPropagation();
+                setMobileSidebarOpen(false);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault(); // Kills any mobile delay or ghost clicks
+                e.stopPropagation();
+                setMobileSidebarOpen(false);
+              }}
+              className="relative z-[99999] pointer-events-auto flex h-10 w-10 items-center justify-center cursor-pointer rounded-md bg-slate-500/10 active:bg-slate-500/30 md:hidden"
+              aria-label="Close sidebar"
+            >
+              <X className="h-5 w-5 pointer-events-none" />
+            </button>
           </div>
 
           {sidebarCollapsed && (
