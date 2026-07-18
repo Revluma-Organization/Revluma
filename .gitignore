@@ -46,3 +46,9 @@ venv/
 .agents/
 artifacts/
 python/artifacts/
+
+# Local folders to ignore
+venv/
+.agents/
+artifacts/
+python/artifacts/
