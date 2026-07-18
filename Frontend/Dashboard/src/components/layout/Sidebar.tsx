@@ -84,18 +84,17 @@ export function Sidebar() {
           transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
         />
 
-        {/* Logo + controls */}
-        <div className={cn(
-          'relative z-[1] flex shrink-0 items-center justify-between px-2 md:px-4 pb-3.5 pt-4',
-          sidebarCollapsed && 'md:flex-col md:px-2 md:gap-4 md:items-center'
-        )}>
+        <div className="relative z-[1] flex shrink-0 items-center justify-between px-2 md:px-4 pb-3.5 pt-4">
           <div className="flex items-center gap-1.5 md:gap-2.5">
             <motion.img
               src={revlumaIcon}
               alt="Revluma"
               whileHover={{ scale: 1.12, rotate: -6 }}
               transition={{ type: 'spring', stiffness: 400, damping: 14 }}
-              className="h-8 w-8 shrink-0 object-contain md:h-10 md:w-10 drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
+              className={cn(
+                "shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-all duration-300",
+                sidebarCollapsed ? "h-8 w-8" : "h-8 w-8 md:h-10 md:w-10"
+              )}
             />
             <AnimatePresence>
               {!sidebarCollapsed && (
@@ -112,7 +111,7 @@ export function Sidebar() {
             </AnimatePresence>
           </div>
 
-          <div className={cn('flex items-center gap-1 pr-12 md:pr-0', sidebarCollapsed && 'md:hidden')}>
+          <div className={cn('flex items-center gap-1 pr-[38px] md:pr-[30px]', sidebarCollapsed && 'md:hidden')}>
             <button
               onClick={toggleTheme}
               className="relative h-[22px] w-[42px] rounded-full border border-border-md bg-bg-4 transition-colors"
@@ -133,43 +132,33 @@ export function Sidebar() {
                   : <Sun className="h-2 w-2" style={{ color: 'hsl(var(--sidebar-bg))' }} />}
               </motion.span>
             </button>
-            <motion.button
-              whileHover={{ scale: 1.08, rotate: -4 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
-              aria-label="Collapse sidebar"
-            >
-              <ChevronLeft className="h-3 w-3" />
-            </motion.button>
           </div>
 
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setMobileSidebarOpen(false);
+              if (window.innerWidth < 768) {
+                setMobileSidebarOpen(false);
+              } else {
+                setSidebarCollapsed(!sidebarCollapsed);
+              }
             }}
             onTouchStart={(e) => {
               e.stopPropagation();
-              setMobileSidebarOpen(false);
+              if (window.innerWidth < 768) {
+                setMobileSidebarOpen(false);
+              }
             }}
-            className="absolute top-3 right-3 z-[100000] pointer-events-auto flex h-10 w-10 touch-manipulation items-center justify-center cursor-pointer rounded-md bg-slate-500/10 active:bg-slate-500/30 md:hidden"
-            aria-label="Close sidebar"
+            className={cn(
+              "absolute z-[100000] pointer-events-auto flex items-center justify-center cursor-pointer rounded-md transition-colors touch-manipulation",
+              "top-[18px] md:top-[22px] right-3 md:right-4",
+              "h-9 w-9 bg-slate-500/10 active:bg-slate-500/30 md:h-[26px] md:w-[26px] md:border md:border-border md:bg-bg-3 md:text-t2 md:hover:bg-glass/[0.065]"
+            )}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Close sidebar"}
           >
-            <X className="h-5 w-5 pointer-events-none" />
+            {sidebarCollapsed ? <ChevronRight className="h-5 w-5 md:h-3 md:w-3" /> : <ChevronLeft className="h-5 w-5 md:h-3 md:w-3" />}
           </button>
-
-          {sidebarCollapsed && (
-            <motion.button
-              whileHover={{ scale: 1.08, rotate: 4 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setSidebarCollapsed(false)}
-              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
-              aria-label="Expand sidebar"
-            >
-              <ChevronRight className="h-3 w-3" />
-            </motion.button>
-          )}
         </div>
 
         {/* Nav */}
