@@ -1,5 +1,6 @@
 const {isValidShopDomain,generateState,buildInstallUrl,verifyHmac,} = require("../utils/shopify");
 const logger = require('../utils/logger');
+const { buildCookieOptions } = require('../utils/cookieOptions');
 
 const {exchangeAccessToken,getOrganizationByUser,upsertStore,syncShopifyStore,} = require("../services/shopifyService");
 
@@ -27,18 +28,14 @@ exports.installShopify = async (req, res, next) => {
     // Store OAuth state
     res.cookie("shopify_state", state, {
     signed: true,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    ...buildCookieOptions(req),
     maxAge: 10 * 60 * 1000,
     });
 
     // Store authenticated user ID
     res.cookie("shopify_user", req.user.id, {
     signed: true,
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    ...buildCookieOptions(req),
     maxAge: 10 * 60 * 1000,
     });
 
@@ -145,16 +142,12 @@ exports.shopifyCallback = async (req, res, next) => {
 
     // Clear OAuth cookies
     res.clearCookie("shopify_state", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      ...buildCookieOptions(req),
       path: "/",
     });
 
     res.clearCookie("shopify_user", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      ...buildCookieOptions(req),
       path: "/",
     });
 

@@ -30,6 +30,7 @@ const dbConfig = require('../configs/database');
 const prisma = dbConfig.prisma;
 
 const logger = require('../utils/logger');
+const { buildCookieOptions } = require('../utils/cookieOptions');
 
 const SALT_ROUNDS = 12;
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -404,11 +405,8 @@ exports.login = async (req, res, next) => {
 
     // Store Refresh Token as HttpOnly Cookie (raw value — never the hash)
     const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      ...buildCookieOptions(req),
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: "/",
     };
     res.cookie("refresh_token", rawRefresh, cookieOptions);
 
@@ -430,13 +428,8 @@ exports.login = async (req, res, next) => {
   }
 };
 
-function getRefreshCookieOptions() {
-  return {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    path: "/",
-  };
+function getRefreshCookieOptions(req) {
+  return buildCookieOptions(req);
 }
 
 function readRefreshTokenFromRequest(req) {
@@ -536,7 +529,7 @@ exports.refresh = async (req, res, next) => {
 
     // Rotate the HttpOnly cookie alongside the body token
     res.cookie("refresh_token", newRawRefresh, {
-      ...getRefreshCookieOptions(),
+      ...getRefreshCookieOptions(req),
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -578,7 +571,7 @@ exports.logout = async (req, res, next) => {
       // No refresh token supplied — revoke nothing specific, but still clear cookie.
     }
 
-    res.clearCookie("refresh_token", getRefreshCookieOptions());
+    res.clearCookie("refresh_token", getRefreshCookieOptions(req));
 
     return res.status(200).json({
       success: true,
@@ -601,7 +594,7 @@ exports.logoutAll = async (req, res, next) => {
       where: { user_id: req.user.id },
     });
 
-    res.clearCookie("refresh_token", getRefreshCookieOptions());
+    res.clearCookie("refresh_token", getRefreshCookieOptions(req));
 
     return res.status(200).json({
       success: true,
