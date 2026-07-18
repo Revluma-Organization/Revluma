@@ -71,7 +71,7 @@ const Profile: FC = () => {
               {avatarPreview ? (
                 <img src={avatarPreview} alt="Avatar" className="h-full w-full object-cover" />
               ) : (
-                <div className="text-xl font-bold text-[#00e5a0]">
+                <div className="text-xl font-bold text-[#007FFF]">
                   {((firstName?.[0] || "") + (lastName?.[0] || "")).toUpperCase() || "?"}
                 </div>
               )}
@@ -79,7 +79,7 @@ const Profile: FC = () => {
             <motion.div layout className="flex flex-col gap-2">
               <div className="flex items-center gap-3">
                 <input type="file" accept="image/png, image/jpeg, image/gif" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
-                <MotionButton whileTap={{ scale: 0.98 }} onClick={() => fileInputRef.current?.click()} className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-black border-none font-bold shadow-[0_0_15px_hsl(var(--accent)/0.3)] flex items-center gap-2 rounded-lg text-xs h-8 px-4">
+                <MotionButton whileTap={{ scale: 0.98 }} onClick={() => fileInputRef.current?.click()} className="bg-[hsl(var(--accent))] hover:bg-[hsl(var(--accent-2))] !text-white border-none font-bold shadow-[0_0_15px_hsl(var(--accent)/0.3)] flex items-center gap-2 rounded-lg text-xs h-8 px-4">
                   <Upload className="h-3.5 w-3.5" />
                   Upload Image
                 </MotionButton>
