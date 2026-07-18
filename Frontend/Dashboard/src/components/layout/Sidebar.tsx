@@ -112,7 +112,7 @@ export function Sidebar() {
             </AnimatePresence>
           </div>
 
-          <div className={cn('flex items-center gap-1', sidebarCollapsed && 'md:hidden')}>
+          <div className={cn('flex items-center gap-1 pr-12 md:pr-0', sidebarCollapsed && 'md:hidden')}>
             <button
               onClick={toggleTheme}
               className="relative h-[22px] w-[42px] rounded-full border border-border-md bg-bg-4 transition-colors"
@@ -142,18 +142,22 @@ export function Sidebar() {
             >
               <ChevronLeft className="h-3 w-3" />
             </motion.button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMobileSidebarOpen(false);
-              }}
-              className="relative z-[99999] pointer-events-auto flex h-10 w-10 touch-manipulation items-center justify-center cursor-pointer rounded-md bg-slate-500/10 active:bg-slate-500/30 md:hidden"
-              aria-label="Close sidebar"
-            >
-              <X className="h-5 w-5 pointer-events-none" />
-            </button>
           </div>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setMobileSidebarOpen(false);
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              setMobileSidebarOpen(false);
+            }}
+            className="absolute top-3 right-3 z-[100000] pointer-events-auto flex h-10 w-10 touch-manipulation items-center justify-center cursor-pointer rounded-md bg-slate-500/10 active:bg-slate-500/30 md:hidden"
+            aria-label="Close sidebar"
+          >
+            <X className="h-5 w-5 pointer-events-none" />
+          </button>
 
           {sidebarCollapsed && (
             <motion.button
