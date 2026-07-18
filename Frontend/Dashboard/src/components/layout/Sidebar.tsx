@@ -59,18 +59,17 @@ export function Sidebar() {
       />
 
       <motion.aside
-  data-tour="sidebar"
-  initial={{ x: -32, opacity: 0 }}
-  animate={{ x: 0, opacity: 1 }}
-  transition={{ type: 'spring', stiffness: 220, damping: 28 }}
-  className={cn(
-  'fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width,transform,background-color] duration-300 ease-out md:relative md:translate-x-0',
-  theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
-  // FIX: Force full width on mobile ALWAYS. Only collapse on desktop.
-  sidebarCollapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
-  mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-)}
->
+        data-tour="sidebar"
+        initial={{ x: -32, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 220, damping: 28 }}
+        className={cn(
+          'relative z-50 flex shrink-0 flex-col border-r transition-[width,transform,background-color] duration-300 ease-out overflow-hidden',
+          theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
+          sidebarCollapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
+          !mobileSidebarOpen && 'max-md:w-0 max-md:border-none max-md:-translate-x-full'
+        )}
+      >
         {/* Ambient drifting orbs — makes the glass actually feel glassy */}
         <motion.div
           aria-hidden
