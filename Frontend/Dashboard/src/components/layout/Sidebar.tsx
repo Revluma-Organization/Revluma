@@ -49,9 +49,12 @@ export function Sidebar() {
       <div
         className={cn(
           'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity md:hidden',
-          mobileSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
+          (mobileSidebarOpen && !sidebarCollapsed) ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
-        onClick={() => setMobileSidebarOpen(false)}
+        onClick={() => {
+          setMobileSidebarOpen(false);
+          setSidebarCollapsed(false);
+        }}
         aria-hidden
       />
 
@@ -64,7 +67,7 @@ export function Sidebar() {
   'fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width,transform,background-color] duration-300 ease-out md:relative md:translate-x-0',
   theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
   // FIX: Force full width on mobile ALWAYS. Only collapse on desktop.
-  sidebarCollapsed ? 'w-[var(--sidebar-w)] md:w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
+  sidebarCollapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
   mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
 )}
 >
@@ -138,17 +141,11 @@ export function Sidebar() {
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              if (window.innerWidth < 768) {
-                setMobileSidebarOpen(false);
-              } else {
-                setSidebarCollapsed(!sidebarCollapsed);
-              }
+              setSidebarCollapsed(!sidebarCollapsed);
             }}
             onTouchStart={(e) => {
               e.stopPropagation();
-              if (window.innerWidth < 768) {
-                setMobileSidebarOpen(false);
-              }
+              setSidebarCollapsed(!sidebarCollapsed);
             }}
             className={cn(
               "absolute z-[100000] pointer-events-auto flex items-center justify-center cursor-pointer rounded-md transition-colors touch-manipulation",
