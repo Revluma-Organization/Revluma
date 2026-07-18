@@ -10,37 +10,38 @@ Usage:
 
 NON-NEGOTIABLE RULES:
     - Single DB commit after the full loop (not per-customer)
-    - Continue processing on per-customer failure — never abort the batch
-    - Parameterized queries only — never string interpolation
+    - Continue processing on per-customer failure - never abort the batch
+    - Parameterized queries only - never string interpolation
     - Must fail fast if store_id argument is missing
 """
 
 from __future__ import annotations
-import sys
+
 import os
+import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from src.features.pipeline import calculate_rfm_scores
 
-
 # ---------------------------------------------------------------------------
 # 1. RFM Segmentation Logic
 # ---------------------------------------------------------------------------
+
 
 def get_rfm_segment(r: int, f: int, m: int) -> str:
     """
     Determines a customer's behavioural segment from their RFM scores.
 
-    Rules are evaluated in priority order — first match wins. No overlapping
+    Rules are evaluated in priority order - first match wins. No overlapping
     ambiguity. Always returns a valid segment string, never raises.
 
     Priority order:
-        1. champion     — r >= 4 AND f >= 4 AND m >= 4
-        2. loyal        — f >= 3 AND r >= 3
-        3. at_risk      — r <= 2 AND f >= 3
-        4. hibernating  — r <= 2 AND f <= 2 AND m >= 2
-        5. lost         — fallback, everything else
+        1. champion     - r >= 4 AND f >= 4 AND m >= 4
+        2. loyal        - f >= 3 AND r >= 3
+        3. at_risk      - r <= 2 AND f >= 3
+        4. hibernating  - r <= 2 AND f <= 2 AND m >= 2
+        5. lost         - fallback, everything else
 
     Args:
         r: Recency score (1-5)
@@ -69,13 +70,14 @@ def get_rfm_segment(r: int, f: int, m: int) -> str:
 # 2. Batch Processing Function
 # ---------------------------------------------------------------------------
 
+
 def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
     """
     Computes RFM scores and segments for every customer belonging to a
     store, then persists results back to the customers table.
 
     Commits once after the full loop completes (not per-customer) for
-    performance. Continues processing on per-customer failure — a single
+    performance. Continues processing on per-customer failure - a single
     bad row never aborts the full batch.
 
     Args:
@@ -101,17 +103,14 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
 
     try:
         cursor = db.cursor()
-        cursor.execute(
-            "SELECT id FROM customers WHERE store_id = %s",
-            (store_id,)
-        )
+        cursor.execute("SELECT id FROM customers WHERE store_id = %s", (store_id,))
         rows = cursor.fetchall()
     except Exception as e:
         print(f"Failed to fetch customers for store {store_id}: {e}")
         return {
             "processed_count": 0,
             "failed_customer_ids": [],
-            "segment_distribution": segment_distribution
+            "segment_distribution": segment_distribution,
         }
 
     customer_ids = [row[0] for row in rows] if rows else []
@@ -138,7 +137,7 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
                   updated_at = NOW()
                 WHERE id = %s
                 """,
-                (r, f, m, segment, customer_id)
+                (r, f, m, segment, customer_id),
             )
 
             segment_distribution[segment] += 1
@@ -149,7 +148,7 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
             failed_customer_ids.append(customer_id)
             continue
 
-    # Single commit after the full loop — performance requirement
+    # Single commit after the full loop - performance requirement
     try:
         db.commit()
     except Exception as e:
@@ -160,18 +159,21 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
     for segment, count in segment_distribution.items():
         print(f"  {segment}: {count}")
     if failed_customer_ids:
-        print(f"Failed customer IDs ({len(failed_customer_ids)}): {failed_customer_ids}")
+        print(
+            f"Failed customer IDs ({len(failed_customer_ids)}): {failed_customer_ids}"
+        )
 
     return {
         "processed_count": processed_count,
         "failed_customer_ids": failed_customer_ids,
-        "segment_distribution": segment_distribution
+        "segment_distribution": segment_distribution,
     }
 
 
 # ---------------------------------------------------------------------------
 # 3. Job Runner
 # ---------------------------------------------------------------------------
+
 
 def run(store_id: str) -> dict:
     """
@@ -193,9 +195,12 @@ def run(store_id: str) -> dict:
         "processed_count": 0,
         "failed_customer_ids": [],
         "segment_distribution": {
-            "champion": 0, "loyal": 0, "at_risk": 0,
-            "hibernating": 0, "lost": 0
-        }
+            "champion": 0,
+            "loyal": 0,
+            "at_risk": 0,
+            "hibernating": 0,
+            "lost": 0,
+        },
     }
 
     try:

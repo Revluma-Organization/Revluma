@@ -1,5 +1,5 @@
 """
-M5 — Offer Value Optimizer: Training Script
+M5 - Offer Value Optimizer: Training Script
 ============================================
 Model type  : Gradient Boosting (regression)
 Purpose     : Given that M2 has classified a shopper as price-sensitive,
@@ -10,11 +10,11 @@ Purpose     : Given that M2 has classified a shopper as price-sensitive,
 #newly added
 #--
 CORRECTION (previous version of this file had a wrong assumption):
-Auditing api.py against the task doc confirmed M2 outputs THREE scores —
-"PSS + CSS + TSS" — not two. TSS (Trust Sensitivity Score) is a distinct
+Auditing api.py against the task doc confirmed M2 outputs THREE scores -
+"PSS + CSS + TSS" - not two. TSS (Trust Sensitivity Score) is a distinct
 signal from CSS. My earlier version assumed TSS == css_score; that was
 wrong and is now fixed. TSS has NO backing function anywhere in
-pipeline.py or in M2's README — this is a confirmed blocker for whoever
+pipeline.py or in M2's README - this is a confirmed blocker for whoever
 owns M2 (Engineer 3), not something fixable here. tss_score is added as
 an accepted input with a safe default (0 = "not trust-sensitive", so the
 gate doesn't spuriously fire) until real TSS data exists.
@@ -29,17 +29,17 @@ Hard gates corrected to match the doc's exact two separate rules
 #end new
 #--
 
-Features consumed (10 — 9 original + tss_score):
-    pss_score                            (float) — output of M2
-    css_score                            (float) — output of M2
-    tss_score                            (float) — output of M2 [NOT YET REAL DATA]
-    cursor_hesitation                    (int)   — HIGH price signal
-    past_orders_total                    (int)   — loyalty context
-    past_orders_with_coupon_pct          (float) — coupon history
-    days_since_last_purchase             (int)   — recency
-    avg_order_value                      (float) — order value context
-    visited_coupon_page                  (bool)  — price signal
-    searched_discount_terms              (bool)  — price signal
+Features consumed (10 - 9 original + tss_score):
+    pss_score                            (float) - output of M2
+    css_score                            (float) - output of M2
+    tss_score                            (float) - output of M2 [NOT YET REAL DATA]
+    cursor_hesitation                    (int)   - HIGH price signal
+    past_orders_total                    (int)   - loyalty context
+    past_orders_with_coupon_pct          (float) - coupon history
+    days_since_last_purchase             (int)   - recency
+    avg_order_value                      (float) - order value context
+    visited_coupon_page                  (bool)  - price signal
+    searched_discount_terms              (bool)  - price signal
 
 Hard constraints (enforced in both label generation AND at prediction time):
     - recommended_discount_pct clipped to [0, 25]
@@ -98,7 +98,7 @@ def load_training_data(n=3000):
     #--
     #newly added
     #--
-    # tss_score: synthetic placeholder. No real backing data exists yet —
+    # tss_score: synthetic placeholder. No real backing data exists yet -
     # see module docstring. Distribution skewed low since most sessions
     # aren't trust-blocked, with a meaningful tail so the TRUST_SIGNAL
     # gate actually gets exercised in training/testing.
@@ -180,7 +180,7 @@ def train(run_name: str = "m5-offervalue-training"):
             X_test['tss_score'].values,
         )
 
-        # np.sqrt(mse) used instead of mean_squared_error(squared=False) —
+        # np.sqrt(mse) used instead of mean_squared_error(squared=False) -
         # that kwarg was removed in newer scikit-learn versions.
         rmse = np.sqrt(mean_squared_error(y_test, y_pred))
         mae = mean_absolute_error(y_test, y_pred)
@@ -207,7 +207,7 @@ def train(run_name: str = "m5-offervalue-training"):
         #newly added
         #--
         # registered_model_name added: api.py calls
-        # mlflow.sklearn.load_model("models:/offer_value/latest") — without
+        # mlflow.sklearn.load_model("models:/offer_value/latest") - without
         # this, the model never registers and /predict/offer-value always
         # falls back.
         mlflow.sklearn.log_model(model, "m5_offer_value_model", registered_model_name="offer_value")
@@ -220,7 +220,7 @@ def train(run_name: str = "m5-offervalue-training"):
         print(f"MAE:  {mae:.4f}")
         print(f"R2:   {r2:.4f}")
 
-        print(f"\n✅ MLflow Run ID: {run.info.run_id}")
+        print(f"\n[OK] MLflow Run ID: {run.info.run_id}")
         print(f"MLflow Run Name: {run.info.run_name}")
         print(f"Check DagsHub UI for the full tracking details.")
 

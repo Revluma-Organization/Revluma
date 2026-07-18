@@ -3,9 +3,6 @@
 ## What this job does
 Runs after Shopify/platform sync completes. Computes RFM (Recency, Frequency, Monetary) scores for every customer in a store, segments them into behavioral groups, and writes the results back to the `customers` table in a single batch commit.
 
-## Status
-**Reviewed against spec, no code changes needed.** This file was already correctly implemented before Phase 2 review — confirmed compliant with every non-negotiable rule below, and **verified end-to-end against a real Supabase database** (see Section "Live Verification").
-
 ## Non-negotiable rules (all confirmed present in code)
 - ✅ Single DB commit after the full loop completes — not per-customer (performance requirement)
 - ✅ Continues processing on per-customer failure — a single bad row never aborts the batch

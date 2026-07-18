@@ -1,5 +1,5 @@
 """
-M3 — Optimal Send-Time Predictor: Training Script
+M3 - Optimal Send-Time Predictor: Training Script
 ===================================================
 Model type  : Gradient Boosting (Calibrated)
 Purpose     : Given a candidate (hour, day, channel) and business context
@@ -19,13 +19,13 @@ Auditing api.py against the task doc's real P2.1 spec showed the actual
 This is a COMPLETELY different 6-field schema from the 12 raw behavioral
 features (scroll_depth_pct, cursor_hesitation, etc.) this file was
 trained on before. A model trained on the wrong columns can't be called
-by the real endpoint at all — sklearn will raise a shape/name mismatch
+by the real endpoint at all - sklearn will raise a shape/name mismatch
 and every request will silently fall back. Rebuilt from scratch to match
 the real contract exactly.
 
 recovery_action and cart_value_tier are categorical business fields
 (recovery_action comes from M2's decision matrix; cart_value_tier is a
-bucket, not a raw pipeline.py feature) — encoded here as integers via
+bucket, not a raw pipeline.py feature) - encoded here as integers via
 the same maps api.py must use when building the feature vector.
 
 KNOWN GAP (flagged, not fixed): the task doc's earlier M3 description
@@ -49,7 +49,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 from src.config.mlflow_config import get_or_create_experiment
 
 # These maps MUST be used identically in api.py when encoding incoming
-# Pydantic string fields before calling model.predict() — training and
+# Pydantic string fields before calling model.predict() - training and
 # inference have to agree on the same integer encoding or predictions
 # are meaningless.
 CHANNEL_MAP = {"email": 0, "sms": 1, "whatsapp": 2}
@@ -62,7 +62,7 @@ def load_training_data(n=2000):
     Generates synthetic historical send-attempt records with the 6 real
     endpoint-contract features. Each row represents "message sent to this
     customer at this hour/day via this channel, given this business
-    context — did it convert within 120 minutes?"
+    context - did it convert within 120 minutes-
 
     Target: conversion_within_120min
     """
@@ -75,7 +75,7 @@ def load_training_data(n=2000):
     cart_value_tier = np.random.choice([0, 1, 2], size=n, p=[0.4, 0.4, 0.2])
     customer_timezone_offset = np.random.randint(-12, 15, n)
 
-    # Synthetic target generation — plausible real-world patterns, with
+    # Synthetic target generation - plausible real-world patterns, with
     # effect sizes strong enough to clear the doc's hard AUC-ROC >= 0.70
     # production threshold (first pass scored 0.685 and was rejected).
     #  - Peak engagement hours (9-11am, 6-9pm local) convert better
@@ -175,7 +175,7 @@ def train(run_name: str = "m3-sendtime-training-v4-contract-aligned"):
         #newly added
         #--
         # registered_model_name added: api.py calls
-        # mlflow.sklearn.load_model("models:/send_time/latest") — without
+        # mlflow.sklearn.load_model("models:/send_time/latest") - without
         # registering under this exact name, /predict/send-time always
         # falls back.
         mlflow.sklearn.log_model(model, "m3_timing_model", registered_model_name="send_time")
@@ -190,7 +190,7 @@ def train(run_name: str = "m3-sendtime-training-v4-contract-aligned"):
         print(f"F1 Score:  {f1:.4f}")
         print(f"AUC-ROC:   {auc:.4f}")
 
-        print(f"\n✅ MLflow Run ID: {run.info.run_id}")
+        print(f"\n[OK] MLflow Run ID: {run.info.run_id}")
         print(f"MLflow Run Name: {run.info.run_name}")
         print(f"Check DagsHub UI for the full tracking details.")
 

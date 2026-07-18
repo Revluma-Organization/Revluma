@@ -3,14 +3,14 @@ Unit tests for rfm_sync.py
 Framework: unittest + unittest.mock.MagicMock
 """
 
+import os
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
-import sys
-import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from src.jobs.rfm_sync import get_rfm_segment, calculate_rfm_for_all_customers
+from src.jobs.rfm_sync import calculate_rfm_for_all_customers, get_rfm_segment
 
 
 class TestGetRfmSegment(unittest.TestCase):
@@ -73,10 +73,22 @@ class TestCalculateRfmForAllCustomers(unittest.TestCase):
     def test_normal_batch_processing(self, mock_rfm):
         mock_db, cursor = self._build_mock_db(["c1", "c2"], None)
         mock_rfm.side_effect = [
-            {"rfm_recency_score": 5, "rfm_frequency_score": 5, "rfm_monetary_score": 5,
-             "days_since_last_purchase": 1, "past_orders_total": 25, "avg_order_value": 300.0},
-            {"rfm_recency_score": 1, "rfm_frequency_score": 1, "rfm_monetary_score": 1,
-             "days_since_last_purchase": 400, "past_orders_total": 0, "avg_order_value": 0.0},
+            {
+                "rfm_recency_score": 5,
+                "rfm_frequency_score": 5,
+                "rfm_monetary_score": 5,
+                "days_since_last_purchase": 1,
+                "past_orders_total": 25,
+                "avg_order_value": 300.0,
+            },
+            {
+                "rfm_recency_score": 1,
+                "rfm_frequency_score": 1,
+                "rfm_monetary_score": 1,
+                "days_since_last_purchase": 400,
+                "past_orders_total": 0,
+                "avg_order_value": 0.0,
+            },
         ]
 
         result = calculate_rfm_for_all_customers("store_1", mock_db)
@@ -100,11 +112,23 @@ class TestCalculateRfmForAllCustomers(unittest.TestCase):
     def test_per_customer_failure_does_not_abort_batch(self, mock_rfm):
         mock_db, cursor = self._build_mock_db(["c1", "c2", "c3"], None)
         mock_rfm.side_effect = [
-            {"rfm_recency_score": 5, "rfm_frequency_score": 5, "rfm_monetary_score": 5,
-             "days_since_last_purchase": 1, "past_orders_total": 25, "avg_order_value": 300.0},
+            {
+                "rfm_recency_score": 5,
+                "rfm_frequency_score": 5,
+                "rfm_monetary_score": 5,
+                "days_since_last_purchase": 1,
+                "past_orders_total": 25,
+                "avg_order_value": 300.0,
+            },
             Exception("simulated failure for c2"),
-            {"rfm_recency_score": 1, "rfm_frequency_score": 1, "rfm_monetary_score": 1,
-             "days_since_last_purchase": 400, "past_orders_total": 0, "avg_order_value": 0.0},
+            {
+                "rfm_recency_score": 1,
+                "rfm_frequency_score": 1,
+                "rfm_monetary_score": 1,
+                "days_since_last_purchase": 400,
+                "past_orders_total": 0,
+                "avg_order_value": 0.0,
+            },
         ]
 
         result = calculate_rfm_for_all_customers("store_1", mock_db)
@@ -132,8 +156,14 @@ class TestCalculateRfmForAllCustomers(unittest.TestCase):
     def test_commit_called_once_not_per_customer(self, mock_rfm):
         mock_db, cursor = self._build_mock_db(["c1", "c2", "c3"], None)
         mock_rfm.side_effect = [
-            {"rfm_recency_score": 3, "rfm_frequency_score": 3, "rfm_monetary_score": 3,
-             "days_since_last_purchase": 10, "past_orders_total": 5, "avg_order_value": 50.0}
+            {
+                "rfm_recency_score": 3,
+                "rfm_frequency_score": 3,
+                "rfm_monetary_score": 3,
+                "days_since_last_purchase": 10,
+                "past_orders_total": 5,
+                "avg_order_value": 50.0,
+            }
         ] * 3
 
         calculate_rfm_for_all_customers("store_1", mock_db)
@@ -145,10 +175,22 @@ class TestCalculateRfmForAllCustomers(unittest.TestCase):
     def test_segment_distribution_sums_correctly(self, mock_rfm):
         mock_db, cursor = self._build_mock_db(["c1", "c2"], None)
         mock_rfm.side_effect = [
-            {"rfm_recency_score": 4, "rfm_frequency_score": 4, "rfm_monetary_score": 4,
-             "days_since_last_purchase": 5, "past_orders_total": 15, "avg_order_value": 150.0},
-            {"rfm_recency_score": 4, "rfm_frequency_score": 4, "rfm_monetary_score": 4,
-             "days_since_last_purchase": 3, "past_orders_total": 12, "avg_order_value": 120.0},
+            {
+                "rfm_recency_score": 4,
+                "rfm_frequency_score": 4,
+                "rfm_monetary_score": 4,
+                "days_since_last_purchase": 5,
+                "past_orders_total": 15,
+                "avg_order_value": 150.0,
+            },
+            {
+                "rfm_recency_score": 4,
+                "rfm_frequency_score": 4,
+                "rfm_monetary_score": 4,
+                "days_since_last_purchase": 3,
+                "past_orders_total": 12,
+                "avg_order_value": 120.0,
+            },
         ]
 
         result = calculate_rfm_for_all_customers("store_1", mock_db)

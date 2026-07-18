@@ -22,8 +22,6 @@ A send is considered successful if:
 
 ## 3. Feature Inputs
 
-> **Correction (see chat audit):** the previous version of this README listed 11 raw `pipeline.py` event functions (`calculate_scroll_depth`, `calculate_cursor_hesitation_count`, etc.) as the required inputs. Auditing `api.py`'s actual `/predict/send-time` endpoint against the task doc showed the real `SendTimeFeatures` Pydantic schema is a completely different, smaller set of fields — the endpoint takes business context already decided upstream (by M2's recovery decision), not raw session events. Section rewritten to match what's actually served. The old function names also had a naming-drift bug (`calculate_cursor_hesitation_count` isn't a real function in `pipeline.py` — the real one is `calculate_cursor_hesitation`), which no longer matters here since those features aren't used by this model at all.
-
 **3.1 Session Context**
 - `local_hour_of_session` (int, 0–23) — grid-searched by the endpoint across all 24 hours
 - `day_of_week_session` (int, 0–6, ISO)
@@ -103,8 +101,6 @@ CREATE TABLE sequence_events (
 **Current status:** built on 2000 **synthetic** records per the P2.2 task spec (MVP stage — real `sequence_sends`/`sequence_events` data doesn't exist yet). **AUC-ROC 0.845** on held-out synthetic test data, clearing the doc's 0.70 production threshold. This number will change once retrained on real data — treat it as a code-correctness check, not a real-world performance guarantee.
 
 ## 8. Output Schema
-
-> **Correction (see chat audit):** the previous version of this README specified `{optimal_send_hour, optimal_send_day, confidence}`. The actual implemented `/predict/send-time` endpoint (matching the task doc's real P2.1 spec) returns a different, richer schema — rewritten below to match what's actually running.
 
 **Model-backed response:**
 ```json

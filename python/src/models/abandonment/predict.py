@@ -1,5 +1,5 @@
 """
-M1 — Abandonment Probability Predictor: Inference Script
+M1 - Abandonment Probability Predictor: Inference Script
 =========================================================
 Runs every 60 seconds on all active checkout sessions.
 When score exceeds abandonment threshold, triggers exit-intent

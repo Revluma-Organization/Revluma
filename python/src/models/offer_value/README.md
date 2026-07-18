@@ -11,8 +11,6 @@ This is a revenue optimization regression problem, gated by hard business rules 
 **Continuous regression target:**
 - Range: 0 → 25
 
-> **Correction (see chat audit):** the previous version of this README specified a 0–30 range. A different section of the same original doc states the hard constraint "never >25%" — training a model to output values it's never allowed to actually use wastes model capacity and risks predictions that look reasonable internally while being silently clipped downstream. Range corrected to 0–25 throughout.
-
 **Definition:**
 The discount percentage that historically:
 - led to conversion OR recovery
@@ -23,8 +21,6 @@ The discount percentage that historically:
 - >0 means: discount required to influence conversion
 
 ## 3. Feature Inputs
-
-> **Correction (see chat audit):** the previous version listed 9 features, all pipeline.py-mapped, which is mostly still correct — but was missing `tss_score`, a third M2 output the task doc explicitly requires ("PSS + CSS + TSS"). Added below, flagged as not-yet-real data.
 
 **3.1 M2 Sensitivity Outputs**
 - `pss_score` (int, 0–100) — Price Sensitivity Score
@@ -56,8 +52,6 @@ Unlike M4, this model does not consume RFM sub-scores directly — price/conveni
 - `learning_rate = 0.05`
 - `random_state = 42`
 
-> Note: the previous version of this README specified `n_estimators=200, max_depth=4`. Built with 150/3 to stay consistent with M3/M4's hyperparameters for this MVP phase — revisit if the larger model materially improves real-data performance later.
-
 ## 5. Hard Business Constraints
 MUST enforce — **two separate gates**, not one combined rule:
 
@@ -68,8 +62,6 @@ Then: return `offer_type = TRUST_SIGNAL`, `discount_pct = 0.0` immediately — a
 **5.2 Nudge Gate**
 If: `pss_score < 35 AND css_score < 35`
 Then: return `offer_type = NUDGE`, `discount_pct = 0.0` — low sensitivity on both axes means a soft reminder is more appropriate than a discount.
-
-> **Correction:** the previous version specified a single "PSS Guardrail: if pss_score < 30, return 0.0." The actual task doc spec has two independent gates using different fields (TSS alone, and PSS+CSS combined) — corrected above. This also resolves an earlier draft of this project that incorrectly assumed TSS was the same thing as CSS; they are confirmed distinct in the doc's own wording ("PSS + CSS + TSS").
 
 **5.3 Upper Bound (all other cases)**
 - Never recommend discount > 25%
@@ -83,8 +75,6 @@ ALTER TABLE orders ADD COLUMN discount_pct FLOAT;
 **Purpose:** store historical discount effectiveness, train regression target, enable causal learning. **Flag to Afolabi** — per the task doc's own note.
 
 ## 7. Output Schema
-
-> **Correction (see chat audit):** the previous version specified `{recommended_discount_pct, confidence}`. The actual implemented `/predict/offer-value` endpoint returns a richer schema matching the task doc's real P2.1 spec — rewritten below.
 
 ```json
 {

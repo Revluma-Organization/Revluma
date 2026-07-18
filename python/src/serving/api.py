@@ -8,28 +8,28 @@ uvicorn src.serving.api:app --reload --port 8000
 #newly added
 #--
 CORRECTIONS APPLIED (auditing the uploaded draft against the task doc's
-actual P2.1 spec found several real mismatches — see chat for the full
+actual P2.1 spec found several real mismatches - see chat for the full
 audit table). Summary of what changed in this rewrite:
 
-  1. AbandonmentFeatures — added cart_item_add_count and
+  1. AbandonmentFeatures - added cart_item_add_count and
      cart_item_remove_count (doc requires 7 fields; draft had 5).
 
-  2. SensitivityFeatures — renamed coupon_usage_pct -> the real
+  2. SensitivityFeatures - renamed coupon_usage_pct -> the real
      pipeline.py name past_orders_with_coupon_pct, fixed its scale from
      0-100 to the real 0.0-1.0 ratio, and swapped time_on_page_ms for
      tab_switch_count to match the actual 8-feature weighted table in
      M2's README.
 
-  3. ChurnRiskResponse — full rewrite. Draft returned
+  3. ChurnRiskResponse - full rewrite. Draft returned
      {churn_score, risk_level, trigger_winback, customer_segment} but
      the doc requires {churn_probability, churn_tier, win_back_urgency,
      engagement_decay_score, recommended_channel, offer_required,
      escalate_to_human}. Also fixed a real bug: the draft called
      model.predict_proba(X)[0][1] assuming a BINARY model, but M4 is a
-     4-CLASS classifier — that indexing would silently return the wrong
+     4-CLASS classifier - that indexing would silently return the wrong
      class's probability every time.
 
-  4. SendTimeFeatures / SendTimeResponse — full rewrite. Draft's input
+  4. SendTimeFeatures / SendTimeResponse - full rewrite. Draft's input
      schema (email_open_hour_history, etc.) didn't match the doc's real
      schema (channel, recovery_action, cart_value_tier,
      customer_timezone_offset) at all, and the response used
@@ -38,16 +38,16 @@ audit table). Summary of what changed in this rewrite:
      hours using the M3 model (see train.py's redesign) and returns the
      doc's exact response shape.
 
-  5. OfferValueFeatures/Response — full rewrite. Added tss_score input
-     (see M5 train.py for why — M2 outputs PSS+CSS+TSS, not just two
+  5. OfferValueFeatures/Response - full rewrite. Added tss_score input
+     (see M5 train.py for why - M2 outputs PSS+CSS+TSS, not just two
      scores). Implemented the doc's two separate hard gates (TRUST_SIGNAL
      vs NUDGE) which the draft didn't have at all. Rebuilt response to
      match the doc's required fields.
 
-  6. GET /health — added version, models_loaded, database_url_set,
+  6. GET /health - added version, models_loaded, database_url_set,
      uptime_seconds per doc spec (draft only returned status+service).
 
-  7. Startup model preload — added, per doc: "On application startup,
+  7. Startup model preload - added, per doc: "On application startup,
      attempt to load all five models into the cache... never crash on
      startup due to a missing model."
 
@@ -100,7 +100,7 @@ async def verify_internal_caller(
     Fails with 401 if the key is missing, empty, or doesn't match.
     Uses constant-time comparison to prevent timing side-channels."""
     if not ML_INTERNAL_KEY:
-        # If no key is configured, deny all authenticated requests —
+        # If no key is configured, deny all authenticated requests -
         # misconfiguration must fail closed, not open.
         raise HTTPException(
             status_code=500,
@@ -115,7 +115,7 @@ async def verify_internal_caller(
 # ---------------------------------------------------------------------------
 _model_cache: dict = {}
 
-# Registry names — MUST exactly match registered_model_name used in each
+# Registry names - MUST exactly match registered_model_name used in each
 # model's train.py, or load_model() will always return None.
 MODEL_NAMES = ["abandonment", "sensitivity_pss", "sensitivity_css",
                "churn_risk", "send_time", "offer_value"]
@@ -141,7 +141,7 @@ async def _preload_models():
     """
     Per doc: attempt to load all five models into cache on startup.
     Log which loaded and which fell back. Never crash startup if a
-    model is missing — that's exactly what the fallback logic is for.
+    model is missing - that's exactly what the fallback logic is for.
     """
     for name in MODEL_NAMES:
         model = _load_model(name)
@@ -165,7 +165,7 @@ class AbandonmentFeatures(BaseModel):
 class SensitivityFeatures(BaseModel):
     # Matches the 8-feature weighted table in M2's README exactly.
     # past_orders_with_coupon_pct is a 0.0-1.0 RATIO in pipeline.py
-    # (calculate_coupon_usage_pct), not a 0-100 percentage — the earlier
+    # (calculate_coupon_usage_pct), not a 0-100 percentage - the earlier
     # draft had both the wrong name and the wrong scale.
     past_orders_with_coupon_pct: float = Field(0.0, ge=0.0, le=1.0)
     visited_coupon_page: bool = Field(False)
@@ -188,7 +188,7 @@ class ChurnFeatures(BaseModel):
     # NOTE: the doc's escalate_to_human rule needs customer LTV, which
     # isn't among M4's 7 trained features. Accepted here as an optional
     # input; if not provided we approximate LTV as
-    # past_orders_total * avg_order_value. Flagged — a real LTV field
+    # past_orders_total * avg_order_value. Flagged - a real LTV field
     # from the customer_crm table would be more accurate than this proxy.
     customer_ltv: float = Field(0.0, ge=0.0)
 
@@ -209,7 +209,7 @@ class OfferValueFeatures(BaseModel):
     pss_score: int = Field(0, ge=0, le=100)
     css_score: int = Field(0, ge=0, le=100)
     # tss_score: M2 output per the doc ("PSS + CSS + TSS"), but no real
-    # backing data exists yet anywhere in the repo — see M5 train.py.
+    # backing data exists yet anywhere in the repo - see M5 train.py.
     # Defaults to 0 (not trust-blocked) so the TRUST_SIGNAL gate doesn't
     # spuriously fire until real TSS data is available.
     tss_score: int = Field(0, ge=0, le=100)
@@ -454,19 +454,19 @@ async def predict_churn(features: ChurnFeatures):
         feature_vector = pd.DataFrame([{k: getattr(features, k) for k in feature_cols}])
 
         # M4 is a 4-CLASS classifier (see train.py), NOT binary. The earlier
-        # draft's predict_proba(X)[0][1] indexing was a real bug — it would
+        # draft's predict_proba(X)[0][1] indexing was a real bug - it would
         # have silently returned P(AT_RISK) as if it were a generic churn
         # probability regardless of the actual predicted class.
         proba = model.predict_proba(feature_vector)[0]
         predicted_idx = int(proba.argmax())
         tier = CHURN_TIERS[predicted_idx]
-        # churn_probability = P(anything other than HEALTHY) — a single
+        # churn_probability = P(anything other than HEALTHY) - a single
         # scalar "risk of churning at all", distinct from churn_tier which
         # is the discrete predicted class.
         churn_probability = float(1.0 - proba[0])
         urgency = TIER_TO_URGENCY[tier]
 
-        # engagement_decay_score has no dedicated model output — approximated
+        # engagement_decay_score has no dedicated model output - approximated
         # from the predicted tier's own probability mass. Flagged: a real
         # engagement-decay signal would need actual engagement event data
         # (see M4's flagged missing 17 signals).
@@ -564,7 +564,7 @@ async def predict_send_time(features: SendTimeFeatures):
           dependencies=[Depends(verify_internal_caller)])
 async def predict_offer_value(features: OfferValueFeatures):
     try:
-        # Hard gates evaluated BEFORE touching the model, per doc — two
+        # Hard gates evaluated BEFORE touching the model, per doc - two
         # separate rules, not one:
         if features.tss_score >= 60:
             return OfferValueResponse(
@@ -575,7 +575,7 @@ async def predict_offer_value(features: OfferValueFeatures):
                 expected_recovery_probability=0.0,
                 margin_cost_estimate_pct=0.0,
                 reasoning="Shopper shows high trust-friction signals (TSS>=60); "
-                          "a discount won't address the blocker — surfacing a "
+                          "a discount won't address the blocker - surfacing a "
                           "trust/security reassurance instead.",
                 fallback=False
             )
@@ -604,7 +604,7 @@ async def predict_offer_value(features: OfferValueFeatures):
                 minimum_order_value=0.0,
                 expected_recovery_probability=0.0,
                 margin_cost_estimate_pct=pct,
-                reasoning="Model unavailable — using PSS-based algorithmic fallback.",
+                reasoning="Model unavailable - using PSS-based algorithmic fallback.",
                 fallback=True
             )
 
@@ -637,6 +637,6 @@ async def predict_offer_value(features: OfferValueFeatures):
             minimum_order_value=0.0,
             expected_recovery_probability=0.0,
             margin_cost_estimate_pct=0.0,
-            reasoning="Inference error — defaulting to safe no-discount nudge.",
+            reasoning="Inference error - defaulting to safe no-discount nudge.",
             fallback=True
         )
