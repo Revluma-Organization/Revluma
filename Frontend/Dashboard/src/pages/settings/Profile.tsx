@@ -122,7 +122,7 @@ const Profile: FC = () => {
                 Edit
               </MotionButton>
             ) : (
-              <MotionButton whileTap={{ scale: 0.98 }} onClick={handleSaveNames} className="bg-[#00D084] hover:bg-[#00B370] text-slate-950 font-semibold transition-colors text-xs h-9 px-6 rounded-lg">
+              <MotionButton whileTap={{ scale: 0.98 }} onClick={handleSaveNames} className="bg-[#007FFF] hover:bg-[#007FFF]/90 text-white font-semibold transition-colors text-xs h-9 px-6 rounded-lg">
                 Save
               </MotionButton>
             )}

@@ -101,7 +101,7 @@ export function ProductRow({ product: p, index }: Props) {
           </span>
           <span
             className="text-[0.68rem] tabular-nums"
-            style={{ color: p.volumeDelta >= 0 ? "hsl(var(--green))" : "hsl(var(--red))" }}
+            style={{ color: p.volumeDelta >= 0 ? "hsl(var(--accent))" : "hsl(var(--red))" }}
           >
             {p.volumeDelta >= 0 ? "+" : ""}
             {p.volumeDelta.toFixed(1)}%
@@ -117,11 +117,11 @@ export function ProductRow({ product: p, index }: Props) {
               <div className="flex items-center gap-1.5">
                 <TrendingUp
                   className={`h-3.5 w-3.5 ${positive ? "" : "rotate-180"}`}
-                  style={{ color: positive ? "hsl(var(--green))" : "hsl(var(--red))" }}
+                  style={{ color: positive ? "hsl(var(--accent))" : "hsl(var(--red))" }}
                 />
                 <span
                   className="display text-[0.92rem] font-bold tabular-nums"
-                  style={{ color: positive ? "hsl(var(--green))" : "hsl(var(--red))" }}
+                  style={{ color: positive ? "hsl(var(--accent))" : "hsl(var(--red))" }}
                 >
                   {positive ? "+" : ""}
                   {p.growth.toFixed(1)}%

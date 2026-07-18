@@ -11,7 +11,7 @@ const FILTERS: { id: "all" | ActivityTag; label: string }[] = [
 ];
 
 const TAG_TONE: Record<ActivityTag, string> = {
-  recovery:  "hsl(var(--green))",
+  recovery:  "hsl(var(--accent))",
   cart:      "hsl(var(--amber))",
   campaign:  "hsl(var(--blue))",
   subscribe: "hsl(var(--purple))",

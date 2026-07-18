@@ -15,7 +15,7 @@ export function HealthScore({ health, loading }: Props) {
   const offset = score !== null ? pathLen - (score / 100) * pathLen : pathLen;
   const gradeTone =
     score === null         ? "hsl(var(--bg-4))"
-    : score >= 80          ? "hsl(var(--green))"
+    : score >= 80          ? "hsl(var(--accent))"
     : score >= 60          ? "hsl(var(--accent))"
     : score >= 40          ? "hsl(var(--amber))"
     :                        "hsl(var(--red))";

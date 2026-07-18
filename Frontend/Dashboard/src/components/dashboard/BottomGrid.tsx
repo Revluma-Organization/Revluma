@@ -60,9 +60,9 @@ export function TrendingProducts({ products, loading }: TrendingProps) {
       <header className="mb-4 flex items-center gap-2">
         <span
           className="flex h-7 w-7 items-center justify-center rounded-md border"
-          style={{ background: "hsl(var(--green) / 0.10)", borderColor: "hsl(var(--green) / 0.22)" }}
+          style={{ background: "hsl(var(--accent) / 0.10)", borderColor: "hsl(var(--accent) / 0.22)" }}
         >
-          <TrendingUp className="h-3.5 w-3.5" style={{ color: "hsl(var(--green))" }} />
+          <TrendingUp className="h-3.5 w-3.5" style={{ color: "hsl(var(--accent))" }} />
         </span>
         <h3 className="section-title">Top Winning Products</h3>
       </header>
@@ -96,7 +96,7 @@ export function TrendingProducts({ products, loading }: TrendingProps) {
                   </div>
                   <span
                     className="rounded-full px-1.5 py-0.5 text-[0.65rem] font-bold"
-                    style={{ background: "hsl(var(--green) / 0.10)", color: "hsl(var(--green))" }}
+                    style={{ background: "hsl(var(--accent) / 0.10)", color: "hsl(var(--accent))" }}
                   >
                     {t.trend}
                   </span>

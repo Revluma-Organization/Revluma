@@ -6,7 +6,7 @@ const ICONS: Record<InnovationCard["iconKey"], React.ElementType> = {
 };
 
 const TONE: Record<InnovationCard["iconColor"], string> = {
-  green:  "hsl(var(--green))",
+  green:  "hsl(var(--accent))",
   blue:   "hsl(var(--blue))",
   amber:  "hsl(var(--amber))",
   purple: "hsl(var(--purple))",

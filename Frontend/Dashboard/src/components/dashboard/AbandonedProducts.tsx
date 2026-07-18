@@ -6,7 +6,7 @@ const ICONS: Record<ProductRow["iconKey"], React.ElementType> = {
 };
 
 const STATUS_TONE: Record<ProductRow["status"], { bg: string; color: string; label: string }> = {
-  recovered:  { bg: "hsl(var(--green) / 0.10)", color: "hsl(var(--green))", label: "Recovered" },
+  recovered:  { bg: "hsl(var(--accent) / 0.10)", color: "hsl(var(--accent))", label: "Recovered" },
   insequence: { bg: "hsl(var(--blue) / 0.10)",  color: "hsl(var(--blue))",  label: "In sequence" },
   lost:       { bg: "hsl(var(--red) / 0.10)",   color: "hsl(var(--red))",   label: "Lost" },
 };

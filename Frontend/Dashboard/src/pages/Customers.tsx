@@ -14,7 +14,7 @@ interface CustomerRow {
 }
 
 const SEGMENT_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  champion:    { label: "Champion",    color: "hsl(var(--green))",  bg: "hsl(var(--green)  / 0.10)" },
+  champion:    { label: "Champion",    color: "hsl(var(--accent))",  bg: "hsl(var(--accent)  / 0.10)" },
   loyal:       { label: "Loyal",       color: "hsl(var(--blue))",   bg: "hsl(var(--blue)   / 0.10)" },
   at_risk:     { label: "At Risk",     color: "hsl(var(--amber))",  bg: "hsl(var(--amber)  / 0.10)" },
   hibernating: { label: "Hibernating", color: "hsl(var(--purple))", bg: "hsl(var(--purple) / 0.10)" },
@@ -125,7 +125,7 @@ export default function Customers() {
                       <p className={DESIGN_TOKENS.emptyState.description}>
                         Once you connect your store, Revluma will import and automatically segment your customer data.
                       </p>
-                      <button className="bg-[#00D084] text-slate-950 font-semibold px-5 py-2.5 rounded-lg hover:bg-[#00B370] transition-colors mt-4 inline-flex">
+                      <button className="bg-[#007FFF] text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-[#007FFF]/90 transition-colors mt-4 inline-flex">
                         Connect your store
                       </button>
                     </div>

@@ -134,7 +134,7 @@ export default function ForgotPassword() {
   }, [step]);
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 selection:bg-[#00D084]/30 selection:text-white">
+    <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 selection:bg-[#007FFF]/30 selection:text-white">
       {/* Absolute top-left back button */}
       <div className="absolute top-8 left-8">
         <a
@@ -192,14 +192,14 @@ export default function ForgotPassword() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="flex flex-col items-center py-6 text-center"
               >
-                <div className="w-16 h-16 rounded-full bg-[#00D084]/10 border border-[#00D084]/20 flex items-center justify-center mb-5">
+                <div className="w-16 h-16 rounded-full bg-[#007FFF]/10 border border-[#00D084]/20 flex items-center justify-center mb-5">
                   <CheckCircle2 className="w-8 h-8 text-[#00D084]" />
                 </div>
                 <h3 className="text-xl font-bold text-white mb-2">Password Reset!</h3>
                 <p className="text-sm text-slate-400 mb-8">{successMessage}</p>
                 <a
                   href="/auth/login.html"
-                  className="w-full py-2.5 rounded-lg font-semibold bg-[#00D084] text-slate-950 transition-colors hover:bg-[#00E591] shadow-md flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-lg font-semibold bg-[#007FFF] text-white transition-colors hover:bg-[#007FFF]/90 shadow-md flex items-center justify-center gap-2"
                 >
                   Return to Login
                   <ArrowRight className="w-4 h-4" />
@@ -241,7 +241,7 @@ export default function ForgotPassword() {
                     <button
                       type="submit"
                       disabled={loading || !email}
-                      className="w-full mt-2 py-2.5 rounded-lg font-semibold bg-[#00D084] text-slate-950 transition-colors hover:bg-[#00E591] shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full mt-2 py-2.5 rounded-lg font-semibold bg-[#007FFF] text-white transition-colors hover:bg-[#007FFF]/90 shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? (
                         <>
@@ -302,7 +302,7 @@ export default function ForgotPassword() {
                     <button
                       type="submit"
                       disabled={loading || otp.join("").length !== 6}
-                      className="w-full py-2.5 rounded-lg font-semibold bg-[#00D084] text-slate-950 transition-colors hover:bg-[#00E591] shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full py-2.5 rounded-lg font-semibold bg-[#007FFF] text-white transition-colors hover:bg-[#007FFF]/90 shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? (
                         <>
@@ -371,7 +371,7 @@ export default function ForgotPassword() {
                     <button
                       type="submit"
                       disabled={loading || !newPassword || !confirmPassword}
-                      className="w-full mt-2 py-2.5 rounded-lg font-semibold bg-[#00D084] text-slate-950 transition-colors hover:bg-[#00E591] shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full mt-2 py-2.5 rounded-lg font-semibold bg-[#007FFF] text-white transition-colors hover:bg-[#007FFF]/90 shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? (
                         <>

@@ -104,7 +104,7 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
 const STATUS_STYLE: Record<ConnectionStatus, { color: string; bg: string }> = {
   not_connected: { color: "hsl(var(--t3))", bg: "hsl(var(--bg-4))" },
   connecting: { color: "hsl(var(--amber))", bg: "hsl(var(--amber)  / 0.12)" },
-  connected: { color: "hsl(var(--green))", bg: "hsl(var(--green)  / 0.12)" },
+  connected: { color: "hsl(var(--accent))", bg: "hsl(var(--accent)  / 0.12)" },
   error: { color: "hsl(var(--red))", bg: "hsl(var(--red)    / 0.12)" },
 };
 
@@ -334,7 +334,7 @@ export default function Integrations() {
         <div className="flex items-center gap-2 self-start rounded-full border border-border bg-bg-2 px-3 py-1.5 text-[0.72rem] font-semibold text-t2 sm:self-auto">
           <span
             className="h-1.5 w-1.5 rounded-full"
-            style={{ background: anyConnected ? "hsl(var(--green))" : "hsl(var(--t4))" }}
+            style={{ background: anyConnected ? "hsl(var(--accent))" : "hsl(var(--t4))" }}
           />
           {connectedCount} of {PLATFORMS.length} platforms connected
         </div>
@@ -356,7 +356,7 @@ export default function Integrations() {
           </p>
           <button
             onClick={() => handleConnectClick('shopify')}
-            className={`mt-4 px-6 py-2 rounded-md font-semibold bg-[#00D084] text-slate-950 transition-colors hover:bg-[#00E591] shadow-md`}
+            className={`mt-4 px-6 py-2 rounded-md font-semibold bg-[#007FFF] text-white transition-colors hover:bg-[#007FFF]/90 shadow-md`}
           >
             Connect Store
           </button>
@@ -502,7 +502,7 @@ export default function Integrations() {
                   <div className="mt-auto flex items-center gap-2 pt-1">
                     {isConnected ? (
                       <button className="flex flex-1 items-center justify-center gap-2 rounded-md border border-border bg-glass/[0.035] py-2 text-[0.82rem] font-semibold text-t1 transition-colors hover:border-border-md hover:bg-glass/[0.06]">
-                        <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "hsl(var(--green))" }} />
+                        <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "hsl(var(--accent))" }} />
                         Manage Connection
                       </button>
                     ) : (

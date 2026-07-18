@@ -86,9 +86,9 @@ function MetricCard({ m, index }: { m: Metric; index: number }) {
       <div
         className="mt-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.68rem] font-medium"
         style={{
-          color: positive ? "hsl(var(--green))" : "hsl(var(--red))",
-          borderColor: positive ? "hsl(var(--green) / 0.25)" : "hsl(var(--red) / 0.25)",
-          background: positive ? "hsl(var(--green) / 0.08)" : "hsl(var(--red) / 0.08)",
+          color: positive ? "hsl(var(--accent))" : "hsl(var(--red))",
+          borderColor: positive ? "hsl(var(--accent) / 0.25)" : "hsl(var(--red) / 0.25)",
+          background: positive ? "hsl(var(--accent) / 0.08)" : "hsl(var(--red) / 0.08)",
         }}
       >
         <TrendingUp className={`h-3 w-3 ${positive ? "" : "rotate-180"}`} />

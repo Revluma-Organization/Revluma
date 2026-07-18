@@ -181,7 +181,7 @@ export const MOCK: OverviewData = {
   donut: {
     total: "$24,810",
     slices: [
-      { label: "Email Sequence",   value: 58, color: "hsl(var(--green))" },
+      { label: "Email Sequence",   value: 58, color: "hsl(var(--accent))" },
       { label: "SMS",              value: 22, color: "hsl(var(--blue))" },
       { label: "Direct Return",    value: 12, color: "hsl(var(--t3))" },
       { label: "Pop-up / On-site", value: 8,  color: "hsl(var(--purple))" },

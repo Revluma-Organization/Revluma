@@ -3,7 +3,7 @@ import { Clock, Phone, Star, ChevronRight, Sparkles } from "lucide-react";
 
 const ICONS: Record<AIInsight["iconKey"], { Icon: React.ElementType; tone: string; bg: string; border: string }> = {
   timing:     { Icon: Clock, tone: "hsl(var(--amber))",  bg: "hsl(var(--amber) / 0.10)",  border: "hsl(var(--amber) / 0.22)" },
-  behavior:   { Icon: Phone, tone: "hsl(var(--green))",  bg: "hsl(var(--green) / 0.10)",  border: "hsl(var(--green) / 0.22)" },
+  behavior:   { Icon: Phone, tone: "hsl(var(--accent))",  bg: "hsl(var(--accent) / 0.10)",  border: "hsl(var(--accent) / 0.22)" },
   prediction: { Icon: Star,  tone: "hsl(var(--purple))", bg: "hsl(var(--purple) / 0.10)", border: "hsl(var(--purple) / 0.22)" },
 };
 

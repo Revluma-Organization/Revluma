@@ -126,8 +126,8 @@ const InviteAccept: FC = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950 px-4">
         <div className="max-w-sm w-full text-center space-y-6">
-          <div className="h-16 w-16 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center mx-auto">
-            <CheckCircle2 className="h-7 w-7 text-green-500" />
+          <div className="h-16 w-16 rounded-full bg-[#007FFF]/10 border border-[#007FFF]/20 flex items-center justify-center mx-auto">
+            <CheckCircle2 className="h-7 w-7 text-[#007FFF]" />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-t1 display">Welcome to the Team!</h1>

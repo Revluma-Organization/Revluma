@@ -13,7 +13,7 @@ interface NotifItem {
 }
 
 const TONE: Record<string, { bg: string; border: string; color: string }> = {
-  green:  { bg: 'hsl(var(--green) / 0.10)',  border: 'hsl(var(--green) / 0.22)',  color: 'hsl(var(--green))' },
+  green:  { bg: 'hsl(var(--accent) / 0.10)',  border: 'hsl(var(--accent) / 0.22)',  color: 'hsl(var(--accent))' },
   amber:  { bg: 'hsl(var(--amber) / 0.10)',  border: 'hsl(var(--amber) / 0.22)',  color: 'hsl(var(--amber))' },
   blue:   { bg: 'hsl(var(--blue) / 0.10)',   border: 'hsl(var(--blue) / 0.22)',   color: 'hsl(var(--blue))' },
   purple: { bg: 'hsl(var(--purple) / 0.10)', border: 'hsl(var(--purple) / 0.22)', color: 'hsl(var(--purple))' },

@@ -13,7 +13,7 @@ const ICON_MAP: Record<KpiIconKey, React.ElementType> = {
 };
 
 const TONES: Record<string, { bg: string; border: string; color: string; ring: string }> = {
-  green:  { bg: "hsl(var(--green) / 0.10)",  border: "hsl(var(--green) / 0.22)",  color: "hsl(var(--green))",  ring: "hsl(var(--green))" },
+  green:  { bg: "hsl(var(--accent) / 0.10)",  border: "hsl(var(--accent) / 0.22)",  color: "hsl(var(--accent))",  ring: "hsl(var(--accent))" },
   amber:  { bg: "hsl(var(--amber) / 0.10)",  border: "hsl(var(--amber) / 0.22)",  color: "hsl(var(--amber))",  ring: "hsl(var(--amber))" },
   blue:   { bg: "hsl(var(--blue) / 0.10)",   border: "hsl(var(--blue) / 0.22)",   color: "hsl(var(--blue))",   ring: "hsl(var(--blue))" },
   purple: { bg: "hsl(var(--purple) / 0.10)", border: "hsl(var(--purple) / 0.22)", color: "hsl(var(--purple))", ring: "hsl(var(--purple))" },
@@ -70,7 +70,7 @@ export function KpiCard({ kpi, index }: { kpi: KPI; index: number }) {
               kpi.dir === "down" && "text-red",
               kpi.dir === "neutral" && "text-t2",
             )}
-            style={kpi.dir === "up" ? { background: "hsl(var(--green) / 0.10)" } : kpi.dir === "down" ? { background: "hsl(var(--red) / 0.10)" } : { background: "hsl(var(--glass) / 0.07)" }}
+            style={kpi.dir === "up" ? { background: "hsl(var(--accent) / 0.10)" } : kpi.dir === "down" ? { background: "hsl(var(--red) / 0.10)" } : { background: "hsl(var(--glass) / 0.07)" }}
           >
             {kpi.dir === "up" && <ArrowUp className="h-2.5 w-2.5" />}
             {kpi.dir === "down" && <ArrowDown className="h-2.5 w-2.5" />}

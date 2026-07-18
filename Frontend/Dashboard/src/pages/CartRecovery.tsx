@@ -14,7 +14,7 @@ interface CartRow {
 
 const STATUS_STYLE: Record<CartRow["status"], { label: string; color: string; bg: string }> = {
   abandoned: { label: "Abandoned",  color: "hsl(var(--amber))", bg: "hsl(var(--amber) / 0.10)" },
-  recovered: { label: "Recovered",  color: "hsl(var(--green))", bg: "hsl(var(--green) / 0.10)" },
+  recovered: { label: "Recovered",  color: "hsl(var(--accent))", bg: "hsl(var(--accent) / 0.10)" },
   lost:      { label: "Lost",       color: "hsl(var(--red))",   bg: "hsl(var(--red)   / 0.10)" },
 };
 
@@ -120,7 +120,7 @@ export default function CartRecovery() {
                       <p className={DESIGN_TOKENS.emptyState.description}>
                         Once you connect your store, Revluma will automatically start tracking and recovering abandoned carts.
                       </p>
-                      <button className="bg-[#00D084] text-slate-950 font-semibold px-5 py-2.5 rounded-lg hover:bg-[#00B370] transition-colors mt-4 inline-flex">
+                      <button className="bg-[#007FFF] text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-[#007FFF]/90 transition-colors mt-4 inline-flex">
                         Connect your store
                       </button>
                     </div>

@@ -97,7 +97,7 @@ export function ChangePasswordForm({ onCancel }: { onCancel: () => void }) {
       )}
 
       <div className="flex flex-col items-end gap-2 pt-2">
-        <MotionButton whileTap={{ scale: 0.98 }} type="submit" disabled={loading} className="!bg-[#00D084] hover:!bg-[#00B370] !text-slate-950 font-semibold h-8 px-6 text-xs transition-colors rounded-md border-none">
+        <MotionButton whileTap={{ scale: 0.98 }} type="submit" disabled={loading} className="!bg-[#007FFF] hover:!bg-[#00B370] !text-white font-semibold h-8 px-6 text-xs transition-colors rounded-md border-none">
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Update Password"}
         </MotionButton>
         <MotionButton whileTap={{ scale: 0.98 }} type="button" onClick={onCancel} variant="ghost" className="text-gray-400 hover:text-white h-8 px-4 text-xs transition-colors rounded-md">
