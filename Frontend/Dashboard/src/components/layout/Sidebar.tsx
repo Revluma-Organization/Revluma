@@ -211,13 +211,13 @@ export function Sidebar() {
                         >
                           {isActive && (
                          <motion.span
-                         layoutId="sidebar-active-pill"
-                          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                             className="absolute inset-0 rounded-md bg-[#007FFF]" 
-                           />
-                            )}
-                              <span className="nav-active-rail absolute inset-y-1.5 left-0 w-[3px] rounded-full" />
-
+                     layoutId="sidebar-active-pill"
+                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                      className="absolute inset-0 rounded-md bg-[#007FFF]"
+                       >
+                       <span className="nav-active-rail absolute inset-y-1.5 left-0 w-[3px] rounded-full" />
+                          </motion.span>
+                        )}
                           <span
                             className={cn(
                               'relative z-[1] flex shrink-0 items-center justify-center rounded-lg',
@@ -254,39 +254,35 @@ export function Sidebar() {
         </nav>
 
         {/* Upgrade banner */}
-        <AnimatePresence>
-          {!sidebarCollapsed && (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 12 }}
-              whileHover={{ y: -3 }}
-              transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-              className="glass-card-soft relative z-[1] mx-2.5 mb-2.5 overflow-hidden rounded-xl p-3.5 text-center"
-            >
-              <motion.div
-  className="relative z-[1] mx-2.5 mb-4 rounded-xl bg-[#007FFF]/10 border border-[#007FFF]/20 p-4"
->
-  <motion.div
-    className="mb-2.5 flex justify-center"
-    animate={{ y: [0, -3, 0] }}
-    transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-  >
-    <Rocket className="h-9 w-9 text-[#007FFF]" />
-  </motion.div>
-  <div className="mb-1 text-center text-[0.8rem] font-semibold text-white">Unlock full automation</div>
-  <div className="mb-3 text-center text-[0.7rem] text-slate-400">Advanced recovery & AI intelligence</div>
-  <motion.button
-    whileHover={{ scale: 1.02 }}
-    whileTap={{ scale: 0.98 }}
-    className="w-full rounded-md bg-[#007FFF] px-0 py-1.5 text-xs font-medium text-white transition hover:bg-[#007FFF]/90"
-  >
-    Upgrade to Pro →
-  </motion.button>
-</motion.div>
-          )}
-        </AnimatePresence>
-
+<AnimatePresence>
+  {!sidebarCollapsed && (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 12 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+      className="relative z-[1] mx-2.5 mb-4 overflow-hidden rounded-xl bg-[#007FFF]/10 border border-[#007FFF]/20 p-4"
+    >
+      <motion.div
+        className="mb-2.5 flex justify-center"
+        animate={{ y: [0, -3, 0] }}
+        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        <Rocket className="h-9 w-9 text-[#007FFF]" />
+      </motion.div>
+      <div className="mb-1 text-center text-[0.8rem] font-semibold text-white">Unlock full automation</div>
+      <div className="mb-3 text-center text-[0.7rem] text-slate-400">Advanced recovery &amp; AI intelligence</div>
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        className="w-full rounded-md bg-[#007FFF] px-0 py-1.5 text-xs font-medium text-white transition hover:bg-[#007FFF]/90"
+      >
+        Upgrade to Pro →
+      </motion.button>
+    </motion.div>
+  )}
+</AnimatePresence>
+        
         {/* User panel — real auth data */}
         <div className={cn('relative z-[1] shrink-0 border-t border-border p-2.5', sidebarCollapsed && 'md:flex md:justify-center')}>
           <AnimatePresence>
