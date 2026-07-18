@@ -15,16 +15,37 @@
 const { validationResult } = require('express-validator');
 const { generateVerificationCode, getVerificationExpiry } = require('../utils/otp');
 const emailService = require('../utils/emailService');
-const { generateAccessToken, generateRefreshToken, hashRefreshToken } = require('../utils/tokens');
+const {
+  generateAccessToken,
+  generateRefreshToken,
+  generatePasswordResetToken,
+  verifyPasswordResetToken,
+  hashRefreshToken,
+} = require('../utils/tokens');
+const { isPasswordPwned } = require('../utils/passwordBreach');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 
 const dbConfig = require('../configs/database');
 const prisma = dbConfig.prisma;
 
+const logger = require('../utils/logger');
+
 const SALT_ROUNDS = 12;
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
+
+// Precomputed dummy bcrypt hash so login always pays the same compare cost
+// whether or not the email exists (timing equalization / F-05).
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('__revluma_dummy_not_a_user__', SALT_ROUNDS);
+
+const REGISTER_GENERIC_MESSAGE =
+  'If an account can be registered for this email, a verification code has been sent.';
+const FORGOT_PASSWORD_GENERIC_MESSAGE =
+  'If an account exists for this email, password reset instructions have been sent.';
+
+const PASSWORD_COMPLEXITY =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +100,29 @@ function getDeviceHint(req) {
   return ua.slice(0, 200); // Cap to prevent large strings
 }
 
+async function revokeAllRefreshTokens(userId) {
+  await prisma.refresh_tokens.deleteMany({
+    where: { user_id: userId },
+  });
+}
+
+async function assertPasswordAllowed(password) {
+  if (!PASSWORD_COMPLEXITY.test(password)) {
+    return {
+      ok: false,
+      error:
+        'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (@$!%*?&), and be at least 8 characters.',
+    };
+  }
+  if (await isPasswordPwned(password)) {
+    return {
+      ok: false,
+      error: 'This password has appeared in a known data breach. Please choose a different password.',
+    };
+  }
+  return { ok: true };
+}
+
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
 
 exports.register = async (req, res, next) => {
@@ -92,21 +136,29 @@ exports.register = async (req, res, next) => {
     }
 
     const { account, storeSetup, preferences } = req.body;
+    const email = account.email.toLowerCase();
+
+    const passwordCheck = await assertPasswordAllowed(account.password);
+    if (!passwordCheck.ok) {
+      return res.status(400).json({ success: false, error: passwordCheck.error });
+    }
 
     const existingUser = await prisma.users.findUnique({
-      where: { email: account.email },
+      where: { email },
     });
 
     if (existingUser) {
-      // If the user has already verified their email, don't allow another registration.
       if (existingUser.email_verified) {
-        return res.status(400).json({
-          success: false,
-          error: 'Email already registered',
+        // Do not reveal that the email is already registered (F-06).
+        logger.info('register_skipped_verified_email');
+        return res.status(200).json({
+          success: true,
+          message: REGISTER_GENERIC_MESSAGE,
+          data: { email },
         });
       }
 
-      // User exists but unverified — resend verification
+      // User exists but unverified — refresh verification silently
       const code = generateVerificationCode();
       const expiry = getVerificationExpiry();
 
@@ -130,8 +182,8 @@ exports.register = async (req, res, next) => {
 
       return res.status(200).json({
         success: true,
-        message: 'Verification code sent to your email.',
-        data: { email: existingUser.email },
+        message: REGISTER_GENERIC_MESSAGE,
+        data: { email },
       });
     }
 
@@ -144,7 +196,7 @@ exports.register = async (req, res, next) => {
       const user = await tx.users.create({
         data: {
           full_name: `${account.firstName} ${account.lastName}`.trim(),
-          email: account.email,
+          email,
           password_hash: hashedPassword,
           email_verified: false,
           verification_code: code,
@@ -167,6 +219,17 @@ exports.register = async (req, res, next) => {
         },
       });
 
+      // RBAC: create the owner membership row
+      await tx.organization_members.create({
+        data: {
+          organization_id: organization.id,
+          user_id: user.id,
+          role: 'owner',
+          status: 'active',
+          joined_at: new Date(),
+        },
+      });
+
       return { user, organization };
     });
 
@@ -178,7 +241,7 @@ exports.register = async (req, res, next) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Verification code sent to your email.',
+      message: REGISTER_GENERIC_MESSAGE,
       data: { email: result.user.email },
     });
 
@@ -259,34 +322,31 @@ exports.login = async (req, res, next) => {
       });
     }
 
-    // ── Find user ─────────────────────────────────────────────────────────────
+    // ── Find user + always bcrypt.compare (timing equalization) ─────────────
     const user = await prisma.users.findUnique({ where: { email } });
+    const isMatch = await bcrypt.compare(
+      account.password,
+      user?.password_hash || DUMMY_PASSWORD_HASH
+    );
 
-    if (!user) {
-      // Record failed attempt before returning — prevents user enumeration timing
-      await recordLoginAttempt(email, false, ip);
-      return res.status(401).json({ success: false, error: 'Invalid credentials' });
-    }
-
-    // ── Password check ────────────────────────────────────────────────────────
-    const isMatch = await bcrypt.compare(account.password, user.password_hash);
-    if (!isMatch) {
+    if (!user || !isMatch) {
       await recordLoginAttempt(email, false, ip);
 
-      // Warn if one attempt away from lockout
-      const failedCount = await prisma.login_attempts.count({
-        where: {
-          email: email,
-          success: false,
-          attempted_at: { gte: new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000) },
-        },
-      });
-
-      if (failedCount >= MAX_LOGIN_ATTEMPTS - 1) {
-        return res.status(401).json({
-          success: false,
-          error: `Invalid credentials. One more failed attempt will lock your account for ${LOCKOUT_MINUTES} minutes.`,
+      if (user && !isMatch) {
+        const failedCount = await prisma.login_attempts.count({
+          where: {
+            email: email,
+            success: false,
+            attempted_at: { gte: new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000) },
+          },
         });
+
+        if (failedCount >= MAX_LOGIN_ATTEMPTS - 1) {
+          return res.status(401).json({
+            success: false,
+            error: `Invalid credentials. One more failed attempt will lock your account for ${LOCKOUT_MINUTES} minutes.`,
+          });
+        }
       }
 
       return res.status(401).json({ success: false, error: 'Invalid credentials' });
@@ -308,10 +368,11 @@ exports.login = async (req, res, next) => {
       return res.status(403).json({ success: false, error: 'Account not found.' });
     }
 
-    // ── Get organization ──────────────────────────────────────────────────────
-    const organization = await prisma.organizations.findFirst({
-      where: { owner_id: user.id },
-      select: { id: true },
+    // ── Get organization via membership ─────────────────────────────────────
+    const membership = await prisma.organization_members.findFirst({
+      where: { user_id: user.id, status: 'active' },
+      select: { organization_id: true },
+      orderBy: { created_at: 'asc' },
     });
 
     // ── Generate tokens ───────────────────────────────────────────────────────
@@ -319,7 +380,7 @@ exports.login = async (req, res, next) => {
     const accessToken = generateAccessToken({
       userId: user.id,
       email: user.email,
-      tenantId: organization?.id || null,
+      tenantId: membership?.organization_id || null,
       sessionId: sessionId,
     });
 
@@ -351,11 +412,11 @@ exports.login = async (req, res, next) => {
     };
     res.cookie("refresh_token", rawRefresh, cookieOptions);
 
+    // Refresh token is HttpOnly-cookie only — never in the JSON body (XSS-safe).
     return res.status(200).json({
       success: true,
       data: {
         access_token: accessToken,
-        refresh_token: rawRefresh,
         user: {
           id: user.id,
           full_name: user.full_name,
@@ -435,9 +496,10 @@ exports.refresh = async (req, res, next) => {
       return res.status(401).json({ success: false, error: 'Account unavailable.' });
     }
 
-    const organization = await prisma.organizations.findFirst({
-      where: { owner_id: user.id },
-      select: { id: true },
+    const membership = await prisma.organization_members.findFirst({
+      where: { user_id: user.id, status: 'active' },
+      select: { organization_id: true },
+      orderBy: { created_at: 'asc' },
     });
 
     // ── Rotate tokens ─────────────────────────────────────────────────────────
@@ -468,7 +530,7 @@ exports.refresh = async (req, res, next) => {
     const accessToken = generateAccessToken({
       userId: user.id,
       email: user.email,
-      tenantId: organization?.id || null,
+      tenantId: membership?.organization_id || null,
       sessionId: sessionId,
     });
 
@@ -551,6 +613,202 @@ exports.logoutAll = async (req, res, next) => {
   }
 };
 
+// ─── FORGOT PASSWORD (step 1 — send OTP) ─────────────────────────────────────
+
+exports.forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ success: false, error: 'Email is required.' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await prisma.users.findUnique({ where: { email: normalizedEmail } });
+
+    // Always return the same message to prevent user enumeration
+    if (!user || user.status !== 'active') {
+      return res.status(200).json({ success: true, message: FORGOT_PASSWORD_GENERIC_MESSAGE });
+    }
+
+    const code = generateVerificationCode();
+    const expiry = getVerificationExpiry();
+
+    await prisma.users.update({
+      where: { id: user.id },
+      data: { verification_code: code, verification_expires_at: expiry },
+    });
+
+    // Fire-and-forget — don't let email failure leak timing or block response
+    emailService.sendPasswordResetEmail(user.email, user.full_name, code).catch(() => {});
+
+    return res.status(200).json({ success: true, message: FORGOT_PASSWORD_GENERIC_MESSAGE });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── VERIFY FORGOT-PASSWORD OTP (step 2 — returns password-reset JWT) ────────
+
+exports.verifyForgotPasswordOtp = async (req, res, next) => {
+  try {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+      return res.status(400).json({ success: false, error: 'Email and verification code are required.' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await prisma.users.findUnique({ where: { email: normalizedEmail } });
+
+    if (!user || user.status !== 'active') {
+      return res.status(400).json({ success: false, error: 'Invalid or expired code.' });
+    }
+    if (user.verification_code !== String(code).trim()) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired code.' });
+    }
+    if (!user.verification_expires_at || new Date() > user.verification_expires_at) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired code.' });
+    }
+
+    // Clear the OTP — single use
+    await prisma.users.update({
+      where: { id: user.id },
+      data: { verification_code: null, verification_expires_at: null },
+    });
+
+    // Issue a short-lived password-reset JWT (15 min, single use)
+    const resetToken = generatePasswordResetToken({ userId: user.id, email: user.email });
+
+    return res.status(200).json({
+      success: true,
+      data: { reset_token: resetToken },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── RESET PASSWORD (step 3 — consume JWT, update password, revoke sessions) ─
+
+exports.resetPassword = async (req, res, next) => {
+  try {
+    const { reset_token, password } = req.body;
+
+    if (!reset_token || !password) {
+      return res.status(400).json({ success: false, error: 'Reset token and new password are required.' });
+    }
+
+    const payload = verifyPasswordResetToken(reset_token);
+    if (!payload) {
+      return res.status(400).json({ success: false, error: 'Invalid or expired reset token.' });
+    }
+
+    const user = await prisma.users.findUnique({ where: { id: payload.sub } });
+    if (!user || user.status !== 'active') {
+      return res.status(400).json({ success: false, error: 'Invalid or expired reset token.' });
+    }
+
+    const passwordCheck = await assertPasswordAllowed(password);
+    if (!passwordCheck.ok) {
+      return res.status(400).json({ success: false, error: passwordCheck.error });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+    // Update password + revoke ALL refresh tokens (F-10 fix)
+    await prisma.$transaction([
+      prisma.users.update({
+        where: { id: user.id },
+        data: { password_hash: hashedPassword },
+      }),
+      prisma.refresh_tokens.deleteMany({
+        where: { user_id: user.id },
+      }),
+    ]);
+
+    // Non-critical confirmation email
+    emailService.sendPasswordChangedEmail(user.email, user.full_name).catch(() => {});
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password reset successfully. Please log in with your new password.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── CHANGE PASSWORD (authenticated — verify current, update, revoke others) ─
+
+exports.changePassword = async (req, res, next) => {
+  try {
+    const { current_password, new_password } = req.body;
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({ success: false, error: 'Current and new password are required.' });
+    }
+
+    if (current_password === new_password) {
+      return res.status(400).json({ success: false, error: 'New password must be different from current password.' });
+    }
+
+    const user = await prisma.users.findUnique({ where: { id: req.user.id } });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found.' });
+    }
+
+    const isMatch = await bcrypt.compare(current_password, user.password_hash);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, error: 'Current password is incorrect.' });
+    }
+
+    const passwordCheck = await assertPasswordAllowed(new_password);
+    if (!passwordCheck.ok) {
+      return res.status(400).json({ success: false, error: passwordCheck.error });
+    }
+
+    const hashedPassword = await bcrypt.hash(new_password, SALT_ROUNDS);
+
+    // Update password + revoke ALL refresh tokens except the current session
+    // (the user stays logged in on this device, every other session is killed)
+    const currentRefreshHash = req.cookies?.refresh_token
+      ? hashRefreshToken(req.cookies.refresh_token)
+      : null;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.users.update({
+        where: { id: user.id },
+        data: { password_hash: hashedPassword },
+      });
+
+      // Revoke all refresh tokens except the one for this session
+      if (currentRefreshHash) {
+        await tx.refresh_tokens.deleteMany({
+          where: {
+            user_id: user.id,
+            token_hash: { not: currentRefreshHash },
+          },
+        });
+      } else {
+        // No refresh cookie present — revoke everything
+        await tx.refresh_tokens.deleteMany({
+          where: { user_id: user.id },
+        });
+      }
+    });
+
+    emailService.sendPasswordChangedEmail(user.email, user.full_name).catch(() => {});
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password changed successfully. Other sessions have been signed out.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─── RESEND VERIFICATION ──────────────────────────────────────────────────────
 
 exports.resendVerification = async (req, res, next) => {
@@ -613,6 +871,18 @@ exports.getProfile = async (req, res) => {
             store_url: true,
             industry: true,
             country: true,
+          },
+        },
+        organization_memberships: {
+          where: { status: 'active' },
+          select: {
+            id: true,
+            role: true,
+            organization_id: true,
+            joined_at: true,
+            organizations: {
+              select: { id: true, company_name: true },
+            },
           },
         },
       },

@@ -60,12 +60,13 @@ the in-memory _model_cache design.
 """
 
 import os
+import secrets
 import sys
 import time
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 import mlflow.sklearn
 
@@ -84,6 +85,30 @@ app = FastAPI(
 )
 
 _START_TIME = time.time()
+
+# ---------------------------------------------------------------------------
+# Internal API Key Authentication (F-02)
+# ---------------------------------------------------------------------------
+# Only callers presenting a valid X-Internal-Key header may hit /predict/*.
+# The /health endpoint remains open (needed for uptime probes / load balancers).
+ML_INTERNAL_KEY = os.environ.get("ML_INTERNAL_KEY", "")
+
+async def verify_internal_caller(
+    x_internal_key: str = Header(None, convert_underscores=False),
+):
+    """Validate the shared secret between Node backend and this ML service.
+    Fails with 401 if the key is missing, empty, or doesn't match.
+    Uses constant-time comparison to prevent timing side-channels."""
+    if not ML_INTERNAL_KEY:
+        # If no key is configured, deny all authenticated requests —
+        # misconfiguration must fail closed, not open.
+        raise HTTPException(
+            status_code=500,
+            detail="ML_INTERNAL_KEY is not configured on the server.",
+        )
+    if not x_internal_key or not secrets.compare_digest(x_internal_key, ML_INTERNAL_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
 
 # ---------------------------------------------------------------------------
 # Global State & Caching
@@ -300,7 +325,8 @@ async def health_check():
     }
 
 
-@app.post("/predict/abandonment-probability", response_model=AbandonmentResponse)
+@app.post("/predict/abandonment-probability", response_model=AbandonmentResponse,
+          dependencies=[Depends(verify_internal_caller)])
 async def predict_abandonment(features: AbandonmentFeatures):
     try:
         model = _load_model("abandonment")
@@ -332,7 +358,8 @@ async def predict_abandonment(features: AbandonmentFeatures):
         )
 
 
-@app.post("/predict/shopper-sensitivity", response_model=SensitivityResponse)
+@app.post("/predict/shopper-sensitivity", response_model=SensitivityResponse,
+          dependencies=[Depends(verify_internal_caller)])
 async def predict_sensitivity(features: SensitivityFeatures):
     try:
         pss_model = _load_model("sensitivity_pss")
@@ -382,7 +409,8 @@ async def predict_sensitivity(features: SensitivityFeatures):
         return SensitivityResponse(fallback=True)
 
 
-@app.post("/predict/churn-risk", response_model=ChurnRiskResponse)
+@app.post("/predict/churn-risk", response_model=ChurnRiskResponse,
+          dependencies=[Depends(verify_internal_caller)])
 async def predict_churn(features: ChurnFeatures):
     days = features.days_since_last_purchase
     ltv = features.customer_ltv if features.customer_ltv > 0 else (
@@ -469,7 +497,8 @@ async def predict_churn(features: ChurnFeatures):
         )
 
 
-@app.post("/predict/send-time", response_model=SendTimeResponse)
+@app.post("/predict/send-time", response_model=SendTimeResponse,
+          dependencies=[Depends(verify_internal_caller)])
 async def predict_send_time(features: SendTimeFeatures):
     try:
         model = _load_model("send_time")
@@ -531,7 +560,8 @@ async def predict_send_time(features: SendTimeFeatures):
         )
 
 
-@app.post("/predict/offer-value", response_model=OfferValueResponse)
+@app.post("/predict/offer-value", response_model=OfferValueResponse,
+          dependencies=[Depends(verify_internal_caller)])
 async def predict_offer_value(features: OfferValueFeatures):
     try:
         # Hard gates evaluated BEFORE touching the model, per doc — two

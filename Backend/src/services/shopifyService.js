@@ -4,6 +4,7 @@ const dbConfig = require("../configs/database");
 const prisma = dbConfig.prisma;
 
 const { encrypt, decrypt } = require("../utils/encryption");
+const logger = require('../utils/logger');
 
 /**Exchange Shopify authorization code for a permanent access token.*/
 const exchangeAccessToken = async (shop, code) => {
@@ -29,10 +30,7 @@ const exchangeAccessToken = async (shop, code) => {
 
     return response.data.access_token;
   } catch (error) {
-    console.error(
-      "Shopify Token Exchange Error:",
-      error.response?.data || error.message
-    );
+    logger.error('shopify_token_exchange_failed', { message: error.response?.data || error.message });
 
     throw new Error("Failed to exchange Shopify authorization code.");
   }
@@ -92,9 +90,7 @@ const getStoreAccessToken = (store) => {
 /*Fire-and-forget background synchronization.*/
 const syncShopifyStore = async (store) => {
   try {
-    console.log(
-      `Starting Shopify sync for ${store.shop_domain}`
-    );
+    logger.info('shopify_sync_started', { shop_domain: store.shop_domain });
 
     /**
      * Future implementation:
@@ -104,14 +100,9 @@ const syncShopifyStore = async (store) => {
      * await syncAbandonedCarts(store);
      */
 
-    console.log(
-      `Historical sync queued for ${store.shop_domain}`
-    );
+    logger.info('shopify_sync_queued', { shop_domain: store.shop_domain });
   } catch (error) {
-    console.error(
-      `Shopify sync failed for ${store.shop_domain}:`,
-      error.message
-    );
+    logger.error('shopify_sync_failed', { shop_domain: store.shop_domain, message: error.message });
   }
 };
 

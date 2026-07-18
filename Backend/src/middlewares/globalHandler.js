@@ -1,12 +1,24 @@
+const logger = require('../utils/logger');
+
 module.exports = (err, req, res, next) => {
-  console.error('SYSTEM ERROR LOG:', err);
+  const isProd = process.env.NODE_ENV === 'production';
+
+  // Structured error log — always includes request context
+  logger.error('unhandled_error', {
+    message: err.message,
+    stack: err.stack,
+    code: err.code,
+    method: req.method,
+    path: req.originalUrl,
+    ip: req.ip,
+    userId: req.user?.id || null,
+  });
 
   // JWT Errors
-  if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') 
-    {
+  if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
     return res.status(401).json({
       success: false,
-      error: 'Invalid or expired access token'
+      error: 'Invalid or expired access token',
     });
   }
 
@@ -14,7 +26,7 @@ module.exports = (err, req, res, next) => {
   if (err.code === 'P2002') {
     return res.status(409).json({
       success: false,
-      error: 'A record with this value already exists'
+      error: 'A record with this value already exists',
     });
   }
 
@@ -22,7 +34,7 @@ module.exports = (err, req, res, next) => {
   if (err.code === 'P2025') {
     return res.status(404).json({
       success: false,
-      error: 'Record not found'
+      error: 'Record not found',
     });
   }
 
@@ -30,17 +42,17 @@ module.exports = (err, req, res, next) => {
   if (err.code === 'P2021') {
     return res.status(500).json({
       success: false,
-      error: 'Database table does not exist'
+      error: 'Database table does not exist',
     });
   }
 
   const statusCode = err.statusCode || 500;
 
-  if (process.env.NODE_ENV === 'development') {
+  if (!isProd) {
     return res.status(statusCode).json({
       success: false,
       error: err.message,
-      stack: err.stack
+      stack: err.stack,
     });
   }
 
@@ -49,6 +61,6 @@ module.exports = (err, req, res, next) => {
     error:
       statusCode === 500
         ? 'An unexpected server error occurred'
-        : err.message
+        : err.message,
   });
 };

@@ -11,6 +11,7 @@ import PlaceholderPage from "../pages/PlaceholderPage";
 // Settings Pages
 import SettingsLayout from "../pages/settings/SettingsLayout";
 import Profile from "../pages/settings/Profile";
+import TeamManagement from "../pages/settings/TeamManagement";
 import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 
 export function DashboardRoutes() {
@@ -39,7 +40,7 @@ export function DashboardRoutes() {
           
           {/* Workspace */}
           <Route path="organization" element={<SettingsPlaceholder title="Organization" />} />
-          <Route path="team" element={<SettingsPlaceholder title="Team Members" />} />
+          <Route path="team" element={<TeamManagement />} />
           <Route path="roles" element={<SettingsPlaceholder title="Roles & Permissions" />} />
           <Route path="branding" element={<SettingsPlaceholder title="Branding" />} />
           

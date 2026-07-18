@@ -1,4 +1,5 @@
 const {isValidShopDomain,generateState,buildInstallUrl,verifyHmac,} = require("../utils/shopify");
+const logger = require('../utils/logger');
 
 const {exchangeAccessToken,getOrganizationByUser,upsertStore,syncShopifyStore,} = require("../services/shopifyService");
 
@@ -92,12 +93,11 @@ exports.shopifyCallback = async (req, res, next) => {
     }
 
     // DEBUG LOGS
-    console.log("========== SHOPIFY CALLBACK ==========");
-    console.log("Headers Cookie:", req.headers.cookie);
-    console.log("Signed Cookies:", req.signedCookies);
-    console.log("Unsigned Cookies:", req.cookies);
-    console.log("Query Params:", req.query);
-    console.log("======================================");
+    logger.debug('shopify_callback', {
+      hasCookies: !!req.headers.cookie,
+      signedCookies: Object.keys(req.signedCookies || {}),
+      queryKeys: Object.keys(req.query || {}),
+    });
 
     // Read signed cookies
     const storedState = req.signedCookies.shopify_state;
@@ -140,7 +140,7 @@ exports.shopifyCallback = async (req, res, next) => {
 
     // Trigger background sync (do not await)
     syncShopifyStore(store).catch((error) => {
-      console.error("Background sync failed:", error);
+      logger.error('shopify_sync_failed', { storeId: store?.id, message: error?.message });
     });
 
     // Clear OAuth cookies

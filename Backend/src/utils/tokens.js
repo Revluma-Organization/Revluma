@@ -19,6 +19,7 @@ const { JWT_ISSUER, JWT_AUDIENCE, ALLOWED_ALGORITHMS } = require('../middlewares
 
 const ACCESS_TOKEN_TTL  = '15m';
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
+const INVITE_TOKEN_TTL  = 7 * 24 * 60 * 60; // 7 days in seconds
 
 /**
  * Generate a hardened access token with all required claims.
@@ -62,9 +63,67 @@ function generateRefreshToken() {
 }
 
 /**
+ * Short-lived JWT authorizing a password reset after OTP verification.
+ */
+function generatePasswordResetToken({ userId, email }) {
+  const now = Math.floor(Date.now() / 1000);
+  return jwt.sign(
+    {
+      iss:  JWT_ISSUER,
+      aud:  JWT_AUDIENCE,
+      sub:  userId,
+      email,
+      type: 'password_reset',
+      jti:  uuidv4(),
+      iat:  now,
+      nbf:  now,
+    },
+    process.env.JWT_SECRET,
+    {
+      algorithm: ALLOWED_ALGORITHMS[0],
+      expiresIn: '15m',
+    }
+  );
+}
+
+/**
+ * Verify a password-reset JWT. Returns payload or null.
+ */
+function verifyPasswordResetToken(token) {
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ALLOWED_ALGORITHMS,
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    });
+    if (payload.type !== 'password_reset') return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Hash a raw refresh token for database lookup.
  */
 function hashRefreshToken(raw) {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
+
+/**
+ * Generate a single-use invite token (raw + hash) with an expiry.
+ */
+function generateInviteToken() {
+  const raw = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.createHash('sha256').update(raw).digest('hex');
+  const expiresAt = new Date(Date.now() + INVITE_TOKEN_TTL * 1000);
+  return { raw, hash, expiresAt };
+}
+
+/**
+ * Hash an invite token for database lookup.
+ */
+function hashInviteToken(raw) {
   return crypto.createHash('sha256').update(raw).digest('hex');
 }
 
@@ -80,7 +139,11 @@ function safeCompare(a, b) {
 module.exports = {
   generateAccessToken,
   generateRefreshToken,
+  generatePasswordResetToken,
+  verifyPasswordResetToken,
   hashRefreshToken,
+  generateInviteToken,
+  hashInviteToken,
   safeCompare,
   REFRESH_TOKEN_TTL,
 };

@@ -1,13 +1,14 @@
-import "dotenv/config";
-import { defineConfig, env } from "@prisma/config";
+import path from "node:path";
+import { config } from "dotenv";
+import { defineConfig } from "@prisma/config";
 
-// Detect if we are running a CLI command that modifies/reads the schema structure
-const isCLI = process.argv.some(arg => arg.includes("prisma") || arg.includes("db") || arg.includes("migrate"));
+const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
+config({ path: path.resolve(process.cwd(), envFile), override: false });
+
+if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
+  process.env.DIRECT_URL = process.env.DATABASE_URL;
+}
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
-  datasource: {
-    // Uses the direct migration port for CLI tools, and the pooler for your server
-    url: isCLI ? env("DIRECT_URL") : env("DATABASE_URL"),
-  },
 });

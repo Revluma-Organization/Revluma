@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "npx nodemon server.js",
-    "test": "node src/controller/__tests__/logout.logic.test.js"
+    "test": "node src/controller/__tests__/logout.logic.test.js",
+    "prisma": "node scripts/run-prisma.js"
   },
   "keywords": [],
   "author": "",

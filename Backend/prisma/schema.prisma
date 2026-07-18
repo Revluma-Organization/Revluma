@@ -99,6 +99,7 @@ model organizations {
   ai_preferences        ai_preferences?
   users                 users           @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   stores                stores[]
+  members               organization_members[]
 
   @@index([owner_id], map: "idx_organizations_owner")
 }
@@ -125,6 +126,7 @@ model users {
   organizations           organizations[]
 
   @@index([email], map: "idx_users_email")
+  organization_members organization_members[]
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -452,4 +454,63 @@ model login_attempts {
 
   @@index([email], map: "idx_login_attempts_email")
   @@index([attempted_at], map: "idx_login_attempts_time")
+}
+
+/// RBAC: maps users to organizations with a role and status.
+/// Owner is auto-created on registration; members/admins are invited.
+model organization_members {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String        @db.Uuid
+  user_id         String        @db.Uuid
+  role            String        @default("member") // owner | admin | member
+  status          String        @default("active") // pending | active | removed
+  invited_by      String?       @db.Uuid
+  invited_at      DateTime?     @db.Timestamptz(6)
+  joined_at       DateTime?     @db.Timestamptz(6)
+  created_at      DateTime?     @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?     @default(now()) @db.Timestamptz(6)
+
+  organizations organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users         users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([organization_id, user_id], map: "uq_org_member")
+  @@index([organization_id], map: "idx_org_members_org")
+  @@index([user_id], map: "idx_org_members_user")
+  @@index([status], map: "idx_org_members_status")
+}
+
+/// Single-use invite tokens — signed, expiring, bound to org + email + role.
+model invite_tokens {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  email           String
+  role            String    @default("member")
+  invited_by      String    @db.Uuid
+  token_hash      String    @unique
+  expires_at      DateTime  @db.Timestamptz(6)
+  accepted_at     DateTime? @db.Timestamptz(6)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([organization_id], map: "idx_invite_tokens_org")
+  @@index([email], map: "idx_invite_tokens_email")
+  @@index([token_hash], map: "idx_invite_tokens_hash")
+}
+
+/// Per-admin API keys — hashed at rest, individually revocable, with audit trail.
+/// Replaces the single static ADMIN_API_KEY env var for production use.
+model admin_api_keys {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String    // human-readable label (e.g. "CI deploy key")
+  key_hash     String    @unique // SHA-256 hash of the raw key
+  prefix       String    // first 8 chars of raw key — shown in UI for identification
+  scopes       String[]  @default(["read", "write"]) // permission scopes
+  last_used_at DateTime? @db.Timestamptz(6)
+  last_used_ip String?
+  expires_at   DateTime? @db.Timestamptz(6) // null = never expires
+  revoked_at   DateTime? @db.Timestamptz(6)
+  created_by   String?   @db.Uuid
+  created_at   DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([key_hash], map: "idx_admin_api_keys_hash")
+  @@index([created_by], map: "idx_admin_api_keys_creator")
 }

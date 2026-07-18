@@ -2,6 +2,7 @@ require("dotenv").config();
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const { PrismaClient } = require('@prisma/client');
+const logger = require('../utils/logger');
 
 // 1. Initialize the PostgreSQL Pool immediately on file load
 const pool = global.poolInstance || new Pool({
@@ -31,9 +32,9 @@ if (process.env.NODE_ENV !== 'production') {
 const connectDB = async () => {
   try {
     await pool.query('SELECT 1');
-    console.log('PostgreSQL Database connected ✅ successfully via Driver Adapter to Supabase.');
+    logger.info('database_connected', { adapter: 'prisma-pg' });
   } catch (error) {
-    console.error(`Unable to connect to the database: ${error.message}`);
+    logger.error('database_connection_failed', { message: error.message });
     process.exit(1);
   }
 };

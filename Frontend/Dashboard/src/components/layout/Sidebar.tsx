@@ -322,7 +322,21 @@ export function Sidebar() {
               <>
                 <div className="min-w-0 flex-1 text-left">
                   <div className="truncate text-[0.79rem] font-semibold text-t1">{displayName}</div>
-                  <div className="truncate text-[0.66rem] text-t3">{displayEmail}</div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="truncate text-[0.66rem] text-t3">{displayEmail}</div>
+                    {user?.role && (
+                      <span className={cn(
+                        "shrink-0 whitespace-nowrap rounded px-1 py-px text-[0.55rem] font-bold uppercase tracking-wider border",
+                        user.role === "owner"
+                          ? "bg-amber-500/15 text-amber-400 border-amber-500/25"
+                          : user.role === "admin"
+                            ? "bg-blue-500/15 text-blue-400 border-blue-500/25"
+                            : "bg-slate-500/15 text-slate-400 border-slate-500/25",
+                      )}>
+                        {user.role}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <motion.span animate={{ rotate: userOpen ? 180 : 0 }} transition={{ type: 'spring', stiffness: 400, damping: 26 }}>
                   <ChevronDown className="h-3 w-3 text-t3" />

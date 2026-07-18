@@ -100,7 +100,72 @@ const validateLogin = [
     validateRequest
 ];
 
+// FORGOT PASSWORD (step 1 — send OTP)
+const validateForgotPassword = [
+    body('email')
+        .notEmpty()
+        .withMessage('Email is required')
+        .isEmail()
+        .withMessage('Please provide a valid email address')
+        .normalizeEmail(),
+    validateRequest
+];
+
+// VERIFY FORGOT-PASSWORD OTP (step 2)
+const validateVerifyForgotPasswordOtp = [
+    body('email')
+        .notEmpty()
+        .withMessage('Email is required')
+        .isEmail()
+        .withMessage('Please provide a valid email address')
+        .normalizeEmail(),
+    body('code')
+        .notEmpty()
+        .withMessage('Verification code is required')
+        .isLength({ min: 6, max: 6 })
+        .withMessage('Verification code must be 6 digits'),
+    validateRequest
+];
+
+// RESET PASSWORD (step 3)
+const validateResetPassword = [
+    body('reset_token')
+        .notEmpty()
+        .withMessage('Reset token is required'),
+    body('password')
+        .notEmpty()
+        .withMessage('Password is required')
+        .isLength({ min: 8 })
+        .withMessage('Password must be at least 8 characters long')
+        .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/)
+        .withMessage(
+            'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+        ),
+    validateRequest
+];
+
+// CHANGE PASSWORD (authenticated)
+const validateChangePassword = [
+    body('current_password')
+        .notEmpty()
+        .withMessage('Current password is required'),
+    body('new_password')
+        .notEmpty()
+        .withMessage('New password is required')
+        .isLength({ min: 8 })
+        .withMessage('New password must be at least 8 characters long')
+        .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/)
+        .withMessage(
+            'New password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+        ),
+    validateRequest
+];
+
 module.exports = {
     validateRegister,
-    validateLogin
+    validateLogin,
+    validateForgotPassword,
+    validateVerifyForgotPasswordOtp,
+    validateResetPassword,
+    validateChangePassword
 };

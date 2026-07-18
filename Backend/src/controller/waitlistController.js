@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const dbConfig = require('../configs/database');
 const emailService = require('../utils/emailService');
 const { getCached, setCached } = require('../utils/referralCache');
+const logger = require('../utils/logger');
 
 const prisma = dbConfig.prisma;
 
@@ -84,9 +85,7 @@ exports.joinWaitlist = async (req, res, next) => {
     // to succeed without touching the DB or sending an email, so the bot has
     // no signal that it was caught.
     if (req.body.hp_field) {
-      console.warn(
-        `[waitlist] honeypot triggered — email: ${req.body.work_email || 'n/a'}, ip: ${req.ip}, ua: ${req.get('user-agent') || 'n/a'}`
-      );
+      logger.warn('waitlist_honeypot_triggered', { ip: req.ip, ua: req.get('user-agent') || 'n/a' });
       return res.status(201).json({
         success: true,
         message: 'Successfully joined the waitlist!',
@@ -260,7 +259,7 @@ exports.joinWaitlist = async (req, res, next) => {
         data: { welcome_email_sent: true },
       });
     } catch (emailError) {
-      console.error('Failed to send welcome email:', emailError);
+      logger.error('waitlist_welcome_email_failed', { message: emailError?.message });
       // Don't fail the request if email fails, but log it
     }
 
@@ -314,7 +313,7 @@ exports.checkReferralCode = async (req, res) => {
 
     return res.status(200).json({ success: true, exists });
   } catch (error) {
-    console.error('Referral check error:', error);
+    logger.error('referral_check_error', { message: error?.message });
     return res.status(500).json({
       success: false,
       error: 'Failed to check referral code',

@@ -1,7 +1,18 @@
 const rateLimit = require('express-rate-limit');
+const { RedisStore } = require('rate-limit-redis');
+const { getRedisClient, isRedisReady } = require('../configs/redis');
+const logger = require('../utils/logger');
 
 /**
- * Rate limiters for Revluma auth endpoints.
+ * Rate limiters for Revluma API endpoints (single source of truth).
+ *
+ * Store selection:
+ *   - If REDIS_URL / REDIS_HOST is configured and connected → RedisStore
+ *     (shared state across instances, survives restarts)
+ *   - Otherwise → in-memory Map (single-instance only)
+ *
+ * The store is resolved lazily per-request so a mid-flight Redis outage
+ * gracefully degrades to in-memory without crashing.
  *
  * Strategy:
  * - Registration: 5 attempts per 30 minutes per IP
@@ -10,12 +21,28 @@ const rateLimit = require('express-rate-limit');
  * - Refresh: 30 per 15 minutes per IP
  * - Resend verification: 3 per 10 minutes per IP
  * - General API: 60 per minute per IP
+ * - Waitlist join / referral check: separate tighter limits
  */
+
+function resolveStore() {
+  if (isRedisReady()) {
+    try {
+      return new RedisStore({
+        sendCommand: (...args) => getRedisClient().call(...args),
+        prefix: 'rl:',
+      });
+    } catch (err) {
+      logger.warn('rate_limit_redis_store_fallback', { message: err.message });
+    }
+  }
+  return undefined; // default in-memory store
+}
 
 // Registration limiter
 const registerLimiter = rateLimit({
   windowMs:       30 * 60 * 1000, // 30 minutes
   max:            5,
+  store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
   keyGenerator:   (req) => req.ip,
@@ -30,6 +57,7 @@ const registerLimiter = rateLimit({
 const loginLimiter = rateLimit({
   windowMs:       15 * 60 * 1000, // 15 minutes
   max:            10,
+  store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
   keyGenerator:   (req) => req.ip,
@@ -44,6 +72,7 @@ const loginLimiter = rateLimit({
 const refreshLimiter = rateLimit({
   windowMs:       15 * 60 * 1000, // 15 minutes
   max:            30,
+  store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
   message: {
@@ -57,6 +86,7 @@ const refreshLimiter = rateLimit({
 const resendLimiter = rateLimit({
   windowMs:       10 * 60 * 1000, // 10 minutes
   max:            3,
+  store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
   message: {
@@ -70,6 +100,7 @@ const resendLimiter = rateLimit({
 const apiLimiter = rateLimit({
   windowMs:       60 * 1000, // 1 minute
   max:            60,
+  store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
   message: {
@@ -83,12 +114,58 @@ const apiLimiter = rateLimit({
 const ingestLimiter = rateLimit({
   windowMs:       60 * 1000, // 1 minute
   max:            100,
+  store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
   keyGenerator:   (req) => req.ip,
   message: {
     success: false,
     error:   'Rate limit exceeded.',
+  },
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
+// Waitlist join — public lead capture
+const waitlistJoinLimiter = rateLimit({
+  windowMs:       15 * 60 * 1000, // 15 minutes
+  max:            10,
+  store:          resolveStore(),
+  standardHeaders: true,
+  legacyHeaders:  false,
+  keyGenerator:   (req) => req.ip,
+  message: {
+    success: false,
+    error:   'Too many waitlist submissions. Please try again later.',
+  },
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
+// Referral code live-check — typed as users fill the form
+const referralCheckLimiter = rateLimit({
+  windowMs:       60 * 1000, // 1 minute
+  max:            30,
+  store:          resolveStore(),
+  standardHeaders: true,
+  legacyHeaders:  false,
+  keyGenerator:   (req) => req.ip,
+  message: {
+    success: false,
+    error:   'Too many referral checks. Please slow down.',
+  },
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
+// Password reset / change — abuse protection
+const passwordResetLimiter = rateLimit({
+  windowMs:       15 * 60 * 1000, // 15 minutes
+  max:            5,
+  store:          resolveStore(),
+  standardHeaders: true,
+  legacyHeaders:  false,
+  keyGenerator:   (req) => req.ip,
+  message: {
+    success: false,
+    error:   'Too many password reset attempts. Please try again later.',
   },
   skip: () => process.env.NODE_ENV === 'test',
 });
@@ -100,4 +177,7 @@ module.exports = {
   resendLimiter,
   apiLimiter,
   ingestLimiter,
+  waitlistJoinLimiter,
+  referralCheckLimiter,
+  passwordResetLimiter,
 };

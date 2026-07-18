@@ -1,10 +1,13 @@
 const prisma = require("../configs/database").prisma;
 
 const getUserOrganization = async (userId) => {
-  return prisma.organizations.findFirst({
-    where: { owner_id: userId },
-    select: { id: true },
+  const membership = await prisma.organization_members.findFirst({
+    where: { user_id: userId, status: 'active' },
+    select: { organization_id: true },
+    orderBy: { created_at: 'asc' },
   });
+  if (!membership) return null;
+  return { id: membership.organization_id };
 };
 
 const getOrgStoreIds = async (orgId) => {

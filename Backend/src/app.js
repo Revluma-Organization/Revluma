@@ -4,9 +4,11 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 
 const globalErrorHandler = require('./middlewares/globalHandler');
-const { apiLimiter } = require('./middlewares/rateLimiters');
+const { apiLimiter } = require('./middlewares/rateLimiter');
 
 const authRoutes = require('./route/authRoute');
+const orgRoutes = require('./route/orgRoute');
+const adminRoutes = require('./route/adminRoute');
 const waitlistRoutes = require('./route/waitlistRoute');
 const shopifyRoutes = require('./route/shopifyRoute');
 const dashboardRoutes = require('./route/dashboardRoute');
@@ -24,22 +26,26 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// ── CORS
+// ── CORS — explicit allowlist only (no *.vercel.app wildcard)
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   'http://localhost:8080',
   'http://localhost:3000',
   'http://localhost:5173',
+  'https://revluma.com',
+  'https://app.revluma.com',
+  'https://www.revluma.com',
   'https://revluma.vercel.app',
   'https://revluma-git-main-revluma-organization.vercel.app',
+  // Exact URL for *this* Vercel deployment only (not any *.vercel.app subdomain)
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
 ].filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (Postman, mobile apps, curl)
+    // Allow requests with no origin (Postman, mobile apps, curl, same-origin)
     if (!origin) return callback(null, true);
-    // Allow any *.vercel.app subdomain for preview deployments
-    if (origin.endsWith('.vercel.app') || allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error('CORS: origin not allowed'));
@@ -60,6 +66,8 @@ app.use('/api/', apiLimiter);
 
 // ── Routes
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/org', orgRoutes);
+app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/waitlist', waitlistRoutes);
 app.use('/api/v1/shopify', shopifyRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);

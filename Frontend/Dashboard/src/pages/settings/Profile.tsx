@@ -1,10 +1,12 @@
 import { FC, useState, useRef, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useAuthStore } from "@/store/authStore";
 import { ChangePasswordForm } from "./components/ChangePasswordForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Upload, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Upload, X, Crown, Shield, User as UserIcon } from "lucide-react";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 import { motion } from "framer-motion";
 import { PageTransition, StaggeredList, StaggeredItem } from "@/components/MotionWrappers";
@@ -13,6 +15,8 @@ const MotionButton = motion.create(Button);
 
 const Profile: FC = () => {
   const { user } = useAuth();
+  const userRole = useAuthStore((s) => s.user?.role?.toLowerCase());
+  const memberships = useAuthStore((s) => s.user?.organization_memberships);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [isEditingNames, setIsEditingNames] = useState(false);
 
@@ -133,6 +137,40 @@ const Profile: FC = () => {
               <Input id="email" defaultValue={user?.email || ""} readOnly disabled className={`max-w-md h-9 font-medium opacity-70 cursor-not-allowed ${DESIGN_TOKENS.input}`} />
             </div>
             <p className="text-[0.75rem] text-slate-600 dark:text-slate-400 font-medium pt-1">Used to log in to your account</p>
+          </motion.div>
+        </StaggeredItem>
+
+        {/* Role & Organization Section */}
+        <StaggeredItem className="relative z-10 p-6 border-b border-slate-200 dark:border-slate-800">
+          <motion.div layout className="space-y-3">
+            <Label className={`text-[0.8rem] font-semibold ${DESIGN_TOKENS.secondaryText}`}>Role</Label>
+            <div className="flex items-center gap-3">
+              <Badge
+                variant="outline"
+                className={`text-[0.75rem] font-semibold px-3 py-1 rounded-md capitalize gap-1.5 ${
+                  userRole === "owner"
+                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/25"
+                    : userRole === "admin"
+                      ? "bg-blue-500/15 text-blue-400 border border-blue-500/25"
+                      : "bg-slate-500/15 text-slate-400 border border-slate-500/25"
+                }`}
+              >
+                {userRole === "owner" ? <Crown className="h-3.5 w-3.5" /> : userRole === "admin" ? <Shield className="h-3.5 w-3.5" /> : <UserIcon className="h-3.5 w-3.5" />}
+                {userRole || "member"}
+              </Badge>
+              {memberships && memberships.length > 0 && (
+                <p className="text-[0.75rem] text-slate-500 dark:text-slate-400 font-medium">
+                  {memberships[0].organizations.company_name}
+                </p>
+              )}
+            </div>
+            <p className="text-[0.75rem] text-slate-600 dark:text-slate-400 font-medium">
+              {userRole === "owner"
+                ? "You are the organization owner with full control."
+                : userRole === "admin"
+                  ? "You can manage team members and settings."
+                  : "Contact your organization owner to change your role."}
+            </p>
           </motion.div>
         </StaggeredItem>
 

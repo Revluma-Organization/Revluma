@@ -1,4 +1,5 @@
 const sgMail = require('@sendgrid/mail');
+const logger = require('./logger');
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
@@ -234,10 +235,10 @@ const emailService = {
       };
 
       const result = await sgMail.send(msg);
-      console.log('✅ Welcome email sent successfully to:', recipientEmail);
+      logger.info('welcome_email_sent', { to: recipientEmail });
       return true;
     } catch (error) {
-      console.error('❌ Email send error:', error);
+      logger.error('welcome_email_failed', { to: recipientEmail, message: error?.message || error });
       throw error;
     }
   },
@@ -344,12 +345,231 @@ const emailService = {
       message: "Verification email sent successfully.",
     };
   } catch (error) {
-    console.error("Error sending verification email:", error);
+    logger.error('verification_email_failed', { to: recipientEmail, message: error?.message || error });
 
     throw new Error("Failed to send verification email.");
   }
 },
 
+
+  async sendPasswordResetEmail(recipientEmail, userName, verificationCode) {
+    try {
+      const msg = {
+        to: recipientEmail,
+        from: process.env.SENDGRID_FROM_EMAIL,
+        subject: 'Reset Your Revluma Password',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8" />
+            <style>
+              body {
+                font-family: Arial, Helvetica, sans-serif;
+                background-color: #f4f4f4;
+                margin: 0;
+                padding: 40px 0;
+              }
+              .container {
+                max-width: 600px;
+                margin: auto;
+                background: #ffffff;
+                border-radius: 8px;
+                padding: 40px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+              }
+              h1 { color: #111827; text-align: center; }
+              p { color: #4b5563; font-size: 16px; line-height: 1.6; }
+              .code {
+                margin: 30px auto;
+                width: fit-content;
+                background: #EEF2FF;
+                color: #4338CA;
+                font-size: 32px;
+                font-weight: bold;
+                letter-spacing: 8px;
+                padding: 18px 32px;
+                border-radius: 8px;
+              }
+              .warning {
+                background: #FEF3C7;
+                border: 1px solid #F59E0B;
+                color: #92400E;
+                padding: 12px 16px;
+                border-radius: 6px;
+                font-size: 14px;
+                margin: 20px 0;
+              }
+              .footer { margin-top: 35px; font-size: 13px; color: #6b7280; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Reset Your Password</h1>
+              <p>Hi ${escapeHtml(userName)},</p>
+              <p>We received a request to reset the password for your Revluma account.</p>
+              <div class="code">${verificationCode}</div>
+              <p>This code will expire in <strong>10 minutes</strong>.</p>
+              <div class="warning">
+                If you didn't request this password reset, you can safely ignore this email.
+                Your password will not be changed unless you use this code.
+              </div>
+              <div class="footer">
+                <p>Thanks,</p>
+                <p><strong>The Revluma Team</strong></p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+      };
+      await sgMail.send(msg);
+      return true;
+    } catch (error) {
+      logger.error('password_reset_email_failed', { message: error?.message || error });
+      throw new Error('Failed to send password reset email.');
+    }
+  },
+
+  async sendPasswordChangedEmail(recipientEmail, userName) {
+    try {
+      const msg = {
+        to: recipientEmail,
+        from: process.env.SENDGRID_FROM_EMAIL,
+        subject: 'Your Revluma Password Was Changed',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8" />
+            <style>
+              body {
+                font-family: Arial, Helvetica, sans-serif;
+                background-color: #f4f4f4;
+                margin: 0;
+                padding: 40px 0;
+              }
+              .container {
+                max-width: 600px;
+                margin: auto;
+                background: #ffffff;
+                border-radius: 8px;
+                padding: 40px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+              }
+              h1 { color: #111827; text-align: center; }
+              p { color: #4b5563; font-size: 16px; line-height: 1.6; }
+              .notice {
+                background: #DBEAFE;
+                border: 1px solid #3B82F6;
+                color: #1E40AF;
+                padding: 12px 16px;
+                border-radius: 6px;
+                font-size: 14px;
+                margin: 20px 0;
+              }
+              .footer { margin-top: 35px; font-size: 13px; color: #6b7280; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Password Changed</h1>
+              <p>Hi ${escapeHtml(userName)},</p>
+              <p>Your Revluma account password was just changed.</p>
+              <div class="notice">
+                If you did not make this change, contact us immediately at support@revluma.com.
+                All other sessions have been signed out for your security.
+              </div>
+              <div class="footer">
+                <p>Thanks,</p>
+                <p><strong>The Revluma Team</strong></p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+      };
+      await sgMail.send(msg);
+      return true;
+    } catch (error) {
+      logger.error('password_changed_email_failed', { message: error?.message || error });
+      // Non-critical — don't throw, just log
+      return false;
+    }
+  },
+
+  async sendTeamInviteEmail(recipientEmail, inviterName, companyName, inviteToken) {
+    try {
+      const inviteUrl = `${process.env.FRONTEND_URL || 'https://app.revluma.com'}/invite/accept?token=${inviteToken}`;
+      const msg = {
+        to: recipientEmail,
+        from: process.env.SENDGRID_FROM_EMAIL,
+        subject: `${inviterName} invited you to join ${companyName} on Revluma`,
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8" />
+            <style>
+              body {
+                font-family: Arial, Helvetica, sans-serif;
+                background-color: #f4f4f4;
+                margin: 0;
+                padding: 40px 0;
+              }
+              .container {
+                max-width: 600px;
+                margin: auto;
+                background: #ffffff;
+                border-radius: 8px;
+                padding: 40px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+              }
+              h1 { color: #111827; text-align: center; }
+              p { color: #4b5563; font-size: 16px; line-height: 1.6; }
+              .cta-button {
+                display: inline-block;
+                background: linear-gradient(135deg, #7c5cff 0%, #6b4df0 100%);
+                color: white;
+                padding: 14px 32px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-weight: 600;
+                font-size: 14px;
+                margin: 20px 0;
+              }
+              .footer { margin-top: 35px; font-size: 13px; color: #6b7280; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>You're Invited!</h1>
+              <p>Hi,</p>
+              <p>
+                <strong>${escapeHtml(inviterName)}</strong> has invited you to join
+                <strong>${escapeHtml(companyName)}</strong> on Revluma.
+              </p>
+              <p>Click the button below to accept the invite and create your account:</p>
+              <a href="${inviteUrl}" class="cta-button">Accept Invite</a>
+              <p style="font-size: 13px; color: #6b7280; margin-top: 20px;">
+                This invite link expires in 7 days. If you didn't expect this email, you can safely ignore it.
+              </p>
+              <div class="footer">
+                <p>Thanks,</p>
+                <p><strong>The Revluma Team</strong></p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+      };
+      await sgMail.send(msg);
+      return true;
+    } catch (error) {
+      logger.error('team_invite_email_failed', { message: error?.message || error });
+      throw new Error('Failed to send team invite email.');
+    }
+  },
 
   async sendWaitlistNotification(recipientEmail, subject, message) {
     try {
@@ -398,10 +618,10 @@ const emailService = {
       };
 
       await sgMail.send(msg);
-      console.log('✅ Notification email sent to:', recipientEmail);
+      logger.info('notification_email_sent', { to: recipientEmail });
       return true;
     } catch (error) {
-      console.error('❌ Notification email error:', error);
+      logger.error('notification_email_failed', { to: recipientEmail, message: error?.message || error });
       throw error;
     }
   },

@@ -4,6 +4,14 @@ import { api } from '@/lib/api';
 import { performLogout } from '@/lib/auth/logout';
 import { broadcastLogin, storeRefreshToken } from '@/lib/auth/session';
 
+export interface OrgMembership {
+  id: string;
+  role: string;
+  organization_id: string;
+  joined_at: string | null;
+  organizations: { id: string; company_name: string };
+}
+
 export interface User {
   id: string;
   email: string;
@@ -17,6 +25,7 @@ export interface User {
   membership_tier?: string;
   account_status?: string;
   last_login_at?: string | null;
+  organization_memberships?: OrgMembership[];
 }
 
 interface AuthState {
@@ -153,6 +162,13 @@ export const useAuthStore = create<AuthStore>()(
       checkSession: async () => {
         set({ loading: true });
         try {
+          type Membership = {
+            id: string;
+            role: string;
+            organization_id: string;
+            joined_at: string | null;
+            organizations: { id: string; company_name: string };
+          };
           type ProfileData = {
             id: string;
             full_name: string;
@@ -160,6 +176,7 @@ export const useAuthStore = create<AuthStore>()(
             email_verified: boolean;
             onboarding_completed: boolean;
             organizations?: Array<{ id: string }>;
+            organization_memberships?: Membership[];
           };
           let u: ProfileData | null = null;
           try {
@@ -172,6 +189,11 @@ export const useAuthStore = create<AuthStore>()(
 
           if (!u) throw new Error('No user data returned');
 
+          const memberships = u.organization_memberships ?? [];
+          const primaryMembership = memberships[0];
+          const role = primaryMembership?.role ?? 'member';
+          const tenantId = u.organizations?.[0]?.id ?? primaryMembership?.organization_id ?? '';
+
           set({
             user: {
               id: u.id,
@@ -179,10 +201,11 @@ export const useAuthStore = create<AuthStore>()(
               full_name: u.full_name,
               display_name: u.full_name.split(' ')[0],
               avatar_url: null,
-              role: 'admin',
-              tenant_id: u.organizations?.[0]?.id ?? '',
+              role,
+              tenant_id: tenantId,
               email_verified: u.email_verified ?? false,
               onboarding_status: u.onboarding_completed ? 'completed' : 'pending',
+              organization_memberships: memberships,
             },
             loading: false,
           });
