@@ -615,7 +615,7 @@
     </div>
 
     <!-- Header -->
-    <div class="flex justify-between items-center py-5 px-6 sm:px-8">
+    <div class="flex justify-between items-center py-6 px-4 sm:px-8 max-w-[520px] mx-auto w-full">
       <a href="/" class="flex items-center gap-2.5" style="text-decoration:none;">
         <div class="logo-mark">
           <img src="../assets/images/Revluma-icon.png" alt="Revluma Logo" style="mix-blend-mode: screen;">
@@ -626,7 +626,8 @@
         </div>
       </a>
       <!-- Step counter label -->
-      <div id="stepCounter" class="text-sm" style="color: var(--muted);">Step 1 of 3</div>
+      <div id="stepCounter" class="text-sm font-medium text-slate-400 tracking-wide">
+        Step 1 of 3
     </div>
 
     <!-- Step Dots -->
@@ -723,11 +724,15 @@
             <!-- Monthly Revenue -->
             <div>
               <p class="section-label mb-3">Monthly revenue</p>
-              <div class="grid grid-cols-4 gap-2">
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <button type="button" data-revenue="0-1k" class="pill-btn">$0–$1K</button>
                 <button type="button" data-revenue="1k-10k" class="pill-btn">$1K–$10K</button>
                 <button type="button" data-revenue="10k-50k" class="pill-btn">$10K–$50K</button>
-                <button type="button" data-revenue="50k+" class="pill-btn">$50K+</button>
+                <button type="button" data-revenue="50k_200k" class="pill-btn">$50k - $200k</button>
+                <button type="button" data-revenue="200k_500k" class="pill-btn">$200k - $500k</button>
+                <button type="button" data-revenue="500k_1m" class="pill-btn">$500k - $1M</button>
+                <button type="button" data-revenue="1m_5m" class="pill-btn">$1M - $5M</button>
+                <button type="button" data-revenue="5m_10m_plus" class="pill-btn">$5M - $10M+</button>
               </div>
               <input type="hidden" id="monthlyRevenue" name="monthlyRevenue">
               <p id="revenueError" class="text-xs mt-1.5 hidden" style="color: var(--red);"></p>
