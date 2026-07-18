@@ -35,6 +35,17 @@ export function Sidebar() {
 
   useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname, setMobileSidebarOpen]);
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768) {
+        setSidebarCollapsed(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Initial check
+    return () => window.removeEventListener('resize', handleResize);
+  }, [setSidebarCollapsed]);
+
   const groups = NAV.reduce<Record<string, typeof NAV>>((acc, item) => {
     (acc[item.group] ||= []).push(item);
     return acc;
@@ -49,27 +60,25 @@ export function Sidebar() {
       <div
         className={cn(
           'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity md:hidden',
-          (mobileSidebarOpen && !sidebarCollapsed) ? 'opacity-100' : 'pointer-events-none opacity-0',
+          mobileSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
-        onClick={() => {
-          setMobileSidebarOpen(false);
-          setSidebarCollapsed(false);
-        }}
+        onClick={() => setMobileSidebarOpen(false)}
         aria-hidden
       />
 
       <motion.aside
-        data-tour="sidebar"
-        initial={{ x: -32, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 220, damping: 28 }}
-        className={cn(
-          'relative z-50 flex shrink-0 flex-col border-r transition-[width,transform,background-color] duration-300 ease-out overflow-hidden',
-          theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
-          sidebarCollapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
-          !mobileSidebarOpen && 'max-md:w-0 max-md:border-none max-md:-translate-x-full'
-        )}
-      >
+  data-tour="sidebar"
+  initial={{ x: -32, opacity: 0 }}
+  animate={{ x: 0, opacity: 1 }}
+  transition={{ type: 'spring', stiffness: 220, damping: 28 }}
+  className={cn(
+  'fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width,transform,background-color] duration-300 ease-out md:relative md:translate-x-0',
+  theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
+  // FIX: Force full width on mobile ALWAYS. Only collapse on desktop.
+  sidebarCollapsed ? 'w-[var(--sidebar-w)] md:w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
+  mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+)}
+>
         {/* Ambient drifting orbs — makes the glass actually feel glassy */}
         <motion.div
           aria-hidden
@@ -86,17 +95,18 @@ export function Sidebar() {
           transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
         />
 
-        <div className="relative z-[1] flex shrink-0 items-center justify-between px-2 md:px-4 pb-3.5 pt-4">
-          <div className="flex items-center gap-1.5 md:gap-2.5">
+        {/* Logo + controls */}
+        <div className={cn(
+          'relative z-[1] flex shrink-0 items-center justify-between px-4 pb-3.5 pt-4',
+          sidebarCollapsed && 'md:flex-col md:px-2 md:gap-4 md:items-center'
+        )}>
+          <div className="flex items-center gap-2.5">
             <motion.img
               src={revlumaIcon}
               alt="Revluma"
               whileHover={{ scale: 1.12, rotate: -6 }}
               transition={{ type: 'spring', stiffness: 400, damping: 14 }}
-              className={cn(
-                "shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)] transition-all duration-300",
-                sidebarCollapsed ? "h-8 w-8" : "h-8 w-8 md:h-10 md:w-10"
-              )}
+              className="h-8 w-8 shrink-0 object-contain md:h-10 md:w-10 drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
             />
             <AnimatePresence>
               {!sidebarCollapsed && (
@@ -113,7 +123,7 @@ export function Sidebar() {
             </AnimatePresence>
           </div>
 
-          <div className={cn('flex items-center gap-1 pr-[38px] md:pr-[30px]', sidebarCollapsed && 'md:hidden')}>
+          <div className={cn('flex items-center gap-1', sidebarCollapsed && 'md:hidden')}>
             <button
               onClick={toggleTheme}
               className="relative h-[22px] w-[42px] rounded-full border border-border-md bg-bg-4 transition-colors"
@@ -134,27 +144,44 @@ export function Sidebar() {
                   : <Sun className="h-2 w-2" style={{ color: 'hsl(var(--sidebar-bg))' }} />}
               </motion.span>
             </button>
+            <motion.button
+              whileHover={{ scale: 1.08, rotate: -4 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
+              aria-label="Collapse sidebar"
+            >
+              <ChevronLeft className="h-3 w-3" />
+            </motion.button>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setMobileSidebarOpen(false);
+              }}
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setMobileSidebarOpen(false);
+              }}
+              className="relative z-[99999] pointer-events-auto flex h-10 w-10 items-center justify-center cursor-pointer rounded-md bg-slate-500/10 active:bg-slate-500/30 md:hidden"
+              aria-label="Close sidebar"
+            >
+              <X className="h-6 w-6 pointer-events-none" />
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setSidebarCollapsed(!sidebarCollapsed);
-            }}
-            onTouchStart={(e) => {
-              e.stopPropagation();
-              setSidebarCollapsed(!sidebarCollapsed);
-            }}
-            className={cn(
-              "absolute z-[100000] pointer-events-auto flex items-center justify-center cursor-pointer rounded-md transition-colors touch-manipulation",
-              "top-[18px] md:top-[22px] right-3 md:right-4",
-              "h-9 w-9 bg-slate-500/10 active:bg-slate-500/30 md:h-[26px] md:w-[26px] md:border md:border-border md:bg-bg-3 md:text-t2 md:hover:bg-glass/[0.065]"
-            )}
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Close sidebar"}
-          >
-            {sidebarCollapsed ? <ChevronRight className="h-5 w-5 md:h-3 md:w-3" /> : <ChevronLeft className="h-5 w-5 md:h-3 md:w-3" />}
-          </button>
+          {sidebarCollapsed && (
+            <motion.button
+              whileHover={{ scale: 1.08, rotate: 4 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setSidebarCollapsed(false)}
+              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
+              aria-label="Expand sidebar"
+            >
+              <ChevronRight className="h-3 w-3" />
+            </motion.button>
+          )}
         </div>
 
         {/* Nav */}
