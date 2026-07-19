@@ -99,6 +99,9 @@ exports.shopifyCallback = async (req, res, next) => {
     console.log("Query Params:", req.query);
     console.log("======================================");
 
+    console.log("storedState:", req.signedCookies.shopify_state);
+    console.log("userId:", req.signedCookies.shopify_user);
+
     // Read signed cookies
     const storedState = req.signedCookies.shopify_state;
     const userId = req.signedCookies.shopify_user;
