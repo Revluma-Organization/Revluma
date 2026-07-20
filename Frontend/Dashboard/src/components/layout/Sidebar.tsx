@@ -153,7 +153,6 @@ export function Sidebar() {
               <ChevronLeft className="h-3 w-3" />
             </motion.button>
             <button
-              <button
   type="button"
   onClick={(e) => {
     e.stopPropagation();
