@@ -72,11 +72,10 @@ export function Sidebar() {
   animate={{ x: 0, opacity: 1 }}
   transition={{ type: 'spring', stiffness: 220, damping: 28 }}
   className={cn(
-  'fixed inset-y-0 left-0 z-50 flex flex-col border-r transition-[width,transform,background-color] duration-300 ease-out md:relative md:translate-x-0',
+  'relative z-50 flex shrink-0 flex-col border-r transition-[width,transform,background-color] duration-300 ease-out overflow-hidden',
   theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
-  // FIX: Force full width on mobile ALWAYS. Only collapse on desktop.
-  sidebarCollapsed ? 'w-[var(--sidebar-w)] md:w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
-  mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+  sidebarCollapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
+  !mobileSidebarOpen && 'max-md:w-0 max-md:border-none max-md:-translate-x-full'
 )}
 >
         {/* Ambient drifting orbs — makes the glass actually feel glassy */}
@@ -154,22 +153,24 @@ export function Sidebar() {
               <ChevronLeft className="h-3 w-3" />
             </motion.button>
             <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setMobileSidebarOpen(false);
-              }}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setMobileSidebarOpen(false);
-              }}
-              className="relative z-[99999] pointer-events-auto flex h-10 w-10 items-center justify-center cursor-pointer rounded-md bg-slate-500/10 active:bg-slate-500/30 md:hidden"
-              aria-label="Close sidebar"
-            >
-              <X className="h-6 w-6 pointer-events-none" />
-            </button>
-          </div>
+              <button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    setSidebarCollapsed(!sidebarCollapsed);
+    if (window.innerWidth < 768) {
+       setMobileSidebarOpen(false);
+    }
+  }}
+  className={cn(
+    "absolute z-[100000] pointer-events-auto flex items-center justify-center cursor-pointer rounded-md transition-colors touch-manipulation",
+    "top-[18px] md:top-[22px] right-3 md:right-4",
+    "h-9 w-9 bg-slate-500/10 active:bg-slate-500/30 md:h-[26px] md:w-[26px] md:border md:border-border md:bg-bg-3 md:text-t2 md:hover:bg-glass/[0.065]"
+  )}
+  aria-label={sidebarCollapsed ? "Expand sidebar" : "Close sidebar"}
+>
+  {sidebarCollapsed ? <ChevronRight className="h-5 w-5 md:h-3 md:w-3" /> : <ChevronLeft className="h-5 w-5 md:h-3 md:w-3" />}
+</button>
 
           {sidebarCollapsed && (
             <motion.button
