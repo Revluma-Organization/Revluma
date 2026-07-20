@@ -170,8 +170,9 @@ export function Sidebar() {
   aria-label={sidebarCollapsed ? "Expand sidebar" : "Close sidebar"}
 >
   {sidebarCollapsed ? <ChevronRight className="h-5 w-5 md:h-3 md:w-3" /> : <ChevronLeft className="h-5 w-5 md:h-3 md:w-3" />}
-</button>
-
+         </button>
+          </div>
+          
           {sidebarCollapsed && (
             <motion.button
               whileHover={{ scale: 1.08, rotate: 4 }}
