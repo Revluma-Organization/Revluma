@@ -122,7 +122,7 @@ export function Sidebar() {
             </AnimatePresence>
           </div>
 
-          <div className={cn('flex items-center gap-1', sidebarCollapsed && 'md:hidden')}>
+          <div className={cn('flex items-center gap-1 pr-[38px] md:pr-[30px]', sidebarCollapsed && 'md:hidden')}>
             <button
               onClick={toggleTheme}
               className="relative h-[22px] w-[42px] rounded-full border border-border-md bg-bg-4 transition-colors"
