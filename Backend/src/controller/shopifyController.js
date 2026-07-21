@@ -89,15 +89,13 @@ exports.shopifyCallback = async (req, res, next) => {
       });
     }
 
-    // DEBUG LOGS
-    logger.debug('shopify_callback', {
-      hasCookies: !!req.headers.cookie,
-      signedCookies: Object.keys(req.signedCookies || {}),
-      queryKeys: Object.keys(req.query || {}),
-    });
-
-    console.log("storedState:", req.signedCookies.shopify_state);
-    console.log("userId:", req.signedCookies.shopify_user);
+    //debug
+console.log("========== SHOPIFY CALLBACK ==========");
+console.log("Headers Cookie:", req.headers.cookie);
+console.log("Cookies:", req.cookies);
+console.log("Signed Cookies:", req.signedCookies);
+console.log("Query:", req.query);
+console.log("======================================");
 
     // Read signed cookies
     const storedState = req.signedCookies.shopify_state;

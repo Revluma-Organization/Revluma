@@ -45,7 +45,7 @@ const registerLimiter = rateLimit({
   store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
-  keyGenerator:   (req) => req.ip,
+  keyGenerator: (req) => ipKeyGenerator(req),
   message: {
     success: false,
     error:   'Too many registration attempts. Please try again in 30 minutes.',
@@ -60,7 +60,7 @@ const loginLimiter = rateLimit({
   store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
-  keyGenerator:   (req) => req.ip,
+  keyGenerator: (req) => ipKeyGenerator(req),
   message: {
     success: false,
     error:   'Too many login attempts. Please try again in 15 minutes.',
@@ -117,7 +117,7 @@ const ingestLimiter = rateLimit({
   store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
-  keyGenerator:   (req) => req.ip,
+  keyGenerator: (req) => ipKeyGenerator(req),
   message: {
     success: false,
     error:   'Rate limit exceeded.',
@@ -132,7 +132,7 @@ const waitlistJoinLimiter = rateLimit({
   store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
-  keyGenerator:   (req) => req.ip,
+  keyGenerator: (req) => ipKeyGenerator(req),
   message: {
     success: false,
     error:   'Too many waitlist submissions. Please try again later.',
@@ -147,7 +147,7 @@ const referralCheckLimiter = rateLimit({
   store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
-  keyGenerator:   (req) => req.ip,
+  keyGenerator: (req) => ipKeyGenerator(req),
   message: {
     success: false,
     error:   'Too many referral checks. Please slow down.',
@@ -162,7 +162,7 @@ const passwordResetLimiter = rateLimit({
   store:          resolveStore(),
   standardHeaders: true,
   legacyHeaders:  false,
-  keyGenerator:   (req) => req.ip,
+  keyGenerator: (req) => ipKeyGenerator(req),
   message: {
     success: false,
     error:   'Too many password reset attempts. Please try again later.',
