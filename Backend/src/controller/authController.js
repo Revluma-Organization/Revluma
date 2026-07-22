@@ -887,12 +887,7 @@ exports.getProfile = async (req, res) => {
 
     return res.status(200).json({ success: true, data: user });
 
-  } catch (error){
-  console.error("GET PROFILE ERROR:", error);
-
-  return res.status(500).json({
-    success: false,
-    error: error.message,
-  });
-}};
-
+  } catch (error) {
+    return res.status(500).json({ success: false, error: 'Failed to fetch profile.' });
+  }
+};
