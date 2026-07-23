@@ -73,54 +73,63 @@ export const useAuthStore = create<AuthStore>()(
       clearError: () => set({ error: null }),
       resetLocalAuthState: () => set({ user: null, csrfToken: null, loading: false, error: null }),
 
-      changePassword: async (currentPassword, newPassword, confirmNewPassword) => {
-        set({ loading: true, error: null });
-        try {
-          await api.post('/auth/change-password', { currentPassword, newPassword, confirmNewPassword });
-          set({ loading: false });
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Failed to change password. Please try again.';
-          set({ loading: false, error: message });
-          throw err;
-        }
-      },
+      changePassword: async (currentPassword, newPassword) => {
+  set({ loading: true, error: null });
+  try {
+    await api.post('/api/v1/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    set({ loading: false });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to change password';
+    set({ loading: false, error: message });
+    throw err;
+  }
+},
 
       requestOtp: async (email) => {
-        set({ loading: true, error: null });
-        try {
-          await api.post('/auth/forgot-password', { email });
-          set({ loading: false });
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Failed to send OTP.';
-          set({ loading: false, error: message });
-          throw err;
-        }
-      },
+  set({ loading: true, error: null });
+  try {
+    await api.post('/api/v1/auth/forgot-password', { email });
+    set({ loading: false });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to request OTP';
+    set({ loading: false, error: message });
+    throw err;
+  }
+},
 
       verifyOtp: async (email, otp) => {
-        set({ loading: true, error: null });
-        try {
-          const res = await api.post<{ data: { resetToken: string } }>('/auth/verify-otp', { email, otp });
-          set({ loading: false });
-          return { resetToken: res.data.data.resetToken };
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Invalid or expired OTP.';
-          set({ loading: false, error: message });
-          throw err;
-        }
-      },
+  set({ loading: true, error: null });
+  try {
+    const res = await api.post<any>('/api/v1/auth/forgot-password/verify', {
+      email,
+      code: otp,
+    });
+    set({ loading: false });
+    return res.data.resetToken || res.data.data.resetToken;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Invalid OTP';
+    set({ loading: false, error: message });
+    throw err;
+  }
+},
 
       resetPassword: async (email, resetToken, newPassword) => {
-        set({ loading: true, error: null });
-        try {
-          await api.post('/auth/reset-password', { email, resetToken, newPassword });
-          set({ loading: false });
-        } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Failed to reset password.';
-          set({ loading: false, error: message });
-          throw err;
-        }
-      },
+  set({ loading: true, error: null });
+  try {
+    await api.post('/api/v1/auth/forgot-password/reset', {
+      reset_token: resetToken,
+      password: newPassword,
+    });
+    set({ loading: false });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Failed to reset password';
+    set({ loading: false, error: message });
+    throw err;
+  }
+},
 
       login: async (email, password) => {
         set({ loading: true, error: null });
