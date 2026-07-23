@@ -33,7 +33,7 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      await api.post<any>("/api/v1/auth/forgot-password", { email });
+      await api.post<any>("/auth/forgot-password", { email });
       setStep(2);
     } catch (err) {
       handleError(err, "Failed to send OTP. Please try again.");
@@ -84,7 +84,7 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      const res = await api.post<any>("/api/v1/auth/forgot-password/verify", { 
+      const res = await api.post<any>("/auth/forgot-password/verify", { 
         email, 
         code: otpString 
       });
@@ -116,7 +116,7 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      await api.post<any>("/api/v1/auth/forgot-password/reset", {
+      await api.post<any>("/auth/forgot-password/reset", {
         reset_token: resetToken,
         password: newPassword,
       });
