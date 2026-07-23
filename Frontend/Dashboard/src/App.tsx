@@ -13,6 +13,7 @@ import { TooltipProvider } from './components/ui/tooltip';
 import { Toaster as Sonner } from './components/ui/sonner';
 import { Toaster } from './components/ui/toaster';
 import NotFound from './pages/NotFound';
+import ForgotPassword from "./pages/auth/ForgotPassword";
 import InviteAccept from './pages/InviteAccept';
 import { getAccessToken } from './lib/auth/session';
 
@@ -50,6 +51,7 @@ function App() {
               }
             />
             <Route path="/login" element={<LoginRedirect />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/invite/accept" element={<InviteAccept />} />
             <Route path="/" element={<Navigate to="/dashboard/overview" replace />} />
             <Route path="*" element={<NotFound />} />
