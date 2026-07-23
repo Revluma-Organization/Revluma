@@ -143,15 +143,6 @@ export function Sidebar() {
                   : <Sun className="h-2 w-2" style={{ color: 'hsl(var(--sidebar-bg))' }} />}
               </motion.span>
             </button>
-            <motion.button
-              whileHover={{ scale: 1.08, rotate: -4 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
-              aria-label="Collapse sidebar"
-            >
-              <ChevronLeft className="h-3 w-3" />
-            </motion.button>
             <button
   type="button"
   onClick={(e) => {
