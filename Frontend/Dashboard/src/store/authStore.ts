@@ -76,7 +76,7 @@ export const useAuthStore = create<AuthStore>()(
       changePassword: async (currentPassword, newPassword) => {
   set({ loading: true, error: null });
   try {
-    await api.post('/api/v1/auth/change-password', {
+    await api.post('/auth/change-password', {
       current_password: currentPassword,
       new_password: newPassword,
     });
@@ -91,7 +91,7 @@ export const useAuthStore = create<AuthStore>()(
       requestOtp: async (email) => {
   set({ loading: true, error: null });
   try {
-    await api.post('/api/v1/auth/forgot-password', { email });
+    await api.post('/auth/forgot-password', { email });
     set({ loading: false });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to request OTP';
@@ -103,7 +103,7 @@ export const useAuthStore = create<AuthStore>()(
       verifyOtp: async (email, otp) => {
   set({ loading: true, error: null });
   try {
-    const res = await api.post<any>('/api/v1/auth/forgot-password/verify', {
+    const res = await api.post<any>('/auth/forgot-password/verify', {
       email,
       code: otp,
     });
@@ -119,7 +119,7 @@ export const useAuthStore = create<AuthStore>()(
       resetPassword: async (email, resetToken, newPassword) => {
   set({ loading: true, error: null });
   try {
-    await api.post('/api/v1/auth/forgot-password/reset', {
+    await api.post('/auth/forgot-password/reset', {
       reset_token: resetToken,
       password: newPassword,
     });
