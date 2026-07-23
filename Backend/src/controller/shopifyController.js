@@ -5,9 +5,20 @@ const { buildCookieOptions } = require('../utils/cookieOptions');
 const {exchangeAccessToken,getOrganizationByUser,upsertStore,syncShopifyStore,} = require("../services/shopifyService");
 
 /**GET /api/v1/shopify/install, Redirect authenticated merchant to Shopify OAuth.*/
+
 exports.installShopify = async (req, res, next) => {
   try {
     const { shop } = req.query;
+
+    // Read user from the temporary OAuth cookie
+    const userId = req.signedCookies.oauth_user;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+      });
+    }
 
     if (!shop) {
       return res.status(400).json({
@@ -25,35 +36,45 @@ exports.installShopify = async (req, res, next) => {
 
     const state = generateState();
 
-    // Store OAuth state
     res.cookie("shopify_state", state, {
-    signed: true,
-    ...buildCookieOptions(req),
-    maxAge: 10 * 60 * 1000,
+      signed: true,
+      ...buildCookieOptions(req),
+      maxAge: 10 * 60 * 1000,
     });
 
-    // Store authenticated user ID
-    res.cookie("shopify_user", req.user.id, {
-    signed: true,
-    ...buildCookieOptions(req),
-    maxAge: 10 * 60 * 1000,
+    res.cookie("shopify_user", userId, {
+      signed: true,
+      ...buildCookieOptions(req),
+      maxAge: 10 * 60 * 1000,
     });
-
+    
     const installUrl = buildInstallUrl({
       shop,
       state,
     });
 
-    // Return the URL instead of redirecting
-    return res.status(200).json({
-      success: true,
-      install_url: installUrl,
-    });
+    return res.redirect(installUrl);
+
   } catch (error) {
     next(error);
   }
 };
 
+exports.startShopify = async (req, res, next) => {
+  try {
+    res.cookie("oauth_user", req.user.id, {
+      signed: true,
+      ...buildCookieOptions(req),
+      maxAge: 10 * 60 * 1000,
+    });
+
+    return res.status(200).json({
+      success: true,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**GET /api/v1/shopify/callback, Handle Shopify OAuth callback.*/
 exports.shopifyCallback = async (req, res, next) => {
@@ -153,6 +174,11 @@ exports.shopifyCallback = async (req, res, next) => {
       ...buildCookieOptions(req),
       path: "/",
     });
+
+    res.clearCookie("oauth_user", {
+     ...buildCookieOptions(req),
+      path: "/",
+     });
 
     // Redirect merchant back to frontend
     return res.redirect(
