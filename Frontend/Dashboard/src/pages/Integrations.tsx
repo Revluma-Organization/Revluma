@@ -260,8 +260,11 @@ export default function Integrations() {
     }
 
     try {
-      // Step 1: Tell the backend to start the OAuth flow (this safely sends the JWT via Axios)
-      await api.post('/shopify/start');
+      // Step 1: Tell the backend to start the OAuth flow
+      await api.post('/shopify/start', {}, { withCredentials: true });
+      
+      // Pause for 150ms to let the browser physically save the cookie
+      await new Promise(resolve => setTimeout(resolve, 150));
       
       // Step 2: Direct browser navigation so cookies don't get blocked
       window.location.assign(`https://revluma-backend.onrender.com/api/v1/shopify/install?shop=${cleanShop}`);
