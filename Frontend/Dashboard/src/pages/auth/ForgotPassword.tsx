@@ -84,7 +84,10 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      const res = await api.post<any>("/api/v1/auth/verify-otp", { email, otp: otpString });
+      const res = await api.post<any>("/api/v1/auth/forgot-password/verify", { 
+        email, 
+        code: otpString 
+      });
       if (res.data?.resetToken) {
         setResetToken(res.data.resetToken);
       } else {
@@ -113,10 +116,9 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      await api.post<any>("/api/v1/auth/reset-password", {
-        email,
-        resetToken,
-        newPassword,
+      await api.post<any>("/api/v1/auth/forgot-password/reset", {
+        reset_token: resetToken,
+        password: newPassword,
       });
       setSuccessMessage("Your password has been successfully reset. You can now login with your new password.");
     } catch (err) {
