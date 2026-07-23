@@ -260,22 +260,17 @@ export default function Integrations() {
     }
 
     try {
-      const response = await api.get<ShopifyInstallResponse>('/shopify/install', {
-  shop: cleanShop,
-});
-      const installUrl = response.data?.install_url?.trim();
-      if (!installUrl) {
-        throw new Error(response.data?.message ?? 'Shopify install URL was not returned by the server.');
-      }
-
-      window.location.assign(installUrl);
+      // Step 1: Tell the backend to start the OAuth flow (this safely sends the JWT via Axios)
+      await api.post('/shopify/start');
+      
+      // Step 2: Direct browser navigation so cookies don't get blocked
+      window.location.assign(`https://revluma-backend.onrender.com/api/v1/shopify/install?shop=${cleanShop}`);
     } catch (e) {
       console.error('Shopify connect failed', e);
       showStatusCard(
         'error',
         'Shopify Connection Failed',
-        getErrorMessage(e, "We couldn't start the Shopify connection. Please check your store domain and try again."),
-        'Try Again',
+        getErrorMessage(e, "We couldn't start the Shopify connection. Try Again"),
       );
     }
   }
