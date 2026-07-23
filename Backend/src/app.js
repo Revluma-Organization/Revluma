@@ -15,6 +15,7 @@ const dashboardRoutes = require('./route/dashboardRoute');
 const storeRoutes = require('./route/storeRoute');
 const notificationRoutes = require('./route/notificationRoute');
 
+
 const app = express();
 
 // ── Trust proxy (required for Render, Railway, Vercel)
@@ -73,6 +74,7 @@ app.use('/api/v1/shopify', shopifyRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/stores', storeRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+
 
 // ── Health check
 app.get('/health', (req, res) => {
