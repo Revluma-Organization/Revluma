@@ -119,10 +119,12 @@ export const useAuthStore = create<AuthStore>()(
       resetPassword: async (email, resetToken, newPassword) => {
   set({ loading: true, error: null });
   try {
-    await api.post('/auth/forgot-password/reset', {
-      reset_token: resetToken,
-      password: newPassword,
-    });
+        await api.post('/auth/forgot-password/reset', {
+        email: email,
+        reset_token: resetToken,
+        new_password: newPassword,
+        password: newPassword,
+      });
     set({ loading: false });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to reset password';
