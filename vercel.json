@@ -46,8 +46,16 @@
   ],
   "rewrites": [
     {
+      "source": "/forgot-password",
+      "destination": "/dashboard/index"
+    },
+    {
       "source": "/dashboard/:path*",
       "destination": "/dashboard/index"
+    },
+    {
+      "source": "/login",
+      "destination": "/auth/login.html"
     },
     {
       "source": "/login",
