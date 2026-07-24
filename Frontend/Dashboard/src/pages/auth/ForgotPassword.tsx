@@ -88,13 +88,18 @@ export default function ForgotPassword() {
         email, 
         code: otpString 
       });
-      if (res.data?.resetToken) {
-        setResetToken(res.data.resetToken);
+            const token = res.data?.reset_token 
+        || res.data?.resetToken 
+        || res.data?.data?.reset_token 
+        || res.data?.data?.resetToken 
+        || res.data?.token;
+
+      if (token) {
+        setResetToken(token);
+        setStep(3);
       } else {
-        // Fallback if backend returns token directly in a different property
-        setResetToken(res.data?.token || res.data?.data?.resetToken);
+        throw new Error("Verification successful, but no reset token was returned.");
       }
-      setStep(3);
     } catch (err) {
       handleError(err, "Invalid or expired OTP. Please try again.");
     } finally {
@@ -115,9 +120,11 @@ export default function ForgotPassword() {
     setLoading(true);
     setError("");
 
-    try {
+        try {
       await api.post<any>("/auth/forgot-password/reset", {
+        email: email,
         reset_token: resetToken,
+        new_password: newPassword,
         password: newPassword,
       });
       setSuccessMessage("Your password has been successfully reset. You can now login with your new password.");
