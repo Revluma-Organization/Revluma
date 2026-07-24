@@ -259,15 +259,23 @@ export default function Integrations() {
       cleanShop = `${cleanShop}.myshopify.com`;
     }
 
-    try {
-      // Step 1: Tell the backend to start the OAuth flow
-      await api.post('/shopify/start', {}, { withCredentials: true });
-      
-      // Pause for 150ms to let the browser physically save the cookie
-      await new Promise(resolve => setTimeout(resolve, 150));
-      
-      // Step 2: Direct browser navigation so cookies don't get blocked
-      window.location.assign(`https://revluma-backend.onrender.com/api/v1/shopify/install?shop=${cleanShop}`);
+        try {
+      // Step 1: Tell the backend to start the OAuth flow. 
+      // The Axios interceptor sends the Bearer token.
+      // withCredentials: true tells the browser to save the secure HttpOnly cookie Afolabi sends back.
+      await api.post('/shopify/start', 
+        { shop: cleanShop }, // Sending the shop here too just in case his backend wants to validate it early
+        { withCredentials: true }
+      );
+
+      // Pause for 300ms to ensure the browser has enough physical time to save the cookie to storage
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Step 2: Direct browser navigation to the install route.
+      // The browser will automatically attach the cookie Afolabi just set.
+      // (Make sure this base URL matches your actual backend URL)
+      const backendBaseUrl = "https://revluma-backend.onrender.com/api/v1"; 
+      window.location.assign(`${backendBaseUrl}/shopify/install?shop=${cleanShop}`);
     } catch (e) {
       console.error('Shopify connect failed', e);
       showStatusCard(
