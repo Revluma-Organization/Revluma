@@ -14,6 +14,7 @@ const shopifyRoutes = require('./route/shopifyRoute');
 const dashboardRoutes = require('./route/dashboardRoute');
 const storeRoutes = require('./route/storeRoute');
 const notificationRoutes = require('./route/notificationRoute');
+const eventRoutes = require("./route/eventRoute")
 
 
 const app = express();
@@ -74,6 +75,7 @@ app.use('/api/v1/shopify', shopifyRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/stores', storeRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/events', eventRoutes);
 
 
 // ── Health check

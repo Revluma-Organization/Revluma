@@ -117,7 +117,7 @@ const ingestLimiter = rateLimit({
   legacyHeaders:  false,
   message: {
     success: false,
-    error:   'Rate limit exceeded.',
+    error:   'Too many requests. Please try again later.',
   },
   skip: () => process.env.NODE_ENV === 'test',
 });
@@ -163,6 +163,8 @@ const passwordResetLimiter = rateLimit({
   },
   skip: () => process.env.NODE_ENV === 'test',
 });
+
+
 
 module.exports = {
   registerLimiter,
