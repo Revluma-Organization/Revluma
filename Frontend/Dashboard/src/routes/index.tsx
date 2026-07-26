@@ -17,6 +17,7 @@ import Organization from "../pages/settings/Organization";
 import TeamMembers from "../pages/settings/TeamMembers";
 import RolesPermissions from "../pages/settings/RolesPermissions";
 import Branding from "../pages/settings/Branding";
+import Preferences from "../pages/settings/Preferences";
 import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 
 export function DashboardRoutes() {
@@ -39,7 +40,7 @@ export function DashboardRoutes() {
           <Route path="profile" element={<Profile />} />
           
           {/* Account */}
-          <Route path="preferences" element={<SettingsPlaceholder title="Preferences" />} />
+          <Route path="preferences" element={<Preferences />} />
           <Route path="notifications" element={<SettingsPlaceholder title="Notifications" />} />
           <Route path="active-sessions" element={<SettingsPlaceholder title="Active Sessions" />} />
           
