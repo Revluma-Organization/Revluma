@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   X,
   Loader2,
-  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,24 +67,15 @@ const INITIAL_POPULATED_MEMBERS: TeamMemberItem[] = [
 ];
 
 export const TeamMembers: FC = () => {
-  // Start in empty state as requested by the prompt ("The current state is empty, so start by designing a beautiful 'Empty State' placeholder...")
-  const [members, setMembers] = useState<TeamMemberItem[]>([]);
+  // Render the main populated state directly without demo toggle buttons
+  const [members, setMembers] = useState<TeamMemberItem[]>(
+    INITIAL_POPULATED_MEMBERS
+  );
   const [isInviteModalOpen, setIsInviteModalOpen] = useState<boolean>(false);
   const [inviteEmail, setInviteEmail] = useState<string>("");
   const [inviteRole, setInviteRole] = useState<"Admin" | "Member">("Member");
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
-
-  // Toggle helper for easy testing of both empty and populated states
-  const toggleDemoState = () => {
-    if (members.length === 0) {
-      setMembers(INITIAL_POPULATED_MEMBERS);
-      setFeedbackMessage("Switched demo to Populated State (3 members).");
-    } else {
-      setMembers([]);
-      setFeedbackMessage("Switched demo to Empty State.");
-    }
-  };
 
   const handleOpenInviteModal = () => {
     setInviteEmail("");
@@ -156,7 +146,7 @@ export const TeamMembers: FC = () => {
 
   return (
     <div className="w-full max-w-5xl space-y-8 text-slate-100">
-      {/* Page Header with Demo Toggle */}
+      {/* Page Header with Invite Member button at top right */}
       <div className="flex flex-col justify-between gap-4 border-b border-slate-800 pb-6 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
@@ -172,26 +162,11 @@ export const TeamMembers: FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={toggleDemoState}
-            className="border-slate-700 bg-slate-900/80 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
-          >
-            <Sparkles className="mr-1.5 h-3.5 w-3.5 text-sky-400" />
-            <span>
-              {members.length === 0
-                ? "Preview Populated State"
-                : "Preview Empty State"}
-            </span>
-          </Button>
-
+        <div className="flex items-center">
           <Button
             type="button"
             onClick={handleOpenInviteModal}
-            className="h-9 bg-sky-600 px-4 text-xs font-semibold text-white shadow-lg shadow-sky-600/20 hover:bg-sky-500 sm:h-10 sm:text-sm"
+            className="h-10 bg-sky-600 px-5 text-sm font-semibold text-white shadow-lg shadow-sky-600/20 hover:bg-sky-500"
           >
             <UserPlus className="mr-2 h-4 w-4" />
             <span>Invite Member</span>
@@ -223,54 +198,31 @@ export const TeamMembers: FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Main Content Area: Empty State vs. Populated State */}
-      {members.length === 0 ? (
-        /* Empty State */
-        <motion.div
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3 }}
-          className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 px-6 py-20 text-center sm:px-12 sm:py-24"
-        >
-          <div className="flex h-16 w-16 items-center justify-center rounded-full border border-slate-800 bg-slate-900 text-slate-400 shadow-inner">
-            <Users className="h-8 w-8 text-slate-500" />
-          </div>
-
-          <h2 className="mt-6 text-xl font-bold text-white sm:text-2xl">
-            No team members yet
-          </h2>
-          <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-400">
-            You have not invited any colleagues to this workspace yet. Add staff to share analytics, manage integrations, and collaborate on customer revenue.
-          </p>
-
-          <Button
-            type="button"
-            onClick={handleOpenInviteModal}
-            className="mt-8 h-11 bg-sky-600 px-6 font-semibold text-white shadow-xl shadow-sky-600/20 hover:bg-sky-500"
-          >
-            <UserPlus className="mr-2 h-4 w-4" />
-            <span>Invite Member</span>
-          </Button>
-        </motion.div>
-      ) : (
-        /* Populated State Data Table */
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 shadow-xl"
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/60 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  <th className="px-6 py-4">User</th>
-                  <th className="px-6 py-4">Role</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
+      {/* Main Populated Data Table (User, Role, Actions) */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 shadow-xl"
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-slate-800 bg-slate-950/60 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <th className="px-6 py-4">User</th>
+                <th className="px-6 py-4">Role</th>
+                <th className="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/80">
+              {members.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="px-6 py-12 text-center text-sm text-slate-500">
+                    No team members found. Click &quot;Invite Member&quot; to add someone to your workspace.
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/80">
-                {members.map((member) => (
+              ) : (
+                members.map((member) => (
                   <tr
                     key={member.id}
                     className="group transition-colors hover:bg-slate-800/40"
@@ -360,12 +312,12 @@ export const TeamMembers: FC = () => {
                       </DropdownMenu>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </motion.div>
-      )}
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </motion.div>
 
       {/* Framer Motion Modal for Invite Member */}
       <AnimatePresence>
