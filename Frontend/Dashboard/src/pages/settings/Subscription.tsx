@@ -82,19 +82,9 @@ export interface SubscriptionInfo {
   resetDate: string;
 }
 
-const FALLBACK_SUBSCRIPTION: SubscriptionInfo = {
-  planName: "Free Trial",
-  status: "trial",
-  trialDaysRemaining: 11,
-  monthlyTrackedVisitorsUsed: 450,
-  monthlyTrackedVisitorsLimit: 1000,
-  resetDate: "Aug 1, 2026",
-};
 
 export const Subscription: FC = () => {
-  const [subscription, setSubscription] = useState<SubscriptionInfo>(
-    FALLBACK_SUBSCRIPTION
-  );
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [isLoadingSub, setIsLoadingSub] = useState<boolean>(true);
 
   const fetchSubscription = useCallback(async () => {
@@ -108,11 +98,11 @@ export const Subscription: FC = () => {
       if (res && res.data && res.data.planName) {
         setSubscription(res.data);
       } else {
-        setSubscription(FALLBACK_SUBSCRIPTION);
+        setSubscription(null);
       }
     } catch (err) {
-      console.warn("Failed to fetch subscription info from API, using fallback:", err);
-      setSubscription(FALLBACK_SUBSCRIPTION);
+      console.warn("Failed to fetch subscription info from API:", err);
+      setSubscription(null);
     } finally {
       setIsLoadingSub(false);
     }
@@ -122,19 +112,23 @@ export const Subscription: FC = () => {
     fetchSubscription();
   }, [fetchSubscription]);
 
-  const usagePercent = Math.min(
-    100,
-    Math.round(
-      (subscription.monthlyTrackedVisitorsUsed /
-        Math.max(1, subscription.monthlyTrackedVisitorsLimit)) *
-        100
-    )
-  );
-  const remainingVisitors = Math.max(
-    0,
-    subscription.monthlyTrackedVisitorsLimit -
-      subscription.monthlyTrackedVisitorsUsed
-  );
+  const usagePercent = subscription
+    ? Math.min(
+        100,
+        Math.round(
+          (subscription.monthlyTrackedVisitorsUsed /
+            Math.max(1, subscription.monthlyTrackedVisitorsLimit)) *
+            100
+        )
+      )
+    : 0;
+  const remainingVisitors = subscription
+    ? Math.max(
+        0,
+        subscription.monthlyTrackedVisitorsLimit -
+          subscription.monthlyTrackedVisitorsUsed
+      )
+    : 0;
 
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<
     PricingCardData | null
@@ -146,16 +140,26 @@ export const Subscription: FC = () => {
     setSelectedUpgradePlan(plan);
   };
 
-  const handleConfirmUpgrade = () => {
+  const handleConfirmUpgrade = async () => {
     if (!selectedUpgradePlan) return;
     setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
+    try {
+      await api.post(
+        "/billing/subscription/upgrade",
+        { planId: selectedUpgradePlan.id },
+        { skipAuthRedirect: true }
+      );
       setSuccessMessage(
-        `Successfully upgraded your workspace to the ${selectedUpgradePlan.name} plan ($${selectedUpgradePlan.price}/mo).`
+        `Successfully upgraded your workspace to the ${selectedUpgradePlan.name} plan (${selectedUpgradePlan.price}/mo).`
       );
       setSelectedUpgradePlan(null);
-    }, 1200);
+      // Refresh subscription data after successful upgrade
+      fetchSubscription();
+    } catch (err) {
+      console.error("Failed to upgrade subscription:", err);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -188,6 +192,10 @@ export const Subscription: FC = () => {
           <div className="flex items-center justify-center py-6 gap-3 text-slate-400 text-sm">
             <Loader2 className="h-5 w-5 animate-spin text-sky-400" />
             <span>Loading subscription status and usage...</span>
+          </div>
+        ) : !subscription ? (
+          <div className="flex items-center justify-center py-6 gap-3 text-slate-400 text-sm">
+            <span>No subscription data available.</span>
           </div>
         ) : (
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">

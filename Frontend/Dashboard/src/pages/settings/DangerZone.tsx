@@ -9,10 +9,12 @@ import {
   AlertCircle,
   X,
   Lock,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { api } from "@/lib/api";
 
 interface TransferFeedbackState {
   type: "success" | "error" | null;
@@ -32,7 +34,7 @@ export const DangerZone: FC = () => {
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [isDeletedSuccess, setIsDeletedSuccess] = useState<boolean>(false);
 
-  const handleTransferOwnership = (e: FormEvent) => {
+  const handleTransferOwnership = async (e: FormEvent) => {
     e.preventDefault();
     if (!transferEmail || !transferEmail.includes("@")) {
       setTransferFeedback({
@@ -41,19 +43,24 @@ export const DangerZone: FC = () => {
       });
       return;
     }
-
     setIsTransferring(true);
     setTransferFeedback({ type: null, message: "" });
-
-    // Simulate transfer request with zero-defect handling
-    setTimeout(() => {
-      setIsTransferring(false);
+    try {
+      await api.post("/workspace/transfer", { email: transferEmail }, { skipAuthRedirect: true });
       setTransferFeedback({
         type: "success",
         message: `Ownership transfer invitation sent to ${transferEmail}.`,
       });
       setTransferEmail("");
-    }, 1000);
+    } catch (err) {
+      console.error("Failed to initiate ownership transfer:", err);
+      setTransferFeedback({
+        type: "error",
+        message: "Failed to send transfer invitation. Please try again.",
+      });
+    } finally {
+      setIsTransferring(false);
+    }
   };
 
   const handleOpenDeleteModal = () => {
@@ -68,19 +75,23 @@ export const DangerZone: FC = () => {
     setDeleteConfirmText("");
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (deleteConfirmText !== "DELETE") return;
     setIsDeleting(true);
-
-    setTimeout(() => {
+    try {
+      await api.delete("/workspace", { skipAuthRedirect: true });
       setIsDeleting(false);
       setIsDeletedSuccess(true);
+      // Auto-close modal after showing success state briefly
       setTimeout(() => {
         setIsDeleteModalOpen(false);
         setDeleteConfirmText("");
         setIsDeletedSuccess(false);
       }, 2000);
-    }, 1200);
+    } catch (err) {
+      console.error("Failed to delete workspace:", err);
+      setIsDeleting(false);
+    }
   };
 
   return (

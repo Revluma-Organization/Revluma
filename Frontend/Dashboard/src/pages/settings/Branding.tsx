@@ -100,6 +100,7 @@ export const Branding: FC = () => {
     setSaveStatus("idle");
     if (typeof document !== "undefined") {
       document.documentElement.style.setProperty("--primary", newColor);
+      document.documentElement.style.setProperty("--primary-color", newColor);
     }
   };
 
@@ -109,6 +110,7 @@ export const Branding: FC = () => {
     setSaveStatus("idle");
     if (typeof document !== "undefined") {
       document.documentElement.style.setProperty("--accent", newColor);
+      document.documentElement.style.setProperty("--accent-color", newColor);
     }
   };
 
@@ -142,14 +144,31 @@ export const Branding: FC = () => {
     }
   };
 
-  const handleResetDefaults = () => {
-    setPrimaryColor("#0EA5E9");
-    setAccentColor("#10B981");
+  const handleResetDefaults = async () => {
+    const defaultPrimary = "#0EA5E9";
+    const defaultAccent = "#10B981";
+    setPrimaryColor(defaultPrimary);
+    setAccentColor(defaultAccent);
     setLogoPreview(null);
     setLogoFileName("");
     setFaviconPreview(null);
     setFaviconFileName("");
     setSaveStatus("idle");
+    if (typeof document !== "undefined") {
+      document.documentElement.style.setProperty("--primary", defaultPrimary);
+      document.documentElement.style.setProperty("--primary-color", defaultPrimary);
+      document.documentElement.style.setProperty("--accent", defaultAccent);
+      document.documentElement.style.setProperty("--accent-color", defaultAccent);
+    }
+    try {
+      await api.put(
+        "/settings/branding",
+        { primaryColor: defaultPrimary, accentColor: defaultAccent },
+        { skipAuthRedirect: true }
+      );
+    } catch (err) {
+      console.error("Failed to reset branding defaults via API:", err);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -162,14 +181,11 @@ export const Branding: FC = () => {
         { primaryColor, accentColor },
         { skipAuthRedirect: true }
       );
-      localStorage.setItem("rv_primary_color", primaryColor);
-      localStorage.setItem("rv_accent_color", accentColor);
       setSaveStatus("success");
     } catch (err) {
-      console.warn("Failed API PUT branding, storing locally:", err);
-      localStorage.setItem("rv_primary_color", primaryColor);
-      localStorage.setItem("rv_accent_color", accentColor);
-      setSaveStatus("success");
+      console.error("Failed API PUT /settings/branding:", err);
+      setSaveStatus("error");
+      setErrorMessage("Failed to save branding. Please try again.");
     } finally {
       setIsSaving(false);
     }

@@ -26,44 +26,6 @@ export interface InvoiceRecord {
   cardLast4: string;
 }
 
-const FALLBACK_INVOICES: InvoiceRecord[] = [
-  {
-    id: "inv-4",
-    invoiceNumber: "INV-2026-004",
-    date: "Jul 26, 2026",
-    amount: "$50.00",
-    plan: "Scale",
-    status: "Paid",
-    cardLast4: "4242",
-  },
-  {
-    id: "inv-3",
-    invoiceNumber: "INV-2026-003",
-    date: "Jun 26, 2026",
-    amount: "$50.00",
-    plan: "Scale",
-    status: "Paid",
-    cardLast4: "4242",
-  },
-  {
-    id: "inv-2",
-    invoiceNumber: "INV-2026-002",
-    date: "May 26, 2026",
-    amount: "$29.00",
-    plan: "Growth",
-    status: "Paid",
-    cardLast4: "8899",
-  },
-  {
-    id: "inv-1",
-    invoiceNumber: "INV-2026-001",
-    date: "Apr 26, 2026",
-    amount: "$29.00",
-    plan: "Growth",
-    status: "Pending",
-    cardLast4: "8899",
-  },
-];
 
 export const InvoiceHistory: FC = () => {
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
@@ -81,11 +43,11 @@ export const InvoiceHistory: FC = () => {
       if (res && Array.isArray(res.data)) {
         setInvoices(res.data);
       } else {
-        setInvoices(FALLBACK_INVOICES);
+        setInvoices([]);
       }
     } catch (err) {
-      console.warn("Failed to fetch invoices from API, using fallback:", err);
-      setInvoices(FALLBACK_INVOICES);
+      console.warn("Failed to fetch invoices from API:", err);
+      setInvoices([]);
     } finally {
       setIsLoading(false);
     }
@@ -98,16 +60,26 @@ export const InvoiceHistory: FC = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
-  const handleDownloadPdf = (invoice: InvoiceRecord) => {
+  const handleDownloadPdf = async (invoice: InvoiceRecord) => {
     setDownloadingId(invoice.id);
     setFeedbackMessage(null);
-
-    setTimeout(() => {
-      setDownloadingId(null);
-      setFeedbackMessage(
-        `Downloaded PDF receipt for ${invoice.invoiceNumber} (${invoice.amount}).`
+    try {
+      const res = await api.get<{ downloadUrl: string }>(
+        `/billing/invoices/${invoice.id}/download`,
+        undefined,
+        { skipAuthRedirect: true }
       );
-    }, 1000);
+      if (res?.data?.downloadUrl) {
+        window.open(res.data.downloadUrl, "_blank", "noopener,noreferrer");
+      }
+      setFeedbackMessage(
+        `PDF receipt for ${invoice.invoiceNumber} (${invoice.amount}) is ready.`
+      );
+    } catch (err) {
+      console.error("Failed to get invoice download URL:", err);
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const handleExportCsv = () => {
@@ -303,7 +275,9 @@ export const InvoiceHistory: FC = () => {
                       colSpan={6}
                       className="px-6 py-12 text-center text-sm text-slate-500"
                     >
-                      No matching invoices found.
+                      {invoices.length === 0
+                        ? "No invoices found."
+                        : "No matching invoices found for the current filter."}
                     </td>
                   </tr>
                 ) : (
