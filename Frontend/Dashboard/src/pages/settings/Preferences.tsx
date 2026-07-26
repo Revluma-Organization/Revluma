@@ -66,9 +66,9 @@ export const Preferences: FC = () => {
   const [theme, setTheme] = useState<ThemeOption>(
     globalTheme === "light" ? "light" : "dark"
   );
-  const [language, setLanguage] = useState<string>("en-US");
-  const [timezone, setTimezone] = useState<string>("America/New_York");
-  const [dateFormat, setDateFormat] = useState<string>("MM/DD/YYYY");
+  const [language, setLanguage] = useState<string>("");
+  const [timezone, setTimezone] = useState<string>("");
+  const [dateFormat, setDateFormat] = useState<string>("");
 
   const fetchUserPreferences = useCallback(async () => {
     try {
@@ -77,7 +77,7 @@ export const Preferences: FC = () => {
         language?: string;
         timezone?: string;
         date_format?: string;
-      }>("/users/profile/preferences", undefined, { skipAuthRedirect: true });
+      }>("/user/preferences", undefined, { skipAuthRedirect: true });
       if (res && res.data) {
         if (res.data.language) {
           setLanguage(res.data.language);
@@ -88,34 +88,9 @@ export const Preferences: FC = () => {
         }
         if (res.data.timezone) setTimezone(res.data.timezone);
         if (res.data.date_format) setDateFormat(res.data.date_format);
-      } else {
-        const savedLang = localStorage.getItem("rv_locale_language");
-        const savedTz = localStorage.getItem("rv_locale_timezone");
-        const savedFmt = localStorage.getItem("rv_locale_date_format");
-        if (savedLang) {
-          setLanguage(savedLang);
-          updatePreference("language", savedLang);
-          if (typeof document !== "undefined") {
-            document.documentElement.lang = savedLang;
-          }
-        }
-        if (savedTz) setTimezone(savedTz);
-        if (savedFmt) setDateFormat(savedFmt);
       }
     } catch (err) {
       console.warn("Failed to fetch preferences from API:", err);
-      const savedLang = localStorage.getItem("rv_locale_language");
-      const savedTz = localStorage.getItem("rv_locale_timezone");
-      const savedFmt = localStorage.getItem("rv_locale_date_format");
-      if (savedLang) {
-        setLanguage(savedLang);
-        updatePreference("language", savedLang);
-        if (typeof document !== "undefined") {
-          document.documentElement.lang = savedLang;
-        }
-      }
-      if (savedTz) setTimezone(savedTz);
-      if (savedFmt) setDateFormat(savedFmt);
     }
   }, [updatePreference]);
 
@@ -139,56 +114,30 @@ export const Preferences: FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [savedSuccessfully, setSavedSuccessfully] = useState<boolean>(false);
 
-  const formatSampleDate = (fmt: string): string => {
-    switch (fmt) {
-      case "MM/DD/YYYY":
-        return "07/26/2026 — 02:45 PM EDT";
-      case "DD/MM/YYYY":
-        return "26/07/2026 — 14:45 EDT";
-      case "YYYY-MM-DD":
-        return "2026-07-26 — 14:45:00 EDT";
-      case "MMM DD, YYYY":
-        return "Jul 26, 2026 — 2:45 PM EDT";
-      default:
-        return "07/26/2026 — 02:45 PM EDT";
-    }
-  };
-
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setSavedSuccessfully(false);
+    const payload = {
+      theme: theme === "system" ? globalTheme : theme,
+      language,
+      date_format: dateFormat,
+      timezone,
+    };
     try {
-      await api.put(
-        "/users/profile/preferences",
-        {
-          theme: theme === "system" ? globalTheme : theme,
-          language,
-          timezone,
-          date_format: dateFormat,
-        },
-        { skipAuthRedirect: true }
-      );
-      updatePreference("language", language);
-      updatePreference("date_format", dateFormat);
-      if (typeof document !== "undefined") {
-        document.documentElement.lang = language;
+      await api.put("/user/preferences", payload, { skipAuthRedirect: true });
+      if (language) {
+        updatePreference("language", language);
+        if (typeof document !== "undefined") {
+          document.documentElement.lang = language;
+        }
       }
-      localStorage.setItem("rv_locale_language", language);
-      localStorage.setItem("rv_locale_timezone", timezone);
-      localStorage.setItem("rv_locale_date_format", dateFormat);
+      if (dateFormat) {
+        updatePreference("date_format", dateFormat);
+      }
       setSavedSuccessfully(true);
     } catch (err) {
-      console.warn("Failed API PUT preferences, saving locally:", err);
-      updatePreference("language", language);
-      updatePreference("date_format", dateFormat);
-      if (typeof document !== "undefined") {
-        document.documentElement.lang = language;
-      }
-      localStorage.setItem("rv_locale_language", language);
-      localStorage.setItem("rv_locale_timezone", timezone);
-      localStorage.setItem("rv_locale_date_format", dateFormat);
-      setSavedSuccessfully(true);
+      console.error("Failed API PUT /user/preferences:", err);
     } finally {
       setIsSaving(false);
     }
@@ -415,7 +364,7 @@ export const Preferences: FC = () => {
             </p>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
+          <div className="mt-6 max-w-md">
             {/* Preferred Format Dropdown */}
             <div className="space-y-2">
               <Label
@@ -455,21 +404,6 @@ export const Preferences: FC = () => {
               </Select>
               <p className="text-[0.75rem] text-slate-500">
                 Applies immediately across all tables and export files.
-              </p>
-            </div>
-
-            {/* Live Timestamp Preview Card */}
-            <div className="flex flex-col justify-center rounded-xl border border-slate-800/80 bg-slate-950 p-4 shadow-inner">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Live Timestamp Preview
-              </span>
-              <div className="mt-2 flex items-center gap-2">
-                <span className="rounded-lg bg-sky-500/10 border border-sky-500/20 px-3 py-1.5 font-mono text-sm font-semibold text-sky-300">
-                  {formatSampleDate(dateFormat)}
-                </span>
-              </div>
-              <p className="mt-2 text-[0.7rem] text-slate-500">
-                Preview of how timestamps will render in order logs and activity feeds.
               </p>
             </div>
           </div>

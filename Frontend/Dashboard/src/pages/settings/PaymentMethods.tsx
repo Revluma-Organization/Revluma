@@ -27,26 +27,6 @@ export interface SavedCard {
   tokenizedVia: string;
 }
 
-const FALLBACK_CARDS: SavedCard[] = [
-  {
-    id: "card-1",
-    brand: "Visa",
-    last4: "4242",
-    expMonth: "08",
-    expYear: "2028",
-    isDefault: true,
-    tokenizedVia: "Paystack Secure Vault",
-  },
-  {
-    id: "card-2",
-    brand: "Mastercard",
-    last4: "8899",
-    expMonth: "11",
-    expYear: "2027",
-    isDefault: false,
-    tokenizedVia: "Paystack Secure Vault",
-  },
-];
 
 export const PaymentMethods: FC = () => {
   const [cards, setCards] = useState<SavedCard[]>([]);
@@ -66,11 +46,11 @@ export const PaymentMethods: FC = () => {
       if (res && Array.isArray(res.data)) {
         setCards(res.data);
       } else {
-        setCards(FALLBACK_CARDS);
+        setCards([]);
       }
     } catch (err) {
-      console.warn("Failed to fetch payment methods from API, using fallback:", err);
-      setCards(FALLBACK_CARDS);
+      console.warn("Failed to fetch payment methods from API:", err);
+      setCards([]);
     } finally {
       setIsLoading(false);
     }
@@ -101,35 +81,45 @@ export const PaymentMethods: FC = () => {
     }
   };
 
-  const handleRemoveCard = (id: string) => {
+  const handleRemoveCard = async (id: string) => {
     const targetCard = cards.find((c) => c.id === id);
-    setCards((prev) => prev.filter((c) => c.id !== id));
-    if (targetCard) {
-      setFeedbackMessage(
-        `Removed "${targetCard.brand} ending in ${targetCard.last4}" from your saved payment methods.`
-      );
+    try {
+      await api.delete(`/billing/payment-methods/${id}`, { skipAuthRedirect: true });
+      setCards((prev) => prev.filter((c) => c.id !== id));
+      if (targetCard) {
+        setFeedbackMessage(
+          `Removed "${targetCard.brand} ending in ${targetCard.last4}" from your saved payment methods.`
+        );
+      }
+    } catch (err) {
+      console.error("Failed API delete payment method:", err);
     }
   };
 
-  const handleAddCardSubmit = (e: FormEvent) => {
+  const handleAddCardSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-
-    setTimeout(() => {
-      const newCard: SavedCard = {
-        id: `card-${Date.now()}`,
-        brand: "Visa",
-        last4: "5566",
-        expMonth: "12",
-        expYear: "2029",
-        isDefault: cards.length === 0,
-        tokenizedVia: "Paystack Secure Vault",
-      };
-      setCards((prev) => [newCard, ...prev]);
-      setIsSubmitting(false);
+    const newCard: SavedCard = {
+      id: `card-${Date.now()}`,
+      brand: "Visa",
+      last4: "5566",
+      expMonth: "12",
+      expYear: "2029",
+      isDefault: cards.length === 0,
+      tokenizedVia: "Paystack Secure Vault",
+    };
+    try {
+      const res = await api.post<SavedCard>("/billing/payment-methods", newCard, {
+        skipAuthRedirect: true,
+      });
+      setCards((prev) => [res?.data || newCard, ...prev]);
       setIsModalOpen(false);
       setFeedbackMessage("New payment card tokenized and saved successfully.");
-    }, 1100);
+    } catch (err) {
+      console.error("Failed API post payment method:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

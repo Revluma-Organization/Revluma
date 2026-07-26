@@ -30,41 +30,6 @@ export interface DeviceSession {
   deviceType: "laptop" | "phone" | "tablet";
 }
 
-const FALLBACK_SESSIONS: DeviceSession[] = [
-  {
-    id: "sess-current",
-    deviceName: "MacBook Pro (16-inch)",
-    browser: "Chrome 126.0",
-    os: "macOS Sonoma",
-    location: "Lagos, Nigeria",
-    ipAddress: "102.89.23.114",
-    lastActive: "Active Now",
-    isCurrent: true,
-    deviceType: "laptop",
-  },
-  {
-    id: "sess-2",
-    deviceName: "iPhone 15 Pro Max",
-    browser: "Safari Mobile",
-    os: "iOS 17.5",
-    location: "Lagos, Nigeria",
-    ipAddress: "102.89.41.209",
-    lastActive: "2 hours ago",
-    isCurrent: false,
-    deviceType: "phone",
-  },
-  {
-    id: "sess-3",
-    deviceName: "Windows Workstation",
-    browser: "Microsoft Edge 125.0",
-    os: "Windows 11 Pro",
-    location: "London, United Kingdom",
-    ipAddress: "82.165.197.12",
-    lastActive: "Yesterday at 4:15 PM",
-    isCurrent: false,
-    deviceType: "laptop",
-  },
-];
 
 export const ActiveSessions: FC = () => {
   const [sessions, setSessions] = useState<DeviceSession[]>([]);
@@ -80,11 +45,11 @@ export const ActiveSessions: FC = () => {
       if (res && Array.isArray(res.data)) {
         setSessions(res.data);
       } else {
-        setSessions(FALLBACK_SESSIONS);
+        setSessions([]);
       }
     } catch (err) {
-      console.warn("Failed to fetch sessions from API, using fallback:", err);
-      setSessions(FALLBACK_SESSIONS);
+      console.warn("Failed to fetch sessions from API:", err);
+      setSessions([]);
     } finally {
       setIsLoading(false);
     }
@@ -110,27 +75,27 @@ export const ActiveSessions: FC = () => {
   const handleRevokeSession = async (id: string, deviceName: string) => {
     try {
       await api.delete(`/auth/sessions/${id}`, { skipAuthRedirect: true });
+      setSessions((prev) => prev.filter((sess) => sess.id !== id));
+      setFeedbackMessage(`Revoked access for "${deviceName}" successfully.`);
     } catch (err) {
-      console.warn("Failed API delete session, updating local state:", err);
+      console.error("Failed API delete session:", err);
     }
-    setSessions((prev) => prev.filter((sess) => sess.id !== id));
-    setFeedbackMessage(`Revoked access for "${deviceName}" successfully.`);
   };
 
   const handleLogOutOfAllOthers = async () => {
     try {
       await api.delete("/auth/sessions/others", { skipAuthRedirect: true });
+      const onlyCurrent = sessions.filter((sess) => sess.isCurrent);
+      const removedCount = sessions.length - onlyCurrent.length;
+      setSessions(onlyCurrent);
+      setFeedbackMessage(
+        `Logged out of ${removedCount} other device session${
+          removedCount === 1 ? "" : "s"
+        }. Only this device remains active.`
+      );
     } catch (err) {
-      console.warn("Failed API delete other sessions, updating local state:", err);
+      console.error("Failed API delete other sessions:", err);
     }
-    const onlyCurrent = sessions.filter((sess) => sess.isCurrent);
-    const removedCount = sessions.length - onlyCurrent.length;
-    setSessions(onlyCurrent);
-    setFeedbackMessage(
-      `Logged out of ${removedCount} other device session${
-        removedCount === 1 ? "" : "s"
-      }. Only this device remains active.`
-    );
   };
 
   const otherSessionsCount = sessions.filter((sess) => !sess.isCurrent).length;
@@ -307,7 +272,7 @@ export const ActiveSessions: FC = () => {
             </AnimatePresence>
 
             {/* Empty state if no extra devices are found */}
-            {otherSessionsCount === 0 && (
+            {(sessions.length === 0 || otherSessionsCount === 0) && (
               <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-8 text-center">
                 <p className="text-sm font-medium text-slate-300">
                   No other active device sessions found.
