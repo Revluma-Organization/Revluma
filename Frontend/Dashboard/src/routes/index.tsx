@@ -23,6 +23,7 @@ import ActiveSessions from "../pages/settings/ActiveSessions";
 import Subscription from "../pages/settings/Subscription";
 import PaymentMethods from "../pages/settings/PaymentMethods";
 import InvoiceHistory from "../pages/settings/InvoiceHistory";
+import BillingOverview from "../pages/settings/BillingOverview";
 import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 
 export function DashboardRoutes() {
@@ -57,7 +58,7 @@ export function DashboardRoutes() {
           <Route path="branding" element={<Branding />} />
           
           {/* Billing */}
-          <Route path="billing" element={<SettingsPlaceholder title="Billing Overview" />} />
+          <Route path="billing" element={<BillingOverview />} />
           <Route path="subscription" element={<Subscription />} />
           <Route path="payment-methods" element={<PaymentMethods />} />
           <Route path="invoices" element={<InvoiceHistory />} />
