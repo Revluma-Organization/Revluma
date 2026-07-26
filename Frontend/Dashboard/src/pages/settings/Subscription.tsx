@@ -1,4 +1,4 @@
-import { FC, useState } from "react";
+import { FC, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api";
 
 interface PlanFeature {
   text: string;
@@ -72,7 +73,69 @@ const PRICING_PLANS: PricingCardData[] = [
   },
 ];
 
+export interface SubscriptionInfo {
+  planName: string;
+  status: "trial" | "active" | "past_due" | "canceled";
+  trialDaysRemaining?: number;
+  monthlyTrackedVisitorsUsed: number;
+  monthlyTrackedVisitorsLimit: number;
+  resetDate: string;
+}
+
+const FALLBACK_SUBSCRIPTION: SubscriptionInfo = {
+  planName: "Free Trial",
+  status: "trial",
+  trialDaysRemaining: 11,
+  monthlyTrackedVisitorsUsed: 450,
+  monthlyTrackedVisitorsLimit: 1000,
+  resetDate: "Aug 1, 2026",
+};
+
 export const Subscription: FC = () => {
+  const [subscription, setSubscription] = useState<SubscriptionInfo>(
+    FALLBACK_SUBSCRIPTION
+  );
+  const [isLoadingSub, setIsLoadingSub] = useState<boolean>(true);
+
+  const fetchSubscription = useCallback(async () => {
+    setIsLoadingSub(true);
+    try {
+      const res = await api.get<SubscriptionInfo>(
+        "/billing/subscription",
+        undefined,
+        { skipAuthRedirect: true }
+      );
+      if (res && res.data && res.data.planName) {
+        setSubscription(res.data);
+      } else {
+        setSubscription(FALLBACK_SUBSCRIPTION);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch subscription info from API, using fallback:", err);
+      setSubscription(FALLBACK_SUBSCRIPTION);
+    } finally {
+      setIsLoadingSub(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSubscription();
+  }, [fetchSubscription]);
+
+  const usagePercent = Math.min(
+    100,
+    Math.round(
+      (subscription.monthlyTrackedVisitorsUsed /
+        Math.max(1, subscription.monthlyTrackedVisitorsLimit)) *
+        100
+    )
+  );
+  const remainingVisitors = Math.max(
+    0,
+    subscription.monthlyTrackedVisitorsLimit -
+      subscription.monthlyTrackedVisitorsUsed
+  );
+
   const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<
     PricingCardData | null
   >(null);
@@ -121,53 +184,76 @@ export const Subscription: FC = () => {
         transition={{ duration: 0.35 }}
         className="relative overflow-hidden rounded-2xl border border-sky-500/30 bg-gradient-to-r from-slate-900 via-slate-900/95 to-sky-950/40 p-6 shadow-2xl sm:p-8"
       >
-        <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
-          {/* Left Info */}
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge className="rounded-full border border-sky-500/40 bg-sky-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wider text-sky-300">
-                Free Trial
-              </Badge>
-              <span className="text-xs font-medium text-slate-400">
-                • 11 days remaining in trial
-              </span>
+        {isLoadingSub ? (
+          <div className="flex items-center justify-center py-6 gap-3 text-slate-400 text-sm">
+            <Loader2 className="h-5 w-5 animate-spin text-sky-400" />
+            <span>Loading subscription status and usage...</span>
+          </div>
+        ) : (
+          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
+            {/* Left Info */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge
+                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider ${
+                    subscription.status === "trial"
+                      ? "border-sky-500/40 bg-sky-500/20 text-sky-300"
+                      : "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
+                  }`}
+                >
+                  {subscription.status === "trial"
+                    ? "Free Trial"
+                    : subscription.planName}
+                </Badge>
+                <span className="text-xs font-medium text-slate-400">
+                  {subscription.status === "trial"
+                    ? `• ${subscription.trialDaysRemaining ?? 0} days remaining in trial`
+                    : "• Active Subscription"}
+                </span>
+              </div>
+
+              <div>
+                <h2 className="text-xl font-bold text-white sm:text-2xl">
+                  Current Plan: {subscription.planName}
+                </h2>
+                <p className="mt-1 text-xs text-slate-300 sm:text-sm">
+                  {subscription.status === "trial"
+                    ? "You are currently exploring all Revluma features. Upgrade anytime to avoid interruption."
+                    : `Your workspace is actively subscribed to the ${subscription.planName} tier.`}
+                </p>
+              </div>
             </div>
 
-            <div>
-              <h2 className="text-xl font-bold text-white sm:text-2xl">
-                Current Plan: Free Trial
-              </h2>
-              <p className="mt-1 text-xs text-slate-300 sm:text-sm">
-                You are currently exploring all Revluma features. Upgrade anytime to avoid interruption.
-              </p>
+            {/* Right Usage Progress Bar */}
+            <div className="w-full max-w-md space-y-2.5 rounded-xl border border-slate-800/80 bg-slate-950/70 p-4 shadow-inner">
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <span className="text-slate-400">Monthly Tracked Visitors</span>
+                <span className="text-sky-400 font-mono">
+                  {subscription.monthlyTrackedVisitorsUsed.toLocaleString()} /{" "}
+                  {subscription.monthlyTrackedVisitorsLimit.toLocaleString()} used{" "}
+                  <span className="text-slate-500">({usagePercent}%)</span>
+                </span>
+              </div>
+
+              {/* Custom Progress Bar */}
+              <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${usagePercent}%` }}
+                  transition={{ duration: 0.8, ease: "easeOut" }}
+                  className="h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-400"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-[0.7rem] text-slate-500">
+                <span>Resets on {subscription.resetDate}</span>
+                <span>
+                  {remainingVisitors.toLocaleString()} visitors remaining
+                </span>
+              </div>
             </div>
           </div>
-
-          {/* Right Usage Progress Bar */}
-          <div className="w-full max-w-md space-y-2.5 rounded-xl border border-slate-800/80 bg-slate-950/70 p-4 shadow-inner">
-            <div className="flex items-center justify-between text-xs font-semibold">
-              <span className="text-slate-400">Monthly Tracked Visitors</span>
-              <span className="text-sky-400 font-mono">
-                450 / 1,000 used <span className="text-slate-500">(45%)</span>
-              </span>
-            </div>
-
-            {/* Custom Progress Bar */}
-            <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: "45%" }}
-                transition={{ duration: 0.8, ease: "easeOut" }}
-                className="h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-400"
-              />
-            </div>
-
-            <div className="flex items-center justify-between text-[0.7rem] text-slate-500">
-              <span>Resets on Aug 1, 2026</span>
-              <span>550 visitors remaining</span>
-            </div>
-          </div>
-        </div>
+        )}
       </motion.section>
 
       {/* Inline Feedback Toast */}

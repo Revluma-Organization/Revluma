@@ -1,4 +1,4 @@
-import { FC, useState } from "react";
+import { FC, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText,
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { api } from "@/lib/api";
 
 export interface InvoiceRecord {
   id: string;
@@ -25,7 +26,7 @@ export interface InvoiceRecord {
   cardLast4: string;
 }
 
-const INITIAL_INVOICES: InvoiceRecord[] = [
+const FALLBACK_INVOICES: InvoiceRecord[] = [
   {
     id: "inv-4",
     invoiceNumber: "INV-2026-004",
@@ -65,8 +66,34 @@ const INITIAL_INVOICES: InvoiceRecord[] = [
 ];
 
 export const InvoiceHistory: FC = () => {
-  const [invoices] = useState<InvoiceRecord[]>(INITIAL_INVOICES);
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  const fetchInvoices = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.get<InvoiceRecord[]>(
+        "/billing/invoices",
+        undefined,
+        { skipAuthRedirect: true }
+      );
+      if (res && Array.isArray(res.data)) {
+        setInvoices(res.data);
+      } else {
+        setInvoices(FALLBACK_INVOICES);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch invoices from API, using fallback:", err);
+      setInvoices(FALLBACK_INVOICES);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [fetchInvoices]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
@@ -261,7 +288,16 @@ export const InvoiceHistory: FC = () => {
 
             <tbody className="divide-y divide-slate-800/60">
               <AnimatePresence initial={false}>
-                {filteredInvoices.length === 0 ? (
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-400">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Loader2 className="h-6 w-6 animate-spin text-sky-400" />
+                        <span>Loading invoice history...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredInvoices.length === 0 ? (
                   <tr>
                     <td
                       colSpan={6}

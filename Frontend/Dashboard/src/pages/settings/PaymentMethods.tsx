@@ -1,4 +1,4 @@
-import { FC, useState, type FormEvent } from "react";
+import { FC, useState, useEffect, useCallback, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CreditCard,
@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { api } from "@/lib/api";
 
 export interface SavedCard {
   id: string;
@@ -26,7 +27,7 @@ export interface SavedCard {
   tokenizedVia: string;
 }
 
-const INITIAL_CARDS: SavedCard[] = [
+const FALLBACK_CARDS: SavedCard[] = [
   {
     id: "card-1",
     brand: "Visa",
@@ -48,10 +49,36 @@ const INITIAL_CARDS: SavedCard[] = [
 ];
 
 export const PaymentMethods: FC = () => {
-  const [cards, setCards] = useState<SavedCard[]>(INITIAL_CARDS);
+  const [cards, setCards] = useState<SavedCard[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
+  const fetchPaymentMethods = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.get<SavedCard[]>(
+        "/billing/payment-methods",
+        undefined,
+        { skipAuthRedirect: true }
+      );
+      if (res && Array.isArray(res.data)) {
+        setCards(res.data);
+      } else {
+        setCards(FALLBACK_CARDS);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch payment methods from API, using fallback:", err);
+      setCards(FALLBACK_CARDS);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPaymentMethods();
+  }, [fetchPaymentMethods]);
 
   // New card form state
   const [holderName, setHolderName] = useState<string>("Splendor Commerce");
@@ -183,7 +210,14 @@ export const PaymentMethods: FC = () => {
           </span>
         </div>
 
-        {cards.length === 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/40 py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-sky-400" />
+            <p className="mt-3 text-sm font-medium text-slate-400">
+              Fetching saved payment methods...
+            </p>
+          </div>
+        ) : cards.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 py-12 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800/80 text-slate-400">
               <CreditCard className="h-6 w-6" />

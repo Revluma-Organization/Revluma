@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useThemeStore } from "@/store/themeStore";
 
 type ThemeOption = "system" | "light" | "dark";
 
@@ -57,10 +58,28 @@ const THEME_BLOCKS: AestheticBlock[] = [
 ];
 
 export const Preferences: FC = () => {
-  const [theme, setTheme] = useState<ThemeOption>("dark");
+  const globalTheme = useThemeStore((state) => state.theme);
+  const setThemeGlobal = useThemeStore((state) => state.setTheme);
+
+  const [theme, setTheme] = useState<ThemeOption>(
+    globalTheme === "light" ? "light" : "dark"
+  );
   const [language, setLanguage] = useState<string>("en-US");
   const [timezone, setTimezone] = useState<string>("America/New_York");
   const [dateFormat, setDateFormat] = useState<string>("MM/DD/YYYY");
+
+  const handleThemeSelect = (mode: ThemeOption) => {
+    setTheme(mode);
+    setSavedSuccessfully(false);
+    if (mode === "system") {
+      const isSystemDark = window.matchMedia(
+        "(prefers-color-scheme: dark)"
+      ).matches;
+      setThemeGlobal(isSystemDark ? "dark" : "light");
+    } else {
+      setThemeGlobal(mode);
+    }
+  };
 
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [savedSuccessfully, setSavedSuccessfully] = useState<boolean>(false);
@@ -134,15 +153,13 @@ export const Preferences: FC = () => {
                 <div
                   key={block.id}
                   onClick={() => {
-                    setTheme(block.id);
-                    setSavedSuccessfully(false);
+                    handleThemeSelect(block.id);
                   }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
-                      setTheme(block.id);
-                      setSavedSuccessfully(false);
+                      handleThemeSelect(block.id);
                     }
                   }}
                   className={`group relative flex flex-col justify-between overflow-hidden rounded-xl border p-4 transition-all duration-200 cursor-pointer ${
