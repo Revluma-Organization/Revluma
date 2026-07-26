@@ -87,9 +87,9 @@ export const DangerZone: FC = () => {
     <div className="min-h-[calc(100vh-140px)] w-full rounded-2xl bg-slate-950 p-6 text-slate-100 shadow-2xl sm:p-8 md:p-10">
       <div className="mx-auto max-w-4xl space-y-8">
         {/* Page Header */}
-        <div className="border-b border-red-500/20 pb-6">
+        <div className="border-b border-red-500/40 pb-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/10 text-red-500 ring-1 ring-red-500/20">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-500/15 text-red-500 ring-1 ring-red-500/40">
               <ShieldAlert className="h-6 w-6" />
             </div>
             <div>
@@ -108,7 +108,7 @@ export const DangerZone: FC = () => {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="rounded-2xl border border-red-500/20 bg-slate-900/50 p-6 transition-all duration-300 hover:border-red-500/30 sm:p-8"
+          className="rounded-2xl border border-red-500/50 bg-slate-900/50 p-6 shadow-lg shadow-red-950/20 transition-all duration-300 hover:border-red-500 sm:p-8"
         >
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-start">
             <div className="space-y-2 md:max-w-xl">
@@ -145,7 +145,7 @@ export const DangerZone: FC = () => {
                 type="submit"
                 variant="destructive"
                 disabled={isTransferring}
-                className="h-10 whitespace-nowrap bg-red-600 px-5 font-medium text-white shadow-lg shadow-red-600/20 hover:bg-red-700 active:scale-[0.98]"
+                className="h-10 whitespace-nowrap bg-red-600 hover:bg-red-700 text-white px-5 font-semibold shadow-lg shadow-red-600/30 active:scale-[0.98]"
               >
                 {isTransferring ? "Transferring..." : "Transfer Workspace"}
               </Button>
@@ -161,8 +161,8 @@ export const DangerZone: FC = () => {
                 exit={{ opacity: 0, height: 0, marginTop: 0 }}
                 className={`flex items-center gap-2 rounded-lg p-3 text-sm ${
                   transferFeedback.type === "success"
-                    ? "border border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-                    : "border border-red-500/20 bg-red-500/10 text-red-300"
+                    ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    : "border border-red-500/30 bg-red-500/10 text-red-300"
                 }`}
               >
                 {transferFeedback.type === "success" ? (
@@ -181,7 +181,7 @@ export const DangerZone: FC = () => {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.1 }}
-          className="rounded-2xl border border-red-500/20 bg-slate-900/50 p-6 transition-all duration-300 hover:border-red-500/30 sm:p-8"
+          className="rounded-2xl border border-red-500/50 bg-slate-900/50 p-6 shadow-lg shadow-red-950/20 transition-all duration-300 hover:border-red-500 sm:p-8"
         >
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
             <div className="space-y-2 md:max-w-xl">
@@ -201,7 +201,7 @@ export const DangerZone: FC = () => {
                 type="button"
                 variant="destructive"
                 onClick={handleOpenDeleteModal}
-                className="h-10 w-full whitespace-nowrap bg-red-600 px-6 font-medium text-white shadow-lg shadow-red-600/20 hover:bg-red-700 active:scale-[0.98] sm:w-auto"
+                className="h-10 w-full whitespace-nowrap bg-red-600 hover:bg-red-700 text-white px-6 font-semibold shadow-lg shadow-red-600/30 active:scale-[0.98] sm:w-auto"
               >
                 Delete Workspace
               </Button>
@@ -234,7 +234,7 @@ export const DangerZone: FC = () => {
                 stiffness: 300,
                 damping: 28,
               }}
-              className="relative w-full max-w-md overflow-hidden rounded-2xl border border-red-500/30 bg-slate-950 p-6 text-slate-100 shadow-2xl sm:p-8"
+              className="relative w-full max-w-md overflow-hidden rounded-2xl border border-red-500/60 bg-slate-950 p-6 text-slate-100 shadow-2xl sm:p-8"
             >
               {/* Close Icon Button */}
               <button
@@ -248,7 +248,7 @@ export const DangerZone: FC = () => {
               </button>
 
               <div className="flex flex-col items-center text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10 text-red-500 ring-1 ring-red-500/30">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500/15 text-red-500 ring-1 ring-red-500/40">
                   <AlertTriangle className="h-7 w-7" />
                 </div>
                 <h3 className="mt-4 text-xl font-bold text-white">
@@ -263,7 +263,7 @@ export const DangerZone: FC = () => {
                 <motion.div
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="my-6 flex flex-col items-center justify-center rounded-xl border border-red-500/30 bg-red-500/10 p-6 text-center"
+                  className="my-6 flex flex-col items-center justify-center rounded-xl border border-red-500/40 bg-red-500/15 p-6 text-center"
                 >
                   <CheckCircle2 className="h-8 w-8 text-red-400" />
                   <p className="mt-2 text-sm font-medium text-red-200">
@@ -287,7 +287,7 @@ export const DangerZone: FC = () => {
                       placeholder="DELETE"
                       disabled={isDeleting}
                       autoComplete="off"
-                      className="h-11 w-full border-slate-700 bg-slate-900 text-center font-mono text-base font-bold tracking-widest text-white placeholder:text-slate-600 focus-visible:border-red-500 focus-visible:ring-red-500/30"
+                      className="h-11 w-full border-slate-700 bg-slate-900 text-center font-mono text-base font-bold tracking-widest text-white placeholder:text-slate-600 focus-visible:border-red-500 focus-visible:ring-red-500/40"
                     />
                   </div>
 
@@ -306,11 +306,7 @@ export const DangerZone: FC = () => {
                       variant="destructive"
                       disabled={deleteConfirmText !== "DELETE" || isDeleting}
                       onClick={handleConfirmDelete}
-                      className={`h-11 flex-1 font-semibold transition-all duration-200 ${
-                        deleteConfirmText === "DELETE"
-                          ? "bg-red-600 text-white shadow-lg shadow-red-600/30 hover:bg-red-700 cursor-pointer"
-                          : "border border-red-900/30 bg-red-950/40 text-red-400/40 cursor-not-allowed"
-                      }`}
+                      className="h-11 flex-1 bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg shadow-red-600/30 disabled:opacity-50 disabled:bg-red-600/50 disabled:hover:bg-red-600/50 disabled:cursor-not-allowed"
                     >
                       {isDeleting ? "Deleting..." : "Delete Workspace"}
                     </Button>
