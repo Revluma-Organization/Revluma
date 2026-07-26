@@ -22,6 +22,7 @@ import Notifications from "../pages/settings/Notifications";
 import ActiveSessions from "../pages/settings/ActiveSessions";
 import Subscription from "../pages/settings/Subscription";
 import PaymentMethods from "../pages/settings/PaymentMethods";
+import InvoiceHistory from "../pages/settings/InvoiceHistory";
 import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 
 export function DashboardRoutes() {
@@ -59,7 +60,8 @@ export function DashboardRoutes() {
           <Route path="billing" element={<SettingsPlaceholder title="Billing Overview" />} />
           <Route path="subscription" element={<Subscription />} />
           <Route path="payment-methods" element={<PaymentMethods />} />
-          <Route path="invoices" element={<SettingsPlaceholder title="Invoice History" />} />
+          <Route path="invoices" element={<InvoiceHistory />} />
+          <Route path="invoice-history" element={<InvoiceHistory />} />
           
           {/* Intelligence & Automation */}
           <Route path="ai" element={<SettingsPlaceholder title="AI Settings" />} />
