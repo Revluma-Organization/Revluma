@@ -9,11 +9,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2,
   Upload,
-  Globe,
   Loader2,
   CheckCircle2,
   Sparkles,
   AlertCircle,
+  HelpCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,9 +28,11 @@ import {
 } from "@/components/ui/select";
 
 export const Organization: FC = () => {
-  const [orgName, setOrgName] = useState<string>("Revluma Inc.");
-  const [slug, setSlug] = useState<string>("revluma-inc");
-  const [industry, setIndustry] = useState<string>("ecommerce");
+  // Initialize inputs as empty strings with helpful placeholders instead of hardcoded values
+  const [orgName, setOrgName] = useState<string>("");
+  const [slug, setSlug] = useState<string>("");
+  const [industry, setIndustry] = useState<string>("");
+  const [customIndustry, setCustomIndustry] = useState<string>("");
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -65,13 +67,20 @@ export const Organization: FC = () => {
       .replace(/[^a-z0-9-]/g, "")
       .replace(/--+/g, "-");
     setSlug(value);
+    setSaveStatus("idle");
   };
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!orgName.trim() || !slug.trim()) {
       setSaveStatus("error");
-      setErrorMessage("Organization name and slug are required.");
+      setErrorMessage("Organization name and workspace slug are required.");
+      return;
+    }
+
+    if (industry === "other" && !customIndustry.trim()) {
+      setSaveStatus("error");
+      setErrorMessage("Please specify your custom industry.");
       return;
     }
 
@@ -216,9 +225,9 @@ export const Organization: FC = () => {
                   type="text"
                   value={slug}
                   onChange={handleSlugChange}
-                  placeholder="workspace-slug"
+                  placeholder="e.g. my-awesome-store"
                   required
-                  className="flex-1 bg-transparent px-3 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none"
+                  className="flex-1 bg-transparent px-3 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
                 />
               </div>
               <p className="text-xs text-slate-500">
@@ -226,8 +235,8 @@ export const Organization: FC = () => {
               </p>
             </div>
 
-            {/* Industry / Category Dropdown */}
-            <div className="space-y-2">
+            {/* Industry / Category Dropdown (Expanded options + custom input for Other) */}
+            <div className="space-y-3">
               <Label
                 htmlFor="org-industry"
                 className="text-sm font-medium text-slate-300"
@@ -245,18 +254,58 @@ export const Organization: FC = () => {
                   id="org-industry"
                   className="h-11 w-full border-slate-700 bg-slate-950/80 text-slate-100 focus:border-sky-500 focus:ring-1 focus:ring-sky-500/30"
                 >
-                  <SelectValue placeholder="Select an industry category" />
+                  <SelectValue placeholder="Select an industry category..." />
                 </SelectTrigger>
-                <SelectContent className="border-slate-800 bg-slate-950 text-slate-100">
+                <SelectContent className="border-slate-800 bg-slate-950 text-slate-100 max-h-72">
                   <SelectItem value="ecommerce">E-commerce & Retail</SelectItem>
-                  <SelectItem value="saas">SaaS & Technology</SelectItem>
-                  <SelectItem value="fintech">Financial Services</SelectItem>
-                  <SelectItem value="healthcare">Healthcare & Biotech</SelectItem>
+                  <SelectItem value="saas">SaaS & Cloud Technology</SelectItem>
+                  <SelectItem value="fintech">Financial Services & Fintech</SelectItem>
+                  <SelectItem value="healthcare">Healthcare, Biotech & MedTech</SelectItem>
                   <SelectItem value="edtech">Education & EdTech</SelectItem>
-                  <SelectItem value="media">Media & Entertainment</SelectItem>
-                  <SelectItem value="other">Other Industry</SelectItem>
+                  <SelectItem value="agency">Digital Agency & Consulting</SelectItem>
+                  <SelectItem value="ai">Artificial Intelligence & ML</SelectItem>
+                  <SelectItem value="gaming">Gaming & Entertainment</SelectItem>
+                  <SelectItem value="logistics">Logistics & Supply Chain</SelectItem>
+                  <SelectItem value="realestate">Real Estate & PropTech</SelectItem>
+                  <SelectItem value="travel">Travel & Hospitality</SelectItem>
+                  <SelectItem value="nonprofit">Non-Profit & Social Impact</SelectItem>
+                  <SelectItem value="other">Other (Specify custom industry)</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Conditional custom text input when 'other' is selected */}
+              <AnimatePresence>
+                {industry === "other" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                    animate={{ opacity: 1, height: "auto", marginTop: 12 }}
+                    exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                    className="space-y-1.5 overflow-hidden"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Label
+                        htmlFor="custom-industry-input"
+                        className="text-xs font-semibold uppercase tracking-wider text-sky-400"
+                      >
+                        Specify Your Custom Industry
+                      </Label>
+                      <HelpCircle className="h-3.5 w-3.5 text-slate-500" />
+                    </div>
+                    <Input
+                      id="custom-industry-input"
+                      type="text"
+                      value={customIndustry}
+                      onChange={(e) => {
+                        setCustomIndustry(e.target.value);
+                        setSaveStatus("idle");
+                      }}
+                      placeholder="e.g. Aerospace Engineering, Sustainable Energy..."
+                      className="h-11 w-full border-slate-700 bg-slate-950/90 text-slate-100 placeholder:text-slate-500 focus-visible:border-sky-500 focus-visible:ring-1 focus-visible:ring-sky-500/30"
+                      autoFocus
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </motion.section>
