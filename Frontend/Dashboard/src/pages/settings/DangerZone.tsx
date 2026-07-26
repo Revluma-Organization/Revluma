@@ -145,7 +145,7 @@ export const DangerZone: FC = () => {
                 type="submit"
                 variant="destructive"
                 disabled={isTransferring}
-                className="h-10 whitespace-nowrap bg-red-600 hover:bg-red-700 text-white px-5 font-semibold shadow-lg shadow-red-600/30 active:scale-[0.98]"
+                className="h-10 whitespace-nowrap bg-red-600 hover:bg-red-700 text-white border border-red-600 px-5 font-semibold shadow-lg shadow-red-600/30 active:scale-[0.98]"
               >
                 {isTransferring ? "Transferring..." : "Transfer Workspace"}
               </Button>
@@ -201,7 +201,7 @@ export const DangerZone: FC = () => {
                 type="button"
                 variant="destructive"
                 onClick={handleOpenDeleteModal}
-                className="h-10 w-full whitespace-nowrap bg-red-600 hover:bg-red-700 text-white px-6 font-semibold shadow-lg shadow-red-600/30 active:scale-[0.98] sm:w-auto"
+                className="h-10 w-full whitespace-nowrap bg-red-600 hover:bg-red-700 text-white border border-red-600 px-6 font-semibold shadow-lg shadow-red-600/30 active:scale-[0.98] sm:w-auto"
               >
                 Delete Workspace
               </Button>
@@ -306,7 +306,7 @@ export const DangerZone: FC = () => {
                       variant="destructive"
                       disabled={deleteConfirmText !== "DELETE" || isDeleting}
                       onClick={handleConfirmDelete}
-                      className="h-11 flex-1 bg-red-600 hover:bg-red-700 text-white font-bold shadow-lg shadow-red-600/30 disabled:opacity-50 disabled:bg-red-600/50 disabled:hover:bg-red-600/50 disabled:cursor-not-allowed"
+                      className="h-11 flex-1 bg-red-600 hover:bg-red-700 text-white border border-red-600 font-bold shadow-lg shadow-red-600/30 disabled:opacity-50 disabled:bg-red-600/50 disabled:hover:bg-red-600/50 disabled:cursor-not-allowed"
                     >
                       {isDeleting ? "Deleting..." : "Delete Workspace"}
                     </Button>

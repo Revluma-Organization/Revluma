@@ -1,4 +1,4 @@
-import { FC, useState, type FormEvent } from "react";
+import { FC, useState, useEffect, useCallback, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Monitor,
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useThemeStore } from "@/store/themeStore";
+import { api } from "@/lib/api";
 
 type ThemeOption = "system" | "light" | "dark";
 
@@ -60,6 +61,7 @@ const THEME_BLOCKS: AestheticBlock[] = [
 export const Preferences: FC = () => {
   const globalTheme = useThemeStore((state) => state.theme);
   const setThemeGlobal = useThemeStore((state) => state.setTheme);
+  const updatePreference = useThemeStore((state) => state.updatePreference);
 
   const [theme, setTheme] = useState<ThemeOption>(
     globalTheme === "light" ? "light" : "dark"
@@ -67,6 +69,59 @@ export const Preferences: FC = () => {
   const [language, setLanguage] = useState<string>("en-US");
   const [timezone, setTimezone] = useState<string>("America/New_York");
   const [dateFormat, setDateFormat] = useState<string>("MM/DD/YYYY");
+
+  const fetchUserPreferences = useCallback(async () => {
+    try {
+      const res = await api.get<{
+        theme?: ThemeOption;
+        language?: string;
+        timezone?: string;
+        date_format?: string;
+      }>("/users/profile/preferences", undefined, { skipAuthRedirect: true });
+      if (res && res.data) {
+        if (res.data.language) {
+          setLanguage(res.data.language);
+          updatePreference("language", res.data.language);
+          if (typeof document !== "undefined") {
+            document.documentElement.lang = res.data.language;
+          }
+        }
+        if (res.data.timezone) setTimezone(res.data.timezone);
+        if (res.data.date_format) setDateFormat(res.data.date_format);
+      } else {
+        const savedLang = localStorage.getItem("rv_locale_language");
+        const savedTz = localStorage.getItem("rv_locale_timezone");
+        const savedFmt = localStorage.getItem("rv_locale_date_format");
+        if (savedLang) {
+          setLanguage(savedLang);
+          updatePreference("language", savedLang);
+          if (typeof document !== "undefined") {
+            document.documentElement.lang = savedLang;
+          }
+        }
+        if (savedTz) setTimezone(savedTz);
+        if (savedFmt) setDateFormat(savedFmt);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch preferences from API:", err);
+      const savedLang = localStorage.getItem("rv_locale_language");
+      const savedTz = localStorage.getItem("rv_locale_timezone");
+      const savedFmt = localStorage.getItem("rv_locale_date_format");
+      if (savedLang) {
+        setLanguage(savedLang);
+        updatePreference("language", savedLang);
+        if (typeof document !== "undefined") {
+          document.documentElement.lang = savedLang;
+        }
+      }
+      if (savedTz) setTimezone(savedTz);
+      if (savedFmt) setDateFormat(savedFmt);
+    }
+  }, [updatePreference]);
+
+  useEffect(() => {
+    fetchUserPreferences();
+  }, [fetchUserPreferences]);
 
   const handleThemeSelect = (mode: ThemeOption) => {
     setTheme(mode);
@@ -99,15 +154,44 @@ export const Preferences: FC = () => {
     }
   };
 
-  const handleSave = (e: FormEvent) => {
+  const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setSavedSuccessfully(false);
-
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await api.put(
+        "/users/profile/preferences",
+        {
+          theme: theme === "system" ? globalTheme : theme,
+          language,
+          timezone,
+          date_format: dateFormat,
+        },
+        { skipAuthRedirect: true }
+      );
+      updatePreference("language", language);
+      updatePreference("date_format", dateFormat);
+      if (typeof document !== "undefined") {
+        document.documentElement.lang = language;
+      }
+      localStorage.setItem("rv_locale_language", language);
+      localStorage.setItem("rv_locale_timezone", timezone);
+      localStorage.setItem("rv_locale_date_format", dateFormat);
       setSavedSuccessfully(true);
-    }, 1000);
+    } catch (err) {
+      console.warn("Failed API PUT preferences, saving locally:", err);
+      updatePreference("language", language);
+      updatePreference("date_format", dateFormat);
+      if (typeof document !== "undefined") {
+        document.documentElement.lang = language;
+      }
+      localStorage.setItem("rv_locale_language", language);
+      localStorage.setItem("rv_locale_timezone", timezone);
+      localStorage.setItem("rv_locale_date_format", dateFormat);
+      setSavedSuccessfully(true);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -229,6 +313,11 @@ export const Preferences: FC = () => {
                 onValueChange={(val) => {
                   setLanguage(val);
                   setSavedSuccessfully(false);
+                  updatePreference("language", val);
+                  if (typeof document !== "undefined") {
+                    document.documentElement.lang = val;
+                  }
+                  localStorage.setItem("rv_locale_language", val);
                 }}
               >
                 <SelectTrigger

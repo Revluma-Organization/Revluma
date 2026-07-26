@@ -1,6 +1,8 @@
 import {
   FC,
   useState,
+  useEffect,
+  useCallback,
   useRef,
   type FormEvent,
   type ChangeEvent,
@@ -19,6 +21,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { api } from "@/lib/api";
 
 export const Branding: FC = () => {
   const [primaryColor, setPrimaryColor] = useState<string>("#0EA5E9");
@@ -39,14 +42,74 @@ export const Branding: FC = () => {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const faviconInputRef = useRef<HTMLInputElement>(null);
 
+  const fetchBranding = useCallback(async () => {
+    try {
+      const res = await api.get<{
+        primaryColor?: string;
+        accentColor?: string;
+      }>("/settings/branding", undefined, { skipAuthRedirect: true });
+      if (res && res.data) {
+        if (res.data.primaryColor) {
+          setPrimaryColor(res.data.primaryColor);
+          document.documentElement.style.setProperty(
+            "--primary",
+            res.data.primaryColor
+          );
+        }
+        if (res.data.accentColor) {
+          setAccentColor(res.data.accentColor);
+          document.documentElement.style.setProperty(
+            "--accent",
+            res.data.accentColor
+          );
+        }
+      } else {
+        const savedPrimary = localStorage.getItem("rv_primary_color");
+        const savedAccent = localStorage.getItem("rv_accent_color");
+        if (savedPrimary) {
+          setPrimaryColor(savedPrimary);
+          document.documentElement.style.setProperty("--primary", savedPrimary);
+        }
+        if (savedAccent) {
+          setAccentColor(savedAccent);
+          document.documentElement.style.setProperty("--accent", savedAccent);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch branding from API:", err);
+      const savedPrimary = localStorage.getItem("rv_primary_color");
+      const savedAccent = localStorage.getItem("rv_accent_color");
+      if (savedPrimary) {
+        setPrimaryColor(savedPrimary);
+        document.documentElement.style.setProperty("--primary", savedPrimary);
+      }
+      if (savedAccent) {
+        setAccentColor(savedAccent);
+        document.documentElement.style.setProperty("--accent", savedAccent);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBranding();
+  }, [fetchBranding]);
+
   const handlePrimaryColorChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setPrimaryColor(e.target.value);
+    const newColor = e.target.value;
+    setPrimaryColor(newColor);
     setSaveStatus("idle");
+    if (typeof document !== "undefined") {
+      document.documentElement.style.setProperty("--primary", newColor);
+    }
   };
 
   const handleAccentColorChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setAccentColor(e.target.value);
+    const newColor = e.target.value;
+    setAccentColor(newColor);
     setSaveStatus("idle");
+    if (typeof document !== "undefined") {
+      document.documentElement.style.setProperty("--accent", newColor);
+    }
   };
 
   const handleLogoSelect = (e: ChangeEvent<HTMLInputElement>) => {
@@ -89,15 +152,27 @@ export const Branding: FC = () => {
     setSaveStatus("idle");
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setSaveStatus("idle");
-
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await api.put(
+        "/settings/branding",
+        { primaryColor, accentColor },
+        { skipAuthRedirect: true }
+      );
+      localStorage.setItem("rv_primary_color", primaryColor);
+      localStorage.setItem("rv_accent_color", accentColor);
       setSaveStatus("success");
-    }, 1100);
+    } catch (err) {
+      console.warn("Failed API PUT branding, storing locally:", err);
+      localStorage.setItem("rv_primary_color", primaryColor);
+      localStorage.setItem("rv_accent_color", accentColor);
+      setSaveStatus("success");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

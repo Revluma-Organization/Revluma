@@ -1,4 +1,4 @@
-import { FC, useState, type FormEvent } from "react";
+import { FC, useState, useEffect, useCallback, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { api } from "@/lib/api";
 import {
   Select,
   SelectContent,
@@ -42,35 +43,32 @@ export interface TeamMemberItem {
   joinedDate: string;
 }
 
-const INITIAL_POPULATED_MEMBERS: TeamMemberItem[] = [
-  {
-    id: "usr-1",
-    fullName: "Elena Rostova",
-    email: "elena.rostova@revluma.com",
-    role: "Admin",
-    joinedDate: "Jul 12, 2026",
-  },
-  {
-    id: "usr-2",
-    fullName: "Marcus Vance",
-    email: "marcus.vance@revluma.com",
-    role: "Member",
-    joinedDate: "Jul 15, 2026",
-  },
-  {
-    id: "usr-3",
-    fullName: "Sarah Jenkins",
-    email: "sarah.j@revluma.com",
-    role: "Member",
-    joinedDate: "Jul 20, 2026",
-  },
-];
-
 export const TeamMembers: FC = () => {
-  // Render the main populated state directly without demo toggle buttons
-  const [members, setMembers] = useState<TeamMemberItem[]>(
-    INITIAL_POPULATED_MEMBERS
-  );
+  const [members, setMembers] = useState<TeamMemberItem[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const fetchMembers = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.get<TeamMemberItem[]>("/org/members", undefined, {
+        skipAuthRedirect: true,
+      });
+      if (res && Array.isArray(res.data)) {
+        setMembers(res.data);
+      } else {
+        setMembers([]);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch team members from API:", err);
+      setMembers([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMembers();
+  }, [fetchMembers]);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState<boolean>(false);
   const [inviteEmail, setInviteEmail] = useState<string>("");
   const [inviteRole, setInviteRole] = useState<"Admin" | "Member">("Member");
@@ -215,7 +213,16 @@ export const TeamMembers: FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80">
-              {members.length === 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={3} className="px-6 py-12 text-center text-sm text-slate-400">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="h-6 w-6 animate-spin text-sky-400" />
+                      <span>Loading team members...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : members.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="px-6 py-12 text-center text-sm text-slate-500">
                     No team members found. Click &quot;Invite Member&quot; to add someone to your workspace.
