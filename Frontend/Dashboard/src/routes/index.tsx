@@ -14,6 +14,7 @@ import Profile from "../pages/settings/Profile";
 import TeamManagement from "../pages/settings/TeamManagement";
 import DangerZone from "../pages/settings/DangerZone";
 import Organization from "../pages/settings/Organization";
+import TeamMembers from "../pages/settings/TeamMembers";
 import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 
 export function DashboardRoutes() {
@@ -42,7 +43,7 @@ export function DashboardRoutes() {
           
           {/* Workspace */}
           <Route path="organization" element={<Organization />} />
-          <Route path="team" element={<TeamManagement />} />
+          <Route path="team" element={<TeamMembers />} />
           <Route path="roles" element={<SettingsPlaceholder title="Roles & Permissions" />} />
           <Route path="branding" element={<SettingsPlaceholder title="Branding" />} />
           
