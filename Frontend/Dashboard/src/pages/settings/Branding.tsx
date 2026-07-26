@@ -18,7 +18,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export const Branding: FC = () => {
@@ -145,89 +144,85 @@ export const Branding: FC = () => {
               Color Palette
             </h2>
             <p className="text-sm text-slate-400">
-              Define your primary and accent brand colors using clickable swatch previews or hex color codes.
+              Pick your primary and accent brand colors visually. Click any swatch to open your standard system color picker.
             </p>
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-            {/* Primary Color Picker */}
-            <div className="space-y-2">
+            {/* Primary Color Picker (Native <input type="color"> + Dynamic Hex Display) */}
+            <div className="space-y-2.5">
               <Label
-                htmlFor="primary-color-text"
+                htmlFor="primary-color-picker"
                 className="text-sm font-medium text-slate-300"
               >
                 Primary Color
               </Label>
-              <div className="flex items-center gap-3">
-                {/* Clickable Swatch Preview */}
-                <label
-                  htmlFor="primary-color-picker"
-                  className="relative flex h-11 w-12 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-slate-700 shadow-md transition-transform hover:scale-105 active:scale-95"
-                  style={{ backgroundColor: primaryColor }}
-                  title="Click to pick primary color"
-                >
+              <div className="flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-950/80 p-3 shadow-sm transition-colors hover:border-slate-700">
+                {/* Visual native color picker */}
+                <div className="relative flex h-12 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-slate-700 shadow-md transition-transform hover:scale-105 active:scale-95">
                   <input
                     id="primary-color-picker"
                     type="color"
                     value={primaryColor}
                     onChange={handlePrimaryColorChange}
-                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                    aria-label="Pick primary hex color"
+                    className="absolute -inset-2 h-20 w-24 cursor-pointer border-0 bg-transparent opacity-0"
+                    aria-label="Pick primary brand color"
                   />
-                </label>
+                  <div
+                    className="h-full w-full pointer-events-none"
+                    style={{ backgroundColor: primaryColor }}
+                  />
+                </div>
 
-                {/* Hex Text Input */}
-                <Input
-                  id="primary-color-text"
-                  type="text"
-                  value={primaryColor}
-                  onChange={handlePrimaryColorChange}
-                  placeholder="#0EA5E9"
-                  maxLength={7}
-                  className="h-11 flex-1 font-mono text-sm uppercase tracking-wide border-slate-700 bg-slate-950/80 text-slate-100 focus-visible:border-sky-500 focus-visible:ring-1 focus-visible:ring-sky-500/30"
-                />
+                {/* Dynamically displayed hex code text */}
+                <div className="flex flex-col">
+                  <span className="font-mono text-base font-bold tracking-wider text-white">
+                    {primaryColor.toUpperCase()}
+                  </span>
+                  <span className="text-[0.7rem] text-slate-400">
+                    Click swatch to pick color
+                  </span>
+                </div>
               </div>
               <p className="text-xs text-slate-500">
                 Used for primary navigation, primary buttons, and active link states.
               </p>
             </div>
 
-            {/* Accent Color Picker */}
-            <div className="space-y-2">
+            {/* Accent Color Picker (Native <input type="color"> + Dynamic Hex Display) */}
+            <div className="space-y-2.5">
               <Label
-                htmlFor="accent-color-text"
+                htmlFor="accent-color-picker"
                 className="text-sm font-medium text-slate-300"
               >
                 Accent Color
               </Label>
-              <div className="flex items-center gap-3">
-                {/* Clickable Swatch Preview */}
-                <label
-                  htmlFor="accent-color-picker"
-                  className="relative flex h-11 w-12 cursor-pointer items-center justify-center overflow-hidden rounded-xl border border-slate-700 shadow-md transition-transform hover:scale-105 active:scale-95"
-                  style={{ backgroundColor: accentColor }}
-                  title="Click to pick accent color"
-                >
+              <div className="flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-950/80 p-3 shadow-sm transition-colors hover:border-slate-700">
+                {/* Visual native color picker */}
+                <div className="relative flex h-12 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-slate-700 shadow-md transition-transform hover:scale-105 active:scale-95">
                   <input
                     id="accent-color-picker"
                     type="color"
                     value={accentColor}
                     onChange={handleAccentColorChange}
-                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                    aria-label="Pick accent hex color"
+                    className="absolute -inset-2 h-20 w-24 cursor-pointer border-0 bg-transparent opacity-0"
+                    aria-label="Pick accent brand color"
                   />
-                </label>
+                  <div
+                    className="h-full w-full pointer-events-none"
+                    style={{ backgroundColor: accentColor }}
+                  />
+                </div>
 
-                {/* Hex Text Input */}
-                <Input
-                  id="accent-color-text"
-                  type="text"
-                  value={accentColor}
-                  onChange={handleAccentColorChange}
-                  placeholder="#10B981"
-                  maxLength={7}
-                  className="h-11 flex-1 font-mono text-sm uppercase tracking-wide border-slate-700 bg-slate-950/80 text-slate-100 focus-visible:border-sky-500 focus-visible:ring-1 focus-visible:ring-sky-500/30"
-                />
+                {/* Dynamically displayed hex code text */}
+                <div className="flex flex-col">
+                  <span className="font-mono text-base font-bold tracking-wider text-white">
+                    {accentColor.toUpperCase()}
+                  </span>
+                  <span className="text-[0.7rem] text-slate-400">
+                    Click swatch to pick color
+                  </span>
+                </div>
               </div>
               <p className="text-xs text-slate-500">
                 Used for secondary callouts, badges, success metrics, and highlights.
