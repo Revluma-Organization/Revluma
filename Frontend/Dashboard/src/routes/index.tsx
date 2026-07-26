@@ -12,6 +12,7 @@ import PlaceholderPage from "../pages/PlaceholderPage";
 import SettingsLayout from "../pages/settings/SettingsLayout";
 import Profile from "../pages/settings/Profile";
 import TeamManagement from "../pages/settings/TeamManagement";
+import DangerZone from "../pages/settings/DangerZone";
 import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 
 export function DashboardRoutes() {
@@ -76,7 +77,7 @@ export function DashboardRoutes() {
           <Route path="backups" element={<SettingsPlaceholder title="Backups" />} />
           <Route path="audit-log" element={<SettingsPlaceholder title="Audit Log" />} />
           <Route path="data-export" element={<SettingsPlaceholder title="Data Export" />} />
-          <Route path="danger-zone" element={<SettingsPlaceholder title="Danger Zone" />} />
+          <Route path="danger-zone" element={<DangerZone />} />
         </Route>
       </Route>
       <Route path="*" element={<NotFound />} />
