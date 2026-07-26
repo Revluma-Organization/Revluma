@@ -20,6 +20,7 @@ import Branding from "../pages/settings/Branding";
 import Preferences from "../pages/settings/Preferences";
 import Notifications from "../pages/settings/Notifications";
 import ActiveSessions from "../pages/settings/ActiveSessions";
+import Subscription from "../pages/settings/Subscription";
 import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 
 export function DashboardRoutes() {
@@ -55,7 +56,7 @@ export function DashboardRoutes() {
           
           {/* Billing */}
           <Route path="billing" element={<SettingsPlaceholder title="Billing Overview" />} />
-          <Route path="subscription" element={<SettingsPlaceholder title="Subscription" />} />
+          <Route path="subscription" element={<Subscription />} />
           <Route path="payment-methods" element={<SettingsPlaceholder title="Payment Methods" />} />
           <Route path="invoices" element={<SettingsPlaceholder title="Invoice History" />} />
           
