@@ -3,7 +3,7 @@
 **Version**: 1.0  
 **Author**: OMAH THANKGOD (Python-Backend)  
 **Audience:**  AFOLABI (Node.js-Backend) & Python Sync Service
-**Created**: 2026-07-23  
+**Created on**: 2026-07-23  
 **Purpose**: Define the exact behavior of `POST /api/v1/woocommerce/connect` so Node.js and Python services integrate without mismatch.
 
 ---

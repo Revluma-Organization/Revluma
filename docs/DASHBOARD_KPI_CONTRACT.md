@@ -1,7 +1,7 @@
 # Dashboard KPI Endpoint – Technical Contract
 
 **Version:** 1.0  
-**Date:** 2026-07-23  
+**Created on:** 2026-07-23  
 **Authors:** OMAH THANKGOD (Python-Backend)
 **Audience:** AFOLABI (Node.js-Backend) & Frontend Team  
 **Purpose:** Define the exact behavior of `GET /api/v1/dashboard/kpis` so the backend response exactly matches what the frontend expects.
@@ -320,7 +320,9 @@ const storeIds = user.organizations.flatMap(org => org.stores.map(store => store
 Date Range Calculation
 Period	                Date Range
 7d	                    Last 7 days (including today)
+---------------------------------------------------------------
 30d	                    Last 30 days (including today)
+-----------------------------------------------------------------
 90d	                    Last 90 days (including today)
 
 
