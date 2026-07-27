@@ -5,7 +5,6 @@ import {
 import { NAV } from "@/data/nav";
 import { resolveDashboardRoute } from "./routes";
 import type { PaletteCommand, CommandContext } from "./types";
-import { toast } from "@/hooks/use-toast";
 
 interface StaticCommandDeps {
   theme: "light" | "dark";
@@ -97,8 +96,9 @@ function buildActionCommands(deps: StaticCommandDeps): PaletteCommand[] {
       category: "actions",
       icon: Download,
       keywords: ["export", "csv", "download", "report"],
-      perform: ({ close }) => {
-        toast({ title: "Export queued", description: "We'll email you a CSV shortly." });
+      // Navigates to Invoice History where the real CSV export button lives
+      perform: ({ navigate, close }: CommandContext) => {
+        navigate("/dashboard/settings/invoice-history");
         close();
       },
     },
@@ -122,11 +122,6 @@ function buildActionCommands(deps: StaticCommandDeps): PaletteCommand[] {
  * needs to change.
  */
 function buildSettingsCommands(): PaletteCommand[] {
-  const comingSoon = (title: string) => ({ close }: CommandContext) => {
-    toast({ title, description: "This isn't wired up yet — coming soon." });
-    close();
-  };
-
   return [
     {
       id: "settings-change-password",
@@ -135,7 +130,11 @@ function buildSettingsCommands(): PaletteCommand[] {
       icon: KeyRound,
       keywords: ["password", "pass", "reset password", "forgot password", "security"],
       aliases: ["change pass", "login security", "sign in security"],
-      perform: comingSoon("Change Password"),
+      // Routes to the Security & System settings section where password change lives
+      perform: ({ navigate, close }: CommandContext) => {
+        navigate("/dashboard/settings/security");
+        close();
+      },
     },
     {
       id: "settings-2fa",
@@ -144,7 +143,11 @@ function buildSettingsCommands(): PaletteCommand[] {
       icon: ShieldCheck,
       keywords: ["2fa", "security", "mfa", "authentication", "codes"],
       aliases: ["two factor", "auth", "login security"],
-      perform: comingSoon("Two-Factor Authentication"),
+      // Routes to the Security & System settings section where 2FA lives
+      perform: ({ navigate, close }: CommandContext) => {
+        navigate("/dashboard/settings/security");
+        close();
+      },
     },
     {
       id: "settings-billing",
@@ -153,7 +156,11 @@ function buildSettingsCommands(): PaletteCommand[] {
       icon: CreditCard,
       keywords: ["billing", "invoices", "payment", "subscription", "upgrade plan"],
       aliases: ["plan", "invoice", "payment method"],
-      perform: comingSoon("Billing & Subscription"),
+      // Routes directly to the Billing Overview settings page
+      perform: ({ navigate, close }: CommandContext) => {
+        navigate("/dashboard/settings/billing");
+        close();
+      },
     },
     {
       id: "settings-profile",
@@ -161,7 +168,34 @@ function buildSettingsCommands(): PaletteCommand[] {
       category: "settings",
       icon: UserCircle,
       keywords: ["profile", "account", "name", "email"],
-      perform: ({ close }) => { window.location.href = "/dashboard/settings/profile"; close(); },
+      perform: ({ navigate, close }: CommandContext) => {
+        navigate("/dashboard/settings/profile");
+        close();
+      },
+    },
+    {
+      id: "settings-danger-zone",
+      title: "Danger Zone",
+      category: "settings",
+      icon: ShieldCheck,
+      keywords: ["delete workspace", "transfer ownership", "danger", "destructive"],
+      aliases: ["delete", "transfer", "nuke"],
+      perform: ({ navigate, close }: CommandContext) => {
+        navigate("/dashboard/settings/danger-zone");
+        close();
+      },
+    },
+    {
+      id: "settings-team",
+      title: "Team Members",
+      category: "settings",
+      icon: UserCircle,
+      keywords: ["team", "members", "invite", "staff", "colleagues"],
+      aliases: ["staff", "invite member"],
+      perform: ({ navigate, close }: CommandContext) => {
+        navigate("/dashboard/settings/team-members");
+        close();
+      },
     },
   ];
 }

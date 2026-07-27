@@ -82,10 +82,26 @@ export const InvoiceHistory: FC = () => {
     }
   };
 
-  const handleExportCsv = () => {
-    setFeedbackMessage(
-      `Exported ${filteredInvoices.length} billing records to "revluma_invoices_export.csv".`
-    );
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    setFeedbackMessage(null);
+    try {
+      const res = await api.get<{ downloadUrl: string }>(
+        "/billing/invoices/export",
+        undefined,
+        { skipAuthRedirect: true }
+      );
+      if (res?.data?.downloadUrl) {
+        window.open(res.data.downloadUrl, "_blank", "noopener,noreferrer");
+      }
+      setFeedbackMessage(
+        `Exported ${invoices.length} billing records successfully.`
+      );
+    } catch (err) {
+      console.error("Failed to export invoices CSV:", err);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const filteredInvoices = invoices.filter((inv) => {
@@ -166,10 +182,20 @@ export const InvoiceHistory: FC = () => {
           type="button"
           variant="outline"
           onClick={handleExportCsv}
-          className="h-11 border-slate-700 bg-slate-900/80 px-5 font-semibold text-slate-200 hover:bg-slate-800 hover:text-white"
+          disabled={isExporting}
+          className="h-11 border-slate-700 bg-slate-900/80 px-5 font-semibold text-slate-200 hover:bg-slate-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <FileSpreadsheet className="mr-2 h-4 w-4 text-sky-400" />
-          <span>Export All (CSV)</span>
+          {isExporting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-sky-400" />
+              <span>Exporting...</span>
+            </>
+          ) : (
+            <>
+              <FileSpreadsheet className="mr-2 h-4 w-4 text-sky-400" />
+              <span>Export All (CSV)</span>
+            </>
+          )}
         </Button>
       </div>
 

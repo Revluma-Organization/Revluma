@@ -155,9 +155,17 @@ export const DangerZone: FC = () => {
               <button
                 type="submit"
                 disabled={isTransferring}
-                className="h-10 whitespace-nowrap rounded-md bg-red-600 px-5 font-semibold text-white shadow-lg shadow-red-600/30 transition-colors hover:bg-red-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-10 whitespace-nowrap rounded-md px-5 font-semibold shadow-lg transition-colors active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                style={{ backgroundColor: '#dc2626', color: '#ffffff', border: '1px solid #dc2626' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#b91c1c'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#dc2626'; }}
               >
-                {isTransferring ? "Transferring..." : "Transfer Workspace"}
+                {isTransferring ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Transferring...
+                  </span>
+                ) : "Transfer Workspace"}
               </button>
             </form>
           </div>
@@ -210,7 +218,10 @@ export const DangerZone: FC = () => {
               <button
                 type="button"
                 onClick={handleOpenDeleteModal}
-                className="h-10 w-full whitespace-nowrap rounded-md bg-red-600 px-6 font-semibold text-white shadow-lg shadow-red-600/30 transition-colors hover:bg-red-700 active:scale-[0.98] sm:w-auto"
+                className="h-10 w-full whitespace-nowrap rounded-md px-6 font-semibold shadow-lg transition-colors active:scale-[0.98] sm:w-auto"
+                style={{ backgroundColor: '#dc2626', color: '#ffffff', border: '1px solid #dc2626' }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#b91c1c'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#dc2626'; }}
               >
                 Delete Workspace
               </button>
@@ -314,7 +325,24 @@ export const DangerZone: FC = () => {
                       type="button"
                       disabled={deleteConfirmText !== "DELETE" || isDeleting}
                       onClick={handleConfirmDelete}
-                      className="h-11 flex-1 rounded-md bg-red-600 font-bold text-white shadow-lg shadow-red-600/30 transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-600/50 disabled:opacity-50"
+                      className="h-11 flex-1 rounded-md font-bold shadow-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                      style={{
+                        backgroundColor: deleteConfirmText !== "DELETE" || isDeleting ? 'rgba(220,38,38,0.5)' : '#dc2626',
+                        color: '#ffffff',
+                        border: '1px solid #dc2626',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (deleteConfirmText === "DELETE" && !isDeleting) {
+                          (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#b91c1c';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (deleteConfirmText === "DELETE" && !isDeleting) {
+                          (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#dc2626';
+                        } else {
+                          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(220,38,38,0.5)';
+                        }
+                      }}
                     >
                       {isDeleting ? (
                         <span className="flex items-center justify-center gap-2">
