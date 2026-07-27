@@ -178,18 +178,18 @@ export const RolesPermissions: FC = () => {
       : PERMISSIONS_MATRIX.filter((row) => row.category === selectedCategory);
 
   return (
-    <div className="w-full max-w-6xl space-y-10 text-slate-100">
+    <div className="w-full max-w-6xl space-y-10 text-slate-900 dark:text-slate-100">
       {/* Page Header */}
-      <div className="border-b border-slate-800 pb-6">
+      <div className="border-b border-slate-200 dark:border-slate-800 pb-6">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
             <KeyRound className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               Roles & Permissions
             </h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
               Review workspace role tiers and inspect detailed access privileges across features.
             </p>
           </div>
@@ -199,10 +199,10 @@ export const RolesPermissions: FC = () => {
       {/* Role Tiers Grid */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white sm:text-xl">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
             Workspace Role Tiers
           </h2>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-500">
             4 predefined access levels
           </span>
         </div>
@@ -214,11 +214,11 @@ export const RolesPermissions: FC = () => {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: index * 0.05 }}
-              className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900/50 p-5 shadow-lg transition-all duration-300 hover:border-slate-700"
+              className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/50 p-5 shadow-lg transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700"
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 border border-slate-800">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 border border-slate-200 dark:bg-slate-950 dark:border-slate-800">
                     {tier.icon}
                   </div>
                   <Badge
@@ -230,10 +230,10 @@ export const RolesPermissions: FC = () => {
                 </div>
 
                 <div>
-                  <h3 className="text-base font-bold text-white">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
                     {tier.name}
                   </h3>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
                     {tier.description}
                   </p>
                 </div>
@@ -247,10 +247,10 @@ export const RolesPermissions: FC = () => {
       <section className="space-y-5">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            <h2 className="text-lg font-semibold text-white sm:text-xl">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
               Permissions Matrix
             </h2>
-            <p className="text-xs text-slate-400 sm:text-sm">
+            <p className="text-xs text-slate-600 dark:text-slate-400 sm:text-sm">
               Granular access breakdown for each role across core platform capabilities.
             </p>
           </div>
@@ -282,12 +282,12 @@ export const RolesPermissions: FC = () => {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35 }}
-          className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/40 shadow-2xl"
+          className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/40 shadow-2xl"
         >
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/70 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <tr className="border-b border-slate-200 bg-slate-100/80 dark:border-slate-800 dark:bg-slate-950/70 text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                   <th className="px-6 py-4 min-w-[280px]">Feature & Access</th>
                   <th className="px-5 py-4 text-center min-w-[100px]">Owner</th>
                   <th className="px-5 py-4 text-center min-w-[100px]">Admin</th>
@@ -295,16 +295,16 @@ export const RolesPermissions: FC = () => {
                   <th className="px-5 py-4 text-center min-w-[100px]">Viewer</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
+              <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/80">
                 {filteredMatrix.map((row) => (
                   <tr
                     key={row.feature}
-                    className="group transition-colors hover:bg-slate-800/30"
+                    className="group transition-colors hover:bg-slate-100/60 dark:hover:bg-slate-800/30"
                   >
                     {/* Feature Description */}
                     <td className="px-6 py-4">
                       <div className="space-y-0.5">
-                        <div className="flex items-center gap-2 font-medium text-white">
+                        <div className="flex items-center gap-2 font-medium text-slate-900 dark:text-white">
                           <span>{row.feature}</span>
                           <span className="hidden text-[0.68rem] text-slate-500 group-hover:inline-block">
                             ({row.category})
@@ -382,7 +382,7 @@ export const RolesPermissions: FC = () => {
           </div>
 
           {/* Matrix Footer Note */}
-          <div className="flex items-center gap-2 border-t border-slate-800/80 bg-slate-950/40 px-6 py-3 text-xs text-slate-400">
+          <div className="flex items-center gap-2 border-t border-slate-200/80 bg-slate-100/40 dark:border-slate-800/80 dark:bg-slate-950/40 px-6 py-3 text-xs text-slate-600 dark:text-slate-400">
             <Info className="h-3.5 w-3.5 text-slate-500 shrink-0" />
             <span>
               Role privileges are enforced across both dashboard UI views and underlying REST API endpoints.

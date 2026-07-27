@@ -152,14 +152,13 @@ export const DangerZone: FC = () => {
                   disabled={isTransferring}
                 />
               </div>
-              <Button
+              <button
                 type="submit"
-                variant="destructive"
                 disabled={isTransferring}
-                className="h-10 whitespace-nowrap bg-red-600 hover:bg-red-700 text-white border border-red-600 px-5 font-semibold shadow-lg shadow-red-600/30 active:scale-[0.98]"
+                className="h-10 whitespace-nowrap rounded-md bg-red-600 px-5 font-semibold text-white shadow-lg shadow-red-600/30 transition-colors hover:bg-red-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isTransferring ? "Transferring..." : "Transfer Workspace"}
-              </Button>
+              </button>
             </form>
           </div>
 
@@ -208,14 +207,13 @@ export const DangerZone: FC = () => {
             </div>
 
             <div className="flex shrink-0">
-              <Button
+              <button
                 type="button"
-                variant="destructive"
                 onClick={handleOpenDeleteModal}
-                className="h-10 w-full whitespace-nowrap bg-red-600 hover:bg-red-700 text-white border border-red-600 px-6 font-semibold shadow-lg shadow-red-600/30 active:scale-[0.98] sm:w-auto"
+                className="h-10 w-full whitespace-nowrap rounded-md bg-red-600 px-6 font-semibold text-white shadow-lg shadow-red-600/30 transition-colors hover:bg-red-700 active:scale-[0.98] sm:w-auto"
               >
                 Delete Workspace
-              </Button>
+              </button>
             </div>
           </div>
         </motion.section>
@@ -312,15 +310,21 @@ export const DangerZone: FC = () => {
                     >
                       Cancel
                     </Button>
-                    <Button
+                    <button
                       type="button"
-                      variant="destructive"
                       disabled={deleteConfirmText !== "DELETE" || isDeleting}
                       onClick={handleConfirmDelete}
-                      className="h-11 flex-1 bg-red-600 hover:bg-red-700 text-white border border-red-600 font-bold shadow-lg shadow-red-600/30 disabled:opacity-50 disabled:bg-red-600/50 disabled:hover:bg-red-600/50 disabled:cursor-not-allowed"
+                      className="h-11 flex-1 rounded-md bg-red-600 font-bold text-white shadow-lg shadow-red-600/30 transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-600/50 disabled:opacity-50"
                     >
-                      {isDeleting ? "Deleting..." : "Delete Workspace"}
-                    </Button>
+                      {isDeleting ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Deleting...
+                        </span>
+                      ) : (
+                        "Delete Workspace"
+                      )}
+                    </button>
                   </div>
                 </div>
               )}
