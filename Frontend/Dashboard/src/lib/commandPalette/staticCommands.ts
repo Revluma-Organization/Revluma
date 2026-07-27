@@ -130,9 +130,9 @@ function buildSettingsCommands(): PaletteCommand[] {
       icon: KeyRound,
       keywords: ["password", "pass", "reset password", "forgot password", "security"],
       aliases: ["change pass", "login security", "sign in security"],
-      // Routes to the Security & System settings section where password change lives
+      // Routes to the Profile settings section where password change lives
       perform: ({ navigate, close }: CommandContext) => {
-        navigate("/dashboard/settings/security");
+        navigate("/dashboard/settings/profile");
         close();
       },
     },
@@ -143,9 +143,9 @@ function buildSettingsCommands(): PaletteCommand[] {
       icon: ShieldCheck,
       keywords: ["2fa", "security", "mfa", "authentication", "codes"],
       aliases: ["two factor", "auth", "login security"],
-      // Routes to the Security & System settings section where 2FA lives
+      // Routes to the Profile settings section where 2FA lives
       perform: ({ navigate, close }: CommandContext) => {
-        navigate("/dashboard/settings/security");
+        navigate("/dashboard/settings/profile");
         close();
       },
     },

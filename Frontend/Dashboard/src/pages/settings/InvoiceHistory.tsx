@@ -31,6 +31,7 @@ export const InvoiceHistory: FC = () => {
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isExporting, setIsExporting] = useState<boolean>(false);
 
   const fetchInvoices = useCallback(async () => {
     setIsLoading(true);
