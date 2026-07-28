@@ -376,29 +376,31 @@ exports.login = async (req, res, next) => {
       orderBy: { created_at: 'asc' },
     });
 
-    // ── Generate tokens ───────────────────────────────────────────────────────
-    const sessionId = uuidv4();
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      tenantId: membership?.organization_id || null,
-      sessionId: sessionId,
-    });
+// ── Generate refresh token first ──────────────────────────────────────────
+const { raw: rawRefresh, hash: refreshHash, expiresAt } = generateRefreshToken();
 
-    const { raw: rawRefresh, hash: refreshHash, expiresAt } = generateRefreshToken();
-    const familyId = uuidv4(); // New family for this login session
+const familyId = uuidv4();
 
-    await prisma.refresh_tokens.create({
-      data: {
-        user_id: user.id,
-        token_hash: refreshHash,
-        family_id: familyId,
-        device_hint: getDeviceHint(req),
-        ip_address: ip,
-        expires_at: expiresAt,
-        last_used_at: new Date(),
-      },
-    });
+const refreshSession = await prisma.refresh_tokens.create({
+  data: {
+    user_id: user.id,
+    token_hash: refreshHash,
+    family_id: familyId,
+    device_hint: getDeviceHint(req),
+    ip_address: ip,
+    expires_at: expiresAt,
+    last_used_at: new Date(),
+  },
+});
+
+// Generate access token using the database session ID
+const accessToken = generateAccessToken({
+  userId: user.id,
+  email: user.email,
+  tenantId: membership?.organization_id || null,
+  sessionId: refreshSession.id,
+});
+
 
     // Record successful login
     await recordLoginAttempt(email, true, ip);
@@ -451,6 +453,7 @@ exports.refresh = async (req, res, next) => {
     }
 
     const tokenHash = hashRefreshToken(refresh_token);
+    const ip = getClientIp(req);
 
     // Look up token in DB
     const storedToken = await prisma.refresh_tokens.findUnique({
@@ -496,39 +499,40 @@ exports.refresh = async (req, res, next) => {
     });
 
     // ── Rotate tokens ─────────────────────────────────────────────────────────
-    // Revoke old token, issue new one in same family
+    // Revoke old token, issue a new one in the same family
     const { raw: newRawRefresh, hash: newRefreshHash, expiresAt } = generateRefreshToken();
+    const familyId = uuidv4();
 
-    await prisma.$transaction([
-      // Revoke old token
-      prisma.refresh_tokens.update({
+    const rotationResult = await prisma.$transaction(async (tx) => {
+      await tx.refresh_tokens.update({
         where: { id: storedToken.id },
         data: { is_revoked: true },
-      }),
-      // Create new token in same family
-      prisma.refresh_tokens.create({
+      });
+
+      const refreshSession = await tx.refresh_tokens.create({
         data: {
           user_id: user.id,
           token_hash: newRefreshHash,
-          family_id: storedToken.family_id, // Same family — maintains reuse detection
-          device_hint: storedToken.device_hint,
-          ip_address: getClientIp(req),
+          family_id: familyId,
+          device_hint: getDeviceHint(req),
+          ip_address: ip,
           expires_at: expiresAt,
           last_used_at: new Date(),
         },
-      }),
-    ]);
+      });
 
-    const sessionId = uuidv4();
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      tenantId: membership?.organization_id || null,
-      sessionId: sessionId,
+      const accessToken = generateAccessToken({
+        userId: user.id,
+        email: user.email,
+        tenantId: membership?.organization_id || null,
+        sessionId: refreshSession.id,
+      });
+
+      return { accessToken, refreshSession };
     });
 
     // Rotate the HttpOnly cookie alongside the body token
-    res.cookie("refresh_token", newRawRefresh, {
+    res.cookie('refresh_token', newRawRefresh, {
       ...getRefreshCookieOptions(req),
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -536,7 +540,7 @@ exports.refresh = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       data: {
-        access_token: accessToken,
+        access_token: rotationResult.accessToken,
         refresh_token: newRawRefresh,
       },
     });

@@ -47,10 +47,11 @@ const authenticateToken = (req, res, next) => {
     }
 
     req.user = {
-      id:       decoded.sub,
-      email:    decoded.email,
-      tenantId: decoded.tenantId || null,
-      jti:      decoded.jti,
+      id:        decoded.sub,
+      email:     decoded.email,
+      tenantId:  decoded.tenantId || null,
+      jti:       decoded.jti,
+      sessionId: decoded.sid || null,
     };
 
     next();
