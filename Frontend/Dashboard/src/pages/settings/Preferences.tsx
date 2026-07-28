@@ -76,19 +76,22 @@ export const Preferences: FC = () => {
         theme?: ThemeOption;
         language?: string;
         timezone?: string;
-        date_format?: string;
+        dateFormat?: string;
       }>("/user/preferences", undefined, { skipAuthRedirect: true });
-      if (res && res.data) {
-        if (res.data.language) {
-          setLanguage(res.data.language);
-          updatePreference("language", res.data.language);
-          if (typeof document !== "undefined") {
-            document.documentElement.lang = res.data.language;
+        const prefs = res.data?.data; 
+        
+        if (prefs) {
+          if (prefs.language) {
+            setLanguage(prefs.language);
+            updatePreference("language", prefs.language);
+            if (typeof document !== "undefined") {
+              document.documentElement.lang = prefs.language;
+            }
           }
+          if (prefs.timezone) setTimezone(prefs.timezone);
+        
+          if (prefs.dateFormat) setDateFormat(prefs.dateFormat); 
         }
-        if (res.data.timezone) setTimezone(res.data.timezone);
-        if (res.data.date_format) setDateFormat(res.data.date_format);
-      }
     } catch (err) {
       console.warn("Failed to fetch preferences from API:", err);
     }
@@ -121,7 +124,7 @@ export const Preferences: FC = () => {
     const payload = {
       theme: theme === "system" ? globalTheme : theme,
       language,
-      date_format: dateFormat,
+      dateFormat: dateFormat,
       timezone,
     };
     try {
