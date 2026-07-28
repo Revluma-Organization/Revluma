@@ -287,8 +287,9 @@ export function Sidebar() {
   Advanced recovery &amp; AI intelligence
 </div>
       <motion.button
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => router.push('/dashboard/settings/subscription')}
         className="w-full rounded-md bg-[#007FFF] px-0 py-1.5 text-xs font-medium text-white transition hover:bg-[#007FFF]/90"
       >
         Upgrade to Pro →
