@@ -20,13 +20,13 @@ import { api } from "@/lib/api";
 
 export interface DeviceSession {
   id: string;
-  deviceName: string;
+  device: string;
   browser: string;
   os: string;
   location: string;
   ipAddress: string;
   lastActive: string;
-  isCurrent: boolean;
+  current: boolean;
   deviceType: "laptop" | "phone" | "tablet";
 }
 
@@ -42,8 +42,9 @@ export const ActiveSessions: FC = () => {
       const res = await api.get<DeviceSession[]>("/auth/sessions", undefined, {
         skipAuthRedirect: true,
       });
-      if (res && Array.isArray(res.data)) {
-        setSessions(res.data);
+      const active = res.data?.data?.sessions;
+      if (active && Array.isArray(active)) {
+        setSessions(active);
       } else {
         setSessions([]);
       }
@@ -85,7 +86,7 @@ export const ActiveSessions: FC = () => {
   const handleLogOutOfAllOthers = async () => {
     try {
       await api.delete("/auth/sessions/others", { skipAuthRedirect: true });
-      const onlyCurrent = sessions.filter((sess) => sess.isCurrent);
+      const onlyCurrent = sessions.filter((sess) => sess.current);
       const removedCount = sessions.length - onlyCurrent.length;
       setSessions(onlyCurrent);
       setFeedbackMessage(
@@ -98,7 +99,7 @@ export const ActiveSessions: FC = () => {
     }
   };
 
-  const otherSessionsCount = sessions.filter((sess) => !sess.isCurrent).length;
+  const otherSessionsCount = sessions.filter((sess) => !sess.current).length;
 
   return (
     <div className="w-full max-w-5xl space-y-8 text-slate-900 dark:text-slate-100">
@@ -201,7 +202,7 @@ export const ActiveSessions: FC = () => {
                   exit={{ opacity: 0, height: 0, scale: 0.96 }}
                   transition={{ duration: 0.25 }}
                   className={`flex flex-col justify-between gap-4 rounded-2xl border p-5 shadow-xl transition-all duration-300 sm:flex-row sm:items-center ${
-                    session.isCurrent
+                    session.current
                       ? "border-emerald-500/40 bg-white shadow-emerald-500/5 dark:bg-slate-900/80"
                       : "border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900/50 dark:hover:border-slate-700/80"
                   }`}
@@ -209,13 +210,13 @@ export const ActiveSessions: FC = () => {
                   {/* Left Device Info */}
                   <div className="flex items-start gap-4 sm:items-center">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-950">
-                      {getDeviceIcon(session.deviceType)}
+                      {getDeviceIcon(session.device)}
                     </div>
 
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-slate-900 dark:text-white">
-                          {session.deviceName}
+                          {session.device}
                         </span>
                         <span className="text-xs text-slate-500 dark:text-slate-400">
                           — {session.browser} ({session.os})
@@ -245,7 +246,7 @@ export const ActiveSessions: FC = () => {
 
                   {/* Right Actions / Status Badge */}
                   <div className="flex items-center justify-end gap-3 self-end sm:self-center">
-                    {session.isCurrent ? (
+                    {session.current ? (
                       <Badge
                         variant="outline"
                         className="inline-flex items-center gap-1.5 rounded-full border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300"
@@ -259,7 +260,7 @@ export const ActiveSessions: FC = () => {
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          handleRevokeSession(session.id, session.deviceName)
+                          handleRevokeSession(session.id, session.device)
                         }
                         className="border-slate-300 bg-white text-xs font-semibold text-slate-700 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-red-500/30 dark:hover:bg-red-500/10 dark:hover:text-red-300"
                       >
