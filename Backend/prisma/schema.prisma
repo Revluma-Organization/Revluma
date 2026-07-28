@@ -1,12 +1,10 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["driverAdapters"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -82,8 +80,8 @@ model onboarding_tools {
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model organizations {
-  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  owner_id              String          @db.Uuid
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id              String                 @db.Uuid
   company_name          String
   website_url           String?
   store_url             String?
@@ -94,10 +92,10 @@ model organizations {
   team_size             String?
   monthly_revenue_range String?
   monthly_order_volume  String?
-  created_at            DateTime?       @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime?       @default(now()) @db.Timestamptz(6)
+  created_at            DateTime?              @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?              @default(now()) @db.Timestamptz(6)
   ai_preferences        ai_preferences?
-  users                 users           @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                 users                  @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   stores                stores[]
   members               organization_members[]
 
@@ -106,28 +104,52 @@ model organizations {
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model users {
-  id                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   full_name               String
-  email                   String               @unique
+  email                   String                 @unique
   password_hash           String
-  email_verified          Boolean?             @default(false)
+  email_verified          Boolean?               @default(false)
   verification_code       String?
-  verification_expires_at DateTime?            @db.Timestamptz(6)
-  accepted_terms          Boolean              @default(false)
-  accepted_privacy_policy Boolean              @default(false)
-  onboarding_completed    Boolean?             @default(false)
-  onboarding_step         Int?                 @default(1)
-  status                  String?              @default("active")
-  created_at              DateTime?            @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime?            @default(now()) @db.Timestamptz(6)
+  verification_expires_at DateTime?              @db.Timestamptz(6)
+  accepted_terms          Boolean                @default(false)
+  accepted_privacy_policy Boolean                @default(false)
+  onboarding_completed    Boolean?               @default(false)
+  onboarding_step         Int?                   @default(1)
+  status                  String?                @default("active")
+  created_at              DateTime?              @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?              @default(now()) @db.Timestamptz(6)
   notifications           notifications[]
   refresh_tokens          refresh_tokens[]
   onboarding_profiles     onboarding_profiles?
   organizations           organizations[]
+  preferences             UserPreference?
+  organization_members    organization_members[]
 
   @@index([email], map: "idx_users_email")
-  organization_members organization_members[]
 }
+
+model UserPreference {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  userId String @unique @map("user_id") @db.Uuid
+
+  theme String @default("system")
+
+  language String @default("en-GB")
+
+  timezone String @default("Africa/Lagos")
+
+  dateFormat String @default("DD/MM/YYYY") @map("date_format")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user users @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model waitlist_users {
@@ -168,11 +190,10 @@ model waitlist_users {
   user_agent                 String?
   created_at                 DateTime? @default(now()) @db.Timestamptz(6)
   updated_at                 DateTime? @default(now()) @db.Timestamptz(6)
-   referral_code      String   @unique
-  referred_by_code   String?
-  referral_count     Int      @default(0)
-  is_founding_member Boolean  @default(false)
-
+  referral_code              String    @unique
+  referred_by_code           String?
+  referral_count             Int       @default(0)
+  is_founding_member         Boolean   @default(false)
 
   @@index([country], map: "idx_waitlist_country")
   @@index([work_email], map: "idx_waitlist_email")
@@ -180,7 +201,7 @@ model waitlist_users {
   @@index([lead_score], map: "idx_waitlist_lead_score")
   @@index([waitlist_position], map: "idx_waitlist_position")
   @@index([status], map: "idx_waitlist_status")
-   @@index([referral_code])
+  @@index([referral_code])
 }
 
 /// Connected Shopify or WooCommerce store for a merchant organization.
@@ -421,7 +442,6 @@ model ml_session_features {
   @@index([anonymous_id], map: "idx_ml_features_anonymous")
 }
 
-
 /// Persisted refresh tokens — enables real logout and token rotation.
 /// On every refresh: old token is deleted, new one is created.
 /// On logout: all tokens for the session (or all sessions) are deleted.
@@ -430,7 +450,7 @@ model refresh_tokens {
   user_id      String    @db.Uuid
   token_hash   String    @unique // SHA-256 hash of the raw token — never store raw
   family_id    String    @db.Uuid // Groups a chain of rotated tokens — reuse = theft
-  device_hint  String?   // Browser/device info for display in "active sessions"
+  device_hint  String? // Browser/device info for display in "active sessions"
   ip_address   String?
   expires_at   DateTime  @db.Timestamptz(6)
   created_at   DateTime? @default(now()) @db.Timestamptz(6)
@@ -459,16 +479,16 @@ model login_attempts {
 /// RBAC: maps users to organizations with a role and status.
 /// Owner is auto-created on registration; members/admins are invited.
 model organization_members {
-  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id String        @db.Uuid
-  user_id         String        @db.Uuid
-  role            String        @default("member") // owner | admin | member
-  status          String        @default("active") // pending | active | removed
-  invited_by      String?       @db.Uuid
-  invited_at      DateTime?     @db.Timestamptz(6)
-  joined_at       DateTime?     @db.Timestamptz(6)
-  created_at      DateTime?     @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime?     @default(now()) @db.Timestamptz(6)
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  user_id         String    @db.Uuid
+  role            String    @default("member") // owner | admin | member
+  status          String    @default("active") // pending | active | removed
+  invited_by      String?   @db.Uuid
+  invited_at      DateTime? @db.Timestamptz(6)
+  joined_at       DateTime? @db.Timestamptz(6)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
 
   organizations organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users         users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -500,9 +520,9 @@ model invite_tokens {
 /// Replaces the single static ADMIN_API_KEY env var for production use.
 model admin_api_keys {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String    // human-readable label (e.g. "CI deploy key")
+  name         String // human-readable label (e.g. "CI deploy key")
   key_hash     String    @unique // SHA-256 hash of the raw key
-  prefix       String    // first 8 chars of raw key — shown in UI for identification
+  prefix       String // first 8 chars of raw key — shown in UI for identification
   scopes       String[]  @default(["read", "write"]) // permission scopes
   last_used_at DateTime? @db.Timestamptz(6)
   last_used_ip String?
