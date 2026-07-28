@@ -72,14 +72,13 @@ export const Preferences: FC = () => {
 
   const fetchUserPreferences = useCallback(async () => {
     try {
-      const res = await api.get<{
+            const res = await api.get<{
         theme?: ThemeOption;
         language?: string;
         timezone?: string;
         dateFormat?: string;
-      }>("/user/preferences", undefined, { skipAuthRedirect: true });
-        const prefs = res.data?.data; 
-        
+      }>("/preferences", undefined, { skipAuthRedirect: true });
+                const prefs = res.data?.data;
         if (prefs) {
           if (prefs.language) {
             setLanguage(prefs.language);
@@ -128,7 +127,7 @@ export const Preferences: FC = () => {
       timezone,
     };
     try {
-      await api.put("/user/preferences", payload, { skipAuthRedirect: true });
+            await api.put("/preferences", payload, { skipAuthRedirect: true });
       if (language) {
         updatePreference("language", language);
         if (typeof document !== "undefined") {
