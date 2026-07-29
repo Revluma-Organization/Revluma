@@ -10,8 +10,14 @@ exports.installShopify = async (req, res, next) => {
   try {
     const { shop } = req.query;
 
-    // Read user from the temporary OAuth cookie
-    const userId = req.signedCookies.oauth_user;
+    logger.info("install_request", {
+      cookieHeader: req.headers.cookie,
+      signedCookies: req.signedCookies,
+      hasUser: Boolean(req.user?.id),
+    });
+
+    // Prefer the authenticated user from JWT, fall back to the legacy OAuth cookie.
+    const userId = req.user?.id || req.signedCookies?.oauth_user || req.signedCookies?.shopify_user;
 
     if (!userId) {
       return res.status(401).json({
@@ -35,6 +41,12 @@ exports.installShopify = async (req, res, next) => {
     }
 
     const state = generateState();
+
+    res.cookie("oauth_user", userId, {
+      signed: true,
+      ...buildCookieOptions(req),
+      maxAge: 10 * 60 * 1000,
+    });
 
     res.cookie("shopify_state", state, {
       signed: true,
