@@ -44,6 +44,7 @@ exports.installShopify = async (req, res, next) => {
     const cookieOptions = {
       ...buildCookieOptions(req),
       maxAge: 10 * 60 * 1000,
+      signed: true,
     };
 
     res.cookie("oauth_user", userId, cookieOptions);

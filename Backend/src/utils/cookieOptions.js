@@ -25,8 +25,8 @@ function buildCookieOptions(req, overrides = {}) {
 
   return {
     httpOnly: true,
-    secure,
-    sameSite: secure ? 'none' : 'lax',
+    secure: true,
+    sameSite: 'none',
     path: '/',
     ...overrides,
   };
