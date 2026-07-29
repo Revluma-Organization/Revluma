@@ -56,7 +56,7 @@ exports.getSessions = async (req, res, next) => {
 exports.deleteSession = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const currentSessionId = req.user.sessionId;
+    const currentSessionId = req.user?.sessionId || req.user?.sid || null;
     const { id } = req.params;
 
     if (!isValidUuid(id)) {
@@ -66,8 +66,8 @@ exports.deleteSession = async (req, res, next) => {
       });
     }
 
-    // Prevent revoking the current session
-    if (id === currentSessionId) {
+    // Prevent revoking the current session when we have a valid current-session id.
+    if (isValidUuid(currentSessionId) && id === currentSessionId) {
       return res.status(400).json({
         success: false,
         error: "You cannot revoke your current session. Use the logout endpoint instead.",
@@ -111,23 +111,21 @@ exports.deleteSession = async (req, res, next) => {
 exports.deleteOtherSessions = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const currentSessionId = req.user.sessionId;
+    const currentSessionId = req.user?.sessionId || req.user?.sid || null;
 
-    if (!isValidUuid(currentSessionId)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid current session id.",
-      });
+    const where = {
+      user_id: userId,
+      is_revoked: false,
+    };
+
+    if (isValidUuid(currentSessionId)) {
+      where.id = {
+        not: currentSessionId,
+      };
     }
 
     const result = await prisma.refresh_tokens.updateMany({
-      where: {
-        user_id: userId,
-        is_revoked: false,
-        id: {
-          not: currentSessionId,
-        },
-      },
+      where,
       data: {
         is_revoked: true,
       },
