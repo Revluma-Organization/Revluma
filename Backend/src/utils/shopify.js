@@ -1,5 +1,20 @@
 const crypto = require("crypto");
 
+function encodeState(userId) {
+  const payload = Buffer.from(JSON.stringify({ userId })).toString('base64url');
+  return payload;
+}
+
+function decodeState(state) {
+  try {
+    const payload = state.includes('.') ? state.split('.').slice(1).join('.') : state;
+    const decoded = Buffer.from(payload, 'base64url').toString('utf8');
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 /*** Validate Shopify shop domain Example: mystore.myshopify.com*/
 const isValidShopDomain = (shop) => {
   if (!shop) return false;
@@ -8,8 +23,10 @@ const isValidShopDomain = (shop) => {
 };
 
 /** Generate secure OAuth state*/
-const generateState = () => {
-  return crypto.randomBytes(32).toString("hex");
+const generateState = (userId) => {
+  const randomPart = crypto.randomBytes(16).toString("hex");
+  if (!userId) return randomPart;
+  return `${randomPart}.${encodeState(userId)}`;
 };
 
 /**Build Shopify OAuth URL*/
@@ -58,6 +75,8 @@ const verifyHmac = (query) => {
 module.exports = {
   isValidShopDomain,
   generateState,
+  encodeState,
+  decodeState,
   buildInstallUrl,
   verifyHmac,
 };

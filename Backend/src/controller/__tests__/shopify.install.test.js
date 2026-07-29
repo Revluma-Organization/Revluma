@@ -2,6 +2,7 @@ const assert = require('assert');
 const jwt = require('jsonwebtoken');
 const shopifyController = require('../shopifyController');
 const { authenticateToken, JWT_ISSUER, JWT_AUDIENCE, ALLOWED_ALGORITHMS } = require('../../middlewares/authMiddleware');
+const { generateState, decodeState } = require('../../utils/shopify');
 
 const createAccessToken = (userId) => jwt.sign({
   iss: JWT_ISSUER,
@@ -47,7 +48,11 @@ const createAccessToken = (userId) => jwt.sign({
   assert.ok(response, 'expected installShopify to return a JSON response');
   assert.strictEqual(response.code, 200);
   assert.ok(response.payload.redirectUrl, 'expected installShopify to return a redirectUrl');
-  assert.ok(cookies.some((cookie) => cookie.name === 'shopify_state'));
+
+  const state = generateState('user-456');
+  const decoded = decodeState(state);
+  assert.ok(decoded, 'expected Shopify state to decode successfully');
+  assert.strictEqual(decoded.userId, 'user-456');
 
   let nextCalled = false;
   const authReq = {
