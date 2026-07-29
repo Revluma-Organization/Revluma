@@ -1,6 +1,12 @@
 const dbConfig = require('../configs/database');
 const prisma = dbConfig.prisma;
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isValidUuid(value) {
+  return typeof value === 'string' && UUID_REGEX.test(value);
+}
+
 /**GET /api/v1/auth/sessions Get all active sessions for the authenticated user */
 exports.getSessions = async (req, res, next) => {
   try {
@@ -53,6 +59,13 @@ exports.deleteSession = async (req, res, next) => {
     const currentSessionId = req.user.sessionId;
     const { id } = req.params;
 
+    if (!isValidUuid(id)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid session id.",
+      });
+    }
+
     // Prevent revoking the current session
     if (id === currentSessionId) {
       return res.status(400).json({
@@ -99,6 +112,13 @@ exports.deleteOtherSessions = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const currentSessionId = req.user.sessionId;
+
+    if (!isValidUuid(currentSessionId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid current session id.",
+      });
+    }
 
     const result = await prisma.refresh_tokens.updateMany({
       where: {
