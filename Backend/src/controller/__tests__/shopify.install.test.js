@@ -1,5 +1,19 @@
 const assert = require('assert');
+const jwt = require('jsonwebtoken');
 const shopifyController = require('../shopifyController');
+const { authenticateToken, JWT_ISSUER, JWT_AUDIENCE, ALLOWED_ALGORITHMS } = require('../../middlewares/authMiddleware');
+
+const createAccessToken = (userId) => jwt.sign({
+  iss: JWT_ISSUER,
+  aud: JWT_AUDIENCE,
+  sub: userId,
+  email: 'tester@example.com',
+  type: 'access',
+  jti: 'test-jti',
+  sid: 'test-session',
+  iat: Math.floor(Date.now() / 1000),
+  nbf: Math.floor(Date.now() / 1000),
+}, process.env.JWT_SECRET, { algorithm: ALLOWED_ALGORITHMS[0], expiresIn: '15m' });
 
 (async () => {
   const req = {
@@ -34,6 +48,26 @@ const shopifyController = require('../shopifyController');
   assert.strictEqual(response.code, 200);
   assert.ok(response.payload.redirectUrl, 'expected installShopify to return a redirectUrl');
   assert.ok(cookies.some((cookie) => cookie.name === 'shopify_state'));
+
+  let nextCalled = false;
+  const authReq = {
+    headers: { 'x-access-token': createAccessToken('user-456') },
+    query: {},
+    cookies: {},
+    signedCookies: {},
+  };
+  const authRes = {
+    status(code) {
+      return { json(payload) { return { code, payload }; } };
+    },
+  };
+
+  authenticateToken(authReq, authRes, () => {
+    nextCalled = true;
+  });
+
+  assert.strictEqual(nextCalled, true);
+  assert.strictEqual(authReq.user.id, 'user-456');
   console.log('shopify install auth regression test passed');
 })().catch((error) => {
   console.error(error);

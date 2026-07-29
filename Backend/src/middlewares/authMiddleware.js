@@ -17,11 +17,17 @@ const authenticateToken = (req, res, next) => {
     let token = null;
 
     const authHeader = req.headers.authorization;
+    const alternateHeader = req.headers['x-access-token'] || req.headers['x-auth-token'] || req.headers['authorization'];
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1];
+    } else if (alternateHeader) {
+      token = String(alternateHeader).startsWith('Bearer ') ? String(alternateHeader).split(' ')[1] : String(alternateHeader);
     } else if (req.query && req.query.token) {
       // Browser redirects cannot send Authorization headers
       token = req.query.token;
+    } else if (req.cookies && req.cookies.access_token) {
+      token = req.cookies.access_token;
     }
 
     if (!token) {
