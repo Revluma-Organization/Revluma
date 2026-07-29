@@ -271,12 +271,18 @@ export default function Integrations() {
       // Pause for 300ms to ensure the browser has enough physical time to save the cookie to storage
       await new Promise(resolve => setTimeout(resolve, 300));
 
-      // Step 2: Direct browser navigation to the install route.
-      // The browser will automatically attach the cookie Afolabi just set.
-      // (Make sure this base URL matches your actual backend URL)
-      const backendBaseUrl = "https://revluma-backend.onrender.com/api/v1"; 
-      window.location.assign(`${backendBaseUrl}/shopify/install?shop=${cleanShop}`);
-    } catch (e) {
+      // Step 2: Call the backend using your wrapper so the Bearer token is attached!
+    const res = await api.get('/shopify/install', { shop: cleanShop });
+
+    // Step 3: Extract the URL and manually redirect the browser
+    const targetUrl = (res.data as any)?.redirectUrl || (res.data as any)?.install_url;
+
+    if (targetUrl) {
+      window.location.href = targetUrl;
+    } else {
+      throw new Error("No redirect URL returned from the backend");
+    }
+        } catch (e) {
       console.error('Shopify connect failed', e);
       showStatusCard(
         'error',
