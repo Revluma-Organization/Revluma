@@ -1,4 +1,5 @@
-const prisma = require("../configs/database");
+const dbConfig = require("../configs/database");
+const prisma = dbConfig.prisma;
 const logger = require("../utils/logger");
 
 /* GET /api/v1/notifications
