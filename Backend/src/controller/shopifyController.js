@@ -9,7 +9,7 @@ const {exchangeAccessToken,getOrganizationByUser,upsertStore,syncShopifyStore,} 
 exports.installShopify = async (req, res, next) => {
   try {
     const { shop } = req.query;
-
+    console.log("INCOMING AUTH:", req.headers.authorization);
     logger.info("install_request", {
       cookieHeader: req.headers.cookie,
       signedCookies: req.signedCookies,
@@ -41,24 +41,16 @@ exports.installShopify = async (req, res, next) => {
     }
 
     const state = generateState();
-
-    res.cookie("oauth_user", userId, {
-      signed: true,
+    const cookieOptions = {
       ...buildCookieOptions(req),
       maxAge: 10 * 60 * 1000,
-    });
+    };
 
-    res.cookie("shopify_state", state, {
-      signed: true,
-      ...buildCookieOptions(req),
-      maxAge: 10 * 60 * 1000,
-    });
+    res.cookie("oauth_user", userId, cookieOptions);
 
-    res.cookie("shopify_user", userId, {
-      signed: true,
-      ...buildCookieOptions(req),
-      maxAge: 10 * 60 * 1000,
-    });
+    res.cookie("shopify_state", state, cookieOptions);
+
+    res.cookie("shopify_user", userId, cookieOptions);
     
     const installUrl = buildInstallUrl({
       shop,
@@ -135,9 +127,9 @@ exports.shopifyCallback = async (req, res, next) => {
     console.log("storedState:", req.signedCookies.shopify_state);
     console.log("userId:", req.signedCookies.shopify_user);
 
-    // Read signed cookies
-    const storedState = req.signedCookies.shopify_state;
-    const userId = req.signedCookies.shopify_user;
+    // Read OAuth state and user from either signed or unsigned cookies.
+    const storedState = req.signedCookies?.shopify_state ?? req.cookies?.shopify_state;
+    const userId = req.signedCookies?.shopify_user ?? req.cookies?.shopify_user ?? req.signedCookies?.oauth_user ?? req.cookies?.oauth_user;
 
     if (!storedState || !userId) {
       return res.status(400).json({
