@@ -40,7 +40,7 @@ exports.installShopify = async (req, res, next) => {
       });
     }
 
-    const state = generateState();
+    const state = generateState(userId);
     const cookieOptions = {
       ...buildCookieOptions(req),
       maxAge: 10 * 60 * 1000,
@@ -127,9 +127,9 @@ exports.shopifyCallback = async (req, res, next) => {
     console.log("storedState:", req.signedCookies.shopify_state);
     console.log("userId:", req.signedCookies.shopify_user);
 
-    // Read OAuth state and user from either signed or unsigned cookies.
+    const decodedState = decodeState(state);
     const storedState = req.signedCookies?.shopify_state ?? req.cookies?.shopify_state;
-    const userId = req.signedCookies?.shopify_user ?? req.cookies?.shopify_user ?? req.signedCookies?.oauth_user ?? req.cookies?.oauth_user;
+    const userId = req.signedCookies?.shopify_user ?? req.cookies?.shopify_user ?? req.signedCookies?.oauth_user ?? req.cookies?.oauth_user ?? decodedState?.userId;
 
     if (!storedState || !userId) {
       return res.status(400).json({
