@@ -2,7 +2,7 @@ const assert = require('assert');
 const jwt = require('jsonwebtoken');
 const shopifyController = require('../shopifyController');
 const { authenticateToken, JWT_ISSUER, JWT_AUDIENCE, ALLOWED_ALGORITHMS } = require('../../middlewares/authMiddleware');
-const { generateState, decodeState } = require('../../utils/shopify');
+const { generateState, decodeState, getStateContext, isStateAccepted } = require('../../utils/shopify');
 
 const createAccessToken = (userId) => jwt.sign({
   iss: JWT_ISSUER,
@@ -53,6 +53,11 @@ const createAccessToken = (userId) => jwt.sign({
   const decoded = decodeState(state);
   assert.ok(decoded, 'expected Shopify state to decode successfully');
   assert.strictEqual(decoded.userId, 'user-456');
+
+  const stateContext = getStateContext(state, {}, {});
+  assert.strictEqual(stateContext.userId, 'user-456');
+  assert.ok(stateContext.decodedState, 'expected state context to recover the user id from the encoded payload');
+  assert.strictEqual(isStateAccepted(undefined, state, stateContext.decodedState), true, 'expected callback to accept a state recovered from the encoded payload when cookies are missing');
 
   let nextCalled = false;
   const authReq = {

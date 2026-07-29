@@ -1,4 +1,4 @@
-const {isValidShopDomain,generateState,buildInstallUrl,verifyHmac,} = require("../utils/shopify");
+const {isValidShopDomain,generateState,buildInstallUrl,verifyHmac,getStateContext,isStateAccepted,} = require("../utils/shopify");
 const logger = require('../utils/logger');
 const { buildCookieOptions } = require('../utils/cookieOptions');
 
@@ -125,14 +125,17 @@ exports.shopifyCallback = async (req, res, next) => {
       queryKeys: Object.keys(req.query || {}),
     });
 
-    console.log("storedState:", req.signedCookies.shopify_state);
-    console.log("userId:", req.signedCookies.shopify_user);
+    const stateContext = getStateContext(state, req.signedCookies, req.cookies);
+    const { decodedState, storedState, userId } = stateContext;
 
-    const decodedState = decodeState(state);
-    const storedState = req.signedCookies?.shopify_state ?? req.cookies?.shopify_state;
-    const userId = req.signedCookies?.shopify_user ?? req.cookies?.shopify_user ?? req.signedCookies?.oauth_user ?? req.cookies?.oauth_user ?? decodedState?.userId;
+    if (!storedState && !decodedState?.userId) {
+      return res.status(400).json({
+        success: false,
+        error: "OAuth session expired",
+      });
+    }
 
-    if (!storedState || !userId) {
+    if (!userId) {
       return res.status(400).json({
         success: false,
         error: "OAuth session expired",
@@ -140,7 +143,7 @@ exports.shopifyCallback = async (req, res, next) => {
     }
 
     // Verify OAuth state
-    if (storedState !== state) {
+    if (!isStateAccepted(storedState, state, decodedState)) {
       return res.status(400).json({
         success: false,
         error: "Invalid OAuth state",
