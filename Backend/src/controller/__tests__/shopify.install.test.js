@@ -10,18 +10,19 @@ const shopifyController = require('../shopifyController');
   };
 
   const cookies = [];
-  let redirectedTo = null;
+  let response = null;
 
   const res = {
     cookie(name, value, options) {
       cookies.push({ name, value, options });
     },
-    redirect(url) {
-      redirectedTo = url;
-      return url;
-    },
     status(code) {
-      return { json(payload) { return { code, payload }; } };
+      return {
+        json(payload) {
+          response = { code, payload };
+          return { code, payload };
+        },
+      };
     },
   };
 
@@ -29,7 +30,9 @@ const shopifyController = require('../shopifyController');
     throw err;
   });
 
-  assert.ok(redirectedTo, 'expected installShopify to redirect when user is authenticated');
+  assert.ok(response, 'expected installShopify to return a JSON response');
+  assert.strictEqual(response.code, 200);
+  assert.ok(response.payload.redirectUrl, 'expected installShopify to return a redirectUrl');
   assert.ok(cookies.some((cookie) => cookie.name === 'shopify_state'));
   console.log('shopify install auth regression test passed');
 })().catch((error) => {

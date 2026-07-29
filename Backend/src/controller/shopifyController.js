@@ -65,7 +65,10 @@ exports.installShopify = async (req, res, next) => {
       state,
     });
 
-    return res.redirect(installUrl);
+    return res.status(200).json({
+      success: true,
+      redirectUrl: installUrl,
+    });
 
   } catch (error) {
     next(error);
