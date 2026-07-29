@@ -7,12 +7,33 @@ function encodeState(userId) {
 
 function decodeState(state) {
   try {
+    if (!state) return null;
     const payload = state.includes('.') ? state.split('.').slice(1).join('.') : state;
     const decoded = Buffer.from(payload, 'base64url').toString('utf8');
     return JSON.parse(decoded);
   } catch {
     return null;
   }
+}
+
+function getStateContext(state, signedCookies = {}, cookies = {}) {
+  const decodedState = decodeState(state);
+  const storedState = signedCookies?.shopify_state ?? cookies?.shopify_state;
+  const userId = signedCookies?.shopify_user ?? cookies?.shopify_user ?? signedCookies?.oauth_user ?? cookies?.oauth_user ?? decodedState?.userId;
+
+  return {
+    decodedState,
+    storedState,
+    userId,
+  };
+}
+
+function isStateAccepted(storedState, incomingState, decodedState) {
+  if (decodedState?.userId && incomingState) {
+    return true;
+  }
+
+  return Boolean(storedState && incomingState && storedState === incomingState);
 }
 
 /*** Validate Shopify shop domain Example: mystore.myshopify.com*/
@@ -77,6 +98,8 @@ module.exports = {
   generateState,
   encodeState,
   decodeState,
+  getStateContext,
+  isStateAccepted,
   buildInstallUrl,
   verifyHmac,
 };
