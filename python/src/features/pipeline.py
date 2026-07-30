@@ -306,6 +306,14 @@ def calculate_days_since_last_purchase(customer_id: str, db) -> int:
             return -1
 
         last_order = row[0]
+        if isinstance(last_order, str):
+            try:
+                last_order = datetime.fromisoformat(last_order.replace('Z', '+00:00'))
+            except Exception:
+                try:
+                    last_order = datetime.strptime(last_order, "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    pass
         # Handle both naive and timezone-aware datetimes
         if not isinstance(last_order, datetime):
             return -1
