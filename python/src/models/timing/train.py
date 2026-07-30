@@ -8,21 +8,6 @@ Purpose     : Given a candidate (hour, day, channel) and business context
               within 120 minutes. The API grid-searches candidate hours
               to pick the best one.
 
-#--
-#newly added
-#--
-FULL REDESIGN (supersedes the previous version of this file):
-Auditing api.py against the task doc's real P2.1 spec showed the actual
-/predict/send-time endpoint's SendTimeFeatures Pydantic schema is:
-    local_hour_of_session, day_of_week_session, channel,
-    recovery_action, cart_value_tier, customer_timezone_offset
-This is a COMPLETELY different 6-field schema from the 12 raw behavioral
-features (scroll_depth_pct, cursor_hesitation, etc.) this file was
-trained on before. A model trained on the wrong columns can't be called
-by the real endpoint at all - sklearn will raise a shape/name mismatch
-and every request will silently fall back. Rebuilt from scratch to match
-the real contract exactly.
-
 recovery_action and cart_value_tier are categorical business fields
 (recovery_action comes from M2's decision matrix; cart_value_tier is a
 bucket, not a raw pipeline.py feature) - encoded here as integers via
@@ -31,6 +16,17 @@ the same maps api.py must use when building the feature vector.
 KNOWN GAP (flagged, not fixed): the task doc's earlier M3 description
 also mentions a "historical open rate" signal. No corresponding function
 or data source exists yet. Left out until that data exists.
+
+#--
+#Phase 3 — P3.1 real data integration
+#--
+load_training_data() now accepts db_connection. When provided, it queries
+`sequence_sends` joined to `sequence_events` (per
+Timing_Model_Training_&_System_Spec.md Section 3.2/5) and derives the
+conversion_within_120min label with the exact SQL logic from that spec.
+Falls back to synthetic data below the 500-labeled-event minimum defined
+in both that spec and the Phase 3 task doc, or on any query failure
+(e.g. the tables don't exist yet in a given environment).
 #--
 #end new
 #--
@@ -56,8 +52,17 @@ CHANNEL_MAP = {"email": 0, "sms": 1, "whatsapp": 2}
 RECOVERY_ACTION_MAP = {"DISCOUNT": 0, "FRICTION_FIX": 1, "HYBRID": 2, "NUDGE": 3, "SOFT_NUDGE": 4}
 CART_VALUE_TIER_MAP = {"low": 0, "medium": 1, "high": 2}
 
+# M3 real-data minimum per Timing_Model_Training_&_System_Spec.md Section 11
+# and the Phase 3 task doc: "M3 needs 500 sequence send events with outcomes."
+MIN_REAL_LABELED_EVENTS = 500
 
-def load_training_data(n=2000):
+FEATURE_COLUMNS = [
+    'local_hour_of_session', 'day_of_week_session', 'channel',
+    'recovery_action', 'cart_value_tier', 'customer_timezone_offset',
+]
+
+
+def _generate_synthetic_data(n=2000):
     """
     Generates synthetic historical send-attempt records with the 6 real
     endpoint-contract features. Each row represents "message sent to this
@@ -115,6 +120,150 @@ def load_training_data(n=2000):
     return X_train, X_test, y_train, y_test
 
 
+def _load_real_send_rows(db_connection):
+    """
+    Queries `sequence_sends` joined to `sequence_events` and derives
+    conversion_within_120min using the exact SQL logic documented in
+    Timing_Model_Training_&_System_Spec.md Section 3.2.
+
+    cart_value_tier and recovery_action are read from `sequence_sends.metadata`
+    (JSONB), since M3's send record is written after M2 has already decided
+    the recovery_action for that send — see MODEL_INPUT_OUTPUT_MAP.md
+    Section 8 for the M2 -> M3 handoff.
+
+    STRICT POLICY: when db_connection is provided, this is the only data
+    source used for M3 training — no silent fallback to synthetic data.
+    Query failures propagate (wrapped with context) instead of being
+    swallowed.
+
+    Returns:
+        pd.DataFrame with FEATURE_COLUMNS + "conversion_within_120min",
+        sorted by sent_at ascending (required for the time-based split —
+        see spec Section 6.3). Returns an empty DataFrame (not None) if
+        the query succeeds but finds zero rows.
+
+    Raises:
+        RuntimeError: if the underlying query fails for any reason.
+    """
+    try:
+        with db_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    s.id,
+                    s.customer_id,
+                    s.channel,
+                    s.sent_at,
+                    s.metadata,
+                    CASE
+                        WHEN MAX(CASE WHEN e.event_type = 'open'
+                                      AND e.event_time <= s.sent_at + INTERVAL '120 minutes'
+                                 THEN 1 ELSE 0 END) = 1
+                         AND MAX(CASE WHEN e.event_type = 'click'
+                                      AND e.event_time <= s.sent_at + INTERVAL '120 minutes'
+                                 THEN 1 ELSE 0 END) = 1
+                        THEN 1 ELSE 0
+                    END AS conversion_within_120min
+                FROM sequence_sends s
+                LEFT JOIN sequence_events e ON e.send_id = s.id
+                WHERE s.sent_at >= NOW() - INTERVAL '180 days'
+                GROUP BY s.id, s.customer_id, s.channel, s.sent_at, s.metadata
+                ORDER BY s.sent_at ASC
+                """
+            )
+            rows = cursor.fetchall()
+
+        if not rows:
+            return pd.DataFrame(columns=FEATURE_COLUMNS + ["conversion_within_120min"])
+
+        records = []
+        for send_id, customer_id, channel, sent_at, metadata, label in rows:
+            meta = metadata if isinstance(metadata, dict) else {}
+
+            channel_key = str(channel or "email").lower()
+            recovery_action_key = str(meta.get("recovery_action", "SOFT_NUDGE")).upper()
+            cart_value_tier_key = str(meta.get("cart_value_tier", "medium")).lower()
+            tz_offset = meta.get("customer_timezone_offset", 0)
+
+            local_hour = sent_at.hour if hasattr(sent_at, "hour") else 12
+            local_dow = sent_at.weekday() if hasattr(sent_at, "weekday") else 0
+
+            records.append({
+                "local_hour_of_session": local_hour,
+                "day_of_week_session": local_dow,
+                "channel": CHANNEL_MAP.get(channel_key, 0),
+                "recovery_action": RECOVERY_ACTION_MAP.get(recovery_action_key, 4),
+                "cart_value_tier": CART_VALUE_TIER_MAP.get(cart_value_tier_key, 1),
+                "customer_timezone_offset": int(tz_offset) if tz_offset is not None else 0,
+                "conversion_within_120min": int(label),
+            })
+
+        return pd.DataFrame.from_records(records)
+
+    except Exception as e:
+        raise RuntimeError(
+            f"[M3] Real-data query against sequence_sends/sequence_events failed: {e}"
+        ) from e
+
+
+def load_training_data(n=2000, db_connection=None):
+    """
+    Phase 3 entry point (per task doc P3.1 — this is the function whose
+    db_connection parameter "was reserved for this exact purpose").
+
+    STRICT POLICY: db_connection is None -> synthetic data (dev/local path
+    only). db_connection provided -> real sequence_sends/sequence_events
+    data ALWAYS used, no silent fallback. Zero real rows or a query
+    failure raises immediately. Real rows below MIN_REAL_LABELED_EVENTS
+    still train, with a loud warning and a below-threshold MLflow tag.
+
+    IMPORTANT: unlike the synthetic path, real data uses a time-based
+    (chronological) split — never a random split — per
+    Timing_Model_Training_&_System_Spec.md Section 6.3, to avoid leaking
+    future customer behaviour into the training set.
+
+    Returns:
+        (X_train, X_test, y_train, y_test, used_real_data: bool, below_minimum: bool)
+
+    Raises:
+        RuntimeError: if db_connection is provided and the query fails,
+            or succeeds but finds zero labeled send events.
+    """
+    if db_connection is None:
+        print("[M3] No db_connection provided — using synthetic data.")
+        X_train, X_test, y_train, y_test = _generate_synthetic_data(n=n)
+        return X_train, X_test, y_train, y_test, False, False
+
+    real_df = _load_real_send_rows(db_connection)
+
+    if len(real_df) == 0:
+        raise RuntimeError(
+            "[M3] db_connection was provided but zero labeled send events "
+            "were found in `sequence_sends`/`sequence_events`. Cannot train "
+            "on real data — check that SendGrid/Twilio callbacks are "
+            "writing to sequence_events (see Timing_Model_Training_&_"
+            "System_Spec.md Section 12, P1 gaps)."
+        )
+
+    below_minimum = len(real_df) < MIN_REAL_LABELED_EVENTS
+    if below_minimum:
+        print(
+            f"[M3] WARNING: training on {len(real_df)} real sequence_sends "
+            f"records, below the recommended minimum of "
+            f"{MIN_REAL_LABELED_EVENTS}. Proceeding per strict real-data "
+            f"policy — treat calibration and AUC-ROC as provisional."
+        )
+    else:
+        print(f"[M3] Training on {len(real_df)} real sequence_sends records.")
+
+    split_idx = int(len(real_df) * 0.85)
+    X = real_df[FEATURE_COLUMNS]
+    y = real_df["conversion_within_120min"]
+    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+    return X_train, X_test, y_train, y_test, True, below_minimum
+
+
 def build_model():
     """Gradient Boosting classifier with probability calibration and exact hyperparameters."""
     base_clf = GradientBoostingClassifier(
@@ -127,18 +276,22 @@ def build_model():
     return calibrated_clf
 
 
-def train(run_name: str = "m3-sendtime-training-v4-contract-aligned"):
+def train(run_name: str = "m3-sendtime-training-v4-contract-aligned", db_connection=None):
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
 
-    print("Loading synthetic training data (N=2000)...")
-    X_train, X_test, y_train, y_test = load_training_data(n=2000)
+    print("Loading training data (real if db_connection given, else synthetic N=2000)...")
+    X_train, X_test, y_train, y_test, used_real_data, below_minimum = load_training_data(
+        n=2000, db_connection=db_connection
+    )
 
     print("Building GradientBoostingClassifier (n_estimators=150) with Platt Scaling...")
     model = build_model()
 
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.set_tag("model", "timing")
+        mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
+        mlflow.set_tag("below_minimum_threshold", str(below_minimum))
 
         print("Training model...")
         model.fit(X_train, y_train)
@@ -160,7 +313,9 @@ def train(run_name: str = "m3-sendtime-training-v4-contract-aligned"):
             "random_state": 42,
             "calibration_method": "sigmoid",
             "cv_folds": 3,
-            "feature_set_version": "v4-endpoint-contract-aligned"
+            "feature_set_version": "v4-endpoint-contract-aligned",
+            "n_training_samples": len(X_train),
+            "min_real_labeled_events_threshold": MIN_REAL_LABELED_EVENTS,
         })
 
         mlflow.log_metrics({
@@ -171,19 +326,10 @@ def train(run_name: str = "m3-sendtime-training-v4-contract-aligned"):
             "auc_roc": auc
         })
 
-        #--
-        #newly added
-        #--
-        # registered_model_name added: api.py calls
-        # mlflow.sklearn.load_model("models:/send_time/latest") - without
-        # registering under this exact name, /predict/send-time always
-        # falls back.
         mlflow.sklearn.log_model(model, "m3_timing_model", registered_model_name="send_time")
-        #--
-        #end new
-        #--
 
         print(f"\n--- M3 TIMING MODEL METRICS ---")
+        print(f"Data source: {'real' if used_real_data else 'synthetic'}")
         print(f"Accuracy:  {acc:.4f}")
         print(f"Precision: {prec:.4f}")
         print(f"Recall:    {rec:.4f}")
@@ -193,6 +339,11 @@ def train(run_name: str = "m3-sendtime-training-v4-contract-aligned"):
         print(f"\n[OK] MLflow Run ID: {run.info.run_id}")
         print(f"MLflow Run Name: {run.info.run_name}")
         print(f"Check DagsHub UI for the full tracking details.")
+
+        return {"model": model, "used_real_data": used_real_data,
+                "below_minimum_threshold": below_minimum,
+                "metrics": {"accuracy": acc, "precision": prec, "recall": rec,
+                            "f1_score": f1, "auc_roc": auc}}
 
 
 if __name__ == "__main__":
