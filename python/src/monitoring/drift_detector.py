@@ -1,36 +1,8 @@
 """
-Revluma Model Monitoring & Drift Detection
-=============================================
-Phase 3 — P3.3
+Model Monitoring and Drift Detection Service.
 
-Tracks live model performance against fresh labelled data and alerts (or
-auto-retrains) when a model's quality degrades below its production
-threshold. Per the Phase 3 task:
-
-    - M1 AUC-ROC, weekly    -> below 0.65: trigger automatic retraining
-    - M2 F1 per class, weekly -> any class below 0.60: alert
-    - M4 accuracy, monthly  -> below 0.70: alert
-    - All runs logged to MLflow under "Revluma-Monitoring" (separate from
-      "Revluma-MVP", which is reserved for training runs)
-    - Threshold breaches post to the engineering Slack channel
-
-Design notes
-------------
-- Every check function is independent, catches its own exceptions, and
-  never raises out to the scheduler — a monitoring failure must not take
-  down the cron job that runs the rest of the checks (same "never fail
-  silently, always degrade gracefully" principle used throughout api.py).
-- Metrics are computed against a trailing window of real labelled data
-  pulled straight from Postgres (checkout/orders/customer_crm), reusing
-  the exact pipeline.py feature functions so drift checks are evaluated
-  on the same feature definitions the models were trained on.
-- Models are loaded the same way api.py loads them
-  (`mlflow.sklearn.load_model("models:/{name}/latest")`), so drift
-  detection is always checking the model that is actually being served.
-- Slack alerting uses a simple incoming webhook (SLACK_WEBHOOK_URL env
-  var) rather than a full Slack SDK dependency, consistent with this
-  repo's existing "read all secrets from env vars, never hardcode"
-  standard.
+Monitors live model performance against recent database observations and
+triggers Slack alerts or automatic retraining when thresholds are breached.
 """
 
 from __future__ import annotations

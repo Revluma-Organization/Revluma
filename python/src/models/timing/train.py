@@ -1,35 +1,8 @@
 """
-M3 - Optimal Send-Time Predictor: Training Script
-===================================================
-Model type  : Gradient Boosting (Calibrated)
-Purpose     : Given a candidate (hour, day, channel) and business context
-              already decided by M2 (recovery_action, cart_value_tier),
-              scores the likelihood that a message sent then converts
-              within 120 minutes. The API grid-searches candidate hours
-              to pick the best one.
+Sequence Send Timing (M3) — Training Script.
 
-recovery_action and cart_value_tier are categorical business fields
-(recovery_action comes from M2's decision matrix; cart_value_tier is a
-bucket, not a raw pipeline.py feature) - encoded here as integers via
-the same maps api.py must use when building the feature vector.
-
-KNOWN GAP (flagged, not fixed): the task doc's earlier M3 description
-also mentions a "historical open rate" signal. No corresponding function
-or data source exists yet. Left out until that data exists.
-
-#--
-#Phase 3 — P3.1 real data integration
-#--
-load_training_data() now accepts db_connection. When provided, it queries
-`sequence_sends` joined to `sequence_events` (per
-Timing_Model_Training_&_System_Spec.md Section 3.2/5) and derives the
-conversion_within_120min label with the exact SQL logic from that spec.
-Falls back to synthetic data below the 500-labeled-event minimum defined
-in both that spec and the Phase 3 task doc, or on any query failure
-(e.g. the tables don't exist yet in a given environment).
-#--
-#end new
-#--
+Trains a calibrated Gradient Boosting Classifier to score message send timing
+windows for optimal conversion probability.
 """
 
 import mlflow
@@ -52,8 +25,7 @@ CHANNEL_MAP = {"email": 0, "sms": 1, "whatsapp": 2}
 RECOVERY_ACTION_MAP = {"DISCOUNT": 0, "FRICTION_FIX": 1, "HYBRID": 2, "NUDGE": 3, "SOFT_NUDGE": 4}
 CART_VALUE_TIER_MAP = {"low": 0, "medium": 1, "high": 2}
 
-# M3 real-data minimum per Timing_Model_Training_&_System_Spec.md Section 11
-# and the Phase 3 task doc: "M3 needs 500 sequence send events with outcomes."
+# Minimum records required for production real-data training.# and the Phase 3 task doc: "M3 needs 500 sequence send events with outcomes."
 MIN_REAL_LABELED_EVENTS = 500
 
 FEATURE_COLUMNS = [

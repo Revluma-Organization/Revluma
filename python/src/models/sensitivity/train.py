@@ -1,26 +1,8 @@
 """
-M2 — Price vs. Convenience Sensitivity Classifier: Training Script
-===================================================================
-Model type  : Gradient Boosting
-Purpose     : Classifies each shopper as price-sensitive, convenience-
-              sensitive, or neutral. Outputs PSS (0–100) and CSS (0–100)
-              scores that determine the recovery offer strategy.
+Customer Sensitivity Classifier (M2) — Training Script.
 
-#--
-#Phase 3 — P3.1 real data integration
-#--
-_generate_synthetic_sensitivity_data() is now only used when db_connection
-is None. When a real db_connection is supplied, load_training_data() pulls
-customers + orders + customer_events and derives PSS_label / CSS_label
-from the *actual* recovery outcome recorded in `orders.recovery_status`
-(per Phase 3 spec: "Label: which recovery_action actually converted in
-orders.recovery_status"), rather than the synthetic probability-threshold
-labels. Falls back to synthetic data below the 500-record minimum defined
-in AI_DATA_REQUIREMENTS.md / Phase 3 spec (P3.1 M2), or on any query
-failure.
-#--
-#end new
-#--
+Trains dual Logistic Regression classifiers to evaluate customer price and
+convenience sensitivities.
 """
 
 import os
@@ -51,7 +33,7 @@ from src.features.pipeline import (
 )
 from src.features.event_processor import group_events_by_session
 
-# M2 real-data minimum per Phase 3 spec (P3.1): "M2 needs 500 customer
+# Minimum customer records required for real-data training.
 # records with recovery outcomes."
 MIN_REAL_RECORDS = 500
 
@@ -246,8 +228,7 @@ def load_training_data(db_connection=None):
     """
     Loads M2 training data.
 
-    STRICT POLICY (per Phase 3 task doc P3.1): db_connection is None ->
-    synthetic (dev/local path only). db_connection provided -> real data
+    Queries real database records when a connection is provided, raising an exception if rows are insufficient. db_connection provided -> real data
     ALWAYS used, no silent fallback. Zero real rows or a query failure
     raises. Real rows below MIN_REAL_RECORDS still train, with a loud
     warning and an MLflow tag marking the run as below-threshold.

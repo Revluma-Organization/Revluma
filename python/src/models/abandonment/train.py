@@ -1,36 +1,8 @@
 """
-M1 — Abandonment Probability Predictor: Training Script
-=========================================================
-Model type  : Logistic Regression
-Purpose     : Scores live checkout sessions every 60 seconds to predict
-              abandonment before it happens. Triggers exit-intent
-              interventions when score exceeds threshold.
+Abandonment Probability Predictor (M1) — Training Script.
 
-Features consumed (5):
-    scroll_depth_pct         (float)
-    tab_switch_count         (int)
-    time_on_page_ms          (float)
-    checkout_step_reached    (int)
-    failed_payment_attempt   (bool)
-
-Output:
-    abandonment_probability (float 0.0–1.0)
-    Threshold for intervention: TBD in Week 4 model tuning.
-
-#--
-#Phase 3 — P3.1 real data integration
-#--
-load_training_data() now accepts a real db_connection (psycopg2) and, when
-given one, queries labelled sessions from `checkout` + `customer_events`
-instead of generating synthetic data. Per AI_DATA_REQUIREMENTS.md / Phase 3
-spec, M1 needs a minimum of 1,000 labelled sessions before the real-data
-path is trusted in production. Below that (or on any query failure) this
-falls back to the synthetic generator so training never breaks — this
-mirrors the "never fail silently, always have a fallback" rule that
-governs the serving layer in api.py.
-#--
-#end new
-#--
+Trains a Logistic Regression classifier to score live checkout sessions every
+60 seconds and predict cart abandonment probability.
 """
 
 import sys
@@ -63,7 +35,7 @@ from src.features.pipeline import (
 )
 from src.features.event_processor import group_events_by_session
 
-# M1 real-data minimum per AI_DATA_REQUIREMENTS.md / Phase 3 spec (P3.1).
+# Minimum labelled sessions required for real-data training.
 # Below this row count the model is not considered reliable; fall back to
 # synthetic data and flag it loudly in the console + MLflow tags.
 MIN_REAL_LABELED_SESSIONS = 1000
@@ -219,8 +191,7 @@ def load_training_data(db_connection=None):
     """
     Loads labelled training data for the abandonment model.
 
-    STRICT POLICY (per Phase 3 task doc P3.1: "Replace synthetic data
-    generators with real database queries ... the db_connection parameter
+    Queries real database records when a connection is provided, raising an exception if rows are insufficient... the db_connection parameter
     was reserved for this exact purpose"):
       - db_connection is None  -> synthetic data (dev/local path only).
       - db_connection provided -> real data ALWAYS used. No silent

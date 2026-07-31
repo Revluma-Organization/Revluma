@@ -1,43 +1,8 @@
 """
-M4 - Churn Risk Scorer: Training Script
-=========================================
-Model type  : Gradient Boosting
-Purpose     : Continuously scores every customer's churn probability.
-              When score crosses 61 (High Risk), automatically triggers
-              a 3-touch win-back sequence via the Recovery Queue.
+Churn Risk Scorer (M4) — Training Script.
 
-Features consumed (7):
-    past_orders_total          (int)    - Frequency (F)
-    days_since_last_purchase   (int)    - Recency (R), -1 sentinel = no history
-    avg_order_value            (float)  - Monetary (M)
-    purchase_frequency_trend   (int)    - -1 decreasing / 0 stable / +1 increasing
-    rfm_recency_score          (int)  - from customer_crm
-    rfm_frequency_score        (int)  - from customer_crm
-    rfm_monetary_score         (int)  - from customer_crm
-
-Output:
-    churn_tier (str) - HEALTHY, AT_RISK, HIGH_RISK, CRITICAL
-    Intervention threshold: HIGH_RISK or CRITICAL
-
-Runs: Daily cron job scoring all customer profiles.
-
-#--
-#Phase 3 — P3.1 real data integration
-#--
-load_training_data() now accepts db_connection. When provided, it queries
-every customer with 90+ days of order history (per Phase 3 spec: "M4
-needs 500 customers with 90+ days of history") and computes the 7 real
-features with the exact pipeline.py functions (calculate_rfm_scores,
-calculate_purchase_frequency_trend, etc.) instead of drawing them from
-independent random distributions. The churn_tier label is derived from
-days_since_last_purchase using the same quartile-style bucketing rule
-documented in the README (avoids the 75%-CRITICAL collapse that fixed
-cutoffs produced), so the real-data path stays consistent with the
-existing model contract. Falls back to synthetic data below the
-500-customer minimum or on any query failure.
-#--
-#end new
-#--
+Trains a Gradient Boosting model to evaluate customer purchase recency and
+frequency, classifying accounts into churn tiers.
 """
 
 import os
@@ -62,7 +27,7 @@ from src.features.pipeline import (
     calculate_rfm_scores,
 )
 
-# M4 real-data minimum per Phase 3 spec (P3.1): "M4 needs 500 customers
+# Minimum customer records required for real-data training.
 # with 90+ days of history."
 MIN_REAL_CUSTOMERS = 500
 MIN_HISTORY_DAYS = 90

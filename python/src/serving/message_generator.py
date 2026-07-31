@@ -1,43 +1,8 @@
 """
-Revluma LLM Message Generation Service
-=========================================
-Phase 3 — P3.2
+LLM Message Generation Service.
 
-Generates personalised, channel-specific recovery messages from the M2
-(sensitivity), M5 (offer value), and M4 (churn) model outputs, per the
-contract in `LLM_MESSAGE_SYSTEM.md` (Google Drive: ai-ml folder,
-Document ID `LLM_MESSAGE_SYSTEM`, v1.0.0).
-
-Design summary
---------------
-- Context is a typed, server-constructed dataclass (`MessageContext`) —
-  no free-form dict ever reaches the prompt.
-- All user-influenced fields (shopper_name, product_name, product_variant)
-  are sanitised before they touch the prompt. See `_sanitize_field`.
-- The system prompt encodes: channel constraints (Section 3), progressive
-  urgency by touch_number (Section 4), and the hard no-discount guardrail
-  (Section 5) exactly as specified.
-- The LLM is instructed to return ONLY the JSON schema in Section 2. Any
-  response that fails schema/constraint validation is treated as a
-  failure and falls back to the static templates in Section 6 — the
-  platform must never fail to send a message because the LLM was
-  unavailable or misbehaved.
-- Identical inputs (same recovery_action, offer_type, product category,
-  channel, touch_number) are served from an in-memory cache to control
-  cost, per the Phase 3 task's "Cache message templates for identical
-  inputs" requirement.
-- Token usage per call is logged to MLflow for cost monitoring.
-
-KNOWN GAP (flagged, not fixed): the Phase 3 task doc's Definition of Done
-says "Fallback templates exist for all 9 recovery actions," but no
-document in the ai-ml Drive folder enumerates 9 distinct recovery_action
-values. The values actually defined across M2/M5 (SENSITIVITY_SCORING_RULES.md
-Section 5-6, offer_value/api.py) are 7: DISCOUNT, FRICTION_FIX, HYBRID,
-NUDGE, SOFT_NUDGE, SUBSTITUTE_OFFER, PAYMENT_RECOVERY — plus M5's own
-TRUST_SIGNAL offer_type. This module ships fallback templates for all 8
-of those plus one GENERIC catch-all (9 total), but the "9 recovery
-actions" count should be confirmed with the PM before this is considered
-authoritative.
+Generates personalised, channel-specific customer recovery messages using
+outputs from the sensitivity, offer value, and churn risk models.
 """
 
 from __future__ import annotations

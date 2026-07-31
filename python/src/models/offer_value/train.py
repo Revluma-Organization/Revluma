@@ -1,65 +1,8 @@
 """
-M5 - Offer Value Optimizer: Training Script
-============================================
-Model type  : Gradient Boosting (regression)
-Purpose     : Given that M2 has classified a shopper as price-sensitive,
-              determines the MINIMUM discount percentage needed to convert
-              them, without exceeding merchant margin protection limits.
+Offer Value Optimiser (M5) — Training Script.
 
-CORRECTION (previous version of this file had a wrong assumption):
-Auditing api.py against the task doc confirmed M2 outputs THREE scores -
-"PSS + CSS + TSS" - not two. TSS (Trust Sensitivity Score) is a distinct
-signal from CSS. My earlier version assumed TSS == css_score; that was
-wrong and is now fixed. TSS has NO backing function anywhere in
-pipeline.py or in M2's README - this is a confirmed blocker for whoever
-owns M2 (Engineer 3), not something fixable here. tss_score is added as
-an accepted input with a safe default (0 = "not trust-sensitive", so the
-gate doesn't spuriously fire) until real TSS data exists.
-
-Hard gates corrected to match the doc's exact two separate rules
-(previously collapsed into one incorrect OR condition):
-  1. tss_score >= 60          -> offer_type TRUST_SIGNAL, discount = 0
-  2. pss_score < 35 AND
-     css_score < 35           -> offer_type NUDGE,        discount = 0
-  else                        -> regression output, clipped 0-25
-
-Features consumed (10 - 9 original + tss_score):
-    pss_score                            (float) - output of M2
-    css_score                            (float) - output of M2
-    tss_score                            (float) - output of M2 [NOT YET REAL DATA]
-    cursor_hesitation                    (int)   - HIGH price signal
-    past_orders_total                    (int)   - loyalty context
-    past_orders_with_coupon_pct          (float) - coupon history
-    days_since_last_purchase             (int)   - recency
-    avg_order_value                      (float) - order value context
-    visited_coupon_page                  (bool)  - price signal
-    searched_discount_terms              (bool)  - price signal
-
-Hard constraints (enforced in both label generation AND at prediction time):
-    - recommended_discount_pct clipped to [0, 25]
-    - TRUST_SIGNAL gate: tss_score >= 60 forces discount = 0
-    - NUDGE gate: pss_score < 35 AND css_score < 35 forces discount = 0
-
-Output:
-    recommended_discount_pct (int 0-25), offer_type
-
-#--
-#Phase 3 — P3.1 real data integration
-#--
-load_training_data() now accepts db_connection. When provided, it queries
-recovered orders that carry a discount_pct (per Phase 3 spec: "M5: Query
-recovered orders with discount_amount and coupon_used. Label: discount_pct
-that led to conversion") and builds the 9 real behavioural/history
-features with pipeline.py functions. tss_score still has no real backing
-column anywhere (confirmed blocker, see above) so it is read from
-orders.metadata->>'tss_score' if present, else defaults to 0 exactly as
-in the synthetic path. Falls back to synthetic data below the
-200-recovered-order minimum from the Phase 3 spec, or on any query
-failure — including the still-outstanding orders.discount_pct schema
-dependency flagged in this model's README Section 6.
-#--
-#end new
-#--
+Trains a Gradient Boosting Regressor to predict the optimal recovery discount
+percentage required to convert an abandoned cart.
 """
 
 import mlflow
@@ -88,7 +31,7 @@ TSS_THRESHOLD = 60
 PSS_NUDGE_FLOOR = 35
 CSS_NUDGE_FLOOR = 35
 
-# M5 real-data minimum per Phase 3 spec (P3.1): "M5 needs 200 recovered
+# Minimum recovered orders required for real-data training.
 # orders with discount data."
 MIN_REAL_RECOVERED_ORDERS = 200
 
