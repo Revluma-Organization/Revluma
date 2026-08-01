@@ -26,6 +26,9 @@ const { isPasswordPwned } = require('../utils/passwordBreach');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
 
+const speakeasy = require('speakeasy');
+const QRCode = require('qrcode');
+
 const dbConfig = require('../configs/database');
 const prisma = dbConfig.prisma;
 
@@ -893,5 +896,144 @@ exports.getProfile = async (req, res) => {
 
   } catch (error) {
     return res.status(500).json({ success: false, error: 'Failed to fetch profile.' });
+  }
+};
+
+//SetupTwoFactor
+exports.setupTwoFactor = async (req, res, next) => {
+  try {
+
+    const userId = req.user.id;
+
+    const user = await prisma.users.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+
+    const secret = speakeasy.generateSecret({
+      name: `Revluma:${user.email}`,
+    });
+
+
+    await prisma.users.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        two_factor_secret: secret.base32,
+      },
+    });
+
+
+    const qrCode = await QRCode.toDataURL(
+      secret.otpauth_url
+    );
+
+
+    return res.status(200).json({
+      success: true,
+      qrCode,
+      secret: secret.base32,
+    });
+
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+//VerifyTwoFactor
+exports.verifyTwoFactor = async (req, res, next) => {
+  try {
+
+    const { code } = req.body;
+
+    const userId = req.user.id;
+
+
+    const user = await prisma.users.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+
+    if (!user || !user.two_factor_secret) {
+      return res.status(400).json({
+        message: "2FA setup has not been completed",
+      });
+    }
+
+
+    const verified = speakeasy.totp.verify({
+      secret: user.two_factor_secret,
+      encoding: "base32",
+      token: code,
+      window: 1,
+    });
+
+
+    if (!verified) {
+      return res.status(422).json({
+        message: "Invalid verification code",
+      });
+    }
+
+
+    await prisma.users.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        two_factor_enabled: true,
+      },
+    });
+
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Two-factor authentication enabled successfully.",
+      enabled: true,
+    });
+
+
+  } catch(error) {
+    next(error);
+  }
+};
+
+//DisableTwoFactor
+exports.disableTwoFactor = async (req, res, next) => {
+  try {
+
+    await prisma.users.update({
+      where: {
+        id: req.user.id,
+      },
+      data: {
+        two_factor_enabled: false,
+        two_factor_secret: null,
+      },
+    });
+
+
+    return res.status(200).json({
+      success: true,
+      message: "Two-factor authentication disabled",
+    });
+
+
+  } catch(error) {
+    next(error);
   }
 };
