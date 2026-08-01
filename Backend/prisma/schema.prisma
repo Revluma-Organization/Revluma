@@ -83,6 +83,10 @@ model organizations {
   id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   owner_id              String                 @db.Uuid
   company_name          String
+  primary_color         String?
+  accent_color          String?
+  logo_url              String?
+  favicon_url           String?
   website_url           String?
   store_url             String?
   industry              String
