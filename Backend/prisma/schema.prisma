@@ -108,6 +108,8 @@ model users {
   full_name               String
   email                   String                 @unique
   password_hash           String
+  two_factor_enabled      Boolean                @default(false)
+  two_factor_secret       String?
   email_verified          Boolean?               @default(false)
   verification_code       String?
   verification_expires_at DateTime?              @db.Timestamptz(6)
