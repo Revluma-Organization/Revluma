@@ -26,10 +26,31 @@ const Profile: FC = () => {
   const [isVerifying2FA, setIsVerifying2FA] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
 
+  // New state for backend 2FA data
+  const [setupSecret, setSetupSecret] = useState("");
+  const [qrCodeUrl, setQrCodeUrl] = useState("");
+  const [isFetching2FA, setIsFetching2FA] = useState(false);
+
+  // Updated to use dynamic secret
   const handleCopySecret = () => {
-    navigator.clipboard.writeText("RVLM-2FA-SEC-9842");
+    navigator.clipboard.writeText(setupSecret);
     setCopiedSecret(true);
     setTimeout(() => setCopiedSecret(false), 2000);
+  };
+
+  // New fetch function for the Setup button
+  const handleSetup2FA = async () => {
+    setIsFetching2FA(true);
+    try {
+      const res = await api.post("/auth/2fa/setup");
+      setQrCodeUrl(res.data.qrCode);
+      setSetupSecret(res.data.secret);
+      setIs2FAModalOpen(true);
+    } catch (err) {
+      console.error("Failed to fetch 2FA setup data", err);
+    } finally {
+      setIsFetching2FA(false);
+    }
   };
 
   const handleVerify2FA = async (e: React.FormEvent) => {
@@ -249,7 +270,7 @@ const Profile: FC = () => {
             </div>
             <MotionButton
               whileTap={{ scale: 0.98 }}
-              onClick={() => setIs2FAModalOpen(true)}
+              onClick={is2FAEnabled ? handleDisable2FA : handleSetup2FA}
               variant="outline"
               className="border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 text-xs h-9 px-4 font-medium transition-colors shrink-0"
             >
@@ -307,7 +328,11 @@ const Profile: FC = () => {
               {/* Placeholder QR Code */}
               <div className="my-6 flex flex-col items-center justify-center gap-3">
                 <div className="flex h-36 w-36 items-center justify-center rounded-2xl border border-slate-200 bg-white p-4 shadow-md">
-                  <QrCode className="h-28 w-28 text-slate-900" />
+                  {qrCodeUrl ? (
+    <img src={qrCodeUrl} alt="2FA QR Code" className="h-32 w-32 rounded-md bg-white p-1" />
+  ) : (
+    <div className="h-32 w-32 animate-pulse rounded-md bg-slate-800" />
+  )}
                 </div>
                 <p className="text-[0.7rem] text-slate-500">
                   Can&apos;t scan? Enter the secret key manually:
@@ -316,7 +341,7 @@ const Profile: FC = () => {
 
               {/* Secret Key Copy Block */}
               <div className="mb-6 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 font-mono text-xs text-slate-300">
-                <span className="select-all tracking-widest">RVLM-2FA-SEC-9842</span>
+                <span className="select-all tracking-widest">{setupSecret}</span>
                 <button
                   type="button"
                   onClick={handleCopySecret}
