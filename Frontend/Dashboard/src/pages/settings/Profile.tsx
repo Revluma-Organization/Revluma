@@ -63,15 +63,20 @@ const Profile: FC = () => {
       setIs2FAModalOpen(false);
       setOtpCode("");
     } catch (err) {
-      console.warn("2FA verification API call fallback:", err);
-      setIs2FAEnabled(true);
-      setIs2FAModalOpen(false);
-      setOtpCode("");
+      console.error("2FA verification API call failed:", err);
+      setOtpCode(""); 
     } finally {
       setIsVerifying2FA(false);
     }
   };
-
+  const handleDisable2FA = async () => {
+    try {
+      await api.post("/auth/2fa/disable");
+      setIs2FAEnabled(false);
+    } catch (err) {
+      console.error("Failed to disable 2FA:", err);
+    }
+  };
   const nameParts = user?.full_name?.split(" ") || ["", ""];
   const initialFirstName = nameParts[0];
   const initialLastName = nameParts.slice(1).join(" ");
