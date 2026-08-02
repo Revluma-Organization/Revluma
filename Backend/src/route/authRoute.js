@@ -34,4 +34,10 @@ router.post('/change-password', authenticateToken, validateChangePassword, passw
 router.get('/me', authenticateToken, authController.getProfile);
 router.get('/getProfile', authenticateToken, authController.getProfile); // legacy alias
 
+// Two-Factor Authentication
+router.post('/2fa/setup', authenticateToken, authController.setupTwoFactor);
+router.post('/2fa/verify', authenticateToken, authController.verifyTwoFactor);
+router.post('/2fa/disable', authenticateToken, authController.disableTwoFactor);
+
+
 module.exports = router;
