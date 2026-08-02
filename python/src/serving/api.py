@@ -59,6 +59,8 @@ the in-memory _model_cache design.
 #--
 """
 
+import asyncio
+import functools
 import os
 import secrets
 import sys
@@ -114,6 +116,17 @@ async def verify_internal_caller(
 # Global State & Caching
 # ---------------------------------------------------------------------------
 _model_cache: dict = {}
+
+
+
+async def _run_inference(fn, *args):
+    """
+    Run a blocking scikit-learn call in the default thread pool executor.
+    Prevents synchronous ML inference from blocking the asyncio event loop
+    and allows other requests to be served concurrently.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, functools.partial(fn, *args))
 
 # Registry names - MUST exactly match registered_model_name used in each
 # model's train.py, or load_model() will always return None.
@@ -340,7 +353,7 @@ async def predict_abandonment(features: AbandonmentFeatures):
             )
 
         feature_vector = pd.DataFrame([features.dict()])
-        prob = float(model.predict_proba(feature_vector)[0][1])
+        prob = float((await _run_inference(model.predict_proba, feature_vector))[0][1])
         return AbandonmentResponse(
             abandonment_probability=prob,
             should_intervene=prob > 0.65,
@@ -369,8 +382,8 @@ async def predict_sensitivity(features: SensitivityFeatures):
             return SensitivityResponse(fallback=True)
 
         feature_vector = pd.DataFrame([features.dict()])
-        pss_prob = float(pss_model.predict_proba(feature_vector)[0][1])
-        css_prob = float(css_model.predict_proba(feature_vector)[0][1])
+        pss_prob = float((await _run_inference(pss_model.predict_proba, feature_vector))[0][1])
+        css_prob = float((await _run_inference(css_model.predict_proba, feature_vector))[0][1])
 
         pss_score = int(pss_prob * 100)
         css_score = int(css_prob * 100)
@@ -457,7 +470,7 @@ async def predict_churn(features: ChurnFeatures):
         # draft's predict_proba(X)[0][1] indexing was a real bug - it would
         # have silently returned P(AT_RISK) as if it were a generic churn
         # probability regardless of the actual predicted class.
-        proba = model.predict_proba(feature_vector)[0]
+        proba = (await _run_inference(model.predict_proba, feature_vector))[0]
         predicted_idx = int(proba.argmax())
         tier = CHURN_TIERS[predicted_idx]
         # churn_probability = P(anything other than HEALTHY) - a single
@@ -532,7 +545,7 @@ async def predict_send_time(features: SendTimeFeatures):
         ])[['local_hour_of_session', 'day_of_week_session', 'channel',
             'recovery_action', 'cart_value_tier', 'customer_timezone_offset']]
 
-        probs = model.predict_proba(grid)[:, 1]
+        probs = (await _run_inference(model.predict_proba, grid))[:, 1]
         best_hour = int(probs.argmax())
         confidence = float(probs[best_hour])
 
@@ -615,7 +628,7 @@ async def predict_offer_value(features: OfferValueFeatures):
             'visited_coupon_page', 'searched_discount_terms'
         ]
         feature_vector = pd.DataFrame([{k: getattr(features, k) for k in feature_cols}])
-        raw_pct = float(model.predict(feature_vector)[0])
+        raw_pct = float((await _run_inference(model.predict, feature_vector))[0])
         pct = max(0.0, min(25.0, raw_pct))  # hard cap, never trust raw model output alone
 
         return OfferValueResponse(
