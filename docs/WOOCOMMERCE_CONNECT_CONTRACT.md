@@ -43,11 +43,15 @@ Schema
 
 Field Specifications
 Field	        Type	        Required    	    Descriptions
-
-`shop_url`| 	string|	      Yes|	               Full store URL including protocol. Example: `https://my-woo-store.com or https://revluma.local`. 
+-------------------------------------------------------------------------------------
+`shop_url`| 	string|	      Yes|	               Full store URL including protocol.
+Example: `https://my-woo-store.com or https://revluma.local`. 
+-------------------------------------------------------------------------------------
 `consumer_key`|	    string|	          Yes|      	WooCommerce REST API Consumer Key
-
+-------------------------------------------------------------------------------------
 `consumer_secret`|	    string|     	Yes|       	WooCommerce REST API Consumer Secret
+-------------------------------------------------------------------------------------
+
 
 *Notes*: 
 The `consumer_key` and `consumer_secret` are the standard WooCommerce REST API credentials generated from WooCommerce > Settings > Advanced > REST API.
