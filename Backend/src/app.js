@@ -21,7 +21,6 @@ const settingsRoutes = require("./route/settingsRoute");
 
 
 
-
 const app = express();
 
 // ── Trust proxy (required for Render, Railway, Vercel)
