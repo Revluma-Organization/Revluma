@@ -913,9 +913,8 @@ exports.setupTwoFactor = async (req, res, next) => {
 
 
     if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
+      logger.warn('2fa_setup_user_not_found', { userId, ip: getClientIp(req) });
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
 
 
@@ -933,10 +932,9 @@ exports.setupTwoFactor = async (req, res, next) => {
       },
     });
 
+    logger.info('2fa_setup_generated', { userId, ip: getClientIp(req) });
 
-    const qrCode = await QRCode.toDataURL(
-      secret.otpauth_url
-    );
+    const qrCode = await QRCode.toDataURL(secret.otpauth_url);
 
 
     return res.status(200).json({
@@ -968,8 +966,10 @@ exports.verifyTwoFactor = async (req, res, next) => {
 
 
     if (!user || !user.two_factor_secret) {
+      logger.warn('2fa_verify_no_secret', { userId, ip: getClientIp(req) });
       return res.status(400).json({
-        message: "2FA setup has not been completed",
+        success: false,
+        error: '2FA setup has not been completed',
       });
     }
 
@@ -983,8 +983,10 @@ exports.verifyTwoFactor = async (req, res, next) => {
 
 
     if (!verified) {
-      return res.status(422).json({
-        message: "Invalid verification code",
+      logger.warn('2fa_verify_failed', { userId, ip: getClientIp(req) });
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid verification code',
       });
     }
 
@@ -998,11 +1000,11 @@ exports.verifyTwoFactor = async (req, res, next) => {
       },
     });
 
+    logger.info('2fa_enabled', { userId, ip: getClientIp(req) });
 
     return res.status(200).json({
       success: true,
-      message:
-        "Two-factor authentication enabled successfully.",
+      message: 'Two-factor authentication enabled successfully.',
       enabled: true,
     });
 
@@ -1026,10 +1028,11 @@ exports.disableTwoFactor = async (req, res, next) => {
       },
     });
 
+    logger.info('2fa_disabled', { userId: req.user.id, ip: getClientIp(req) });
 
     return res.status(200).json({
       success: true,
-      message: "Two-factor authentication disabled",
+      message: 'Two-factor authentication disabled',
     });
 
 
