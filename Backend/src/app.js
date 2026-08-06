@@ -17,6 +17,7 @@ const notificationRoutes = require('./route/notificationRoute');
 const eventRoutes = require("./route/eventRoute");
 const preferencesRoutes = require("./route/preferencesRoute");
 const sessionRoutes = require("./route/SessionRoute");
+const settingsRoutes = require("./route/settingsRoute");
 
 
 
@@ -82,6 +83,7 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/events', eventRoutes);
 app.use("/api/v1/preferences", preferencesRoutes);
 app.use("/api/v1/auth/",sessionRoutes);
+app.use("/api/v1/settings",settingsRoutes);
 
 
 // ── Health check
