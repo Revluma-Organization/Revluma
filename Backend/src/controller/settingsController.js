@@ -49,26 +49,25 @@ exports.getBranding = async (req, res, next) => {
 };
 
 
-
 // UPDATE BRANDING
 exports.updateBranding = async(req,res,next)=>{
   try{
-
     const organizationId = req.user.tenantId;
+    const { primaryColor,accentColor} = req.body;
 
-    const {
-      primaryColor,
-      accentColor
-    } = req.body;
-
-
-    const organization = await prisma.organizations.update({
+    const organization = await prisma.organizations.upsert({
 
       where:{
         id: organizationId
       },
 
-      data:{
+      update:{
+        primary_color: primaryColor,
+        accent_color: accentColor
+      },
+
+      create:{
+        id: organizationId,
         primary_color: primaryColor,
         accent_color: accentColor
       },
@@ -82,7 +81,6 @@ exports.updateBranding = async(req,res,next)=>{
 
     });
 
-
     return res.status(200).json({
       primaryColor: organization.primary_color,
       accentColor: organization.accent_color,
@@ -90,8 +88,8 @@ exports.updateBranding = async(req,res,next)=>{
       faviconUrl: organization.favicon_url
     });
 
-
   }catch(error){
     next(error);
   }
 };
+
