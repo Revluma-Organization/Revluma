@@ -954,9 +954,12 @@ exports.verifyTwoFactor = async (req, res, next) => {
   try {
 
     const { code } = req.body;
+    logger.info("2fa_verification_input", {
+     code,
+     type: typeof code,
+      });
 
     const userId = req.user.id;
-
 
     const user = await prisma.users.findUnique({
       where: {
