@@ -3,6 +3,7 @@ import {
   ExternalLink, Plug, WifiOff, X, Loader2, Info, CheckCircle2,
   Clock, ShieldCheck, ArrowUpRight, Layers, Code2, LayoutTemplate,
 } from "lucide-react";
+import { WooCommerceConnect } from "./WooCommerceConnect";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { api, ApiError } from "@/lib/api";
@@ -184,8 +185,6 @@ export default function Integrations() {
 
   // WooCommerce Inline Form State
   const [wooFormOpen, setWooFormOpen] = useState(false);
-  const [wooData, setWooData] = useState({ shop_url: "", consumer_key: "", consumer_secret: "" });
-  const [wooSubmitting, setWooSubmitting] = useState(false);
 
   // Connect success/failure feedback (Shopify redirect failures, WooCommerce connect result)
   const [statusCard, setStatusCard] = useState<{
@@ -289,36 +288,6 @@ export default function Integrations() {
         'Shopify Connection Failed',
         getErrorMessage(e, "We couldn't start the Shopify connection. Try Again"),
       );
-    }
-  }
-
-  async function handleWooSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!wooData.shop_url || !wooData.consumer_key || !wooData.consumer_secret) return;
-    setWooSubmitting(true);
-    try {
-      await api.post('/woocommerce/connect', wooData);
-      setWooFormOpen(false);
-      setStatuses(prev => ({ ...prev, woocommerce: "connected" }));
-      // Optional: re-fetch statuses
-      fetchStatuses();
-      showStatusCard(
-        'success',
-        'WooCommerce Connected!',
-        'Your store is connected. Cart recovery sequences are ready to activate.',
-        'Got it',
-      );
-    } catch (e) {
-      console.error("WooCommerce connect failed", e);
-      setStatuses(prev => ({ ...prev, woocommerce: "error" }));
-      showStatusCard(
-        'error',
-        'WooCommerce Connection Failed',
-        getErrorMessage(e, "We couldn't connect your WooCommerce store. Please check your Store URL and API keys and try again."),
-        'Try Again',
-      );
-    } finally {
-      setWooSubmitting(false);
     }
   }
 
@@ -433,82 +402,25 @@ export default function Integrations() {
                   </>
                 )}
 
-                {/* WooCommerce Inline Form */}
+                                {/* WooCommerce Inline Form */}
                 {platform.id === "woocommerce" && wooFormOpen && !isConnected && (
-                  <form onSubmit={handleWooSubmit} className="flex flex-col gap-3.5 mt-1">
-                    <div className="flex items-start gap-2 rounded-lg border border-border-md bg-glass/[0.02] px-3 py-2.5 text-[0.72rem] leading-relaxed text-t3">
-                      <ShieldCheck className="mt-[1px] h-3.5 w-3.5 shrink-0" style={{ color: platform.accentColor }} />
-                      Your credentials are encrypted and only ever used to sync orders and customers from your store.
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="flex items-center gap-1.5 text-[0.75rem] font-medium text-t2">
-                        Store URL
-                        <FieldInfo title="Store URL">
-                          <p>The full web address of your WooCommerce store, including <span className="text-t1">https://</span> — the same URL your customers use to shop.</p>
-                          <p className="text-t3">Example: https://yourstore.com</p>
-                        </FieldInfo>
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://yourstore.com"
-                        required
-                        className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none transition-colors focus:border-[color:var(--woo-focus)]"
-                        style={{ ["--woo-focus" as string]: platform.accentColor }}
-                        value={wooData.shop_url}
-                        onChange={e => setWooData({ ...wooData, shop_url: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="flex items-center gap-1.5 text-[0.75rem] font-medium text-t2">
-                        Consumer Key
-                        <FieldInfo title="Consumer Key">
-                          <p>Found in your WordPress admin under:</p>
-                          <p className="text-t1">WooCommerce → Settings → Advanced → REST API</p>
-                          <p>Click <span className="text-t1">Add key</span>, set permissions to <span className="text-t1">Read/Write</span>, then generate. It starts with <span className="text-t1">ck_</span>.</p>
-                        </FieldInfo>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="ck_..."
-                        className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none transition-colors focus:border-[color:var(--woo-focus)]"
-                        style={{ ["--woo-focus" as string]: platform.accentColor }}
-                        value={wooData.consumer_key}
-                        onChange={e => setWooData({ ...wooData, consumer_key: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="flex items-center gap-1.5 text-[0.75rem] font-medium text-t2">
-                        Consumer Secret
-                        <FieldInfo title="Consumer Secret">
-                          <p>Generated alongside your Consumer Key on the same screen. It starts with <span className="text-t1">cs_</span> and is shown only once — copy it immediately.</p>
-                          <p className="text-t3">Lost it? Just generate a new key pair and paste the new values here.</p>
-                        </FieldInfo>
-                      </label>
-                      <input
-                        type="password"
-                        required
-                        placeholder="cs_..."
-                        className="w-full rounded-md border border-border bg-bg-3 px-3 py-2 text-[0.82rem] text-t1 outline-none transition-colors focus:border-[color:var(--woo-focus)]"
-                        style={{ ["--woo-focus" as string]: platform.accentColor }}
-                        value={wooData.consumer_secret}
-                        onChange={e => setWooData({ ...wooData, consumer_secret: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="flex gap-2 mt-1">
-                      <button type="button" onClick={() => setWooFormOpen(false)} className="flex-1 rounded-md border border-border bg-bg-2 py-2 text-[0.82rem] font-medium text-t2 hover:bg-glass/[0.04]">Cancel</button>
-                      <button type="submit" disabled={wooSubmitting} className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-[0.82rem] font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50" style={{ background: platform.accentColor }}>
-                        {wooSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plug className="h-3.5 w-3.5" />}
-                        Connect
-                      </button>
-                    </div>
-                  </form>
+                  <WooCommerceConnect 
+                    accentColor={platform.accentColor} 
+                    onCancel={() => setWooFormOpen(false)}
+                    onSuccess={() => {
+                      setWooFormOpen(false);
+                      fetchStatuses();
+                      showStatusCard(
+                        'success', 
+                        'WooCommerce Connected!', 
+                        'Your store is connected. Cart recovery sequences are ready to activate.', 
+                        'Got it'
+                      );
+                    }}
+                    onError={(msg) => showStatusCard('error', 'WooCommerce Connection Failed', msg, 'Try Again')}
+                  />
                 )}
-
+                        
                 {/* Actions */}
                 {!(platform.id === "woocommerce" && wooFormOpen) && (
                   <div className="mt-auto flex items-center gap-2 pt-1">
