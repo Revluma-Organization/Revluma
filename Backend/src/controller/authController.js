@@ -127,6 +127,16 @@ async function assertPasswordAllowed(password) {
   return { ok: true };
 }
 
+function normalizeTotpCode(code) {
+  if (typeof code === 'number') {
+    return String(code);
+  }
+  if (typeof code !== 'string') {
+    return '';
+  }
+  return code.replace(/\s+/g, '').trim();
+}
+
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
 
 exports.register = async (req, res, next) => {
@@ -900,6 +910,8 @@ exports.getProfile = async (req, res) => {
 };
 
 //SetupTwoFactor
+exports.normalizeTotpCode = normalizeTotpCode;
+
 exports.setupTwoFactor = async (req, res, next) => {
   try {
 
@@ -954,10 +966,7 @@ exports.verifyTwoFactor = async (req, res, next) => {
   try {
 
     const { code } = req.body;
-    logger.info("2fa_verification_input", {
-     code,
-     type: typeof code,
-      });
+    const normalizedCode = normalizeTotpCode(code);
 
     const userId = req.user.id;
 
@@ -976,14 +985,21 @@ exports.verifyTwoFactor = async (req, res, next) => {
       });
     }
 
+    if (!/^\d{6}$/.test(normalizedCode)) {
+      logger.warn('2fa_verify_invalid_format', { userId, ip: getClientIp(req) });
+      return res.status(400).json({
+        success: false,
+        error: 'Verification code must be a 6-digit number',
+      });
+    }
 
     const verified = speakeasy.totp.verify({
       secret: user.two_factor_secret,
-      encoding: "base32",
-      token: code,
-      window: 1,
+      encoding: 'base32',
+      token: normalizedCode,
+      window: 2,
+      digits: 6,
     });
-
 
     if (!verified) {
       logger.warn('2fa_verify_failed', { userId, ip: getClientIp(req) });
