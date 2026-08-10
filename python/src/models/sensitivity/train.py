@@ -52,7 +52,7 @@ PRICE_DRIVEN_ACTIONS = {"DISCOUNT", "HYBRID"}
 CONVENIENCE_DRIVEN_ACTIONS = {"FRICTION_FIX", "HYBRID"}
 
 
-def _generate_synthetic_sensitivity_data(n=3000):
+def _generate_synthetic_sensitivity_data(n: int = 3000) -> pd.DataFrame:
     """
     Generates synthetic session data for M2 training.
     Includes ~15% stochastic noise to simulate real-world uncertainty.
@@ -101,7 +101,7 @@ def _generate_synthetic_sensitivity_data(n=3000):
     })
 
 
-def _load_real_sensitivity_rows(db_connection):
+def _load_real_sensitivity_rows(db_connection) -> pd.DataFrame:
     """
     Builds real M2 training rows from customers + orders + customer_events.
 
@@ -172,51 +172,8 @@ def _load_real_sensitivity_rows(db_connection):
             for row in event_rows
         ]
         events_by_session = group_events_by_session(raw_events)
-
-        # Recovery outcomes: which recovery_action converted each session,
-        # per orders.recovery_status. One row per session_id is expected;
-        # if multiple recovery attempts exist, the most recent converting
-        # order wins.
-        with db_connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT session_id, recovery_action
-                FROM orders
-                WHERE session_id = ANY(%s)
-                  AND recovery_status = 'CONVERTED'
-                ORDER BY ordered_at DESC
-                """,
-                (session_ids,)
-            )
-            recovery_rows = cursor.fetchall()
-
-        converted_action_by_session = {}
-        for session_id, recovery_action in recovery_rows:
-            converted_action_by_session.setdefault(session_id, recovery_action)
-
-        records = []
-        for session_id in session_ids:
-            customer_id = customer_by_session[session_id]
-            events = events_by_session.get(session_id, [])
-
-            action = converted_action_by_session.get(session_id)
-            pss_label = int(action in PRICE_DRIVEN_ACTIONS) if action else 0
-            css_label = int(action in CONVENIENCE_DRIVEN_ACTIONS) if action else 0
-
-            records.append({
-                "coupon_usage_pct": calculate_coupon_usage_pct(customer_id, db_connection) * 100.0,
-                "visited_coupon_page": int(calculate_visited_coupon_page(events)),
-                "searched_discount_terms": int(calculate_searched_discount_terms(events)),
-                "cursor_hesitation": calculate_cursor_hesitation(events),
-                "abandoned_at_shipping_reveal": int(calculate_abandoned_at_shipping_reveal(events)),
-                "checkout_step_reached": calculate_checkout_step_reached(events),
-                "scroll_depth_pct": calculate_scroll_depth(events),
-                "time_on_page_ms": calculate_time_on_page_ms(events),
-                "PSS_label": pss_label,
-                "CSS_label": css_label,
-            })
-
-        return pd.DataFrame.from_records(records)
+        converted_action_by_session = _fetch_recovery_actions(db_connection, session_ids)
+        return _build_sensitivity_records(session_ids, customer_by_session, events_by_session, converted_action_by_session, db_connection)
 
     except Exception as e:
         raise RuntimeError(
@@ -224,7 +181,82 @@ def _load_real_sensitivity_rows(db_connection):
         ) from e
 
 
-def load_training_data(db_connection=None):
+def _fetch_recovery_actions(db_connection, session_ids: list) -> dict:
+    """Fetches the most recent converting recovery action for each session.
+
+    Extracted from _load_real_sensitivity_rows to keep it under 80 lines.
+    Returns a dict mapping session_id -> recovery_action string (or absent).
+
+    Args:
+        db_connection: Active Postgres connection.
+        session_ids (list): List of session UUID strings to look up.
+
+    Returns:
+        dict: {session_id: recovery_action} for sessions with CONVERTED orders.
+    """
+    with db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT session_id, recovery_action
+            FROM orders
+            WHERE session_id = ANY(%s)
+              AND recovery_status = 'CONVERTED'
+            ORDER BY ordered_at DESC
+            """,
+            (session_ids,)
+        )
+        recovery_rows = cursor.fetchall()
+    result: dict = {}
+    for session_id, recovery_action in recovery_rows:
+        result.setdefault(session_id, recovery_action)
+    return result
+
+
+def _build_sensitivity_records(
+    session_ids: list,
+    customer_by_session: dict,
+    events_by_session: dict,
+    converted_action_by_session: dict,
+    db_connection,
+) -> pd.DataFrame:
+    """Builds M2 feature rows from pre-fetched session data.
+
+    Extracted from _load_real_sensitivity_rows to keep it under 80 lines.
+    Applies all 8 pipeline.py feature functions and assigns PSS/CSS labels.
+
+    Args:
+        session_ids (list): Ordered list of session UUID strings.
+        customer_by_session (dict): session_id -> customer_id mapping.
+        events_by_session (dict): Output of group_events_by_session().
+        converted_action_by_session (dict): session_id -> recovery_action.
+        db_connection: Active Postgres connection (used for coupon_usage_pct).
+
+    Returns:
+        pd.DataFrame: Rows of FEATURES + PSS_label + CSS_label.
+    """
+    records = []
+    for session_id in session_ids:
+        customer_id = customer_by_session[session_id]
+        events = events_by_session.get(session_id, [])
+        action = converted_action_by_session.get(session_id)
+        pss_label = int(action in PRICE_DRIVEN_ACTIONS) if action else 0
+        css_label = int(action in CONVENIENCE_DRIVEN_ACTIONS) if action else 0
+        records.append({
+            "coupon_usage_pct": calculate_coupon_usage_pct(customer_id, db_connection) * 100.0,
+            "visited_coupon_page": int(calculate_visited_coupon_page(events)),
+            "searched_discount_terms": int(calculate_searched_discount_terms(events)),
+            "cursor_hesitation": calculate_cursor_hesitation(events),
+            "abandoned_at_shipping_reveal": int(calculate_abandoned_at_shipping_reveal(events)),
+            "checkout_step_reached": calculate_checkout_step_reached(events),
+            "scroll_depth_pct": calculate_scroll_depth(events),
+            "time_on_page_ms": calculate_time_on_page_ms(events),
+            "PSS_label": pss_label,
+            "CSS_label": css_label,
+        })
+    return pd.DataFrame.from_records(records)
+
+
+def load_training_data(db_connection=None) -> tuple:
     """
     Loads M2 training data.
 
@@ -268,7 +300,7 @@ def load_training_data(db_connection=None):
     return real_df, True, below_minimum
 
 
-def build_pss_model():
+def build_pss_model() -> GradientBoostingClassifier:
     """Builds the Gradient Boosting Classifier for Price Sensitivity Score."""
     return GradientBoostingClassifier(
         n_estimators=100,
@@ -278,7 +310,7 @@ def build_pss_model():
     )
 
 
-def build_css_model():
+def build_css_model() -> GradientBoostingClassifier:
     """Builds the Gradient Boosting Classifier for Convenience Sensitivity Score."""
     return GradientBoostingClassifier(
         n_estimators=100,
@@ -288,10 +320,19 @@ def build_css_model():
     )
 
 
-def train(run_name=None, db_connection=None):
-    """
-    Main training pipeline for both PSS and CSS models.
-    Logs independently to MLflow.
+def train(run_name: str = None, db_connection=None) -> dict:
+    """Main training pipeline for both PSS and CSS models.
+
+    Trains two separate GradientBoostingClassifiers (PSS and CSS) and logs
+    each independently to MLflow under the Revluma-MVP experiment.
+
+    Args:
+        run_name (str | None): Optional MLflow run name override.
+        db_connection: Optional Postgres connection. None -> synthetic data.
+
+    Returns:
+        dict: Keys 'pss_model', 'css_model', 'pss_metrics', 'css_metrics',
+              'used_real_data', 'below_minimum_threshold'.
     """
     get_or_create_experiment()
 
@@ -318,68 +359,31 @@ def train(run_name=None, db_connection=None):
     print("Training PSS Model...")
     pss_model = build_pss_model()
     pss_model.fit(X_train_scaled, y_pss_train)
+    pss_metrics = _train_and_log_sensitivity_model(
+        model=pss_model,
+        X_train_scaled=X_train_scaled, X_test_scaled=X_test_scaled,
+        y_train=y_pss_train, y_test=y_pss_test,
+        target="pss", registered_name="sensitivity_pss",
+        n_train=len(X_train), used_real_data=used_real_data,
+        below_minimum=below_minimum, scaler=scaler,
+    )
 
-    y_pss_pred = pss_model.predict(X_test_scaled)
-    y_pss_prob = pss_model.predict_proba(X_test_scaled)[:, 1]
-
-    pss_metrics = {
-        "accuracy": accuracy_score(y_pss_test, y_pss_pred),
-        "f1": f1_score(y_pss_test, y_pss_pred),
-        "auc_roc": roc_auc_score(y_pss_test, y_pss_prob)
-    }
-
-    with mlflow.start_run(run_name="m2-pss-training") as run:
-        mlflow.set_tag("target", "pss")
-        mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
-        mlflow.set_tag("below_minimum_threshold", str(below_minimum))
-        mlflow.log_param("n_training_samples", len(X_train))
-        mlflow.log_metrics(pss_metrics)
-        mlflow.sklearn.log_model(pss_model, "model", registered_model_name="sensitivity_pss")
-
-        # Log scaler artifact
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            scaler_path = os.path.join(tmp_dir, "scaler.pkl")
-            with open(scaler_path, "wb") as f:
-                pickle.dump(scaler, f)
-            mlflow.log_artifact(scaler_path, "scaler")
-
-    # -------------------------------------------------------------------------
-    # Train CSS Model
-    # -------------------------------------------------------------------------
     print("Training CSS Model...")
     css_model = build_css_model()
     css_model.fit(X_train_scaled, y_css_train)
+    css_metrics = _train_and_log_sensitivity_model(
+        model=css_model,
+        X_train_scaled=X_train_scaled, X_test_scaled=X_test_scaled,
+        y_train=y_css_train, y_test=y_css_test,
+        target="css", registered_name="sensitivity_css",
+        n_train=len(X_train), used_real_data=used_real_data,
+        below_minimum=below_minimum, scaler=scaler,
+    )
 
-    y_css_pred = css_model.predict(X_test_scaled)
-    y_css_prob = css_model.predict_proba(X_test_scaled)[:, 1]
-
-    css_metrics = {
-        "accuracy": accuracy_score(y_css_test, y_css_pred),
-        "f1": f1_score(y_css_test, y_css_pred),
-        "auc_roc": roc_auc_score(y_css_test, y_css_prob)
-    }
-
-    with mlflow.start_run(run_name="m2-css-training") as run:
-        mlflow.set_tag("target", "css")
-        mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
-        mlflow.set_tag("below_minimum_threshold", str(below_minimum))
-        mlflow.log_param("n_training_samples", len(X_train))
-        mlflow.log_metrics(css_metrics)
-        mlflow.sklearn.log_model(css_model, "model", registered_model_name="sensitivity_css")
-
-        # Log scaler artifact
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            scaler_path = os.path.join(tmp_dir, "scaler.pkl")
-            with open(scaler_path, "wb") as f:
-                pickle.dump(scaler, f)
-            mlflow.log_artifact(scaler_path, "scaler")
-
-    # Output Requirement
     print("\n===============================")
     print("PSS Metrics:")
     for k, v in pss_metrics.items():
         print(f"  {k}: {v:.4f}")
-
     print("\nCSS Metrics:")
     for k, v in css_metrics.items():
         print(f"  {k}: {v:.4f}")
@@ -393,6 +397,62 @@ def train(run_name=None, db_connection=None):
         "used_real_data": used_real_data,
         "below_minimum_threshold": below_minimum,
     }
+
+
+def _train_and_log_sensitivity_model(
+    model: GradientBoostingClassifier,
+    X_train_scaled,
+    X_test_scaled,
+    y_train,
+    y_test,
+    target: str,
+    registered_name: str,
+    n_train: int,
+    used_real_data: bool,
+    below_minimum: bool,
+    scaler: StandardScaler,
+) -> dict:
+    """Evaluates a trained sensitivity model and logs it to MLflow.
+
+    Extracted from train() to keep that function under 80 lines.
+    Handles metrics computation, MLflow logging, and scaler artifact upload.
+
+    Args:
+        model: Fitted GradientBoostingClassifier (PSS or CSS).
+        X_train_scaled: Scaled training feature matrix.
+        X_test_scaled: Scaled test feature matrix.
+        y_train: Training labels (unused here but kept for API symmetry).
+        y_test: Test labels used for metric computation.
+        target (str): 'pss' or 'css' — used for MLflow tag and run name.
+        registered_name (str): MLflow registered model name.
+        n_train (int): Number of training samples (logged as a param).
+        used_real_data (bool): Whether real data was used.
+        below_minimum (bool): Whether the row count was below the minimum.
+        scaler (StandardScaler): Scaler artifact to log alongside the model.
+
+    Returns:
+        dict: Metrics dict with 'accuracy', 'f1', 'auc_roc'.
+    """
+    y_pred = model.predict(X_test_scaled)
+    y_prob = model.predict_proba(X_test_scaled)[:, 1]
+    metrics = {
+        "accuracy": accuracy_score(y_test, y_pred),
+        "f1": f1_score(y_test, y_pred),
+        "auc_roc": roc_auc_score(y_test, y_prob),
+    }
+    with mlflow.start_run(run_name=f"m2-{target}-training"):
+        mlflow.set_tag("target", target)
+        mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
+        mlflow.set_tag("below_minimum_threshold", str(below_minimum))
+        mlflow.log_param("n_training_samples", n_train)
+        mlflow.log_metrics(metrics)
+        mlflow.sklearn.log_model(model, "model", registered_model_name=registered_name)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            scaler_path = os.path.join(tmp_dir, "scaler.pkl")
+            with open(scaler_path, "wb") as f:
+                pickle.dump(scaler, f)
+            mlflow.log_artifact(scaler_path, "scaler")
+    return metrics
 
 
 if __name__ == "__main__":

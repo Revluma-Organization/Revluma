@@ -116,37 +116,12 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
     customer_ids = [row[0] for row in rows] if rows else []
 
     for customer_id in customer_ids:
-        try:
-            rfm = calculate_rfm_scores(customer_id, db)
-
-            r = rfm["rfm_recency_score"]
-            f = rfm["rfm_frequency_score"]
-            m = rfm["rfm_monetary_score"]
-
-            segment = get_rfm_segment(r, f, m)
-
-            update_cursor = db.cursor()
-            update_cursor.execute(
-                """
-                UPDATE customers
-                SET
-                  rfm_recency = %s,
-                  rfm_frequency = %s,
-                  rfm_monetary = %s,
-                  rfm_segment = %s,
-                  updated_at = NOW()
-                WHERE id = %s
-                """,
-                (r, f, m, segment, customer_id),
-            )
-
+        segment, ok = _process_single_customer(customer_id, db)
+        if ok:
             segment_distribution[segment] += 1
             processed_count += 1
-
-        except Exception as e:
-            print(f"Failed to process customer {customer_id}: {e}")
+        else:
             failed_customer_ids.append(customer_id)
-            continue
 
     # Single commit after the full loop - performance requirement
     try:
@@ -168,6 +143,47 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
         "failed_customer_ids": failed_customer_ids,
         "segment_distribution": segment_distribution,
     }
+
+
+def _process_single_customer(customer_id: str, db) -> tuple:
+    """Computes and persists RFM scores for a single customer.
+
+    Extracted from calculate_rfm_for_all_customers to keep it under 80 lines.
+    Wraps all DB operations in a try/except so a single bad customer never
+    aborts the full batch — the caller accumulates failures separately.
+
+    Args:
+        customer_id (str): UUID of the customer to process.
+        db: Active database connection with cursor() support.
+
+    Returns:
+        tuple: (segment: str, success: bool).
+               segment is the RFM segment label on success, or '' on failure.
+    """
+    try:
+        rfm = calculate_rfm_scores(customer_id, db)
+        r = rfm["rfm_recency_score"]
+        f = rfm["rfm_frequency_score"]
+        m = rfm["rfm_monetary_score"]
+        segment = get_rfm_segment(r, f, m)
+        cursor = db.cursor()
+        cursor.execute(
+            """
+            UPDATE customers
+            SET
+              rfm_recency = %s,
+              rfm_frequency = %s,
+              rfm_monetary = %s,
+              rfm_segment = %s,
+              updated_at = NOW()
+            WHERE id = %s
+            """,
+            (r, f, m, segment, customer_id),
+        )
+        return segment, True
+    except Exception as e:
+        print(f"Failed to process customer {customer_id}: {e}")
+        return "", False
 
 
 # ---------------------------------------------------------------------------

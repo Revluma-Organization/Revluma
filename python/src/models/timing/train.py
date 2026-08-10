@@ -34,7 +34,7 @@ FEATURE_COLUMNS = [
 ]
 
 
-def _generate_synthetic_data(n=2000):
+def _generate_synthetic_data(n: int = 2000) -> tuple:
     """
     Generates synthetic historical send-attempt records with the 6 real
     endpoint-contract features. Each row represents "message sent to this
@@ -92,7 +92,7 @@ def _generate_synthetic_data(n=2000):
     return X_train, X_test, y_train, y_test
 
 
-def _load_real_send_rows(db_connection):
+def _load_real_send_rows(db_connection) -> pd.DataFrame:
     """
     Queries `sequence_sends` joined to `sequence_events` and derives
     conversion_within_120min using the exact SQL logic documented in
@@ -148,28 +148,7 @@ def _load_real_send_rows(db_connection):
         if not rows:
             return pd.DataFrame(columns=FEATURE_COLUMNS + ["conversion_within_120min"])
 
-        records = []
-        for send_id, customer_id, channel, sent_at, metadata, label in rows:
-            meta = metadata if isinstance(metadata, dict) else {}
-
-            channel_key = str(channel or "email").lower()
-            recovery_action_key = str(meta.get("recovery_action", "SOFT_NUDGE")).upper()
-            cart_value_tier_key = str(meta.get("cart_value_tier", "medium")).lower()
-            tz_offset = meta.get("customer_timezone_offset", 0)
-
-            local_hour = sent_at.hour if hasattr(sent_at, "hour") else 12
-            local_dow = sent_at.weekday() if hasattr(sent_at, "weekday") else 0
-
-            records.append({
-                "local_hour_of_session": local_hour,
-                "day_of_week_session": local_dow,
-                "channel": CHANNEL_MAP.get(channel_key, 0),
-                "recovery_action": RECOVERY_ACTION_MAP.get(recovery_action_key, 4),
-                "cart_value_tier": CART_VALUE_TIER_MAP.get(cart_value_tier_key, 1),
-                "customer_timezone_offset": int(tz_offset) if tz_offset is not None else 0,
-                "conversion_within_120min": int(label),
-            })
-
+        records = [_build_send_feature_record(row) for row in rows]
         return pd.DataFrame.from_records(records)
 
     except Exception as e:
@@ -178,7 +157,40 @@ def _load_real_send_rows(db_connection):
         ) from e
 
 
-def load_training_data(n=2000, db_connection=None):
+def _build_send_feature_record(row: tuple) -> dict:
+    """Converts a single sequence_sends query row into a feature dict.
+
+    Extracted from _load_real_send_rows to keep it under 80 lines.
+    Maps raw DB columns and metadata fields to the 6 FEATURE_COLUMNS
+    expected by the M3 model, plus the binary conversion_within_120min label.
+
+    Args:
+        row (tuple): (send_id, customer_id, channel, sent_at, metadata,
+                      conversion_within_120min) from the SQL query.
+
+    Returns:
+        dict: One record matching FEATURE_COLUMNS + 'conversion_within_120min'.
+    """
+    _send_id, _customer_id, channel, sent_at, metadata, label = row
+    meta = metadata if isinstance(metadata, dict) else {}
+    channel_key = str(channel or "email").lower()
+    recovery_action_key = str(meta.get("recovery_action", "SOFT_NUDGE")).upper()
+    cart_value_tier_key = str(meta.get("cart_value_tier", "medium")).lower()
+    tz_offset = meta.get("customer_timezone_offset", 0)
+    local_hour = sent_at.hour if hasattr(sent_at, "hour") else 12
+    local_dow = sent_at.weekday() if hasattr(sent_at, "weekday") else 0
+    return {
+        "local_hour_of_session": local_hour,
+        "day_of_week_session": local_dow,
+        "channel": CHANNEL_MAP.get(channel_key, 0),
+        "recovery_action": RECOVERY_ACTION_MAP.get(recovery_action_key, 4),
+        "cart_value_tier": CART_VALUE_TIER_MAP.get(cart_value_tier_key, 1),
+        "customer_timezone_offset": int(tz_offset) if tz_offset is not None else 0,
+        "conversion_within_120min": int(label),
+    }
+
+
+def load_training_data(n: int = 2000, db_connection=None) -> tuple:
     """
     Phase 3 entry point (per task doc P3.1 — this is the function whose
     db_connection parameter "was reserved for this exact purpose").
@@ -236,7 +248,7 @@ def load_training_data(n=2000, db_connection=None):
     return X_train, X_test, y_train, y_test, True, below_minimum
 
 
-def build_model():
+def build_model() -> GradientBoostingClassifier:
     """Gradient Boosting classifier with probability calibration and exact hyperparameters."""
     base_clf = GradientBoostingClassifier(
         n_estimators=150,
@@ -248,7 +260,7 @@ def build_model():
     return calibrated_clf
 
 
-def train(run_name: str = "m3-sendtime-training-v4-contract-aligned", db_connection=None):
+def train(run_name: str = "m3-timing-training", db_connection=None) -> dict:
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
 

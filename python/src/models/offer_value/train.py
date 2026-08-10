@@ -43,7 +43,12 @@ FEATURE_COLUMNS = [
 ]
 
 
-def apply_hard_constraints(discount_pct, pss_score, css_score, tss_score):
+def apply_hard_constraints(
+    discount_pct,
+    pss_score,
+    css_score,
+    tss_score,
+) -> np.ndarray:
     """
     Enforces the merchant-safety rules on top of any raw prediction.
     Two SEPARATE gates per the task doc (not a single OR):
@@ -58,7 +63,7 @@ def apply_hard_constraints(discount_pct, pss_score, css_score, tss_score):
     return np.where(zero_mask, 0, discount_pct)
 
 
-def _generate_synthetic_data(n=3000):
+def _generate_synthetic_data(n: int = 3000) -> tuple:
     """
     Generates synthetic historical recovery-offer records with the 9 real
     features and a discount_pct label that respects the hard constraints.
@@ -114,7 +119,7 @@ def _generate_synthetic_data(n=3000):
     return X_train, X_test, y_train, y_test
 
 
-def _load_real_offer_rows(db_connection):
+def _load_real_offer_rows(db_connection) -> pd.DataFrame:
     """
     Queries recovered orders carrying a discount_pct and builds the 9 real
     behavioural/history features with pipeline.py functions, per Phase 3
@@ -166,45 +171,10 @@ def _load_real_offer_rows(db_connection):
         if not rows:
             return pd.DataFrame(columns=FEATURE_COLUMNS + ["discount_pct"])
 
-        records = []
-        for customer_id, session_id, discount_pct, metadata, pss_score, css_score in rows:
-            meta = metadata if isinstance(metadata, dict) else {}
-            tss_score = float(meta.get("tss_score", 0) or 0)
-
-            with db_connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT event_type, timestamp, payload
-                    FROM customer_events
-                    WHERE session_id = %s
-                    """,
-                    (session_id,)
-                )
-                event_rows = cursor.fetchall()
-
-            events = [
-                {
-                    "event_type": row[0],
-                    "timestamp": row[1].isoformat() if hasattr(row[1], "isoformat") else row[1],
-                    "payload": row[2] if isinstance(row[2], dict) else {},
-                }
-                for row in event_rows
-            ]
-
-            records.append({
-                "pss_score": float(pss_score) if pss_score is not None else 0.0,
-                "css_score": float(css_score) if css_score is not None else 0.0,
-                "tss_score": tss_score,
-                "cursor_hesitation": calculate_cursor_hesitation(events),
-                "past_orders_total": calculate_past_orders_total(customer_id, db_connection),
-                "past_orders_with_coupon_pct": calculate_coupon_usage_pct(customer_id, db_connection),
-                "days_since_last_purchase": calculate_days_since_last_purchase(customer_id, db_connection),
-                "avg_order_value": calculate_avg_order_value(customer_id, db_connection),
-                "visited_coupon_page": int(calculate_visited_coupon_page(events)),
-                "searched_discount_terms": int(calculate_searched_discount_terms(events)),
-                "discount_pct": float(discount_pct),
-            })
-
+        records = [
+            _build_offer_feature_record(row, db_connection)
+            for row in rows
+        ]
         return pd.DataFrame.from_records(records)
 
     except Exception as e:
@@ -213,7 +183,60 @@ def _load_real_offer_rows(db_connection):
         ) from e
 
 
-def load_training_data(n=3000, db_connection=None):
+def _build_offer_feature_record(row: tuple, db_connection) -> dict:
+    """Builds a single M5 feature record from a recovered-order row.
+
+    Extracted from _load_real_offer_rows to keep it under 80 lines.
+    Fetches the session's raw events and computes all 9 behavioural features
+    plus the discount_pct label.
+
+    Args:
+        row (tuple): (customer_id, session_id, discount_pct, metadata,
+                      pss_score, css_score) from the orders/abandoned_carts join.
+        db_connection: Active Postgres connection.
+
+    Returns:
+        dict: One record with FEATURE_COLUMNS + 'discount_pct'.
+    """
+    customer_id, session_id, discount_pct, metadata, pss_score, css_score = row
+    meta = metadata if isinstance(metadata, dict) else {}
+    tss_score = float(meta.get("tss_score", 0) or 0)
+
+    with db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT event_type, timestamp, payload
+            FROM customer_events
+            WHERE session_id = %s
+            """,
+            (session_id,)
+        )
+        event_rows = cursor.fetchall()
+
+    events = [
+        {
+            "event_type": r[0],
+            "timestamp": r[1].isoformat() if hasattr(r[1], "isoformat") else r[1],
+            "payload": r[2] if isinstance(r[2], dict) else {},
+        }
+        for r in event_rows
+    ]
+    return {
+        "pss_score": float(pss_score) if pss_score is not None else 0.0,
+        "css_score": float(css_score) if css_score is not None else 0.0,
+        "tss_score": tss_score,
+        "cursor_hesitation": calculate_cursor_hesitation(events),
+        "past_orders_total": calculate_past_orders_total(customer_id, db_connection),
+        "past_orders_with_coupon_pct": calculate_coupon_usage_pct(customer_id, db_connection),
+        "days_since_last_purchase": calculate_days_since_last_purchase(customer_id, db_connection),
+        "avg_order_value": calculate_avg_order_value(customer_id, db_connection),
+        "visited_coupon_page": int(calculate_visited_coupon_page(events)),
+        "searched_discount_terms": int(calculate_searched_discount_terms(events)),
+        "discount_pct": float(discount_pct),
+    }
+
+
+def load_training_data(n: int = 3000, db_connection=None) -> tuple:
     """
     Phase 3 entry point (per task doc P3.1 — the function whose
     db_connection parameter "was reserved for this exact purpose").
@@ -265,7 +288,7 @@ def load_training_data(n=3000, db_connection=None):
     return X_train, X_test, y_train, y_test, True, below_minimum
 
 
-def build_model():
+def build_model() -> GradientBoostingRegressor:
     """Gradient Boosting regressor predicting minimum effective discount %."""
     return GradientBoostingRegressor(
         n_estimators=150,
@@ -275,7 +298,7 @@ def build_model():
     )
 
 
-def train(run_name: str = "m5-offervalue-training", db_connection=None):
+def train(run_name: str = "m5-offervalue-training", db_connection=None) -> dict:
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
 

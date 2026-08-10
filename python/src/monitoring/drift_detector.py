@@ -105,6 +105,7 @@ def _send_slack_alert(message: str) -> bool:
 
 
 def _format_alert(result: DriftCheckResult) -> str:
+    """Formats an alert dict into a readable string."""
     header = ":rotating_light: *Revluma Model Drift Alert*"
     lines = [
         header,
@@ -139,6 +140,7 @@ def _get_or_create_monitoring_experiment() -> None:
 
 
 def _log_result_to_mlflow(result: DriftCheckResult) -> None:
+    """Logs drift results to MLflow."""
     if mlflow is None:
         return
     try:
@@ -159,7 +161,7 @@ def _log_result_to_mlflow(result: DriftCheckResult) -> None:
         print(f"[drift_detector] MLflow logging failed (non-fatal): {e}")
 
 
-def _load_registered_model(model_name: str):
+def _load_registered_model(model_name: str) -> typing.Any:
     """Loads a model from the MLflow registry the same way api.py does.
     Returns None on any failure so callers can skip the check gracefully
     rather than crash the whole monitoring run."""
@@ -176,7 +178,7 @@ def _load_registered_model(model_name: str):
 # M1 — Abandonment AUC-ROC (weekly, retrain on breach)
 # ---------------------------------------------------------------------------
 
-def _load_recent_m1_eval_set(db_connection, days: int = M1_WINDOW_DAYS):
+def _load_recent_m1_eval_set(db_connection, days: int = M1_WINDOW_DAYS) -> pd.DataFrame | None:
     """Pulls checkout sessions resolved (ABANDONED/RECOVERED/COMPLETED) in
     the trailing `days` window and computes the 5 M1 features with the
     exact pipeline.py functions, mirroring
@@ -296,7 +298,7 @@ def _trigger_m1_retraining(db_connection) -> bool:
 # M2 — Sensitivity per-class F1 (weekly, alert only)
 # ---------------------------------------------------------------------------
 
-def _load_recent_m2_eval_set(db_connection, days: int = M2_WINDOW_DAYS):
+def _load_recent_m2_eval_set(db_connection, days: int = M2_WINDOW_DAYS) -> pd.DataFrame | None:
     """Mirrors sensitivity/train.py::_load_real_sensitivity_rows but scoped
     to the trailing `days` window, for use as a fresh evaluation set
     rather than a training set."""
@@ -452,7 +454,7 @@ def check_m2_drift(db_connection) -> list[DriftCheckResult]:
 # M4 — Churn accuracy (monthly, alert only)
 # ---------------------------------------------------------------------------
 
-def _load_recent_m4_eval_set(db_connection, days: int = M4_WINDOW_DAYS):
+def _load_recent_m4_eval_set(db_connection, days: int = M4_WINDOW_DAYS) -> pd.DataFrame | None:
     """Builds a fresh M4 evaluation set the same way churn/train.py's real
     path does, scoped to customers active within the trailing window."""
     with db_connection.cursor() as cursor:

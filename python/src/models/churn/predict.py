@@ -1,10 +1,11 @@
+import typing
 """
 M4 — Churn Risk Scorer: Inference Script
 Runs daily as a cron job across all customer profiles.
 """
 
 
-def load_model(merchant_id: str):
+def load_model(merchant_id: str) -> typing.Any:
     """Loads trained M4 model for the given merchant."""
     pass
 

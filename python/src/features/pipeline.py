@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 
 def _parse_timestamp(ts: str) -> datetime | None:
+    """Safely parses an ISO8601 timestamp string into a datetime object."""
     if not ts or not isinstance(ts, str):
         return None
     try:
@@ -1340,6 +1341,7 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
         "features":    raw,
     }
 def calculate_rfm_scores(customer_id: str, db) -> dict:
+    """Calculates RFM (Recency, Frequency, Monetary) scores for a customer."""
     days = calculate_days_since_last_purchase(customer_id, db)
     orders = calculate_past_orders_total(customer_id, db)
     aov = calculate_avg_order_value(customer_id, db)

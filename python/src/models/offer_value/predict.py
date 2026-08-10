@@ -1,10 +1,11 @@
+import typing
 """
 M5 — Offer Value Optimizer: Inference Script
 Runs after M2 classifies a shopper as price-sensitive.
 """
 
 
-def load_model(merchant_id: str):
+def load_model(merchant_id: str) -> typing.Any:
     """Loads trained M5 model for the given merchant."""
     pass
 

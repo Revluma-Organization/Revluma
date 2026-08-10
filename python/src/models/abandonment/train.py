@@ -23,8 +23,10 @@ try:
     from src.config.mlflow_config import get_or_create_experiment
 except ImportError:
     # Fallback if config is missing during isolated execution
-    def get_or_create_experiment():
+    def get_or_create_experiment() -> str:
+        """Fallback: sets local experiment when mlflow_config is unavailable."""
         mlflow.set_experiment("Revluma-MVP")
+        return "0"
 
 from src.features.pipeline import (
     calculate_scroll_depth,
@@ -49,7 +51,7 @@ FEATURE_COLUMNS = [
 ]
 
 
-def _generate_synthetic_data(n=5000):
+def _generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
     """
     Generates synthetic training data for the abandonment model.
     Mandatory Correlation Logic:
@@ -100,7 +102,7 @@ def _generate_synthetic_data(n=5000):
     return df
 
 
-def _load_real_session_rows(db_connection):
+def _load_real_session_rows(db_connection) -> pd.DataFrame:
     """
     Queries labelled checkout sessions from Postgres and computes the 5 M1
     features for each session using the exact pipeline.py functions (per
@@ -166,20 +168,7 @@ def _load_real_session_rows(db_connection):
             for row in event_rows
         ]
         events_by_session = group_events_by_session(raw_events)
-
-        records = []
-        for session_id in session_ids:
-            events = events_by_session.get(session_id, [])
-            records.append({
-                "scroll_depth_pct": calculate_scroll_depth(events),
-                "tab_switch_count": calculate_tab_switch_count(events),
-                "time_on_page_ms": calculate_time_on_page_ms(events),
-                "checkout_step_reached": calculate_checkout_step_reached(events),
-                "failed_payment_attempt": int(calculate_failed_payment_attempt(events)),
-                "abandoned": labels[session_id],
-            })
-
-        return pd.DataFrame.from_records(records)
+        return _compute_m1_feature_records(session_ids, labels, events_by_session)
 
     except Exception as e:
         raise RuntimeError(
@@ -187,7 +176,39 @@ def _load_real_session_rows(db_connection):
         ) from e
 
 
-def load_training_data(db_connection=None):
+def _compute_m1_feature_records(
+    session_ids: list,
+    labels: dict,
+    events_by_session: dict,
+) -> pd.DataFrame:
+    """Builds the M1 feature DataFrame from pre-fetched session events.
+
+    Extracted from _load_real_session_rows to keep that function under 80 lines.
+    Applies the five pipeline.py feature functions to each session's events.
+
+    Args:
+        session_ids (list): Ordered list of session UUID strings.
+        labels (dict): Mapping of session_id -> 0/1 abandonment label.
+        events_by_session (dict): Output of group_events_by_session().
+
+    Returns:
+        pd.DataFrame: Rows of FEATURE_COLUMNS + 'abandoned' for each session.
+    """
+    records = []
+    for session_id in session_ids:
+        events = events_by_session.get(session_id, [])
+        records.append({
+            "scroll_depth_pct": calculate_scroll_depth(events),
+            "tab_switch_count": calculate_tab_switch_count(events),
+            "time_on_page_ms": calculate_time_on_page_ms(events),
+            "checkout_step_reached": calculate_checkout_step_reached(events),
+            "failed_payment_attempt": int(calculate_failed_payment_attempt(events)),
+            "abandoned": labels[session_id],
+        })
+    return pd.DataFrame.from_records(records)
+
+
+def load_training_data(db_connection=None) -> tuple:
     """
     Loads labelled training data for the abandonment model.
 
@@ -236,7 +257,7 @@ def load_training_data(db_connection=None):
     return real_df, True, below_minimum
 
 
-def build_model():
+def build_model() -> LogisticRegression:
     """
     Defines the Logistic Regression model.
     """
@@ -249,9 +270,18 @@ def build_model():
     )
 
 
-def train(run_name: str = "m1-abandonment-training", db_connection=None):
-    """
-    Full training loop with MLflow experiment tracking.
+def train(run_name: str = "m1-abandonment-training", db_connection=None) -> dict:
+    """Full training loop with MLflow experiment tracking.
+
+    Args:
+        run_name (str): MLflow run name. Defaults to 'm1-abandonment-training'.
+        db_connection: Optional live Postgres connection. When None, synthetic
+                       data is used. When provided, real checkout sessions are
+                       queried and used exclusively.
+
+    Returns:
+        dict: Keys 'model', 'scaler', 'metrics', 'used_real_data',
+              'below_minimum_threshold'.
     """
     # Initialize MLflow experiment
     get_or_create_experiment()
@@ -301,46 +331,73 @@ def train(run_name: str = "m1-abandonment-training", db_connection=None):
         print(f"AUC-ROC:   {auc_roc:.4f}")
         print("---------------------\n")
 
-        # Logging to MLflow
-        mlflow.log_param("solver", model.solver)
-        mlflow.log_param("max_iter", model.max_iter)
-        mlflow.log_param("C", model.C)
-        mlflow.log_param("n_training_samples", len(X_train))
-        mlflow.log_param("feature_list", list(X.columns))
-        mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
-        mlflow.set_tag("below_minimum_threshold", str(below_minimum))
-        mlflow.log_param("min_real_labeled_sessions_threshold", MIN_REAL_LABELED_SESSIONS)
-
-        mlflow.log_metric("accuracy", accuracy)
-        mlflow.log_metric("precision", precision)
-        mlflow.log_metric("recall", recall)
-        mlflow.log_metric("f1", f1)
-        mlflow.log_metric("auc_roc", auc_roc)
-
-        # Artifacts
-        mlflow.sklearn.log_model(model, "model", registered_model_name="abandonment")
-
-        os.makedirs("artifacts", exist_ok=True)
-        scaler_path = "artifacts/scaler.pkl"
-        with open(scaler_path, "wb") as f:
-            pickle.dump(scaler, f)
-        mlflow.log_artifact(scaler_path, "preprocessing")
+        _log_training_metrics(model, scaler, X, X_train, accuracy, precision, recall, f1, auc_roc, used_real_data, below_minimum)
 
         print("MLflow tracking completed successfully.")
+        return _build_train_result(model, scaler, accuracy, precision, recall, f1, auc_roc, used_real_data, below_minimum)
 
-        return {
-            "model": model,
-            "scaler": scaler,
-            "metrics": {
-                "accuracy": accuracy,
-                "precision": precision,
-                "recall": recall,
-                "f1": f1,
-                "auc_roc": auc_roc
-            },
-            "used_real_data": used_real_data,
-            "below_minimum_threshold": below_minimum,
-        }
+
+def _build_train_result(
+    model: LogisticRegression,
+    scaler: StandardScaler,
+    accuracy: float,
+    precision: float,
+    recall: float,
+    f1: float,
+    auc_roc: float,
+    used_real_data: bool,
+    below_minimum: bool,
+) -> dict:
+    """Constructs the final dictionary returned by the train() pipeline."""
+    return {
+        "model": model,
+        "scaler": scaler,
+        "metrics": {
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "auc_roc": auc_roc,
+        },
+        "used_real_data": used_real_data,
+        "below_minimum_threshold": below_minimum,
+    }
+
+
+def _log_training_metrics(
+    model: LogisticRegression,
+    scaler: StandardScaler,
+    X: pd.DataFrame,
+    X_train: pd.DataFrame,
+    accuracy: float,
+    precision: float,
+    recall: float,
+    f1: float,
+    auc_roc: float,
+    used_real_data: bool,
+    below_minimum: bool,
+) -> None:
+    """Logs model parameters, metrics, and artifacts to the active MLflow run.
+    Extracted from train() to keep it under 80 lines."""
+    mlflow.log_param("solver", model.solver)
+    mlflow.log_param("max_iter", model.max_iter)
+    mlflow.log_param("C", model.C)
+    mlflow.log_param("n_training_samples", len(X_train))
+    mlflow.log_param("feature_list", list(X.columns))
+    mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
+    mlflow.set_tag("below_minimum_threshold", str(below_minimum))
+    mlflow.log_param("min_real_labeled_sessions_threshold", MIN_REAL_LABELED_SESSIONS)
+    mlflow.log_metric("accuracy", accuracy)
+    mlflow.log_metric("precision", precision)
+    mlflow.log_metric("recall", recall)
+    mlflow.log_metric("f1", f1)
+    mlflow.log_metric("auc_roc", auc_roc)
+    mlflow.sklearn.log_model(model, "model", registered_model_name="abandonment")
+    os.makedirs("artifacts", exist_ok=True)
+    scaler_path = "artifacts/scaler.pkl"
+    with open(scaler_path, "wb") as f:
+        pickle.dump(scaler, f)
+    mlflow.log_artifact(scaler_path, "preprocessing")
 
 
 if __name__ == "__main__":

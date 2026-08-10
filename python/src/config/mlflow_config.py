@@ -46,6 +46,7 @@ mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
 
 def get_tracking_info() -> dict:
+    """Returns MLflow tracking configuration details."""
     return {
         "tracking_uri"   : MLFLOW_TRACKING_URI,
         "is_remote"      : IS_REMOTE,
@@ -55,6 +56,7 @@ def get_tracking_info() -> dict:
 
 
 def get_or_create_experiment() -> str:
+    """Gets or creates the configured MLflow experiment."""
     if IS_REMOTE:
         print(f"MLflow -> Remote server : {MLFLOW_TRACKING_URI}")
     else:

@@ -1,9 +1,10 @@
+import typing
 """
 M2 — Price vs. Convenience Sensitivity Classifier: Inference Script
 """
 
 
-def load_model(merchant_id: str):
+def load_model(merchant_id: str) -> typing.Any:
     """
     Loads trained M2 model for the given merchant.
 

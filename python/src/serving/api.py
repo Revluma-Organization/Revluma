@@ -1,3 +1,4 @@
+import typing
 """
 Revluma ML Serving API
 ========================
@@ -97,7 +98,7 @@ ML_INTERNAL_KEY = os.environ.get("ML_INTERNAL_KEY", "")
 
 async def verify_internal_caller(
     x_internal_key: str = Header(None, convert_underscores=False),
-):
+) -> None:
     """Validate the shared secret between Node backend and this ML service.
     Fails with 401 if the key is missing, empty, or doesn't match.
     Uses constant-time comparison to prevent timing side-channels."""
@@ -119,7 +120,7 @@ _model_cache: dict = {}
 
 
 
-async def _run_inference(fn, *args):
+async def _run_inference(fn, *args) -> typing.Any:
     """
     Run a blocking scikit-learn call in the default thread pool executor.
     Prevents synchronous ML inference from blocking the asyncio event loop
@@ -134,7 +135,7 @@ MODEL_NAMES = ["abandonment", "sensitivity_pss", "sensitivity_css",
                "churn_risk", "send_time", "offer_value"]
 
 
-def _load_model(model_name: str):
+def _load_model(model_name: str) -> typing.Any:
     """
     Loads model from MLflow safely.
     Caches in memory. Returns None on ANY failure to prevent crashes.
@@ -150,7 +151,7 @@ def _load_model(model_name: str):
 
 
 @app.on_event("startup")
-async def _preload_models():
+async def _preload_models() -> None:
     """
     Per doc: attempt to load all five models into cache on startup.
     Log which loaded and which fell back. Never crash startup if a
@@ -327,7 +328,7 @@ def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict:
     return {
         "status": "ok",
         "service": "revluma-ml-serving",
@@ -340,7 +341,7 @@ async def health_check():
 
 @app.post("/predict/abandonment-probability", response_model=AbandonmentResponse,
           dependencies=[Depends(verify_internal_caller)])
-async def predict_abandonment(features: AbandonmentFeatures):
+async def predict_abandonment(features: AbandonmentFeatures) -> AbandonmentResponse:
     try:
         model = _load_model("abandonment")
         if not model:
@@ -373,7 +374,7 @@ async def predict_abandonment(features: AbandonmentFeatures):
 
 @app.post("/predict/shopper-sensitivity", response_model=SensitivityResponse,
           dependencies=[Depends(verify_internal_caller)])
-async def predict_sensitivity(features: SensitivityFeatures):
+async def predict_sensitivity(features: SensitivityFeatures) -> SensitivityResponse:
     try:
         pss_model = _load_model("sensitivity_pss")
         css_model = _load_model("sensitivity_css")
@@ -424,7 +425,7 @@ async def predict_sensitivity(features: SensitivityFeatures):
 
 @app.post("/predict/churn-risk", response_model=ChurnRiskResponse,
           dependencies=[Depends(verify_internal_caller)])
-async def predict_churn(features: ChurnFeatures):
+async def predict_churn(features: ChurnFeatures) -> ChurnRiskResponse:
     days = features.days_since_last_purchase
     ltv = features.customer_ltv if features.customer_ltv > 0 else (
         features.past_orders_total * features.avg_order_value
@@ -433,31 +434,7 @@ async def predict_churn(features: ChurnFeatures):
     try:
         model = _load_model("churn_risk")
         if not model:
-            # Algorithmic fallback per doc's exact day-based tier rules
-            if days == -1:
-                tier = "AT_RISK"
-                churn_probability = 0.5
-            elif days <= 30:
-                tier, churn_probability = "HEALTHY", 0.15
-            elif days <= 60:
-                tier, churn_probability = "AT_RISK", 0.45
-            elif days <= 90:
-                tier, churn_probability = "HIGH_RISK", 0.70
-            else:
-                tier, churn_probability = "CRITICAL", 0.90
-
-            urgency = TIER_TO_URGENCY[tier]
-            return ChurnRiskResponse(
-                churn_probability=churn_probability,
-                churn_tier=tier,
-                win_back_urgency=urgency,
-                engagement_decay_score=churn_probability * 100,
-                recommended_channel=TIER_TO_CHANNEL[tier],
-                offer_required=tier in ("HIGH_RISK", "CRITICAL"),
-                escalate_to_human=(ltv > 500 and tier == "CRITICAL"),
-                model_version="fallback",
-                fallback=True
-            )
+            return _get_churn_fallback(days, ltv)
 
         feature_cols = [
             'past_orders_total', 'days_since_last_purchase', 'avg_order_value',
@@ -510,9 +487,37 @@ async def predict_churn(features: ChurnFeatures):
         )
 
 
+def _get_churn_fallback(days: int, ltv: float) -> ChurnRiskResponse:
+    """Algorithmic fallback per doc's exact day-based tier rules."""
+    if days == -1:
+        tier = "AT_RISK"
+        churn_probability = 0.5
+    elif days <= 30:
+        tier, churn_probability = "HEALTHY", 0.15
+    elif days <= 60:
+        tier, churn_probability = "AT_RISK", 0.45
+    elif days <= 90:
+        tier, churn_probability = "HIGH_RISK", 0.70
+    else:
+        tier, churn_probability = "CRITICAL", 0.90
+
+    urgency = TIER_TO_URGENCY[tier]
+    return ChurnRiskResponse(
+        churn_probability=churn_probability,
+        churn_tier=tier,
+        win_back_urgency=urgency,
+        engagement_decay_score=churn_probability * 100,
+        recommended_channel=TIER_TO_CHANNEL[tier],
+        offer_required=tier in ("HIGH_RISK", "CRITICAL"),
+        escalate_to_human=(ltv > 500 and tier == "CRITICAL"),
+        model_version="fallback",
+        fallback=True
+    )
+
+
 @app.post("/predict/send-time", response_model=SendTimeResponse,
           dependencies=[Depends(verify_internal_caller)])
-async def predict_send_time(features: SendTimeFeatures):
+async def predict_send_time(features: SendTimeFeatures) -> SendTimeResponse:
     try:
         model = _load_model("send_time")
         if not model:
@@ -575,7 +580,7 @@ async def predict_send_time(features: SendTimeFeatures):
 
 @app.post("/predict/offer-value", response_model=OfferValueResponse,
           dependencies=[Depends(verify_internal_caller)])
-async def predict_offer_value(features: OfferValueFeatures):
+async def predict_offer_value(features: OfferValueFeatures) -> OfferValueResponse:
     try:
         # Hard gates evaluated BEFORE touching the model, per doc - two
         # separate rules, not one:

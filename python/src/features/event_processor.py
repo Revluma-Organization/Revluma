@@ -18,10 +18,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-def _safe_parse_timestamp(ts):
+def _safe_parse_timestamp(ts: str) -> datetime | None:
     """
     Attempts to parse an ISO 8601 timestamp string into a datetime object.
     Returns None on any failure — never raises.
+
+    Args:
+        ts (str): Raw timestamp string from the pixel event.
+
+    Returns:
+        datetime | None: Parsed datetime (UTC-aware if 'Z' suffix present),
+                         or None if the string is absent, malformed, or not a string.
     """
     if not ts or not isinstance(ts, str):
         return None
@@ -134,7 +141,68 @@ def filter_events_by_type(events: list, event_type: str) -> list:
             result.append(e)
     return result
 
-    # pass
+
+def _sort_events_by_timestamp(events: list) -> list:
+    """Sorts a list of event dicts by their 'timestamp' field ascending.
+
+    Events with missing or unparseable timestamps are placed last.
+    Used internally by extract_session_timeline and group_events_by_session.
+
+    Args:
+        events (list): List of event dicts, each expected to have a 'timestamp' key.
+
+    Returns:
+        list: New list sorted ascending by timestamp; unparseable entries last.
+    """
+    def _sort_key(e: dict) -> tuple:
+        parsed = _safe_parse_timestamp(e.get("timestamp"))
+        return (parsed is None, parsed or datetime.min)
+
+    return sorted(events, key=_sort_key)
+
+
+def _extract_timeline_fields(sorted_events: list) -> dict:
+    """Extracts key timeline fields from a pre-sorted list of session events.
+
+    Pulled out of extract_session_timeline to keep each function under 80 lines.
+    Assumes all entries in sorted_events are valid dicts.
+
+    Args:
+        sorted_events (list): Events already sorted ascending by timestamp.
+
+    Returns:
+        dict: Timeline fields — session_start, session_end, checkout_steps,
+              tab_hidden_events, exit_intent_at, payment_failed_at.
+    """
+    timestamped = [
+        e for e in sorted_events
+        if _safe_parse_timestamp(e.get("timestamp")) is not None
+    ]
+    session_start = timestamped[0]["timestamp"] if timestamped else None
+    session_end   = timestamped[-1]["timestamp"] if timestamped else None
+
+    checkout_steps = [
+        e for e in sorted_events if e.get("event_type") == "checkout_step"
+    ]
+    tab_hidden_events = [
+        e for e in sorted_events
+        if e.get("event_type") == "tab_switch"
+        and e.get("payload", {}).get("direction") == "blur"
+    ]
+    exit_intent_events = [
+        e for e in sorted_events if e.get("event_type") == "exit_intent"
+    ]
+    failed_payment_events = [
+        e for e in sorted_events if e.get("event_type") == "failed_payment"
+    ]
+    return {
+        "session_start":      session_start,
+        "session_end":        session_end,
+        "checkout_steps":     checkout_steps,
+        "tab_hidden_events":  tab_hidden_events,
+        "exit_intent_at":     exit_intent_events[0]["timestamp"] if exit_intent_events else None,
+        "payment_failed_at":  failed_payment_events[0]["timestamp"] if failed_payment_events else None,
+    }
 
 
 def extract_session_timeline(events: list) -> dict:
@@ -149,31 +217,12 @@ def extract_session_timeline(events: list) -> dict:
         - failed_payment_attempt (Feature 14) — needs payment_failed event timing
 
     Args:
-        events (list): Full list of parsed events for a session,
-                       expected to be pre-sorted by timestamp ascending.
+        events (list): Full list of parsed events for a session.
 
     Returns:
-        dict: Structured timeline, e.g.:
-        {
-            "session_start"         : "ISO8601 timestamp",
-            "session_end"           : "ISO8601 timestamp",
-            "checkout_steps"        : [
-                { "step": 1, "started_at": "...", "completed_at": "..." },
-                { "step": 2, "started_at": "...", "completed_at": "..." }
-            ],
-            "tab_hidden_events"     : ["ISO8601", ...],
-            "price_field_interactions": [
-                { "field_name": "total", "focus_at": "...", "blur_at": "..." }
-            ],
-            "exit_intent_at"        : "ISO8601 timestamp | None",
-            "payment_failed_at"     : "ISO8601 timestamp | None"
-        }
-
-    Engineering note:
-        Tab visibility events should be debounced — ignore duplicate hidden
-        transitions within 1 second of each other (per pixel spec).
-        time_on_checkout_step_sec for MVP includes hidden (tab-away) time.
-        Future refinement: subtract hidden duration for true active time.
+        dict: Structured timeline with session_start, session_end,
+              checkout_steps, tab_hidden_events, exit_intent_at,
+              and payment_failed_at.
     """
     empty_result = {
         "session_start": None,
@@ -181,9 +230,8 @@ def extract_session_timeline(events: list) -> dict:
         "checkout_steps": [],
         "tab_hidden_events": [],
         "exit_intent_at": None,
-        "payment_failed_at": None
+        "payment_failed_at": None,
     }
-
     if not isinstance(events, list) or len(events) == 0:
         return empty_result
 
@@ -191,38 +239,8 @@ def extract_session_timeline(events: list) -> dict:
     if not valid_events:
         return empty_result
 
-    def _sort_key(e):
-        parsed = _safe_parse_timestamp(e.get("timestamp"))
-        return (parsed is None, parsed or datetime.min)
-
-    sorted_events = sorted(valid_events, key=_sort_key)
-
-    timestamped = [e for e in sorted_events if _safe_parse_timestamp(e.get("timestamp")) is not None]
-    session_start = timestamped[0]["timestamp"] if timestamped else None
-    session_end = timestamped[-1]["timestamp"] if timestamped else None
-
-    checkout_steps = [e for e in sorted_events if e.get("event_type") == "checkout_step"]
-
-    tab_hidden_events = [
-        e for e in sorted_events
-        if e.get("event_type") == "tab_switch" and e.get("payload", {}).get("direction") == "blur"
-    ]
-
-    exit_intent_events = [e for e in sorted_events if e.get("event_type") == "exit_intent"]
-    exit_intent_at = exit_intent_events[0]["timestamp"] if exit_intent_events else None
-
-    failed_payment_events = [e for e in sorted_events if e.get("event_type") == "failed_payment"]
-    payment_failed_at = failed_payment_events[0]["timestamp"] if failed_payment_events else None
-
-    return {
-        "session_start": session_start,
-        "session_end": session_end,
-        "checkout_steps": checkout_steps,
-        "tab_hidden_events": tab_hidden_events,
-        "exit_intent_at": exit_intent_at,
-        "payment_failed_at": payment_failed_at
-    }
-    # pass
+    sorted_events = _sort_events_by_timestamp(valid_events)
+    return _extract_timeline_fields(sorted_events)
 
 
 def detect_platform(merchant_id: str, db) -> str:
@@ -380,12 +398,7 @@ def group_events_by_session(events: list) -> dict:
         session_id = e.get("session_id") or "__no_session__"
         grouped.setdefault(session_id, []).append(e)
 
-    def _sort_key(e):
-        parsed = _safe_parse_timestamp(e.get("timestamp"))
-        return (parsed is None, parsed or datetime.min)
-
     for session_id in grouped:
-        grouped[session_id] = sorted(grouped[session_id], key=_sort_key)
+        grouped[session_id] = _sort_events_by_timestamp(grouped[session_id])
 
     return grouped
-    # pass

@@ -1,3 +1,4 @@
+import typing
 """
 M1 — Abandonment Probability Predictor: Inference Script
 =========================================================
@@ -7,7 +8,7 @@ intervention via the Recovery Queue → Channel Dispatcher.
 """
 
 
-def load_model(merchant_id: str):
+def load_model(merchant_id: str) -> typing.Any:
     """
     Loads the trained M1 model for a specific merchant from MLflow
     model registry or local artifact store.

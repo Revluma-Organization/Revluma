@@ -39,7 +39,7 @@ FEATURE_COLUMNS = [
 ]
 
 
-def _generate_synthetic_data(n=4000):
+def _generate_synthetic_data(n: int = 4000) -> pd.DataFrame:
     """
     Generates synthetic historical customer records with known churn outcomes.
     Returns:
@@ -117,7 +117,7 @@ def _risk_score_to_tier(risk_score: float) -> str:
     return "CRITICAL"
 
 
-def _load_real_customer_rows(db_connection):
+def _load_real_customer_rows(db_connection) -> pd.DataFrame:
     """
     Queries every customer with at least MIN_HISTORY_DAYS of order history
     and computes the 7 real M4 features using the exact pipeline.py
@@ -165,41 +165,7 @@ def _load_real_customer_rows(db_connection):
         if not customer_ids:
             return pd.DataFrame(columns=FEATURE_COLUMNS + ["churn_tier"])
 
-        records = []
-        for customer_id in customer_ids:
-            rfm = calculate_rfm_scores(customer_id, db_connection)
-            trend = calculate_purchase_frequency_trend(customer_id, db_connection)
-
-            days = rfm["days_since_last_purchase"]
-            orders = rfm["past_orders_total"]
-            aov = rfm["avg_order_value"]
-
-            if days == -1:
-                risk_score = 0.5
-            else:
-                risk_score = min(days / 180.0, 1.0)
-                if trend == -1:
-                    risk_score += 0.3
-                elif trend == 1:
-                    risk_score -= 0.3
-                if rfm["rfm_recency_score"] <= 2:
-                    risk_score += 0.2
-                if rfm["rfm_frequency_score"] >= 4:
-                    risk_score -= 0.2
-            risk_score = float(np.clip(risk_score, 0.0, 1.0))
-
-            records.append({
-                "past_orders_total": orders,
-                "days_since_last_purchase": days,
-                "avg_order_value": aov,
-                "purchase_frequency_trend": trend,
-                "rfm_recency_score": rfm["rfm_recency_score"],
-                "rfm_frequency_score": rfm["rfm_frequency_score"],
-                "rfm_monetary_score": rfm["rfm_monetary_score"],
-                "churn_tier": _risk_score_to_tier(risk_score),
-            })
-
-        return pd.DataFrame.from_records(records)
+        return _compute_churn_records(customer_ids, db_connection)
 
     except Exception as e:
         raise RuntimeError(
@@ -207,7 +173,55 @@ def _load_real_customer_rows(db_connection):
         ) from e
 
 
-def load_training_data(n=4000, db_connection=None):
+def _compute_churn_records(customer_ids: list, db_connection) -> pd.DataFrame:
+    """Builds M4 feature rows for each customer using pipeline.py functions.
+
+    Extracted from _load_real_customer_rows to keep it under 80 lines.
+    Computes 7 feature columns + churn_tier label for each customer.
+
+    Args:
+        customer_ids (list): Ordered list of customer UUID strings.
+        db_connection: Active Postgres connection.
+
+    Returns:
+        pd.DataFrame: Rows of FEATURE_COLUMNS + 'churn_tier'.
+    """
+    records = []
+    for customer_id in customer_ids:
+        rfm = calculate_rfm_scores(customer_id, db_connection)
+        trend = calculate_purchase_frequency_trend(customer_id, db_connection)
+        days = rfm["days_since_last_purchase"]
+        orders = rfm["past_orders_total"]
+        aov = rfm["avg_order_value"]
+
+        if days == -1:
+            risk_score = 0.5
+        else:
+            risk_score = min(days / 180.0, 1.0)
+            if trend == -1:
+                risk_score += 0.3
+            elif trend == 1:
+                risk_score -= 0.3
+            if rfm["rfm_recency_score"] <= 2:
+                risk_score += 0.2
+            if rfm["rfm_frequency_score"] >= 4:
+                risk_score -= 0.2
+        risk_score = float(np.clip(risk_score, 0.0, 1.0))
+
+        records.append({
+            "past_orders_total": orders,
+            "days_since_last_purchase": days,
+            "avg_order_value": aov,
+            "purchase_frequency_trend": trend,
+            "rfm_recency_score": rfm["rfm_recency_score"],
+            "rfm_frequency_score": rfm["rfm_frequency_score"],
+            "rfm_monetary_score": rfm["rfm_monetary_score"],
+            "churn_tier": _risk_score_to_tier(risk_score),
+        })
+    return pd.DataFrame.from_records(records)
+
+
+def load_training_data(n: int = 4000, db_connection=None) -> tuple:
     """
     Phase 3 entry point (per task doc P3.1 — the function whose
     db_connection parameter "was reserved for this exact purpose").
@@ -275,7 +289,7 @@ def load_training_data(n=4000, db_connection=None):
     return X_train, X_test, y_train, y_test, True, below_minimum
 
 
-def build_model():
+def build_model() -> GradientBoostingClassifier:
     """
     Gradient Boosting classifier with StandardScaler pipeline.
     """
@@ -292,7 +306,7 @@ def build_model():
     )
 
 
-def train(run_name: str = "m4-churn-training", db_connection=None):
+def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
 

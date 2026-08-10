@@ -1,10 +1,11 @@
+import typing
 """
 M3 — Optimal Send-Time Predictor: Inference Script
 Runs at message send time, per customer, per recovery event.
 """
 
 
-def load_model(merchant_id: str):
+def load_model(merchant_id: str) -> typing.Any:
     """Loads trained M3 model for the given merchant."""
     pass
 

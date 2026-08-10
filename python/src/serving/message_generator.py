@@ -279,6 +279,7 @@ literal string "{{{{RECOVERY_URL}}}}" — never a real URL."""
 # ---------------------------------------------------------------------------
 
 def _fallback(subject: str, body: str, cta_text: str) -> dict:
+    """Returns a safe fallback message dict with standard placeholders."""
     return {
         "subject": subject,
         "body": body,
@@ -575,6 +576,7 @@ def _cache_key(ctx: MessageContext) -> str:
 
 
 def _cache_get(key: str) -> Optional[dict]:
+    """Gets a message payload from the memory cache if it exists and is fresh."""
     entry = _message_cache.get(key)
     if entry is None:
         return None
@@ -586,6 +588,7 @@ def _cache_get(key: str) -> Optional[dict]:
 
 
 def _cache_set(key: str, payload: dict) -> None:
+    """Stores a message payload in the memory cache with the current timestamp."""
     _message_cache[key] = (time.time(), payload)
 
 
@@ -594,7 +597,8 @@ def _cache_set(key: str, payload: dict) -> None:
 # ---------------------------------------------------------------------------
 
 class LLMCallResult:
-    def __init__(self, text: str, tokens_input: int, tokens_output: int):
+    def __init__(self, text: str, tokens_input: int, tokens_output: int) -> None:
+        """Initializes a new LLMCallResult."""
         self.text = text
         self.tokens_input = tokens_input
         self.tokens_output = tokens_output
