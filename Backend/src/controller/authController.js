@@ -137,6 +137,21 @@ function normalizeTotpCode(code) {
   return code.replace(/\s+/g, '').trim();
 }
 
+function verifyTotpCode(secret, code) {
+  const normalizedCode = normalizeTotpCode(code);
+  if (!/^\d{6}$/.test(normalizedCode)) {
+    return false;
+  }
+
+  return speakeasy.totp.verify({
+    secret,
+    encoding: 'base32',
+    token: normalizedCode,
+    window: 2,
+    digits: 6,
+  });
+}
+
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
 
 exports.register = async (req, res, next) => {
@@ -911,6 +926,7 @@ exports.getProfile = async (req, res) => {
 
 //SetupTwoFactor
 exports.normalizeTotpCode = normalizeTotpCode;
+exports.verifyTotpCode = verifyTotpCode;
 
 exports.setupTwoFactor = async (req, res, next) => {
   try {
@@ -993,13 +1009,7 @@ exports.verifyTwoFactor = async (req, res, next) => {
       });
     }
 
-    const verified = speakeasy.totp.verify({
-      secret: user.two_factor_secret,
-      encoding: 'base32',
-      token: normalizedCode,
-      window: 2,
-      digits: 6,
-    });
+    const verified = verifyTotpCode(user.two_factor_secret, normalizedCode);
 
     if (!verified) {
       logger.warn('2fa_verify_failed', { userId, ip: getClientIp(req) });
