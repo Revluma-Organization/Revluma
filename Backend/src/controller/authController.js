@@ -152,6 +152,31 @@ function verifyTotpCode(secret, code) {
   });
 }
 
+/**
+ * Find which time-step (if any) matched the provided TOTP `token`.
+ * Returns the matched step (integer) or null if no match within `window`.
+ */
+function findMatchedTotpStep(secret, token, window = 2) {
+  const normalizedToken = normalizeTotpCode(token);
+  if (!/^\d{6}$/.test(normalizedToken)) return null;
+
+  const currentStep = Math.floor(Date.now() / 1000 / 30);
+
+  for (let delta = -window; delta <= window; delta++) {
+    const time = (currentStep + delta) * 30; // seconds
+    const generated = speakeasy.totp({
+      secret,
+      encoding: 'base32',
+      digits: 6,
+      time,
+    });
+    if (generated === normalizedToken) {
+      return currentStep + delta;
+    }
+  }
+  return null;
+}
+
 // ─── REGISTER ─────────────────────────────────────────────────────────────────
 
 exports.register = async (req, res, next) => {
@@ -951,12 +976,14 @@ exports.setupTwoFactor = async (req, res, next) => {
     });
 
 
+    // Store the generated secret in a temporary column until the user verifies it.
+    // This prevents setup-spam from overwriting an already-verified secret.
     await prisma.users.update({
       where: {
         id: userId,
       },
       data: {
-        two_factor_secret: secret.base32,
+        two_factor_temp_secret: secret.base32,
       },
     });
 
@@ -991,9 +1018,20 @@ exports.verifyTwoFactor = async (req, res, next) => {
         id: userId,
       },
     });
+    logger.info("2fa_user_check", {
+  userId,
+  userExists: !!user,
+  tempSecretExists: !!user?.two_factor_temp_secret,
+  tempSecretLength: user?.two_factor_temp_secret?.length,
+  secretExists: !!user?.two_factor_secret,
+  secretLength: user?.two_factor_secret?.length,
+});
 
 
-    if (!user || !user.two_factor_secret) {
+    // Prefer the temp secret created during setup; fall back to the permanent
+    // secret for other verification flows. If neither exists, return error.
+    const secretToVerify = user?.two_factor_temp_secret || user?.two_factor_secret;
+    if (!user || !secretToVerify) {
       logger.warn('2fa_verify_no_secret', { userId, ip: getClientIp(req) });
       return res.status(400).json({
         success: false,
@@ -1009,9 +1047,9 @@ exports.verifyTwoFactor = async (req, res, next) => {
       });
     }
 
-    const verified = verifyTotpCode(user.two_factor_secret, normalizedCode);
-
-    if (!verified) {
+    // Determine which time-step matched so we can prevent replay attacks.
+    const matchedStep = findMatchedTotpStep(secretToVerify, normalizedCode, 2);
+    if (matchedStep === null) {
       logger.warn('2fa_verify_failed', { userId, ip: getClientIp(req) });
       return res.status(400).json({
         success: false,
@@ -1019,13 +1057,23 @@ exports.verifyTwoFactor = async (req, res, next) => {
       });
     }
 
+    // Prevent token reuse: require matchedStep to be greater than last recorded step.
+    if (user.two_factor_last_used_step && matchedStep <= user.two_factor_last_used_step) {
+      logger.warn('2fa_verify_replay_detected', { userId, ip: getClientIp(req) });
+      return res.status(400).json({ success: false, error: 'Verification code already used' });
+    }
 
+    // Persist the verified secret as the permanent secret if it was a temp setup,
+    // clear the temp field, enable 2FA, and record the last-used step.
     await prisma.users.update({
       where: {
         id: userId,
       },
       data: {
         two_factor_enabled: true,
+        two_factor_secret: user.two_factor_temp_secret || user.two_factor_secret,
+        two_factor_temp_secret: null,
+        two_factor_last_used_step: matchedStep,
       },
     });
 
@@ -1054,6 +1102,8 @@ exports.disableTwoFactor = async (req, res, next) => {
       data: {
         two_factor_enabled: false,
         two_factor_secret: null,
+        two_factor_temp_secret: null,
+        two_factor_last_used_step: null,
       },
     });
 
