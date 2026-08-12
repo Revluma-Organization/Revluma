@@ -93,3 +93,97 @@ exports.updateBranding = async(req,res,next)=>{
   }
 };
 
+const PREFERENCE_KEYS = [
+  "security-alerts",
+  "api-expiration",
+  "new-team-members",
+  "role-permission-updates",
+  "invoice-receipts",
+  "usage-limits",
+  "weekly-reports",
+  "cart-recovery-digest",
+];
+
+const validatePreferenceGroup = (group) => {
+  if (!group || typeof group !== "object" || Array.isArray(group)) {
+    return false;
+  }
+
+  return PREFERENCE_KEYS.every(
+    (key) => typeof group[key] === "boolean"
+  );
+};
+
+//UpdateNotificationPreferences
+exports.updateNotificationPreferences = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+
+    const { emailPreferences, inAppPreferences } = req.body;
+
+    if (
+      !validatePreferenceGroup(emailPreferences) ||
+      !validatePreferenceGroup(inAppPreferences)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid notification preferences.",
+      });
+    }
+
+    const notificationPreferences = {
+      emailPreferences,
+      inAppPreferences,
+    };
+
+    const user = await prisma.users.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        notification_preferences: notificationPreferences,
+        updated_at: new Date(),
+      },
+      select: {
+        notification_preferences: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Notification preferences updated successfully.",
+      data: user.notification_preferences,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+//getNotificationPreferences
+exports.getNotificationPreferences = async (req, res, next) => {
+  try {
+    const user = await prisma.users.findUnique({
+      where: {
+        id: req.user.id,
+      },
+      select: {
+        notification_preferences: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found.",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: user.notification_preferences,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

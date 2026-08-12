@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const logger = require('../utils/logger');
 
 const ALLOWED_ALGORITHMS = ['HS256'];
 const JWT_ISSUER = 'revluma-api';
@@ -31,6 +32,14 @@ const authenticateToken = (req, res, next) => {
     }
 
     if (!token) {
+      logger.warn('auth_missing_token', {
+        method: req.method,
+        path: req.originalUrl,
+        authHeader: Boolean(authHeader),
+        altHeader: Boolean(alternateHeader),
+        queryToken: Boolean(req.query?.token),
+        cookieAccessToken: Boolean(req.cookies?.access_token),
+      });
       return res.status(401).json({
         success: false,
         error: 'Authentication required',
@@ -38,11 +47,25 @@ const authenticateToken = (req, res, next) => {
     }
 
     // Strict verification — enforce algorithm, issuer, audience
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
-      algorithms: ALLOWED_ALGORITHMS,
-      issuer: JWT_ISSUER,
-      audience: JWT_AUDIENCE,
-    });
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET, {
+        algorithms: ALLOWED_ALGORITHMS,
+        issuer: JWT_ISSUER,
+        audience: JWT_AUDIENCE,
+      });
+    } catch (err) {
+      logger.warn('auth_invalid_token', {
+        method: req.method,
+        path: req.originalUrl,
+        tokenSource: authHeader ? 'authorization' : alternateHeader ? 'alternate' : req.query?.token ? 'query' : 'cookie',
+        error: err.message,
+      });
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid or expired token',
+      });
+    }
 
     // Enforce token type — only access tokens are valid here
     if (decoded.type !== 'access') {
