@@ -33,6 +33,7 @@ router.post('/logout-all', authenticateToken, authController.logoutAll);
 router.post('/change-password', authenticateToken, validateChangePassword, passwordResetLimiter, authController.changePassword);
 router.get('/me', authenticateToken, authController.getProfile);
 router.get('/getProfile', authenticateToken, authController.getProfile); // legacy alias
+router.patch("/profile", authenticateToken, authController.updateProfile);
 
 // Two-Factor Authentication
 router.post('/2fa/setup', authenticateToken, authController.setupTwoFactor);

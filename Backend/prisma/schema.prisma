@@ -112,6 +112,8 @@ model users {
   full_name               String
   email                   String                 @unique
   password_hash           String
+  profile_picture_url     String?
+  notification_preferences Json?                @db.JsonB
   two_factor_enabled      Boolean                @default(false)
   two_factor_secret       String?
   two_factor_temp_secret  String?

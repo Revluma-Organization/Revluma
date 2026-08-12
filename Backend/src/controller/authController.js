@@ -949,6 +949,75 @@ exports.getProfile = async (req, res) => {
   }
 };
 
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const { firstName, lastName } = req.body;
+
+    if (
+      typeof firstName !== "string" ||
+      typeof lastName !== "string"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "First name and last name must be strings.",
+      });
+    }
+
+    const trimmedFirstName = firstName.trim();
+    const trimmedLastName = lastName.trim();
+
+    if (!trimmedFirstName || !trimmedLastName) {
+      return res.status(400).json({
+        success: false,
+        error: "First name and last name are required.",
+      });
+    }
+
+    if (
+      trimmedFirstName.length > 100 ||
+      trimmedLastName.length > 100
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "Name is too long.",
+      });
+    }
+
+    const fullName = `${trimmedFirstName} ${trimmedLastName}`;
+
+    const user = await prisma.users.update({
+      where: { id: userId },
+      data: {
+        full_name: fullName,
+        updated_at: new Date(),
+      },
+      select: {
+        id: true,
+        full_name: true,
+        email: true,
+        email_verified: true,
+        profile_picture_url: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully.",
+      data: user,
+    });
+  } catch (error) {
+    console.error("updateProfile error:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: "Failed to update profile.",
+    });
+  }
+};
+
 //SetupTwoFactor
 exports.normalizeTotpCode = normalizeTotpCode;
 exports.verifyTotpCode = verifyTotpCode;
