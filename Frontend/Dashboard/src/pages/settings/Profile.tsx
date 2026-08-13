@@ -87,9 +87,24 @@ const Profile: FC = () => {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setFirstName(initialFirstName);
-    setLastName(initialLastName);
+    useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const res = await api.get("/api/v1/profile");
+        if (res.data) {
+          if (res.data.firstName) setFirstName(res.data.firstName);
+          if (res.data.lastName) setLastName(res.data.lastName);
+          if (res.data.profile_picture_url) setAvatarPreview(res.data.profile_picture_url);
+        }
+      } catch (err) {
+        console.error("Failed to fetch profile data:", err);
+        // Fallback to auth store if fetch fails
+        setFirstName(initialFirstName);
+        setLastName(initialLastName);
+      }
+    };
+
+    fetchProfile();
   }, [initialFirstName, initialLastName]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,9 +115,13 @@ const Profile: FC = () => {
     }
   };
 
-  const handleSaveNames = () => {
-    // Save logic would go here
-    setIsEditingNames(false);
+    const handleSaveNames = async () => {
+    try {
+      await api.patch("/api/v1/profile", { firstName, lastName });
+      setIsEditingNames(false);
+    } catch (err) {
+      console.error("Failed to update profile names:", err);
+    }
   };
 
   return (
