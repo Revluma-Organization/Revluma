@@ -1,5 +1,6 @@
-import { FC, useState, type FormEvent } from "react";
+import { FC, useState, useEffect, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { api } from "@/lib/api";
 import {
   Bell,
   Mail,
@@ -173,6 +174,22 @@ export const Notifications: FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [savedSuccessfully, setSavedSuccessfully] = useState<boolean>(false);
 
+    useEffect(() => {
+    const fetchPreferences = async () => {
+      try {
+        const res = await api.get("/api/v1/settings/notifications");
+        if (res.data) {
+          if (res.data.emailPreferences) setEmailPreferences(res.data.emailPreferences);
+          if (res.data.inAppPreferences) setInAppPreferences(res.data.inAppPreferences);
+        }
+      } catch (err) {
+        console.error("Failed to fetch notification preferences:", err);
+      }
+    };
+
+    fetchPreferences();
+  }, []);
+  
   const toggleEmail = (id: string) => {
     setEmailPreferences((prev) => ({ ...prev, [id]: !prev[id] }));
     setSavedSuccessfully(false);
@@ -205,15 +222,22 @@ export const Notifications: FC = () => {
     setSavedSuccessfully(false);
   };
 
-  const handleSubmit = (e: FormEvent) => {
+    const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setSavedSuccessfully(false);
 
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await api.put("/api/v1/settings/notifications", {
+        emailPreferences,
+        inAppPreferences
+      });
       setSavedSuccessfully(true);
-    }, 1000);
+    } catch (err) {
+      console.error("Failed to save notification preferences:", err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Group items by categoryGroup for clean visual organization
