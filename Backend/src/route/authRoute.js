@@ -12,6 +12,7 @@ const {
 const { validateRegister, validateLogin, validateForgotPassword, validateVerifyForgotPasswordOtp, validateResetPassword, validateChangePassword } = require('../middlewares/validateAuth');
 const { authenticateToken } = require('../middlewares/authMiddleware');
 const { optionalAuthenticate } = require('../middlewares/optionalAuth');
+const uploadProfilePicture = require("../middlewares/uploadProfilePicture");
 
 // Public routes
 router.post('/register', validateRegister, registerLimiter, authController.register);
@@ -34,6 +35,7 @@ router.post('/change-password', authenticateToken, validateChangePassword, passw
 router.get('/me', authenticateToken, authController.getProfile);
 router.get('/getProfile', authenticateToken, authController.getProfile); // legacy alias
 router.patch("/profile", authenticateToken, authController.updateProfile);
+router.put("/profile/picture",authenticateToken,uploadProfilePicture.single("image"),authController.updateProfilePicture);
 
 // Two-Factor Authentication
 router.post('/2fa/setup', authenticateToken, authController.setupTwoFactor);

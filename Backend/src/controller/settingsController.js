@@ -55,19 +55,13 @@ exports.updateBranding = async(req,res,next)=>{
     const organizationId = req.user.tenantId;
     const { primaryColor,accentColor} = req.body;
 
-    const organization = await prisma.organizations.upsert({
+    const organization = await prisma.organizations.update({
 
       where:{
         id: organizationId
       },
 
-      update:{
-        primary_color: primaryColor,
-        accent_color: accentColor
-      },
-
-      create:{
-        id: organizationId,
+      data:{
         primary_color: primaryColor,
         accent_color: accentColor
       },

@@ -31,6 +31,7 @@ const QRCode = require('qrcode');
 
 const dbConfig = require('../configs/database');
 const prisma = dbConfig.prisma;
+const cloudinary = require("../configs/cloudinary");
 
 const logger = require('../utils/logger');
 const { buildCookieOptions } = require('../utils/cookieOptions');
@@ -949,7 +950,87 @@ exports.getProfile = async (req, res) => {
   }
 };
 
+//UPdate Profile Picture
+exports.updateProfilePicture = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
 
+    // Make sure an image was uploaded
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: "Profile picture is required.",
+      });
+    }
+
+    // Confirm the authenticated user exists
+    const user = await prisma.users.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        id: true,
+        profile_picture_url: true,
+      },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found.",
+      });
+    }
+
+    // Upload image to Cloudinary
+    const uploadResult = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: "revluma/profile-pictures",
+          resource_type: "image",
+          public_id: `user_${userId}`,
+          overwrite: true,
+          invalidate: true,
+        },
+        (error, result) => {
+          if (error) {
+            return reject(error);
+          }
+
+          resolve(result);
+        }
+      );
+
+      uploadStream.end(req.file.buffer);
+    });
+
+    // Save Cloudinary URL in database
+    const updatedUser = await prisma.users.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        profile_picture_url: uploadResult.secure_url,
+        updated_at: new Date(),
+      },
+      select: {
+        id: true,
+        full_name: true,
+        email: true,
+        profile_picture_url: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile picture updated successfully.",
+      data: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+//Update Profile (First Name, Last Name)
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
