@@ -90,7 +90,7 @@ const Profile: FC = () => {
     useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const res = await api.get("/api/v1/profile");
+        const res = await api.get("/auth/getProfile");
         if (res.data) {
           if (res.data.firstName) setFirstName(res.data.firstName);
           if (res.data.lastName) setLastName(res.data.lastName);
@@ -117,7 +117,7 @@ const Profile: FC = () => {
 
     const handleSaveNames = async () => {
     try {
-      await api.patch("/api/v1/profile", { firstName, lastName });
+      await api.patch("/auth/profile", { firstName, lastName });
       setIsEditingNames(false);
     } catch (err) {
       console.error("Failed to update profile names:", err);
