@@ -177,7 +177,7 @@ export const Notifications: FC = () => {
     useEffect(() => {
     const fetchPreferences = async () => {
       try {
-        const res = await api.get("/api/v1/settings/notifications");
+        const res = await api.get("/settings/notifications");
         if (res.data) {
           if (res.data.emailPreferences) setEmailPreferences(res.data.emailPreferences);
           if (res.data.inAppPreferences) setInAppPreferences(res.data.inAppPreferences);
@@ -228,7 +228,7 @@ export const Notifications: FC = () => {
     setSavedSuccessfully(false);
 
     try {
-      await api.put("/api/v1/settings/notifications", {
+      await api.put("/settings/notifications", {
         emailPreferences,
         inAppPreferences
       });
