@@ -107,13 +107,28 @@ const Profile: FC = () => {
     fetchProfile();
   }, [initialFirstName, initialLastName]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
       setAvatarPreview(url);
+
+      const formData = new FormData();
+      formData.append("image", file);
+
+      try {
+        await api.put("/auth/profile/picture", formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        });
+        console.log("Profile picture uploaded successfully!");
+      } catch (err) {
+        console.error("Failed to upload profile picture:", err);
+      }
     }
   };
+  
 
     const handleSaveNames = async () => {
     try {
