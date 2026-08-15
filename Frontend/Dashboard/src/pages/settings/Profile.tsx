@@ -91,11 +91,14 @@ const Profile: FC = () => {
     const fetchProfile = async () => {
       try {
         const res = await api.get("/auth/getProfile");
-        if (res.data) {
+                if (res.data) {
           if (res.data.firstName) setFirstName(res.data.firstName);
           if (res.data.lastName) setLastName(res.data.lastName);
           if (res.data.profile_picture_url) setAvatarPreview(res.data.profile_picture_url);
-        }
+                  
+          // Read the 2FA status from the database on page load
+          if (res.data.two_factor_enabled !== undefined) setIs2FAEnabled(res.data.two_factor_enabled);
+                }
       } catch (err) {
         console.error("Failed to fetch profile data:", err);
         // Fallback to auth store if fetch fails
@@ -107,28 +110,26 @@ const Profile: FC = () => {
     fetchProfile();
   }, [initialFirstName, initialLastName]);
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Instantly show the local preview in the UI
       const url = URL.createObjectURL(file);
       setAvatarPreview(url);
 
+      // Prepare the file as multipart/form-data with the exact name "image[span_2](start_span)"[span_2](end_span)
       const formData = new FormData();
       formData.append("image", file);
 
+      // Send it without manually setting the Content-Type header[span_3](start_span)[span_3](end_span)!
       try {
-        await api.put("/auth/profile/picture", formData, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        });
+        await api.put("/auth/profile/picture", formData);
         console.log("Profile picture uploaded successfully!");
       } catch (err) {
         console.error("Failed to upload profile picture:", err);
       }
     }
   };
-  
 
     const handleSaveNames = async () => {
     try {
