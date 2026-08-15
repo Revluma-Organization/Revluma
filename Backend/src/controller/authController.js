@@ -911,6 +911,8 @@ exports.getProfile = async (req, res) => {
         full_name: true,
         email: true,
         email_verified: true,
+        profile_picture_url: true,
+        two_factor_enabled: true,
         onboarding_completed: true,
         status: true,
         created_at: true,
@@ -1219,7 +1221,7 @@ exports.verifyTwoFactor = async (req, res, next) => {
       });
     }
 
-  const currentTotp = speakeasy.totp({
+const currentTotp = speakeasy.totp({
   secret: secretToVerify,
   encoding: "base32",
   digits: 6,
