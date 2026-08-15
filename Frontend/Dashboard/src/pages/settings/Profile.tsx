@@ -88,17 +88,29 @@ const Profile: FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
-    const fetchProfile = async () => {
+        const fetchProfile = async () => {
       try {
         const res = await api.get("/auth/getProfile");
-                if (res.data) {
-          if (res.data.firstName) setFirstName(res.data.firstName);
-          if (res.data.lastName) setLastName(res.data.lastName);
-          if (res.data.profile_picture_url) setAvatarPreview(res.data.profile_picture_url);
-                  
-          // Read the 2FA status from the database on page load
-          if (res.data.two_factor_enabled !== undefined) setIs2FAEnabled(res.data.two_factor_enabled);
-                }
+        
+        // Target the nested 'data' object backend sends back
+        const userData = res.data?.data;
+
+        if (userData) {
+          // Fetch the nested profile picture
+          if (userData.profile_picture_url) {
+            setAvatarPreview(userData.profile_picture_url);
+          }
+          // Backend returns 'full_name', so we split it back into first and last
+          if (userData.full_name) {
+            const nameParts = userData.full_name.split(" ");
+            setFirstName(nameParts[0] || "");
+            setLastName(nameParts.slice(1).join(" ") || "");
+          }
+          // Read the nested 2FA status
+          if (userData.two_factor_enabled !== undefined) {
+            setIs2FAEnabled(userData.two_factor_enabled);
+          }
+        }
       } catch (err) {
         console.error("Failed to fetch profile data:", err);
         // Fallback to auth store if fetch fails
