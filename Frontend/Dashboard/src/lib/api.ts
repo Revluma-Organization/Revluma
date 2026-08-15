@@ -132,9 +132,15 @@ async function request<T>(
     });
   }
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+    // Detect if the body is a file upload (FormData)
+  const isFormData = options.body instanceof FormData;
+
+  const headers: Record<string, string> = {};
+  
+  // Only set application/json if we are NOT sending a file
+  if (!isFormData) {
+    headers["Content-Type"] = "application/json";
+  }
 
   const token = getAccessToken();
   if (token) {
@@ -147,7 +153,10 @@ async function request<T>(
       method,
       headers,
       credentials: "include",
-      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      // Pass FormData directly so fetch can auto-generate the multipart boundary!
+      body: isFormData 
+        ? (options.body as FormData) 
+        : (options.body !== undefined ? JSON.stringify(options.body) : undefined),
     });
   } catch (networkError) {
     throw new ApiError(0, `Network error: ${(networkError as Error).message}`);
