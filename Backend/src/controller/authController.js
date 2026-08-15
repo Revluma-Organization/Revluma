@@ -954,6 +954,18 @@ exports.getProfile = async (req, res) => {
 exports.updateProfilePicture = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    // Temporary debug logging to diagnose missing file / bad request
+    logger.debug('updateProfilePicture - headers', {
+      'content-type': req.headers['content-type'] || null,
+      authorization: req.headers['authorization'] || null,
+      'x-forwarded-for': req.headers['x-forwarded-for'] || null,
+    });
+
+    logger.debug('updateProfilePicture - req.file', req.file ? {
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size || (req.file.buffer ? req.file.buffer.length : null),
+    } : null);
 
     // Make sure an image was uploaded
     if (!req.file) {
@@ -1161,6 +1173,15 @@ exports.verifyTwoFactor = async (req, res, next) => {
     const { code } = req.body;
     const normalizedCode = normalizeTotpCode(code);
 
+    // Temporary debug logging to help frontend verification debugging
+    logger.debug('verifyTwoFactor - headers', {
+      'content-type': req.headers['content-type'] || null,
+      authorization: req.headers['authorization'] || null,
+      'x-forwarded-for': req.headers['x-forwarded-for'] || null,
+    });
+
+    logger.debug('verifyTwoFactor - body', { rawBody: req.body, code, normalizedCode });
+
     const userId = req.user.id;
 
     const user = await prisma.users.findUnique({
@@ -1181,6 +1202,7 @@ exports.verifyTwoFactor = async (req, res, next) => {
     // Prefer the temp secret created during setup; fall back to the permanent
     // secret for other verification flows. If neither exists, return error.
     const secretToVerify = user?.two_factor_temp_secret || user?.two_factor_secret;
+    logger.debug('verifyTwoFactor - secretToVerify', { exists: !!secretToVerify, length: secretToVerify?.length || 0 });
     if (!user || !secretToVerify) {
       logger.warn('2fa_verify_no_secret', { userId, ip: getClientIp(req) });
       return res.status(400).json({
@@ -1196,6 +1218,22 @@ exports.verifyTwoFactor = async (req, res, next) => {
         error: 'Verification code must be a 6-digit number',
       });
     }
+
+  const currentTotp = speakeasy.totp({
+  secret: secretToVerify,
+  encoding: "base32",
+  digits: 6,
+  step: 30,
+});
+
+logger.info("2fa_totp_debug", {
+  userId,
+  codeReceived: normalizedCode,
+  generatedCode: currentTotp,
+  codeMatches: currentTotp === normalizedCode,
+  serverTime: new Date().toISOString(),
+  timestamp: Math.floor(Date.now() / 1000),
+});
 
     // Determine which time-step matched so we can prevent replay attacks.
     const matchedStep = findMatchedTotpStep(secretToVerify, normalizedCode, 2);
