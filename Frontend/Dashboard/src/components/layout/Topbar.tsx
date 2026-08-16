@@ -1,16 +1,6 @@
-import { Bell, HelpCircle, Calendar, Search, Menu, Sparkles, Compass, LogOut, UserCircle } from 'lucide-react';
+import { Bell, HelpCircle, Calendar, Search, Menu, Sparkles, Compass } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  Button,
-  Avatar,
-  AvatarFallback,
-} from '@/components/ui';
 import { useUI } from '@/store/ui';
 import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
@@ -21,9 +11,8 @@ const RANGES = ['Today', 'Last 7 days', 'Last 30 days', 'Last 90 days', 'This ye
 
 export function Topbar({ section = 'Overview' }: { section?: string }) {
   const { setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, setCopilotOpen, dateRange, setDateRange, startTour } = useUI();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [dateOpen, setDateOpen] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Logout can involve a network call to revoke the refresh token, and the
   // page navigation that follows isn't always instant — without this, the
@@ -163,54 +152,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
         >
           <HelpCircle className="h-3.5 w-3.5" />
         </button>
-
-        {/* User menu */}
-        {user && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="relative h-[34px] w-[34px] rounded-full border border-border bg-glass/[0.035] p-0 hover:bg-glass/[0.065] hover:border-border-md"
-                aria-label="User menu"
-              >
-                <Avatar className="h-[26px] w-[26px] border border-border">
-                  <AvatarFallback className="text-[0.7rem] bg-primary/20 text-primary">
-                    {user.full_name?.split(' ')?.map((n: string) => n[0])?.join('')?.toUpperCase() || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56" sideOffset={8}>
-              <div className="flex items-center gap-3 px-2 py-2">
-                <Avatar className="h-8 w-8 border border-border">
-                  <AvatarFallback className="bg-primary/20 text-primary text-sm">
-                    {user?.full_name?.split(' ')?.map((n: string) => n[0])?.join('')?.toUpperCase() || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium text-t1">{user?.full_name || 'User'}</span>
-                  <span className="text-xs text-t3 truncate max-w-[140px]">{user?.email || ''}</span>
-                </div>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <a href="/dashboard/settings/profile" className="flex items-center gap-2 cursor-pointer">
-                  <UserCircle className="h-3.5 w-3.5" />
-                  <span>Profile</span>
-                </a>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={() => { void handleLogout(); }}
-                className="flex items-center gap-2 text-destructive focus:text-destructive cursor-pointer"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                <span>Log out</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+        
 
       {/* Very visible, strictly black-and-white loading overlay while
           logout's network call resolves and the redirect to /login fires.
