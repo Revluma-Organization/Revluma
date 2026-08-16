@@ -1,6 +1,5 @@
 """
 Revluma Feature Engineering Pipeline
-Source: FEATURE_VECTOR_SPEC v1.0.0 — Okanlawon David (AI/ML Engineer 1)
 
 Computes the 32-feature Shopper Feature Vector fed into all five ML models.
 All 32 features fully implemented.
