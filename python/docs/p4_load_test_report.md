@@ -103,3 +103,37 @@ An interactive Locust HTML report is saved at:
 CSV results are saved at:  
 `python/tests/load/results_stats.csv`  
 `python/tests/load/results_failures.csv`
+
+---
+
+## P4.1 Open Item — Production p99 Verification Required
+
+**Status:** ⚠️ PENDING  
+**Owner:** Okanlawon  
+**Blocker for:** P4.3 Final Definition of Done
+
+### What is Outstanding
+
+The P4.1 spec requires **p99 latency < 300 ms under 500 concurrent requests**.  
+The local test measured p99 at **1,300 ms** — exceeding the target by 4×.
+
+As documented in the analysis section above, the gap is entirely attributable to
+the test environment (Locust and uvicorn sharing the same laptop CPU) and is not
+representative of production behaviour. Isolated per-request inference time is
+**2–9 ms**, which is well within the 300 ms budget.
+
+### Required Action Before P4.3 Sign-Off
+
+The following must be completed on the **production or staging cloud deployment**:
+
+1. Deploy the FastAPI service to a dedicated Linux cloud instance (min. 4 vCPU, 8 GB RAM).
+2. Run Locust from a **separate machine** on the same private network.
+3. Confirm: `p99 < 300 ms` at 500 concurrent users.
+4. Record and commit the updated `results_stats.csv` and a new `report.html` from that run.
+5. Update this report with the production results and mark this item ✅ COMPLETE.
+
+### Why This Does Not Block the MVP Code Baseline
+
+The **application code** is confirmed correct: zero failures at 500 concurrency,
+correct async thread-pool offloading, and 2–9 ms per-request inference latency
+in isolation. The p99 target is an **infrastructure verification**, not a code fix.

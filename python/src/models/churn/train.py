@@ -32,36 +32,138 @@ from src.features.pipeline import (
 MIN_REAL_CUSTOMERS = 500
 MIN_HISTORY_DAYS = 90
 
+# All 24 signals across 4 dimensions per the task doc P2.3 spec.
+# Dimension 1: Purchase History (7) — real pipeline.py functions exist.
+# Dimension 2: Engagement Drift (8) — synthetic placeholders; TODO: implement
+#              real pipeline.py functions once email/SMS tracking tables exist.
+# Dimension 3: Sentiment Signals (4) — synthetic placeholders; TODO: implement.
+# Dimension 4: Competitive Exposure (5) — synthetic placeholders; TODO: implement.
 FEATURE_COLUMNS = [
-    "past_orders_total", "days_since_last_purchase", "avg_order_value",
-    "purchase_frequency_trend", "rfm_recency_score", "rfm_frequency_score",
+    # --- Dimension 1: Purchase History ---
+    "past_orders_total",
+    "days_since_last_purchase",
+    "avg_order_value",
+    "purchase_frequency_trend",
+    "rfm_recency_score",
+    "rfm_frequency_score",
     "rfm_monetary_score",
+    # Note: historical_aov_trend listed in P2.3 but has no pipeline.py function
+    # yet — requires time-series AOV data. Added as synthetic placeholder.
+    "historical_aov_trend",
+    # --- Dimension 2: Engagement Drift ---
+    # TODO: implement calculate_email_open_rate_30d(customer_id, db)
+    "email_open_rate_30d",
+    # TODO: implement calculate_email_open_rate_90d(customer_id, db)
+    "email_open_rate_90d",
+    # Derived: email_open_rate_30d - email_open_rate_90d (delta, not raw)
+    "email_open_rate_delta",
+    # TODO: implement calculate_sms_click_rate(customer_id, db)
+    "sms_click_rate",
+    # TODO: implement calculate_site_visit_frequency_delta(customer_id, db)
+    "site_visit_frequency_delta",
+    # TODO: implement calculate_browse_to_cart_trend(customer_id, db)
+    "browse_to_cart_trend",
+    # TODO: implement calculate_push_open_rate(customer_id, db)
+    "push_open_rate",
+    # TODO: implement calculate_whatsapp_response_rate(customer_id, db)
+    "whatsapp_response_rate",
+    # --- Dimension 3: Sentiment Signals ---
+    # TODO: implement calculate_coupon_dependency_score(customer_id, db)
+    "coupon_dependency_score",
+    # TODO: implement calculate_return_rate(customer_id, db)
+    "return_rate",
+    # TODO: implement calculate_review_sentiment_score(customer_id, db)
+    "review_sentiment_score",
+    # TODO: implement calculate_support_ticket_count_90d(customer_id, db)
+    "support_ticket_count_90d",
+    # --- Dimension 4: Competitive Exposure ---
+    # TODO: implement calculate_discount_seeking_escalation(customer_id, db)
+    "discount_seeking_escalation",
+    # TODO: implement calculate_unsubscribe_risk_score(customer_id, db)
+    "unsubscribe_risk_score",
+    # TODO: implement calculate_competitor_referral_flag(customer_id, db)
+    "competitor_referral_flag",
+    # TODO: implement calculate_price_comparison_session_count(customer_id, db)
+    "price_comparison_session_count",
+    # TODO: implement calculate_social_proof_sensitivity(customer_id, db)
+    "social_proof_sensitivity",
 ]
 
 
 def _generate_synthetic_data(n: int = 4000) -> pd.DataFrame:
     """
-    Generates synthetic historical customer records with known churn outcomes.
+    Generates synthetic historical customer records with known churn outcomes
+    across all 24 signals specified in task_doc.md P2.3.
+
+    Dimensions:
+      1. Purchase History (8 features) — real pipeline.py functions exist
+      2. Engagement Drift (8 features) — synthetic placeholders until
+         email/SMS/site tracking tables exist (see TODO comments in
+         FEATURE_COLUMNS above for the real pipeline.py function names)
+      3. Sentiment Signals (4 features) — synthetic placeholders
+      4. Competitive Exposure (5 features) — synthetic placeholders
+
     Returns:
         tuple: (X_train, X_test, y_train, y_test)
     """
     np.random.seed(42)
 
+    # --- Dimension 1: Purchase History ---
     past_orders_total = np.random.randint(0, 50, n)
     days_since_last_purchase = np.random.randint(-1, 365, n)
     avg_order_value = np.random.uniform(10.0, 1000.0, n)
     purchase_frequency_trend = np.random.choice([-1, 0, 1], n)
-
     rfm_recency_score = np.random.randint(1, 6, n)
     rfm_frequency_score = np.random.randint(1, 6, n)
     rfm_monetary_score = np.random.randint(1, 6, n)
+    # historical_aov_trend: -1=declining, 0=flat, 1=growing
+    historical_aov_trend = np.random.choice([-1, 0, 1], n, p=[0.3, 0.4, 0.3])
 
-    # Calculate churn probability logic
-    # High recency (days_since_last_purchase > 90) + decreasing trend = higher churn risk
+    # --- Dimension 2: Engagement Drift ---
+    # Open rates generally decline as churn risk increases.
+    email_open_rate_90d = np.random.uniform(0.0, 0.6, n)
+    # 30d rate drifts lower for higher-risk customers (correlated with days_since).
+    email_open_rate_30d = np.clip(
+        email_open_rate_90d - np.random.uniform(0.0, 0.3, n), 0.0, 1.0
+    )
+    email_open_rate_delta = email_open_rate_30d - email_open_rate_90d
+    sms_click_rate = np.random.uniform(0.0, 0.4, n)
+    # site_visit_frequency_delta: positive = visiting more, negative = less
+    site_visit_frequency_delta = np.random.uniform(-5.0, 5.0, n)
+    # browse_to_cart_trend: same scale as purchase_frequency_trend
+    browse_to_cart_trend = np.random.choice([-1, 0, 1], n, p=[0.35, 0.40, 0.25])
+    push_open_rate = np.random.uniform(0.0, 0.5, n)
+    whatsapp_response_rate = np.random.uniform(0.0, 0.7, n)
+
+    # --- Dimension 3: Sentiment Signals ---
+    # coupon_dependency_score: 0.0-1.0, higher = more coupon-reliant
+    coupon_dependency_score = np.random.uniform(0.0, 1.0, n)
+    # return_rate: ratio of orders returned
+    return_rate = np.random.uniform(0.0, 0.5, n)
+    # review_sentiment_score: -1.0 (very negative) to 1.0 (very positive)
+    review_sentiment_score = np.random.uniform(-1.0, 1.0, n)
+    # support_ticket_count_90d: raw count
+    support_ticket_count_90d = np.random.poisson(lam=0.5, size=n)
+
+    # --- Dimension 4: Competitive Exposure ---
+    # discount_seeking_escalation: 0 = no escalation, 1 = actively escalating
+    discount_seeking_escalation = np.random.choice([0, 1], n, p=[0.7, 0.3])
+    # unsubscribe_risk_score: 0.0-1.0
+    unsubscribe_risk_score = np.random.uniform(0.0, 1.0, n)
+    # competitor_referral_flag: 0/1 — did a referral source match a known competitor
+    competitor_referral_flag = np.random.choice([0, 1], n, p=[0.85, 0.15])
+    # price_comparison_session_count: tab switches to price-comparison sites in last 30d
+    price_comparison_session_count = np.random.poisson(lam=1.0, size=n)
+    # social_proof_sensitivity: 0.0-1.0 (how much review/social signals influence them)
+    social_proof_sensitivity = np.random.uniform(0.0, 1.0, n)
+
+    # --- Label derivation ---
+    # Primary drivers: recency + frequency trend + engagement drift.
+    # Secondary drivers: sentiment + competitive exposure.
     risk_score = np.zeros(n)
     for i in range(n):
         if days_since_last_purchase[i] == -1:
-            risk_score[i] = 0.5  # Ambiguous
+            risk_score[i] = 0.5
         else:
             risk_score[i] += min(days_since_last_purchase[i] / 180.0, 1.0)
             if purchase_frequency_trend[i] == -1:
@@ -74,10 +176,17 @@ def _generate_synthetic_data(n: int = 4000) -> pd.DataFrame:
             if rfm_frequency_score[i] >= 4:
                 risk_score[i] -= 0.2
 
-    # Normalize risk score to 0.0 - 1.0
+            # Engagement drift contribution
+            risk_score[i] += max(0.0, -email_open_rate_delta[i]) * 0.2
+            if browse_to_cart_trend[i] == -1:
+                risk_score[i] += 0.1
+
+            # Competitive exposure contribution
+            risk_score[i] += unsubscribe_risk_score[i] * 0.15
+            risk_score[i] += discount_seeking_escalation[i] * 0.1
+
     risk_score = np.clip(risk_score, 0.0, 1.0)
 
-    # Map to classes
     y = []
     for score in risk_score:
         if score <= 0.30:
@@ -89,17 +198,33 @@ def _generate_synthetic_data(n: int = 4000) -> pd.DataFrame:
         else:
             y.append("CRITICAL")
 
-    X = pd.DataFrame(
-        {
-            "past_orders_total": past_orders_total,
-            "days_since_last_purchase": days_since_last_purchase,
-            "avg_order_value": avg_order_value,
-            "purchase_frequency_trend": purchase_frequency_trend,
-            "rfm_recency_score": rfm_recency_score,
-            "rfm_frequency_score": rfm_frequency_score,
-            "rfm_monetary_score": rfm_monetary_score,
-        }
-    )
+    X = pd.DataFrame({
+        "past_orders_total": past_orders_total,
+        "days_since_last_purchase": days_since_last_purchase,
+        "avg_order_value": avg_order_value,
+        "purchase_frequency_trend": purchase_frequency_trend,
+        "rfm_recency_score": rfm_recency_score,
+        "rfm_frequency_score": rfm_frequency_score,
+        "rfm_monetary_score": rfm_monetary_score,
+        "historical_aov_trend": historical_aov_trend,
+        "email_open_rate_30d": email_open_rate_30d,
+        "email_open_rate_90d": email_open_rate_90d,
+        "email_open_rate_delta": email_open_rate_delta,
+        "sms_click_rate": sms_click_rate,
+        "site_visit_frequency_delta": site_visit_frequency_delta,
+        "browse_to_cart_trend": browse_to_cart_trend,
+        "push_open_rate": push_open_rate,
+        "whatsapp_response_rate": whatsapp_response_rate,
+        "coupon_dependency_score": coupon_dependency_score,
+        "return_rate": return_rate,
+        "review_sentiment_score": review_sentiment_score,
+        "support_ticket_count_90d": support_ticket_count_90d,
+        "discount_seeking_escalation": discount_seeking_escalation,
+        "unsubscribe_risk_score": unsubscribe_risk_score,
+        "competitor_referral_flag": competitor_referral_flag,
+        "price_comparison_session_count": price_comparison_session_count,
+        "social_proof_sensitivity": social_proof_sensitivity,
+    })
 
     return train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 

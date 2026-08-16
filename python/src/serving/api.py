@@ -60,6 +60,7 @@ the in-memory _model_cache design.
 #--
 """
 
+from contextlib import asynccontextmanager
 import asyncio
 import functools
 import os
@@ -81,13 +82,30 @@ try:
 except Exception:
     pass  # Failsafe
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manages application startup and shutdown lifecycle.
+    Preloads all five ML models into the in-memory cache on startup so
+    the first real request is not penalised with a cold-load latency spike.
+    Never raises on missing models — that is exactly what fallback logic is for.
+    """
+    for name in MODEL_NAMES:
+        model = _load_model(name)
+        status = "loaded" if model is not None else "FALLBACK (not found)"
+        print(f"[startup] model '{name}': {status}")
+    yield  # Application runs here
+    # Shutdown: nothing to clean up — model cache lives only in process memory.
+
+
+_START_TIME = time.time()
+
 app = FastAPI(
     title="Revluma ML Serving API",
     description="Real-time inference endpoints for Revluma's five predictive models.",
-    version="0.2.0"
+    version="0.2.0",
+    lifespan=lifespan,
 )
-
-_START_TIME = time.time()
 
 # ---------------------------------------------------------------------------
 # Internal API Key Authentication (F-02)
@@ -119,7 +137,6 @@ async def verify_internal_caller(
 _model_cache: dict = {}
 
 
-
 async def _run_inference(fn, *args) -> typing.Any:
     """
     Run a blocking scikit-learn call in the default thread pool executor.
@@ -148,19 +165,6 @@ def _load_model(model_name: str) -> typing.Any:
         return model
     except Exception:
         return None
-
-
-@app.on_event("startup")
-async def _preload_models() -> None:
-    """
-    Per doc: attempt to load all five models into cache on startup.
-    Log which loaded and which fell back. Never crash startup if a
-    model is missing - that's exactly what the fallback logic is for.
-    """
-    for name in MODEL_NAMES:
-        model = _load_model(name)
-        status = "loaded" if model is not None else "FALLBACK (not found)"
-        print(f"[startup] model '{name}': {status}")
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +357,7 @@ async def predict_abandonment(features: AbandonmentFeatures) -> AbandonmentRespo
                 fallback=True
             )
 
-        feature_vector = pd.DataFrame([features.dict()])
+        feature_vector = pd.DataFrame([features.model_dump()])
         prob = float((await _run_inference(model.predict_proba, feature_vector))[0][1])
         return AbandonmentResponse(
             abandonment_probability=prob,
@@ -382,7 +386,7 @@ async def predict_sensitivity(features: SensitivityFeatures) -> SensitivityRespo
         if not pss_model or not css_model:
             return SensitivityResponse(fallback=True)
 
-        feature_vector = pd.DataFrame([features.dict()])
+        feature_vector = pd.DataFrame([features.model_dump()])
         pss_prob = float((await _run_inference(pss_model.predict_proba, feature_vector))[0][1])
         css_prob = float((await _run_inference(css_model.predict_proba, feature_vector))[0][1])
 

@@ -99,3 +99,125 @@ def test_all_null_input():
     response = client.post("/predict/abandonment-probability", json=None, headers=headers)
     # Unprocessable entity due to missing body
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Sensitivity edge cases (P2.6)
+# ---------------------------------------------------------------------------
+
+def test_sensitivity_empty():
+    """Empty body should succeed: all Pydantic fields have defaults."""
+    response = client.post("/predict/shopper-sensitivity", json={}, headers=headers)
+    assert response.status_code == 200
+
+
+def test_sensitivity_out_of_range():
+    """past_orders_with_coupon_pct must be 0.0-1.0; 2.0 should return 422."""
+    response = client.post("/predict/shopper-sensitivity", json={
+        "past_orders_with_coupon_pct": 2.0  # above max
+    }, headers=headers)
+    assert response.status_code == 422
+
+
+def test_sensitivity_all_null():
+    """Null body should return 422 (body is required even if fields are optional)."""
+    response = client.post("/predict/shopper-sensitivity", json=None, headers=headers)
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Churn edge cases (P2.6)
+# ---------------------------------------------------------------------------
+
+def test_churn_empty():
+    """Empty body should succeed: all Pydantic fields have defaults."""
+    response = client.post("/predict/churn-risk", json={}, headers=headers)
+    assert response.status_code == 200
+
+
+def test_churn_out_of_range():
+    """rfm_recency_score must be 1-5; 0 should return 422."""
+    response = client.post("/predict/churn-risk", json={
+        "rfm_recency_score": 0  # below min of 1
+    }, headers=headers)
+    assert response.status_code == 422
+
+
+def test_churn_all_null():
+    """Null body should return 422."""
+    response = client.post("/predict/churn-risk", json=None, headers=headers)
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Send-time edge cases (P2.6)
+# ---------------------------------------------------------------------------
+
+def test_send_time_empty():
+    """Empty body should succeed: all Pydantic fields have defaults."""
+    response = client.post("/predict/send-time", json={}, headers=headers)
+    assert response.status_code == 200
+
+
+def test_send_time_invalid_channel():
+    """channel must be email|sms|whatsapp; anything else should return 422."""
+    response = client.post("/predict/send-time", json={
+        "channel": "telegram"  # not in allowed pattern
+    }, headers=headers)
+    assert response.status_code == 422
+
+
+def test_send_time_all_null():
+    """Null body should return 422."""
+    response = client.post("/predict/send-time", json=None, headers=headers)
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Offer-value edge cases including hard-gate verification (P2.6)
+# ---------------------------------------------------------------------------
+
+def test_offer_value_empty():
+    """Empty body should succeed: all Pydantic fields have defaults."""
+    response = client.post("/predict/offer-value", json={}, headers=headers)
+    assert response.status_code == 200
+
+
+def test_offer_value_trust_gate():
+    """tss_score >= 60 must return offer_type=TRUST_SIGNAL with discount_pct=0.0."""
+    response = client.post("/predict/offer-value", json={
+        "pss_score": 80,
+        "css_score": 80,
+        "tss_score": 65  # triggers TRUST_SIGNAL gate
+    }, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["offer_type"] == "TRUST_SIGNAL"
+    assert data["discount_pct"] == 0.0
+
+
+def test_offer_value_nudge_gate():
+    """pss_score < 35 AND css_score < 35 must return offer_type=NUDGE, discount_pct=0.0."""
+    response = client.post("/predict/offer-value", json={
+        "pss_score": 20,
+        "css_score": 20,
+        "tss_score": 10
+    }, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["offer_type"] == "NUDGE"
+    assert data["discount_pct"] == 0.0
+
+
+def test_offer_value_out_of_range():
+    """pss_score must be 0-100; -1 should return 422."""
+    response = client.post("/predict/offer-value", json={
+        "pss_score": -1  # below min of 0
+    }, headers=headers)
+    assert response.status_code == 422
+
+
+def test_offer_value_all_null():
+    """Null body should return 422."""
+    response = client.post("/predict/offer-value", json=None, headers=headers)
+    assert response.status_code == 422

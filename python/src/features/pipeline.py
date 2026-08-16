@@ -2,8 +2,8 @@
 Revluma Feature Engineering Pipeline
 Source: FEATURE_VECTOR_SPEC v1.0.0 — Okanlawon David (AI/ML Engineer 1)
 
-Computes the 30-feature Shopper Feature Vector fed into all five ML models.
-All 30 features fully implemented.
+Computes the 32-feature Shopper Feature Vector fed into all five ML models.
+All 32 features fully implemented.
 """
 
 from __future__ import annotations
@@ -153,6 +153,52 @@ def calculate_cursor_hesitation(events: list) -> int:
             count += 1
             
     return count
+
+
+def calculate_cart_item_add_count(events: list) -> int:
+    """
+    Feature: cart_item_add_count
+
+    Counts the number of add_to_cart events fired during the session.
+    A high count with low checkout_step_reached signals window-shopping
+    or gift-list building behaviour — not genuine purchase intent.
+    Formula: COUNT(events WHERE event_type='add_to_cart').
+
+    Models: M1 (Abandonment Probability Predictor)
+    Source: customer_events — event_type='add_to_cart'
+
+    Returns:
+        int: 0+. Default 0 if no add_to_cart events present.
+    """
+    if not isinstance(events, list):
+        return 0
+    return sum(
+        1 for e in events
+        if isinstance(e, dict) and e.get("event_type") == "add_to_cart"
+    )
+
+
+def calculate_cart_item_remove_count(events: list) -> int:
+    """
+    Feature: cart_item_remove_count
+
+    Counts the number of remove_from_cart events fired during the session.
+    Repeated removals signal price hesitation — especially when combined
+    with high PSS score — and are a strong M1 abandonment predictor.
+    Formula: COUNT(events WHERE event_type='remove_from_cart').
+
+    Models: M1 (Abandonment Probability Predictor)
+    Source: customer_events — event_type='remove_from_cart'
+
+    Returns:
+        int: 0+. Default 0 if no remove_from_cart events present.
+    """
+    if not isinstance(events, list):
+        return 0
+    return sum(
+        1 for e in events
+        if isinstance(e, dict) and e.get("event_type") == "remove_from_cart"
+    )
 
 
 def calculate_checkout_step_reached(events: list) -> int:

@@ -34,6 +34,8 @@ from src.features.pipeline import (
     calculate_time_on_page_ms,
     calculate_checkout_step_reached,
     calculate_failed_payment_attempt,
+    calculate_cart_item_add_count,
+    calculate_cart_item_remove_count,
 )
 from src.features.event_processor import group_events_by_session
 
@@ -48,6 +50,8 @@ FEATURE_COLUMNS = [
     "time_on_page_ms",
     "checkout_step_reached",
     "failed_payment_attempt",
+    "cart_item_add_count",
+    "cart_item_remove_count",
 ]
 
 
@@ -61,6 +65,8 @@ def _generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
       - high tab_switch_count increases abandonment
       - low scroll_depth_pct increases abandonment
       - low time_on_page_ms increases abandonment
+      - high cart_item_remove_count increases abandonment (price hesitation)
+      - high cart_item_add_count with low checkout_step increases abandonment
     """
     np.random.seed(42)
 
@@ -70,6 +76,9 @@ def _generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
     time_on_page_ms = np.random.exponential(scale=15000, size=n) + 1000
     checkout_step_reached = np.random.randint(0, 6, n)
     failed_payment_attempt = np.random.choice([0, 1], size=n, p=[0.9, 0.1])
+    # Cart behaviour: removals are rarer but a strong hesitation signal.
+    cart_item_add_count = np.random.poisson(lam=2.0, size=n)
+    cart_item_remove_count = np.random.poisson(lam=0.5, size=n)
 
     # 2. Log-odds calculation based on features
     # Base intercept tuned to aim for ~70% abandonment
@@ -82,6 +91,10 @@ def _generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
         + 0.5 * tab_switch_count                 # Switching tabs (price comparison) increases abandonment
         - 0.02 * scroll_depth_pct                # Scrolling down decreases abandonment
         - 0.00005 * time_on_page_ms              # Spending more time decreases abandonment
+        + 0.4 * cart_item_remove_count           # Repeated removals signal price hesitation
+        + 0.1 * np.where(                        # Window-shopping: adds without progressing
+            (cart_item_add_count > 3) & (checkout_step_reached < 2), 1, 0
+        )
     )
 
     # Sigmoid function for probability
@@ -96,6 +109,8 @@ def _generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
         "time_on_page_ms": time_on_page_ms,
         "checkout_step_reached": checkout_step_reached,
         "failed_payment_attempt": failed_payment_attempt,
+        "cart_item_add_count": cart_item_add_count,
+        "cart_item_remove_count": cart_item_remove_count,
         "abandoned": abandoned
     })
 
@@ -184,7 +199,7 @@ def _compute_m1_feature_records(
     """Builds the M1 feature DataFrame from pre-fetched session events.
 
     Extracted from _load_real_session_rows to keep that function under 80 lines.
-    Applies the five pipeline.py feature functions to each session's events.
+    Applies all seven pipeline.py feature functions to each session's events.
 
     Args:
         session_ids (list): Ordered list of session UUID strings.
@@ -203,6 +218,8 @@ def _compute_m1_feature_records(
             "time_on_page_ms": calculate_time_on_page_ms(events),
             "checkout_step_reached": calculate_checkout_step_reached(events),
             "failed_payment_attempt": int(calculate_failed_payment_attempt(events)),
+            "cart_item_add_count": calculate_cart_item_add_count(events),
+            "cart_item_remove_count": calculate_cart_item_remove_count(events),
             "abandoned": labels[session_id],
         })
     return pd.DataFrame.from_records(records)
