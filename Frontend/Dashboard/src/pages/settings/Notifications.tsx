@@ -178,9 +178,12 @@ export const Notifications: FC = () => {
     const fetchPreferences = async () => {
       try {
         const res = await api.get("/settings/notifications");
-        if (res.data) {
-          if (res.data.emailPreferences) setEmailPreferences(res.data.emailPreferences);
-          if (res.data.inAppPreferences) setInAppPreferences(res.data.inAppPreferences);
+        
+        const prefsData = res.data?.data || res.data;
+
+        if (prefsData) {
+          if (prefsData.emailPreferences) setEmailPreferences(prefsData.emailPreferences);
+          if (prefsData.inAppPreferences) setInAppPreferences(prefsData.inAppPreferences);
         }
       } catch (err) {
         console.error("Failed to fetch notification preferences:", err);
