@@ -108,10 +108,6 @@ CSV results are saved at:
 
 ## P4.1 Open Item — Production p99 Verification Required
 
-**Status:** ⚠️ PENDING  
-**Owner:** Okanlawon  
-**Blocker for:** P4.3 Final Definition of Done
-
 ### What is Outstanding
 
 The P4.1 spec requires **p99 latency < 300 ms under 500 concurrent requests**.  
