@@ -29,7 +29,6 @@ from src.features.pipeline import (
     calculate_visited_coupon_page,
     calculate_searched_discount_terms,
     calculate_tab_switch_count,
-    calculate_time_on_page_ms,
 )
 from src.features.event_processor import group_events_by_session
 
