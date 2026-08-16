@@ -7,7 +7,9 @@ from src.features.pipeline import (
     calculate_failed_payment_attempt,
     calculate_local_hour_of_session,
     calculate_day_of_week_session,
-    calculate_time_on_page_ms
+    calculate_time_on_page_ms,
+    calculate_cart_item_add_count,
+    calculate_cart_item_remove_count
 )
 
 # ---------------------------------------------------------------------------
@@ -77,6 +79,44 @@ def test_cursor_hesitation_empty():
 def test_cursor_hesitation_malformed():
     events = [None, 123, {"event_type": None}, {"no_event_type": "exit_intent"}]
     assert calculate_cursor_hesitation(events) == 0
+
+
+# ---------------------------------------------------------------------------
+# calculate_cart_item_add_count Tests
+# ---------------------------------------------------------------------------
+def test_cart_item_add_count_normal():
+    events = [
+        {"event_type": "add_to_cart"},
+        {"event_type": "page_view"},
+        {"event_type": "add_to_cart"}
+    ]
+    assert calculate_cart_item_add_count(events) == 2
+
+def test_cart_item_add_count_empty():
+    assert calculate_cart_item_add_count([]) == 0
+
+def test_cart_item_add_count_malformed():
+    events = [None, 123, {"event_type": None}, {"no_event_type": "add_to_cart"}]
+    assert calculate_cart_item_add_count(events) == 0
+
+
+# ---------------------------------------------------------------------------
+# calculate_cart_item_remove_count Tests
+# ---------------------------------------------------------------------------
+def test_cart_item_remove_count_normal():
+    events = [
+        {"event_type": "remove_from_cart"},
+        {"event_type": "add_to_cart"},
+        {"event_type": "remove_from_cart"}
+    ]
+    assert calculate_cart_item_remove_count(events) == 2
+
+def test_cart_item_remove_count_empty():
+    assert calculate_cart_item_remove_count([]) == 0
+
+def test_cart_item_remove_count_malformed():
+    events = [None, 123, {"event_type": None}, {"no_event_type": "remove_from_cart"}]
+    assert calculate_cart_item_remove_count(events) == 0
 
 
 # ---------------------------------------------------------------------------
