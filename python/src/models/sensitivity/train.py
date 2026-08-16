@@ -38,9 +38,9 @@ from src.features.event_processor import group_events_by_session
 MIN_REAL_RECORDS = 500
 
 FEATURES = [
-    "coupon_usage_pct", "visited_coupon_page", "searched_discount_terms",
+    "past_orders_with_coupon_pct", "visited_coupon_page", "searched_discount_terms",
     "cursor_hesitation", "abandoned_at_shipping_reveal",
-    "checkout_step_reached", "scroll_depth_pct", "time_on_page_ms"
+    "checkout_step_reached", "scroll_depth_pct", "tab_switch_count"
 ]
 
 # Recovery actions in orders.recovery_status that indicate the recovery
@@ -59,43 +59,51 @@ def _generate_synthetic_sensitivity_data(n: int = 3000) -> pd.DataFrame:
     """
     np.random.seed(42)
 
-    # 8 features specified by the M2 ClickUp contract
-    coupon_usage_pct = np.random.uniform(0, 100, n)
-    visited_coupon_page = np.random.randint(0, 2, n)
-    searched_discount_terms = np.random.randint(0, 2, n)
-    cursor_hesitation = np.random.uniform(0, 5000, n)
-    abandoned_at_shipping_reveal = np.random.randint(0, 2, n)
-    checkout_step_reached = np.random.randint(1, 6, n)
-    scroll_depth_pct = np.random.uniform(0, 100, n)
-    time_on_page_ms = np.random.uniform(1000, 120000, n)
+    # --- Generate Features ---
+    # past_orders_with_coupon_pct: 0.0 to 1.0 ratio
+    past_orders_with_coupon_pct = np.random.uniform(0.0, 1.0, n)
+    visited_coupon_page = np.random.choice([False, True], n, p=[0.7, 0.3])
+    searched_discount_terms = np.random.choice([False, True], n, p=[0.85, 0.15])
+    cursor_hesitation = np.random.poisson(lam=1.5, size=n)
+    abandoned_at_shipping_reveal = np.random.choice([False, True], n, p=[0.8, 0.2])
+    checkout_step_reached = np.random.randint(1, 5, n)
+    scroll_depth_pct = np.random.uniform(10.0, 100.0, n)
+    tab_switch_count = np.random.poisson(lam=1.0, size=n)
 
-    # Base PSS logic: High when coupon usage is high, repeated discount searches, high hesitation, etc.
-    pss_prob = (coupon_usage_pct / 100.0 * 0.4 +
-                visited_coupon_page * 0.2 +
-                searched_discount_terms * 0.2 +
-                (np.clip(cursor_hesitation, 0, 5000) / 5000.0) * 0.2)
+    # PSS logic: strong influence from past_orders_with_coupon_pct and hesitations
+    # Noise added to create realistic overlaps.
+    pss_base = (
+        (past_orders_with_coupon_pct * 40) +
+        (visited_coupon_page * 20) +
+        (searched_discount_terms * 15) +
+        np.clip(cursor_hesitation * 5, 0, 15) +
+        np.clip(tab_switch_count * 2, 0, 10) +
+        np.random.normal(0, 10, n)
+    )
+    
+    # CSS logic: High when early checkout abandonment, low scroll depth, shipping-step dropoff
+    css_base = (
+        ((5 - checkout_step_reached) * 15) +
+        ((100 - scroll_depth_pct) * 0.5) +
+        (abandoned_at_shipping_reveal * 25) +
+        np.random.normal(0, 10, n)
+    )
 
-    # Base CSS logic: High when early checkout abandonment, low scroll depth, shipping-step dropoff
-    css_prob = ((6 - checkout_step_reached) / 5.0 * 0.4 +
-                (1 - scroll_depth_pct / 100.0) * 0.3 +
-                abandoned_at_shipping_reveal * 0.3)
+    pss_score = (pss_base / 100.0).clip(0, 1)
+    css_score = (css_base / 100.0).clip(0, 1)
 
-    # Inject ~15% noise
-    pss_prob += np.random.uniform(-0.15, 0.15, n)
-    css_prob += np.random.uniform(-0.15, 0.15, n)
-
-    pss_label = (pss_prob > 0.5).astype(int)
-    css_label = (css_prob > 0.5).astype(int)
+    pss_label = (pss_score > 0.5).astype(int)
+    css_label = (css_score > 0.5).astype(int)
 
     return pd.DataFrame({
-        "coupon_usage_pct": coupon_usage_pct,
-        "visited_coupon_page": visited_coupon_page,
-        "searched_discount_terms": searched_discount_terms,
+        "past_orders_with_coupon_pct": past_orders_with_coupon_pct,
+        "visited_coupon_page": visited_coupon_page.astype(int),
+        "searched_discount_terms": searched_discount_terms.astype(int),
         "cursor_hesitation": cursor_hesitation,
-        "abandoned_at_shipping_reveal": abandoned_at_shipping_reveal,
+        "abandoned_at_shipping_reveal": abandoned_at_shipping_reveal.astype(int),
         "checkout_step_reached": checkout_step_reached,
         "scroll_depth_pct": scroll_depth_pct,
-        "time_on_page_ms": time_on_page_ms,
+        "tab_switch_count": tab_switch_count,
         "PSS_label": pss_label,
         "CSS_label": css_label
     })
@@ -242,14 +250,14 @@ def _build_sensitivity_records(
         pss_label = int(action in PRICE_DRIVEN_ACTIONS) if action else 0
         css_label = int(action in CONVENIENCE_DRIVEN_ACTIONS) if action else 0
         records.append({
-            "coupon_usage_pct": calculate_coupon_usage_pct(customer_id, db_connection) * 100.0,
+            "past_orders_with_coupon_pct": float(calculate_coupon_usage_pct(customer_id, db_connection)),
             "visited_coupon_page": int(calculate_visited_coupon_page(events)),
             "searched_discount_terms": int(calculate_searched_discount_terms(events)),
             "cursor_hesitation": calculate_cursor_hesitation(events),
             "abandoned_at_shipping_reveal": int(calculate_abandoned_at_shipping_reveal(events)),
             "checkout_step_reached": calculate_checkout_step_reached(events),
             "scroll_depth_pct": calculate_scroll_depth(events),
-            "time_on_page_ms": calculate_time_on_page_ms(events),
+            "tab_switch_count": calculate_tab_switch_count(events),
             "PSS_label": pss_label,
             "CSS_label": css_label,
         })
