@@ -19,6 +19,7 @@ export interface User {
   display_name?: string;
   avatar_url?: string | null;
   role: string;
+  profile_picture_url?: string | null;
   tenant_id: string;
   email_verified: boolean;
   onboarding_status: string;
@@ -157,6 +158,7 @@ export const useAuthStore = create<AuthStore>()(
               full_name: user.full_name,
               display_name: user.full_name.split(' ')[0],
               avatar_url: null,
+             profile_picture_url: (user as any).profile_picture_url || null,
               role: 'admin',
               tenant_id: '',
               email_verified: true,
@@ -186,6 +188,7 @@ export const useAuthStore = create<AuthStore>()(
             email: string;
             email_verified: boolean;
             onboarding_completed: boolean;
+            profile_picture_url?: string;
             organizations?: Array<{ id: string }>;
             organization_memberships?: Membership[];
           };
@@ -211,7 +214,8 @@ export const useAuthStore = create<AuthStore>()(
               email: u.email,
               full_name: u.full_name,
               display_name: u.full_name.split(' ')[0],
-              avatar_url: null,
+              avatar_url: u.profile_picture_url || null,
+              profile_picture_url: u.profile_picture_url || null,
               role,
               tenant_id: tenantId,
               email_verified: u.email_verified ?? false,
