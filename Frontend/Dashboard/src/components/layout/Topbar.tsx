@@ -1,8 +1,6 @@
 import { Bell, HelpCircle, Calendar, Search, Menu, Sparkles, Compass } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useUI } from '@/store/ui';
-import { useAuth } from '@/context/AuthContext';
 import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
@@ -11,25 +9,7 @@ const RANGES = ['Today', 'Last 7 days', 'Last 30 days', 'Last 90 days', 'This ye
 
 export function Topbar({ section = 'Overview' }: { section?: string }) {
   const { setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, setCopilotOpen, dateRange, setDateRange, startTour } = useUI();
-  const { user } = useAuth();
   const [dateOpen, setDateOpen] = useState(false);
-
-  // Logout can involve a network call to revoke the refresh token, and the
-  // page navigation that follows isn't always instant — without this, the
-  // dropdown just closes and the screen appears to freeze for a moment
-  // with zero indication anything is happening.
-  const handleLogout = async () => {
-    setIsLoggingOut(true);
-    try {
-      await logout();
-    } catch {
-      // logout() already clears local session state and redirects even on
-      // network failure — nothing further to do here.
-      setIsLoggingOut(false);
-    }
-  };
-
-  // Real unread notification count from API
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -42,6 +22,8 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
 
   return (
     <header className="sticky top-0 z-40 flex h-[var(--topbar-h)] shrink-0 items-center justify-between border-b border-border bg-bg px-4 sm:px-6">
+      
+      {/* Left Side: Breadcrumbs & Mobile Menu */}
       <div className="flex items-center gap-3.5">
         <button
           onClick={() => setMobileSidebarOpen(true)}
@@ -57,8 +39,9 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
         </nav>
       </div>
 
+      {/* Right Side: Actions & Buttons */}
       <div className="flex items-center gap-2">
-        {/* Date picker */}
+        
         {/* Date picker (Temporarily hidden until backend is wired in Week 4) */}
         {false && (
           <div data-tour="topbar-date" className="relative">
@@ -152,36 +135,8 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
         >
           <HelpCircle className="h-3.5 w-3.5" />
         </button>
-
-        )}
+        
       </div>
-
-      {/* Very visible, strictly black-and-white loading overlay while
-          logout's network call resolves and the redirect to /login fires.
-          Without this, clicking "Log out" looked like nothing happened. */}
-      <AnimatePresence>
-        {isLoggingOut && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 12, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-              className="flex flex-col items-center gap-4 rounded-2xl border border-white/15 bg-white/[0.06] px-10 py-8 backdrop-blur-2xl shadow-2xl"
-            >
-              <div
-                className="h-10 w-10 rounded-full border-[3px] border-white/15 border-t-white animate-spin"
-                aria-hidden="true"
-              />
-              <p className="text-sm font-semibold text-white tracking-tight">Signing you out…</p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </header>
   );
-}
+                }
