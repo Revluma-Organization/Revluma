@@ -152,7 +152,9 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
         >
           <HelpCircle className="h-3.5 w-3.5" />
         </button>
-        
+
+        )}
+      </div>
 
       {/* Very visible, strictly black-and-white loading overlay while
           logout's network call resolves and the redirect to /login fires.
