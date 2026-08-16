@@ -16,7 +16,7 @@ def predict(customer_id: str, feature_vector: dict, merchant_id: str) -> dict:
 
     Args:
         customer_id    (str) : UUID of the customer
-        feature_vector (dict): The 4 M4 features + RFM sub-scores
+        feature_vector (dict): The 24 M4 features including RFM sub-scores and synthetic placeholders
         merchant_id    (str) : UUID of the merchant
 
     Returns:

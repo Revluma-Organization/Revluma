@@ -27,13 +27,15 @@ def predict(feature_vector: dict, merchant_id: str) -> dict:
     Scores a single live session for abandonment probability.
 
     Args:
-        feature_vector (dict): The 5 M1 features from the feature store:
+        feature_vector (dict): The 7 M1 features from the feature store:
             {
                 "scroll_depth_pct"       : float,
                 "tab_switch_count"       : int,
                 "time_on_page_ms"        : int,
                 "checkout_step_reached"  : int,
-                "failed_payment_attempt" : bool
+                "failed_payment_attempt" : bool,
+                "cart_item_add_count"    : int,
+                "cart_item_remove_count" : int
             }
         merchant_id (str): UUID of the merchant
 

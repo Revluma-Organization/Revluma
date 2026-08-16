@@ -28,7 +28,7 @@ def predict(feature_vector: dict, merchant_id: str, db) -> dict:
     Recommends the minimum discount % needed to convert this shopper.
 
     Args:
-        feature_vector (dict): The 9 M5 features including pss_score + css_score
+        feature_vector (dict): The 10 M5 features including pss_score + css_score + tss_score
         merchant_id    (str) : UUID of the merchant
         db             : Database session for loading merchant constraints
 
