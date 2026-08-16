@@ -329,11 +329,15 @@ export function Sidebar() {
           >
             <div
               className={cn(
-                'flex shrink-0 items-center justify-center rounded-full text-[0.72rem] font-bold border border-border bg-black/5 dark:bg-white/5 text-t1',
+                'flex shrink-0 items-center justify-center rounded-full text-[0.72rem] font-bold border border-border bg-black/5 dark:bg-white/5 text-t1 overflow-hidden',
                 sidebarCollapsed ? 'md:h-[34px] md:w-[34px] h-[30px] w-[30px]' : 'h-[30px] w-[30px]',
               )}
             >
-              {initials}
+              {user?.profile_picture_url ? (
+                <img src={user.profile_picture_url} alt={displayName} className="h-full w-full object-cover" />
+              ) : (
+                initials
+              )}
             </div>
             {!sidebarCollapsed && (
               <>
