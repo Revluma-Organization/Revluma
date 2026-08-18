@@ -159,7 +159,7 @@ export const useAuthStore = create<AuthStore>()(
               display_name: user.full_name.split(' ')[0],
               avatar_url: null,
              profile_picture_url: (user as any).profile_picture_url || null,
-              role: 'admin',
+              role: (user as any).role || 'member', 
               tenant_id: '',
               email_verified: true,
               onboarding_status: 'completed',
