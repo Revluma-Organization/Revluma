@@ -292,9 +292,3 @@ Log all validation failures and sync trigger attempts.
 Never log consumer_key, consumer_secret, or full access_token in plain text.
 
 
-"REQUIRED CREDENTIALS: To be uncommitted in the next 12 hours."
-shop_url:	"https://revluma.local",
-consumer_key:	"ck_bca406dce5b90e68d2196f5a1f028f1a4e4d8126"
-consumer_secret:	"cs_6bd3a72878e48866bd640e9fe13fa2c66f96eac2"
-store_id: "47b6b102-85f0-47f9-bae8-b7b61e21be68",
-access_token:  "ck_bca406dce5b90e68d2196f5a1f028f1a4e4d8126:cs_6bd3a72878e48866bd640e9fe13fa2c66f96eac2"

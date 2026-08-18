@@ -6,7 +6,7 @@ lightgbm==4.6.0
 fastapi==0.110.0
 uvicorn==0.27.1
 redis==5.0.1
-psycopg2-binary-2.9.10
+psycopg2-binary-2.9.12
 mlflow==3.14.0
 python-dotenv==1.0.1
 sqlalchemy==2.0.51

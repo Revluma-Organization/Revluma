@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import argparse
+import json
 from typing import Dict, Any, Optional, List, Tuple
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -133,6 +134,15 @@ def fetch_all_pages(
         page += 1
 
     return all_items
+
+
+def to_json(data):
+    """Convert data to JSON string for PostgreSQL JSONB columns."""
+    if data is None:
+        return None
+    if isinstance(data, (dict, list)):
+        return json.dumps(data)
+    return data
 
 
 # ====================================================================
@@ -337,7 +347,6 @@ def sync_woo_orders(store_id: str, db_conn):
         logger.error(f"Order sync failed for store {store_id}: {str(e)}")
         raise
 
-
 def sync_woo_products(store_id: str, db_conn):
     """
     Sync products, variations, categories, tags, attributes, inventory, pricing.
@@ -358,27 +367,48 @@ def sync_woo_products(store_id: str, db_conn):
 
     logger.info(f"Starting product sync for store {store_id}")
 
+    # Helper to safely convert to float
+    def safe_float(value):
+        if value is None or value == '':
+            return None
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return None
+
+    # Helper to safely convert to int
+    def safe_int(value):
+        if value is None or value == '':
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return 0
+
     try:
-        # Fetch all products (including variations)
         products = fetch_all_pages(
             shop_domain,
             'products',
             consumer_key,
             consumer_secret,
-            extra_params={'per_page': 100}  # default already
+            extra_params={'per_page': 100}
         )
 
         total = len(products)
         logger.info(f"Fetched {total} products from WooCommerce")
 
         for wc_prod in products:
-            # Determine if simple or variable
             product_type = wc_prod.get('type', 'simple')
             parent_id = None
             if product_type == 'variation':
                 parent_id = wc_prod.get('parent_id')
-                # For variations, we need to handle separately or as child of parent
-                # For simplicity, we treat each variation as a product with parent_id
+
+            # Extract price with empty string handling
+            price = safe_float(wc_prod.get('price'))
+            regular_price = safe_float(wc_prod.get('regular_price'))
+            sale_price = safe_float(wc_prod.get('sale_price'))
+            weight = safe_float(wc_prod.get('weight'))
+            stock_quantity = safe_int(wc_prod.get('stock_quantity'))
 
             product_data = {
                 'store_id': store_id,
@@ -393,49 +423,48 @@ def sync_woo_products(store_id: str, db_conn):
                 'description': wc_prod.get('description', ''),
                 'short_description': wc_prod.get('short_description', ''),
                 'sku': wc_prod.get('sku', ''),
-                'price': float(wc_prod.get('price', 0)),
-                'regular_price': float(wc_prod.get('regular_price', 0)) if wc_prod.get('regular_price') else None,
-                'sale_price': float(wc_prod.get('sale_price', 0)) if wc_prod.get('sale_price') else None,
+                'price': price,
+                'regular_price': regular_price,
+                'sale_price': sale_price,
                 'date_on_sale_from': wc_prod.get('date_on_sale_from'),
                 'date_on_sale_to': wc_prod.get('date_on_sale_to'),
                 'on_sale': wc_prod.get('on_sale', False),
                 'purchasable': wc_prod.get('purchasable', True),
-                'total_sales': wc_prod.get('total_sales', 0),
+                'total_sales': safe_int(wc_prod.get('total_sales', 0)),
                 'virtual': wc_prod.get('virtual', False),
                 'downloadable': wc_prod.get('downloadable', False),
-                'downloads': wc_prod.get('downloads', []),
-                'download_limit': wc_prod.get('download_limit', -1),
-                'download_expiry': wc_prod.get('download_expiry', -1),
+                'downloads': to_json(wc_prod.get('downloads', [])),
+                'download_limit': safe_int(wc_prod.get('download_limit', -1)),
+                'download_expiry': safe_int(wc_prod.get('download_expiry', -1)),
                 'external_url': wc_prod.get('external_url', ''),
                 'button_text': wc_prod.get('button_text', ''),
                 'tax_status': wc_prod.get('tax_status', 'taxable'),
                 'tax_class': wc_prod.get('tax_class', ''),
                 'manage_stock': wc_prod.get('manage_stock', False),
-                'stock_quantity': wc_prod.get('stock_quantity'),
+                'stock_quantity': stock_quantity,
                 'stock_status': wc_prod.get('stock_status', 'instock'),
                 'backorders': wc_prod.get('backorders', 'no'),
                 'backorders_allowed': wc_prod.get('backorders_allowed', False),
                 'backordered': wc_prod.get('backordered', False),
-                'low_stock_amount': wc_prod.get('low_stock_amount'),
+                'low_stock_amount': safe_int(wc_prod.get('low_stock_amount')),
                 'sold_individually': wc_prod.get('sold_individually', False),
-                'weight': wc_prod.get('weight'),
-                'dimensions': wc_prod.get('dimensions', {}),
+                'weight': weight,
+                'dimensions': to_json(wc_prod.get('dimensions', {})),
                 'shipping_required': wc_prod.get('shipping_required', True),
                 'shipping_taxable': wc_prod.get('shipping_taxable', True),
                 'shipping_class': wc_prod.get('shipping_class', ''),
-                'shipping_class_id': wc_prod.get('shipping_class_id', 0),
+                'shipping_class_id': safe_int(wc_prod.get('shipping_class_id', 0)),
                 'reviews_allowed': wc_prod.get('reviews_allowed', True),
                 'average_rating': wc_prod.get('average_rating', '0'),
-                'rating_count': wc_prod.get('rating_count', 0),
-                'related_ids': wc_prod.get('related_ids', []),
-                'upsell_ids': wc_prod.get('upsell_ids', []),
-                'cross_sell_ids': wc_prod.get('cross_sell_ids', []),
+                'rating_count': safe_int(wc_prod.get('rating_count', 0)),
+                'related_ids': to_json(wc_prod.get('related_ids', [])),
+                'upsell_ids': to_json(wc_prod.get('upsell_ids', [])),
+                'cross_sell_ids': to_json(wc_prod.get('cross_sell_ids', [])),
                 'parent_id': parent_id,
                 'created_at': wc_prod.get('date_created'),
                 'updated_at': wc_prod.get('date_modified'),
             }
 
-            # Upsert product
             cursor.execute("""
                 INSERT INTO products (
                     store_id, external_id, parent_external_id, name, slug, type, status,
@@ -535,7 +564,7 @@ def sync_woo_products(store_id: str, db_conn):
                     str(cat.get('parent', 0)) if cat.get('parent') else None,
                     cat.get('description', ''),
                     cat.get('display', 'default'),
-                    cat.get('image', {}),
+                    to_json(cat.get('image', {})),
                     cat.get('menu_order', 0),
                     cat.get('count', 0)
                 ))
@@ -612,11 +641,8 @@ def sync_woo_products(store_id: str, db_conn):
                     attr.get('position', 0),
                     attr.get('visible', True),
                     attr.get('variation', False),
-                    attr.get('options', [])
+                    to_json(attr.get('options', []))
                 ))
-
-        # After products, sync variations separately if needed
-        # Variations are already included in the products list with type='variation' and parent_id set
 
         db_conn.commit()
         logger.info(f"Product sync completed: {total} products upserted for store {store_id}")
@@ -668,19 +694,19 @@ def sync_woo_coupons(store_id: str, db_conn):
                 'date_expires': wc_coupon.get('date_expires'),
                 'usage_count': wc_coupon.get('usage_count', 0),
                 'individual_use': wc_coupon.get('individual_use', False),
-                'product_ids': wc_coupon.get('product_ids', []),
-                'excluded_product_ids': wc_coupon.get('excluded_product_ids', []),
+                'product_ids': to_json(wc_coupon.get('product_ids', [])),
+                'excluded_product_ids': to_json(wc_coupon.get('excluded_product_ids', [])),
                 'usage_limit': wc_coupon.get('usage_limit'),
                 'usage_limit_per_user': wc_coupon.get('usage_limit_per_user'),
                 'limit_usage_to_x_items': wc_coupon.get('limit_usage_to_x_items'),
                 'free_shipping': wc_coupon.get('free_shipping', False),
-                'product_categories': wc_coupon.get('product_categories', []),
-                'excluded_product_categories': wc_coupon.get('excluded_product_categories', []),
+                'product_categories': to_json(wc_coupon.get('product_categories', [])),
+                'excluded_product_categories': to_json(wc_coupon.get('excluded_product_categories', [])),
                 'exclude_sale_items': wc_coupon.get('exclude_sale_items', False),
                 'minimum_amount': float(wc_coupon.get('minimum_amount', 0)) if wc_coupon.get('minimum_amount') else None,
                 'maximum_amount': float(wc_coupon.get('maximum_amount', 0)) if wc_coupon.get('maximum_amount') else None,
-                'email_restrictions': wc_coupon.get('email_restrictions', []),
-                'used_by': wc_coupon.get('used_by', []),
+                'email_restrictions': to_json(wc_coupon.get('email_restrictions', [])),
+                'used_by': to_json(wc_coupon.get('used_by', [])),
                 'created_at': wc_coupon.get('date_created'),
                 'updated_at': wc_coupon.get('date_modified'),
             }
@@ -736,30 +762,6 @@ def sync_woo_coupons(store_id: str, db_conn):
         raise
 
 
-def sync_woo_refunds(store_id: str, db_conn):
-    """Sync refunded orders (extract from orders with status 'refunded')."""
-    # Refunds are already included in orders, but we might need additional details.
-    # We can either sync orders again with status=refunded or rely on order updates.
-    # For simplicity, we'll update orders table with refund fields.
-    # Already handled in sync_woo_orders (we fetch all statuses).
-    # We'll add a separate function to fetch refunds from /wp-json/wc/v3/orders?status=refunded
-    # and update the orders table with refund amount, reason, etc.
-    # However, we can just rely on the existing order sync which includes refunded orders.
-    # Since we already sync all orders, we just need to ensure the refund data is stored.
-    # We'll add a function to fetch refunds specifically for additional metadata.
-    pass
-
-
-def sync_woo_inventory(store_id: str, db_conn):
-    """
-    Sync inventory levels (stock quantities) for all products.
-    """
-    # Already handled in product sync (stock_quantity, stock_status, manage_stock).
-    # We can add a separate function to sync only inventory if needed.
-    # For now, we'll rely on product sync.
-    pass
-
-
 def sync_woo_settings(store_id: str, db_conn):
     """Sync store settings (general, tax, shipping, payment gateways)."""
     cursor = db_conn.cursor(cursor_factory=RealDictCursor)
@@ -783,14 +785,13 @@ def sync_woo_settings(store_id: str, db_conn):
         settings_general = make_woo_request_with_headers(
             shop_domain, 'settings/general', consumer_key, consumer_secret
         ).json()
-        # Store in a settings table (could be JSONB)
         cursor.execute("""
             INSERT INTO store_settings (store_id, settings_group, settings)
             VALUES (%s, 'general', %s)
             ON CONFLICT (store_id, settings_group) DO UPDATE SET
                 settings = EXCLUDED.settings,
                 updated_at = NOW()
-        """, (store_id, settings_general))
+        """, (store_id, to_json(settings_general)))
 
         # Tax settings
         settings_tax = make_woo_request_with_headers(
@@ -802,20 +803,19 @@ def sync_woo_settings(store_id: str, db_conn):
             ON CONFLICT (store_id, settings_group) DO UPDATE SET
                 settings = EXCLUDED.settings,
                 updated_at = NOW()
-        """, (store_id, settings_tax))
+        """, (store_id, to_json(settings_tax)))
 
         # Shipping zones
         shipping_zones = make_woo_request_with_headers(
             shop_domain, 'shipping/zones', consumer_key, consumer_secret
         ).json()
-        # Store as settings group 'shipping'
         cursor.execute("""
             INSERT INTO store_settings (store_id, settings_group, settings)
             VALUES (%s, 'shipping', %s)
             ON CONFLICT (store_id, settings_group) DO UPDATE SET
                 settings = EXCLUDED.settings,
                 updated_at = NOW()
-        """, (store_id, shipping_zones))
+        """, (store_id, to_json(shipping_zones)))
 
         # Payment gateways
         payment_gateways = make_woo_request_with_headers(
@@ -827,7 +827,7 @@ def sync_woo_settings(store_id: str, db_conn):
             ON CONFLICT (store_id, settings_group) DO UPDATE SET
                 settings = EXCLUDED.settings,
                 updated_at = NOW()
-        """, (store_id, payment_gateways))
+        """, (store_id, to_json(payment_gateways)))
 
         db_conn.commit()
         logger.info(f"Store settings sync completed for store {store_id}")
@@ -866,17 +866,11 @@ def sync_woocommerce_store(store_id: str):
         logger.info(f"Store {store_id} status set to 'syncing'")
 
         # === RUN ALL SYNC FUNCTIONS ===
-        # Customers and Orders (existing)
         sync_woo_customers(store_id, db_conn)
         sync_woo_orders(store_id, db_conn)
-
-        # New syncs
         sync_woo_products(store_id, db_conn)
         sync_woo_coupons(store_id, db_conn)
         sync_woo_settings(store_id, db_conn)
-
-        # Refunds and inventory are covered by orders and products syncs respectively.
-        # If additional data needed, add separate functions.
 
         # Update status to 'active'
         cursor.execute("""
