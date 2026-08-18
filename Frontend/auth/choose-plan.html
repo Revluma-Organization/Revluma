@@ -11,43 +11,24 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body { margin: 0; font-family: 'Satoshi', sans-serif; background: #0A0A0A; color: white; min-height: 100vh; }
-
-    .grid-bg {
-      background-image: linear-gradient(to right, #1a1a1a 1px, transparent 1px), linear-gradient(to bottom, #1a1a1a 1px, transparent 1px);
-      background-size: 4rem 4rem;
-      mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 50%, transparent 100%);
-    }
-
-    .plan-card {
-      background: #0f0f0f; border: 1px solid #222; border-radius: 20px;
-      padding: 32px; cursor: pointer; transition: all 0.25s ease; position: relative;
-    }
+    .grid-bg { background-image: linear-gradient(to right, #1a1a1a 1px, transparent 1px), linear-gradient(to bottom, #1a1a1a 1px, transparent 1px); background-size: 4rem 4rem; mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 50%, transparent 100%); }
+    .plan-card { background: #0f0f0f; border: 1px solid #222; border-radius: 20px; padding: 32px; cursor: pointer; transition: all 0.25s ease; position: relative; }
     .plan-card:hover { border-color: rgba(255,255,255,0.18); transform: translateY(-2px); }
     .plan-card.selected { border-color: #4ade80; background: rgba(74,222,128,0.04); }
     .plan-card.featured { border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.03); }
-
     .billing-toggle { display: inline-flex; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); border-radius: 999px; padding: 3px; }
     .billing-toggle button { padding: 5px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; transition: all 0.2s; color: #666; cursor: pointer; border: none; background: transparent; }
     .billing-toggle button.active { background: white; color: #0A0A0A; }
-
-    .btn-pay {
-      width: 100%; padding: 14px; border-radius: 14px; font-weight: 700; font-size: 15px;
-      cursor: pointer; border: none; transition: all 0.25s ease;
-      background: white; color: #0A0A0A;
-    }
-    .btn-pay:hover { background: #e8e8e8; transform: scale(1.02); }
-    .btn-pay:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
+    .btn-pay { width: 100%; padding: 14px; border-radius: 14px; font-weight: 700; font-size: 15px; cursor: pointer; border: none; transition: all 0.25s ease; background: white; color: #0A0A0A; }
+    .btn-pay:hover:not(:disabled) { background: #e8e8e8; transform: scale(1.02); }
+    .btn-pay:disabled { opacity: 0.5; cursor: not-allowed; }
     .check { color: #4ade80; }
     .savings-badge { background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.22); color: #4ade80; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 9px; border-radius: 999px; }
   </style>
 </head>
-
 <body>
   <div class="relative min-h-screen">
     <div class="absolute inset-0 grid-bg pointer-events-none"></div>
-
-    <!-- Top bar -->
     <div class="relative z-10 flex items-center justify-between px-6 py-5 border-b border-white/06">
       <div class="flex items-center gap-2.5">
         <img src="../assets/images/Revluma-icon.png" alt="Revluma" class="w-7 h-7 rounded-lg" />
@@ -60,20 +41,16 @@
       </div>
     </div>
 
-    <!-- Main -->
     <div class="relative z-10 max-w-4xl mx-auto px-6 py-14">
-
-      <!-- Header -->
       <div class="text-center mb-10">
         <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 mb-4">
           <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
           <span class="text-[11px] font-semibold uppercase tracking-widest text-[#777]">7-day free trial · Cancel anytime</span>
         </div>
         <h1 class="text-3xl md:text-4xl font-bold tracking-tighter mb-3">Start recovering revenue today</h1>
-        <p class="text-[#666] text-sm max-w-sm mx-auto">Choose your plan. Your free trial begins immediately. No charge until day 8.</p>
+        <p class="text-[#666] text-sm max-w-sm mx-auto">Your trial begins immediately. No charge until day 8.</p>
       </div>
 
-      <!-- Billing toggle -->
       <div class="flex items-center justify-center gap-3 mb-8">
         <div class="billing-toggle">
           <button id="btn-monthly" class="active" onclick="setBilling('monthly')">Monthly</button>
@@ -82,19 +59,14 @@
         <span class="savings-badge">Save 20% annually</span>
       </div>
 
-      <!-- Plan cards -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
-
         <!-- Growth -->
         <div class="plan-card" id="card-growth" onclick="selectPlan('growth')">
           <div class="flex items-center justify-between mb-4">
             <p class="text-[10px] uppercase tracking-widest text-[#555] font-bold">Growth</p>
             <div id="check-growth" class="w-5 h-5 rounded-full border border-[#333] transition-all"></div>
           </div>
-          <div class="mb-1">
-            <span class="text-4xl font-bold" id="price-growth">$29</span>
-            <span class="text-sm text-[#555]">/mo</span>
-          </div>
+          <div class="mb-1"><span class="text-4xl font-bold" id="price-growth">$29</span><span class="text-sm text-[#555]">/mo</span></div>
           <p id="annual-note-growth" class="text-[11px] text-[#555] mb-1 hidden">Billed $276/year</p>
           <p class="text-[#555] text-sm mb-6">Perfect for stores up to $50K/mo</p>
           <ul class="space-y-2.5 text-sm text-[#888]">
@@ -108,17 +80,14 @@
           </ul>
         </div>
 
-        <!-- Scale (featured) -->
+        <!-- Scale -->
         <div class="plan-card featured" id="card-scale" onclick="selectPlan('scale')">
           <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-black uppercase tracking-widest px-4 py-1 rounded-full">Most Popular</span>
           <div class="flex items-center justify-between mb-4">
             <p class="text-[10px] uppercase tracking-widest text-[#555] font-bold">Scale</p>
             <div id="check-scale" class="w-5 h-5 rounded-full border border-[#333] transition-all"></div>
           </div>
-          <div class="mb-1">
-            <span class="text-4xl font-bold" id="price-scale">$50</span>
-            <span class="text-sm text-[#555]">/mo</span>
-          </div>
+          <div class="mb-1"><span class="text-4xl font-bold" id="price-scale">$50</span><span class="text-sm text-[#555]">/mo</span></div>
           <p id="annual-note-scale" class="text-[11px] text-[#555] mb-1 hidden">Billed $480/year</p>
           <p class="text-[#555] text-sm mb-6">For stores scaling past $100K/mo</p>
           <ul class="space-y-2.5 text-sm text-[#888]">
@@ -133,54 +102,38 @@
         </div>
       </div>
 
-      <!-- Error message -->
       <div id="error-msg" class="hidden mb-4 text-center text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-xl py-3 px-4"></div>
 
-      <!-- CTA -->
       <div class="max-w-sm mx-auto">
         <button class="btn-pay" id="pay-btn" onclick="startPayment()" disabled>
           Select a plan to continue
         </button>
-        <p class="text-center text-[11px] text-[#555] mt-3">
-          🔒 Secured by Paystack · 7-day free trial · Cancel anytime
-        </p>
+        <p class="text-center text-[11px] text-[#555] mt-3">🔒 Secured by Paystack · 7-day free trial · Cancel anytime</p>
         <p class="text-center mt-4">
           <a href="/dashboard/overview" class="text-[12px] text-[#444] hover:text-[#888] transition-colors">Skip for now — continue with free plan →</a>
         </p>
       </div>
 
-      <!-- Trust row -->
       <div class="flex items-center justify-center gap-6 mt-10 flex-wrap">
-        <div class="text-center">
-          <p class="text-xl font-bold text-white">2,400+</p>
-          <p class="text-[11px] text-[#555]">brands using Revluma</p>
-        </div>
+        <div class="text-center"><p class="text-xl font-bold text-white">22%+</p><p class="text-[11px] text-[#555]">avg recovery rate</p></div>
         <div class="w-px h-8 bg-[#1f1f1f]"></div>
-        <div class="text-center">
-          <p class="text-xl font-bold text-white">22%</p>
-          <p class="text-[11px] text-[#555]">avg recovery rate</p>
-        </div>
+        <div class="text-center"><p class="text-xl font-bold text-white">4 min</p><p class="text-[11px] text-[#555]">average setup time</p></div>
         <div class="w-px h-8 bg-[#1f1f1f]"></div>
-        <div class="text-center">
-          <p class="text-xl font-bold text-white">$18K</p>
-          <p class="text-[11px] text-[#555]">recovered in 30 days</p>
-        </div>
+        <div class="text-center"><p class="text-xl font-bold text-white">$18K</p><p class="text-[11px] text-[#555]">recovered in 30 days</p></div>
       </div>
     </div>
   </div>
 
   <script>
-    // ── State ──────────────────────────────────────────────────────────────────
+    // NOTE: Prices shown here are display-only.
+    // The server derives all actual amounts from its own PLANS config.
+    // Sending a modified price from this page has no effect on what is charged.
+    const DISPLAY_PRICES = { growth: { monthly: '$29', annual: '$23' }, scale: { monthly: '$50', annual: '$40' } };
+
     let selectedPlan = null;
     let billing = 'monthly';
     let isLoading = false;
 
-    const PRICES = {
-      growth: { monthly: '$29', annual: '$23' },
-      scale:  { monthly: '$50', annual: '$40' },
-    };
-
-    // ── Get auth token ─────────────────────────────────────────────────────────
     function getToken() {
       try {
         const raw = localStorage.getItem('rv-auth');
@@ -189,25 +142,20 @@
       } catch { return null; }
     }
 
-    // ── Billing toggle ─────────────────────────────────────────────────────────
     function setBilling(val) {
       billing = val;
       document.getElementById('btn-monthly').classList.toggle('active', val === 'monthly');
       document.getElementById('btn-annual').classList.toggle('active', val === 'annual');
-
       ['growth', 'scale'].forEach(plan => {
-        document.getElementById(`price-${plan}`).textContent = PRICES[plan][val];
+        document.getElementById(`price-${plan}`).textContent = DISPLAY_PRICES[plan][val];
         const note = document.getElementById(`annual-note-${plan}`);
         if (note) note.classList.toggle('hidden', val !== 'annual');
       });
-
       updatePayBtn();
     }
 
-    // ── Plan selection ─────────────────────────────────────────────────────────
     function selectPlan(plan) {
       selectedPlan = plan;
-
       ['growth', 'scale'].forEach(p => {
         document.getElementById(`card-${p}`).classList.toggle('selected', p === plan);
         const check = document.getElementById(`check-${p}`);
@@ -221,79 +169,62 @@
           check.innerHTML = '';
         }
       });
-
       updatePayBtn();
     }
 
     function updatePayBtn() {
       const btn = document.getElementById('pay-btn');
-      if (!selectedPlan) {
-        btn.textContent = 'Select a plan to continue';
-        btn.disabled = true;
-        return;
-      }
-      const price = PRICES[selectedPlan][billing];
-      const planName = selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1);
-      btn.textContent = isLoading
-        ? 'Redirecting to payment...'
-        : `Start 7-day free trial — ${planName} ${price}/mo`;
+      if (!selectedPlan) { btn.textContent = 'Select a plan to continue'; btn.disabled = true; return; }
+      const price = DISPLAY_PRICES[selectedPlan][billing];
+      const name = selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1);
+      btn.textContent = isLoading ? 'Redirecting to payment...' : `Start 7-day free trial — ${name} ${price}/mo`;
       btn.disabled = isLoading;
     }
 
-    // ── Payment ────────────────────────────────────────────────────────────────
     async function startPayment() {
       if (!selectedPlan || isLoading) return;
-
       const token = getToken();
-      if (!token) {
-        window.location.href = '/auth/login.html';
-        return;
-      }
+      if (!token) { window.location.href = '/auth/login.html'; return; }
 
       isLoading = true;
       updatePayBtn();
       showError('');
 
       try {
-        const API = (window.REVLUMA_CONFIG?.API_BASE_URL || 'https://revluma-backend.onrender.com/api/v1');
-
+        const API = window.REVLUMA_CONFIG?.API_BASE_URL || 'https://revluma-backend.onrender.com/api/v1';
         const res = await fetch(`${API}/subscriptions/initialize`, {
-          method:  'POST',
+          method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          // Only send plan identifier and billing preference — server determines the amount
           body: JSON.stringify({ plan: selectedPlan, billing_cycle: billing, currency: 'NGN' }),
         });
-
         const data = await res.json();
 
+        if (res.status === 409) {
+          showError(data.error || 'You already have an active subscription.');
+          isLoading = false; updatePayBtn(); return;
+        }
         if (!data.success || !data.data?.authorization_url) {
           showError(data.error || 'Could not initialize payment. Please try again.');
-          isLoading = false;
-          updatePayBtn();
-          return;
+          isLoading = false; updatePayBtn(); return;
         }
 
-        // Store reference for the success page
+        // Store only the reference — not the plan or amount
         sessionStorage.setItem('paystack_reference', data.data.reference);
-        sessionStorage.setItem('payment_plan', selectedPlan);
 
-        // Redirect to Paystack
+        // Redirect to Paystack hosted checkout — Revluma never sees card data
         window.location.href = data.data.authorization_url;
-
       } catch (err) {
-        console.error(err);
         showError('Network error. Check your connection and try again.');
-        isLoading = false;
-        updatePayBtn();
+        isLoading = false; updatePayBtn();
       }
     }
 
     function showError(msg) {
       const el = document.getElementById('error-msg');
-      if (msg) { el.textContent = msg; el.classList.remove('hidden'); }
-      else el.classList.add('hidden');
+      msg ? (el.textContent = msg, el.classList.remove('hidden')) : el.classList.add('hidden');
     }
 
-    // ── Auto-select Scale on load ──────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', () => selectPlan('scale'));
   </script>
 </body>

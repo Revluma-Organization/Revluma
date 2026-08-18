@@ -1097,13 +1097,13 @@
           showGlassmorphismCard('success',
             "You're All Set!",
             'Your store is ready to go. Please sign in to access your dashboard.',
-            () => window.location.href = '/auth/login.html',
+            () => window.location.href = '/auth/choose-plan.html',
             'Continue to Sign In'
           );
 
           // Auto-redirect after 3 seconds in case the user doesn't click the button
           setTimeout(() => {
-            window.location.href = '/auth/login.html';
+            window.location.href = '/auth/choose-plan.html';
           }, 3000);
         });
       }

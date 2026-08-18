@@ -83,6 +83,7 @@ app.use('/api/v1/events', eventRoutes);
 app.use("/api/v1/preferences", preferencesRoutes);
 app.use("/api/v1/auth/",sessionRoutes);
 app.use("/api/v1/settings",settingsRoutes);
+app.use("/api/v1/subscriptions", subscriptionRoutes);
 
 
 // ── Health check

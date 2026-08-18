@@ -13,7 +13,8 @@ const REQUIRED_ENV_VARS = [
   'REFRESH_TOKEN_EXPIRES_IN',
   'PORT',
   'NODE_ENV',
-  'FRONTEND_URL'
+  'FRONTEND_URL',
+  'PAYSTACK_SECRET_KEY'
 ];
 
 const missingVars = [];
