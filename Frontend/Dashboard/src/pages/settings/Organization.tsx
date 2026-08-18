@@ -2,6 +2,7 @@ import {
   FC,
   useState,
   useRef,
+  useEffect,
   type FormEvent,
   type ChangeEvent,
 } from "react";
@@ -26,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { api } from "@/lib/api";
 
 export const Organization: FC = () => {
   // Initialize inputs as empty strings with helpful placeholders instead of hardcoded values
@@ -43,11 +45,31 @@ export const Organization: FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+    useEffect(() => {
+    const fetchWorkspace = async () => {
+      try {
+        const res = await api.get("/workspace/current");
+        const data = res.data?.data || res.data;
+        if (data) {
+          setOrgName(data.name || "");
+          setSlug(data.slug || "");
+          if (data.logo_url) setLogoPreview(data.logo_url);
+          if (data.industry) {
+            const standard = ["ecommerce", "saas", "fintech", "healthcare", "edtech", "agency", "ai", "gaming", "logistics", "realestate", "travel", "nonprofit", "other"];
+            if (standard.includes(data.industry)) setIndustry(data.industry);
+            else { setIndustry("other"); setCustomIndustry(data.industry); }
+          }
+        }
+      } catch (err) { console.error(err); }
+    };
+    fetchWorkspace();
+  }, []);
+
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
@@ -58,9 +80,19 @@ export const Organization: FC = () => {
       const url = URL.createObjectURL(file);
       setLogoPreview(url);
       setSaveStatus("idle");
+
+      const formData = new FormData();
+      formData.append("logo", file);
+      try {
+        await api.post("/workspace/logo", formData);
+      } catch (err) {
+        setSaveStatus("error");
+        setErrorMessage("Failed to upload the workspace logo.");
+      }
     }
   };
-
+  
+  
   const handleSlugChange = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
       .toLowerCase()
@@ -70,7 +102,7 @@ export const Organization: FC = () => {
     setSaveStatus("idle");
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!orgName.trim() || !slug.trim()) {
       setSaveStatus("error");
@@ -84,13 +116,23 @@ export const Organization: FC = () => {
       return;
     }
 
-    setIsSaving(true);
+        setIsSaving(true);
     setSaveStatus("idle");
 
-    setTimeout(() => {
-      setIsSaving(false);
+    const finalIndustry = industry === "other" ? customIndustry : industry;
+    try {
+      await api.patch("/workspace/current", {
+        name: orgName,
+        slug: slug,
+        industry: finalIndustry,
+      });
       setSaveStatus("success");
-    }, 1000);
+    } catch (err: any) {
+      setSaveStatus("error");
+      setErrorMessage("Failed to save organization settings. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
