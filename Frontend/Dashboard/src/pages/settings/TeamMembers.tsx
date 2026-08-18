@@ -86,52 +86,58 @@ export const TeamMembers: FC = () => {
     setIsInviteModalOpen(false);
   };
 
-  const handleInviteSubmit = (e: FormEvent) => {
+    const handleInviteSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!inviteEmail || !inviteEmail.includes("@")) return;
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      const emailParts = inviteEmail.split("@")[0];
-      const displayName =
-        emailParts
-          .split(".")
-          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(" ") || "New Member";
-
-      const newMember: TeamMemberItem = {
-        id: `usr-${Date.now()}`,
-        fullName: displayName,
+    try {
+      await api.post("/org/members/invite", {
         email: inviteEmail.toLowerCase(),
         role: inviteRole,
-        joinedDate: "Just now",
-      };
-
-      setMembers((prev) => [newMember, ...prev]);
-      setIsSubmitting(false);
+      });
+      
+      // Re-fetch the list to get the real Database ID for the new member
+      await fetchMembers();
+      
+      setFeedbackMessage(`Invited ${inviteEmail} as an ${inviteRole} successfully.`);
       setIsInviteModalOpen(false);
-      setFeedbackMessage(
-        `Invited ${inviteEmail} as an ${inviteRole} successfully.`
+    } catch (err) {
+      console.error(err);
+      setFeedbackMessage("Failed to send invitation. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+    const handleRemoveMember = async (id: string) => {
+    try {
+      await api.delete(`/org/members/${id}`);
+      setMembers((prev) => prev.filter((m) => m.id !== id));
+      setFeedbackMessage("Team member removed from workspace.");
+    } catch (err) {
+      console.error(err);
+      setFeedbackMessage("Failed to remove team member.");
+    }
+  };
+  
+    const handleToggleRole = async (id: string) => {
+    const memberToUpdate = members.find((m) => m.id === id);
+    if (!memberToUpdate) return;
+    
+    const updatedRole = memberToUpdate.role === "Admin" ? "Member" : "Admin";
+
+    try {
+      await api.patch(`/org/members/${id}/role`, { role: updatedRole });
+      
+      setMembers((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, role: updatedRole } : m))
       );
-    }, 800);
-  };
-
-  const handleRemoveMember = (id: string) => {
-    setMembers((prev) => prev.filter((m) => m.id !== id));
-    setFeedbackMessage("Team member removed from workspace.");
-  };
-
-  const handleToggleRole = (id: string) => {
-    setMembers((prev) =>
-      prev.map((m) => {
-        if (m.id === id) {
-          const updatedRole = m.role === "Admin" ? "Member" : "Admin";
-          return { ...m, role: updatedRole };
-        }
-        return m;
-      })
-    );
-    setFeedbackMessage("Updated team member role successfully.");
+      setFeedbackMessage(`Updated team member role to ${updatedRole} successfully.`);
+    } catch (err) {
+      console.error(err);
+      setFeedbackMessage("Failed to update team member role.");
+    }
   };
 
   const getInitials = (name: string): string => {
