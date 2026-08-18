@@ -301,8 +301,15 @@ exports.register = async (req, res, next) => {
     });
 
   } catch (error) {
-    next(error);
-  }
+  logger.error('verification_email_failed', {
+    to: recipientEmail,
+    message: error?.message || error,
+    statusCode: error?.code,
+    response: error?.response?.body,
+  });
+
+  throw new Error("Failed to send verification email.");
+}
 };
 
 // ─── VERIFY EMAIL ─────────────────────────────────────────────────────────────
