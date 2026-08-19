@@ -1,59 +1,102 @@
-// Load environment variables immediately 
-require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 
-const REQUIRED_ENV_VARS = [
-  'DATABASE_USER',
-  'DATABASE_HOST',
-  'DATABASE_PASSWORD',
-  'DATABASE_PORT',
-  'DATABASE_NAME',
-  'JWT_SECRET',
-  'JWT_REFRESH_SECRET',
-  'JWT_EXPIRES_IN',
-  'REFRESH_TOKEN_EXPIRES_IN',
-  'PORT',
-  'NODE_ENV',
-  'FRONTEND_URL'
-];
+const globalErrorHandler = require('./middlewares/globalHandler');
+const { apiLimiter } = require('./middlewares/rateLimiter');
 
-// Payment vars — warn if missing but do not crash
-// Set PAYSTACK_SECRET_KEY in Render before enabling payments
-if (!process.env.PAYSTACK_SECRET_KEY) {
-  console.warn('[WARN] PAYSTACK_SECRET_KEY not set — payment endpoints will not function');
-}
+const authRoutes = require('./route/authRoute');
+const orgRoutes = require('./route/orgRoute');
+const adminRoutes = require('./route/adminRoute');
+const waitlistRoutes = require('./route/waitlistRoute');
+const shopifyRoutes = require('./route/shopifyRoute');
+const dashboardRoutes = require('./route/dashboardRoute');
+const storeRoutes = require('./route/storeRoute');
+const notificationRoutes = require('./route/notificationRoute');
+const eventRoutes = require("./route/eventRoute");
+const preferencesRoutes = require("./route/preferencesRoute");
+const sessionRoutes = require("./route/SessionRoute");
+const settingsRoutes = require("./route/settingsRoute");
 
-const missingVars = [];
 
-// Validate each required variable
-REQUIRED_ENV_VARS.forEach((key) => {
-  if (!process.env[key] || process.env[key].trim() === '') {
-    missingVars.push(key);
-  }
+
+const app = express();
+
+// ── Trust proxy (required for Render, Railway, Vercel)
+app.set('trust proxy', 1);
+
+// ── Security headers (helmet)
+app.use(helmet({
+  contentSecurityPolicy: false, // CSP is handled at CDN level
+  crossOriginEmbedderPolicy: false,
+}));
+
+// ── CORS — explicit allowlist only (no *.vercel.app wildcard)
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:8080',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://revluma.com',
+  'https://app.revluma.com',
+  'https://www.revluma.com',
+  'https://revluma.vercel.app',
+  'https://revluma-git-main-revluma-organization.vercel.app',
+  // Exact URL for *this* Vercel deployment only (not any *.vercel.app subdomain)
+  process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+].filter(Boolean);
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (Postman, mobile apps, curl, same-origin)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS: origin not allowed'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// ── Body parsing
+app.use(express.json({ limit: '1mb' })); // Prevent oversized JSON bodies
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+app.use(cookieParser(process.env.COOKIE_SECRET));
+
+// ── Global API rate limiter
+// Applied before routes. Pixel ingestion has its own stricter limiter.
+app.use('/api/', apiLimiter);
+
+// ── Routes
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/org', orgRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/waitlist', waitlistRoutes);
+app.use('/api/v1/shopify', shopifyRoutes);
+app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/stores', storeRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/events', eventRoutes);
+app.use("/api/v1/preferences", preferencesRoutes);
+app.use("/api/v1/auth/",sessionRoutes);
+app.use("/api/v1/settings",settingsRoutes);
+app.use("/api/v1/subscriptions", subscriptionRoutes);
+
+
+// ── Health check
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// If any variables are missing, halt the application instantly
-if (missingVars.length > 0) {
-  console.error('\n CRITICAL CONFIGURATION ERROR: Missing required environment variables!');
-  console.error(`Missing keys: [ ${missingVars.join(', ')} ]`);
-  console.error('Please check your local .env file before restarting the server.\n');
-  process.exit(1); 
-}
-
-// Build a frozen, immutable configuration object
-const env = Object.freeze({
-  databaseUser: process.env.DATABASE_USER,
-  databaseHost: process.env.DATABASE_HOST,
-  databasePassword: process.env.DATABASE_PASSWORD,
-  databasePort: parseInt(process.env.DATABASE_PORT),
-  databaseName: process.env.DATABASE_NAME,
-  jwtSecret: process.env.JWT_SECRET,
-  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN,
-  refreshTokenExpiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN,
-  port: parseInt(process.env.PORT ),
-  nodeEnv: process.env.NODE_ENV ,
-  frontendUrl: process.env.FRONTEND_URL,
+// ── Catch-all for unknown routes
+app.use((req, res) => {
+  res.status(404).json({ success: false, error: 'Route not found.' });
 });
 
-// Export using CommonJS syntax so database.js can safely require() it
-module.exports = { env };
+// ── Global error handler (always last)
+app.use(globalErrorHandler);
+
+module.exports = app;
