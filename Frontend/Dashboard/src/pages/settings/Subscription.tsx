@@ -1,709 +1,476 @@
-/**
- * Revluma — Subscription & Plans
- *
- * Matches the choose-plan.html visual language:
- * light lavender background, white cards, blue center card.
- *
- * Button logic:
- *   free      → Growth: Upgrade  | Scale: Upgrade
- *   trialing  → Growth: Upgrade  | Scale: Upgrade
- *   growth    → Growth: Current Plan (disabled) | Scale: Upgrade
- *   scale     → Growth: Downgrade | Scale: Current Plan (disabled)
- */
-
 import { FC, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2,
-  Loader2,
-  X,
-  ShieldCheck,
-  TrendingDown,
+  Sparkles,
+  Zap,
   TrendingUp,
   CreditCard,
-  Calendar,
-  AlertCircle,
+  Loader2,
+  Check,
+  ShieldCheck,
+  X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface CurrentSub {
-  plan: "free" | "growth" | "scale" | "enterprise";
-  status: "trialing" | "active" | "cancelled" | "past_due" | "paused";
-  billing_cycle: "monthly" | "annual" | null;
-  current_period_end: string | null;
-  trial_ends_at: string | null;
-  cancelled_at: string | null;
+interface PlanFeature {
+  text: string;
+  isHighlighted?: boolean;
 }
 
-type ButtonIntent = "current" | "upgrade" | "downgrade" | "get_started";
+interface PricingCardData {
+  id: "growth" | "scale";
+  name: string;
+  price: string;
+  period: string;
+  subtitle: string;
+  badge?: string;
+  features: PlanFeature[];
+  buttonText: string;
+  isPrimary: boolean;
+}
 
-// ── Plan definitions ──────────────────────────────────────────────────────────
-
-const PLANS = [
+const PRICING_PLANS: PricingCardData[] = [
   {
-    id: "free" as const,
-    name: "Free Trial",
-    price: "$0",
-    priceSuffix: "/7 days",
-    subtitle: "Try Revluma free. No card required.",
-    features: [
-      "AI Cart Recovery (email)",
-      "Product Intelligence",
-      "B2C CRM",
-      "1,000 tracked visitors",
-      "1 Store integration",
-      "Full dashboard access",
-    ],
-    isFeatured: false,
-  },
-  {
-    id: "growth" as const,
+    id: "growth",
     name: "Growth",
     price: "$29",
-    priceSuffix: "/month",
-    subtitle: "For stores doing up to $50K/mo.",
-    badge: "Most Popular",
+    period: "/mo",
+    subtitle: "Perfect for stores doing up to $50K/mo",
     features: [
-      "Everything in Free Trial",
-      "AI abandonment scoring (M1)",
-      "Sensitivity classifier (M2)",
-      "Optimal send-time AI (M3)",
-      "ROAS opportunity scoring",
-      "Priority email support",
+      { text: "AI Cart Recovery" },
+      { text: "Product Intelligence" },
+      { text: "Up to 1,000 monthly tracked visitors" },
+      { text: "Basic reporting dashboards" },
+      { text: "1 Store integration" },
+      { text: "Basic support" },
+      { text: "Email recovery flows" },
     ],
-    isFeatured: true,
+    buttonText: "Upgrade to Growth",
+    isPrimary: false,
   },
   {
-    id: "scale" as const,
+    id: "scale",
     name: "Scale",
     price: "$50",
-    priceSuffix: "/month",
-    subtitle: "For stores scaling past $100K/mo.",
+    period: "/mo",
+    subtitle: "For stores scaling past $100K/mo",
+    badge: "MOST POPULAR",
     features: [
-      "Everything in Growth",
-      "WhatsApp + SMS + Email",
-      "Churn risk prediction (M4)",
-      "Offer value optimizer (M5)",
-      "10,000 tracked visitors/mo",
-      "Dedicated onboarding call",
+      { text: "Everything in Growth", isHighlighted: true },
+      { text: "Winning / Trending products dashboard", isHighlighted: true },
+      { text: "ROAS Opportunity Scoring", isHighlighted: true },
+      { text: "Unlimited Flows" },
+      { text: "WhatsApp + Email Automation", isHighlighted: true },
+      { text: "Dedicated Onboarding" },
+      { text: "Up to 10,000 monthly tracked visitors", isHighlighted: true },
+      { text: "Priority support" },
     ],
-    isFeatured: false,
+    buttonText: "Upgrade to Scale",
+    isPrimary: true,
   },
 ];
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function getButtonIntent(
-  planId: "free" | "growth" | "scale",
-  currentPlan: CurrentSub["plan"]
-): ButtonIntent {
-  if (planId === "free") {
-    return currentPlan === "free" || currentPlan === undefined
-      ? "current"
-      : "downgrade";
-  }
-  if (planId === currentPlan) return "current";
-
-  const order: Record<string, number> = { free: 0, growth: 1, scale: 2, enterprise: 3 };
-  return order[planId] > order[currentPlan ?? "free"] ? "upgrade" : "downgrade";
+export interface SubscriptionInfo {
+  planName: string;
+  status: "trial" | "active" | "past_due" | "canceled";
+  trialDaysRemaining?: number;
+  monthlyTrackedVisitorsUsed: number;
+  monthlyTrackedVisitorsLimit: number;
+  resetDate: string;
 }
 
-function planLabel(currentPlan: CurrentSub["plan"]): string {
-  const map: Record<string, string> = {
-    free: "Free Trial",
-    growth: "Growth",
-    scale: "Scale",
-    enterprise: "Enterprise",
-  };
-  return map[currentPlan] ?? "Free Trial";
-}
 
-function statusLabel(sub: CurrentSub): string {
-  if (sub.status === "trialing") return "Trial active";
-  if (sub.status === "active") return "Active";
-  if (sub.status === "past_due") return "Payment overdue";
-  if (sub.status === "cancelled") return "Cancelled";
-  return sub.status;
-}
+export const Subscription: FC = () => {
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
+  const [isLoadingSub, setIsLoadingSub] = useState<boolean>(true);
 
-function periodEnd(sub: CurrentSub): string | null {
-  const d = sub.current_period_end || sub.trial_ends_at;
-  if (!d) return null;
-  return new Date(d).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
-
-// ── Component ─────────────────────────────────────────────────────────────────
-
-const Subscription: FC = () => {
-  const [sub, setSub] = useState<CurrentSub | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
-  const [confirmPlan, setConfirmPlan] = useState<typeof PLANS[0] | null>(null);
-  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
-
-  const showToast = (msg: string, type: "success" | "error" = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
-  };
-
-  const fetchSub = useCallback(async () => {
-    setLoading(true);
+  const fetchSubscription = useCallback(async () => {
+    setIsLoadingSub(true);
     try {
-      const res = await api.get<{ data: CurrentSub }>(
-        "/subscriptions/current",
+      const res = await api.get<SubscriptionInfo>(
+        "/billing/subscription",
         undefined,
         { skipAuthRedirect: true }
       );
-      // api.get returns the parsed JSON directly
-      const data = (res as any)?.data ?? (res as any);
-      setSub(data?.data ?? data ?? null);
-    } catch {
-      setSub(null);
+      if (res && res.data && res.data.planName) {
+        setSubscription(res.data);
+      } else {
+        setSubscription(null);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch subscription info from API:", err);
+      setSubscription(null);
     } finally {
-      setLoading(false);
+      setIsLoadingSub(false);
     }
   }, []);
 
-  useEffect(() => { fetchSub(); }, [fetchSub]);
+  useEffect(() => {
+    fetchSubscription();
+  }, [fetchSubscription]);
 
-  const currentPlan: CurrentSub["plan"] = sub?.plan ?? "free";
+  const usagePercent = subscription
+    ? Math.min(
+        100,
+        Math.round(
+          (subscription.monthlyTrackedVisitorsUsed /
+            Math.max(1, subscription.monthlyTrackedVisitorsLimit)) *
+            100
+        )
+      )
+    : 0;
+  const remainingVisitors = subscription
+    ? Math.max(
+        0,
+        subscription.monthlyTrackedVisitorsLimit -
+          subscription.monthlyTrackedVisitorsUsed
+      )
+    : 0;
 
-  const handleAction = async (plan: typeof PLANS[0], intent: ButtonIntent) => {
-    if (intent === "current") return;
+  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<
+    PricingCardData | null
+  >(null);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-    // Free plan downgrade = cancel subscription
-    if (intent === "downgrade" && plan.id === "free") {
-      setConfirmPlan(plan);
-      return;
-    }
-
-    // Upgrade or plan switch → go to Paystack
-    if (intent === "upgrade" || (intent === "downgrade" && plan.id !== "free")) {
-      setActionLoading(plan.id);
-      try {
-        const token = (() => {
-          try {
-            const raw = localStorage.getItem("rv-auth");
-            return raw ? JSON.parse(raw)?.state?.csrfToken : null;
-          } catch { return null; }
-        })();
-
-        const API =
-          (window as any).REVLUMA_CONFIG?.API_BASE_URL ||
-          "https://revluma-backend.onrender.com/api/v1";
-
-        const res = await fetch(`${API}/subscriptions/initialize`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            plan: plan.id,
-            billing_cycle: billing,
-            currency: "NGN",
-          }),
-        });
-        const data = await res.json();
-
-        if (data.success && data.data?.authorization_url) {
-          sessionStorage.setItem("paystack_reference", data.data.reference);
-          window.location.href = data.data.authorization_url;
-        } else {
-          showToast(data.error || "Could not initialize payment. Try again.", "error");
-        }
-      } catch {
-        showToast("Network error. Please try again.", "error");
-      } finally {
-        setActionLoading(null);
-      }
-    }
+  const handleUpgradeClick = (plan: PricingCardData) => {
+    setSelectedUpgradePlan(plan);
   };
 
-  const handleCancelConfirm = async () => {
-    setActionLoading("cancel");
+  const handleConfirmUpgrade = async () => {
+    if (!selectedUpgradePlan) return;
+    setIsProcessing(true);
     try {
-      const token = (() => {
-        try {
-          const raw = localStorage.getItem("rv-auth");
-          return raw ? JSON.parse(raw)?.state?.csrfToken : null;
-        } catch { return null; }
-      })();
-      const API =
-        (window as any).REVLUMA_CONFIG?.API_BASE_URL ||
-        "https://revluma-backend.onrender.com/api/v1";
-
-      const res = await fetch(`${API}/subscriptions/cancel`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast("Subscription cancelled. Access continues until your billing period ends.");
-        fetchSub();
-      } else {
-        showToast(data.error || "Cancellation failed.", "error");
-      }
-    } catch {
-      showToast("Network error. Please try again.", "error");
+      await api.post(
+        "/billing/subscription/upgrade",
+        { planId: selectedUpgradePlan.id },
+        { skipAuthRedirect: true }
+      );
+      setSuccessMessage(
+        `Successfully upgraded your workspace to the ${selectedUpgradePlan.name} plan (${selectedUpgradePlan.price}/mo).`
+      );
+      setSelectedUpgradePlan(null);
+      // Refresh subscription data after successful upgrade
+      fetchSubscription();
+    } catch (err) {
+      console.error("Failed to upgrade subscription:", err);
     } finally {
-      setActionLoading(null);
-      setConfirmPlan(null);
+      setIsProcessing(false);
     }
   };
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      style={{
-        fontFamily: "'Satoshi', -apple-system, sans-serif",
-        minHeight: "100%",
-        padding: "0",
-      }}
-    >
-      {/* ── Toast ── */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            style={{
-              position: "fixed",
-              top: 24,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 9999,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "12px 20px",
-              borderRadius: 12,
-              fontSize: 13,
-              fontWeight: 600,
-              boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
-              background: toast.type === "success" ? "#ecfdf5" : "#fef2f2",
-              border: `1px solid ${toast.type === "success" ? "#a7f3d0" : "#fecaca"}`,
-              color: toast.type === "success" ? "#065f46" : "#991b1b",
-              minWidth: 280,
-            }}
-          >
-            {toast.type === "success"
-              ? <CheckCircle2 size={16} color="#059669" />
-              : <AlertCircle size={16} color="#dc2626" />}
-            <span>{toast.msg}</span>
-            <button
-              onClick={() => setToast(null)}
-              style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", padding: 2 }}
-            >
-              <X size={14} color="#9ca3af" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Header ── */}
-      <div style={{ marginBottom: 32 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10,
-            background: "rgba(88,101,242,0.1)", border: "1px solid rgba(88,101,242,0.2)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <CreditCard size={20} color="#5865f2" />
+    <div className="w-full max-w-5xl space-y-8 rounded-2xl bg-slate-950 p-6 text-slate-100 shadow-2xl sm:p-8 md:p-10">
+      {/* Page Header */}
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-800 pb-6 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
+            <CreditCard className="h-6 w-6" />
           </div>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1a1a2e", margin: 0 }}>
-              Subscription &amp; Plans
+            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              Subscription & Plans
             </h1>
-            <p style={{ fontSize: 13, color: "#7880a8", margin: 0 }}>
-              Manage your plan and billing
+            <p className="mt-1 text-sm text-slate-400">
+              Manage your subscription tier, track visitor volume usage, and scale workspace capabilities.
             </p>
           </div>
         </div>
       </div>
 
-      {/* ── Current plan status bar ── */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
+      {/* Current Plan Top Banner */}
+      <motion.section
+        initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{
-          background: "white",
-          borderRadius: 16,
-          border: "1px solid #e0e3f0",
-          padding: "20px 24px",
-          marginBottom: 32,
-          boxShadow: "0 2px 12px rgba(88,101,242,0.07)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: 16,
-        }}
+        transition={{ duration: 0.35 }}
+        className="relative overflow-hidden rounded-2xl border border-sky-500/30 bg-gradient-to-r from-slate-900 via-slate-900/95 to-sky-950/40 p-6 shadow-2xl sm:p-8"
       >
-        {loading ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#7880a8", fontSize: 13 }}>
-            <Loader2 size={16} className="animate-spin" color="#5865f2" />
-            Loading subscription...
+        {isLoadingSub ? (
+          <div className="flex items-center justify-center py-6 gap-3 text-slate-400 text-sm">
+            <Loader2 className="h-5 w-5 animate-spin text-sky-400" />
+            <span>Loading subscription status and usage...</span>
+          </div>
+        ) : !subscription ? (
+          <div className="flex items-center justify-center py-6 gap-3 text-slate-400 text-sm">
+            <span>No subscription data available.</span>
           </div>
         ) : (
-          <>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-              <div style={{
-                display: "flex", alignItems: "center", gap: 6,
-                background: sub?.status === "active" || sub?.status === "trialing"
-                  ? "rgba(5,150,105,0.08)" : "rgba(239,68,68,0.08)",
-                border: `1px solid ${sub?.status === "active" || sub?.status === "trialing"
-                  ? "rgba(5,150,105,0.2)" : "rgba(239,68,68,0.2)"}`,
-                borderRadius: 999, padding: "4px 12px",
-              }}>
-                <div style={{
-                  width: 7, height: 7, borderRadius: "50%",
-                  background: sub?.status === "active" || sub?.status === "trialing"
-                    ? "#059669" : "#ef4444",
-                }} />
-                <span style={{
-                  fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase",
-                  color: sub?.status === "active" || sub?.status === "trialing" ? "#059669" : "#ef4444",
-                }}>
-                  {sub ? statusLabel(sub) : "No subscription"}
+          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
+            {/* Left Info */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge
+                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider ${
+                    subscription.status === "trial"
+                      ? "border-sky-500/40 bg-sky-500/20 text-sky-300"
+                      : "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
+                  }`}
+                >
+                  {subscription.status === "trial"
+                    ? "Free Trial"
+                    : subscription.planName}
+                </Badge>
+                <span className="text-xs font-medium text-slate-400">
+                  {subscription.status === "trial"
+                    ? `• ${subscription.trialDaysRemaining ?? 0} days remaining in trial`
+                    : "• Active Subscription"}
                 </span>
               </div>
 
               <div>
-                <span style={{ fontSize: 15, fontWeight: 700, color: "#1a1a2e" }}>
-                  Current plan: {planLabel(currentPlan)}
-                </span>
-                {sub && periodEnd(sub) && (
-                  <span style={{ fontSize: 12, color: "#7880a8", marginLeft: 10 }}>
-                    <Calendar size={11} style={{ display: "inline", marginRight: 3, verticalAlign: "middle" }} />
-                    {sub.status === "trialing" ? "Trial ends" : "Renews"} {periodEnd(sub)}
-                  </span>
-                )}
+                <h2 className="text-xl font-bold text-white sm:text-2xl">
+                  Current Plan: {subscription.planName}
+                </h2>
+                <p className="mt-1 text-xs text-slate-300 sm:text-sm">
+                  {subscription.status === "trial"
+                    ? "You are currently exploring all Revluma features. Upgrade anytime to avoid interruption."
+                    : `Your workspace is actively subscribed to the ${subscription.planName} tier.`}
+                </p>
               </div>
             </div>
 
-            {sub?.status === "active" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#7880a8" }}>
-                <ShieldCheck size={14} color="#5865f2" />
-                Secured by Paystack
-              </div>
-            )}
-          </>
-        )}
-      </motion.div>
-
-      {/* ── Billing toggle ── */}
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 0, marginBottom: 36 }}>
-        {(["monthly", "annual"] as const).map((b, i) => (
-          <button
-            key={b}
-            onClick={() => setBilling(b)}
-            style={{
-              padding: "8px 24px", fontSize: 13, fontWeight: 600,
-              border: "1.5px solid #c8cce8",
-              borderRight: i === 0 ? "none" : "1.5px solid #c8cce8",
-              borderRadius: i === 0 ? "999px 0 0 999px" : "0 999px 999px 0",
-              background: billing === b ? "#5865f2" : "transparent",
-              color: billing === b ? "white" : "#7880a8",
-              cursor: "pointer", transition: "all 0.2s",
-              fontFamily: "inherit",
-            }}
-          >
-            {b === "monthly" ? "Monthly" : "Yearly"}
-          </button>
-        ))}
-        {billing === "annual" && (
-          <span style={{
-            marginLeft: 10,
-            background: "rgba(74,222,128,0.12)", border: "1px solid rgba(74,222,128,0.25)",
-            color: "#16a34a", fontSize: 11, fontWeight: 700,
-            padding: "3px 10px", borderRadius: 999,
-            letterSpacing: "0.04em", textTransform: "uppercase",
-          }}>
-            Save 20%
-          </span>
-        )}
-      </div>
-
-      {/* ── Plan cards ── */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1.08fr 1fr",
-        gap: 20,
-        alignItems: "center",
-      }}
-        className="subscription-cards"
-      >
-        {PLANS.map((plan) => {
-          const intent = getButtonIntent(plan.id as any, currentPlan);
-          const isCurrent = intent === "current";
-          const isLoading = actionLoading === plan.id;
-
-          const displayPrice = billing === "annual" && plan.id === "growth"
-            ? "$23" : billing === "annual" && plan.id === "scale"
-            ? "$40" : plan.price;
-
-          return (
-            <motion.div
-              key={plan.id}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: PLANS.indexOf(plan) * 0.07 }}
-              style={{
-                background: plan.isFeatured
-                  ? "linear-gradient(160deg, #6b7df5 0%, #5865f2 45%, #4a55e8 100%)"
-                  : "white",
-                borderRadius: 20,
-                padding: "32px 28px 28px",
-                position: "relative",
-                border: plan.isFeatured ? "1px solid #3a4fa0" : "1px solid #e0e3f0",
-                transform: plan.isFeatured ? "translateY(-14px)" : "none",
-                boxShadow: plan.isFeatured
-                  ? "0 20px 60px rgba(88,101,242,0.38), 0 4px 16px rgba(88,101,242,0.2)"
-                  : "0 4px 24px rgba(88,101,242,0.07)",
-              }}
-            >
-              {/* Most popular badge */}
-              {plan.badge && (
-                <div style={{
-                  position: "absolute", top: -13, left: "50%", transform: "translateX(-50%)",
-                  background: "white", color: "#5865f2",
-                  fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em",
-                  padding: "4px 14px", borderRadius: 999, whiteSpace: "nowrap",
-                  boxShadow: "0 2px 8px rgba(88,101,242,0.2)",
-                }}>
-                  {plan.badge}
-                </div>
-              )}
-
-              {/* Current plan tag */}
-              {isCurrent && (
-                <div style={{
-                  position: "absolute", top: 14, right: 14,
-                  background: plan.isFeatured ? "rgba(255,255,255,0.2)" : "rgba(88,101,242,0.1)",
-                  border: `1px solid ${plan.isFeatured ? "rgba(255,255,255,0.35)" : "rgba(88,101,242,0.25)"}`,
-                  color: plan.isFeatured ? "white" : "#5865f2",
-                  fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em",
-                  padding: "3px 10px", borderRadius: 999,
-                }}>
-                  Current Plan
-                </div>
-              )}
-
-              {/* Price */}
-              <div style={{
-                fontSize: 40, fontWeight: 700, letterSpacing: "-0.03em", lineHeight: 1,
-                color: plan.isFeatured ? "white" : "#1a1a2e",
-              }}>
-                {displayPrice}{" "}
-                <span style={{
-                  fontSize: 14, fontWeight: 500,
-                  color: plan.isFeatured ? "rgba(255,255,255,0.6)" : "#9098c0",
-                }}>
-                  {plan.priceSuffix}
+            {/* Right Usage Progress Bar */}
+            <div className="w-full max-w-md space-y-2.5 rounded-xl border border-slate-800/80 bg-slate-950/70 p-4 shadow-inner">
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <span className="text-slate-400">Monthly Tracked Visitors</span>
+                <span className="text-sky-400 font-mono">
+                  {subscription.monthlyTrackedVisitorsUsed.toLocaleString()} /{" "}
+                  {subscription.monthlyTrackedVisitorsLimit.toLocaleString()} used{" "}
+                  <span className="text-slate-500">({usagePercent}%)</span>
                 </span>
               </div>
 
-              {/* Annual note */}
-              <div style={{ fontSize: 11, color: plan.isFeatured ? "rgba(255,255,255,0.45)" : "#b0b8d0", marginTop: 4, minHeight: 16 }}>
-                {billing === "annual" && plan.id === "growth" ? "Billed $276/year (save $72)" :
-                 billing === "annual" && plan.id === "scale"  ? "Billed $480/year (save $120)" : "\u00a0"}
+              {/* Custom Progress Bar */}
+              <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${usagePercent}%` }}
+                  transition={{ duration: 0.8, ease: "easeOut" }}
+                  className="h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-400"
+                />
               </div>
 
-              {/* Name */}
-              <div style={{
-                fontSize: 20, fontWeight: 700, marginTop: 14, marginBottom: 6,
-                color: plan.isFeatured ? "white" : "#1a1a2e",
-              }}>
-                {plan.name}
+              <div className="flex items-center justify-between text-[0.7rem] text-slate-500">
+                <span>Resets on {subscription.resetDate}</span>
+                <span>
+                  {remainingVisitors.toLocaleString()} visitors remaining
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </motion.section>
+
+      {/* Inline Feedback Toast */}
+      <AnimatePresence>
+        {successMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200"
+          >
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+              <span>{successMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSuccessMessage(null)}
+              className="rounded p-1 text-slate-400 hover:text-white"
+              aria-label="Dismiss message"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Pricing Grid Header */}
+      <div className="space-y-1 text-center sm:text-left">
+        <h3 className="text-xl font-bold text-white sm:text-2xl">
+          Available Subscription Plans
+        </h3>
+        <p className="text-xs text-slate-400 sm:text-sm">
+          Select the growth tier that matches your storefront revenue and automated cart recovery goals.
+        </p>
+      </div>
+
+      {/* Pricing Grid */}
+      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+        {PRICING_PLANS.map((plan, index) => (
+          <motion.div
+            key={plan.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: index * 0.1 }}
+            className={`relative flex flex-col justify-between rounded-2xl border p-6 shadow-xl transition-all duration-300 sm:p-8 ${
+              plan.isPrimary
+                ? "border-sky-500/60 bg-slate-900/80 shadow-sky-500/10 hover:border-sky-500"
+                : "border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900/80"
+            }`}
+          >
+            {/* MOST POPULAR Badge for Scale Plan */}
+            {plan.badge && (
+              <div className="absolute -top-3.5 right-6">
+                <Badge className="rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-xs font-bold text-white shadow-lg shadow-sky-500/25">
+                  <Sparkles className="mr-1.5 h-3 w-3" />
+                  {plan.badge}
+                </Badge>
+              </div>
+            )}
+
+            <div>
+              {/* Plan Name & Price */}
+              <div className="space-y-2 border-b border-slate-800/80 pb-6">
+                <h4 className="text-lg font-bold text-white sm:text-xl">
+                  {plan.name}
+                </h4>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+                    {plan.price}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-400">
+                    {plan.period}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 sm:text-sm">
+                  {plan.subtitle}
+                </p>
               </div>
 
-              {/* Desc */}
-              <p style={{
-                fontSize: 13, lineHeight: 1.55, marginBottom: 18,
-                color: plan.isFeatured ? "rgba(255,255,255,0.6)" : "#7880a8",
-              }}>
-                {plan.subtitle}
-              </p>
-
-              {/* Divider */}
-              <div style={{
-                height: 1, marginBottom: 18,
-                background: plan.isFeatured ? "rgba(255,255,255,0.15)" : "#f0f1f8",
-              }} />
-
-              {/* Features */}
-              <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px", display: "flex", flexDirection: "column", gap: 10 }}>
-                {plan.features.map((f, i) => (
-                  <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 13.5 }}>
-                    <div style={{
-                      width: 18, height: 18, borderRadius: "50%", flexShrink: 0, marginTop: 1,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700,
-                      background: plan.isFeatured ? "rgba(255,255,255,0.18)" : "rgba(88,101,242,0.1)",
-                      color: plan.isFeatured ? "white" : "#5865f2",
-                      border: `1px solid ${plan.isFeatured ? "rgba(255,255,255,0.25)" : "rgba(88,101,242,0.2)"}`,
-                    }}>
-                      ✓
-                    </div>
-                    <span style={{ color: plan.isFeatured ? "rgba(255,255,255,0.88)" : "#3a3f6e" }}>
-                      {f}
-                    </span>
+              {/* Features List */}
+              <ul className="my-6 space-y-3.5">
+                {plan.features.map((feature, idx) => (
+                  <li
+                    key={idx}
+                    className={`flex items-start gap-3 text-xs sm:text-sm ${
+                      feature.isHighlighted
+                        ? "font-semibold text-sky-300"
+                        : "text-slate-300"
+                    }`}
+                  >
+                    <CheckCircle2
+                      className={`h-4 w-4 shrink-0 mt-0.5 ${
+                        feature.isHighlighted
+                          ? "text-sky-400"
+                          : "text-emerald-400"
+                      }`}
+                    />
+                    <span>{feature.text}</span>
                   </li>
                 ))}
               </ul>
+            </div>
 
-              {/* CTA Button */}
-              <button
-                onClick={() => !isCurrent && !isLoading && handleAction(plan, intent)}
-                disabled={isCurrent || !!actionLoading}
-                style={{
-                  width: "100%", padding: "13px", borderRadius: 999,
-                  fontSize: 14, fontWeight: 700, fontFamily: "inherit",
-                  cursor: isCurrent || actionLoading ? "not-allowed" : "pointer",
-                  border: "none", transition: "all 0.2s",
-                  opacity: isCurrent ? 0.65 : 1,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  ...(plan.isFeatured
-                    ? { background: "white", color: "#5865f2" }
-                    : isCurrent
-                    ? { background: "#f0f1f8", color: "#9098c0" }
-                    : intent === "downgrade"
-                    ? { background: "transparent", color: "#7880a8", border: "1.5px solid #c8cce8" }
-                    : { background: "transparent", color: "#5865f2", border: "1.5px solid #c8cce8" }
-                  ),
-                }}
+            {/* CTA Button */}
+            <div className="pt-4">
+              <Button
+                type="button"
+                onClick={() => handleUpgradeClick(plan)}
+                className={`h-11 w-full font-semibold transition-all active:scale-[0.98] ${
+                  plan.isPrimary
+                    ? "bg-sky-600 text-white shadow-lg shadow-sky-600/25 hover:bg-sky-500"
+                    : "border border-slate-700 bg-slate-800 text-white hover:bg-slate-700"
+                }`}
               >
-                {isLoading ? (
-                  <><Loader2 size={15} className="animate-spin" /> Processing...</>
-                ) : isCurrent ? (
-                  "Current Plan"
-                ) : intent === "upgrade" ? (
-                  <><TrendingUp size={15} /> Upgrade to {plan.name}</>
-                ) : intent === "downgrade" && plan.id === "free" ? (
-                  <><TrendingDown size={15} /> Cancel to Free</>
-                ) : intent === "downgrade" ? (
-                  <><TrendingDown size={15} /> Downgrade to {plan.name}</>
-                ) : (
-                  "Get started"
-                )}
-              </button>
-
-              {!isCurrent && (plan.id === "growth" || plan.id === "scale") && (
-                <p style={{
-                  textAlign: "center", fontSize: 11, marginTop: 10,
-                  color: plan.isFeatured ? "rgba(255,255,255,0.4)" : "#b0b8d0",
-                }}>
-                  No charge for 7 days · Cancel anytime
-                </p>
-              )}
-            </motion.div>
-          );
-        })}
+                {plan.isPrimary && <Zap className="mr-2 h-4 w-4 text-sky-200" />}
+                <span>{plan.buttonText}</span>
+              </Button>
+            </div>
+          </motion.div>
+        ))}
       </div>
 
-      {/* ── Trust line ── */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-        marginTop: 36, fontSize: 12, color: "#9098c0",
-      }}>
-        <ShieldCheck size={14} color="#5865f2" />
-        <span>Secured by Paystack · Card saved but not charged until day 8 · Cancel before day 8 to pay nothing</span>
+      {/* Guaranteed Secure Footnote */}
+      <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
+        <ShieldCheck className="h-4 w-4 text-emerald-400" />
+        <span>
+          All plans include automated cart recovery workflows and SSL-secured billing.
+        </span>
       </div>
 
-      {/* ── Cancel confirmation modal ── */}
+      {/* Confirmation Modal */}
       <AnimatePresence>
-        {confirmPlan && (
-          <div style={{
-            position: "fixed", inset: 0, zIndex: 999,
-            background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)",
-            display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
-          }}>
+        {selectedUpgradePlan && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              style={{
-                background: "white", borderRadius: 20,
-                padding: 32, maxWidth: 420, width: "100%",
-                boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
-                border: "1px solid #e0e3f0",
-              }}
+              className="w-full max-w-md space-y-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl"
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-                <h3 style={{ fontSize: 17, fontWeight: 700, color: "#1a1a2e", margin: 0 }}>
-                  Cancel subscription?
-                </h3>
+              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-sky-400" />
+                  <h4 className="text-lg font-bold text-white">
+                    Confirm Subscription Upgrade
+                  </h4>
+                </div>
                 <button
-                  onClick={() => setConfirmPlan(null)}
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
+                  type="button"
+                  onClick={() => setSelectedUpgradePlan(null)}
+                  disabled={isProcessing}
+                  className="rounded p-1 text-slate-400 hover:text-white"
                 >
-                  <X size={18} color="#9098c0" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <p style={{ fontSize: 14, color: "#7880a8", lineHeight: 1.6, marginBottom: 20 }}>
-                You'll keep access to your current plan until the end of your billing period.
-                After that, your account switches to the free tier.
-              </p>
-
-              <div style={{
-                background: "#fef9f0", border: "1px solid #fde68a", borderRadius: 10,
-                padding: "12px 16px", fontSize: 13, color: "#92400e", marginBottom: 24,
-              }}>
-                ⚠ Your recovery automations, WhatsApp flows, and advanced AI features will stop at the end of your billing period.
+              <div className="space-y-3">
+                <p className="text-sm text-slate-300">
+                  You are about to upgrade your workspace to the{" "}
+                  <span className="font-bold text-sky-300">
+                    {selectedUpgradePlan.name}
+                  </span>{" "}
+                  tier for{" "}
+                  <span className="font-bold text-white">
+                    {selectedUpgradePlan.price}
+                    {selectedUpgradePlan.period}
+                  </span>
+                  .
+                </p>
+                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-400">
+                  Your billing cycle will adjust automatically and your monthly tracked visitor quota will update immediately.
+                </div>
               </div>
 
-              <div style={{ display: "flex", gap: 10 }}>
-                <button
-                  onClick={() => setConfirmPlan(null)}
-                  style={{
-                    flex: 1, padding: "12px", borderRadius: 999,
-                    fontSize: 14, fontWeight: 600, fontFamily: "inherit",
-                    background: "#f4f5ff", color: "#5865f2", border: "1.5px solid #c8cce8", cursor: "pointer",
-                  }}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSelectedUpgradePlan(null)}
+                  disabled={isProcessing}
+                  className="border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white"
                 >
-                  Keep plan
-                </button>
-                <button
-                  onClick={handleCancelConfirm}
-                  disabled={actionLoading === "cancel"}
-                  style={{
-                    flex: 1, padding: "12px", borderRadius: 999,
-                    fontSize: 14, fontWeight: 600, fontFamily: "inherit",
-                    background: "#ef4444", color: "white", border: "none", cursor: "pointer",
-                    opacity: actionLoading === "cancel" ? 0.7 : 1,
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  }}
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleConfirmUpgrade}
+                  disabled={isProcessing}
+                  className="bg-sky-600 font-semibold text-white shadow-lg shadow-sky-600/25 hover:bg-sky-500"
                 >
-                  {actionLoading === "cancel"
-                    ? <><Loader2 size={14} className="animate-spin" /> Cancelling...</>
-                    : "Yes, cancel"}
-                </button>
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <span>Processing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="mr-2 h-4 w-4" />
+                      <span>Confirm Upgrade</span>
+                    </>
+                  )}
+                </Button>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
-      <style>{`
-        @media (max-width: 720px) {
-          .subscription-cards {
-            grid-template-columns: 1fr !important;
-          }
-        }
-      `}</style>
     </div>
   );
 };
