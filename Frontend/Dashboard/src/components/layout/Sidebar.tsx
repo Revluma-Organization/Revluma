@@ -241,11 +241,7 @@ export function Sidebar() {
                               className="flex items-center justify-center"
                             >
                               {item.useCustomIcon ? (
-                                <img
-                                  src={revIntellLogo}
-                                  alt="Rev Intell"
-                                  className="h-5 w-5 object-contain drop-shadow-[0_0_6px_rgba(100,160,255,0.7)]"
-                                />
+                                <RevIntellOrb size={sidebarCollapsed ? 34 : 28} isActive={isActive} />
                               ) : (
                                 <Icon
                                   className={cn('h-4 w-4 transition-colors', isActive ? 'nav-blue-icon' : 'text-t3 group-hover:text-t1')}
@@ -379,6 +375,85 @@ export function Sidebar() {
     </>
   );
 }
+
+// ── Rev Intell Orb — permanent orbit animation (no card wrapper) ──────────────
+function RevIntellOrb({ size = 28, isActive = false }: { size?: number; isActive?: boolean }) {
+  return (
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+      {/* Core orb image */}
+      <motion.img
+        src={revIntellLogo}
+        alt="Rev Intell"
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          position: 'relative',
+          zIndex: 2,
+          filter: isActive
+            ? 'drop-shadow(0 0 8px rgba(100,160,255,0.9)) drop-shadow(0 0 16px rgba(88,101,242,0.6))'
+            : 'drop-shadow(0 0 5px rgba(100,160,255,0.6)) drop-shadow(0 0 10px rgba(88,101,242,0.3))',
+        }}
+        animate={{ scale: [1, 1.06, 1] }}
+        transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      {/* Orbit ring 1 — fast */}
+      <motion.div
+        style={{
+          position: 'absolute',
+          inset: -size * 0.28,
+          borderRadius: '50%',
+          border: `1px solid rgba(100,160,255,${isActive ? 0.55 : 0.28})`,
+          zIndex: 1,
+        }}
+        animate={{ rotate: 360 }}
+        transition={{ duration: 3.5, repeat: Infinity, ease: 'linear' }}
+      >
+        {/* Orbit dot 1 */}
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          right: -3,
+          width: 5,
+          height: 5,
+          borderRadius: '50%',
+          background: isActive ? '#7eb8ff' : 'rgba(100,160,255,0.7)',
+          transform: 'translateY(-50%)',
+          boxShadow: `0 0 6px rgba(100,160,255,${isActive ? 1 : 0.6})`,
+        }} />
+      </motion.div>
+
+      {/* Orbit ring 2 — slow, tilted */}
+      <motion.div
+        style={{
+          position: 'absolute',
+          inset: -size * 0.18,
+          borderRadius: '50%',
+          border: `1px solid rgba(138,110,255,${isActive ? 0.45 : 0.2})`,
+          zIndex: 1,
+          transform: 'rotate3d(1, 0.3, 0, 55deg)',
+        }}
+        animate={{ rotate: -360 }}
+        transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
+      >
+        {/* Orbit dot 2 */}
+        <div style={{
+          position: 'absolute',
+          top: -3,
+          left: '50%',
+          width: 4,
+          height: 4,
+          borderRadius: '50%',
+          background: isActive ? '#b89fff' : 'rgba(138,110,255,0.65)',
+          transform: 'translateX(-50%)',
+          boxShadow: `0 0 5px rgba(138,110,255,${isActive ? 1 : 0.5})`,
+        }} />
+      </motion.div>
+    </div>
+  );
+}
+
 
 function NavBadge({ tone, text, isActive }: { tone: 'new' | 'beta' | 'count'; text: string; isActive?: boolean }) {
   // When the row is active (inverse glass), flip badge to match inverse theme

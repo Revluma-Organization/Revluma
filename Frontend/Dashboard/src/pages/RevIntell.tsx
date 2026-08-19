@@ -1,20 +1,21 @@
 /**
- * Rev Intell — Autonomous AI Business Intelligence
- * ChatGPT-like interface for Revluma's AI advisor
+ * Rev Intell — Autonomous AI Revenue Intelligence
+ * UI inspired by Cortex reference — clean white sidebar, immersive chat area
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Send, Plus, ChevronDown, TrendingUp, ShoppingCart,
-  Users, BarChart2, Zap, RefreshCw, Copy, ThumbsUp,
-  ThumbsDown, RotateCcw, Sparkles,
+  Send, Plus, Search, Clock, Copy, ThumbsUp, ThumbsDown,
+  RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
+  Zap, RefreshCw, Paperclip, MoreHorizontal, Share2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import revIntellLogo from "@/assets/images/rev-intell-logo.png";
+import { useAuth } from "@/context/AuthContext";
+import { useThemeStore } from "@/store";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
 interface Message {
   id: string;
   role: "user" | "rev";
@@ -22,177 +23,145 @@ interface Message {
   timestamp: Date;
   isStreaming?: boolean;
 }
-
 interface Conversation {
   id: string;
   title: string;
-  lastMessage: string;
-  timestamp: Date;
+  preview: string;
+  date: "today" | "yesterday" | "7days";
   messages: Message[];
 }
 
 // ── Starter prompts ───────────────────────────────────────────────────────────
-
 const STARTERS = [
-  {
-    icon: TrendingUp,
-    label: "Revenue analysis",
-    prompt: "What happened to my revenue this week and why?",
-    color: "#5865f2",
-    bg: "rgba(88,101,242,0.1)",
-  },
-  {
-    icon: ShoppingCart,
-    label: "Cart recovery",
-    prompt: "Which abandoned carts should I prioritise recovering today?",
-    color: "#059669",
-    bg: "rgba(5,150,105,0.1)",
-  },
-  {
-    icon: Users,
-    label: "Churn risk",
-    prompt: "Which customers are about to churn and what should I do?",
-    color: "#d97706",
-    bg: "rgba(217,119,6,0.1)",
-  },
-  {
-    icon: BarChart2,
-    label: "Morning briefing",
-    prompt: "Give me my morning briefing — what do I need to know today?",
-    color: "#7c3aed",
-    bg: "rgba(124,58,237,0.1)",
-  },
-  {
-    icon: Zap,
-    label: "Trending products",
-    prompt: "What products are trending in my category right now?",
-    color: "#db2777",
-    bg: "rgba(219,39,119,0.1)",
-  },
-  {
-    icon: RefreshCw,
-    label: "Win-back",
-    prompt: "Draft a win-back sequence for customers who haven't bought in 45 days.",
-    color: "#0891b2",
-    bg: "rgba(8,145,178,0.1)",
-  },
+  { icon: TrendingUp,   label: "Revenue Analysis",   sub: "What happened to my revenue this week?",        color: "#5865f2" },
+  { icon: ShoppingCart, label: "Cart Recovery",       sub: "Which carts should I prioritise recovering?",   color: "#059669" },
+  { icon: Users,        label: "Churn Risk",          sub: "Which customers are about to leave?",           color: "#d97706" },
+  { icon: BarChart2,    label: "Morning Briefing",    sub: "What do I need to know today?",                 color: "#7c3aed" },
+  { icon: Zap,          label: "Trending Products",   sub: "What's moving in my category right now?",       color: "#db2777" },
+  { icon: RefreshCw,    label: "Win-back Campaign",   sub: "Draft a sequence for inactive customers.",      color: "#0891b2" },
 ];
 
-// ── Demo response generator ───────────────────────────────────────────────────
-
-function getDemoResponse(prompt: string): string {
+// ── Demo responses ────────────────────────────────────────────────────────────
+function getResponse(prompt: string): string {
   const p = prompt.toLowerCase();
-  if (p.includes("revenue") || p.includes("week"))
-    return `**Situation**\nRevenue is up 9% week-over-week, driven primarily by a recovery in your Skincare category (+23%). However, your Accessories category dropped 14% — that's worth watching.\n\n**Insight**\nThe Accessories drop correlates with a spike in cart abandonment on Thursday evening (78% abandonment rate vs your 61% average). Three SKUs account for 60% of that abandonment — all reached checkout but failed at the payment step.\n\n**Implication**\nIf this continues, you'll lose an estimated $3,200 in Accessories revenue this month. The payment friction issue is recoverable.\n\n**Recommendation**\nI recommend enabling a 1-click payment link recovery sequence for the three affected SKUs. Expected recovery rate: 22–28% of abandoned carts.\n\n**Confidence: 84%** — based on 30-day baseline data and your historical recovery patterns.\n\n**Actions:**\n→ Review the 3 high-abandonment SKUs\n→ Enable payment friction recovery sequence\n→ Set alert if Accessories abandonment stays above 70%`;
-  if (p.includes("morning") || p.includes("briefing"))
-    return `**Good morning. Here's what matters today.**\n\nRevenue yesterday: **₦2.4M** (+12% vs same day last week)\n\n**One thing needs your attention:**\nYou have 47 customers showing early churn signals — their email open rate dropped 40% in the last 14 days. This cohort is worth ₦890K in annual revenue.\n\n**What I did overnight:**\n• 3 abandoned carts recovered (₦124,500 total)\n• 1 win-back sequence triggered for a VIP customer inactive 38 days\n• Product trend alert: "Vitamin C serums" up 34% in search volume — your competitors are out of stock\n\n**Your top opportunity today:**\nStock Vitamin C Serum before the weekend. Conservative estimate: ₦450,000 in additional revenue.\n\n**Confidence: 79%**\n\n**Actions:**\n→ Review churn-risk customers (47 flagged)\n→ Check Vitamin C Serum inventory\n→ See overnight recovery report`;
-  if (p.includes("churn") || p.includes("customer"))
-    return `**Situation**\n47 customers are currently showing early churn signals — classified as EARLY_WARNING tier in your M4 model.\n\n**Top 3 to act on now:**\n1. **Adaeze O.** — 6 orders, ₦48,000 LTV. Last purchase: 38 days ago. Email open rate dropped from 42% to 8%.\n2. **Tunde B.** — 4 orders, ₦31,000 LTV. Visited site twice this week but didn't add to cart.\n3. **Ngozi F.** — 9 orders, ₦72,000 LTV (your highest-value at-risk customer). Purchase frequency dropped from every 22 days to 55 days.\n\n**Insight**\nNgozi is your most urgent case. A customer at her LTV tier who churns costs you ~₦180,000 in lost annual revenue.\n\n**Recommendation**\nSend a personalised re-engagement email to Ngozi today referencing her last purchase. No discount yet — she's not price-sensitive based on her history. A trust signal + product recommendation converts 38% better than a discount for her segment.\n\n**Confidence: 81%**\n\n**Actions:**\n→ Draft win-back email for Ngozi\n→ View all 47 churn-risk customers\n→ Set up automated early-warning sequence`;
-  if (p.includes("cart") || p.includes("abandon"))
-    return `**Situation**\nYou have 23 abandoned carts from the last 48 hours totalling ₦1.87M in potential revenue.\n\n**Prioritised recovery list:**\n\n🔴 **High priority (act within 2 hours):**\n• Cart #4821 — ₦89,500 — Failed payment (card declined). Send 1-click payment link immediately. 68% recovery probability.\n• Cart #4819 — ₦54,000 — Reached checkout step 4 (payment). Shopper has bought 3x before. Send WhatsApp reminder.\n\n🟡 **Medium priority:**\n• 8 carts averaging ₦32,000. Price-sensitive shoppers — M5 recommends 10% offer, expires in 24 hours.\n\n⚪ **Low priority:**\n• 13 carts — low abandonment probability score. Monitor only.\n\n**Recommendation**\nFocus on carts #4821 and #4819 first. Together they're ₦143,500 with a combined recovery probability above 60%.\n\n**Confidence: 88%**\n\n**Actions:**\n→ Send payment link to cart #4821\n→ Send WhatsApp to cart #4819\n→ Launch 10% offer to medium-priority group`;
-  return `**Situation**\nI've analysed your store data and here's what stands out:\n\nYour overall revenue trend is positive (+11% month-over-month), but there are three areas where intelligence is needed.\n\n**Insight**\nYour cart abandonment rate (71%) is above the Revluma average for stores your size (64%). The gap is primarily in your checkout step 3 — where shipping costs are revealed. This is a convenience friction issue, not a price issue.\n\n**Implication**\nAt your current traffic volume, this friction costs you an estimated ₦340,000/month in recoverable revenue.\n\n**Recommendation**\nTest free shipping above ₦15,000 order value for 14 days. Your margin on orders above that threshold supports it. Expected impact: 8–12% reduction in step 3 abandonment.\n\n**Confidence: 76%**\n\n**Actions:**\n→ Run free shipping threshold test\n→ View full checkout abandonment funnel\n→ See margin analysis`;
+  if (p.includes("revenue") || p.includes("week") || p.includes("briefing") || p.includes("know today"))
+    return `**Situation**\nRevenue is up 9% week-over-week, driven by your Skincare category (+23%). Accessories dropped 14% — worth investigating.\n\n**Insight**\nThe Accessories drop correlates with a payment friction spike on Thursday evening. Three SKUs hit checkout step 4 but abandoned at the payment reveal — all on mobile.\n\n**Implication**\nAt current volume, this friction costs you an estimated ₦3,200 in recoverable revenue per day.\n\n**Recommendation**\nEnable 1-click payment link recovery for the three affected SKUs. Expected recovery: 22–28% of those carts.\n\n**Confidence: 84%** — based on 30-day baseline and your historical recovery patterns.\n\n→ Review the 3 high-abandonment SKUs\n→ Enable payment friction recovery\n→ Set alert if Accessories abandonment exceeds 70%`;
+  if (p.includes("churn") || p.includes("customer") || p.includes("leave"))
+    return `**Situation**\n47 customers are showing EARLY_WARNING churn signals. Their combined LTV is ₦2.3M in annual revenue.\n\n**Top 3 to act on today:**\n1. **Ngozi F.** — 9 orders, ₦72,000 LTV. Purchase frequency dropped from every 22 days to 55 days.\n2. **Adaeze O.** — 6 orders, ₦48,000 LTV. Email open rate dropped 42% → 8% in 14 days.\n3. **Tunde B.** — 4 orders. Browsed 3 times this week, didn't add to cart.\n\n**Insight**\nNgozi is your highest-value at-risk customer. Churning her costs ~₦180,000 in lost annual revenue.\n\n**Recommendation**\nSend Ngozi a personalised re-engagement email today. No discount — she's not price-sensitive. A product recommendation aligned to her last purchase converts 38% better for her segment.\n\n**Confidence: 81%**\n\n→ Draft win-back email for Ngozi\n→ View all 47 at-risk customers\n→ Set up early-warning automation`;
+  if (p.includes("cart") || p.includes("abandon") || p.includes("recover") || p.includes("priorit"))
+    return `**Situation**\n23 abandoned carts from the last 48 hours totalling ₦1.87M in potential revenue.\n\n**Priority breakdown:**\n\n🔴 **Act within 2 hours:**\n• Cart #4821 — ₦89,500 — Failed payment. 1-click recovery link has 68% success rate.\n• Cart #4819 — ₦54,000 — Repeat buyer reached checkout step 4. WhatsApp reminder recommended.\n\n🟡 **Act today (medium priority):**\n• 8 carts averaging ₦32,000 — price-sensitive shoppers. M5 recommends 10% offer, 24h expiry.\n\n⚪ **Monitor only:**\n• 13 carts — low abandonment probability. No action needed yet.\n\n**Recommendation**\nFocus on carts #4821 and #4819 first — ₦143,500 at over 60% combined recovery probability.\n\n**Confidence: 88%**\n\n→ Send payment link to cart #4821\n→ Send WhatsApp to cart #4819\n→ Launch 10% offer sequence`;
+  if (p.includes("trend") || p.includes("product") || p.includes("categor"))
+    return `**Situation**\nRevluma's Product Intelligence scanned 12+ marketplaces in the last 24 hours. Three signals stand out for your category.\n\n**Trending now:**\n1. **Vitamin C Serums** — search volume +34% in 7 days. Your 2 top competitors are out of stock. Window: 10–14 days before the market rebalances.\n2. **Retinol Starter Kits** — momentum building (+19%). TikTok Shop driving discovery, not yet reflected in mainstream search.\n3. **SPF 50 Tinted Moisturiser** — seasonal spike beginning. Last year this SKU peaked 3 weeks from now.\n\n**Recommendation**\nStock Vitamin C Serum before the weekend. Conservative revenue estimate: ₦450,000 in additional sales at your current conversion rate.\n\n**Confidence: 79%** — based on marketplace velocity, competitor stock levels, and your category conversion history.\n\n→ Check Vitamin C Serum inventory\n→ Set restock alert for Retinol Kits\n→ View full trending report`;
+  if (p.includes("win") || p.includes("inactive") || p.includes("draft") || p.includes("sequence"))
+    return `**Win-back sequence for customers inactive 45+ days**\n\nBased on your customer data, here's what converts best for your segment:\n\n**Email 1 — Day 0 (Re-engagement, no pitch)**\nSubject: "We noticed you've been away, [name]"\nBody: Share a genuinely useful tip related to their last purchase. No discount. No pitch. Goal: open rate.\n\n**Email 2 — Day 4 (Product recommendation)**\nSubject: "You might love this"\nBody: One specific product recommendation based on their purchase history. Soft CTA — "Take a look."\n\n**Email 3 — Day 9 (Offer, if no response)**\nSubject: "We'd love to have you back — here's something for you"\nBody: 10% discount, 48-hour expiry. For LTV > ₦50K: free shipping instead of discount — margin is better.\n\n**Email 4 — Day 14 (Final)**\nSubject: "Last chance — your offer expires tonight"\nBody: Urgency close. If no response after this, mark as churned and stop sends.\n\n**Expected performance:** 23–31% win-back rate based on your historical segment data.\n\n**Confidence: 77%**\n\n→ Create this sequence\n→ Adjust offer amounts\n→ Target customers inactive 45+ days`;
+  return `**Situation**\nI've analysed your store data across revenue, cart recovery, and customer health.\n\n**Three things stand out today:**\n1. Cart abandonment rate is 71% vs your 61% monthly average — a 10-point spike worth investigating.\n2. 47 customers showing early churn signals across your most valuable cohorts.\n3. A trending product opportunity in your category with a 10–14 day window.\n\n**Recommendation**\nStart with the cart abandonment spike — it's the fastest path to recovered revenue today.\n\n**Confidence: 76%**\n\n→ Diagnose cart abandonment spike\n→ View churn-risk customers\n→ See product intelligence report`;
 }
 
-// ── Message component ─────────────────────────────────────────────────────────
-
-function MessageBubble({ msg, onCopy }: { msg: Message; onCopy: (text: string) => void }) {
-  const isRev = msg.role === "rev";
-
-  // Simple markdown-like rendering
-  const renderContent = (text: string) => {
-    return text.split("\n").map((line, i) => {
-      if (line.startsWith("**") && line.endsWith("**") && line.length > 4) {
-        return <p key={i} className="font-bold text-t1 mt-3 first:mt-0">{line.slice(2, -2)}</p>;
-      }
-      if (line.startsWith("→ ")) {
-        return (
-          <button key={i} className="flex items-center gap-2 mt-1.5 text-[0.78rem] font-medium px-3 py-1.5 rounded-lg border border-[#5865f2]/30 text-[#5865f2] bg-[#5865f2]/8 hover:bg-[#5865f2]/15 transition-colors w-fit">
-            <Sparkles size={11} />
-            {line.slice(2)}
-          </button>
-        );
-      }
-      if (line.startsWith("🔴 **") || line.startsWith("🟡 **") || line.startsWith("⚪ **")) {
-        return <p key={i} className="font-semibold text-t1 mt-3">{line}</p>;
-      }
-      if (line.startsWith("• ") || line.startsWith("1. ") || line.startsWith("2. ") || line.startsWith("3. ")) {
-        return <p key={i} className="text-t2 pl-3 mt-1">{line}</p>;
-      }
-      if (line.trim() === "") return <div key={i} className="h-1" />;
-      return <p key={i} className="text-t2 leading-relaxed">{line}</p>;
-    });
-  };
-
-  if (!isRev) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex justify-end"
-      >
-        <div className="max-w-[75%] rounded-2xl rounded-tr-sm bg-[#5865f2] px-4 py-3 text-white text-[0.85rem] leading-relaxed">
-          {msg.content}
-        </div>
+// ── Orbit animation component (reused for thinking state) ─────────────────────
+function ThinkingOrb({ size = 52 }: { size?: number }) {
+  return (
+    <div style={{ position: "relative", width: size, height: size }}>
+      <motion.img
+        src={revIntellLogo}
+        alt="Rev thinking"
+        style={{ width: "100%", height: "100%", objectFit: "contain", position: "relative", zIndex: 2,
+          filter: "drop-shadow(0 0 10px rgba(100,160,255,0.9)) drop-shadow(0 0 20px rgba(88,101,242,0.6))" }}
+        animate={{ scale: [1, 1.1, 1] }}
+        transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+      />
+      {/* Ring 1 */}
+      <motion.div style={{ position: "absolute", inset: -size * 0.32, borderRadius: "50%",
+        border: "1.5px solid rgba(100,160,255,0.6)", zIndex: 1 }}
+        animate={{ rotate: 360 }} transition={{ duration: 2.2, repeat: Infinity, ease: "linear" }}>
+        <div style={{ position: "absolute", top: "50%", right: -4, width: 7, height: 7, borderRadius: "50%",
+          background: "#7eb8ff", transform: "translateY(-50%)", boxShadow: "0 0 8px rgba(100,160,255,0.9)" }} />
       </motion.div>
+      {/* Ring 2 */}
+      <motion.div style={{ position: "absolute", inset: -size * 0.22, borderRadius: "50%",
+        border: "1px solid rgba(138,110,255,0.45)", zIndex: 1, transform: "rotate3d(1,0.3,0,55deg)" }}
+        animate={{ rotate: -360 }} transition={{ duration: 3.6, repeat: Infinity, ease: "linear" }}>
+        <div style={{ position: "absolute", top: -4, left: "50%", width: 5, height: 5, borderRadius: "50%",
+          background: "#b89fff", transform: "translateX(-50%)", boxShadow: "0 0 6px rgba(138,110,255,0.9)" }} />
+      </motion.div>
+      {/* Ring 3 — outermost, faint */}
+      <motion.div style={{ position: "absolute", inset: -size * 0.46, borderRadius: "50%",
+        border: "1px solid rgba(88,101,242,0.2)", zIndex: 1 }}
+        animate={{ rotate: 360 }} transition={{ duration: 6, repeat: Infinity, ease: "linear" }}>
+      </motion.div>
+    </div>
+  );
+}
+
+// ── Message bubble ─────────────────────────────────────────────────────────────
+function MessageBubble({ msg, onCopy, theme }: { msg: Message; onCopy: (t: string) => void; theme: string }) {
+  const isRev = msg.role === "rev";
+  const isDark = theme === "dark";
+
+  const renderContent = (text: string) => text.split("\n").map((line, i) => {
+    if (!line.trim()) return <div key={i} className="h-1.5" />;
+    if (line.startsWith("→ ")) return (
+      <button key={i} onClick={() => {}}
+        className="flex items-center gap-2 mt-2 text-[0.78rem] font-semibold px-3.5 py-2 rounded-xl transition-all w-fit"
+        style={{ background: "rgba(88,101,242,0.1)", color: "#5865f2", border: "1px solid rgba(88,101,242,0.25)" }}>
+        <Zap size={11} />{line.slice(2)}
+      </button>
     );
-  }
+    const bold = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    if (line.startsWith("**") && !line.slice(2).includes("**")) {
+      return <p key={i} className="font-bold mt-3 first:mt-0" style={{ color: isDark ? "#fff" : "#1a1a2e" }}
+        dangerouslySetInnerHTML={{ __html: bold }} />;
+    }
+    return <p key={i} className="leading-relaxed" style={{ color: isDark ? "#a0aec0" : "#4a5568" }}
+      dangerouslySetInnerHTML={{ __html: bold }} />;
+  });
+
+  if (!isRev) return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end mb-4">
+      <div className="max-w-[72%] px-4 py-3 rounded-2xl rounded-tr-md text-[0.85rem] leading-relaxed text-white"
+        style={{ background: "linear-gradient(135deg, #5865f2, #4a55e8)" }}>
+        {msg.content}
+      </div>
+    </motion.div>
+  );
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex gap-3 group"
-    >
-      {/* Rev Intell avatar */}
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex gap-4 mb-6 group">
       <div className="shrink-0 mt-1">
-        <div className="w-8 h-8 rounded-full overflow-hidden bg-[#0a0f1e] border border-[#5865f2]/30 flex items-center justify-center">
-          <img src={revIntellLogo} alt="Rev" className="w-6 h-6 object-contain" />
-        </div>
+        <ThinkingOrb size={30} />
       </div>
-
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-[0.72rem] font-bold text-t1">Rev Intelligence</span>
-          <span className="text-[0.65rem] text-t4">
+          <span className="text-[0.73rem] font-bold" style={{ color: isDark ? "#fff" : "#1a1a2e" }}>Rev Intelligence</span>
+          <span className="text-[0.65rem]" style={{ color: isDark ? "#4a5568" : "#9ca3af" }}>
             {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
-
         {msg.isStreaming ? (
-          <div className="flex items-center gap-1.5 h-6">
-            {[0, 1, 2].map((i) => (
-              <motion.div
-                key={i}
-                className="w-1.5 h-1.5 rounded-full bg-[#5865f2]"
-                animate={{ scale: [1, 1.5, 1], opacity: [0.4, 1, 0.4] }}
-                transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.2 }}
-              />
-            ))}
+          <div className="flex items-center gap-3 py-2">
+            <ThinkingOrb size={40} />
+            <span className="text-[0.82rem]" style={{ color: isDark ? "#a0aec0" : "#718096" }}>
+              Analysing your business data…
+            </span>
           </div>
         ) : (
-          <div className="text-[0.84rem] space-y-0.5">
-            {renderContent(msg.content)}
-          </div>
+          <div className="text-[0.84rem] space-y-0.5">{renderContent(msg.content)}</div>
         )}
-
-        {/* Message actions */}
         {!msg.isStreaming && (
-          <div className="flex items-center gap-1 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={() => onCopy(msg.content)}
-              className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[0.7rem] text-t3 hover:text-t1 hover:bg-bg-3 transition-colors"
-            >
-              <Copy size={11} />Copy
-            </button>
-            <button className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[0.7rem] text-t3 hover:text-t1 hover:bg-bg-3 transition-colors">
-              <ThumbsUp size={11} />
-            </button>
-            <button className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[0.7rem] text-t3 hover:text-t1 hover:bg-bg-3 transition-colors">
-              <ThumbsDown size={11} />
-            </button>
-            <button className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[0.7rem] text-t3 hover:text-t1 hover:bg-bg-3 transition-colors">
-              <RotateCcw size={11} />Regenerate
-            </button>
+          <div className="flex items-center gap-0.5 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+            {[
+              { icon: Copy, label: "Copy", action: () => onCopy(msg.content) },
+              { icon: ThumbsUp, label: "Good" },
+              { icon: ThumbsDown, label: "Bad" },
+              { icon: RotateCcw, label: "Retry" },
+            ].map(({ icon: Icon, label, action }) => (
+              <button key={label} onClick={action}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[0.7rem] transition-colors"
+                style={{ color: isDark ? "#4a5568" : "#9ca3af" }}
+                onMouseEnter={e => (e.currentTarget.style.color = isDark ? "#a0aec0" : "#1a1a2e")}
+                onMouseLeave={e => (e.currentTarget.style.color = isDark ? "#4a5568" : "#9ca3af")}>
+                <Icon size={11} />{label}
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -200,346 +169,323 @@ function MessageBubble({ msg, onCopy }: { msg: Message; onCopy: (text: string) =
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
-
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function RevIntell() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const { user } = useAuth();
+  const theme = useThemeStore((s) => s.theme);
+  const isDark = theme === "dark";
+  const firstName = user?.full_name?.split(" ")[0] ?? "there";
+
+  const [conversations, setConversations] = useState<Conversation[]>([
+    { id: "demo-1", title: "Revenue analysis this week", preview: "Revenue is up 9% week-over-week...", date: "today", messages: [] },
+    { id: "demo-2", title: "Cart recovery priorities", preview: "23 abandoned carts totalling...", date: "yesterday", messages: [] },
+    { id: "demo-3", title: "Churn risk customers", preview: "47 customers showing early warning...", date: "7days", messages: [] },
+  ]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
   const activeConv = conversations.find((c) => c.id === activeId) ?? null;
   const messages = activeConv?.messages ?? [];
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isThinking]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isThinking]);
 
-  const newConversation = useCallback(() => {
-    setActiveId(null);
-    setInput("");
-    inputRef.current?.focus();
-  }, []);
+  const newChat = useCallback(() => { setActiveId(null); setInput(""); setTimeout(() => inputRef.current?.focus(), 50); }, []);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isThinking) return;
     setInput("");
+    if (inputRef.current) { inputRef.current.style.height = "auto"; }
 
-    const userMsg: Message = {
-      id: `u-${Date.now()}`,
-      role: "user",
-      content: text.trim(),
-      timestamp: new Date(),
-    };
-
+    const userMsg: Message = { id: `u-${Date.now()}`, role: "user", content: text.trim(), timestamp: new Date() };
     let convId = activeId;
 
     if (!convId) {
-      // New conversation
       convId = `conv-${Date.now()}`;
       const newConv: Conversation = {
         id: convId,
-        title: text.slice(0, 40) + (text.length > 40 ? "…" : ""),
-        lastMessage: text.slice(0, 60),
-        timestamp: new Date(),
+        title: text.slice(0, 42) + (text.length > 42 ? "…" : ""),
+        preview: text.slice(0, 60),
+        date: "today",
         messages: [userMsg],
       };
       setConversations((prev) => [newConv, ...prev]);
       setActiveId(convId);
     } else {
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === convId
-            ? { ...c, messages: [...c.messages, userMsg], lastMessage: text.slice(0, 60), timestamp: new Date() }
-            : c
-        )
-      );
+      setConversations((prev) => prev.map((c) =>
+        c.id === convId ? { ...c, messages: [...c.messages, userMsg] } : c));
     }
 
-    // Show streaming indicator
     setIsThinking(true);
-    const streamingId = `r-${Date.now()}`;
-    const streamingMsg: Message = {
-      id: streamingId,
-      role: "rev",
-      content: "",
-      timestamp: new Date(),
-      isStreaming: true,
-    };
+    const sid = `r-${Date.now()}`;
+    const streamMsg: Message = { id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true };
+    setConversations((prev) => prev.map((c) =>
+      c.id === convId ? { ...c, messages: [...c.messages, streamMsg] } : c));
 
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === convId ? { ...c, messages: [...c.messages, streamingMsg] } : c
-      )
-    );
+    await new Promise((r) => setTimeout(r, 1600 + Math.random() * 700));
 
-    // Simulate AI response (replace with real API call)
-    await new Promise((r) => setTimeout(r, 1400 + Math.random() * 800));
-
-    const responseText = getDemoResponse(text);
-
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === convId
-          ? {
-              ...c,
-              messages: c.messages.map((m) =>
-                m.id === streamingId
-                  ? { ...m, content: responseText, isStreaming: false }
-                  : m
-              ),
-            }
-          : c
-      )
-    );
+    setConversations((prev) => prev.map((c) =>
+      c.id === convId ? {
+        ...c,
+        messages: c.messages.map((m) =>
+          m.id === sid ? { ...m, content: getResponse(text), isStreaming: false } : m),
+      } : c));
     setIsThinking(false);
   }, [activeId, isThinking]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
+  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
   };
-
+  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = "auto";
+    e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px";
+  };
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Auto-resize textarea
-  const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+  const groupedConvs = {
+    today:     conversations.filter((c) => c.date === "today"),
+    yesterday: conversations.filter((c) => c.date === "yesterday"),
+    "7days":   conversations.filter((c) => c.date === "7days"),
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // Colours
+  const sidebarBg  = isDark ? "#0d0d0d" : "#ffffff";
+  const sidebarBdr  = isDark ? "#1f1f1f" : "#f0f0f0";
+  const chatBg      = isDark ? "#111111" : "#f7f8fc";
+  const cardBg      = isDark ? "#161616" : "#ffffff";
+  const cardBdr     = isDark ? "#222222" : "#ebebf0";
+  const textPrimary = isDark ? "#ffffff"  : "#1a1a2e";
+  const textMuted   = isDark ? "#6b7280"  : "#9ca3af";
+  const textSub     = isDark ? "#374151"  : "#e5e7eb";
+  const inputBg     = isDark ? "#161616"  : "#ffffff";
 
   return (
-    <div className="flex h-[calc(100vh-var(--topbar-h,56px))] overflow-hidden -mx-5 -mt-5">
+    <div className="flex overflow-hidden" style={{ height: "calc(100vh - var(--topbar-h, 64px))", margin: "-20px -20px 0" }}>
 
-      {/* ── History sidebar ── */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 260, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="flex flex-col border-r border-border bg-bg-2 shrink-0 overflow-hidden"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <div className="flex items-center gap-2">
-                <img src={revIntellLogo} alt="Rev" className="w-5 h-5 object-contain" />
-                <span className="text-[0.8rem] font-bold text-t1">Rev Intell</span>
+      {/* ── Left sidebar ── */}
+      <div className="flex flex-col shrink-0 border-r" style={{ width: 240, background: sidebarBg, borderColor: sidebarBdr }}>
+
+        {/* Logo + new chat */}
+        <div className="px-4 pt-5 pb-4" style={{ borderBottom: `1px solid ${sidebarBdr}` }}>
+          <div className="flex items-center gap-2.5 mb-4">
+            <img src={revIntellLogo} alt="Rev" className="w-6 h-6 object-contain"
+              style={{ filter: "drop-shadow(0 0 6px rgba(100,160,255,0.6))" }} />
+            <span className="text-[0.88rem] font-bold" style={{ color: textPrimary }}>Rev Intell</span>
+          </div>
+          <button onClick={newChat}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[0.82rem] font-semibold transition-all hover:opacity-90 active:scale-[0.98]"
+            style={{ background: "#5865f2", color: "white" }}>
+            <Plus size={15} />New chat
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-3 pt-3 pb-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: isDark ? "#1a1a1a" : "#f4f5f8" }}>
+            <Search size={13} style={{ color: textMuted }} />
+            <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search" className="flex-1 bg-transparent text-[0.78rem] outline-none"
+              style={{ color: textPrimary }} />
+            <kbd className="text-[0.6rem] px-1 rounded" style={{ background: textSub, color: textMuted }}>⌘K</kbd>
+          </div>
+        </div>
+
+        {/* Nav links */}
+        <div className="px-2 py-1">
+          {[
+            { icon: BarChart2, label: "Explore" },
+            { icon: Clock,     label: "History" },
+            { icon: Paperclip, label: "Files" },
+          ].map(({ icon: Icon, label }) => (
+            <button key={label}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[0.8rem] font-medium transition-colors hover:opacity-80"
+              style={{ color: textMuted }}>
+              <Icon size={14} />{label}
+            </button>
+          ))}
+        </div>
+
+        {/* Conversation history */}
+        <div className="flex-1 overflow-y-auto px-2 py-2 [scrollbar-width:none]">
+          {Object.entries({ Today: groupedConvs.today, Yesterday: groupedConvs.yesterday, "7 days ago": groupedConvs["7days"] })
+            .filter(([, items]) => items.length > 0)
+            .map(([label, items]) => (
+              <div key={label} className="mb-3">
+                <p className="px-3 py-1 text-[0.62rem] font-bold uppercase tracking-widest" style={{ color: textMuted }}>{label}</p>
+                {items.map((conv) => (
+                  <button key={conv.id} onClick={() => setActiveId(conv.id)}
+                    className="w-full text-left px-3 py-2 rounded-lg text-[0.78rem] transition-colors"
+                    style={{
+                      background: activeId === conv.id ? (isDark ? "rgba(88,101,242,0.15)" : "rgba(88,101,242,0.08)") : "transparent",
+                      color: activeId === conv.id ? "#5865f2" : textPrimary,
+                    }}>
+                    <p className="truncate font-medium">{conv.title}</p>
+                  </button>
+                ))}
               </div>
-              <button
-                onClick={newConversation}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[0.72rem] font-semibold bg-[#5865f2]/10 text-[#5865f2] hover:bg-[#5865f2]/20 transition-colors border border-[#5865f2]/20"
-              >
-                <Plus size={12} />
-                New chat
-              </button>
-            </div>
+            ))}
+        </div>
 
-            {/* Conversations list */}
-            <div className="flex-1 overflow-y-auto py-2 [scrollbar-width:none]">
-              {conversations.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-32 gap-2 px-4 text-center">
-                  <img src={revIntellLogo} alt="Rev" className="w-10 h-10 object-contain opacity-30" />
-                  <p className="text-[0.72rem] text-t4">No conversations yet</p>
-                </div>
-              ) : (
-                <>
-                  <div className="px-3 mb-1">
-                    <span className="text-[0.62rem] font-bold uppercase tracking-widest text-t4">Recent</span>
-                  </div>
-                  {conversations.map((conv) => (
-                    <button
-                      key={conv.id}
-                      onClick={() => setActiveId(conv.id)}
-                      className={cn(
-                        "w-full text-left px-3 py-2.5 mx-1 rounded-lg transition-colors group",
-                        activeId === conv.id
-                          ? "bg-[#5865f2]/12 border border-[#5865f2]/20"
-                          : "hover:bg-bg-3"
-                      )}
-                      style={{ width: "calc(100% - 8px)" }}
-                    >
-                      <p className="text-[0.78rem] font-medium text-t1 truncate">{conv.title}</p>
-                      <p className="text-[0.68rem] text-t4 truncate mt-0.5">{conv.lastMessage}</p>
-                    </button>
-                  ))}
-                </>
-              )}
+        {/* User */}
+        <div className="px-4 py-3 border-t" style={{ borderColor: sidebarBdr }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-[0.7rem] font-bold text-white"
+              style={{ background: "linear-gradient(135deg, #5865f2, #7c3aed)" }}>
+              {firstName[0]?.toUpperCase()}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <div className="flex-1 min-w-0">
+              <p className="text-[0.75rem] font-semibold truncate" style={{ color: textPrimary }}>{user?.full_name ?? "User"}</p>
+              <p className="text-[0.65rem] truncate" style={{ color: textMuted }}>{user?.email ?? ""}</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ── Main chat area ── */}
-      <div className="flex flex-col flex-1 min-w-0 bg-bg-1">
+      <div className="flex flex-col flex-1 min-w-0" style={{ background: chatBg }}>
 
-        {/* Chat topbar */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen((v) => !v)}
-              className="p-1.5 rounded-lg text-t3 hover:text-t1 hover:bg-bg-3 transition-colors"
-            >
-              <ChevronDown
-                size={16}
-                className="transition-transform"
-                style={{ transform: sidebarOpen ? "rotate(90deg)" : "rotate(-90deg)" }}
-              />
-            </button>
-            <div className="flex items-center gap-2">
-              <img src={revIntellLogo} alt="Rev Intell" className="w-6 h-6 object-contain drop-shadow-[0_0_8px_rgba(100,160,255,0.6)]" />
-              <div>
-                <h1 className="text-[0.88rem] font-bold text-t1 leading-none">Rev Intelligence</h1>
-                <p className="text-[0.64rem] text-t4 mt-0.5">Your autonomous AI business advisor</p>
-              </div>
+        {/* Topbar */}
+        <div className="flex items-center justify-between px-5 py-3 shrink-0 border-b" style={{ background: sidebarBg, borderColor: sidebarBdr }}>
+          <div className="flex items-center gap-2">
+            <img src={revIntellLogo} alt="Rev" className="w-5 h-5 object-contain"
+              style={{ filter: "drop-shadow(0 0 6px rgba(100,160,255,0.5))" }} />
+            <span className="text-[0.84rem] font-bold" style={{ color: textPrimary }}>Rev Intell</span>
+            <div className="ml-1 flex items-center gap-1 px-2 py-0.5 rounded-full"
+              style={{ background: "rgba(5,150,105,0.1)", border: "1px solid rgba(5,150,105,0.2)" }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[0.63rem] font-semibold text-emerald-500">Live</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-emerald-500/25 bg-emerald-500/8">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[0.65rem] font-semibold text-emerald-400">Online</span>
-            </div>
+            <button className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: textMuted }}><MoreHorizontal size={16} /></button>
+            <button className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: textMuted }}><Share2 size={15} /></button>
             <button
-              onClick={newConversation}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[0.75rem] font-semibold bg-bg-3 text-t2 hover:text-t1 border border-border hover:border-border-md transition-colors"
-            >
-              <Plus size={13} />
-              New chat
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[0.75rem] font-bold text-white transition-all hover:opacity-90"
+              style={{ background: "#5865f2" }}>
+              Upgrade
             </button>
           </div>
         </div>
 
-        {/* Messages area */}
+        {/* Messages / Welcome */}
         <div className="flex-1 overflow-y-auto">
           {messages.length === 0 ? (
-            /* ── Welcome screen ── */
-            <div className="flex flex-col items-center justify-center h-full px-6 pb-8">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.5 }}
-                className="text-center mb-10"
-              >
-                <motion.img
-                  src={revIntellLogo}
-                  alt="Rev Intell"
-                  className="w-20 h-20 object-contain mx-auto mb-5 drop-shadow-[0_0_24px_rgba(100,160,255,0.5)]"
-                  animate={{ scale: [1, 1.04, 1] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                />
-                <h2 className="text-2xl font-bold text-t1 tracking-tight mb-2">
-                  Good morning. I'm Rev.
+            /* Welcome screen */
+            <div className="flex flex-col items-center justify-center h-full px-6 pb-10 max-w-2xl mx-auto w-full">
+              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
+                className="text-center mb-8">
+                <div className="flex justify-center mb-6">
+                  <ThinkingOrb size={80} />
+                </div>
+                <h2 className="text-[1.5rem] font-bold mb-1" style={{ color: "#5865f2" }}>
+                  Hello, {firstName}
                 </h2>
-                <p className="text-[0.88rem] text-t3 max-w-sm mx-auto leading-relaxed">
-                  Your autonomous AI business intelligence advisor. I monitor your revenue,
-                  predict what's about to happen, and tell you exactly what to do about it.
+                <h3 className="text-[1.7rem] font-bold tracking-tight" style={{ color: textPrimary }}>
+                  How can I help your revenue today?
+                </h3>
+                <p className="text-[0.85rem] mt-2 max-w-md mx-auto" style={{ color: textMuted }}>
+                  I monitor your store 24/7, detect opportunities before your competitors, and tell you exactly what action to take.
                 </p>
               </motion.div>
 
-              {/* Starter prompts */}
-              <div className="grid grid-cols-2 gap-3 w-full max-w-2xl">
+              {/* Input - centre welcome */}
+              <div className="w-full mb-8">
+                <div className="rounded-2xl border shadow-sm p-3" style={{ background: inputBg, borderColor: cardBdr }}>
+                  <textarea ref={inputRef} value={input} onChange={handleInput} onKeyDown={handleKey}
+                    placeholder="Ask me anything about your business…" rows={2}
+                    className="w-full bg-transparent text-[0.88rem] outline-none resize-none leading-relaxed placeholder:opacity-50"
+                    style={{ color: textPrimary }} />
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-2">
+                      <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[0.73rem] font-semibold border transition-colors"
+                        style={{ color: "#5865f2", borderColor: "rgba(88,101,242,0.3)", background: "rgba(88,101,242,0.06)" }}>
+                        <Zap size={11} />Quick insights
+                      </button>
+                    </div>
+                    <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }}
+                      onClick={() => sendMessage(input)} disabled={!input.trim()}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
+                      style={{ background: input.trim() ? "#5865f2" : (isDark ? "#1f1f1f" : "#e5e7eb"), color: input.trim() ? "white" : textMuted }}>
+                      <Send size={14} />
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Starter cards */}
+              <div className="grid grid-cols-3 gap-3 w-full">
                 {STARTERS.map((s, i) => (
-                  <motion.button
-                    key={s.prompt}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 + i * 0.06 }}
-                    onClick={() => sendMessage(s.prompt)}
-                    className="flex items-start gap-3 p-4 rounded-xl border border-border bg-bg-2 hover:border-border-md hover:bg-bg-3 transition-all text-left group"
-                  >
-                    <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                      style={{ background: s.bg }}
-                    >
-                      <s.icon size={16} style={{ color: s.color }} />
-                    </div>
-                    <div>
-                      <p className="text-[0.75rem] font-bold text-t1 mb-1 group-hover:text-[#5865f2] transition-colors">
-                        {s.label}
-                      </p>
-                      <p className="text-[0.72rem] text-t3 leading-snug">{s.prompt}</p>
-                    </div>
+                  <motion.button key={s.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 + i * 0.05 }}
+                    onClick={() => sendMessage(s.sub)}
+                    className="flex flex-col items-start p-4 rounded-xl text-left transition-all hover:shadow-md active:scale-[0.98]"
+                    style={{ background: cardBg, border: `1px solid ${cardBdr}` }}>
+                    <s.icon size={18} className="mb-2" style={{ color: s.color }} />
+                    <p className="text-[0.78rem] font-bold mb-1" style={{ color: textPrimary }}>{s.label}</p>
+                    <p className="text-[0.7rem] leading-snug" style={{ color: textMuted }}>{s.sub}</p>
                   </motion.button>
                 ))}
               </div>
             </div>
           ) : (
-            /* ── Message thread ── */
-            <div className="max-w-3xl mx-auto px-6 py-6 space-y-6">
+            <div className="max-w-3xl mx-auto px-6 py-6">
               {messages.map((msg) => (
-                <MessageBubble key={msg.id} msg={msg} onCopy={handleCopy} />
+                <MessageBubble key={msg.id} msg={msg} onCopy={handleCopy} theme={theme} />
               ))}
               <div ref={messagesEndRef} />
             </div>
           )}
         </div>
 
-        {/* ── Input area ── */}
-        <div className="shrink-0 px-4 pb-4 pt-2">
-          <div className="max-w-3xl mx-auto">
-            <div className="relative flex items-end gap-3 rounded-2xl border border-border bg-bg-2 px-4 py-3 focus-within:border-[#5865f2]/50 transition-colors shadow-sm">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={handleInput}
-                onKeyDown={handleKeyDown}
-                placeholder="Ask Rev anything about your business…"
-                rows={1}
-                disabled={isThinking}
-                className="flex-1 resize-none bg-transparent text-[0.88rem] text-t1 placeholder:text-t4 outline-none leading-relaxed max-h-40 [scrollbar-width:none]"
-                style={{ minHeight: 24 }}
-              />
-              <motion.button
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.92 }}
-                onClick={() => sendMessage(input)}
-                disabled={!input.trim() || isThinking}
-                className={cn(
-                  "flex items-center justify-center w-9 h-9 rounded-xl transition-all shrink-0",
-                  input.trim() && !isThinking
-                    ? "bg-[#5865f2] text-white shadow-md shadow-[#5865f2]/30 hover:bg-[#4a55e8]"
-                    : "bg-bg-3 text-t4 cursor-not-allowed"
-                )}
-              >
-                {isThinking ? (
-                  <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-[#5865f2]/50 animate-spin" />
-                ) : (
-                  <Send size={15} />
-                )}
-              </motion.button>
+        {/* Input bar (active conversation) */}
+        {messages.length > 0 && (
+          <div className="shrink-0 px-4 pb-4 pt-2">
+            <div className="max-w-3xl mx-auto">
+              <div className="rounded-2xl border shadow-sm" style={{ background: inputBg, borderColor: cardBdr }}>
+                <div className="px-4 pt-3 pb-2">
+                  <textarea ref={inputRef} value={input} onChange={handleInput} onKeyDown={handleKey}
+                    placeholder="Ask Rev anything…" rows={1} disabled={isThinking}
+                    className="w-full bg-transparent text-[0.88rem] outline-none resize-none max-h-36 [scrollbar-width:none] leading-relaxed placeholder:opacity-40"
+                    style={{ color: textPrimary, minHeight: 24 }} />
+                </div>
+                <div className="flex items-center justify-between px-3 pb-3">
+                  <div className="flex items-center gap-1">
+                    <button className="p-1.5 rounded-lg transition-colors hover:opacity-70" style={{ color: textMuted }}><Paperclip size={15} /></button>
+                  </div>
+                  <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
+                    onClick={() => sendMessage(input)} disabled={!input.trim() || isThinking}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center"
+                    style={{ background: input.trim() && !isThinking ? "#5865f2" : (isDark ? "#1f1f1f" : "#e5e7eb"), color: input.trim() && !isThinking ? "white" : textMuted }}>
+                    {isThinking
+                      ? <div className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin" />
+                      : <Send size={14} />}
+                  </motion.button>
+                </div>
+              </div>
+              <p className="text-center text-[0.63rem] mt-2" style={{ color: textMuted }}>
+                Rev Intelligence · Early access · Responses are AI-generated
+              </p>
             </div>
-            <p className="text-center text-[0.65rem] text-t4 mt-2">
-              Rev Intelligence is in early access · Responses are AI-generated and may not reflect live data
-            </p>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Copy toast */}
       <AnimatePresence>
         {copied && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full bg-bg-2 border border-border shadow-lg text-[0.8rem] text-t1"
-          >
-            <Copy size={12} />Copied to clipboard
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full text-[0.8rem] shadow-lg"
+            style={{ background: sidebarBg, border: `1px solid ${sidebarBdr}`, color: textPrimary }}>
+            <Copy size={12} />Copied
           </motion.div>
         )}
       </AnimatePresence>
