@@ -12,6 +12,8 @@ export interface NavItem {
   description?: string;
   /** Aliases / synonyms so fuzzy search finds this page from related terms. */
   keywords?: string[];
+  /** Use a custom image instead of a Lucide icon */
+  useCustomIcon?: boolean;
 }
 
 export const NAV: NavItem[] = [
@@ -21,10 +23,11 @@ export const NAV: NavItem[] = [
     keywords: ["home", "dashboard", "summary", "kpis"],
   },
   {
-    group: "Recover", label: "Intelligence", to: "/dashboard/intelligence", icon: Sparkles,
-    badge: { text: "New", tone: "new" },
-    description: "Trending products and market signals",
-    keywords: ["ai", "trending", "products", "insights", "revenue intelligence"],
+    group: "Recover", label: "Rev Intell", to: "/dashboard/rev-intell", icon: Sparkles,
+    badge: { text: "AI", tone: "new" },
+    description: "Your autonomous AI business intelligence advisor",
+    keywords: ["ai", "intelligence", "chat", "rev", "advisor", "insights", "revenue"],
+    useCustomIcon: true,
   },
   {
     group: "Recover", label: "Cart Recovery", to: "/dashboard/cart-recovery", icon: ShoppingCart,

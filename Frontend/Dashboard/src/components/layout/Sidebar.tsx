@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import revlumaIcon from '@/assets/brand/revluma-icon.png';
+import revIntellLogo from '@/assets/images/rev-intell-logo.png';
 
 // Derive initials from a full name string
 function getInitials(fullName: string | undefined | null): string {
@@ -239,10 +240,18 @@ export function Sidebar() {
                               transition={{ duration: 0.55, ease: 'easeOut' }}
                               className="flex items-center justify-center"
                             >
-                              <Icon
-                                className={cn('h-4 w-4 transition-colors', isActive ? 'nav-blue-icon' : 'text-t3 group-hover:text-t1')}
-                                strokeWidth={1.8}
-                              />
+                              {item.useCustomIcon ? (
+                                <img
+                                  src={revIntellLogo}
+                                  alt="Rev Intell"
+                                  className="h-5 w-5 object-contain drop-shadow-[0_0_6px_rgba(100,160,255,0.7)]"
+                                />
+                              ) : (
+                                <Icon
+                                  className={cn('h-4 w-4 transition-colors', isActive ? 'nav-blue-icon' : 'text-t3 group-hover:text-t1')}
+                                  strokeWidth={1.8}
+                                />
+                              )}
                             </motion.span>
                           </span>
                           {!sidebarCollapsed && (

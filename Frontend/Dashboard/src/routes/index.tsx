@@ -2,6 +2,7 @@ import { Route, Routes, Navigate } from "react-router-dom";
 import { DashboardLayout } from "../components/layout/DashboardLayout";
 import Overview from "../pages/Overview";
 import Intelligence from "../pages/Intelligence";
+import RevIntell from "../pages/RevIntell";
 import Integrations from "../pages/Integrations";
 import CartRecovery from "../pages/CartRecovery";
 import Customers from "../pages/Customers";
@@ -33,6 +34,7 @@ export function DashboardRoutes() {
         <Route index element={<Navigate to="/dashboard/overview" replace />} />
         <Route path="overview"      element={<Overview />} />
         <Route path="intelligence"  element={<Intelligence />} />
+        <Route path="rev-intell"     element={<RevIntell />} />
         <Route path="integrations"  element={<Integrations />} />
         <Route path="cart-recovery" element={<CartRecovery />} />
         <Route path="customers"     element={<Customers />} />
