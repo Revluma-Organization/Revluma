@@ -13,9 +13,14 @@ const REQUIRED_ENV_VARS = [
   'REFRESH_TOKEN_EXPIRES_IN',
   'PORT',
   'NODE_ENV',
-  'FRONTEND_URL',
-  'PAYSTACK_SECRET_KEY'
+  'FRONTEND_URL'
 ];
+
+// Payment vars — warn if missing but do not crash
+// Set PAYSTACK_SECRET_KEY in Render before enabling payments
+if (!process.env.PAYSTACK_SECRET_KEY) {
+  console.warn('[WARN] PAYSTACK_SECRET_KEY not set — payment endpoints will not function');
+}
 
 const missingVars = [];
 
