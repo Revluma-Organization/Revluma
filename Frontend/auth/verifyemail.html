@@ -540,33 +540,67 @@
         resendBtn.disabled = true;
         resendBtn.textContent = 'Sending...';
 
+        // Get the email from localStorage
+        const resendEmail = localStorage.getItem('signup_email') || localStorage.getItem('revluma_pending_email') || '';
+
+        if (!resendEmail) {
+          resendBtn.textContent = 'Error — email not found';
+          setTimeout(() => {
+            resendBtn.disabled = false;
+            resendBtn.innerHTML = 'Resend code';
+          }, 3000);
+          return;
+        }
+
         try {
-          // ── Backend Integration Point ──
-          // await fetch(`${API_BASE}/auth/resend-code`, {
-          //   method: 'POST',
-          //   headers: { 'Content-Type': 'application/json' },
-          //   body: JSON.stringify({ email })
-          // });
+          const res = await fetch('https://revluma-backend.onrender.com/api/v1/auth/resend-verification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: resendEmail })
+          });
 
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          const data = await res.json();
 
-          // Reset countdown
-          resendSeconds = 60;
-          resendBtn.innerHTML = 'Resend (<span id="resendCountdown" class="countdown">60</span>s)';
-          const newCountdown = resendBtn.querySelector('#resendCountdown');
-          const newInterval = setInterval(() => {
-            resendSeconds--;
-            newCountdown.textContent = resendSeconds;
-            if (resendSeconds <= 0) {
-              clearInterval(newInterval);
+          if (res.ok && data.success) {
+            // Show success message
+            resendBtn.textContent = '✓ Code sent!';
+            resendBtn.style.color = '#4ade80';
+
+            // Reset countdown after 2 seconds
+            setTimeout(() => {
+              resendBtn.style.color = '';
+              resendSeconds = 60;
+              resendBtn.innerHTML = 'Resend (<span id="resendCountdown" class="countdown">60</span>s)';
+              const newCountdown = resendBtn.querySelector('#resendCountdown');
+              const newInterval = setInterval(() => {
+                resendSeconds--;
+                newCountdown.textContent = resendSeconds;
+                if (resendSeconds <= 0) {
+                  clearInterval(newInterval);
+                  resendBtn.disabled = false;
+                  resendBtn.innerHTML = 'Resend code';
+                }
+              }, 1000);
+            }, 2000);
+
+          } else {
+            resendBtn.textContent = 'Failed — try again';
+            resendBtn.style.color = '#f87171';
+            setTimeout(() => {
+              resendBtn.style.color = '';
               resendBtn.disabled = false;
               resendBtn.innerHTML = 'Resend code';
-            }
-          }, 1000);
+            }, 3000);
+          }
 
         } catch (err) {
-          resendBtn.textContent = 'Failed, try again';
-          resendBtn.disabled = false;
+          resendBtn.textContent = 'Network error — try again';
+          resendBtn.style.color = '#f87171';
+          setTimeout(() => {
+            resendBtn.style.color = '';
+            resendBtn.disabled = false;
+            resendBtn.innerHTML = 'Resend code';
+          }, 3000);
         }
       });
 
