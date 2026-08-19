@@ -91,11 +91,32 @@ function OrbHero({ size = 90 }: { size?: number }) {
 // ── Small orb — avatar only, NO rings ────────────────────────────────────────
 function OrbAvatar() {
   return (
-    <motion.img src={revIntellLogo} alt="Rev"
-      style={{ width: 28, height: 28, objectFit: "contain", flexShrink: 0,
-        filter: "drop-shadow(0 0 5px rgba(100,160,255,0.7))" }}
-      animate={{ scale: [1, 1.05, 1] }}
-      transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }} />
+    <div style={{ position: "relative", width: 32, height: 32, flexShrink: 0, marginTop: 2 }}>
+      {/* Subtle glow circle behind orb */}
+      <div style={{
+        position: "absolute", inset: -4, borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(88,101,242,0.15) 0%, transparent 70%)",
+      }} />
+      {/* Thin orbit ring */}
+      <motion.div style={{
+        position: "absolute", inset: -6, borderRadius: "50%",
+        border: "1px solid rgba(100,160,255,0.35)",
+      }}
+        animate={{ rotate: 360 }}
+        transition={{ duration: 4, repeat: Infinity, ease: "linear" }}>
+        <div style={{
+          position: "absolute", top: "50%", right: -2.5, width: 4, height: 4,
+          borderRadius: "50%", background: "#7eb8ff",
+          transform: "translateY(-50%)", boxShadow: "0 0 5px rgba(100,160,255,0.9)",
+        }} />
+      </motion.div>
+      {/* Orb image */}
+      <motion.img src={revIntellLogo} alt="Rev"
+        style={{ width: 32, height: 32, objectFit: "contain", position: "relative", zIndex: 2,
+          filter: "drop-shadow(0 0 6px rgba(100,160,255,0.8))" }}
+        animate={{ scale: [1, 1.06, 1] }}
+        transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }} />
+    </div>
   );
 }
 
