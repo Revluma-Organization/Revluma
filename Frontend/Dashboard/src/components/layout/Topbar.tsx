@@ -1,15 +1,13 @@
-import { Bell, HelpCircle, Calendar, Search, Menu, Sparkles, Compass } from 'lucide-react';
+import { Bell, HelpCircle, Search, Menu, Compass } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import revIntellLogo from '@/assets/images/rev-intell-logo.png';
 import { useUI } from '@/store/ui';
 import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
-const RANGES = ['Today', 'Last 7 days', 'Last 30 days', 'Last 90 days', 'This year'] as const;
-
 export function Topbar({ section = 'Overview' }: { section?: string }) {
-  const { setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, setCopilotOpen, dateRange, setDateRange, startTour } = useUI();
-  const [dateOpen, setDateOpen] = useState(false);
+  const { setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, startTour } = useUI();
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -42,43 +40,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
       {/* Right Side: Actions & Buttons */}
       <div className="flex items-center gap-2">
         
-        {/* Date picker (Temporarily hidden until backend is wired in Week 4) */}
-        {false && (
-          <div data-tour="topbar-date" className="relative">
-            <button
-              onClick={() => setDateOpen((v) => !v)}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-glass/[0.045] px-2.5 py-1.5 text-[0.76rem] text-t1 transition-colors hover:border-border-md"
-            >
-              <Calendar className="h-3 w-3 text-t3" />
-              <span className="hidden md:inline">{dateRange}</span>
-              <svg viewBox="0 0 24 24" className={cn('h-2.5 w-2.5 stroke-t4 transition-transform', dateOpen && 'rotate-180')} fill="none" strokeWidth={2} strokeLinecap="round">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            {dateOpen && (
-              <>
-                <div className="fixed inset-0 z-[150]" onClick={() => setDateOpen(false)} />
-                <div className="absolute right-0 top-[calc(100%+6px)] z-[200] min-w-[160px] overflow-hidden rounded-xl border border-border-md bg-bg-notif shadow-elegant">
-                  {RANGES.map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => { setDateRange(r); setDateOpen(false); }}
-                      className={cn(
-                        'flex w-full items-center justify-between gap-3.5 whitespace-nowrap px-3.5 py-2.5 text-[0.79rem] text-t2 transition-colors hover:bg-glass/[0.065] hover:text-t1',
-                        r === dateRange && 'font-semibold text-t1',
-                      )}
-                    >
-                      {r}
-                      {r === dateRange && <span className="text-[0.7rem] accent-text">✓</span>}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Search trigger */}
+                {/* Search trigger */}
         <button
           data-tour="topbar-search"
           onClick={() => setCmdOpen(true)}
@@ -89,17 +51,16 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
           <kbd className="ml-2 rounded border border-border bg-bg-3 px-1.5 py-px text-[0.65rem] font-medium text-t2">⌘K</kbd>
         </button>
 
-        {/* Copilot */}
-        <button
-          data-tour="topbar-copilot"
-          onClick={() => setCopilotOpen(true)}
-          className="flex h-[34px] items-center gap-1.5 rounded-md border px-2.5 text-[0.76rem] font-semibold transition-all hover:opacity-90"
-          style={{ background: 'hsl(var(--accent) / 0.12)', borderColor: 'hsl(var(--accent) / 0.25)', color: 'hsl(var(--accent))' }}
-          title="AI Copilot"
+        {/* Rev Intell */}
+        <Link
+          to="/dashboard/rev-intell"
+          className="flex h-[34px] items-center gap-2 rounded-lg border px-3 text-[0.76rem] font-semibold transition-all hover:opacity-90"
+          style={{ background: 'rgba(88,101,242,0.1)', borderColor: 'rgba(88,101,242,0.25)', color: '#5865f2' }}
+          title="Rev Intelligence"
         >
-          <Sparkles className="h-3.5 w-3.5" />
-          <span className="hidden lg:inline">Copilot</span>
-        </button>
+          <img src={revIntellLogo} alt="Rev" style={{ width: 16, height: 16, objectFit: 'contain', filter: 'drop-shadow(0 0 4px rgba(100,160,255,0.7))' }} />
+          <span className="hidden lg:inline">Rev Intell</span>
+        </Link>
 
         {/* Product tour */}
         <button

@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Send, Plus, Menu, X, Copy, ThumbsUp, ThumbsDown,
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
-  Zap, RefreshCw, Paperclip,
+  Zap, RefreshCw, Paperclip, Mic, Phone, ImageIcon, FileText, Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import revIntellLogo from "@/assets/images/rev-intell-logo.png";
@@ -231,6 +231,24 @@ export default function RevIntell() {
   };
   const copy = (t: string) => { navigator.clipboard.writeText(t); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
+  // Attachment & communication handlers
+  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // TODO: upload file and reference in message
+    const name = file.name.length > 28 ? file.name.slice(0, 25) + '…' : file.name;
+    send(`[Attached: ${name}]`);
+    e.target.value = '';
+  };
+  const handleVoice = () => {
+    // TODO: implement voice recording
+    alert('Voice messages coming soon. Rev will be able to listen to your audio briefings.');
+  };
+  const handleCall = () => {
+    // TODO: implement booking flow
+    alert('Audio call booking coming soon. You\'ll be able to schedule a live session with Rev Intelligence.');
+  };
+
   // Theme colours
   const bg      = isDark ? "#111"     : "#f7f8fc";
   const card    = isDark ? "#171717"  : "#ffffff";
@@ -436,17 +454,54 @@ export default function RevIntell() {
                 className="w-full bg-transparent text-[0.9rem] outline-none resize-none px-5 pt-3.5 pb-2 max-h-36 [scrollbar-width:none] leading-relaxed"
                 style={{ color: t1, minHeight: 26 }} />
               <div className="flex items-center justify-between px-4 pb-3">
-                <button className="p-1.5 rounded-lg transition-colors opacity-50 hover:opacity-100" style={{ color: t2 }}>
-                  <Paperclip size={15} />
-                </button>
+                <div style={{ display:'flex', alignItems:'center', gap:2 }}>
+                  {/* Attach file */}
+                  <label title="Attach file" style={{ cursor:'pointer' }}>
+                    <input type="file" accept="*/*" className="hidden" onChange={handleFileAttach} />
+                    <div className="p-1.5 rounded-lg transition-colors opacity-50 hover:opacity-100" style={{ color: t2, cursor:'pointer' }}>
+                      <Paperclip size={15} />
+                    </div>
+                  </label>
+                  {/* Attach image */}
+                  <label title="Attach image" style={{ cursor:'pointer' }}>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFileAttach} />
+                    <div className="p-1.5 rounded-lg transition-colors opacity-50 hover:opacity-100" style={{ color: t2, cursor:'pointer' }}>
+                      <ImageIcon size={15} />
+                    </div>
+                  </label>
+                  {/* Attach video */}
+                  <label title="Attach video" style={{ cursor:'pointer' }}>
+                    <input type="file" accept="video/*" className="hidden" onChange={handleFileAttach} />
+                    <div className="p-1.5 rounded-lg transition-colors opacity-50 hover:opacity-100" style={{ color: t2, cursor:'pointer' }}>
+                      <Video size={15} />
+                    </div>
+                  </label>
+                  {/* Voice message */}
+                  <button title="Send voice message" onClick={handleVoice}
+                    className="p-1.5 rounded-lg transition-colors opacity-50 hover:opacity-100" style={{ color: t2 }}>
+                    <Mic size={15} />
+                  </button>
+                  {/* Book audio call */}
+                  <button title="Book audio call with Rev" onClick={handleCall}
+                    className="p-1.5 rounded-lg transition-colors opacity-50 hover:opacity-100" style={{ color: t2 }}>
+                    <Phone size={15} />
+                  </button>
+                </div>
                 <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
                   onClick={() => send(input)} disabled={!input.trim() || thinking}
                   className="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
                   style={{ background: input.trim() && !thinking ? "#5865f2" : (isDark ? "#1f1f1f" : "#e5e7eb"),
                     color: input.trim() && !thinking ? "white" : t2 }}>
-                  {thinking
-                    ? <div className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-current animate-spin" />
-                    : <Send size={14} />}
+                  {thinking ? (
+                    <motion.div style={{ display:'flex', gap: 2.5, alignItems:'center' }}>
+                      {[0,1,2].map(i => (
+                        <motion.div key={i}
+                          style={{ width:3, height:3, borderRadius:'50%', background:'currentColor' }}
+                          animate={{ y:[0,-4,0], opacity:[0.4,1,0.4] }}
+                          transition={{ duration:0.7, repeat:Infinity, delay:i*0.15, ease:'easeInOut' }} />
+                      ))}
+                    </motion.div>
+                  ) : <Send size={14} />}
                 </motion.button>
               </div>
             </div>
