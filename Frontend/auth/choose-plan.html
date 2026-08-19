@@ -5,163 +5,364 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="../assets/images/Revluma-icon.png" />
   <title>Choose Your Plan — Revluma</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,500,400&display=swap" rel="stylesheet" />
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,600,500,400&display=swap" rel="stylesheet" />
   <script src="../assets/js/apiConfig.js"></script>
+
   <style>
-    *, *::before, *::after { box-sizing: border-box; }
-    body { margin: 0; font-family: 'Satoshi', sans-serif; background: #0A0A0A; color: white; min-height: 100vh; }
-    .grid-bg { background-image: linear-gradient(to right, #1a1a1a 1px, transparent 1px), linear-gradient(to bottom, #1a1a1a 1px, transparent 1px); background-size: 4rem 4rem; mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 50%, transparent 100%); }
-    .plan-card { background: #0f0f0f; border: 1px solid #222; border-radius: 20px; padding: 32px; cursor: pointer; transition: all 0.25s ease; position: relative; }
-    .plan-card:hover { border-color: rgba(255,255,255,0.18); transform: translateY(-2px); }
-    .plan-card.selected { border-color: #4ade80; background: rgba(74,222,128,0.04); }
-    .plan-card.featured { border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.03); }
-    .billing-toggle { display: inline-flex; align-items: center; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); border-radius: 999px; padding: 3px; }
-    .billing-toggle button { padding: 5px 18px; border-radius: 999px; font-size: 13px; font-weight: 600; transition: all 0.2s; color: #666; cursor: pointer; border: none; background: transparent; }
-    .billing-toggle button.active { background: white; color: #0A0A0A; }
-    .btn-pay { width: 100%; padding: 14px; border-radius: 14px; font-weight: 700; font-size: 15px; cursor: pointer; border: none; transition: all 0.25s ease; background: white; color: #0A0A0A; }
-    .btn-pay:hover:not(:disabled) { background: #e8e8e8; transform: scale(1.02); }
-    .btn-pay:disabled { opacity: 0.5; cursor: not-allowed; }
-    .check { color: #4ade80; }
-    .savings-badge { background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.22); color: #4ade80; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 9px; border-radius: 999px; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #eef0f8;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    .nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 32px;
+      background: rgba(238,240,248,0.9);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(100,110,180,0.1);
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; }
+    .nav-logo img { width: 28px; height: 28px; border-radius: 8px; }
+    .nav-logo span { font-weight: 700; font-size: 15px; color: #1a1a2e; }
+    .nav-steps { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #9098c0; }
+    .step-done {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: rgba(99,128,255,0.12); border: 1px solid rgba(99,128,255,0.3);
+      display: flex; align-items: center; justify-content: center;
+      color: #6380ff; font-size: 8px; font-weight: 700;
+    }
+    .step-active {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: #5865f2; border: 1px solid #5865f2;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 9px; font-weight: 800;
+    }
+
+    /* ── Page ── */
+    .page {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 56px 24px 80px;
+    }
+
+    /* ── Header ── */
+    .header { text-align: center; margin-bottom: 36px; }
+    .header h1 {
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 700;
+      color: #1a1a2e;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+    }
+    .header p { color: #7880a8; font-size: 15px; }
+
+    /* ── Toggle ── */
+    .toggle-wrap {
+      display: flex; justify-content: center; align-items: center;
+      gap: 0; margin-bottom: 52px;
+    }
+    .toggle-wrap button {
+      padding: 9px 28px; font-size: 13px; font-weight: 600;
+      font-family: 'Satoshi', sans-serif;
+      border: 1.5px solid #c8cce8; background: transparent;
+      color: #7880a8; cursor: pointer; transition: all 0.2s;
+    }
+    .toggle-wrap button:first-child { border-radius: 999px 0 0 999px; border-right: none; }
+    .toggle-wrap button:last-child  { border-radius: 0 999px 999px 0; }
+    .toggle-wrap button.active {
+      background: #5865f2; color: white; border-color: #5865f2;
+    }
+    .yearly-badge {
+      margin-left: 12px;
+      background: rgba(74,222,128,0.15); border: 1px solid rgba(74,222,128,0.3);
+      color: #16a34a; font-size: 11px; font-weight: 700;
+      padding: 4px 10px; border-radius: 999px;
+      letter-spacing: 0.04em; text-transform: uppercase;
+    }
+
+    /* ── Cards grid ── */
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1.08fr 1fr;
+      gap: 20px;
+      align-items: center;
+    }
+    @media (max-width: 720px) {
+      .cards { grid-template-columns: 1fr; }
+      .card.featured { transform: none !important; }
+    }
+
+    /* ── Base card (white) ── */
+    .card {
+      background: white;
+      border-radius: 20px;
+      padding: 32px 28px 28px;
+      position: relative;
+      box-shadow: 0 4px 24px rgba(88, 101, 242, 0.07), 0 1px 4px rgba(0,0,0,0.05);
+    }
+
+    /* ── Featured center card (blue) ── */
+    .card.featured {
+      background: linear-gradient(160deg, #6b7df5 0%, #5865f2 45%, #4a55e8 100%);
+      transform: translateY(-14px);
+      box-shadow: 0 20px 60px rgba(88,101,242,0.4), 0 4px 16px rgba(88,101,242,0.25);
+    }
+
+    /* Most popular label */
+    .popular-badge {
+      position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
+      background: white; color: #5865f2;
+      font-size: 10px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 4px 14px; border-radius: 999px;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(88,101,242,0.2);
+    }
+
+    /* Price */
+    .card-price {
+      font-size: 42px; font-weight: 700;
+      letter-spacing: -0.03em; color: #1a1a2e; line-height: 1;
+      display: flex; align-items: baseline; gap: 4px;
+    }
+    .card.featured .card-price { color: white; }
+    .price-suffix { font-size: 14px; font-weight: 500; color: #9098c0; }
+    .card.featured .price-suffix { color: rgba(255,255,255,0.65); }
+    .annual-note { font-size: 11px; color: #9098c0; margin-top: 4px; min-height: 16px; }
+    .card.featured .annual-note { color: rgba(255,255,255,0.55); }
+
+    /* Name & desc */
+    .card-name { font-size: 20px; font-weight: 700; color: #1a1a2e; margin: 14px 0 6px; }
+    .card.featured .card-name { color: white; }
+    .card-desc { font-size: 13px; color: #7880a8; line-height: 1.55; margin-bottom: 20px; }
+    .card.featured .card-desc { color: rgba(255,255,255,0.65); }
+
+    /* Divider */
+    .card-divider { height: 1px; background: #f0f1f8; margin-bottom: 20px; }
+    .card.featured .card-divider { background: rgba(255,255,255,0.18); }
+
+    /* Features */
+    .features { list-style: none; margin-bottom: 28px; display: flex; flex-direction: column; gap: 11px; }
+    .features li { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; color: #3a3f6e; }
+    .card.featured .features li { color: rgba(255,255,255,0.9); }
+    .feat-icon {
+      width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+      display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700;
+      background: rgba(88,101,242,0.1); color: #5865f2; border: 1px solid rgba(88,101,242,0.2);
+    }
+    .card.featured .feat-icon {
+      background: rgba(255,255,255,0.18); color: white; border-color: rgba(255,255,255,0.25);
+    }
+
+    /* Buttons */
+    .btn-outline {
+      width: 100%; padding: 13px; border-radius: 999px;
+      font-size: 14px; font-weight: 600; font-family: 'Satoshi', sans-serif;
+      cursor: pointer; transition: all 0.2s;
+      background: transparent; color: #5865f2;
+      border: 1.5px solid #c8cce8; text-decoration: none; display: block; text-align: center;
+    }
+    .btn-outline:hover { background: #f4f5ff; border-color: #5865f2; }
+
+    .btn-white {
+      width: 100%; padding: 13px; border-radius: 999px;
+      font-size: 14px; font-weight: 700; font-family: 'Satoshi', sans-serif;
+      cursor: pointer; transition: all 0.2s; border: none;
+      background: white; color: #5865f2;
+    }
+    .btn-white:hover:not(:disabled) {
+      background: #f0f1ff;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+      transform: translateY(-1px);
+    }
+    .btn-white:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    .btn-outline-white {
+      width: 100%; padding: 13px; border-radius: 999px;
+      font-size: 14px; font-weight: 600; font-family: 'Satoshi', sans-serif;
+      cursor: pointer; transition: all 0.2s;
+      background: transparent; color: white;
+      border: 1.5px solid rgba(255,255,255,0.4);
+      text-decoration: none; display: block; text-align: center;
+    }
+    .btn-outline-white:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.7); }
+
+    .sub-note { text-align: center; font-size: 11px; color: #9098c0; margin-top: 10px; }
+    .card.featured .sub-note { color: rgba(255,255,255,0.45); }
+
+    /* Error */
+    .error-msg {
+      display: none; text-align: center; color: #dc2626; font-size: 13px;
+      background: #fef2f2; border: 1px solid #fecaca;
+      border-radius: 10px; padding: 10px 16px;
+      margin-top: 24px; max-width: 640px; margin-left: auto; margin-right: auto;
+    }
+
+    /* Trust line */
+    .trial-note { text-align: center; margin-top: 32px; color: #9098c0; font-size: 12px; }
+    .trial-note strong { color: #5865f2; }
+
+    /* Stats */
+    .stats {
+      display: flex; align-items: center; justify-content: center;
+      gap: 40px; margin-top: 52px; flex-wrap: wrap;
+    }
+    .stat { text-align: center; }
+    .stat-num { font-size: 22px; font-weight: 700; color: #1a1a2e; }
+    .stat-label { font-size: 11px; color: #9098c0; margin-top: 3px; }
+    .stat-div { width: 1px; height: 32px; background: #d8daea; }
   </style>
 </head>
+
 <body>
-  <div class="relative min-h-screen">
-    <div class="absolute inset-0 grid-bg pointer-events-none"></div>
-    <div class="relative z-10 flex items-center justify-between px-6 py-5 border-b border-white/06">
-      <div class="flex items-center gap-2.5">
-        <img src="../assets/images/Revluma-icon.png" alt="Revluma" class="w-7 h-7 rounded-lg" />
-        <span class="font-bold text-white text-[15px]">Revluma</span>
-      </div>
-      <div class="flex items-center gap-2 text-[12px] text-[#555]">
-        <span class="w-4 h-4 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 text-[8px]">✓</span> Account created
-        <span class="w-4 h-4 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center text-green-400 text-[8px]">✓</span> Store configured
-        <span class="w-5 h-5 rounded-full bg-white border border-white/30 flex items-center justify-center text-black font-bold text-[9px]">3</span> Choose plan
-      </div>
+
+  <!-- Nav -->
+  <nav class="nav">
+    <div class="nav-logo">
+      <img src="../assets/images/Revluma-icon.png" alt="Revluma" />
+      <span>Revluma</span>
+    </div>
+    <div class="nav-steps">
+      <div class="step-done">&#10003;</div> Account created
+      <div class="step-done">&#10003;</div> Store configured
+      <div class="step-active">3</div> Choose plan
+    </div>
+  </nav>
+
+  <div class="page">
+
+    <!-- Header -->
+    <div class="header">
+      <h1>Simple, transparent pricing</h1>
+      <p>No contracts. No surprise fees.</p>
     </div>
 
-    <div class="relative z-10 max-w-4xl mx-auto px-6 py-14">
-      <div class="text-center mb-10">
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/5 mb-4">
-          <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
-          <span class="text-[11px] font-semibold uppercase tracking-widest text-[#777]">7-day free trial · Cancel anytime</span>
-        </div>
-        <h1 class="text-3xl md:text-4xl font-bold tracking-tighter mb-3">Start recovering revenue today</h1>
-        <p class="text-[#666] text-sm max-w-sm mx-auto">Your trial begins immediately. No charge until day 8.</p>
+    <!-- Toggle -->
+    <div class="toggle-wrap">
+      <button id="btn-monthly" class="active" onclick="setBilling('monthly')">Monthly</button>
+      <button id="btn-annual" onclick="setBilling('annual')">Yearly</button>
+      <span class="yearly-badge" id="yearly-badge" style="display:none">Save 20%</span>
+    </div>
+
+    <!-- Cards -->
+    <div class="cards">
+
+      <!-- Free Trial (left white card) -->
+      <div class="card">
+        <div class="card-price">$0 <span class="price-suffix">/7 days</span></div>
+        <p class="annual-note">&nbsp;</p>
+        <div class="card-name">Free Trial</div>
+        <p class="card-desc">Try Revluma free for 7 days. No card required.</p>
+        <div class="card-divider"></div>
+        <ul class="features">
+          <li><span class="feat-icon">&#10003;</span> AI Cart Recovery (email)</li>
+          <li><span class="feat-icon">&#10003;</span> Product Intelligence</li>
+          <li><span class="feat-icon">&#10003;</span> B2C CRM</li>
+          <li><span class="feat-icon">&#10003;</span> 1,000 tracked visitors</li>
+          <li><span class="feat-icon">&#10003;</span> 1 Store integration</li>
+          <li><span class="feat-icon">&#10003;</span> Full dashboard access</li>
+        </ul>
+        <a href="/dashboard/overview" class="btn-outline">Get started free</a>
+        <p class="sub-note">No credit card needed</p>
       </div>
 
-      <div class="flex items-center justify-center gap-3 mb-8">
-        <div class="billing-toggle">
-          <button id="btn-monthly" class="active" onclick="setBilling('monthly')">Monthly</button>
-          <button id="btn-annual" onclick="setBilling('annual')">Annual</button>
-        </div>
-        <span class="savings-badge">Save 20% annually</span>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
-        <!-- Growth -->
-        <div class="plan-card" id="card-growth" onclick="selectPlan('growth')">
-          <div class="flex items-center justify-between mb-4">
-            <p class="text-[10px] uppercase tracking-widest text-[#555] font-bold">Growth</p>
-            <div id="check-growth" class="w-5 h-5 rounded-full border border-[#333] transition-all"></div>
-          </div>
-          <div class="mb-1"><span class="text-4xl font-bold" id="price-growth">$29</span><span class="text-sm text-[#555]">/mo</span></div>
-          <p id="annual-note-growth" class="text-[11px] text-[#555] mb-1 hidden">Billed $276/year</p>
-          <p class="text-[#555] text-sm mb-6">Perfect for stores up to $50K/mo</p>
-          <ul class="space-y-2.5 text-sm text-[#888]">
-            <li class="flex gap-2"><span class="check">✓</span> AI Cart Recovery (email)</li>
-            <li class="flex gap-2"><span class="check">✓</span> Product Intelligence</li>
-            <li class="flex gap-2"><span class="check">✓</span> B2C CRM</li>
-            <li class="flex gap-2"><span class="check">✓</span> 1,000 tracked visitors/mo</li>
-            <li class="flex gap-2"><span class="check">✓</span> 1 Store integration</li>
-            <li class="flex gap-2 text-[#444]"><span>✕</span> SMS &amp; WhatsApp</li>
-            <li class="flex gap-2 text-[#444]"><span>✕</span> ROAS scoring</li>
-          </ul>
-        </div>
-
-        <!-- Scale -->
-        <div class="plan-card featured" id="card-scale" onclick="selectPlan('scale')">
-          <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-white text-black text-[10px] font-black uppercase tracking-widest px-4 py-1 rounded-full">Most Popular</span>
-          <div class="flex items-center justify-between mb-4">
-            <p class="text-[10px] uppercase tracking-widest text-[#555] font-bold">Scale</p>
-            <div id="check-scale" class="w-5 h-5 rounded-full border border-[#333] transition-all"></div>
-          </div>
-          <div class="mb-1"><span class="text-4xl font-bold" id="price-scale">$50</span><span class="text-sm text-[#555]">/mo</span></div>
-          <p id="annual-note-scale" class="text-[11px] text-[#555] mb-1 hidden">Billed $480/year</p>
-          <p class="text-[#555] text-sm mb-6">For stores scaling past $100K/mo</p>
-          <ul class="space-y-2.5 text-sm text-[#888]">
-            <li class="flex gap-2"><span class="check">✓</span> Everything in Growth</li>
-            <li class="flex gap-2"><span class="check">✓</span> WhatsApp + SMS + Email recovery</li>
-            <li class="flex gap-2"><span class="check">✓</span> Unlimited flows</li>
-            <li class="flex gap-2"><span class="check">✓</span> ROAS opportunity scoring</li>
-            <li class="flex gap-2"><span class="check">✓</span> Churn risk prediction</li>
-            <li class="flex gap-2"><span class="check">✓</span> 10,000 tracked visitors/mo</li>
-            <li class="flex gap-2"><span class="check">✓</span> Priority support</li>
-          </ul>
-        </div>
-      </div>
-
-      <div id="error-msg" class="hidden mb-4 text-center text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-xl py-3 px-4"></div>
-
-      <!-- CTA Buttons -->
-      <div class="max-w-md mx-auto space-y-3">
-
-        <!-- Primary: Start trial with payment -->
-        <button
-          id="pay-btn"
-          onclick="startPayment()"
-          disabled
-          class="w-full py-4 rounded-2xl font-bold text-[15px] transition-all duration-200 bg-white text-[#0A0A0A] opacity-50 cursor-not-allowed"
-        >
-          Start 7-day free trial — add card
+      <!-- Growth (center blue card) -->
+      <div class="card featured">
+        <span class="popular-badge">Most Popular</span>
+        <div class="card-price" id="price-growth">$29 <span class="price-suffix">/month</span></div>
+        <p class="annual-note" id="note-growth">&nbsp;</p>
+        <div class="card-name">Growth</div>
+        <p class="card-desc">For stores doing up to $50K/mo. 7-day free trial included.</p>
+        <div class="card-divider"></div>
+        <ul class="features">
+          <li><span class="feat-icon">&#10003;</span> Everything in Free Trial</li>
+          <li><span class="feat-icon">&#10003;</span> AI abandonment scoring</li>
+          <li><span class="feat-icon">&#10003;</span> Sensitivity classifier</li>
+          <li><span class="feat-icon">&#10003;</span> Optimal send-time AI</li>
+          <li><span class="feat-icon">&#10003;</span> ROAS opportunity scoring</li>
+          <li><span class="feat-icon">&#10003;</span> Priority email support</li>
+        </ul>
+        <button class="btn-white" id="btn-growth" onclick="startPayment('growth')">
+          Get started
         </button>
-        <p class="text-center text-[11px] text-[#555]">🔒 Secured by Paystack · No charge for 7 days · Cancel anytime</p>
-
-        <!-- Divider -->
-        <div class="flex items-center gap-3 py-1">
-          <div class="flex-1 h-px bg-[#1f1f1f]"></div>
-          <span class="text-[11px] text-[#444] uppercase tracking-widest">or</span>
-          <div class="flex-1 h-px bg-[#1f1f1f]"></div>
-        </div>
-
-        <!-- Secondary: Skip — clearly visible -->
-        <a
-          href="/dashboard/overview"
-          class="w-full py-4 rounded-2xl font-bold text-[15px] transition-all duration-200 border border-[#333] text-[#aaa] hover:border-[#555] hover:text-white flex items-center justify-center gap-2"
-        >
-          Skip for now — use free plan
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-        </a>
-        <p class="text-center text-[11px] text-[#444]">You can upgrade anytime from your dashboard</p>
-
+        <p class="sub-note">No charge for 7 days &middot; Cancel anytime</p>
       </div>
 
-      <div class="flex items-center justify-center gap-6 mt-10 flex-wrap">
-        <div class="text-center"><p class="text-xl font-bold text-white">22%+</p><p class="text-[11px] text-[#555]">avg recovery rate</p></div>
-        <div class="w-px h-8 bg-[#1f1f1f]"></div>
-        <div class="text-center"><p class="text-xl font-bold text-white">4 min</p><p class="text-[11px] text-[#555]">average setup time</p></div>
-        <div class="w-px h-8 bg-[#1f1f1f]"></div>
-        <div class="text-center"><p class="text-xl font-bold text-white">$18K</p><p class="text-[11px] text-[#555]">recovered in 30 days</p></div>
+      <!-- Scale (right white card) -->
+      <div class="card">
+        <div class="card-price" id="price-scale">$50 <span class="price-suffix">/month</span></div>
+        <p class="annual-note" id="note-scale">&nbsp;</p>
+        <div class="card-name">Scale</div>
+        <p class="card-desc">For stores scaling past $100K/mo. Full AI suite.</p>
+        <div class="card-divider"></div>
+        <ul class="features">
+          <li><span class="feat-icon">&#10003;</span> Everything in Growth</li>
+          <li><span class="feat-icon">&#10003;</span> WhatsApp + SMS + Email</li>
+          <li><span class="feat-icon">&#10003;</span> Churn risk prediction</li>
+          <li><span class="feat-icon">&#10003;</span> Offer value optimizer</li>
+          <li><span class="feat-icon">&#10003;</span> 10,000 tracked visitors/mo</li>
+          <li><span class="feat-icon">&#10003;</span> Dedicated onboarding call</li>
+        </ul>
+        <button class="btn-outline" id="btn-scale" onclick="startPayment('scale')">
+          Get started
+        </button>
+        <p class="sub-note">No charge for 7 days &middot; Cancel anytime</p>
+      </div>
+
+    </div>
+
+    <!-- Error -->
+    <div class="error-msg" id="error-msg"></div>
+
+    <!-- Trust -->
+    <div class="trial-note">
+      &#128274; Secured by Paystack &nbsp;&middot;&nbsp;
+      <strong>Card saved but not charged until day 8</strong> &nbsp;&middot;&nbsp;
+      Cancel before day 8 to pay nothing
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-num">22%+</div>
+        <div class="stat-label">avg cart recovery rate</div>
+      </div>
+      <div class="stat-div"></div>
+      <div class="stat">
+        <div class="stat-num">4 min</div>
+        <div class="stat-label">average setup time</div>
+      </div>
+      <div class="stat-div"></div>
+      <div class="stat">
+        <div class="stat-num">$18K</div>
+        <div class="stat-label">recovered in 30 days</div>
       </div>
     </div>
+
   </div>
 
   <script>
-    // NOTE: Prices shown here are display-only.
-    // The server derives all actual amounts from its own PLANS config.
-    // Sending a modified price from this page has no effect on what is charged.
-    const DISPLAY_PRICES = { growth: { monthly: '$29', annual: '$23' }, scale: { monthly: '$50', annual: '$40' } };
+    const PRICES = {
+      growth: { monthly: '$29', annual: '$23' },
+      scale:  { monthly: '$50', annual: '$40' },
+    };
+    const ANNUAL_NOTES = {
+      growth: 'Billed $276/year (save $72)',
+      scale:  'Billed $480/year (save $120)',
+    };
 
-    let selectedPlan = null;
     let billing = 'monthly';
-    let isLoading = false;
+    let loadingPlan = null;
 
     function getToken() {
       try {
         const raw = localStorage.getItem('rv-auth');
-        if (!raw) return null;
-        return JSON.parse(raw)?.state?.csrfToken || null;
+        return raw ? JSON.parse(raw)?.state?.csrfToken || null : null;
       } catch { return null; }
     }
 
@@ -169,98 +370,71 @@
       billing = val;
       document.getElementById('btn-monthly').classList.toggle('active', val === 'monthly');
       document.getElementById('btn-annual').classList.toggle('active', val === 'annual');
-      ['growth', 'scale'].forEach(plan => {
-        document.getElementById(`price-${plan}`).textContent = DISPLAY_PRICES[plan][val];
-        const note = document.getElementById(`annual-note-${plan}`);
-        if (note) note.classList.toggle('hidden', val !== 'annual');
+      document.getElementById('yearly-badge').style.display = val === 'annual' ? 'inline' : 'none';
+      ['growth','scale'].forEach(function(plan) {
+        document.getElementById('price-' + plan).innerHTML =
+          PRICES[plan][val] + ' <span class="price-suffix">/month</span>';
+        document.getElementById('note-' + plan).textContent =
+          val === 'annual' ? ANNUAL_NOTES[plan] : '\u00a0';
       });
-      updatePayBtn();
     }
 
-    function selectPlan(plan) {
-      selectedPlan = plan;
-      ['growth', 'scale'].forEach(p => {
-        document.getElementById(`card-${p}`).classList.toggle('selected', p === plan);
-        const check = document.getElementById(`check-${p}`);
-        if (p === plan) {
-          check.style.background = '#4ade80';
-          check.style.borderColor = '#4ade80';
-          check.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-        } else {
-          check.style.background = 'transparent';
-          check.style.borderColor = '#333';
-          check.innerHTML = '';
-        }
-      });
-      updatePayBtn();
-    }
-
-    function updatePayBtn() {
-      const btn = document.getElementById('pay-btn');
-      if (!selectedPlan) {
-        btn.textContent = 'Start 7-day free trial — add card';
+    function setLoading(plan, loading) {
+      var btn = document.getElementById('btn-' + plan);
+      if (loading) {
+        btn.textContent = 'Redirecting...';
         btn.disabled = true;
-        btn.className = 'w-full py-4 rounded-2xl font-bold text-[15px] transition-all duration-200 bg-white text-[#0A0A0A] opacity-50 cursor-not-allowed';
-        return;
-      }
-      const price = DISPLAY_PRICES[selectedPlan][billing];
-      const name = selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1);
-      if (isLoading) {
-        btn.textContent = 'Redirecting to Paystack...';
-        btn.disabled = true;
-        btn.className = 'w-full py-4 rounded-2xl font-bold text-[15px] transition-all duration-200 bg-white text-[#0A0A0A] opacity-70 cursor-not-allowed';
+        loadingPlan = plan;
       } else {
-        btn.textContent = `Start 7-day free trial — ${name} ${price}/mo`;
+        btn.textContent = 'Get started';
         btn.disabled = false;
-        btn.className = 'w-full py-4 rounded-2xl font-bold text-[15px] transition-all duration-200 bg-white text-[#0A0A0A] hover:bg-zinc-100 hover:scale-[1.02] cursor-pointer shadow-[0_0_30px_rgba(255,255,255,0.12)]';
-      }
-    }
-
-    async function startPayment() {
-      if (!selectedPlan || isLoading) return;
-      const token = getToken();
-      if (!token) { window.location.href = '/auth/login.html'; return; }
-
-      isLoading = true;
-      updatePayBtn();
-      showError('');
-
-      try {
-        const API = window.REVLUMA_CONFIG?.API_BASE_URL || 'https://revluma-backend.onrender.com/api/v1';
-        const res = await fetch(`${API}/subscriptions/initialize`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          // Only send plan identifier and billing preference — server determines the amount
-          body: JSON.stringify({ plan: selectedPlan, billing_cycle: billing, currency: 'NGN' }),
-        });
-        const data = await res.json();
-
-        if (res.status === 409) {
-          showError(data.error || 'You already have an active subscription.');
-          isLoading = false; updatePayBtn(); return;
-        }
-        if (!data.success || !data.data?.authorization_url) {
-          showError(data.error || 'Could not initialize payment. Please try again.');
-          isLoading = false; updatePayBtn(); return;
-        }
-
-        // Store only the reference — not the plan or amount
-        sessionStorage.setItem('paystack_reference', data.data.reference);
-
-        // Redirect to Paystack hosted checkout — Revluma never sees card data
-        window.location.href = data.data.authorization_url;
-      } catch (err) {
-        showError('Network error. Check your connection and try again.');
-        isLoading = false; updatePayBtn();
+        loadingPlan = null;
       }
     }
 
     function showError(msg) {
-      const el = document.getElementById('error-msg');
-      msg ? (el.textContent = msg, el.classList.remove('hidden')) : el.classList.add('hidden');
+      var el = document.getElementById('error-msg');
+      if (msg) { el.textContent = msg; el.style.display = 'block'; }
+      else { el.style.display = 'none'; }
     }
 
-    document.addEventListener('DOMContentLoaded', () => selectPlan('scale'));
+    async function startPayment(plan) {
+      if (loadingPlan) return;
+      var token = getToken();
+      if (!token) { window.location.href = '/auth/login.html'; return; }
+
+      showError('');
+      setLoading(plan, true);
+
+      try {
+        var API = (window.REVLUMA_CONFIG && window.REVLUMA_CONFIG.API_BASE_URL)
+          || 'https://revluma-backend.onrender.com/api/v1';
+
+        var res = await fetch(API + '/subscriptions/initialize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ plan: plan, billing_cycle: billing, currency: 'NGN' }),
+        });
+        var data = await res.json();
+
+        if (res.status === 409) {
+          showError(data.error || 'You already have an active subscription.');
+          setLoading(plan, false); return;
+        }
+        if (!data.success || !data.data || !data.data.authorization_url) {
+          showError(data.error || 'Could not initialize payment. Please try again.');
+          setLoading(plan, false); return;
+        }
+
+        sessionStorage.setItem('paystack_reference', data.data.reference);
+        window.location.href = data.data.authorization_url;
+
+      } catch (err) {
+        showError('Network error. Check your connection and try again.');
+        setLoading(plan, false);
+      }
+    }
   </script>
+
 </body>
 </html>
