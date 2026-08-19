@@ -346,8 +346,9 @@ const emailService = {
     };
   } catch (error) {
     logger.error('verification_email_failed', { to: recipientEmail, message: error?.message || error });
-
-    throw new Error("Failed to send verification email.");
+    // Do NOT throw — user was created successfully. Email failure must not block registration.
+    // The user can request a resend from the verify-email page.
+    return { success: false, message: 'Verification email could not be sent.' };
   }
 },
 
