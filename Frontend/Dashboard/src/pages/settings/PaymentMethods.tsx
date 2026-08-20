@@ -27,7 +27,6 @@ export interface SavedCard {
   tokenizedVia: string;
 }
 
-
 export const PaymentMethods: FC = () => {
   const [cards, setCards] = useState<SavedCard[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -61,10 +60,10 @@ export const PaymentMethods: FC = () => {
   }, [fetchPaymentMethods]);
 
   // New card form state
-  const [holderName, setHolderName] = useState<string>("Splendor Commerce");
-  const [cardNumber, setCardNumber] = useState<string>("•••• •••• •••• 5566");
-  const [expiry, setExpiry] = useState<string>("12/29");
-  const [cvv, setCvv] = useState<string>("923");
+  const [holderName, setHolderName] = useState<string>("");
+  const [cardNumber, setCardNumber] = useState<string>("");
+  const [expiry, setExpiry] = useState<string>("");
+  const [cvv, setCvv] = useState<string>("");
 
   const handleMakeDefault = (id: string) => {
     setCards((prev) =>
@@ -102,9 +101,9 @@ export const PaymentMethods: FC = () => {
     const newCard: SavedCard = {
       id: `card-${Date.now()}`,
       brand: "Visa",
-      last4: "5566",
-      expMonth: "12",
-      expYear: "2029",
+      last4: cardNumber.slice(-4) || "5566",
+      expMonth: expiry.split("/")[0] || "12",
+      expYear: expiry.split("/")[1] ? `20${expiry.split("/")[1]}` : "2029",
       isDefault: cards.length === 0,
       tokenizedVia: "Paystack Secure Vault",
     };
@@ -115,6 +114,8 @@ export const PaymentMethods: FC = () => {
       setCards((prev) => [res?.data || newCard, ...prev]);
       setIsModalOpen(false);
       setFeedbackMessage("New payment card tokenized and saved successfully.");
+      // Reset form
+      setHolderName(""); setCardNumber(""); setExpiry(""); setCvv("");
     } catch (err) {
       console.error("Failed API post payment method:", err);
     } finally {
@@ -123,18 +124,18 @@ export const PaymentMethods: FC = () => {
   };
 
   return (
-    <div className="w-full max-w-5xl space-y-8 rounded-2xl bg-slate-950 p-6 text-slate-100 shadow-2xl sm:p-8 md:p-10">
+    <div className="w-full max-w-5xl space-y-8 rounded-2xl bg-white p-6 text-slate-900 shadow-xl border border-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:p-8 md:p-10 transition-colors duration-200">
       {/* Page Header */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-800 pb-6 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 dark:border-slate-800 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-100 text-sky-600 ring-1 ring-sky-500/20 dark:bg-sky-500/10 dark:text-sky-400 dark:ring-sky-500/20">
             <CreditCard className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               Payment Methods
             </h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Manage your billing information and saved cards.
             </p>
           </div>
@@ -158,16 +159,16 @@ export const PaymentMethods: FC = () => {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200"
+            className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-200"
           >
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-              <span>{feedbackMessage}</span>
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500 dark:text-emerald-400" />
+              <span className="font-medium">{feedbackMessage}</span>
             </div>
             <button
               type="button"
               onClick={() => setFeedbackMessage(null)}
-              className="rounded p-1 text-slate-400 hover:text-white"
+              className="rounded p-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white"
               aria-label="Dismiss notification"
             >
               <X className="h-4 w-4" />
@@ -177,45 +178,45 @@ export const PaymentMethods: FC = () => {
       </AnimatePresence>
 
       {/* Secure Tokenization Banner */}
-      <div className="flex items-center justify-between rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-xs text-slate-300 sm:text-sm">
+      <div className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-50 p-4 text-xs text-emerald-700 dark:bg-emerald-500/5 dark:text-slate-300 sm:text-sm">
         <div className="flex items-center gap-3">
-          <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400" />
+          <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
           <p>
             Cards are tokenized and encrypted via{" "}
-            <span className="font-bold text-white">Paystack Secure Vault</span>.
+            <span className="font-bold text-emerald-800 dark:text-white">Paystack Secure Vault</span>.
             We never store raw card numbers on our servers.
           </p>
         </div>
-        <Lock className="h-4 w-4 shrink-0 text-slate-500 hidden sm:block" />
+        <Lock className="hidden h-4 w-4 shrink-0 text-emerald-600/50 dark:text-slate-500 sm:block" />
       </div>
 
       {/* Saved Cards List */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white sm:text-xl">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
             Saved Credit & Debit Cards ({cards.length})
           </h2>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs font-medium text-slate-500">
             Default card is charged for subscription renewals
           </span>
         </div>
 
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/40 py-16">
-            <Loader2 className="h-8 w-8 animate-spin text-sky-400" />
-            <p className="mt-3 text-sm font-medium text-slate-400">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 py-16 dark:border-slate-800 dark:bg-slate-900/40">
+            <Loader2 className="h-8 w-8 animate-spin text-sky-600 dark:text-sky-400" />
+            <p className="mt-3 text-sm font-medium text-slate-500 dark:text-slate-400">
               Fetching saved payment methods...
             </p>
           </div>
         ) : cards.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 py-12 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800/80 text-slate-400">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 py-12 text-center dark:border-slate-800 dark:bg-slate-900/30">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-200 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
               <CreditCard className="h-6 w-6" />
             </div>
-            <h3 className="mt-4 text-base font-semibold text-white">
+            <h3 className="mt-4 text-base font-semibold text-slate-900 dark:text-white">
               No saved payment methods
             </h3>
-            <p className="mt-1 max-w-sm text-xs text-slate-400">
+            <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
               Add a payment card to ensure uninterrupted access to Revluma storefront automation features.
             </p>
             <Button
@@ -238,42 +239,42 @@ export const PaymentMethods: FC = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, height: 0, scale: 0.96 }}
                   transition={{ duration: 0.25 }}
-                  className={`flex flex-col justify-between gap-4 rounded-2xl border p-5 shadow-xl backdrop-blur-md transition-all duration-300 sm:flex-row sm:items-center ${
+                  className={`flex flex-col justify-between gap-4 rounded-2xl border p-5 shadow-sm transition-all duration-300 sm:flex-row sm:items-center ${
                     card.isDefault
-                      ? "border-sky-500/50 bg-slate-900/80 shadow-sky-500/10"
-                      : "border-slate-800/80 bg-slate-900/50 hover:border-slate-700/80 hover:bg-slate-900/70"
+                      ? "border-sky-500/50 bg-sky-50 dark:bg-slate-900/80 dark:shadow-sky-500/10"
+                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800/80 dark:bg-slate-900/50 dark:hover:border-slate-700/80 dark:hover:bg-slate-900/70"
                   }`}
                 >
                   {/* Left Card Info */}
                   <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-16 shrink-0 flex-col justify-between rounded-xl border border-slate-700/80 bg-gradient-to-br from-slate-800 to-slate-950 p-2 shadow-inner">
+                    <div className="flex h-12 w-16 shrink-0 flex-col justify-between rounded-xl border border-slate-200 bg-gradient-to-br from-slate-100 to-slate-200 p-2 shadow-inner dark:border-slate-700/80 dark:from-slate-800 dark:to-slate-950">
                       <div className="flex items-center justify-between">
                         <span className="h-1.5 w-2.5 rounded-sm bg-amber-400/80" />
-                        <CreditCard className="h-3.5 w-3.5 text-slate-400" />
+                        <CreditCard className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
                       </div>
-                      <span className="font-mono text-[0.65rem] font-bold text-slate-200">
+                      <span className="font-mono text-[0.65rem] font-bold text-slate-700 dark:text-slate-200">
                         •••• {card.last4}
                       </span>
                     </div>
 
                     <div className="space-y-1">
                       <div className="flex flex-wrap items-center gap-2.5">
-                        <span className="font-bold text-white">
+                        <span className="font-bold text-slate-900 dark:text-white">
                           {card.brand} ending in {card.last4}
                         </span>
                         {card.isDefault && (
-                          <Badge className="rounded-full border border-sky-500/30 bg-sky-500/20 px-2.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-sky-300">
+                          <Badge className="rounded-full border border-sky-500/30 bg-sky-100 px-2.5 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
                             Default
                           </Badge>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-3 text-xs text-slate-400">
+                      <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
                         <span>
                           Expires {card.expMonth}/{card.expYear}
                         </span>
                         <span>•</span>
-                        <span className="text-emerald-400 font-medium">
+                        <span className="font-medium text-emerald-600 dark:text-emerald-400">
                           Tokenized via {card.tokenizedVia}
                         </span>
                       </div>
@@ -288,13 +289,13 @@ export const PaymentMethods: FC = () => {
                         variant="outline"
                         size="sm"
                         onClick={() => handleMakeDefault(card.id)}
-                        className="border-slate-700 bg-slate-950 text-xs font-semibold text-slate-300 hover:border-sky-500/50 hover:bg-sky-500/10 hover:text-sky-300"
+                        className="border-slate-200 bg-white text-xs font-semibold text-slate-600 hover:border-sky-500/50 hover:bg-sky-50 hover:text-sky-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-sky-500/10 dark:hover:text-sky-300"
                       >
                         <Star className="mr-1.5 h-3.5 w-3.5" />
                         <span>Make Default</span>
                       </Button>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-400 px-3 py-1">
+                      <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-semibold text-sky-600 dark:text-sky-400">
                         <CheckCircle2 className="h-4 w-4" />
                         <span>Primary Billing Card</span>
                       </span>
@@ -305,7 +306,7 @@ export const PaymentMethods: FC = () => {
                       variant="outline"
                       size="icon"
                       onClick={() => handleRemoveCard(card.id)}
-                      className="h-9 w-9 border-slate-700 bg-slate-950 text-slate-400 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+                      className="h-9 w-9 border-slate-200 bg-white text-slate-400 hover:border-red-500/30 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-950 dark:hover:bg-red-500/10 dark:hover:text-red-300"
                       aria-label={`Remove ${card.brand} ending in ${card.last4}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -322,41 +323,33 @@ export const PaymentMethods: FC = () => {
           <p className="text-xs text-slate-500">
             To update the billing address for invoices, visit your Organization or Billing settings.
           </p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setIsModalOpen(true)}
-            className="border-slate-700 bg-slate-900/80 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5 text-sky-400" />
-            <span>Add Payment Method</span>
-          </Button>
         </div>
       </div>
 
-      {/* Add Payment Method Modal (Paystack Tokenization Simulation) */}
+      {/* Add Payment Method Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm dark:bg-black/80">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md space-y-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-md space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
             >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
                 <div className="flex items-center gap-2.5">
-                  <Lock className="h-5 w-5 text-emerald-400" />
-                  <h3 className="text-lg font-bold text-white">
-                    Tokenize & Save Card
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/10">
+                    <Lock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
+                    Secure Checkout
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
                   disabled={isSubmitting}
-                  className="rounded p-1 text-slate-400 hover:text-white"
+                  className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-white"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -364,36 +357,38 @@ export const PaymentMethods: FC = () => {
 
               <form onSubmit={handleAddCardSubmit} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="holder-name" className="text-xs text-slate-300">
+                  <Label htmlFor="holder-name" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     Cardholder Name
                   </Label>
                   <input
                     id="holder-name"
                     type="text"
+                    placeholder="e.g. John Doe"
                     value={holderName}
                     onChange={(e) => setHolderName(e.target.value)}
                     required
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="card-number" className="text-xs text-slate-300">
+                  <Label htmlFor="card-number" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                     Card Number
                   </Label>
                   <input
                     id="card-number"
                     type="text"
+                    placeholder="0000 0000 0000 0000"
                     value={cardNumber}
                     onChange={(e) => setCardNumber(e.target.value)}
                     required
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 font-mono text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="exp-date" className="text-xs text-slate-300">
+                    <Label htmlFor="exp-date" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       Expiration Date
                     </Label>
                     <input
@@ -403,67 +398,26 @@ export const PaymentMethods: FC = () => {
                       onChange={(e) => setExpiry(e.target.value)}
                       required
                       placeholder="MM/YY"
-                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 font-mono text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="cvv-input" className="text-xs text-slate-300">
+                    <Label htmlFor="cvv-input" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       CVV / CVC
                     </Label>
                     <input
                       id="cvv-input"
                       type="password"
                       maxLength={4}
+                      placeholder="123"
                       value={cvv}
                       onChange={(e) => setCvv(e.target.value)}
                       required
-                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 font-mono text-sm text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
                     />
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-300">
-                  <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" />
-                  <span>
-                    Your card details are sent directly to Paystack's PCI-DSS compliant vault.
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsModalOpen(false)}
-                    disabled={isSubmitting}
-                    className="border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="bg-sky-600 font-semibold text-white shadow-lg shadow-sky-600/25 hover:bg-sky-500"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        <span>Tokenizing Card...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        <span>Save Payment Method</span>
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
-
-export default PaymentMethods;
+                {/* Trust Footer inside Modal */}
+                <div className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-slate-50 py-3 dark:bg-slate-950/50">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400
