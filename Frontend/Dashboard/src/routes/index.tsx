@@ -7,6 +7,8 @@ import CartRecovery from "../pages/CartRecovery";
 import Customers from "../pages/Customers";
 import NotFound from "../pages/NotFound";
 import PlaceholderPage from "../pages/PlaceholderPage";
+import Checkout from "../pages/Checkout";
+
 
 // Settings Pages
 import SettingsLayout from "../pages/settings/SettingsLayout";
@@ -29,6 +31,7 @@ import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 export function DashboardRoutes() {
   return (
     <Routes>
+      <Route path="checkout" element={<Checkout />} />
       <Route element={<DashboardLayout />}>
         <Route index element={<Navigate to="/dashboard/overview" replace />} />
         <Route path="overview"      element={<Overview />} />
