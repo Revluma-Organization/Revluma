@@ -47,7 +47,7 @@ export default function AcceptInvite() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+        [e.target.name as keyof typeof formData]: e.target.value
     });
     if (errorMessage) setErrorMessage('');
   };
@@ -75,7 +75,8 @@ export default function AcceptInvite() {
       console.log('Submitting invitation acceptance for:', formData.fullName);
       
       setIsSuccess(true);
-    } catch (error) {
+        } catch (error) {
+      console.error(error);
       setErrorMessage('Failed to accept invitation. Please try again later.');
     } finally {
       setIsSubmitting(false);
