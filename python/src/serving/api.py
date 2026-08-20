@@ -114,7 +114,7 @@ app = FastAPI(
 ML_INTERNAL_KEY = os.environ.get("ML_INTERNAL_KEY", "")
 
 async def verify_internal_caller(
-    x_internal_key: str = Header(None, convert_underscores=False),
+    x_internal_key: str = Header(None),
 ) -> None:
     """Validate the shared secret between Node backend and this ML service.
     Fails with 401 if the key is missing, empty, or doesn't match.
