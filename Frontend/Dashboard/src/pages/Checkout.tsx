@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { FC, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import {
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
 export const Checkout: FC = () => {
+  const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   
   // Form State
@@ -31,12 +33,11 @@ export const Checkout: FC = () => {
       console.log("Paystack tokenization triggered for:", { holderName, cardNumber });
     }, 2000);
   };
-
-  // Replace with router's back function
+  
   const handleGoBack = () => {
-    window.history.back(); 
-  };
-
+  navigate(-1); 
+};
+  
   return (
     <div className="min-h-screen w-full bg-slate-50 px-4 py-12 dark:bg-slate-950 sm:px-6 lg:px-8">
       <motion.div 
