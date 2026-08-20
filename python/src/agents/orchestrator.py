@@ -157,11 +157,17 @@ def orchestrate(
             warnings=warnings,
         )
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
         logger.error("orchestrate_fatal", extra={
             "correlation_id": correlation_id,
             "org_id": organization_id,
             "error": str(e),
+            "traceback": tb,
         })
+        # Also print directly so Render captures it regardless of log formatting
+        print(f"ORCHESTRATE_FATAL ERROR: {type(e).__name__}: {e}")
+        print(f"TRACEBACK: {tb}")
         latency_ms = int((time.time() - start_time) * 1000)
         return _failure_response(
             correlation_id=correlation_id,
