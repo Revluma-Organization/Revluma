@@ -191,37 +191,53 @@ export const Checkout: FC = () => {
             </div>
           </div>
 
-          {/* Submit Action Area */}
-          <div className="pt-2">
+                    {/* Submit Action Area */}
+          <div className="pt-2 flex flex-col gap-4">
+            
+            {/* Save Card Checkbox */}
+            <div className="flex items-center gap-2.5 px-1">
+              <input
+                type="checkbox"
+                id="save-card"
+                defaultChecked
+                className="h-4 w-4 cursor-pointer rounded border-slate-300 text-sky-600 accent-sky-600 focus:ring-sky-600 dark:border-slate-700"
+              />
+              <Label htmlFor="save-card" className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
+                Save this card for faster payments
+              </Label>
+            </div>
+
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="h-14 w-full rounded-xl bg-sky-600 text-base font-bold text-white shadow-xl shadow-sky-600/20 hover:bg-sky-500 active:scale-[0.99] transition-all"
+              className="flex h-14 w-full items-center justify-center rounded-xl bg-sky-600 text-base font-bold text-white shadow-xl shadow-sky-600/20 transition-all hover:bg-sky-500 active:scale-[0.99]"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Processing Securely...
+                  Processing...
                 </>
               ) : (
-                <>
-                  <Lock className="mr-2 h-5 w-5" />
-                  Save Securely
-                </>
+                <div className="flex w-full items-center justify-between px-2">
+                  <div className="flex items-center gap-2">
+                    <Lock className="h-5 w-5" />
+                    <span>Pay Securely</span>
+                  </div>
+                  <span className="text-xl leading-none">›</span>
+                </div>
               )}
             </Button>
             
-            <div className="mt-4 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <div className="mt-2 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
               <ShieldCheck className="h-4 w-4 text-emerald-500" />
               <span>Your data is safe and encrypted via Paystack Vault.</span>
             </div>
           </div>
 
-        </form>
+          </form>
       </motion.div>
     </div>
   );
 };
 
 export default Checkout;
-  
