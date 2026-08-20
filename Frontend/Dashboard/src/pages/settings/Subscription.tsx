@@ -1,77 +1,17 @@
 import { FC, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2,
   Sparkles,
-  Zap,
-  TrendingUp,
+  Check,
   CreditCard,
   Loader2,
-  Check,
   ShieldCheck,
-  X,
+  Circle,
+  CheckCircle2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
-
-interface PlanFeature {
-  text: string;
-  isHighlighted?: boolean;
-}
-
-interface PricingCardData {
-  id: "growth" | "scale";
-  name: string;
-  price: string;
-  period: string;
-  subtitle: string;
-  badge?: string;
-  features: PlanFeature[];
-  buttonText: string;
-  isPrimary: boolean;
-}
-
-const PRICING_PLANS: PricingCardData[] = [
-  {
-    id: "growth",
-    name: "Growth",
-    price: "$29",
-    period: "/mo",
-    subtitle: "Perfect for stores doing up to $50K/mo",
-    features: [
-      { text: "AI Cart Recovery" },
-      { text: "Product Intelligence" },
-      { text: "Up to 1,000 monthly tracked visitors" },
-      { text: "Basic reporting dashboards" },
-      { text: "1 Store integration" },
-      { text: "Basic support" },
-      { text: "Email recovery flows" },
-    ],
-    buttonText: "Upgrade to Growth",
-    isPrimary: false,
-  },
-  {
-    id: "scale",
-    name: "Scale",
-    price: "$50",
-    period: "/mo",
-    subtitle: "For stores scaling past $100K/mo",
-    badge: "MOST POPULAR",
-    features: [
-      { text: "Everything in Growth", isHighlighted: true },
-      { text: "Winning / Trending products dashboard", isHighlighted: true },
-      { text: "ROAS Opportunity Scoring", isHighlighted: true },
-      { text: "Unlimited Flows" },
-      { text: "WhatsApp + Email Automation", isHighlighted: true },
-      { text: "Dedicated Onboarding" },
-      { text: "Up to 10,000 monthly tracked visitors", isHighlighted: true },
-      { text: "Priority support" },
-    ],
-    buttonText: "Upgrade to Scale",
-    isPrimary: true,
-  },
-];
 
 export interface SubscriptionInfo {
   planName: string;
@@ -82,27 +22,59 @@ export interface SubscriptionInfo {
   resetDate: string;
 }
 
+// Data merged from Choose-plan HTML
+const PLANS = {
+  growth: {
+    id: "growth",
+    name: "Growth",
+    monthlyPrice: 29,
+    annualPrice: 23, // Per month when billed annually
+    annualTotal: 276,
+    features: [
+      { text: "AI Cart Recovery (email)", isAi: true },
+      { text: "Product Intelligence", isAi: true },
+      { text: "Optimal send-time AI", isAi: true },
+      { text: "1,000 tracked visitors / mo", isAi: false },
+      { text: "1 Store integration", isAi: false },
+      { text: "Full dashboard access", isAi: false },
+      { text: "Priority email support", isAi: false },
+    ],
+  },
+  scale: {
+    id: "scale",
+    name: "Scale",
+    monthlyPrice: 50,
+    annualPrice: 40,
+    annualTotal: 480,
+    features: [
+      { text: "Everything in Growth", isAi: false },
+      { text: "Offer value optimizer", isAi: true },
+      { text: "Churn risk prediction", isAi: true },
+      { text: "WhatsApp + SMS + Email", isAi: false },
+      { text: "10,000 tracked visitors / mo", isAi: false },
+      { text: "Dedicated onboarding call", isAi: false },
+    ],
+  },
+};
 
 export const Subscription: FC = () => {
+  // Dashboard State
   const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
   const [isLoadingSub, setIsLoadingSub] = useState<boolean>(true);
+
+  // UI State
+  const [activePlan, setActivePlan] = useState<"growth" | "scale">("growth");
+  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("annual");
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchSubscription = useCallback(async () => {
     setIsLoadingSub(true);
     try {
-      const res = await api.get<SubscriptionInfo>(
-        "/billing/subscription",
-        undefined,
-        { skipAuthRedirect: true }
-      );
-      if (res && res.data && res.data.planName) {
-        setSubscription(res.data);
-      } else {
-        setSubscription(null);
-      }
+      const res = await api.get<SubscriptionInfo>("/billing/subscription", undefined, { skipAuthRedirect: true });
+      if (res?.data?.planName) setSubscription(res.data);
     } catch (err) {
-      console.warn("Failed to fetch subscription info from API:", err);
-      setSubscription(null);
+      console.warn("Failed to fetch subscription info:", err);
     } finally {
       setIsLoadingSub(false);
     }
@@ -113,58 +85,47 @@ export const Subscription: FC = () => {
   }, [fetchSubscription]);
 
   const usagePercent = subscription
-    ? Math.min(
-        100,
-        Math.round(
-          (subscription.monthlyTrackedVisitorsUsed /
-            Math.max(1, subscription.monthlyTrackedVisitorsLimit)) *
-            100
-        )
-      )
+    ? Math.min(100, Math.round((subscription.monthlyTrackedVisitorsUsed / Math.max(1, subscription.monthlyTrackedVisitorsLimit)) * 100))
     : 0;
   const remainingVisitors = subscription
-    ? Math.max(
-        0,
-        subscription.monthlyTrackedVisitorsLimit -
-          subscription.monthlyTrackedVisitorsUsed
-      )
+    ? Math.max(0, subscription.monthlyTrackedVisitorsLimit - subscription.monthlyTrackedVisitorsUsed)
     : 0;
 
-  const [selectedUpgradePlan, setSelectedUpgradePlan] = useState<
-    PricingCardData | null
-  >(null);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  const handleUpgradeClick = (plan: PricingCardData) => {
-    setSelectedUpgradePlan(plan);
-  };
-
-  const handleConfirmUpgrade = async () => {
-    if (!selectedUpgradePlan) return;
+  // Paystack redirect logic 
+  const handleUpgrade = async () => {
     setIsProcessing(true);
+    setErrorMsg(null);
     try {
-      await api.post(
-        "/billing/subscription/upgrade",
-        { planId: selectedUpgradePlan.id },
+      const res = await api.post<{ success: boolean; data?: { authorization_url: string }; error?: string }>(
+        "/subscriptions/initialize",
+        {
+          plan: activePlan,
+          billing_cycle: billingCycle,
+          currency: "USD", 
+        },
         { skipAuthRedirect: true }
       );
-      setSuccessMessage(
-        `Successfully upgraded your workspace to the ${selectedUpgradePlan.name} plan (${selectedUpgradePlan.price}/mo).`
-      );
-      setSelectedUpgradePlan(null);
-      // Refresh subscription data after successful upgrade
-      fetchSubscription();
+
+      // Trigger Paystack Redirect
+      if (res?.data?.authorization_url) {
+        window.location.href = res.data.authorization_url;
+      } else {
+        setErrorMsg(res?.error || "Could not initialize payment. Please try again.");
+      }
     } catch (err) {
-      console.error("Failed to upgrade subscription:", err);
+      setErrorMsg("Network error. Check your connection and try again.");
+      console.error("Upgrade failed:", err);
     } finally {
       setIsProcessing(false);
     }
   };
 
+  const currentPlanData = PLANS[activePlan];
+
   return (
-    <div className="w-full max-w-5xl space-y-8 rounded-2xl bg-slate-950 p-6 text-slate-100 shadow-2xl sm:p-8 md:p-10">
-      {/* Page Header */}
+    <div className="w-full max-w-4xl mx-auto space-y-8 rounded-2xl bg-slate-950 p-6 text-slate-100 sm:p-8">
+      
+      {/* Dashboard Header */}
       <div className="flex flex-col justify-between gap-4 border-b border-slate-800 pb-6 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
@@ -175,302 +136,200 @@ export const Subscription: FC = () => {
               Subscription & Plans
             </h1>
             <p className="mt-1 text-sm text-slate-400">
-              Manage your subscription tier, track visitor volume usage, and scale workspace capabilities.
+              Manage your subscription tier and track visitor usage.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Current Plan Top Banner */}
-      <motion.section
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        className="relative overflow-hidden rounded-2xl border border-sky-500/30 bg-gradient-to-r from-slate-900 via-slate-900/95 to-sky-950/40 p-6 shadow-2xl sm:p-8"
-      >
-        {isLoadingSub ? (
-          <div className="flex items-center justify-center py-6 gap-3 text-slate-400 text-sm">
-            <Loader2 className="h-5 w-5 animate-spin text-sky-400" />
-            <span>Loading subscription status and usage...</span>
-          </div>
-        ) : !subscription ? (
-          <div className="flex items-center justify-center py-6 gap-3 text-slate-400 text-sm">
-            <span>No subscription data available.</span>
-          </div>
-        ) : (
+      {/* Usage Banner */}
+      {!isLoadingSub && subscription && (
+        <motion.section
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="overflow-hidden rounded-2xl border border-sky-500/30 bg-gradient-to-r from-slate-900 to-sky-950/40 p-6 shadow-xl"
+        >
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
-            {/* Left Info */}
             <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <Badge
-                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider ${
-                    subscription.status === "trial"
-                      ? "border-sky-500/40 bg-sky-500/20 text-sky-300"
-                      : "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
-                  }`}
-                >
-                  {subscription.status === "trial"
-                    ? "Free Trial"
-                    : subscription.planName}
-                </Badge>
-                <span className="text-xs font-medium text-slate-400">
-                  {subscription.status === "trial"
-                    ? `• ${subscription.trialDaysRemaining ?? 0} days remaining in trial`
-                    : "• Active Subscription"}
-                </span>
-              </div>
-
+              <Badge className="rounded-full border border-sky-500/40 bg-sky-500/20 px-3 py-1 text-xs font-bold uppercase tracking-wider text-sky-300">
+                {subscription.status === "trial" ? "Free Trial" : subscription.planName}
+              </Badge>
               <div>
                 <h2 className="text-xl font-bold text-white sm:text-2xl">
                   Current Plan: {subscription.planName}
                 </h2>
-                <p className="mt-1 text-xs text-slate-300 sm:text-sm">
-                  {subscription.status === "trial"
-                    ? "You are currently exploring all Revluma features. Upgrade anytime to avoid interruption."
-                    : `Your workspace is actively subscribed to the ${subscription.planName} tier.`}
-                </p>
               </div>
             </div>
-
-            {/* Right Usage Progress Bar */}
             <div className="w-full max-w-md space-y-2.5 rounded-xl border border-slate-800/80 bg-slate-950/70 p-4 shadow-inner">
               <div className="flex items-center justify-between text-xs font-semibold">
-                <span className="text-slate-400">Monthly Tracked Visitors</span>
+                <span className="text-slate-400">Tracked Visitors</span>
                 <span className="text-sky-400 font-mono">
-                  {subscription.monthlyTrackedVisitorsUsed.toLocaleString()} /{" "}
-                  {subscription.monthlyTrackedVisitorsLimit.toLocaleString()} used{" "}
-                  <span className="text-slate-500">({usagePercent}%)</span>
+                  {subscription.monthlyTrackedVisitorsUsed.toLocaleString()} / {subscription.monthlyTrackedVisitorsLimit.toLocaleString()}
                 </span>
               </div>
-
-              {/* Custom Progress Bar */}
               <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${usagePercent}%` }}
-                  transition={{ duration: 0.8, ease: "easeOut" }}
                   className="h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-400"
                 />
               </div>
-
-              <div className="flex items-center justify-between text-[0.7rem] text-slate-500">
-                <span>Resets on {subscription.resetDate}</span>
-                <span>
-                  {remainingVisitors.toLocaleString()} visitors remaining
-                </span>
+              <div className="text-right text-[0.7rem] text-slate-500">
+                {remainingVisitors.toLocaleString()} remaining
               </div>
             </div>
           </div>
-        )}
-      </motion.section>
+        </motion.section>
+      )}
 
-      {/* Inline Feedback Toast */}
-      <AnimatePresence>
-        {successMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200"
-          >
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
-              <span>{successMessage}</span>
-            </div>
+      {/* New Upgrade UI */}
+      <div className="mx-auto max-w-xl pt-8 pb-12">
+        <div className="text-center space-y-6">
+          
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
+            Unlock your <span className="text-sky-500">Automation</span>
+          </h2>
+
+          {/* Plan Toggle (Growth vs Scale) */}
+          <div className="mx-auto flex w-fit rounded-full bg-slate-900 p-1 ring-1 ring-slate-800">
             <button
-              type="button"
-              onClick={() => setSuccessMessage(null)}
-              className="rounded p-1 text-slate-400 hover:text-white"
-              aria-label="Dismiss message"
+              onClick={() => setActivePlan("growth")}
+              className={`rounded-full px-6 py-2.5 text-sm font-semibold transition-all ${
+                activePlan === "growth" ? "bg-slate-800 text-white shadow-md ring-1 ring-slate-700" : "text-slate-400 hover:text-slate-200"
+              }`}
             >
-              <X className="h-4 w-4" />
+              Growth plan
             </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <button
+              onClick={() => setActivePlan("scale")}
+              className={`flex items-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold transition-all ${
+                activePlan === "scale" ? "bg-slate-800 text-white shadow-md ring-1 ring-slate-700" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              Scale plan
+              <Sparkles className="h-3.5 w-3.5 text-sky-400" />
+            </button>
+          </div>
 
-      {/* Pricing Grid Header */}
-      <div className="space-y-1 text-center sm:text-left">
-        <h3 className="text-xl font-bold text-white sm:text-2xl">
-          Available Subscription Plans
-        </h3>
-        <p className="text-xs text-slate-400 sm:text-sm">
-          Select the growth tier that matches your storefront revenue and automated cart recovery goals.
-        </p>
-      </div>
-
-      {/* Pricing Grid */}
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-        {PRICING_PLANS.map((plan, index) => (
-          <motion.div
-            key={plan.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: index * 0.1 }}
-            className={`relative flex flex-col justify-between rounded-2xl border p-6 shadow-xl transition-all duration-300 sm:p-8 ${
-              plan.isPrimary
-                ? "border-sky-500/60 bg-slate-900/80 shadow-sky-500/10 hover:border-sky-500"
-                : "border-slate-800 bg-slate-900/50 hover:border-slate-700 hover:bg-slate-900/80"
-            }`}
-          >
-            {/* MOST POPULAR Badge for Scale Plan */}
-            {plan.badge && (
-              <div className="absolute -top-3.5 right-6">
-                <Badge className="rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 px-3 py-1 text-xs font-bold text-white shadow-lg shadow-sky-500/25">
-                  <Sparkles className="mr-1.5 h-3 w-3" />
-                  {plan.badge}
-                </Badge>
-              </div>
-            )}
-
-            <div>
-              {/* Plan Name & Price */}
-              <div className="space-y-2 border-b border-slate-800/80 pb-6">
-                <h4 className="text-lg font-bold text-white sm:text-xl">
-                  {plan.name}
-                </h4>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-                    {plan.price}
-                  </span>
-                  <span className="text-sm font-semibold text-slate-400">
-                    {plan.period}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 sm:text-sm">
-                  {plan.subtitle}
-                </p>
-              </div>
-
-              {/* Features List */}
-              <ul className="my-6 space-y-3.5">
-                {plan.features.map((feature, idx) => (
-                  <li
-                    key={idx}
-                    className={`flex items-start gap-3 text-xs sm:text-sm ${
-                      feature.isHighlighted
-                        ? "font-semibold text-sky-300"
-                        : "text-slate-300"
-                    }`}
-                  >
-                    <CheckCircle2
-                      className={`h-4 w-4 shrink-0 mt-0.5 ${
-                        feature.isHighlighted
-                          ? "text-sky-400"
-                          : "text-emerald-400"
-                      }`}
-                    />
+          {/* Dynamic Feature List */}
+          <div className="text-left py-6 px-4">
+            <AnimatePresence mode="wait">
+              <motion.ul
+                key={activePlan}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4"
+              >
+                {currentPlanData.features.map((feature, idx) => (
+                  <li key={idx} className="flex items-center gap-3 text-sm sm:text-base text-slate-200 font-medium">
+                    {feature.isAi ? (
+                      <Sparkles className="h-5 w-5 shrink-0 text-sky-400" />
+                    ) : (
+                      <Check className="h-5 w-5 shrink-0 text-emerald-500" />
+                    )}
                     <span>{feature.text}</span>
                   </li>
                 ))}
-              </ul>
-            </div>
+              </motion.ul>
+            </AnimatePresence>
+          </div>
 
-            {/* CTA Button */}
-            <div className="pt-4">
-              <Button
-                type="button"
-                onClick={() => handleUpgradeClick(plan)}
-                className={`h-11 w-full font-semibold transition-all active:scale-[0.98] ${
-                  plan.isPrimary
-                    ? "bg-sky-600 text-white shadow-lg shadow-sky-600/25 hover:bg-sky-500"
-                    : "border border-slate-700 bg-slate-800 text-white hover:bg-slate-700"
+          {/* Bottom Billing Box (Monthly vs Yearly Selection) */}
+          <div className="rounded-3xl bg-slate-900 p-4 ring-1 ring-slate-800 shadow-xl space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              
+              {/* Monthly Button */}
+              <button
+                onClick={() => setBillingCycle("monthly")}
+                className={`flex flex-col items-start rounded-2xl p-4 transition-all text-left relative ${
+                  billingCycle === "monthly"
+                    ? "bg-sky-500/10 ring-2 ring-sky-500"
+                    : "bg-slate-950 ring-1 ring-slate-800 hover:bg-slate-900"
                 }`}
               >
-                {plan.isPrimary && <Zap className="mr-2 h-4 w-4 text-sky-200" />}
-                <span>{plan.buttonText}</span>
-              </Button>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Guaranteed Secure Footnote */}
-      <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
-        <ShieldCheck className="h-4 w-4 text-emerald-400" />
-        <span>
-          All plans include automated cart recovery workflows and SSL-secured billing.
-        </span>
-      </div>
-
-      {/* Confirmation Modal */}
-      <AnimatePresence>
-        {selectedUpgradePlan && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md space-y-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl"
-            >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-sky-400" />
-                  <h4 className="text-lg font-bold text-white">
-                    Confirm Subscription Upgrade
-                  </h4>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedUpgradePlan(null)}
-                  disabled={isProcessing}
-                  className="rounded p-1 text-slate-400 hover:text-white"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <p className="text-sm text-slate-300">
-                  You are about to upgrade your workspace to the{" "}
-                  <span className="font-bold text-sky-300">
-                    {selectedUpgradePlan.name}
-                  </span>{" "}
-                  tier for{" "}
-                  <span className="font-bold text-white">
-                    {selectedUpgradePlan.price}
-                    {selectedUpgradePlan.period}
-                  </span>
-                  .
-                </p>
-                <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-400">
-                  Your billing cycle will adjust automatically and your monthly tracked visitor quota will update immediately.
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setSelectedUpgradePlan(null)}
-                  disabled={isProcessing}
-                  className="border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleConfirmUpgrade}
-                  disabled={isProcessing}
-                  className="bg-sky-600 font-semibold text-white shadow-lg shadow-sky-600/25 hover:bg-sky-500"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      <span>Processing...</span>
-                    </>
+                <div className="flex w-full items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-slate-300">Monthly</span>
+                  {billingCycle === "monthly" ? (
+                    <CheckCircle2 className="h-5 w-5 text-sky-500" />
                   ) : (
-                    <>
-                      <Check className="mr-2 h-4 w-4" />
-                      <span>Confirm Upgrade</span>
-                    </>
+                    <Circle className="h-5 w-5 text-slate-700" />
                   )}
-                </Button>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-white">${currentPlanData.monthlyPrice}</span>
+                  <span className="text-xs text-slate-400">/mo</span>
+                </div>
+              </button>
+
+              {/* Yearly Button */}
+              <button
+                onClick={() => setBillingCycle("annual")}
+                className={`flex flex-col items-start rounded-2xl p-4 transition-all text-left relative ${
+                  billingCycle === "annual"
+                    ? "bg-sky-500/10 ring-2 ring-sky-500"
+                    : "bg-slate-950 ring-1 ring-slate-800 hover:bg-slate-900"
+                }`}
+              >
+                <div className="flex w-full items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold text-slate-300">Yearly</span>
+                    <Badge className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 border-emerald-500/30 text-[10px] px-1.5 py-0">
+                      -20%
+                    </Badge>
+                  </div>
+                  {billingCycle === "annual" ? (
+                    <CheckCircle2 className="h-5 w-5 text-sky-500" />
+                  ) : (
+                    <Circle className="h-5 w-5 text-slate-700" />
+                  )}
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-white">${currentPlanData.annualPrice}</span>
+                  <span className="text-xs text-slate-400">/mo</span>
+                </div>
+              </button>
+            </div>
+
+            {/* Error Message Display */}
+            {errorMsg && (
+              <div className="text-sm text-red-400 bg-red-400/10 py-2 rounded-lg border border-red-400/20">
+                {errorMsg}
               </div>
-            </motion.div>
+            )}
+
+            {/* Primary Action Button */}
+            <Button
+              type="button"
+              onClick={handleUpgrade}
+              disabled={isProcessing}
+              className="h-14 w-full rounded-xl bg-sky-600 text-base font-bold text-white shadow-lg shadow-sky-600/25 hover:bg-sky-500 active:scale-[0.98]"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Redirecting to Secure Payment...
+                </>
+              ) : (
+                "Start 7-day trial"
+              )}
+            </Button>
+
+            <div className="flex flex-col items-center justify-center gap-2 pt-2 text-xs text-slate-500">
+              <div className="flex gap-4">
+                <button className="hover:text-slate-300">Restore subscription</button>
+                <button className="hover:text-slate-300">Terms of Service</button>
+              </div>
+              <div className="flex items-center gap-1 mt-1">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+                <span>Billed ${billingCycle === "annual" ? currentPlanData.annualTotal : currentPlanData.monthlyPrice} after trial. Cancel anytime.</span>
+              </div>
+            </div>
+
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      </div>
     </div>
   );
 };
