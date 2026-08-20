@@ -62,6 +62,29 @@ const STARTERS = [
   { icon: RefreshCw,    label: "Win-back Campaign",  sub: "Draft a sequence for inactive customers.",    color: "#0891b2" },
 ];
 
+
+// ── Error message mapper — never expose technical details to merchants ─────────
+function _cleanErrorMessage(code?: string, _raw?: string): string {
+  switch (code) {
+    case "INTELLIGENCE_TIMEOUT":
+      return "Rev is taking longer than usual to analyse your data. Please try again.";
+    case "INTELLIGENCE_UNAVAILABLE":
+      return "Rev is momentarily unavailable. Please try again in a few seconds.";
+    case "INTELLIGENCE_INVALID_RESPONSE":
+      return "Rev encountered an issue preparing your response. Please try again.";
+    case "INTELLIGENCE_AUTH_FAILED":
+      return "Rev is temporarily offline. Our team has been notified.";
+    case "INTELLIGENCE_NOT_CONFIGURED":
+      return "Rev Intelligence is being set up. Please check back shortly.";
+    case "RATE_LIMITED":
+      return "You're sending messages too quickly. Please wait a moment before trying again.";
+    case "VALIDATION_ERROR":
+      return "Your message couldn't be sent. Please check it and try again.";
+    default:
+      return "Rev couldn't process this right now. Please try again in a moment.";
+  }
+}
+
 // ── Orbit orb — welcome screen hero ──────────────────────────────────────────
 function OrbHero({ size = 90 }: { size?: number }) {
   return (
@@ -262,11 +285,8 @@ function Bubble({
           }}>
             <AlertCircle size={15} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: "0.82rem", color: "#dc2626", margin: "0 0 6px", fontWeight: 600 }}>
-                Rev couldn't process this request
-              </p>
-              <p style={{ fontSize: "0.75rem", color: t2, margin: "0 0 10px" }}>
-                {typeof msg.content === "string" ? msg.content : "Intelligence temporarily unavailable. Please try again."}
+              <p style={{ fontSize: "0.82rem", color: "#dc2626", margin: "0 0 10px", fontWeight: 600 }}>
+                {typeof msg.content === "string" ? msg.content : "Rev is taking a moment. Please try again."}
               </p>
               <button onClick={onRetry}
                 style={{
@@ -578,7 +598,7 @@ export default function RevIntell() {
         // Backend returned error
         setMessages(prev => prev.map(m => m.id === sid ? {
           ...m, isStreaming: false, hasError: true,
-          content: data?.error?.message ?? "Rev couldn't process this request.",
+          content: _cleanErrorMessage(data?.error?.code, data?.error?.message),
           errorCode: data?.error?.code,
         } : m));
       } else {
@@ -594,8 +614,8 @@ export default function RevIntell() {
       }
     } catch (err) {
       const errorMsg = err instanceof ApiError
-        ? err.message
-        : "Rev is temporarily unavailable. Please try again.";
+        ? _cleanErrorMessage(String(err.status), err.message)
+        : "Rev is taking a moment. Please try again shortly.";
       setMessages(prev => prev.map(m => m.id === sid ? {
         ...m, isStreaming: false, hasError: true, content: errorMsg,
       } : m));
