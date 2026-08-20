@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -80,88 +81,90 @@ model onboarding_tools {
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model organizations {
-  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  owner_id              String                 @db.Uuid
-  company_name          String
-  primary_color         String?
-  accent_color          String?
-  logo_url              String?
-  favicon_url           String?
-  website_url           String?
-  store_url             String?
-  industry              String
-  custom_industry       String?
-  country               String
-  state_region          String?
-  team_size             String?
-  monthly_revenue_range String?
-  monthly_order_volume  String?
-  created_at            DateTime?              @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime?              @default(now()) @db.Timestamptz(6)
-  ai_preferences        ai_preferences?
-  users                 users                  @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  stores                stores[]
-  subscriptions         subscriptions?
-  payment_transactions  payment_transactions[]
-  members               organization_members[]
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id                String                    @db.Uuid
+  company_name            String
+  website_url             String?
+  store_url               String?
+  industry                String
+  custom_industry         String?
+  country                 String
+  state_region            String?
+  team_size               String?
+  monthly_revenue_range   String?
+  monthly_order_volume    String?
+  created_at              DateTime?                 @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?                 @default(now()) @db.Timestamptz(6)
+  primary_color           String?
+  accent_color            String?
+  logo_url                String?
+  favicon_url             String?
+  slug                    String                    @unique
+  ai_preferences          ai_preferences?
+  business_states         business_states[]
+  conversation_messages   conversation_messages[]
+  conversations           conversations[]
+  merchant_memories       merchant_memories[]
+  members                 organization_members[]
+  users                   users                     @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  payment_transactions    payment_transactions[]
+  recommendation_outcomes recommendation_outcomes[]
+  recommendations         recommendations[]
+  stores                  stores[]
+  subscriptions           subscriptions?
 
   @@index([owner_id], map: "idx_organizations_owner")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model users {
-  id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  full_name               String
-  email                   String                 @unique
-  password_hash           String
-  profile_picture_url     String?
-  notification_preferences Json?                @db.JsonB
-  two_factor_enabled      Boolean                @default(false)
-  two_factor_secret       String?
-  two_factor_temp_secret  String?
+  id                        String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name                 String
+  email                     String                  @unique
+  password_hash             String
+  email_verified            Boolean?                @default(false)
+  accepted_terms            Boolean                 @default(false)
+  accepted_privacy_policy   Boolean                 @default(false)
+  onboarding_completed      Boolean?                @default(false)
+  onboarding_step           Int?                    @default(1)
+  status                    String?                 @default("active")
+  created_at                DateTime?               @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime?               @default(now()) @db.Timestamptz(6)
+  verification_code         String?
+  verification_expires_at   DateTime?               @db.Timestamptz(6)
+  two_factor_enabled        Boolean                 @default(false)
+  two_factor_secret         String?
+  two_factor_temp_secret    String?
   two_factor_last_used_step Int?
-  email_verified          Boolean?               @default(false)
-  verification_code       String?
-  verification_expires_at DateTime?              @db.Timestamptz(6)
-  accepted_terms          Boolean                @default(false)
-  accepted_privacy_policy Boolean                @default(false)
-  onboarding_completed    Boolean?               @default(false)
-  onboarding_step         Int?                   @default(1)
-  status                  String?                @default("active")
-  created_at              DateTime?              @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime?              @default(now()) @db.Timestamptz(6)
-  notifications           notifications[]
-  refresh_tokens          refresh_tokens[]
-  onboarding_profiles     onboarding_profiles?
-  organizations           organizations[]
-  preferences             UserPreference?
-  organization_members    organization_members[]
+  profile_picture_url       String?
+  notification_preferences  Json?
+  conversation_messages     conversation_messages[]
+  conversations             conversations[]
+  merchant_memories         merchant_memories[]
+  notifications             notifications[]
+  onboarding_profiles       onboarding_profiles?
+  organization_members      organization_members[]
+  organizations             organizations[]
+  recommendations           recommendations[]
+  refresh_tokens            refresh_tokens[]
+  preferences               UserPreference?
 
   @@index([email], map: "idx_users_email")
 }
 
 model UserPreference {
-  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-
-  userId String @unique @map("user_id") @db.Uuid
-
-  theme String @default("system")
-
-  language String @default("en-GB")
-
-  timezone String @default("Africa/Lagos")
-
-  dateFormat String @default("DD/MM/YYYY") @map("date_format")
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  user users @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @unique @map("user_id") @db.Uuid
+  theme      String   @default("system")
+  language   String   @default("en-GB")
+  timezone   String   @default("Africa/Lagos")
+  dateFormat String   @default("DD/MM/YYYY") @map("date_format")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user       users    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_preferences_user")
 
   @@map("user_preferences")
 }
-
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model waitlist_users {
@@ -202,10 +205,10 @@ model waitlist_users {
   user_agent                 String?
   created_at                 DateTime? @default(now()) @db.Timestamptz(6)
   updated_at                 DateTime? @default(now()) @db.Timestamptz(6)
-  referral_code              String    @unique
+  referral_code              String?
   referred_by_code           String?
-  referral_count             Int       @default(0)
-  is_founding_member         Boolean   @default(false)
+  referral_count             Int?      @db.SmallInt
+  is_founding_member         Boolean?  @default(false)
 
   @@index([country], map: "idx_waitlist_country")
   @@index([work_email], map: "idx_waitlist_email")
@@ -213,29 +216,38 @@ model waitlist_users {
   @@index([lead_score], map: "idx_waitlist_lead_score")
   @@index([waitlist_position], map: "idx_waitlist_position")
   @@index([status], map: "idx_waitlist_status")
-  @@index([referral_code])
 }
 
 /// Connected Shopify or WooCommerce store for a merchant organization.
 /// One organization can have multiple stores across platforms.
 model stores {
-  id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id   String                @db.Uuid
-  platform          String
-  shop_domain       String
-  access_token      String?
-  status            String                @default("not_connected")
-  installed_at      DateTime?             @db.Timestamptz(6)
-  last_synced_at    DateTime?             @db.Timestamptz(6)
-  created_at        DateTime?             @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime?             @default(now()) @db.Timestamptz(6)
-  abandoned_carts   abandoned_carts[]
-  customers         customers[]
-  events            events[]
-  orders            orders[]
-  sequences         sequences[]
-  organizations     organizations         @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  mlSessionFeatures ml_session_features[]
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id        String                   @db.Uuid
+  platform               String
+  shop_domain            String
+  access_token           String?
+  status                 String                   @default("not_connected")
+  installed_at           DateTime?                @db.Timestamptz(6)
+  last_synced_at         DateTime?                @db.Timestamptz(6)
+  created_at             DateTime?                @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime?                @default(now()) @db.Timestamptz(6)
+  abandoned_carts        abandoned_carts[]
+  coupons                coupons[]
+  customers              customers[]
+  events                 events[]
+  mlSessionFeatures      ml_session_features[]
+  orders                 orders[]
+  product_attributes     product_attributes[]
+  product_categories     product_categories[]
+  product_category_links product_category_links[]
+  product_images         product_images[]
+  product_tag_links      product_tag_links[]
+  product_tags           product_tags[]
+  products               products[]
+  sequences              sequences[]
+  store_settings         store_settings[]
+  organizations          organizations            @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  webhook_registrations  webhook_registrations[]
 
   @@unique([organization_id, shop_domain], map: "uq_stores_org_domain")
 }
@@ -266,8 +278,8 @@ model customers {
   abandoned_carts    abandoned_carts[]
   stores             stores                @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   events             events[]
-  orders             orders[]
   mlSessionFeatures  ml_session_features[]
+  orders             orders[]
 
   @@unique([store_id, external_id], map: "uq_customers_store_external")
   @@index([store_id], map: "idx_customers_store")
@@ -396,57 +408,45 @@ model events {
 }
 
 model ml_session_features {
-  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id     String  @db.Uuid
-  customer_id  String? @db.Uuid
-  session_id   String?
-  anonymous_id String?
-
-  // Behavioural Features
-  scroll_depth_pct          Float?
-  tab_switch_count          Int?
-  time_on_checkout_step_sec Float?
-  cursor_hesitation         Float?
-  checkout_step_reached     Int?
-
-  // Transactional Features
-  past_orders_total           Int?
-  past_orders_with_coupon_pct Float?
-  days_since_last_purchase    Int?
-  avg_order_value             Decimal? @db.Decimal(10, 2)
-  purchase_frequency_trend    Float?
-  visited_coupon_page         Boolean?
-  searched_discount_terms     Boolean?
-
-  // Temporal / Contextual Features
-  abandoned_at_shipping_reveal Boolean?
-  failed_payment_attempt       Boolean?
-  local_hour_of_session        Int?
-  day_of_week_session          Int?
-  time_on_page_ms              Int?
-
-  // Extended M2 Sensitivity Signals
-  google_shopping_referrer        Boolean?
-  time_first_view_to_cart_add_hrs Float?
-  sale_period_purchase_only       Boolean?
-  failed_coupon_attempt           Boolean?
-  merchant_avg_order_value        Decimal? @db.Decimal(10, 2)
-  account_creation_abandonment    Boolean?
-  repeat_checkout_attempts        Int?
-  device_type_mobile              Boolean?
-  shipping_eta_dwell_sec          Float?
-  trust_page_visited              Boolean?
-
-  // New Smart Features
+  id                                  String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id                            String     @db.Uuid
+  customer_id                         String?    @db.Uuid
+  session_id                          String?
+  anonymous_id                        String?
+  scroll_depth_pct                    Float?
+  tab_switch_count                    Int?
+  time_on_checkout_step_sec           Float?
+  cursor_hesitation                   Float?
+  checkout_step_reached               Int?
+  past_orders_total                   Int?
+  past_orders_with_coupon_pct         Float?
+  days_since_last_purchase            Int?
+  avg_order_value                     Decimal?   @db.Decimal(10, 2)
+  purchase_frequency_trend            Float?
+  visited_coupon_page                 Boolean?
+  searched_discount_terms             Boolean?
+  abandoned_at_shipping_reveal        Boolean?
+  failed_payment_attempt              Boolean?
+  local_hour_of_session               Int?
+  day_of_week_session                 Int?
+  time_on_page_ms                     Int?
+  google_shopping_referrer            Boolean?
+  time_first_view_to_cart_add_hrs     Float?
+  sale_period_purchase_only           Boolean?
+  failed_coupon_attempt               Boolean?
+  merchant_avg_order_value            Decimal?   @db.Decimal(10, 2)
+  account_creation_abandonment        Boolean?
+  repeat_checkout_attempts            Int?
+  device_type_mobile                  Boolean?
+  shipping_eta_dwell_sec              Float?
+  trust_page_visited                  Boolean?
   failed_coupon_count                 Int?
   copied_product_title                Boolean?
   cart_value_vs_avg_order_value_ratio Float?
-
-  created_at DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at DateTime? @default(now()) @db.Timestamptz(6)
-
-  stores    stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  customers customers? @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  created_at                          DateTime?  @default(now()) @db.Timestamptz(6)
+  updated_at                          DateTime?  @default(now()) @db.Timestamptz(6)
+  customers                           customers? @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  stores                              stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([store_id], map: "idx_ml_features_store")
   @@index([customer_id], map: "idx_ml_features_customer")
@@ -460,15 +460,15 @@ model ml_session_features {
 model refresh_tokens {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id      String    @db.Uuid
-  token_hash   String    @unique // SHA-256 hash of the raw token — never store raw
-  family_id    String    @db.Uuid // Groups a chain of rotated tokens — reuse = theft
-  device_hint  String? // Browser/device info for display in "active sessions"
+  token_hash   String    @unique
+  family_id    String    @db.Uuid
+  device_hint  String?
   ip_address   String?
   expires_at   DateTime  @db.Timestamptz(6)
   created_at   DateTime? @default(now()) @db.Timestamptz(6)
   last_used_at DateTime? @db.Timestamptz(6)
   is_revoked   Boolean   @default(false)
-  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_refresh_tokens_user")
 
   @@index([user_id], map: "idx_refresh_tokens_user")
   @@index([token_hash], map: "idx_refresh_tokens_hash")
@@ -491,19 +491,18 @@ model login_attempts {
 /// RBAC: maps users to organizations with a role and status.
 /// Owner is auto-created on registration; members/admins are invited.
 model organization_members {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id String    @db.Uuid
-  user_id         String    @db.Uuid
-  role            String    @default("member") // owner | admin | member
-  status          String    @default("active") // pending | active | removed
-  invited_by      String?   @db.Uuid
-  invited_at      DateTime? @db.Timestamptz(6)
-  joined_at       DateTime? @db.Timestamptz(6)
-  created_at      DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
-
-  organizations organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users         users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String        @db.Uuid
+  user_id         String        @db.Uuid
+  role            String        @default("member")
+  status          String        @default("active")
+  invited_by      String?       @db.Uuid
+  invited_at      DateTime?     @db.Timestamptz(6)
+  joined_at       DateTime?     @db.Timestamptz(6)
+  created_at      DateTime?     @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime?     @default(now()) @db.Timestamptz(6)
+  organizations   organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users           users         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([organization_id, user_id], map: "uq_org_member")
   @@index([organization_id], map: "idx_org_members_org")
@@ -511,83 +510,465 @@ model organization_members {
   @@index([status], map: "idx_org_members_status")
 }
 
-/// Single-use invite tokens — signed, expiring, bound to org + email + role.
-model invite_tokens {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id String    @db.Uuid
-  email           String
-  role            String    @default("member")
-  invited_by      String    @db.Uuid
-  token_hash      String    @unique
-  expires_at      DateTime  @db.Timestamptz(6)
-  accepted_at     DateTime? @db.Timestamptz(6)
-  created_at      DateTime? @default(now()) @db.Timestamptz(6)
-
-  @@index([organization_id], map: "idx_invite_tokens_org")
-  @@index([email], map: "idx_invite_tokens_email")
-  @@index([token_hash], map: "idx_invite_tokens_hash")
-}
-
-/// Per-admin API keys — hashed at rest, individually revocable, with audit trail.
-/// Replaces the single static ADMIN_API_KEY env var for production use.
-model admin_api_keys {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String // human-readable label (e.g. "CI deploy key")
-  key_hash     String    @unique // SHA-256 hash of the raw key
-  prefix       String // first 8 chars of raw key — shown in UI for identification
-  scopes       String[]  @default(["read", "write"]) // permission scopes
-  last_used_at DateTime? @db.Timestamptz(6)
-  last_used_ip String?
-  expires_at   DateTime? @db.Timestamptz(6) // null = never expires
-  revoked_at   DateTime? @db.Timestamptz(6)
-  created_by   String?   @db.Uuid
-  created_at   DateTime? @default(now()) @db.Timestamptz(6)
-
-  @@index([key_hash], map: "idx_admin_api_keys_hash")
-  @@index([created_by], map: "idx_admin_api_keys_creator")
-}
-
 /// Merchant subscription record — created after Paystack payment confirmed
 model subscriptions {
-  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id     String    @unique @db.Uuid
-  plan                String    @default("free") // "free" | "growth" | "scale" | "enterprise"
-  billing_cycle       String    @default("monthly") // "monthly" | "annual"
-  status              String    @default("trialing") // "trialing" | "active" | "cancelled" | "past_due" | "paused"
-  paystack_customer_id String?
+  id                         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id            String        @unique @db.Uuid
+  plan                       String        @default("free")
+  billing_cycle              String        @default("monthly")
+  status                     String        @default("trialing")
+  paystack_customer_id       String?
   paystack_subscription_code String?
-  paystack_plan_code  String?
-  amount_kobo         Int?      // Amount in kobo (Paystack unit)
-  currency            String    @default("NGN")
-  current_period_start DateTime? @db.Timestamptz(6)
-  current_period_end   DateTime? @db.Timestamptz(6)
-  trial_ends_at        DateTime? @db.Timestamptz(6)
-  cancelled_at         DateTime? @db.Timestamptz(6)
-  created_at           DateTime? @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime? @default(now()) @db.Timestamptz(6)
-
-  organizations organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  paystack_plan_code         String?
+  amount_kobo                Int?
+  currency                   String?       @default("NGN")
+  current_period_start       DateTime?     @db.Timestamptz(6)
+  current_period_end         DateTime?     @db.Timestamptz(6)
+  trial_ends_at              DateTime?     @db.Timestamptz(6)
+  cancelled_at               DateTime?     @db.Timestamptz(6)
+  created_at                 DateTime?     @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime?     @default(now()) @db.Timestamptz(6)
+  organizations              organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sub_org")
 
   @@index([organization_id], map: "idx_subscriptions_org")
   @@index([status], map: "idx_subscriptions_status")
-  @@index([paystack_customer_id], map: "idx_subscriptions_paystack_customer")
 }
 
 /// Payment transaction log — every Paystack event recorded here
 model payment_transactions {
-  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id     String    @db.Uuid
-  paystack_reference  String    @unique
-  paystack_event      String    // "charge.success" | "subscription.create" | etc.
-  plan                String?
-  amount_kobo         Int?
-  currency            String    @default("NGN")
-  status              String    @default("pending") // "pending" | "success" | "failed"
-  metadata            Json?
-  created_at          DateTime? @default(now()) @db.Timestamptz(6)
-
-  organizations organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id    String        @db.Uuid
+  paystack_reference String        @unique
+  paystack_event     String
+  plan               String?
+  amount_kobo        Int?
+  currency           String?       @default("NGN")
+  status             String?       @default("pending")
+  metadata           Json?
+  created_at         DateTime?     @default(now()) @db.Timestamptz(6)
+  organizations      organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pt_org")
 
   @@index([organization_id], map: "idx_payment_tx_org")
   @@index([paystack_reference], map: "idx_payment_tx_ref")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model business_states {
+  id                       String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id          String                  @db.Uuid
+  is_current               Boolean                 @default(true)
+  schema_version           String                  @default("1.0")
+  generated_at             DateTime                @default(now()) @db.Timestamptz(6)
+  data_freshness_at        DateTime?               @db.Timestamptz(6)
+  valid_until              DateTime?               @db.Timestamptz(6)
+  staleness_threshold_mins Int                     @default(30)
+  computation_status       String                  @default("complete")
+  computation_duration_ms  Int?
+  revenue_today            Decimal?                @db.Decimal(12, 2)
+  revenue_yesterday        Decimal?                @db.Decimal(12, 2)
+  revenue_delta_pct        Float?
+  revenue_trend_7d         Float?
+  revenue_anomaly          Boolean                 @default(false)
+  abandoned_cart_count     Int?
+  abandoned_cart_value     Decimal?                @db.Decimal(12, 2)
+  cart_anomaly             Boolean                 @default(false)
+  churn_risk_count         Int?
+  vip_inactive_count       Int?
+  returning_customer_rate  Float?
+  opportunities            Json?
+  risks                    Json?
+  anomalies                Json?
+  trends                   Json?
+  ml_signals               Json?
+  source_data              Json?
+  metadata                 Json?
+  created_at               DateTime                @default(now()) @db.Timestamptz(6)
+  organizations            organizations           @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  conversation_messages    conversation_messages[]
+  recommendations          recommendations[]
+
+  @@index([organization_id, generated_at(sort: Desc)], map: "idx_bstate_org_generated")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model conversation_messages {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversation_id   String            @db.Uuid
+  organization_id   String            @db.Uuid
+  user_id           String            @db.Uuid
+  role              String
+  content           Json
+  sequence_number   Int
+  agent_name        String?
+  agent_version     String?
+  model_name        String?
+  model_provider    String?
+  orchestrator_mode String?
+  confidence_score  Float?
+  confidence_basis  String?
+  business_state_id String?           @db.Uuid
+  tool_calls        Json?
+  tool_results      Json?
+  input_tokens      Int?
+  output_tokens     Int?
+  latency_ms        Int?
+  correlation_id    String            @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  error_code        String?
+  error_message     String?
+  has_error         Boolean           @default(false)
+  metadata          Json?
+  created_at        DateTime          @default(now()) @db.Timestamptz(6)
+  conversations     conversations     @relation(fields: [conversation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  organizations     organizations     @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users             users             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  business_states   business_states?  @relation(fields: [business_state_id], references: [id], onUpdate: NoAction, map: "fk_conv_msg_bstate")
+  recommendations   recommendations[]
+
+  @@index([conversation_id, sequence_number], map: "idx_conv_msg_conversation")
+  @@index([correlation_id], map: "idx_conv_msg_correlation")
+  @@index([organization_id, created_at(sort: Desc)], map: "idx_conv_msg_org_created")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model conversations {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id       String                  @db.Uuid
+  user_id               String                  @db.Uuid
+  title                 String?
+  status                String                  @default("active")
+  mode                  String?
+  summary               String?
+  context_window        Json?
+  message_count         Int                     @default(0)
+  last_activity_at      DateTime                @default(now()) @db.Timestamptz(6)
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                @default(now()) @db.Timestamptz(6)
+  conversation_messages conversation_messages[]
+  organizations         organizations           @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                 users                   @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  merchant_memories     merchant_memories[]
+  recommendations       recommendations[]
+
+  @@index([organization_id, user_id, last_activity_at(sort: Desc)], map: "idx_conv_org_user")
+  @@index([organization_id, status], map: "idx_conv_status")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model coupons {
+  id                          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id                    String    @db.Uuid
+  external_id                 String    @db.VarChar(255)
+  code                        String    @db.VarChar(255)
+  type                        String?   @default("fixed_cart") @db.VarChar(50)
+  amount                      Decimal?  @default(0) @db.Decimal(10, 2)
+  date_created                DateTime? @db.Timestamp(6)
+  date_modified               DateTime? @db.Timestamp(6)
+  date_expires                DateTime? @db.Timestamp(6)
+  usage_count                 Int?      @default(0)
+  individual_use              Boolean?  @default(false)
+  product_ids                 Json?     @default("[]")
+  excluded_product_ids        Json?     @default("[]")
+  usage_limit                 Int?
+  usage_limit_per_user        Int?
+  limit_usage_to_x_items      Int?
+  free_shipping               Boolean?  @default(false)
+  product_categories          Json?     @default("[]")
+  excluded_product_categories Json?     @default("[]")
+  exclude_sale_items          Boolean?  @default(false)
+  minimum_amount              Decimal?  @db.Decimal(10, 2)
+  maximum_amount              Decimal?  @db.Decimal(10, 2)
+  email_restrictions          Json?     @default("[]")
+  used_by                     Json?     @default("[]")
+  created_at                  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                  DateTime? @default(now()) @db.Timestamp(6)
+  stores                      stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, external_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model merchant_memories {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String         @db.Uuid
+  user_id         String?        @db.Uuid
+  memory_type     String
+  memory_key      String
+  memory_value    Json
+  memory_source   String         @default("explicit")
+  authority_level Int            @default(3)
+  confidence      Float?         @default(1.0)
+  importance      Int            @default(3)
+  is_active       Boolean        @default(true)
+  expires_at      DateTime?      @db.Timestamptz(6)
+  last_used_at    DateTime?      @db.Timestamptz(6)
+  use_count       Int            @default(0)
+  source_conv_id  String?        @db.Uuid
+  metadata        Json?
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime       @default(now()) @db.Timestamptz(6)
+  organizations   organizations  @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  conversations   conversations? @relation(fields: [source_conv_id], references: [id], onUpdate: NoAction)
+  users           users?         @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@unique([organization_id, memory_key], map: "uq_memory_org_key")
+  @@index([organization_id, memory_source], map: "idx_memory_source")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_attributes {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id            String   @db.Uuid
+  product_external_id String   @db.VarChar(255)
+  external_id         String   @db.VarChar(255)
+  name                String   @db.VarChar(255)
+  position            Int?     @default(0)
+  visible             Boolean? @default(true)
+  variation           Boolean? @default(false)
+  options             Json?    @default("[]")
+  stores              stores   @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, product_external_id, external_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_categories {
+  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id           String  @db.Uuid
+  external_id        String  @db.VarChar(255)
+  name               String  @db.VarChar(255)
+  slug               String? @default("") @db.VarChar(255)
+  parent_external_id String? @db.VarChar(255)
+  description        String? @default("")
+  display            String? @default("default") @db.VarChar(50)
+  image              Json?
+  menu_order         Int?    @default(0)
+  count              Int?    @default(0)
+  stores             stores  @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, external_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_category_links {
+  store_id             String @db.Uuid
+  product_external_id  String @db.VarChar(255)
+  category_external_id String @db.VarChar(255)
+  stores               stores @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([store_id, product_external_id, category_external_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_images {
+  id                  String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id            String  @db.Uuid
+  product_external_id String  @db.VarChar(255)
+  external_id         String  @db.VarChar(255)
+  src                 String  @db.VarChar(1000)
+  name                String? @default("") @db.VarChar(255)
+  alt                 String? @default("") @db.VarChar(255)
+  position            Int?    @default(0)
+  stores              stores  @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, product_external_id, external_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_tag_links {
+  store_id            String @db.Uuid
+  product_external_id String @db.VarChar(255)
+  tag_external_id     String @db.VarChar(255)
+  stores              stores @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([store_id, product_external_id, tag_external_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model product_tags {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id    String  @db.Uuid
+  external_id String  @db.VarChar(255)
+  name        String  @db.VarChar(255)
+  slug        String? @default("") @db.VarChar(255)
+  description String? @default("")
+  count       Int?    @default(0)
+  stores      stores  @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, external_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model products {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id           String    @db.Uuid
+  external_id        String    @db.VarChar(255)
+  parent_external_id String?   @db.VarChar(255)
+  name               String    @default("") @db.VarChar(500)
+  slug               String?   @default("") @db.VarChar(255)
+  type               String?   @default("simple") @db.VarChar(50)
+  status             String?   @default("draft") @db.VarChar(50)
+  featured           Boolean?  @default(false)
+  catalog_visibility String?   @default("visible") @db.VarChar(50)
+  description        String?   @default("")
+  short_description  String?   @default("")
+  sku                String?   @default("") @db.VarChar(255)
+  price              Decimal?  @default(0) @db.Decimal(10, 2)
+  regular_price      Decimal?  @db.Decimal(10, 2)
+  sale_price         Decimal?  @db.Decimal(10, 2)
+  date_on_sale_from  DateTime? @db.Timestamp(6)
+  date_on_sale_to    DateTime? @db.Timestamp(6)
+  on_sale            Boolean?  @default(false)
+  purchasable        Boolean?  @default(true)
+  total_sales        Int?      @default(0)
+  virtual            Boolean?  @default(false)
+  downloadable       Boolean?  @default(false)
+  downloads          Json?     @default("[]")
+  download_limit     Int?      @default(-1)
+  download_expiry    Int?      @default(-1)
+  external_url       String?   @default("") @db.VarChar(500)
+  button_text        String?   @default("") @db.VarChar(255)
+  tax_status         String?   @default("taxable") @db.VarChar(50)
+  tax_class          String?   @default("") @db.VarChar(50)
+  manage_stock       Boolean?  @default(false)
+  stock_quantity     Int?
+  stock_status       String?   @default("instock") @db.VarChar(50)
+  backorders         String?   @default("no") @db.VarChar(50)
+  backorders_allowed Boolean?  @default(false)
+  backordered        Boolean?  @default(false)
+  low_stock_amount   Int?
+  sold_individually  Boolean?  @default(false)
+  weight             Decimal?  @db.Decimal(10, 2)
+  dimensions         Json?
+  shipping_required  Boolean?  @default(true)
+  shipping_taxable   Boolean?  @default(true)
+  shipping_class     String?   @default("") @db.VarChar(50)
+  shipping_class_id  Int?      @default(0)
+  reviews_allowed    Boolean?  @default(true)
+  average_rating     String?   @default("0") @db.VarChar(10)
+  rating_count       Int?      @default(0)
+  related_ids        Json?     @default("[]")
+  upsell_ids         Json?     @default("[]")
+  cross_sell_ids     Json?     @default("[]")
+  parent_id          Int?
+  created_at         DateTime? @db.Timestamp(6)
+  updated_at         DateTime? @db.Timestamp(6)
+  created_at_auto    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at_auto    DateTime? @default(now()) @db.Timestamp(6)
+  stores             stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, external_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model recommendation_outcomes {
+  id                     String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recommendation_id      String          @unique @db.Uuid
+  organization_id        String          @db.Uuid
+  actual_result          String
+  actual_uplift_pct      Float?
+  actual_value           Decimal?        @db.Decimal(12, 2)
+  measurement_window_hrs Int?
+  measured_at            DateTime        @db.Timestamptz(6)
+  outcome_status         String
+  prediction_error_pct   Float?
+  accuracy_score         Float?
+  learning_signal        Float?
+  contributing_factors   Json?
+  confounding_factors    Json?
+  lessons_learned        String?
+  reflection_notes       String?
+  agent_evaluation       Json?
+  should_repeat          Boolean?
+  metadata               Json?
+  created_at             DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime        @default(now()) @db.Timestamptz(6)
+  organizations          organizations   @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recommendations        recommendations @relation(fields: [recommendation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([organization_id, created_at(sort: Desc)], map: "idx_outcome_org")
+  @@index([outcome_status], map: "idx_outcome_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model recommendations {
+  id                      String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id         String                   @db.Uuid
+  user_id                 String                   @db.Uuid
+  conversation_id         String?                  @db.Uuid
+  message_id              String?                  @db.Uuid
+  source_state_id         String?                  @db.Uuid
+  category                String
+  business_area           String?
+  hypothesis              String
+  recommendation_text     String
+  predicted_outcome       String
+  predicted_uplift_pct    Float?
+  predicted_value         Decimal?                 @db.Decimal(12, 2)
+  confidence_score        Float
+  confidence_basis        String?
+  evidence                Json?
+  agent_name              String?
+  agent_version           String?
+  model_name              String?
+  status                  String                   @default("pending")
+  merchant_decision       String?
+  merchant_decision_at    DateTime?                @db.Timestamptz(6)
+  merchant_note           String?
+  action_taken            String?
+  action_params           Json?
+  action_executed_at      DateTime?                @db.Timestamptz(6)
+  evaluation_window_hrs   Int                      @default(48)
+  evaluate_after          DateTime?                @db.Timestamptz(6)
+  correlation_id          String                   @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  metadata                Json?
+  created_at              DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime                 @default(now()) @db.Timestamptz(6)
+  recommendation_outcomes recommendation_outcomes?
+  conversations           conversations?           @relation(fields: [conversation_id], references: [id], onUpdate: NoAction)
+  conversation_messages   conversation_messages?   @relation(fields: [message_id], references: [id], onUpdate: NoAction)
+  organizations           organizations            @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  business_states         business_states?         @relation(fields: [source_state_id], references: [id], onUpdate: NoAction)
+  users                   users                    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([conversation_id], map: "idx_rec_conversation")
+  @@index([organization_id, created_at(sort: Desc)], map: "idx_rec_org_created")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model store_settings {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id       String    @db.Uuid
+  settings_group String    @db.VarChar(50)
+  settings       Json      @default("{}")
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+  stores         stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, settings_group])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model webhook_registrations {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id     String    @db.Uuid
+  external_id  String    @db.VarChar(255)
+  topic        String    @db.VarChar(100)
+  delivery_url String    @db.VarChar(1000)
+  status       String?   @default("active") @db.VarChar(50)
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+  updated_at   DateTime? @default(now()) @db.Timestamp(6)
+  stores       stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, external_id])
 }
