@@ -1,7 +1,6 @@
 import typing
 """
 Revluma ML Serving API
-========================
 Real-time inference endpoints for Revluma's five predictive models.
 uvicorn src.serving.api:app --reload --port 8000
 
@@ -330,6 +329,73 @@ def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+# ============================================================================
+# Rev Intelligence — /orchestrate endpoint
+# ============================================================================
+
+from ..agents.orchestrator import orchestrate as _orchestrate
+from ..config.database import engine
+from sqlalchemy.orm import sessionmaker
+
+_Session = sessionmaker(bind=engine)
+
+
+class OrchestrateRequest(BaseModel):
+    organization_id: str = Field(..., min_length=36, max_length=36)
+    user_id: str = Field(..., min_length=36, max_length=36)
+    message: str = Field(..., min_length=1, max_length=2000)
+    conversation_id: typing.Optional[str] = Field(None, min_length=36, max_length=36)
+
+
+@app.post("/orchestrate", dependencies=[Depends(verify_internal_caller)])
+async def orchestrate_endpoint(req: OrchestrateRequest):
+    """
+    Rev Intelligence orchestration endpoint.
+    Authenticated via X-Internal-Key header (same as /predict/* endpoints).
+    Runs the full intelligence pipeline and returns a 6-part structured response.
+    Never returns 500 — always returns a safe structured response.
+    """
+    import asyncio
+
+    db = _Session()
+    try:
+        # Run synchronous pipeline in thread pool to not block async event loop
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: _orchestrate(
+                organization_id=req.organization_id,
+                user_id=req.user_id,
+                message=req.message,
+                conversation_id=req.conversation_id,
+                db=db,
+            )
+        )
+        return result.to_dict()
+    except Exception as e:
+        import uuid as _uuid
+        # Never propagate internal details to caller
+        return {
+            "success": False,
+            "conversation_id": req.conversation_id or str(_uuid.uuid4()),
+            "message_id": str(_uuid.uuid4()),
+            "situation": "I encountered a temporary issue.",
+            "insight": "This is not related to your business data.",
+            "implication": "No data was lost.",
+            "recommendation": "Please try again in a moment.",
+            "confidence_score": 0.0,
+            "confidence_basis": "Error response",
+            "actions": [],
+            "agents_used": [],
+            "business_state_age_minutes": 0.0,
+            "business_state_id": None,
+            "warnings": ["Orchestration error — temporary"],
+            "correlation_id": str(_uuid.uuid4()),
+            "latency_ms": 0,
+        }
+    finally:
+        db.close()
 
 @app.get("/health")
 async def health_check() -> dict:
