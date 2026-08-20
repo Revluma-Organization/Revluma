@@ -312,5 +312,86 @@ class TestGroupEventsBySession(unittest.TestCase):
         self.assertEqual(result, {})
 
 
+
+
+class TestTimestampFormatVariants(unittest.TestCase):
+    """
+    Covers the mixed timestamp format requirement from the S2 spec.
+    The pixel sends timestamps in three real-world forms:
+        1. ISO 8601 with Z suffix  → "2026-06-26T10:00:00Z"
+        2. ISO 8601 without suffix → "2026-06-26T10:00:00"  (naive, assumed UTC)
+        3. ISO 8601 with offset    → "2026-06-26T10:00:00+01:00"
+    All three must be parsed without raising and must produce _valid = True.
+    """
+
+    def test_parse_raw_event_timestamp_with_z_suffix(self):
+        payload = {
+            "event_type": "scroll",
+            "session_id": "sess_z",
+            "timestamp": "2026-06-26T10:00:00Z",
+        }
+        result = parse_raw_event(payload)
+        self.assertTrue(result["_valid"], "Z-suffix timestamp should be valid")
+
+    def test_parse_raw_event_timestamp_without_z_suffix(self):
+        """Naive ISO string (no timezone marker) — must still be accepted."""
+        payload = {
+            "event_type": "scroll",
+            "session_id": "sess_naive",
+            "timestamp": "2026-06-26T10:00:00",
+        }
+        result = parse_raw_event(payload)
+        self.assertTrue(result["_valid"], "Naive ISO timestamp should be valid")
+
+    def test_parse_raw_event_timestamp_with_positive_offset(self):
+        payload = {
+            "event_type": "scroll",
+            "session_id": "sess_offset",
+            "timestamp": "2026-06-26T11:00:00+01:00",
+        }
+        result = parse_raw_event(payload)
+        self.assertTrue(result["_valid"], "+01:00 offset timestamp should be valid")
+
+    def test_parse_raw_event_timestamp_with_negative_offset(self):
+        payload = {
+            "event_type": "scroll",
+            "session_id": "sess_neg",
+            "timestamp": "2026-06-26T05:00:00-05:00",
+        }
+        result = parse_raw_event(payload)
+        self.assertTrue(result["_valid"], "-05:00 offset timestamp should be valid")
+
+    def test_extract_session_timeline_mixed_formats(self):
+        """
+        Timeline must handle a session where events carry different timestamp
+        formats and sort them correctly regardless.
+        """
+        events = [
+            {"event_type": "checkout_step", "timestamp": "2026-06-26T10:02:00+01:00"},
+            {"event_type": "session_start",  "timestamp": "2026-06-26T09:00:00Z"},
+            {"event_type": "exit_intent",    "timestamp": "2026-06-26T10:01:00"},
+        ]
+        result = extract_session_timeline(events)
+        # session_start should be the earliest parseable timestamp
+        self.assertEqual(result["session_start"], "2026-06-26T09:00:00Z")
+        self.assertIsNotNone(result["exit_intent_at"])
+
+    def test_group_events_by_session_mixed_timestamp_formats(self):
+        """
+        Grouping and intra-session sorting must work even when events carry
+        different timestamp formats within the same session.
+        """
+        events = [
+            {"event_type": "b", "session_id": "s1", "timestamp": "2026-06-26T10:01:00+00:00"},
+            {"event_type": "a", "session_id": "s1", "timestamp": "2026-06-26T10:00:00"},
+            {"event_type": "c", "session_id": "s1", "timestamp": "2026-06-26T10:02:00Z"},
+        ]
+        result = group_events_by_session(events)
+        self.assertEqual(len(result["s1"]), 3)
+        # After sorting, event "a" (earliest) must come first
+        self.assertEqual(result["s1"][0]["event_type"], "a")
+        self.assertEqual(result["s1"][2]["event_type"], "c")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -205,8 +205,8 @@ def _build_offer_feature_record(row: tuple, db_connection) -> dict:
     with db_connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT event_type, timestamp, payload
-            FROM customer_events
+            SELECT event_type, created_at as timestamp, payload
+            FROM events
             WHERE session_id = %s
             """,
             (session_id,)

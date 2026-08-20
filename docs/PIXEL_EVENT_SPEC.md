@@ -14,13 +14,20 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ```typescript
 {
-  event_id: string;              // UUID v4 (unique per event)
+  id: string;                    // UUID v4 (unique per event)
   event_type: string;            // REQUIRED (see section 2)
-  timestamp: string;             // ISO 8601 UTC
+  timestamp: string;             // ISO 8601 UTC — REQUIRED. Backend must forward this field
+                                 // as 'timestamp' to the Python service even if the DB
+                                 // stores it as 'created_at'.
   session_id: string;            // REQUIRED for behavioural grouping
-  user_id?: string | null;       // optional
+  customer_id?: string | null;   // optional — use 'customer_id' (not 'user_id')
+  anonymous_id?: string | null;  // optional — cookie/localstorage fallback
   store_id: string;              // REQUIRED
 
+  // NOTE: The following 3 fields (platform, page, device) are sent at the root 
+  // by the Pixel. The Backend ingestion endpoint MUST bundle them into the 
+  // `payload` JSONB column when saving to the database, because the ML pipeline 
+  // reads them from `payload.referrer` and `payload.device_type`.
   platform: "shopify" | "woocommerce" | "custom";
 
   page: {

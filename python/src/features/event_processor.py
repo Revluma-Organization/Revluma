@@ -79,7 +79,7 @@ def parse_raw_event(raw_payload: dict) -> dict:
 
     event_type = raw_payload.get("event_type")
     session_id = raw_payload.get("session_id")
-    timestamp = raw_payload.get("timestamp")
+    timestamp = raw_payload.get("timestamp") or raw_payload.get("created_at")
     payload = raw_payload.get("payload")
 
     is_valid = True
@@ -154,11 +154,20 @@ def _sort_events_by_timestamp(events: list) -> list:
     Returns:
         list: New list sorted ascending by timestamp; unparseable entries last.
     """
+    from datetime import timezone as _tz
+
     def _sort_key(e: dict) -> tuple:
-        parsed = _safe_parse_timestamp(e.get("timestamp"))
-        return (parsed is None, parsed or datetime.min)
+        parsed = _safe_parse_timestamp(e.get("timestamp") or e.get("created_at"))
+        if parsed is None:
+            # Place unparseable timestamps at the very end.
+            return (True, datetime.min.replace(tzinfo=_tz.utc))
+        # Normalise naive datetimes to UTC-aware so all values are comparable.
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=_tz.utc)
+        return (False, parsed)
 
     return sorted(events, key=_sort_key)
+
 
 
 def _extract_timeline_fields(sorted_events: list) -> dict:
@@ -176,7 +185,7 @@ def _extract_timeline_fields(sorted_events: list) -> dict:
     """
     timestamped = [
         e for e in sorted_events
-        if _safe_parse_timestamp(e.get("timestamp")) is not None
+        if _safe_parse_timestamp(e.get("timestamp") or e.get("created_at")) is not None
     ]
     session_start = timestamped[0]["timestamp"] if timestamped else None
     session_end   = timestamped[-1]["timestamp"] if timestamped else None

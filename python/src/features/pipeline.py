@@ -1,8 +1,8 @@
 """
 Revluma Feature Engineering Pipeline
 
-Computes the 32-feature Shopper Feature Vector fed into all five ML models.
-All 32 features fully implemented.
+Computes the 30-feature Shopper Feature Vector fed into all five ML models.
+All 30 features fully implemented.
 """
 
 from __future__ import annotations
@@ -117,7 +117,8 @@ def calculate_time_on_checkout_step(events: list) -> float:
             continue
         if event.get("event_type") != "checkout_step":
             continue
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
         if ts is not None:
             checkout_events.append(ts)
 
@@ -621,7 +622,8 @@ def calculate_local_hour_of_session(events: list) -> int:
     for event in events:
         if not isinstance(event, dict):
             continue
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
         if ts is not None:
             if earliest_time is None or ts < earliest_time:
                 earliest_time = ts
@@ -653,7 +655,8 @@ def calculate_day_of_week_session(events: list) -> int:
     for event in events:
         if not isinstance(event, dict):
             continue
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
         if ts is not None:
             if earliest_time is None or ts < earliest_time:
                 earliest_time = ts
@@ -685,7 +688,8 @@ def calculate_time_on_page_ms(events: list) -> int:
     for event in events:
         if not isinstance(event, dict):
             continue
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
         if ts is not None:
             if min_time is None or ts < min_time:
                 min_time = ts
@@ -1332,16 +1336,19 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
 
     # Extract metadata from events
     session_id = None
+    anonymous_id = None
     merchant_id = None
     timestamp = None
     for event in session_events:
         if isinstance(event, dict):
             if session_id is None:
                 session_id = event.get("session_id")
+            if anonymous_id is None:
+                anonymous_id = event.get("anonymous_id")
             if merchant_id is None:
                 merchant_id = event.get("merchant_id") or event.get("store_id")
             if timestamp is None:
-                timestamp = event.get("timestamp")
+                timestamp = event.get("timestamp") or event.get("created_at")
 
     # Build the raw feature dict first (needed for composite scores)
     raw = {
@@ -1379,11 +1386,12 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
     }
 
     return {
-        "session_id":  session_id,
-        "customer_id": customer_id,
-        "merchant_id": merchant_id,
-        "timestamp":   timestamp,
-        "features":    raw,
+        "session_id":   session_id,
+        "anonymous_id": anonymous_id,
+        "customer_id":  customer_id,
+        "merchant_id":  merchant_id,
+        "timestamp":    timestamp,
+        "features":     raw,
     }
 def calculate_rfm_scores(customer_id: str, db) -> dict:
     """Calculates RFM (Recency, Frequency, Monetary) scores for a customer."""

@@ -161,8 +161,8 @@ def _load_real_sensitivity_rows(db_connection) -> pd.DataFrame:
         with db_connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT session_id, event_type, timestamp, payload
-                FROM customer_events
+                SELECT session_id, event_type, created_at as timestamp, payload
+                FROM events
                 WHERE session_id = ANY(%s)
                 """,
                 (session_ids,)

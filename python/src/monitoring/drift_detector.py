@@ -205,8 +205,8 @@ def _load_recent_m1_eval_set(db_connection, days: int = M1_WINDOW_DAYS) -> pd.Da
     with db_connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT session_id, event_type, timestamp, payload
-            FROM customer_events
+            SELECT session_id, event_type, created_at as timestamp, payload
+            FROM events
             WHERE session_id = ANY(%s)
             """,
             (session_ids,)
@@ -324,8 +324,8 @@ def _load_recent_m2_eval_set(db_connection, days: int = M2_WINDOW_DAYS) -> pd.Da
     with db_connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT session_id, event_type, timestamp, payload
-            FROM customer_events WHERE session_id = ANY(%s)
+            SELECT session_id, event_type, created_at as timestamp, payload
+            FROM events WHERE session_id = ANY(%s)
             """,
             (session_ids,)
         )
