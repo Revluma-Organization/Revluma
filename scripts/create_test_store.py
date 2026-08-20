@@ -1,12 +1,39 @@
 import os
 import sys
+import urllib.parse
 import psycopg2
 from dotenv import load_dotenv
 
 load_dotenv()
 
+def get_db_connection():
+    """Return a psycopg2 connection with pgbouncer parameter removed."""
+    url = os.getenv('DATABASE_URL')
+    
+    # Parse the URL
+    parsed = urllib.parse.urlparse(url)
+    
+    # Parse query parameters and remove 'pgbouncer' if present
+    query_params = urllib.parse.parse_qs(parsed.query)
+    query_params.pop('pgbouncer', None)
+    
+    # Rebuild query string without pgbouncer
+    new_query = urllib.parse.urlencode(query_params, doseq=True) if query_params else ''
+    
+    # Rebuild the clean URL
+    clean_url = urllib.parse.urlunparse((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        new_query,
+        parsed.fragment
+    ))
+    
+    return psycopg2.connect(clean_url)
+
 def main():
-    conn = psycopg2.connect(os.getenv('DATABASE_URL'))
+    conn = get_db_connection()
     cur = conn.cursor()
 
     # Get first organization
@@ -19,10 +46,25 @@ def main():
     org_id = row[0]
 
     # ============================================================
-    # YOUR CREDENTIALS – UPDATE THESE WHENEVER NEEDED
+    # READ FROM ENVIRONMENT VARIABLES – NO HARDCODING!
     # ============================================================
-    shop_domain = 'https://revluma.local'
-    access_token = 'ck_88558d682b6faade1f61d55b6c60bb91f24699c3:cs_ad02f02cf58baca16d8dbaec7f2098b6411c512f'
+    shop_domain = os.getenv('SHOP_DOMAIN')
+    consumer_key = os.getenv('CONSUMER_KEY')
+    consumer_secret = os.getenv('CONSUMER_SECRET')
+    
+    # Validate all required variables are present
+    if not shop_domain:
+        print('❌ SHOP_DOMAIN not set in .env')
+        sys.exit(1)
+    if not consumer_key:
+        print('❌ CONSUMER_KEY not set in .env')
+        sys.exit(1)
+    if not consumer_secret:
+        print('❌ CONSUMER_SECRET not set in .env')
+        sys.exit(1)
+    
+    # Build access token from consumer key and secret
+    access_token = f'{consumer_key}:{consumer_secret}'
     # ============================================================
 
     # 1. Delete any existing store with this organization + domain

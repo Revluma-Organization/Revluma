@@ -1,13 +1,20 @@
-# scripts/test_webhook.py
-
+import os
+import sys
 import requests
 import json
+from dotenv import load_dotenv
 
-# Use your actual store UUID from the database
-STORE_ID = "17c85879-fd24-4274-b456-a00c6efc5e3e"
+load_dotenv()
 
-# The FastAPI webhook endpoint - use HTTP, not HTTPS
-WEBHOOK_URL = f"http://localhost:8000/api/webhooks/woocommerce/{STORE_ID}"  # ← Changed to http
+STORE_ID = os.getenv('STORE_UUID')
+if not STORE_ID:
+    print('❌ STORE_UUID not set in .env')
+    sys.exit(1)
+
+PYTHON_SERVICE_URL = os.getenv('PYTHON_SERVICE_URL', 'http://localhost:8000')
+
+# The FastAPI webhook endpoint
+WEBHOOK_URL = f"{PYTHON_SERVICE_URL}/api/webhooks/woocommerce/{STORE_ID}"
 
 # Sample order payload (simplified version of what WooCommerce sends)
 SAMPLE_ORDER = {
@@ -94,16 +101,24 @@ HEADERS = {
 
 def test_webhook():
     print(f"🚀 Sending webhook to {WEBHOOK_URL}")
-    response = requests.post(
-        WEBHOOK_URL,
-        json=SAMPLE_ORDER,
-        headers=HEADERS
-    )
-    print(f"Status: {response.status_code}")
+    print(f"   Store ID: {STORE_ID}")
     try:
-        print(f"Response: {response.json()}")
-    except:
-        print(f"Raw response: {response.text}")
+        response = requests.post(
+            WEBHOOK_URL,
+            json=SAMPLE_ORDER,
+            headers=HEADERS
+        )
+        print(f"Status: {response.status_code}")
+        try:
+            print(f"Response: {response.json()}")
+        except:
+            print(f"Raw response: {response.text}")
+    except requests.exceptions.ConnectionError:
+        print(f"❌ Connection error: Could not reach {WEBHOOK_URL}")
+        print("   Make sure the FastAPI server is running:")
+        print("   uvicorn src.serving.api:app --host 0.0.0.0 --port 8000 --reload")
+    except Exception as e:
+        print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
     test_webhook()

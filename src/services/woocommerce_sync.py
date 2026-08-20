@@ -7,8 +7,10 @@ from typing import Dict, Any, Optional, List, Tuple
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import requests
+import urllib.parse 
 from requests.auth import HTTPBasicAuth
 import dotenv
+
 
 
 dotenv.load_dotenv(dotenv.find_dotenv())
@@ -30,7 +32,33 @@ TIMEOUT = 30
 
 
 def get_db_connection():
-    return psycopg2.connect(DATABASE_URL)
+    """
+    Return a psycopg2 connection using DATABASE_URL.
+    Removes unknown query parameters (like pgbouncer) that psycopg2 doesn't recognize.
+    """
+    url = os.getenv('DATABASE_URL')
+    
+    # Parse the URL
+    parsed = urllib.parse.urlparse(url)
+    
+    # Parse query parameters and remove 'pgbouncer' if present
+    query_params = urllib.parse.parse_qs(parsed.query)
+    query_params.pop('pgbouncer', None)
+    
+    # Rebuild query string without pgbouncer
+    new_query = urllib.parse.urlencode(query_params, doseq=True) if query_params else ''
+    
+    # Rebuild the clean URL
+    clean_url = urllib.parse.urlunparse((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        parsed.params,
+        new_query,
+        parsed.fragment
+    ))
+    
+    return psycopg2.connect(clean_url)
 
 
 def decode_credentials(access_token: str) -> Tuple[str, str]:
@@ -145,9 +173,7 @@ def to_json(data):
     return data
 
 
-# ====================================================================
 # SYNC FUNCTIONS – ONE PER DATA TYPE
-# ====================================================================
 
 def sync_woo_customers(store_id: str, db_conn):
     cursor = db_conn.cursor(cursor_factory=RealDictCursor)

@@ -16,7 +16,6 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, validator
 import uvicorn
 
-# Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Load environment
@@ -41,9 +40,7 @@ app = FastAPI(
 executor = ThreadPoolExecutor(max_workers=4)
 
 
-# ============================================================================
 # Helper Functions
-# ============================================================================
 
 def safe_float(value):
     """Safely convert to float, handling empty strings and None."""
@@ -86,9 +83,7 @@ def verify_webhook_signature(payload: str, signature: str, secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-# ============================================================================
 # Request Models (for internal sync trigger)
-# ============================================================================
 
 class SyncTriggerRequest(BaseModel):
     """Request model for triggering synchronization."""
@@ -104,9 +99,7 @@ class SyncTriggerRequest(BaseModel):
         return v
 
 
-# ============================================================================
 # Root Endpoint
-# ============================================================================
 
 @app.get("/")
 async def root():
@@ -124,9 +117,7 @@ async def root():
     }
 
 
-# ============================================================================
 # Internal Sync Endpoint
-# ============================================================================
 
 @app.post("/internal/sync/trigger")
 async def trigger_sync(request: SyncTriggerRequest):
@@ -190,9 +181,8 @@ async def trigger_sync(request: SyncTriggerRequest):
         )
 
 
-# ============================================================================
+
 # Health Check Endpoint
-# ============================================================================
 
 class HealthResponse(BaseModel):
     """Health check response model."""
@@ -243,9 +233,7 @@ async def health_check():
     )
 
 
-# ============================================================================
 # Webhook Receiver Endpoint
-# ============================================================================
 
 @app.post("/api/webhooks/woocommerce/{store_id}")
 async def woocommerce_webhook(
@@ -326,9 +314,8 @@ async def woocommerce_webhook(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-# -----------------------------------------------------------------------------
 # Webhook processors (private helpers)
-# -----------------------------------------------------------------------------
+
 
 async def _process_order_webhook(store_id: str, payload: dict, db_conn):
     """Process order webhook (created/updated)."""
@@ -346,11 +333,18 @@ async def _process_order_webhook(store_id: str, payload: dict, db_conn):
     coupon_used = len(coupon_lines) > 0
     coupon_code = coupon_lines[0]['code'] if coupon_lines else None
 
-    wc_customer_id = str(wc_order.get('customer_id', ''))
-    customer_uuid = None
-    if wc_customer_id and wc_customer_id in customer_map:
-        customer_uuid = customer_map[wc_customer_id]
-    else:
+    wc_customer_id = str(wc_order.get('customer_id', '0'))
+    
+    # Check if this is a guest order (customer_id = 0 or empty)
+    if wc_customer_id == '0' or not wc_customer_id:
+        webhook_logger.info(f"Guest order {wc_order['id']} skipped (no customer linked)")
+        return  # Skip guest orders entirely
+
+    # Try to find the customer in our database
+    customer_uuid = customer_map.get(wc_customer_id)
+    
+    # If not found by ID, try by billing email
+    if not customer_uuid:
         email = wc_order.get('billing', {}).get('email')
         if email:
             cursor.execute("""
@@ -360,8 +354,16 @@ async def _process_order_webhook(store_id: str, payload: dict, db_conn):
             row = cursor.fetchone()
             if row:
                 customer_uuid = row['id']
-                if wc_customer_id:
-                    customer_map[wc_customer_id] = customer_uuid
+                customer_map[wc_customer_id] = customer_uuid
+            else:
+                # Customer doesn't exist in our database – skip this order
+                webhook_logger.warning(f"Order {wc_order['id']} skipped: customer {wc_customer_id} not found in database")
+                return
+
+    # Only proceed if we have a valid customer
+    if not customer_uuid:
+        webhook_logger.warning(f"Order {wc_order['id']} skipped: no valid customer found")
+        return
 
     order_data = {
         'store_id': store_id,
@@ -404,6 +406,7 @@ async def _process_order_webhook(store_id: str, payload: dict, db_conn):
             ordered_at = EXCLUDED.ordered_at
     """, order_data)
 
+    # Update customer order count
     if customer_uuid:
         cursor.execute("""
             UPDATE customers
@@ -413,8 +416,7 @@ async def _process_order_webhook(store_id: str, payload: dict, db_conn):
 
     db_conn.commit()
     webhook_logger.info(f"Order {wc_order['id']} synced for store {store_id}")
-
-
+    
 async def _process_customer_webhook(store_id: str, payload: dict, db_conn):
     """Process customer webhook (created/updated)."""
     from psycopg2.extras import RealDictCursor
@@ -669,9 +671,7 @@ async def _process_review_webhook(store_id: str, payload: dict, db_conn):
     webhook_logger.info(f"Review {review_id} synced for store {store_id}")
 
 
-# ============================================================================
 # IP Allow-List Middleware (Production)
-# ============================================================================
 
 class IPAllowListMiddleware:
     """Middleware to restrict access to internal endpoints."""
@@ -724,9 +724,8 @@ else:
     logger.info("Running in development mode - IP restrictions disabled")
 
 
-# ============================================================================
 # Startup/Shutdown Events
-# ============================================================================
+ 
 
 @app.on_event("startup")
 async def startup_event():
@@ -746,9 +745,8 @@ async def shutdown_event():
     logger.info("Thread pool executor shut down")
 
 
-# ============================================================================
+
 # Main Entry Point
-# ============================================================================
 
 if __name__ == "__main__":
     port = int(os.getenv('PORT', 8000))
