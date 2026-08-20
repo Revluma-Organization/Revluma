@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { FC, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
+import { useLocation, useNavigate } from "react-router-dom";
+import { api } from "@/lib/api";
 import {
   ArrowLeft,
   Lock,
@@ -14,7 +16,13 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
 export const Checkout: FC = () => {
-  const navigate = useNavigate();
+    const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Catch the plan and cycle passed from the Subscription page!
+  const { plan = "growth", cycle = "monthly" } = location.state || {};
+
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   
   // Form State
@@ -23,15 +31,34 @@ export const Checkout: FC = () => {
   const [expiry, setExpiry] = useState<string>("");
   const [cvv, setCvv] = useState<string>("");
 
-  const handleCheckoutSubmit = async (e: FormEvent) => {
+    const handleCheckoutSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
-    // Paystack API call here!
-    setTimeout(() => {
+    setErrorMsg(null);
+
+      // API taken from choose-plan html
+    try {
+      const res = await api.post<{ success: boolean; data?: { authorization_url: string }; error?: string }>(
+        "/subscriptions/initialize",
+        {
+          plan: plan,
+          billing_cycle: cycle,
+          currency: "NGN", 
+        },
+        { skipAuthRedirect: true }
+      );
+
+      if (res && res.data && res.data.authorization_url) {
+        window.location.href = res.data.authorization_url;
+      } else {
+        setErrorMsg(res?.error || "Could not initialize payment. Please try again.");
+        setIsSubmitting(false);
+      }
+    } catch (err: any) {
+      console.error("Paystack API Error:", err);
+      setErrorMsg(err.message || "Network error. Check your connection and try again.");
       setIsSubmitting(false);
-      console.log("Paystack tokenization triggered for:", { holderName, cardNumber });
-    }, 2000);
+    }
   };
   
   const handleGoBack = () => {
@@ -206,6 +233,13 @@ export const Checkout: FC = () => {
                 Save this card for faster payments
               </Label>
             </div>
+
+                        {/* Error Message Display */}
+            {errorMsg && (
+              <div className="rounded-lg border border-red-500/20 bg-red-50 p-3 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                {errorMsg}
+              </div>
+            )}
 
             <Button
               type="submit"
