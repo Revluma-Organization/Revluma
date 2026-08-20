@@ -8,6 +8,7 @@ import Customers from "../pages/Customers";
 import NotFound from "../pages/NotFound";
 import PlaceholderPage from "../pages/PlaceholderPage";
 import Checkout from "../pages/Checkout";
+import AcceptInvite from "./pages/auth/AcceptInvite";
 
 
 // Settings Pages
@@ -32,6 +33,7 @@ export function DashboardRoutes() {
   return (
     <Routes>
       <Route path="checkout" element={<Checkout />} />
+      <Route path="/auth/accept-invite" element={<AcceptInvite />} />
       <Route element={<DashboardLayout />}>
         <Route index element={<Navigate to="/dashboard/overview" replace />} />
         <Route path="overview"      element={<Overview />} />
