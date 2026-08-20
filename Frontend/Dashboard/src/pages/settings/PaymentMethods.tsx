@@ -30,8 +30,6 @@ export interface SavedCard {
 export const PaymentMethods: FC = () => {
   const [cards, setCards] = useState<SavedCard[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   const fetchPaymentMethods = useCallback(async () => {
@@ -58,12 +56,6 @@ export const PaymentMethods: FC = () => {
   useEffect(() => {
     fetchPaymentMethods();
   }, [fetchPaymentMethods]);
-
-  // New card form state
-  const [holderName, setHolderName] = useState<string>("");
-  const [cardNumber, setCardNumber] = useState<string>("");
-  const [expiry, setExpiry] = useState<string>("");
-  const [cvv, setCvv] = useState<string>("");
 
   const handleMakeDefault = (id: string) => {
     setCards((prev) =>
@@ -95,34 +87,6 @@ export const PaymentMethods: FC = () => {
     }
   };
 
-  const handleAddCardSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    const newCard: SavedCard = {
-      id: `card-${Date.now()}`,
-      brand: "Visa",
-      last4: cardNumber.slice(-4) || "5566",
-      expMonth: expiry.split("/")[0] || "12",
-      expYear: expiry.split("/")[1] ? `20${expiry.split("/")[1]}` : "2029",
-      isDefault: cards.length === 0,
-      tokenizedVia: "Paystack Secure Vault",
-    };
-    try {
-      const res = await api.post<SavedCard>("/billing/payment-methods", newCard, {
-        skipAuthRedirect: true,
-      });
-      setCards((prev) => [res?.data || newCard, ...prev]);
-      setIsModalOpen(false);
-      setFeedbackMessage("New payment card tokenized and saved successfully.");
-      // Reset form
-      setHolderName(""); setCardNumber(""); setExpiry(""); setCvv("");
-    } catch (err) {
-      console.error("Failed API post payment method:", err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   return (
     <div className="w-full max-w-5xl space-y-8 rounded-2xl bg-white p-6 text-slate-900 shadow-xl border border-slate-200 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:p-8 md:p-10 transition-colors duration-200">
       {/* Page Header */}
@@ -144,7 +108,7 @@ export const PaymentMethods: FC = () => {
         {/* Top Action Button */}
         <Button
           type="button"
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => router.push('/dashboard/checkout')}
           className="h-11 bg-sky-600 px-5 font-semibold text-white shadow-lg shadow-sky-600/25 transition-all hover:bg-sky-500 active:scale-[0.98]"
         >
           <Plus className="mr-2 h-4 w-4" />
@@ -221,7 +185,7 @@ export const PaymentMethods: FC = () => {
             </p>
             <Button
               type="button"
-              onClick={() => setIsModalOpen(true)}
+              onClick={() => router.push('/dashboard/checkout')}
               className="mt-6 bg-sky-600 font-semibold text-white hover:bg-sky-500"
             >
               <Plus className="mr-2 h-4 w-4" />
@@ -326,98 +290,8 @@ export const PaymentMethods: FC = () => {
         </div>
       </div>
 
-      {/* Add Payment Method Modal */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm dark:bg-black/80">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-md space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
-            >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/10">
-                    <Lock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">
-                    Secure Checkout
-                  </h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  disabled={isSubmitting}
-                  className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-white"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+       </div>
+  );
+};
 
-              <form onSubmit={handleAddCardSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="holder-name" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Cardholder Name
-                  </Label>
-                  <input
-                    id="holder-name"
-                    type="text"
-                    placeholder="e.g. John Doe"
-                    value={holderName}
-                    onChange={(e) => setHolderName(e.target.value)}
-                    required
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="card-number" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Card Number
-                  </Label>
-                  <input
-                    id="card-number"
-                    type="text"
-                    placeholder="0000 0000 0000 0000"
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value)}
-                    required
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="exp-date" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      Expiration Date
-                    </Label>
-                    <input
-                      id="exp-date"
-                      type="text"
-                      value={expiry}
-                      onChange={(e) => setExpiry(e.target.value)}
-                      required
-                      placeholder="MM/YY"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="cvv-input" className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      CVV / CVC
-                    </Label>
-                    <input
-                      id="cvv-input"
-                      type="password"
-                      maxLength={4}
-                      placeholder="123"
-                      value={cvv}
-                      onChange={(e) => setCvv(e.target.value)}
-                      required
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder-slate-400 focus:border-sky-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-sky-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder-slate-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Trust Footer inside Modal */}
-                <div className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-slate-50 py-3 dark:bg-slate-950/50">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400
+export default PaymentMethods;
