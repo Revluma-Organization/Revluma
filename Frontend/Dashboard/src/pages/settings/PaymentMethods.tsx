@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { FC, useState, useEffect, useCallback, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -28,6 +29,7 @@ export interface SavedCard {
 }
 
 export const PaymentMethods: FC = () => {
+  const navigate = useNavigate();
   const [cards, setCards] = useState<SavedCard[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
@@ -108,7 +110,7 @@ export const PaymentMethods: FC = () => {
         {/* Top Action Button */}
         <Button
           type="button"
-          onClick={() => router.push('/dashboard/checkout')}
+          onClick={() => navigate('/dashboard/checkout')}
           className="h-11 bg-sky-600 px-5 font-semibold text-white shadow-lg shadow-sky-600/25 transition-all hover:bg-sky-500 active:scale-[0.98]"
         >
           <Plus className="mr-2 h-4 w-4" />
