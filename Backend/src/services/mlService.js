@@ -85,7 +85,7 @@ function validateOrchestrateResponse(data) {
   // Must have response_type
   if (!data.response_type) return false;
 
-  const validTypes = ['chat', 'conversational', 'analysis', 'capability', 'clarification', 'knowledge', 'error'];
+  const validTypes = ['chat', 'conversational', 'analysis', 'capability', 'clarification', 'knowledge', 'action_plan', 'error'];
   if (!validTypes.includes(data.response_type)) return false;
 
   // For non-analysis types, just need text or a message
