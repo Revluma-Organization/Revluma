@@ -68,6 +68,25 @@ function sanitiseMessage(text) {
   return text.replace(/\0/g, '').trim().slice(0, 2000);
 }
 
+
+// Generate a short meaningful title from user message
+function _generateTitle(message) {
+  const msg = message.trim();
+  // Strip common conversational openers
+  const stripped = msg
+    .replace(/^(hi|hello|hey|good morning|morning|thanks|thank you|ok|okay|can you|could you|i want to|i need|please|can we)\s+/i, '')
+    .trim();
+  const title = stripped.length > 5 ? stripped : msg;
+  // Capitalise first letter, truncate at word boundary
+  const words = title.split(' ');
+  let out = '';
+  for (const w of words) {
+    if ((out + ' ' + w).length > 55) break;
+    out = out ? out + ' ' + w : w;
+  }
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
 // ── POST /api/v1/rev/chat ─────────────────────────────────────────────────────
 
 exports.chat = async (req, res, next) => {
@@ -229,8 +248,8 @@ exports.chat = async (req, res, next) => {
       )
     `;
 
-    // Update conversation with title + activity
-    const titleHint = message.slice(0, 80) + (message.length > 80 ? '…' : '');
+    // Generate intelligent title from first meaningful user message
+    const titleHint = _generateTitle(message);
     await prisma.$executeRaw`
       UPDATE conversations
       SET

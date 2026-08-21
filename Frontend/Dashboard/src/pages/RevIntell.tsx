@@ -1,16 +1,24 @@
 /**
- * Rev Intell — Phase 4: Production Frontend
+ * Rev Intell — Production Frontend
+ * Phase 4 complete: real API, URL-based conversation routing, adaptive rendering
  *
- * Real pipeline:
- *   Merchant → POST /api/v1/rev/chat → Node → Python /orchestrate
- *   → Business State + Agents → 6-part response → ResponseCard
+ * Architecture:
+ *   URL is the source of truth for active conversation.
+ *   /dashboard/rev-intell           → welcome screen, no conversation
+ *   /dashboard/rev-intell/:id       → load and display that conversation
  *
- * No mocks. No getResponse(). No fake data.
- * Conversations persist in database and reload on mount.
+ *   Refresh preserves conversation.
+ *   Browser back/forward works.
+ *   Direct URL access works.
+ *   Tenant isolation: conversations verified server-side.
  */
 
-import { useState, useRef, useEffect, useCallback, FC } from "react";
+import {
+  useState, useRef, useEffect, useCallback, FC,
+  useMemo,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useParams, useNavigate } from "react-router-dom";
 import {
   Send, Plus, Menu, X, Copy, ThumbsUp, ThumbsDown,
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
@@ -24,13 +32,13 @@ import api, { ApiError } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ResponseType = "conversational" | "analysis" | "capability" | "clarification" | "error";
+type ResponseType =
+  | "chat" | "conversational" | "analysis"
+  | "capability" | "clarification" | "knowledge" | "error";
 
 interface RevResponse {
   response_type:   ResponseType;
-  // For conversational / capability / clarification / error
   text?:           string;
-  // For analysis
   situation?:      string;
   insight?:        string;
   implication?:    string;
@@ -52,46 +60,40 @@ interface Message {
 }
 
 interface Conversation {
-  id:              string;
-  title:           string;
-  message_count:   number;
+  id:               string;
+  title:            string;
+  message_count:    number;
   last_activity_at: string;
 }
 
-// ── Starter prompts ───────────────────────────────────────────────────────────
-const STARTERS = [
-  { icon: TrendingUp,   label: "Revenue Analysis",  sub: "What happened to my revenue this week?",      color: "#5865f2" },
-  { icon: ShoppingCart, label: "Cart Recovery",      sub: "Which carts should I prioritise recovering?", color: "#059669" },
-  { icon: Users,        label: "Churn Risk",         sub: "Which customers are about to leave?",         color: "#d97706" },
-  { icon: BarChart2,    label: "Morning Briefing",   sub: "What do I need to know today?",               color: "#7c3aed" },
-  { icon: Zap,          label: "Trending Products",  sub: "What's moving in my category right now?",     color: "#db2777" },
-  { icon: RefreshCw,    label: "Win-back Campaign",  sub: "Draft a sequence for inactive customers.",    color: "#0891b2" },
-];
+// ── Error message mapper ──────────────────────────────────────────────────────
 
-
-// ── Error message mapper — never expose technical details to merchants ─────────
-function _cleanErrorMessage(code?: string, _raw?: string): string {
+function cleanError(code?: string, _raw?: string): string {
   switch (code) {
-    case "INTELLIGENCE_TIMEOUT":
-      return "Rev is taking longer than usual to analyse your data. Please try again.";
-    case "INTELLIGENCE_UNAVAILABLE":
-      return "Rev is momentarily unavailable. Please try again in a few seconds.";
-    case "INTELLIGENCE_INVALID_RESPONSE":
-      return "Rev encountered an issue preparing your response. Please try again.";
-    case "INTELLIGENCE_AUTH_FAILED":
-      return "Rev is temporarily offline. Our team has been notified.";
-    case "INTELLIGENCE_NOT_CONFIGURED":
-      return "Rev Intelligence is being set up. Please check back shortly.";
-    case "RATE_LIMITED":
-      return "You're sending messages too quickly. Please wait a moment before trying again.";
-    case "VALIDATION_ERROR":
-      return "Your message couldn't be sent. Please check it and try again.";
-    default:
-      return "Rev couldn't process this right now. Please try again in a moment.";
+    case "INTELLIGENCE_TIMEOUT":      return "Rev is taking longer than usual. Try again.";
+    case "INTELLIGENCE_UNAVAILABLE":  return "Rev is momentarily unavailable. Try again in a moment.";
+    case "INTELLIGENCE_INVALID_RESPONSE": return "Rev had an issue preparing a response. Try again.";
+    case "INTELLIGENCE_AUTH_FAILED":  return "Rev intelligence is temporarily offline.";
+    case "INTELLIGENCE_NOT_CONFIGURED": return "Rev Intelligence is being set up. Check back shortly.";
+    case "RATE_LIMITED":              return "You're sending messages too quickly. Wait a moment.";
+    case "VALIDATION_ERROR":          return "Your message couldn't be sent. Please check and try again.";
+    default:                          return "Rev couldn't process this right now. Try again in a moment.";
   }
 }
 
-// ── Orbit orb — welcome screen hero ──────────────────────────────────────────
+// ── Starters ──────────────────────────────────────────────────────────────────
+
+const STARTERS = [
+  { icon: TrendingUp,   label: "Revenue",      sub: "What happened to my revenue this week?",       color: "#5865f2" },
+  { icon: ShoppingCart, label: "Cart Recovery", sub: "Which carts should I prioritise recovering?",  color: "#059669" },
+  { icon: Users,        label: "Churn Risk",   sub: "Which customers are about to leave?",          color: "#d97706" },
+  { icon: BarChart2,    label: "Briefing",     sub: "What do I need to know today?",                color: "#7c3aed" },
+  { icon: Zap,          label: "Trends",       sub: "What's moving in my category right now?",      color: "#db2777" },
+  { icon: RefreshCw,    label: "Win-back",     sub: "Draft a sequence for inactive customers.",     color: "#0891b2" },
+];
+
+// ── Orb components ────────────────────────────────────────────────────────────
+
 function OrbHero({ size = 90 }: { size?: number }) {
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
@@ -106,17 +108,10 @@ function OrbHero({ size = 90 }: { size?: number }) {
         <div style={{ position: "absolute", top: "50%", right: -3, width: 6, height: 6, borderRadius: "50%",
           background: "#7eb8ff", transform: "translateY(-50%)", boxShadow: "0 0 8px rgba(100,160,255,0.9)" }} />
       </motion.div>
-      <motion.div style={{ position: "absolute", inset: -size * 0.18, borderRadius: "50%",
-        border: "1px solid rgba(138,110,255,0.35)", zIndex: 1, transform: "rotate3d(1,0.3,0,55deg)" }}
-        animate={{ rotate: -360 }} transition={{ duration: 4.5, repeat: Infinity, ease: "linear" }}>
-        <div style={{ position: "absolute", top: -2.5, left: "50%", width: 4.5, height: 4.5, borderRadius: "50%",
-          background: "#b89fff", transform: "translateX(-50%)", boxShadow: "0 0 6px rgba(138,110,255,0.9)" }} />
-      </motion.div>
     </div>
   );
 }
 
-// ── Small orb avatar — message thread ────────────────────────────────────────
 function OrbAvatar() {
   return (
     <div style={{ position: "relative", width: 32, height: 32, flexShrink: 0, marginTop: 2 }}>
@@ -137,13 +132,15 @@ function OrbAvatar() {
   );
 }
 
-// ── Shimmer loading bars ──────────────────────────────────────────────────────
+// ── Loading shimmer ───────────────────────────────────────────────────────────
+
 function LoadingBar({ isDark }: { isDark: boolean }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4, paddingBottom: 4 }}>
       {[0.85, 0.65, 0.45].map((w, i) => (
         <motion.div key={i}
-          style={{ height: 10, borderRadius: 999, background: isDark ? "#1f2937" : "#e5e7eb",
+          style={{ height: 10, borderRadius: 999,
+            background: isDark ? "#1f2937" : "#e5e7eb",
             width: `${w * 100}%`, overflow: "hidden", position: "relative" }}>
           <motion.div
             style={{ position: "absolute", inset: 0, borderRadius: 999,
@@ -156,22 +153,44 @@ function LoadingBar({ isDark }: { isDark: boolean }) {
   );
 }
 
-// ── ResponseCard — renders all response types ────────────────────────────────
+// ── ResponseCard — adaptive to response type ──────────────────────────────────
+
+function renderMarkdown(text: string, t2: string) {
+  // Simple inline markdown: **bold**, `code`
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return parts.map((p, i) => {
+    if (p.startsWith("**") && p.endsWith("**"))
+      return <strong key={i}>{p.slice(2, -2)}</strong>;
+    if (p.startsWith("`") && p.endsWith("`"))
+      return <code key={i} style={{ fontFamily: "monospace", background: "rgba(88,101,242,0.1)", padding: "1px 4px", borderRadius: 4, fontSize: "0.85em" }}>{p.slice(1, -1)}</code>;
+    return <span key={i}>{p}</span>;
+  });
+}
+
 const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2: string }> = ({
   response, isDark, t1, t2,
 }) => {
   const type = response.response_type;
 
-  // Conversational, capability, clarification — plain text
-  if (type === "conversational" || type === "capability" || type === "clarification" || type === "error") {
+  // Plain text types: chat, conversational, capability, clarification, knowledge, error
+  if (type !== "analysis") {
+    const text = response.text || "";
+    if (!text) return null;
+
+    // Render with basic markdown support
+    const lines = text.split("\n").filter(Boolean);
     return (
-      <p style={{ fontSize: "0.86rem", lineHeight: 1.65, color: t2, margin: 0 }}>
-        {response.text || ""}
-      </p>
+      <div style={{ fontSize: "0.9rem", lineHeight: 1.7, color: t1 }}>
+        {lines.map((line, i) => (
+          <p key={i} style={{ margin: i > 0 ? "8px 0 0" : "0" }}>
+            {renderMarkdown(line, t2)}
+          </p>
+        ))}
+      </div>
     );
   }
 
-  // Analysis — 6-part structured
+  // Analysis: 6-part structured response
   const sections = [
     { label: "Situation",      text: response.situation },
     { label: "Insight",        text: response.insight },
@@ -179,60 +198,63 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
     { label: "Recommendation", text: response.recommendation },
   ].filter(s => s.text);
 
-  const confidencePct = response.confidence ? Math.round((response.confidence.score ?? 0) * 100) : null;
-  const confColor = confidencePct !== null
-    ? (confidencePct >= 75 ? "#059669" : confidencePct >= 50 ? "#d97706" : "#dc2626")
+  const conf = response.confidence;
+  const confPct = conf ? Math.round(conf.score * 100) : null;
+  const confColor = confPct !== null
+    ? (confPct >= 75 ? "#059669" : confPct >= 50 ? "#d97706" : "#dc2626")
     : "#9ca3af";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {sections.map(({ label, text }) => (
         <div key={label}>
-          <p style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "0.06em", color: "#5865f2", marginBottom: 4 }}>{label}</p>
-          <p style={{ fontSize: "0.84rem", lineHeight: 1.65, color: t2, margin: 0 }}>{text}</p>
+          <p style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase",
+            letterSpacing: "0.08em", color: "#5865f2", marginBottom: 5, margin: "0 0 5px" }}>
+            {label}
+          </p>
+          <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: t1, margin: 0 }}>
+            {renderMarkdown(text!, t2)}
+          </p>
         </div>
       ))}
 
-      {confidencePct !== null && response.confidence && (
+      {confPct !== null && conf && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
             padding: "4px 10px", borderRadius: 999,
             background: `${confColor}15`, border: `1px solid ${confColor}30` }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: confColor }} />
             <span style={{ fontSize: "0.72rem", fontWeight: 700, color: confColor }}>
-              {confidencePct}% confidence
+              {confPct}% confidence
             </span>
           </div>
-          {response.confidence.basis && (
-            <span style={{ fontSize: "0.7rem", color: t2 }}>{response.confidence.basis}</span>
+          {conf.basis && (
+            <span style={{ fontSize: "0.7rem", color: t2 }}>{conf.basis}</span>
           )}
         </div>
       )}
 
       {response.actions && response.actions.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {response.actions.map((action, i) => (
-              <button key={i} style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "7px 14px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 600,
-                background: "rgba(88,101,242,0.1)", color: "#5865f2",
-                border: "1px solid rgba(88,101,242,0.25)", cursor: "pointer",
-                fontFamily: "inherit", transition: "all 0.15s",
-              }}
-                onMouseEnter={e => (e.currentTarget.style.background = "rgba(88,101,242,0.18)")}
-                onMouseLeave={e => (e.currentTarget.style.background = "rgba(88,101,242,0.1)")}
-              >
-                <Zap size={11} />{action.label}
-              </button>
-            ))}
-          </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {response.actions.map((action, i) => (
+            <button key={i} style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "7px 14px", borderRadius: 999, fontSize: "0.8rem", fontWeight: 600,
+              background: "rgba(88,101,242,0.1)", color: "#5865f2",
+              border: "1px solid rgba(88,101,242,0.25)", cursor: "pointer",
+              fontFamily: "inherit", transition: "background 0.15s",
+            }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(88,101,242,0.18)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(88,101,242,0.1)")}
+            >
+              <Zap size={11} />{action.label}
+            </button>
+          ))}
         </div>
       )}
 
       {response.agents_used && response.agents_used.length > 0 && (
-        <p style={{ fontSize: "0.65rem", color: isDark ? "#374151" : "#d1d5db", margin: 0 }}>
+        <p style={{ fontSize: "0.65rem", color: isDark ? "#374151" : "#c4c9d4", margin: 0 }}>
           Analysed by: {response.agents_used.join(", ")} agent{response.agents_used.length > 1 ? "s" : ""}
         </p>
       )}
@@ -251,18 +273,18 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
   );
 };
 
-// ── Message bubble ─────────────────────────────────────────────────────────────
-function Bubble({
-  msg, onCopy, onRetry, isDark, t1, t2,
-}: {
+// ── Message bubble ────────────────────────────────────────────────────────────
+
+function Bubble({ msg, onCopy, onRetry, isDark, t1, t2 }: {
   msg: Message; onCopy: (t: string) => void;
   onRetry: () => void; isDark: boolean; t1: string; t2: string;
 }) {
   const isRev = msg.role === "rev";
 
   if (!isRev) return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end mb-5">
-      <div className="max-w-[72%] px-4 py-3 rounded-2xl rounded-tr-md text-[0.86rem] leading-relaxed text-white"
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      className="flex justify-end mb-5">
+      <div className="max-w-[72%] px-4 py-3 rounded-2xl rounded-tr-md text-[0.9rem] leading-relaxed text-white"
         style={{ background: "linear-gradient(135deg,#5865f2,#4a55e8)" }}>
         {typeof msg.content === "string" ? msg.content : ""}
       </div>
@@ -270,69 +292,60 @@ function Bubble({
   );
 
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3 mb-7 group">
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      className="flex gap-3 mb-7 group">
       <OrbAvatar />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-[0.73rem] font-bold" style={{ color: t1 }}>Rev Intelligence</span>
-          <span className="text-[0.65rem]" style={{ color: isDark ? "#374151" : "#d1d5db" }}>
+          <span className="text-[0.65rem]" style={{ color: isDark ? "#374151" : "#c4c9d4" }}>
             {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
 
-        {/* Loading */}
         {msg.isStreaming && <LoadingBar isDark={isDark} />}
 
-        {/* Error state */}
         {msg.hasError && !msg.isStreaming && (
-          <div style={{
-            display: "flex", alignItems: "flex-start", gap: 10,
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10,
             padding: "12px 14px", borderRadius: 12,
-            background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.18)",
-          }}>
+            background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.18)" }}>
             <AlertCircle size={15} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: "0.82rem", color: "#dc2626", margin: "0 0 10px", fontWeight: 600 }}>
-                {typeof msg.content === "string" ? msg.content : "Rev is taking a moment. Please try again."}
+              <p style={{ fontSize: "0.86rem", color: "#dc2626", margin: "0 0 8px", fontWeight: 600 }}>
+                {typeof msg.content === "string" ? msg.content : "Rev encountered an issue."}
               </p>
               <button onClick={onRetry}
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 5,
-                  padding: "5px 12px", borderRadius: 999, fontSize: "0.75rem", fontWeight: 600,
+                style={{ display: "inline-flex", alignItems: "center", gap: 5,
+                  padding: "5px 12px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 600,
                   background: "rgba(220,38,38,0.1)", color: "#dc2626",
-                  border: "1px solid rgba(220,38,38,0.25)", cursor: "pointer", fontFamily: "inherit",
-                }}>
+                  border: "1px solid rgba(220,38,38,0.25)", cursor: "pointer", fontFamily: "inherit" }}>
                 <RefreshCcw size={12} />Try again
               </button>
             </div>
           </div>
         )}
 
-        {/* Real Rev response */}
         {!msg.isStreaming && !msg.hasError && msg.content && (
-          typeof msg.content === "object" && (msg.content as RevResponse).response_type ? (
-            <ResponseCard response={msg.content as RevResponse} isDark={isDark} t1={t1} t2={t2} />
-          ) : (
-            <p style={{ fontSize: "0.84rem", lineHeight: 1.65, color: t2, margin: 0 }}>
-              {typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}
-            </p>
-          )
+          typeof msg.content === "object" && "response_type" in (msg.content as object)
+            ? <ResponseCard response={msg.content as RevResponse} isDark={isDark} t1={t1} t2={t2} />
+            : <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: t1, margin: 0 }}>
+                {String(msg.content)}
+              </p>
         )}
 
-        {/* Message actions */}
         {!msg.isStreaming && !msg.hasError && (
           <div className="flex items-center gap-0.5 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
             {[
-              { icon: Copy,       label: "Copy",   fn: () => onCopy(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)) },
-              { icon: ThumbsUp,   label: "Good",   fn: () => {} },
-              { icon: ThumbsDown, label: "Bad",    fn: () => {} },
-              { icon: RotateCcw,  label: "Retry",  fn: onRetry },
+              { icon: Copy,       label: "Copy",  fn: () => onCopy(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)) },
+              { icon: ThumbsUp,   label: "Good",  fn: () => {} },
+              { icon: ThumbsDown, label: "Bad",   fn: () => {} },
+              { icon: RotateCcw,  label: "Retry", fn: onRetry },
             ].map(({ icon: Icon, label, fn }) => (
               <button key={label} onClick={fn}
                 className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors"
-                style={{ color: isDark ? "#374151" : "#d1d5db", fontFamily: "inherit" }}
+                style={{ color: isDark ? "#374151" : "#c4c9d4", fontFamily: "inherit" }}
                 onMouseEnter={e => (e.currentTarget.style.color = t1)}
-                onMouseLeave={e => (e.currentTarget.style.color = isDark ? "#374151" : "#d1d5db")}>
+                onMouseLeave={e => (e.currentTarget.style.color = isDark ? "#374151" : "#c4c9d4")}>
                 <Icon size={11} />{label}
               </button>
             ))}
@@ -343,11 +356,13 @@ function Bubble({
   );
 }
 
-// ── Plus attachment dropdown ──────────────────────────────────────────────────
-function AttachMenu({ onFile, onMedia, card, border, t1, t2 }:
-  { onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onMedia: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    card: string; border: string; t1: string; t2: string }) {
+// ── Attach dropdown ───────────────────────────────────────────────────────────
+
+function AttachMenu({ onFile, onMedia, card, border, t1, t2 }: {
+  onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onMedia: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  card: string; border: string; t1: string; t2: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ position: "relative" }}>
@@ -362,8 +377,8 @@ function AttachMenu({ onFile, onMedia, card, border, t1, t2 }:
             <motion.div initial={{ opacity: 0, y: 6, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.95 }} transition={{ duration: 0.15 }}
               style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 20,
-                background: card, border: `1px solid ${border}`,
-                borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.15)", padding: "6px", minWidth: 180 }}>
+                background: card, border: `1px solid ${border}`, borderRadius: 14,
+                boxShadow: "0 8px 32px rgba(0,0,0,0.15)", padding: "6px", minWidth: 180 }}>
               <label onClick={() => setOpen(false)}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[0.8rem] font-medium cursor-pointer transition-colors hover:bg-black/5"
                 style={{ color: t1 }}>
@@ -387,13 +402,14 @@ function AttachMenu({ onFile, onMedia, card, border, t1, t2 }:
 }
 
 // ── Input toolbar ─────────────────────────────────────────────────────────────
+
 function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disabled,
   onSend, onFile, onMedia, onVoice, onCall, thinking, card, border, t1, t2, isDark }: {
   inputRef: React.RefObject<HTMLTextAreaElement>;
   value: string; onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
-  placeholder: string; disabled?: boolean; onSend: () => void;
-  onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder: string; disabled?: boolean;
+  onSend: () => void; onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onMedia: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onVoice: () => void; onCall: () => void; thinking: boolean;
   card: string; border: string; t1: string; t2: string; isDark: boolean;
@@ -438,9 +454,10 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
 }
 
 // ── Conversation history item ─────────────────────────────────────────────────
+
 function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 }: {
-  conv: Conversation; isActive: boolean; onClick: () => void;
-  onDelete: () => void; onRename: () => void;
+  conv: Conversation; isActive: boolean;
+  onClick: () => void; onDelete: () => void; onRename: () => void;
   isDark: boolean; t1: string; t4: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -449,7 +466,8 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
       style={{ background: isActive ? (isDark ? "rgba(88,101,242,0.15)" : "rgba(88,101,242,0.08)") : "transparent" }}
       onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"; }}
       onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
-      <button onClick={onClick} className="flex-1 text-left px-3 py-2.5 text-[0.8rem] font-medium truncate min-w-0"
+      <button onClick={onClick}
+        className="flex-1 text-left px-3 py-2.5 text-[0.8rem] font-medium truncate min-w-0"
         style={{ color: isActive ? "#5865f2" : t1 }}>
         {conv.title || "Untitled conversation"}
       </button>
@@ -489,102 +507,165 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+
 export default function RevIntell() {
   const { user } = useAuth();
   const theme = useThemeStore((s) => s.theme);
   const isDark = theme === "dark";
   const firstName = user?.full_name?.split(" ")[0] ?? "there";
 
+  // URL is the source of truth for the active conversation
+  const { conversationId: urlConvId } = useParams<{ conversationId?: string }>();
+  const navigate = useNavigate();
+
   const [conversations,  setConversations]  = useState<Conversation[]>([]);
-  const [activeId,       setActiveId]       = useState<string | null>(null);
+  const [activeId,       setActiveId]       = useState<string | null>(urlConvId || null);
   const [messages,       setMessages]       = useState<Message[]>([]);
   const [input,          setInput]          = useState("");
   const [thinking,       setThinking]       = useState(false);
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [copied,         setCopied]         = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [convLoading,    setConvLoading]    = useState(false);
   const [lastUserMsg,    setLastUserMsg]    = useState<string>("");
+  const [convNotFound,   setConvNotFound]   = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
 
+  // Scroll to bottom when messages change
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, thinking]);
 
-  // Load conversation list on mount
-  useEffect(() => {
-    loadConversations();
-  }, []);
-
-  const loadConversations = async () => {
+  // ── Load conversations list ───────────────────────────────────────────────
+  const loadConversations = useCallback(async () => {
     setHistoryLoading(true);
     try {
       const res = await api.get<{ data: Conversation[] }>("/rev/conversations");
       const data = (res as any)?.data?.data ?? (res as any)?.data ?? [];
       setConversations(Array.isArray(data) ? data : []);
     } catch {
-      // Silently fail — user just won't see history
+      // Silent fail — sidebar just shows empty
     } finally {
       setHistoryLoading(false);
     }
-  };
-
-  const loadConversation = async (convId: string) => {
-    setActiveId(convId);
-    setMenuOpen(false);
-    setMessages([]);
-    try {
-      const res = await api.get<{ data: { messages: Array<{ id: string; role: string; content: unknown; created_at: string }> } }>(
-        `/rev/conversation/${convId}`
-      );
-      const msgs = (res as any)?.data?.data?.messages ?? (res as any)?.data?.messages ?? [];
-      const parsed: Message[] = msgs.map((m: any) => ({
-        id:        m.id,
-        role:      m.role as "user" | "rev",
-        content:   typeof m.content === "object" && m.content !== null && "situation" in m.content
-          ? m.content as RevResponse
-          : typeof m.content === "object" && m.content !== null && "text" in m.content
-          ? (m.content as any).text
-          : m.content,
-        timestamp: new Date(m.created_at),
-        hasError:  m.has_error,
-      }));
-      setMessages(parsed);
-    } catch {
-      setMessages([]);
-    }
-  };
-
-  const newChat = useCallback(() => {
-    setActiveId(null);
-    setMessages([]);
-    setMenuOpen(false);
-    setInput("");
-    setTimeout(() => inputRef.current?.focus(), 60);
   }, []);
 
+  // ── Load specific conversation ────────────────────────────────────────────
+  const loadConversation = useCallback(async (convId: string) => {
+    setConvNotFound(false);
+    setConvLoading(true);
+    setMessages([]);
+
+    try {
+      const res = await api.get<{
+        data: {
+          messages: Array<{
+            id: string; role: string; content: unknown;
+            created_at: string; has_error?: boolean;
+          }>;
+        };
+      }>(`/rev/conversation/${convId}`);
+
+      const msgs = (res as any)?.data?.data?.messages
+                ?? (res as any)?.data?.messages
+                ?? [];
+
+      const parsed: Message[] = msgs.map((m: any) => {
+        let content: string | RevResponse = "";
+        const raw = m.content;
+        if (typeof raw === "object" && raw !== null) {
+          if ("response_type" in raw) {
+            content = raw as RevResponse;
+          } else if ("text" in raw) {
+            content = (raw as any).text || "";
+          } else if ("situation" in raw) {
+            content = { response_type: "analysis", ...raw } as RevResponse;
+          } else {
+            content = JSON.stringify(raw);
+          }
+        } else if (typeof raw === "string") {
+          try {
+            const parsed2 = JSON.parse(raw);
+            if ("response_type" in parsed2) content = parsed2 as RevResponse;
+            else if ("text" in parsed2) content = parsed2.text || "";
+            else content = raw;
+          } catch { content = raw; }
+        }
+        return {
+          id:        m.id,
+          role:      m.role as "user" | "rev",
+          content,
+          timestamp: new Date(m.created_at),
+          hasError:  m.has_error || false,
+        };
+      });
+
+      setMessages(parsed);
+    } catch (err: any) {
+      if (err?.status === 404 || err?.status === 403) {
+        setConvNotFound(true);
+      }
+    } finally {
+      setConvLoading(false);
+    }
+  }, []);
+
+  // ── URL → state sync (on mount and when URL changes) ─────────────────────
+  useEffect(() => {
+    if (urlConvId) {
+      if (urlConvId !== activeId) {
+        setActiveId(urlConvId);
+        loadConversation(urlConvId);
+      }
+    } else {
+      // No conversationId in URL = welcome screen
+      setActiveId(null);
+      setMessages([]);
+      setConvNotFound(false);
+    }
+  }, [urlConvId]); // intentionally not including activeId/loadConversation to avoid loops
+
+  // Load sidebar on mount
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  // ── New chat ──────────────────────────────────────────────────────────────
+  const newChat = useCallback(() => {
+    setMenuOpen(false);
+    setInput("");
+    setMessages([]);
+    setConvNotFound(false);
+    navigate("/dashboard/rev-intell");
+  }, [navigate]);
+
+  // ── Navigate to conversation ──────────────────────────────────────────────
+  const openConversation = useCallback((convId: string) => {
+    setMenuOpen(false);
+    navigate(`/dashboard/rev-intell/${convId}`);
+    // URL change triggers the useEffect above which loads the conversation
+  }, [navigate]);
+
+  // ── Send message ──────────────────────────────────────────────────────────
   const send = useCallback(async (text: string, isRetry = false) => {
     if (!text.trim() || thinking) return;
     const trimmed = text.trim();
+
     if (!isRetry) {
       setLastUserMsg(trimmed);
       setInput("");
       if (inputRef.current) inputRef.current.style.height = "auto";
-    }
-
-    // Add user message to local state
-    if (!isRetry) {
-      const userMsg: Message = {
+      // Add user message optimistically
+      setMessages(prev => [...prev, {
         id: `u${Date.now()}`, role: "user", content: trimmed, timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, userMsg]);
+      }]);
     }
 
-    // Add streaming placeholder
+    // Streaming placeholder
     const sid = `r${Date.now()}`;
-    const streamMsg: Message = {
+    setMessages(prev => [...prev, {
       id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true,
-    };
-    setMessages(prev => [...prev, streamMsg]);
+    }]);
     setThinking(true);
 
     try {
@@ -595,6 +676,8 @@ export default function RevIntell() {
         success: boolean;
         conversation_id: string;
         message_id: string;
+        response_type: string;
+        text: string | null;
         response: RevResponse;
         error?: { code: string; message: string };
       }>("/rev/chat", body);
@@ -604,49 +687,54 @@ export default function RevIntell() {
       if (!data?.success) {
         setMessages(prev => prev.map(m => m.id === sid ? {
           ...m, isStreaming: false, hasError: true,
-          content: _cleanErrorMessage(data?.error?.code, data?.error?.message),
+          content: cleanError(data?.error?.code, data?.error?.message),
           errorCode: data?.error?.code,
         } : m));
       } else {
-        if (!activeId && data.conversation_id) {
-          setActiveId(data.conversation_id);
-          loadConversations();
+        // Navigate to conversation URL if this is a new conversation
+        const convId = data.conversation_id;
+        if (convId && convId !== activeId) {
+          setActiveId(convId);
+          navigate(`/dashboard/rev-intell/${convId}`, { replace: true });
+          loadConversations(); // refresh sidebar
         }
-        // Build RevResponse from the flat orchestrator response
+
+        // Build RevResponse
+        const rType = (data.response_type || "analysis") as ResponseType;
         const revResponse: RevResponse = {
-          response_type: (data.response_type || "analysis") as any,
-          text: data.text,
-          situation:      data.response?.situation      || data.situation,
-          insight:        data.response?.insight        || data.insight,
-          implication:    data.response?.implication    || data.implication,
-          recommendation: data.response?.recommendation || data.recommendation,
-          confidence: data.response?.confidence || (
+          response_type: rType,
+          text: data.text ?? data.response?.text,
+          situation:      data.response?.situation,
+          insight:        data.response?.insight,
+          implication:    data.response?.implication,
+          recommendation: data.response?.recommendation,
+          confidence:     data.response?.confidence ?? (
             data.confidence_score !== undefined
               ? { score: data.confidence_score, basis: data.confidence_basis || "" }
               : undefined
           ),
-          actions:    data.response?.actions    || data.actions    || [],
-          agents_used: data.meta?.agents_used  || data.agents_used || [],
-          warnings:   data.response?.warnings  || data.warnings   || [],
+          actions:     data.response?.actions     || data.actions    || [],
+          agents_used: data.meta?.agents_used     || data.agents_used || [],
+          warnings:    data.response?.warnings    || data.warnings   || [],
         };
+
         setMessages(prev => prev.map(m => m.id === sid ? {
           ...m, isStreaming: false, content: revResponse,
         } : m));
       }
     } catch (err) {
-      const errorMsg = err instanceof ApiError
-        ? _cleanErrorMessage(String(err.status), err.message)
+      const msg = err instanceof ApiError
+        ? cleanError(String((err as any).status), err.message)
         : "Rev is taking a moment. Please try again shortly.";
       setMessages(prev => prev.map(m => m.id === sid ? {
-        ...m, isStreaming: false, hasError: true, content: errorMsg,
+        ...m, isStreaming: false, hasError: true, content: msg,
       } : m));
     } finally {
       setThinking(false);
     }
-  }, [activeId, thinking]);
+  }, [activeId, thinking, navigate]);
 
   const handleRetry = useCallback(() => {
-    // Remove last rev message and retry with last user message
     setMessages(prev => {
       const lastRevIdx = [...prev].reverse().findIndex(m => m.role === "rev");
       if (lastRevIdx === -1) return prev;
@@ -681,7 +769,7 @@ export default function RevIntell() {
   const handleVoice = () => alert("Voice messages coming soon.");
   const handleCall  = () => alert("Audio call booking coming soon.");
 
-  const deleteConv = async (id: string) => {
+  const deleteConv = (id: string) => {
     setConversations(prev => prev.filter(c => c.id !== id));
     if (activeId === id) newChat();
   };
@@ -697,18 +785,18 @@ export default function RevIntell() {
   const bg   = isDark ? "#111"    : "#f7f8fc";
   const card = isDark ? "#171717" : "#ffffff";
   const bdr  = isDark ? "#222"    : "#e8eaf0";
-  const t1   = isDark ? "#fff"    : "#1a1a2e";
-  const t2   = isDark ? "#9ca3af" : "#6b7280";
+  const t1   = isDark ? "#f1f5f9" : "#1a1a2e";
+  const t2   = isDark ? "#94a3b8" : "#64748b";
   const t4   = isDark ? "#374151" : "#d1d5db";
 
-  const commonInputProps = {
+  const inputProps = {
     inputRef, value: input, onChange: resize, onKeyDown: handleKey,
     onSend: () => send(input), onFile: handleFile, onMedia: handleMedia,
     onVoice: handleVoice, onCall: handleCall, thinking,
     card, border: bdr, t1, t2, isDark,
   };
 
-  const hasConversation = messages.length > 0;
+  const hasMessages = messages.length > 0;
 
   return (
     <div className="relative flex flex-col overflow-hidden"
@@ -723,7 +811,7 @@ export default function RevIntell() {
         </button>
       </div>
 
-      {/* Glassmorphic sidebar */}
+      {/* Sidebar */}
       <AnimatePresence>
         {menuOpen && (
           <>
@@ -741,6 +829,7 @@ export default function RevIntell() {
                 backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
                 borderLeft: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)"}`,
                 boxShadow: "-16px 0 60px rgba(0,0,0,0.2)" }}>
+
               <div className="flex items-center justify-between px-5 pt-5 pb-4"
                 style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
                 <div className="flex items-center gap-2.5">
@@ -775,8 +864,9 @@ export default function RevIntell() {
                       Recent
                     </p>
                     {conversations.map(conv => (
-                      <ConvItem key={conv.id} conv={conv} isActive={activeId === conv.id}
-                        onClick={() => loadConversation(conv.id)}
+                      <ConvItem key={conv.id} conv={conv}
+                        isActive={activeId === conv.id}
+                        onClick={() => openConversation(conv.id)}
                         onDelete={() => deleteConv(conv.id)}
                         onRename={() => renameConv(conv.id)}
                         isDark={isDark} t1={t1} t4={t4} />
@@ -789,10 +879,36 @@ export default function RevIntell() {
         )}
       </AnimatePresence>
 
-      {/* Scrollable chat area */}
+      {/* Main content */}
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
-        {!hasConversation ? (
-          /* Welcome screen */
+
+        {/* Conversation loading */}
+        {convLoading && (
+          <div className="flex items-center justify-center h-full">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-6 h-6 rounded-full border-2 border-t-transparent border-[#5865f2] animate-spin" />
+              <p className="text-[0.8rem]" style={{ color: t2 }}>Loading conversation...</p>
+            </div>
+          </div>
+        )}
+
+        {/* Conversation not found */}
+        {convNotFound && !convLoading && (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <p className="text-[1rem] font-semibold mb-2" style={{ color: t1 }}>Conversation not found</p>
+              <p className="text-[0.85rem] mb-4" style={{ color: t2 }}>This conversation doesn't exist or you don't have access.</p>
+              <button onClick={newChat}
+                className="px-4 py-2 rounded-xl text-[0.85rem] font-semibold text-white"
+                style={{ background: "#5865f2" }}>
+                Start new chat
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Welcome screen */}
+        {!hasMessages && !convLoading && !convNotFound && !activeId && (
           <div className="flex flex-col items-center justify-start min-h-full px-6 pt-16 pb-6 max-w-2xl mx-auto w-full">
             <motion.div initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }} className="mb-6">
@@ -814,7 +930,7 @@ export default function RevIntell() {
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }} className="w-full mb-7">
-              <InputToolbar {...commonInputProps} placeholder="Ask me anything about your business…" />
+              <InputToolbar {...inputProps} placeholder="Ask me anything about your business..." />
             </motion.div>
 
             <div className="grid grid-cols-3 gap-3 w-full">
@@ -832,8 +948,10 @@ export default function RevIntell() {
               ))}
             </div>
           </div>
-        ) : (
-          /* Message thread */
+        )}
+
+        {/* Message thread */}
+        {hasMessages && !convLoading && (
           <div className="max-w-2xl mx-auto px-5 pt-14 pb-4">
             {messages.map(msg => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
@@ -845,12 +963,12 @@ export default function RevIntell() {
       </div>
 
       {/* Sticky input — active conversation */}
-      {hasConversation && (
+      {hasMessages && !convLoading && (
         <div className="shrink-0 px-4 pb-4 pt-2 border-t" style={{ borderColor: bdr, background: bg }}>
           <div className="max-w-2xl mx-auto">
-            <InputToolbar {...commonInputProps} placeholder="Ask Rev anything…" disabled={thinking} />
+            <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking} />
             <p className="text-center text-[0.63rem] mt-2" style={{ color: t4 }}>
-              Rev Intelligence · Powered by your real store data · Responses grounded in evidence
+              Rev Intelligence · Powered by your store data · Responses grounded in evidence
             </p>
           </div>
         </div>
@@ -859,7 +977,8 @@ export default function RevIntell() {
       {/* Copy toast */}
       <AnimatePresence>
         {copied && (
-          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
             className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full text-[0.8rem] shadow-lg"
             style={{ background: card, border: `1px solid ${bdr}`, color: t1 }}>
             <Copy size={12} />Copied
