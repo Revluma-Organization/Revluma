@@ -33,8 +33,8 @@ import api, { ApiError } from "@/lib/api";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ResponseType =
-  | "chat" | "conversational" | "analysis"
-  | "capability" | "clarification" | "knowledge" | "error";
+  | "chat" | "conversational" | "analysis" | "capability"
+  | "clarification" | "knowledge" | "action_plan" | "error";
 
 interface RevResponse {
   response_type:   ResponseType;
@@ -155,16 +155,63 @@ function LoadingBar({ isDark }: { isDark: boolean }) {
 
 // ── ResponseCard — adaptive to response type ──────────────────────────────────
 
-function renderMarkdown(text: string, t2: string) {
-  // Simple inline markdown: **bold**, `code`
+function renderInline(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   return parts.map((p, i) => {
     if (p.startsWith("**") && p.endsWith("**"))
-      return <strong key={i}>{p.slice(2, -2)}</strong>;
+      return <strong key={i} style={{ fontWeight: 650 }}>{p.slice(2, -2)}</strong>;
     if (p.startsWith("`") && p.endsWith("`"))
-      return <code key={i} style={{ fontFamily: "monospace", background: "rgba(88,101,242,0.1)", padding: "1px 4px", borderRadius: 4, fontSize: "0.85em" }}>{p.slice(1, -1)}</code>;
+      return <code key={i} style={{ fontFamily: "ui-monospace, monospace",
+        background: "rgba(88,101,242,0.12)", padding: "1px 5px",
+        borderRadius: 4, fontSize: "0.86em" }}>{p.slice(1, -1)}</code>;
     return <span key={i}>{p}</span>;
   });
+}
+
+/** Renders paragraphs, bullets and numbered steps with real hierarchy. */
+function RichText({ text, t1 }: { text: string; t1: string }) {
+  const blocks = text.split(/\n{2,}/).filter(b => b.trim());
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {blocks.map((block, bi) => {
+        const lines = block.split("\n").filter(l => l.trim());
+        const isBullet = lines.every(l => /^\s*[-*•]\s+/.test(l));
+        const isNumber = lines.every(l => /^\s*\d+[.)]\s+/.test(l));
+
+        if (isBullet && lines.length) {
+          return (
+            <ul key={bi} style={{ margin: 0, paddingLeft: 18,
+              display: "flex", flexDirection: "column", gap: 6 }}>
+              {lines.map((l, li) => (
+                <li key={li} style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
+                  {renderInline(l.replace(/^\s*[-*•]\s+/, ""))}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        if (isNumber && lines.length) {
+          return (
+            <ol key={bi} style={{ margin: 0, paddingLeft: 20,
+              display: "flex", flexDirection: "column", gap: 6 }}>
+              {lines.map((l, li) => (
+                <li key={li} style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
+                  {renderInline(l.replace(/^\s*\d+[.)]\s+/, ""))}
+                </li>
+              ))}
+            </ol>
+          );
+        }
+        return (
+          <p key={bi} style={{ fontSize: "0.92rem", lineHeight: 1.7, color: t1, margin: 0 }}>
+            {lines.map((l, li) => (
+              <span key={li}>{renderInline(l)}{li < lines.length - 1 ? <br /> : null}</span>
+            ))}
+          </p>
+        );
+      })}
+    </div>
+  );
 }
 
 const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2: string }> = ({
@@ -172,22 +219,11 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
 }) => {
   const type = response.response_type;
 
-  // Plain text types: chat, conversational, capability, clarification, knowledge, error
+  // Every non-analysis type renders as rich text, not a report card
   if (type !== "analysis") {
     const text = response.text || "";
     if (!text) return null;
-
-    // Render with basic markdown support
-    const lines = text.split("\n").filter(Boolean);
-    return (
-      <div style={{ fontSize: "0.9rem", lineHeight: 1.7, color: t1 }}>
-        {lines.map((line, i) => (
-          <p key={i} style={{ margin: i > 0 ? "8px 0 0" : "0" }}>
-            {renderMarkdown(line, t2)}
-          </p>
-        ))}
-      </div>
-    );
+    return <RichText text={text} t1={t1} />;
   }
 
   // Analysis: 6-part structured response
@@ -212,9 +248,7 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
             letterSpacing: "0.08em", color: "#5865f2", marginBottom: 5, margin: "0 0 5px" }}>
             {label}
           </p>
-          <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: t1, margin: 0 }}>
-            {renderMarkdown(text!, t2)}
-          </p>
+          <RichText text={text!} t1={t1} />
         </div>
       ))}
 
@@ -700,6 +734,7 @@ export default function RevIntell() {
 
         // Build RevResponse
         const rType = (data.response_type || "analysis") as ResponseType;
+        const rIntent = data.intent || undefined;
         const revResponse: RevResponse = {
           response_type: rType,
           text: data.text ?? data.response?.text,
