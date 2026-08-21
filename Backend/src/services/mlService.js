@@ -53,10 +53,10 @@ const ML_ERRORS = {
 };
 
 // ── Required fields in a valid /orchestrate response ─────────────────────────
-const REQUIRED_RESPONSE_FIELDS = [
-  'situation', 'insight', 'implication',
-  'recommendation', 'confidence_score', 'actions',
-];
+// Required for all response types
+const REQUIRED_RESPONSE_FIELDS_BASE = ['response_type', 'conversation_id', 'message_id'];
+// Required for analysis responses
+const REQUIRED_RESPONSE_FIELDS_ANALYSIS = ['situation', 'insight', 'implication', 'recommendation'];
 
 // ── Python request builder ────────────────────────────────────────────────────
 
@@ -82,17 +82,26 @@ function buildOrchestrateRequest({
 function validateOrchestrateResponse(data) {
   if (!data || typeof data !== 'object') return false;
 
-  for (const field of REQUIRED_RESPONSE_FIELDS) {
+  // Must have response_type
+  if (!data.response_type) return false;
+
+  const validTypes = ['conversational', 'analysis', 'capability', 'clarification', 'error'];
+  if (!validTypes.includes(data.response_type)) return false;
+
+  // For non-analysis types, just need text or a message
+  if (data.response_type !== 'analysis') {
+    return true;
+  }
+
+  // For analysis type, validate all 6-part fields
+  for (const field of REQUIRED_RESPONSE_FIELDS_ANALYSIS) {
     if (!(field in data)) return false;
   }
 
-  if (typeof data.confidence_score !== 'number') return false;
-  if (data.confidence_score < 0 || data.confidence_score > 1) return false;
-  if (!Array.isArray(data.actions)) return false;
+  if (!Array.isArray(data.actions)) data.actions = [];
 
-  // Truncate any overlong fields (defence against malformed upstream response)
-  const TEXT_FIELDS = ['situation', 'insight', 'implication', 'recommendation'];
-  for (const f of TEXT_FIELDS) {
+  // Truncate overlong fields
+  for (const f of REQUIRED_RESPONSE_FIELDS_ANALYSIS) {
     if (typeof data[f] === 'string' && data[f].length > 2000) {
       data[f] = data[f].slice(0, 2000);
     }

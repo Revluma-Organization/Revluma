@@ -353,15 +353,13 @@ class OrchestrateRequest(BaseModel):
 async def orchestrate_endpoint(req: OrchestrateRequest):
     """
     Rev Intelligence orchestration endpoint.
-    Authenticated via X-Internal-Key header (same as /predict/* endpoints).
-    Runs the full intelligence pipeline and returns a 6-part structured response.
-    Never returns 500 — always returns a safe structured response.
+    Returns multi-type response: conversational | analysis | capability | clarification | error.
+    Never returns 500.
     """
     import asyncio
 
     db = _Session()
     try:
-        # Run synchronous pipeline in thread pool to not block async event loop
         result = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: _orchestrate(
@@ -375,24 +373,18 @@ async def orchestrate_endpoint(req: OrchestrateRequest):
         return result.to_dict()
     except Exception as e:
         import uuid as _uuid
-        # Never propagate internal details to caller
         return {
             "success": False,
             "conversation_id": req.conversation_id or str(_uuid.uuid4()),
             "message_id": str(_uuid.uuid4()),
-            "situation": "I encountered a temporary issue.",
-            "insight": "This is not related to your business data.",
-            "implication": "No data was lost.",
-            "recommendation": "Please try again in a moment.",
-            "confidence_score": 0.0,
-            "confidence_basis": "Error response",
-            "actions": [],
-            "agents_used": [],
-            "business_state_age_minutes": 0.0,
-            "business_state_id": None,
-            "warnings": ["Orchestration error — temporary"],
-            "correlation_id": str(_uuid.uuid4()),
-            "latency_ms": 0,
+            "response_type": "error",
+            "text": "Something went wrong. Please try again in a moment.",
+            "situation": None, "insight": None, "implication": None,
+            "recommendation": None, "confidence_score": None,
+            "confidence_basis": None, "actions": [],
+            "agents_used": [], "business_state_age_minutes": 0.0,
+            "business_state_id": None, "warnings": [],
+            "correlation_id": str(_uuid.uuid4()), "latency_ms": 0,
         }
     finally:
         db.close()

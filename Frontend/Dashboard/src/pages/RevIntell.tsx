@@ -24,15 +24,21 @@ import api, { ApiError } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type ResponseType = "conversational" | "analysis" | "capability" | "clarification" | "error";
+
 interface RevResponse {
-  situation:      string;
-  insight:        string;
-  implication:    string;
-  recommendation: string;
-  confidence:     { score: number; basis: string };
-  actions:        Array<{ label: string; tool: string | null; params: Record<string, unknown> }>;
-  agents_used:    string[];
-  warnings:       string[];
+  response_type:   ResponseType;
+  // For conversational / capability / clarification / error
+  text?:           string;
+  // For analysis
+  situation?:      string;
+  insight?:        string;
+  implication?:    string;
+  recommendation?: string;
+  confidence?:     { score: number; basis: string };
+  actions?:        Array<{ label: string; tool: string | null; params: Record<string, unknown> }>;
+  agents_used?:    string[];
+  warnings?:       string[];
 }
 
 interface Message {
@@ -150,23 +156,36 @@ function LoadingBar({ isDark }: { isDark: boolean }) {
   );
 }
 
-// ── ResponseCard — renders the real 6-part Rev response ─────────────────────
+// ── ResponseCard — renders all response types ────────────────────────────────
 const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2: string }> = ({
   response, isDark, t1, t2,
 }) => {
+  const type = response.response_type;
+
+  // Conversational, capability, clarification — plain text
+  if (type === "conversational" || type === "capability" || type === "clarification" || type === "error") {
+    return (
+      <p style={{ fontSize: "0.86rem", lineHeight: 1.65, color: t2, margin: 0 }}>
+        {response.text || ""}
+      </p>
+    );
+  }
+
+  // Analysis — 6-part structured
   const sections = [
     { label: "Situation",      text: response.situation },
     { label: "Insight",        text: response.insight },
     { label: "Implication",    text: response.implication },
     { label: "Recommendation", text: response.recommendation },
-  ];
+  ].filter(s => s.text);
 
-  const confidencePct = Math.round((response.confidence?.score ?? 0) * 100);
-  const confColor = confidencePct >= 75 ? "#059669" : confidencePct >= 50 ? "#d97706" : "#dc2626";
+  const confidencePct = response.confidence ? Math.round((response.confidence.score ?? 0) * 100) : null;
+  const confColor = confidencePct !== null
+    ? (confidencePct >= 75 ? "#059669" : confidencePct >= 50 ? "#d97706" : "#dc2626")
+    : "#9ca3af";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* 4 text sections */}
       {sections.map(({ label, text }) => (
         <div key={label}>
           <p style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase",
@@ -175,14 +194,11 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
         </div>
       ))}
 
-      {/* Confidence badge */}
-      {response.confidence && (
+      {confidencePct !== null && response.confidence && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
             padding: "4px 10px", borderRadius: 999,
-            background: `${confColor}15`, border: `1px solid ${confColor}30`,
-          }}>
+            background: `${confColor}15`, border: `1px solid ${confColor}30` }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: confColor }} />
             <span style={{ fontSize: "0.72rem", fontWeight: 700, color: confColor }}>
               {confidencePct}% confidence
@@ -194,46 +210,37 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
         </div>
       )}
 
-      {/* Action pills */}
       {response.actions && response.actions.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-          <p style={{ fontSize: "0.7rem", fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "0.06em", color: t2, margin: 0 }}>Next steps</p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {response.actions.map((action, i) => (
-              <button key={i}
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  padding: "7px 14px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 600,
-                  background: "rgba(88,101,242,0.1)", color: "#5865f2",
-                  border: "1px solid rgba(88,101,242,0.25)", cursor: "pointer",
-                  fontFamily: "inherit", transition: "all 0.15s",
-                }}
+              <button key={i} style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "7px 14px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 600,
+                background: "rgba(88,101,242,0.1)", color: "#5865f2",
+                border: "1px solid rgba(88,101,242,0.25)", cursor: "pointer",
+                fontFamily: "inherit", transition: "all 0.15s",
+              }}
                 onMouseEnter={e => (e.currentTarget.style.background = "rgba(88,101,242,0.18)")}
                 onMouseLeave={e => (e.currentTarget.style.background = "rgba(88,101,242,0.1)")}
               >
-                <Zap size={11} />
-                {action.label}
+                <Zap size={11} />{action.label}
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Agents used */}
       {response.agents_used && response.agents_used.length > 0 && (
         <p style={{ fontSize: "0.65rem", color: isDark ? "#374151" : "#d1d5db", margin: 0 }}>
           Analysed by: {response.agents_used.join(", ")} agent{response.agents_used.length > 1 ? "s" : ""}
         </p>
       )}
 
-      {/* Warnings */}
       {response.warnings && response.warnings.length > 0 && (
-        <div style={{
-          display: "flex", alignItems: "flex-start", gap: 6,
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 6,
           padding: "8px 12px", borderRadius: 8,
-          background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)",
-        }}>
+          background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)" }}>
           <AlertCircle size={13} color="#d97706" style={{ flexShrink: 0, marginTop: 2 }} />
           <p style={{ fontSize: "0.72rem", color: "#d97706", margin: 0, lineHeight: 1.5 }}>
             {response.warnings.join(" · ")}
@@ -303,11 +310,11 @@ function Bubble({
 
         {/* Real Rev response */}
         {!msg.isStreaming && !msg.hasError && msg.content && (
-          typeof msg.content === "object" ? (
+          typeof msg.content === "object" && (msg.content as RevResponse).response_type ? (
             <ResponseCard response={msg.content as RevResponse} isDark={isDark} t1={t1} t2={t2} />
           ) : (
             <p style={{ fontSize: "0.84rem", lineHeight: 1.65, color: t2, margin: 0 }}>
-              {String(msg.content)}
+              {typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)}
             </p>
           )
         )}
@@ -595,21 +602,35 @@ export default function RevIntell() {
       const data = (res as any)?.data ?? (res as any);
 
       if (!data?.success) {
-        // Backend returned error
         setMessages(prev => prev.map(m => m.id === sid ? {
           ...m, isStreaming: false, hasError: true,
           content: _cleanErrorMessage(data?.error?.code, data?.error?.message),
           errorCode: data?.error?.code,
         } : m));
       } else {
-        // Success — set real conversation ID and response
         if (!activeId && data.conversation_id) {
           setActiveId(data.conversation_id);
-          // Refresh conversation list to show new conversation
           loadConversations();
         }
+        // Build RevResponse from the flat orchestrator response
+        const revResponse: RevResponse = {
+          response_type: (data.response_type || "analysis") as any,
+          text: data.text,
+          situation:      data.response?.situation      || data.situation,
+          insight:        data.response?.insight        || data.insight,
+          implication:    data.response?.implication    || data.implication,
+          recommendation: data.response?.recommendation || data.recommendation,
+          confidence: data.response?.confidence || (
+            data.confidence_score !== undefined
+              ? { score: data.confidence_score, basis: data.confidence_basis || "" }
+              : undefined
+          ),
+          actions:    data.response?.actions    || data.actions    || [],
+          agents_used: data.meta?.agents_used  || data.agents_used || [],
+          warnings:   data.response?.warnings  || data.warnings   || [],
+        };
         setMessages(prev => prev.map(m => m.id === sid ? {
-          ...m, isStreaming: false, content: data.response,
+          ...m, isStreaming: false, content: revResponse,
         } : m));
       }
     } catch (err) {
