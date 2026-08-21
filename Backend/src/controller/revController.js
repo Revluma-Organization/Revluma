@@ -277,6 +277,7 @@ exports.chat = async (req, res, next) => {
       message_id:      revMsgId,
       response_type:   responseType,
       text:            revData.text || null,
+      intent:          revData.intent || null,
       response:        revContent,
       meta: {
         correlation_id:             correlationId,
