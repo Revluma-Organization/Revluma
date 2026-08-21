@@ -237,22 +237,18 @@ def _run_pipeline(
     if intent == "chat":
         text = _generate_chat_response(message, history, memories)
         text = _sanitise(text)
-        msg_id = _save_turn(conv_id, organization_id, user_id, message, text,
-                            "chat", len(history), db, correlation_id)
         _update_conversation(conv_id, db, title_hint=message if is_new else None)
         return OrchestrationResult(
-            success=True, conversation_id=conv_id, message_id=msg_id,
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
             response_type="chat", text=text, correlation_id=correlation_id,
         )
 
     # Capability: what can Rev do
     if intent == "capability":
         text = _capability_response()
-        msg_id = _save_turn(conv_id, organization_id, user_id, message, text,
-                            "capability", len(history), db, correlation_id)
         _update_conversation(conv_id, db, title_hint=message if is_new else None)
         return OrchestrationResult(
-            success=True, conversation_id=conv_id, message_id=msg_id,
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
             response_type="capability", text=text, correlation_id=correlation_id,
         )
 
@@ -260,11 +256,9 @@ def _run_pipeline(
     if intent == "knowledge":
         text = _generate_knowledge_response(message, history)
         text = _sanitise(text)
-        msg_id = _save_turn(conv_id, organization_id, user_id, message, text,
-                            "knowledge", len(history), db, correlation_id)
         _update_conversation(conv_id, db, title_hint=message if is_new else None)
         return OrchestrationResult(
-            success=True, conversation_id=conv_id, message_id=msg_id,
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
             response_type="knowledge", text=text, correlation_id=correlation_id,
         )
 
@@ -287,11 +281,9 @@ def _run_pipeline(
     # If still no store data
     if not has_store:
         text = _no_store_response(message, intent)
-        msg_id = _save_turn(conv_id, organization_id, user_id, message, text,
-                            "clarification", len(history), db, correlation_id)
         _update_conversation(conv_id, db, title_hint=message if is_new else None)
         return OrchestrationResult(
-            success=True, conversation_id=conv_id, message_id=msg_id,
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
             response_type="clarification", text=text, correlation_id=correlation_id,
         )
 
@@ -340,21 +332,13 @@ def _run_pipeline(
         warnings=warnings,
     )
 
-    # ── Step 12: Persist ──────────────────────────────────────────────────────
-    rev_content = {**response, "response_type": "analysis", "business_state_id": state_id}
-    msg_id = _save_turn(
-        conv_id, organization_id, user_id, message, rev_content,
-        "analysis", len(history), db, correlation_id,
-        agent_name=",".join(selected_agents),
-        business_state_id=state_id,
-        confidence_score=response.get("confidence", {}).get("score"),
-    )
+    # ── Step 12: Update conversation activity (Node persists the messages) ──────
     _update_conversation(conv_id, db, title_hint=message if is_new else None)
 
     return OrchestrationResult(
         success=True,
         conversation_id=conv_id,
-        message_id=msg_id,
+        message_id=str(uuid.uuid4()),
         response_type="analysis",
         situation=response.get("situation"),
         insight=response.get("insight"),
