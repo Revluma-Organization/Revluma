@@ -38,6 +38,7 @@ export function DashboardRoutes() {
         <Route index element={<Navigate to="/dashboard/overview" replace />} />
         <Route path="overview"      element={<Overview />} />
         <Route path="rev-intell"     element={<RevIntell />} />
+        <Route path="rev-intell/:conversationId" element={<RevIntell />} />
         <Route path="integrations"  element={<Integrations />} />
         <Route path="cart-recovery" element={<CartRecovery />} />
         <Route path="customers"     element={<Customers />} />

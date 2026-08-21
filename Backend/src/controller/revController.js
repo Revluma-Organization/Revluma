@@ -181,25 +181,39 @@ exports.chat = async (req, res, next) => {
     }
 
     const revData = mlResult.data;
+    const responseType = revData.response_type || 'analysis';
 
-    // 8. Persist Rev response
-    const revMsgId   = uuidv4();
-    const revContent = {
-      situation:      revData.situation,
-      insight:        revData.insight,
-      implication:    revData.implication,
-      recommendation: revData.recommendation,
-      confidence: {
-        score: revData.confidence_score,
-        basis: revData.confidence_basis || '',
-      },
-      actions:     revData.actions || [],
-      agents_used: revData.agents_used || [],
-      warnings:    revData.warnings || [],
-    };
-    const revContentStr  = JSON.stringify(revContent);
-    const agentNameStr   = (revData.agents_used || []).join(',');
-    const confidenceScore = revData.confidence_score || 0;
+    // 8. Persist Rev response — structure depends on response type
+    const revMsgId = uuidv4();
+    let revContent;
+
+    if (responseType !== 'analysis') {
+      // Conversational, capability, clarification, error — just text
+      revContent = {
+        response_type: responseType,
+        text: revData.text || '',
+      };
+    } else {
+      // Full 6-part analysis
+      revContent = {
+        response_type: 'analysis',
+        situation:      revData.situation,
+        insight:        revData.insight,
+        implication:    revData.implication,
+        recommendation: revData.recommendation,
+        confidence: {
+          score: revData.confidence_score ?? 0.7,
+          basis: revData.confidence_basis || '',
+        },
+        actions:     revData.actions     || [],
+        agents_used: revData.agents_used || [],
+        warnings:    revData.warnings    || [],
+      };
+    }
+
+    const revContentStr   = JSON.stringify(revContent);
+    const agentNameStr    = (revData.agents_used || []).join(',');
+    const confidenceScore = revData.confidence_score ?? null;
 
     await prisma.$executeRaw`
       INSERT INTO conversation_messages (
@@ -242,6 +256,8 @@ exports.chat = async (req, res, next) => {
       success:         true,
       conversation_id: activeConvId,
       message_id:      revMsgId,
+      response_type:   responseType,
+      text:            revData.text || null,
       response:        revContent,
       meta: {
         correlation_id:             correlationId,
