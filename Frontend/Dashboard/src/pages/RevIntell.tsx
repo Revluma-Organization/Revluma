@@ -611,19 +611,18 @@ export default function RevIntell() {
   }, []);
 
   // ── URL → state sync (on mount and when URL changes) ─────────────────────
+  // Run on mount (to handle refresh) and whenever the URL conversationId changes.
+  // Do NOT gate on activeId — on refresh they start equal so the check would skip loading.
   useEffect(() => {
     if (urlConvId) {
-      if (urlConvId !== activeId) {
-        setActiveId(urlConvId);
-        loadConversation(urlConvId);
-      }
+      setActiveId(urlConvId);
+      loadConversation(urlConvId);
     } else {
-      // No conversationId in URL = welcome screen
       setActiveId(null);
       setMessages([]);
       setConvNotFound(false);
     }
-  }, [urlConvId]); // intentionally not including activeId/loadConversation to avoid loops
+  }, [urlConvId]); // loadConversation is stable (useCallback with no deps that change)
 
   // Load sidebar on mount
   useEffect(() => {
