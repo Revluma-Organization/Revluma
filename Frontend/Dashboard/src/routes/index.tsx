@@ -32,7 +32,7 @@ import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 export function DashboardRoutes() {
   return (
     <Routes>
-      
+      <Route path="checkout" element={<Checkout />} />
       <Route path="/auth/accept-invite" element={<AcceptInvite />} />
       <Route element={<DashboardLayout />}>
         <Route index element={<Navigate to="/dashboard/overview" replace />} />
@@ -68,7 +68,6 @@ export function DashboardRoutes() {
           <Route path="payment-methods" element={<PaymentMethods />} />
           <Route path="invoices" element={<InvoiceHistory />} />
           <Route path="invoice-history" element={<InvoiceHistory />} />
-          <Route path="checkout" element={<Checkout />} />
           
           {/* Intelligence & Automation */}
           <Route path="ai" element={<SettingsPlaceholder title="AI Settings" />} />
