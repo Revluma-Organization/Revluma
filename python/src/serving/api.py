@@ -347,6 +347,10 @@ class OrchestrateRequest(BaseModel):
     user_id: str = Field(..., min_length=36, max_length=36)
     message: str = Field(..., min_length=1, max_length=2000)
     conversation_id: typing.Optional[str] = Field(None, min_length=36, max_length=36)
+    image_base64: typing.Optional[str] = Field(None)  # base64-encoded image
+    image_media_type: typing.Optional[str] = Field(None)  # image/jpeg | image/png | image/webp | image/gif
+    contract_version: typing.Optional[str] = Field(None)
+    correlation_id: typing.Optional[str] = Field(None)
 
 
 @app.post("/orchestrate", dependencies=[Depends(verify_internal_caller)])
@@ -368,6 +372,8 @@ async def orchestrate_endpoint(req: OrchestrateRequest):
                 message=req.message,
                 conversation_id=req.conversation_id,
                 db=db,
+                image_base64=req.image_base64,
+                image_media_type=req.image_media_type,
             )
         )
         return result.to_dict()
