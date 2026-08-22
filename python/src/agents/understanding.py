@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger("rev.understanding")
 
-UNDERSTANDING_MODEL = "claude-haiku-4-5-20251001"
+UNDERSTANDING_MODEL = "claude-sonnet-4-6"  # Sonnet for accurate intent classification
 
 # response_mode drives the frontend rendering
 MODE_CONVERSATIONAL = "conversational"   # plain text, natural
@@ -129,7 +129,9 @@ EXAMPLES:
 """
 
 
-def understand(message: str, history: list[dict]) -> Understanding:
+def understand(message: str, history: list[dict],
+               image_base64: str | None = None,
+               image_media_type: str | None = None) -> Understanding:
     """
     Understand the merchant message. Never raises.
     Falls back to a safe conversational reading if the model is unavailable.
@@ -138,12 +140,15 @@ def understand(message: str, history: list[dict]) -> Understanding:
 
     context = _format_history(history)
 
-    prompt = (
+    context = _format_history(history)
+    text_prompt = (
         _SCHEMA_PROMPT
         + "\n\nCONVERSATION SO FAR:\n"
         + (context if context else "(this is the first message)")
         + "\n\nMERCHANT MESSAGE:\n"
         + message[:800]
+        + ("\n\n[The merchant has also uploaded an image for you to analyse.]"
+           if image_base64 else "")
         + "\n\nReturn only the JSON object."
     )
 
@@ -153,10 +158,24 @@ def understand(message: str, history: list[dict]) -> Understanding:
             return _safe_fallback(message, history, "no api key")
 
         client = anthropic.Anthropic(api_key=api_key, timeout=9.0)
+
+        # Build content: text + optional image
+        if image_base64 and image_media_type:
+            content = [
+                {"type": "image", "source": {
+                    "type": "base64",
+                    "media_type": image_media_type,
+                    "data": image_base64,
+                }},
+                {"type": "text", "text": text_prompt},
+            ]
+        else:
+            content = text_prompt
+
         resp = client.messages.create(
             model=UNDERSTANDING_MODEL,
             max_tokens=400,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": content}],
         )
         raw = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
 
