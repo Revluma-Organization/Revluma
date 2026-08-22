@@ -57,15 +57,21 @@ const memoryLimiter = rateLimit({
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 // Chat — the primary Rev Intelligence endpoint
-router.post('/chat',              authenticateToken, chatLimiter,   revController.chat);
+router.post('/chat',                      authenticateToken, chatLimiter,   revController.chat);
 
 // Conversation history — sidebar list
-router.get('/conversations',      authenticateToken,               revController.getConversations);
+router.get('/conversations',              authenticateToken,               revController.getConversations);
 
 // Full conversation thread
-router.get('/conversation/:id',   authenticateToken,               revController.getConversation);
+router.get('/conversation/:id',           authenticateToken,               revController.getConversation);
+
+// Delete a conversation
+router.delete('/conversation/:id',        authenticateToken,               revController.deleteConversation);
+
+// Rename a conversation
+router.patch('/conversation/:id/title',   authenticateToken,               revController.renameConversation);
 
 // Python service health (authenticated — internal use)
-router.get('/health',             authenticateToken,               revController.intelligenceHealth);
+router.get('/health',                     authenticateToken,               revController.intelligenceHealth);
 
 module.exports = router;
