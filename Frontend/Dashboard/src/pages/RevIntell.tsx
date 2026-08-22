@@ -528,8 +528,10 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
                 <Pencil size={13} style={{ color: "#5865f2" }} />Rename
               </button>
               <button onClick={() => { onDelete(); setMenuOpen(false); }}
-                className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[0.78rem] font-medium transition-colors hover:bg-red-50 text-left"
-                style={{ color: "#dc2626", fontFamily: "inherit" }}>
+                className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[0.78rem] font-medium transition-colors text-left"
+                style={{ color: "#dc2626", fontFamily: "inherit" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(220,38,38,0.08)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
                 <Trash2 size={13} />Delete
               </button>
             </motion.div>
@@ -563,6 +565,12 @@ export default function RevIntell() {
   const [convLoading,    setConvLoading]    = useState(false);
   const [lastUserMsg,    setLastUserMsg]    = useState<string>("");
   const [convNotFound,   setConvNotFound]   = useState(false);
+  const [imageAttachment, setImageAttachment] = useState<{
+    base64: string; mediaType: string; preview: string; name: string;
+  } | null>(null);
+  const [renameModalId,  setRenameModalId]  = useState<string | null>(null);
+  const [renameValue,    setRenameValue]    = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
@@ -688,9 +696,13 @@ export default function RevIntell() {
       setLastUserMsg(trimmed);
       setInput("");
       if (inputRef.current) inputRef.current.style.height = "auto";
-      // Add user message optimistically
+      // Add user message optimistically (with image preview if present)
+      const capturedImg2 = imageAttachment; // snapshot before clear
+      const userContent: any = capturedImg2
+        ? { text: trimmed, imagePreview: capturedImg2.preview }
+        : trimmed;
       setMessages(prev => [...prev, {
-        id: `u${Date.now()}`, role: "user", content: trimmed, timestamp: new Date(),
+        id: `u${Date.now()}`, role: "user", content: userContent, timestamp: new Date(),
       }]);
     }
 
@@ -704,6 +716,12 @@ export default function RevIntell() {
     try {
       const body: Record<string, unknown> = { message: trimmed };
       if (activeId) body.conversation_id = activeId;
+      const capturedImage = imageAttachment;
+      if (capturedImage) {
+        body.image_base64     = capturedImage.base64;
+        body.image_media_type = capturedImage.mediaType;
+        setImageAttachment(null); // clear after sending
+      }
 
       const res = await api.post<{
         success: boolean;
@@ -792,27 +810,65 @@ export default function RevIntell() {
   };
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
-    send(`[Attached: ${f.name.slice(0, 40)}]`);
+    // For images, convert to base64 for Rev to see
+    if (f.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(",")[1];
+        setImageAttachment({ base64, mediaType: f.type, preview: reader.result as string, name: f.name });
+      };
+      reader.readAsDataURL(f);
+    } else {
+      send(`[File attached: ${f.name.slice(0, 60)}]`);
+    }
     e.target.value = "";
   };
   const handleMedia = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
-    send(`[Media: ${f.name.slice(0, 40)}]`);
+    if (f.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(",")[1];
+        setImageAttachment({ base64, mediaType: f.type, preview: reader.result as string, name: f.name });
+      };
+      reader.readAsDataURL(f);
+    } else {
+      send(`[Media: ${f.name.slice(0, 40)}]`);
+    }
     e.target.value = "";
   };
+  const removeAttachment = () => setImageAttachment(null);
   const handleVoice = () => alert("Voice messages coming soon.");
   const handleCall  = () => alert("Audio call booking coming soon.");
 
-  const deleteConv = (id: string) => {
+  const deleteConv = async (id: string) => {
+    try {
+      await api.delete?.(`/rev/conversation/${id}`) ||
+            await (api as any).del?.(`/rev/conversation/${id}`) ||
+            await fetch(
+              `${(api as any).baseUrl || ""}/api/v1/rev/conversation/${id}`,
+              { method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("rv-auth") ? JSON.parse(localStorage.getItem("rv-auth")!).state?.csrfToken : ""}` } }
+            );
+    } catch { /* optimistic — remove from UI regardless */ }
     setConversations(prev => prev.filter(c => c.id !== id));
+    setDeleteConfirmId(null);
     if (activeId === id) newChat();
   };
   const renameConv = (id: string) => {
     const conv = conversations.find(c => c.id === id);
-    const title = window.prompt("Rename conversation:", conv?.title ?? "");
-    if (title?.trim()) {
-      setConversations(prev => prev.map(c => c.id === id ? { ...c, title: title.trim() } : c));
-    }
+    setRenameValue(conv?.title ?? "");
+    setRenameModalId(id);
+  };
+  const submitRename = async () => {
+    if (!renameModalId || !renameValue.trim()) return;
+    const id = renameModalId;
+    const title = renameValue.trim().slice(0, 100);
+    try {
+      await api.patch?.(`/rev/conversation/${id}/title`, { title }) ||
+            await (api as any).put?.(`/rev/conversation/${id}/title`, { title });
+    } catch { /* optimistic */ }
+    setConversations(prev => prev.map(c => c.id === id ? { ...c, title } : c));
+    setRenameModalId(null);
   };
 
   // Theme
@@ -901,7 +957,7 @@ export default function RevIntell() {
                       <ConvItem key={conv.id} conv={conv}
                         isActive={activeId === conv.id}
                         onClick={() => openConversation(conv.id)}
-                        onDelete={() => deleteConv(conv.id)}
+                        onDelete={() => setDeleteConfirmId(conv.id)}
                         onRename={() => renameConv(conv.id)}
                         isDark={isDark} t1={t1} t4={t4} />
                     ))}
@@ -964,6 +1020,19 @@ export default function RevIntell() {
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }} className="w-full mb-7">
+              {imageAttachment && (
+                <div className="flex items-center gap-3 mb-2 px-1">
+                  <div className="relative">
+                    <img src={imageAttachment.preview} alt="attachment"
+                      className="h-14 w-14 rounded-xl object-cover border"
+                      style={{ borderColor: bdr }} />
+                    <button onClick={removeAttachment}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                      style={{ background: "#dc2626" }}>×</button>
+                  </div>
+                  <span className="text-[0.75rem]" style={{ color: t2 }}>{imageAttachment.name.slice(0, 40)}</span>
+                </div>
+              )}
               <InputToolbar {...inputProps} placeholder="Ask me anything about your business..." />
             </motion.div>
 
@@ -1000,6 +1069,20 @@ export default function RevIntell() {
       {hasMessages && !convLoading && (
         <div className="shrink-0 px-4 pb-4 pt-2 border-t" style={{ borderColor: bdr, background: bg }}>
           <div className="max-w-2xl mx-auto">
+            {/* Image attachment preview */}
+            {imageAttachment && (
+              <div className="flex items-center gap-3 mb-2 px-1">
+                <div className="relative group/img">
+                  <img src={imageAttachment.preview} alt="attachment"
+                    className="h-14 w-14 rounded-xl object-cover border"
+                    style={{ borderColor: bdr }} />
+                  <button onClick={removeAttachment}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                    style={{ background: "#dc2626" }}>×</button>
+                </div>
+                <span className="text-[0.75rem]" style={{ color: t2 }}>{imageAttachment.name.slice(0, 40)}</span>
+              </div>
+            )}
             <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking} />
             <p className="text-center text-[0.63rem] mt-2" style={{ color: t4 }}>
               Rev Intelligence · Powered by your store data · Responses grounded in evidence
@@ -1007,6 +1090,80 @@ export default function RevIntell() {
           </div>
         </div>
       )}
+
+      {/* Rename Modal */}
+      <AnimatePresence>
+        {renameModalId && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80]" style={{ background: "rgba(0,0,0,0.5)" }}
+              onClick={() => setRenameModalId(null)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: -10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -10 }}
+              transition={{ duration: 0.15 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[90] w-80 rounded-2xl p-6 shadow-2xl"
+              style={{ background: card, border: `1px solid ${bdr}` }}>
+              <p className="text-[0.9rem] font-bold mb-4" style={{ color: t1 }}>Rename conversation</p>
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={e => setRenameValue(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") submitRename(); if (e.key === "Escape") setRenameModalId(null); }}
+                maxLength={100}
+                className="w-full rounded-xl px-4 py-2.5 text-[0.88rem] outline-none mb-4"
+                style={{ background: isDark ? "#1f1f1f" : "#f3f4f6", color: t1, border: `1px solid ${bdr}` }}
+                placeholder="Conversation name" />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setRenameModalId(null)}
+                  className="px-4 py-2 rounded-xl text-[0.82rem] font-medium transition-colors"
+                  style={{ color: t2, background: isDark ? "#1f1f1f" : "#f3f4f6", fontFamily: "inherit" }}>
+                  Cancel
+                </button>
+                <button onClick={submitRename}
+                  className="px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white transition-all"
+                  style={{ background: "#5865f2", fontFamily: "inherit" }}>
+                  Save
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Delete Confirm */}
+      <AnimatePresence>
+        {deleteConfirmId && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[80]" style={{ background: "rgba(0,0,0,0.5)" }}
+              onClick={() => setDeleteConfirmId(null)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: -10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -10 }}
+              transition={{ duration: 0.15 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[90] w-80 rounded-2xl p-6 shadow-2xl"
+              style={{ background: card, border: `1px solid ${bdr}` }}>
+              <p className="text-[0.9rem] font-bold mb-2" style={{ color: t1 }}>Delete conversation?</p>
+              <p className="text-[0.82rem] mb-6" style={{ color: t2 }}>
+                This conversation will be permanently deleted and cannot be recovered.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setDeleteConfirmId(null)}
+                  className="px-4 py-2 rounded-xl text-[0.82rem] font-medium"
+                  style={{ color: t2, background: isDark ? "#1f1f1f" : "#f3f4f6", fontFamily: "inherit" }}>
+                  Cancel
+                </button>
+                <button onClick={() => deleteConv(deleteConfirmId)}
+                  className="px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white"
+                  style={{ background: "#dc2626", fontFamily: "inherit" }}>
+                  Delete
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Copy toast */}
       <AnimatePresence>
