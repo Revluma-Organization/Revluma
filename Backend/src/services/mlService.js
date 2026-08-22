@@ -66,8 +66,10 @@ function buildOrchestrateRequest({
   message,
   conversationId,
   correlationId,
+  imageBase64,
+  imageMediaType,
 }) {
-  return {
+  const req = {
     organization_id:  organizationId,
     user_id:          userId,
     message:          message.trim().slice(0, 2000),
@@ -75,6 +77,11 @@ function buildOrchestrateRequest({
     contract_version: CONTRACT_VERSION,
     correlation_id:   correlationId,
   };
+  if (imageBase64 && imageMediaType) {
+    req.image_base64      = imageBase64;
+    req.image_media_type  = imageMediaType;
+  }
+  return req;
 }
 
 // ── Response validator ────────────────────────────────────────────────────────
@@ -126,7 +133,8 @@ function validateOrchestrateResponse(data) {
  * @param {string} params.correlationId    - propagated from controller
  * @returns {Promise<{success: boolean, data?: Object, error?: {code: string, message: string}}>}
  */
-async function orchestrate({ organizationId, userId, message, conversationId, correlationId }) {
+async function orchestrate({ organizationId, userId, message, conversationId, correlationId,
+                            imageBase64, imageMediaType }) {
   const startTime = Date.now();
 
   // ── Guard: configuration must be present ──────────────────────────────────
@@ -150,6 +158,8 @@ async function orchestrate({ organizationId, userId, message, conversationId, co
     message,
     conversationId,
     correlationId,
+    imageBase64,
+    imageMediaType,
   });
 
   logger.info('ml_orchestrate_request', {
