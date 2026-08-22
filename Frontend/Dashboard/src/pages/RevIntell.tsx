@@ -168,20 +168,69 @@ function renderInline(text: string) {
   });
 }
 
-/** Renders paragraphs, bullets and numbered steps with real hierarchy. */
-function RichText({ text, t1 }: { text: string; t1: string }) {
+/** Renders rich markdown: headings, bold, bullets, numbers, blockquotes, paragraphs. */
+function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boolean }) {
   const blocks = text.split(/\n{2,}/).filter(b => b.trim());
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {blocks.map((block, bi) => {
         const lines = block.split("\n").filter(l => l.trim());
-        const isBullet = lines.every(l => /^\s*[-*•]\s+/.test(l));
-        const isNumber = lines.every(l => /^\s*\d+[.)]\s+/.test(l));
+        if (!lines.length) return null;
 
-        if (isBullet && lines.length) {
+        // ## Heading
+        if (lines[0].startsWith("## ")) {
+          const heading = lines[0].replace(/^##\s+/, "");
           return (
-            <ul key={bi} style={{ margin: 0, paddingLeft: 18,
-              display: "flex", flexDirection: "column", gap: 6 }}>
+            <div key={bi}>
+              <p style={{ fontSize: "0.95rem", fontWeight: 700, color: t1, margin: "4px 0 6px" }}>
+                {renderInline(heading)}
+              </p>
+              {lines.slice(1).length > 0 && (
+                <p style={{ fontSize: "0.92rem", lineHeight: 1.7, color: t1, margin: 0 }}>
+                  {lines.slice(1).map((l, li) => (
+                    <span key={li}>{renderInline(l)}{li < lines.slice(1).length - 1 ? <br /> : null}</span>
+                  ))}
+                </p>
+              )}
+            </div>
+          );
+        }
+
+        // # Heading (larger)
+        if (lines[0].startsWith("# ")) {
+          const heading = lines[0].replace(/^#\s+/, "");
+          return (
+            <p key={bi} style={{ fontSize: "1.05rem", fontWeight: 800, color: t1, margin: "6px 0 2px", letterSpacing: "-0.01em" }}>
+              {renderInline(heading)}
+            </p>
+          );
+        }
+
+        // > Blockquote / callout
+        if (lines.every(l => l.startsWith("> "))) {
+          return (
+            <div key={bi} style={{
+              borderLeft: "3px solid #5865f2",
+              paddingLeft: 12,
+              margin: "2px 0",
+              background: isDark ? "rgba(88,101,242,0.08)" : "rgba(88,101,242,0.06)",
+              borderRadius: "0 8px 8px 0",
+              padding: "8px 12px",
+            }}>
+              {lines.map((l, li) => (
+                <p key={li} style={{ fontSize: "0.9rem", lineHeight: 1.65, color: t1, margin: li > 0 ? "4px 0 0" : 0, fontStyle: "italic" }}>
+                  {renderInline(l.replace(/^>\s+/, ""))}
+                </p>
+              ))}
+            </div>
+          );
+        }
+
+        // Bullet list
+        const isBullet = lines.every(l => /^\s*[-*•]\s+/.test(l));
+        if (isBullet) {
+          return (
+            <ul key={bi} style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 5 }}>
               {lines.map((l, li) => (
                 <li key={li} style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
                   {renderInline(l.replace(/^\s*[-*•]\s+/, ""))}
@@ -190,10 +239,12 @@ function RichText({ text, t1 }: { text: string; t1: string }) {
             </ul>
           );
         }
-        if (isNumber && lines.length) {
+
+        // Numbered list
+        const isNumber = lines.every(l => /^\s*\d+[.)]\s+/.test(l));
+        if (isNumber) {
           return (
-            <ol key={bi} style={{ margin: 0, paddingLeft: 20,
-              display: "flex", flexDirection: "column", gap: 6 }}>
+            <ol key={bi} style={{ margin: 0, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 5 }}>
               {lines.map((l, li) => (
                 <li key={li} style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
                   {renderInline(l.replace(/^\s*\d+[.)]\s+/, ""))}
@@ -202,12 +253,37 @@ function RichText({ text, t1 }: { text: string; t1: string }) {
             </ol>
           );
         }
+
+        // Mixed block — render line by line
         return (
-          <p key={bi} style={{ fontSize: "0.92rem", lineHeight: 1.7, color: t1, margin: 0 }}>
-            {lines.map((l, li) => (
-              <span key={li}>{renderInline(l)}{li < lines.length - 1 ? <br /> : null}</span>
-            ))}
-          </p>
+          <div key={bi} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {lines.map((l, li) => {
+              if (/^\s*[-*•]\s+/.test(l)) return (
+                <div key={li} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                  <span style={{ color: "#5865f2", flexShrink: 0, marginTop: 2 }}>•</span>
+                  <span style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
+                    {renderInline(l.replace(/^\s*[-*•]\s+/, ""))}
+                  </span>
+                </div>
+              );
+              if (/^\s*\d+[.)]\s+/.test(l)) {
+                const num = l.match(/^\s*(\d+)/)?.[1];
+                return (
+                  <div key={li} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                    <span style={{ color: "#5865f2", fontWeight: 700, flexShrink: 0, fontSize: "0.85rem", minWidth: 16 }}>{num}.</span>
+                    <span style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
+                      {renderInline(l.replace(/^\s*\d+[.)]\s+/, ""))}
+                    </span>
+                  </div>
+                );
+              }
+              return (
+                <p key={li} style={{ fontSize: "0.92rem", lineHeight: 1.7, color: t1, margin: 0 }}>
+                  {renderInline(l)}
+                </p>
+              );
+            })}
+          </div>
         );
       })}
     </div>
@@ -223,7 +299,7 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
   if (type !== "analysis") {
     const text = response.text || "";
     if (!text) return null;
-    return <RichText text={text} t1={t1} />;
+    return <RichText text={text} t1={t1} isDark={isDark} />;
   }
 
   // Analysis: 6-part structured response
@@ -248,7 +324,7 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
             letterSpacing: "0.08em", color: "#5865f2", marginBottom: 5, margin: "0 0 5px" }}>
             {label}
           </p>
-          <RichText text={text!} t1={t1} />
+          <RichText text={text!} t1={t1} isDark={isDark} />
         </div>
       ))}
 
@@ -714,13 +790,15 @@ export default function RevIntell() {
     setThinking(true);
 
     try {
+      // Capture image BEFORE any state changes
+      const capturedImage = imageAttachment;
+      setImageAttachment(null); // clear preview immediately for UX
+
       const body: Record<string, unknown> = { message: trimmed };
       if (activeId) body.conversation_id = activeId;
-      const capturedImage = imageAttachment;
       if (capturedImage) {
         body.image_base64     = capturedImage.base64;
         body.image_media_type = capturedImage.mediaType;
-        setImageAttachment(null); // clear after sending
       }
 
       const res = await api.post<{
