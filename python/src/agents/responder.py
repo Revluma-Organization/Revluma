@@ -30,12 +30,19 @@ BANNED = [
 ]
 
 PERSONA = (
-    "You are Rev, the intelligence layer inside Revluma. "
-    "You are an experienced ecommerce operator, not a chatbot. "
-    "You are sharp, direct, commercially minded, and conversational. "
-    "You think about where money is made and where it leaks. "
-    "You never pad. You never use corporate filler. You never say 'Happy to help'. "
-    "You never use em dashes. You never claim numbers you were not given."
+    "You are Rev, the autonomous ecommerce intelligence inside Revluma. "
+    "You are not a chatbot. You are an operational intelligence that knows "
+    "an ecommerce founder's business better than they do. "
+    "You have the analytical precision of a data scientist, the commercial judgment "
+    "of a COO, and the memory of an institutional historian. "
+    "You are direct, concise, ecommerce-native, and never generic. "
+    "If your response could be given to any merchant anywhere, it has failed. "
+    "You never pad. You never use corporate filler. You never use em dashes. "
+    "You never say 'Happy to help' or 'Great question'. "
+    "You never claim numbers you were not given. "
+    "You never end a substantive response without a clear next step or action. "
+    "You say 'I recommend' not 'you might consider'. "
+    "You take ownership of your analysis."
 )
 
 
@@ -101,11 +108,14 @@ def compose_conversational(message: str, understanding, history_text: str,
         + (history_text if history_text else "(first message)")
         + f"\n\nMERCHANT JUST SAID:\n{message[:400]}\n\n"
         + f"Their intent is: {understanding.intent}. Their goal: {understanding.goal}.\n\n"
-        + "Reply naturally in 1 to 3 short sentences. Match their energy. "
-        + "If they made small talk, make small talk back and then open the door to work. "
-        + "Do NOT mention connecting a store. Do NOT give business analysis. "
-        + "Do NOT list your features unless they asked. "
-        + "Sound like a person, not a product."
+        + "Reply naturally in 1 to 3 short sentences. Match their energy.\n"
+        + "If they made small talk, respond and briefly open the door to work.\n"
+        + "If they asked who you are, explain Rev clearly and invite them to share what they are working on.\n"
+        + "Do NOT mention store connection unless they asked about store-specific analysis.\n"
+        + "Do NOT give business analysis for conversational messages.\n"
+        + "Do NOT list features robotically.\n"
+        + "Sound like an intelligent person who knows ecommerce deeply, not a product demo.\n"
+        + "No em dashes. No corporate language. No 'Happy to help'."
     )
     try:
         return sanitise(_call(FAST_MODEL, prompt, 160, 8.0))
@@ -117,9 +127,9 @@ def compose_conversational(message: str, understanding, history_text: str,
 def _static_conversational(message: str, understanding) -> str:
     msg = message.lower().strip().rstrip("?!.,")
     if understanding.intent == "identity":
-        return ("I'm Rev, the intelligence layer inside Revluma. I help ecommerce "
-                "businesses understand what's happening in their store, find where revenue "
-                "is leaking, and decide what to do next. What are you working on?")
+        return ("I'm Rev, Revluma's ecommerce intelligence. I monitor your store, "
+                "surface what matters before you ask, and help you understand what is "
+                "happening and what to do about it. What are you working on?")
     table = {
         "hi": "Hey. What are we working on?",
         "hello": "Hey. What's on your mind?",
@@ -189,8 +199,7 @@ def compose_knowledge(message: str, understanding, history_text: str,
         return sanitise(_call(FAST_MODEL, prompt, 500, 12.0))
     except Exception as e:
         print(f"RESPONDER_KNOWLEDGE_ERROR {type(e).__name__}: {e}")
-        return ("I can't reach the reasoning service right now. "
-                "Ask me again in a moment.")
+        return _static_knowledge(message, understanding)
 
 
 # ── Capability ────────────────────────────────────────────────────────────────
@@ -235,6 +244,86 @@ def compose_clarification(message: str, understanding, history_text: str) -> str
 
 
 # ── Store-data-needed but no store ────────────────────────────────────────────
+
+
+def _static_knowledge(message: str, understanding) -> str:
+    """Deterministic ecommerce knowledge fallback when LLM is unavailable."""
+    msg = message.lower()
+
+    # Identity questions
+    if understanding.intent == "identity":
+        return ("I'm Rev, Revluma's ecommerce intelligence layer. I monitor your store "
+                "continuously, surface what matters before you think to look for it, and "
+                "help you understand exactly what is happening and what to do next. "
+                "I work with your connected Shopify or WooCommerce data for store-specific "
+                "analysis, and I can also help with ecommerce strategy, cart recovery, "
+                "conversion, retention, and marketing without a connected store. "
+                "What are you working on?")
+
+    # Cart abandonment
+    if any(k in msg for k in ["cart abandon", "abandon cart", "cart recovery", "recover cart"]):
+        return ("The biggest causes of cart abandonment are unexpected shipping costs "
+                "at checkout, forced account creation, slow or confusing checkout, weak "
+                "trust signals, and poor mobile experience. Start by auditing your checkout "
+                "on a phone. Then check where your analytics show the biggest drop-off. "
+                "Timed recovery messages with a clear value proposition outperform discount-first "
+                "approaches for most store types. If your store is connected I can show you "
+                "exactly where your carts are dropping off.")
+
+    # Conversion rate
+    if any(k in msg for k in ["conversion", "convert", "checkout rate"]):
+        return ("Conversion rate problems almost always come from one of four places: "
+                "checkout friction, price/value mismatch, trust gap, or traffic quality. "
+                "Check your mobile checkout completion rate first since that is where most "
+                "stores leak. Then look at your product page bounce rate. Fixing friction "
+                "before adding traffic is almost always the higher-ROI move.")
+
+    # AOV
+    if any(k in msg for k in ["aov", "average order", "order value"]):
+        return ("AOV is average order value: total revenue divided by number of orders. "
+                "To increase it: bundle complementary products, set free shipping thresholds "
+                "just above your current AOV, offer volume discounts, and surface upsells "
+                "at checkout rather than on product pages. For most DTC stores, threshold-based "
+                "free shipping is the fastest AOV lever.")
+
+    # LTV / lifetime value
+    if any(k in msg for k in ["ltv", "lifetime value", "customer value"]):
+        return ("LTV is the total revenue a customer generates over their relationship with your store. "
+                "The biggest drivers are repeat purchase rate, purchase frequency, and AOV. "
+                "Improving retention by even 5% typically increases LTV by 25 to 95 percent "
+                "depending on your margin structure. Post-purchase experience is usually "
+                "the highest-leverage LTV intervention.")
+
+    # Retention / churn
+    if any(k in msg for k in ["retention", "churn", "repeat", "returning"]):
+        return ("Retention breaks down in the post-purchase window. The follow-up is usually "
+                "too late, too generic, or gives no reason to return. Start with: a strong "
+                "day-3 follow-up, a day-14 re-engagement, and a win-back sequence at day-45. "
+                "Non-discount retention outperforms discount retention for high-LTV customers "
+                "because it does not train them to wait for deals.")
+
+    # WhatsApp / email / SMS
+    if any(k in msg for k in ["whatsapp", "email", "sms", "channel"]):
+        return ("WhatsApp outperforms email for recovery messages in markets where it is the "
+                "primary communication app, typically 3 to 5x higher open rates. Email is "
+                "better for relationship-building sequences. SMS is effective for time-sensitive "
+                "messages. The best approach is to match the channel to where your customers "
+                "already communicate, not where it is cheapest to send.")
+
+    # Discount
+    if any(k in msg for k in ["discount", "offer", "promo"]):
+        return ("Discounts are a short-term lever with long-term costs if overused. "
+                "They work best when used sparingly for high-risk churn customers, never as "
+                "the first recovery touch. Test non-discount recovery first: urgency messaging, "
+                "social proof, and removing checkout friction. Reserve discounts for customers "
+                "where the data shows price sensitivity is the actual barrier.")
+
+    # General ecommerce
+    return ("That is a good ecommerce question. The answer depends on your specific "
+            "store setup, customer base, and what the data shows. Connect your store "
+            "and I can give you a specific answer rather than a general one.")
+
+
 
 def compose_needs_store(message: str, understanding, history_text: str) -> str:
     """
