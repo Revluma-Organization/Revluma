@@ -120,7 +120,26 @@ def compose_conversational(message: str, understanding, history_text: str,
         + "No em dashes. No corporate language. No 'Happy to help'."
     )
     try:
-        return sanitise(_call(FAST_MODEL, prompt, 160, 8.0))
+        if image_base64 and image_media_type:
+            import anthropic as _anth, os as _os
+            _client = _anth.Anthropic(api_key=_os.environ.get("ANTHROPIC_API_KEY"), timeout=10.0)
+            _resp = _client.messages.create(
+                model=FAST_MODEL, max_tokens=300,
+                messages=[{"role": "user", "content": [
+                    {"type": "image", "source": {
+                        "type": "base64",
+                        "media_type": image_media_type,
+                        "data": image_base64,
+                    }},
+                    {"type": "text", "text": (
+                        prompt + "\n\nThe merchant has also uploaded an image. "
+                        "Look at it carefully and incorporate what you see into your response. "
+                        "Describe what is relevant in the image as it relates to their message."
+                    )},
+                ]}]
+            )
+            return sanitise("".join(b.text for b in _resp.content if getattr(b, "type", "") == "text").strip())
+        return sanitise(_call(FAST_MODEL, prompt, 300, 10.0))
     except Exception as e:
         print(f"RESPONDER_CONVERSATIONAL_ERROR {type(e).__name__}: {e}")
         return _static_conversational(message, understanding)
@@ -157,7 +176,9 @@ def _static_conversational(message: str, understanding) -> str:
 # ── Knowledge / strategy / explanation ────────────────────────────────────────
 
 def compose_knowledge(message: str, understanding, history_text: str,
-                      memories: list[dict], has_store: bool) -> str:
+                      memories: list[dict], has_store: bool,
+                      image_base64: str | None = None,
+                      image_media_type: str | None = None) -> str:
     """
     Answer any ecommerce question — Shopify, WooCommerce, BigCommerce, DTC,
     cart abandonment, checkout, conversion, retention, churn, LTV, CAC, ROAS,
@@ -222,20 +243,48 @@ def compose_knowledge(message: str, understanding, history_text: str,
         + f"Goal: {understanding.goal}\n\n"
         + depth
         + store_hint
-        + "\n\nFormatting rules: Use **bold** for key terms. Use short bullets when "
-        + "listing multiple things. Use numbered steps for processes. "
-        + "No headings. No em dashes. No corporate filler. No 'certainly' or 'absolutely'. "
-        + "Sound like the sharpest ecommerce operator the merchant has ever spoken to."
+        + "\n\nFORMATTING — follow these rules exactly:\n"
+        + "- Use ## for section headings when the answer has multiple distinct sections\n"
+        + "- Use **bold** to emphasise key terms, numbers, and important points\n"
+        + "- Use numbered lists (1. 2. 3.) for sequential steps or ranked priorities\n"
+        + "- Use bullet points (- item) for non-sequential lists\n"
+        + "- Use > blockquote for important callouts or warnings\n"
+        + "- Short paragraphs between lists to add context\n"
+        + "- No em dashes. No filler phrases. No 'certainly' or 'absolutely'.\n"
+        + "- Sound like the sharpest ecommerce operator the merchant has spoken to.\n"
+        + "- After the answer, ask ONE follow-up question to continue the conversation "
+        + "or invite them to go deeper. Keep it natural."
     )
 
     # Use sonnet for knowledge — haiku is too shallow for deep ecom expertise
     try:
-        return sanitise(_call(DEEP_MODEL, prompt, 1000, 15.0))
+        import anthropic as _anth2, os as _os2
+        _client2 = _anth2.Anthropic(api_key=_os2.environ.get("ANTHROPIC_API_KEY"), timeout=18.0)
+        if image_base64 and image_media_type:
+            _content = [
+                {"type": "image", "source": {
+                    "type": "base64",
+                    "media_type": image_media_type,
+                    "data": image_base64,
+                }},
+                {"type": "text", "text": (
+                    prompt + "\n\nThe merchant has also shared an image. "
+                    "Analyse it carefully and incorporate your observations into your answer. "
+                    "If the image shows analytics, a store, a product, a chart, or anything "
+                    "ecommerce-related, reference what you see specifically."
+                )},
+            ]
+        else:
+            _content = prompt
+        _resp2 = _client2.messages.create(
+            model=DEEP_MODEL, max_tokens=1200,
+            messages=[{"role": "user", "content": _content}]
+        )
+        return sanitise("".join(b.text for b in _resp2.content if getattr(b, "type", "") == "text").strip())
     except Exception as e:
         print(f"RESPONDER_KNOWLEDGE_SONNET_ERROR {type(e).__name__}: {e}")
-        # Fall back to haiku
         try:
-            return sanitise(_call(FAST_MODEL, prompt, 600, 12.0))
+            return sanitise(_call(FAST_MODEL, prompt, 700, 12.0))
         except Exception as e2:
             print(f"RESPONDER_KNOWLEDGE_HAIKU_ERROR {type(e2).__name__}: {e2}")
             return _static_knowledge(message, understanding)
