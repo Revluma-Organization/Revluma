@@ -159,49 +159,86 @@ def _static_conversational(message: str, understanding) -> str:
 def compose_knowledge(message: str, understanding, history_text: str,
                       memories: list[dict], has_store: bool) -> str:
     """
-    General ecommerce knowledge or strategy. No store data needed.
-    Mentions store connection at most once, only if it would genuinely sharpen
-    the answer, and only as a closing half-sentence.
+    Answer any ecommerce question — Shopify, WooCommerce, BigCommerce, DTC,
+    cart abandonment, checkout, conversion, retention, churn, LTV, CAC, ROAS,
+    email, SMS, WhatsApp, campaigns, pricing, discounts, segmentation,
+    product performance, acquisition, TikTok Shop, Amazon, Etsy, dropshipping,
+    merchandising, promotions, funnels, attribution, AOV, repeat purchase,
+    customer journey, inventory, margin, ecommerce ops — anything.
+
+    No store connection needed. Claude already knows all of this deeply.
     """
     constraint_block = ""
     hard = [m for m in memories if m.get("authority_level", 0) >= 4 and m.get("is_active")]
     if hard:
         pairs = ", ".join(f"{m['memory_key']}={m['memory_value']}" for m in hard)
-        constraint_block = (
-            f"\nMerchant constraints you must respect in any advice: {pairs}\n"
-        )
+        constraint_block = f"\nMerchant constraints to respect: {pairs}\n"
 
-    depth = ("Answer in 1 to 3 sentences. Be precise."
-             if understanding.response_mode == "direct_answer"
-             else "Give 3 to 5 concrete points. Lead with the ones that move money most. "
-                  "Be specific enough to act on. No generic filler.")
+    is_definition = understanding.response_mode == "direct_answer"
+
+    depth = (
+        "Answer concisely and accurately in 1 to 4 sentences. Be precise and specific."
+        if is_definition else
+        "Give a thorough, expert answer. Be specific and practical. "
+        "Use your full knowledge of ecommerce, Shopify, WooCommerce, and the "
+        "broader ecosystem. Cover what actually matters. Do not pad."
+    )
 
     store_hint = ""
-    if not has_store and understanding.intent == "strategy":
-        store_hint = ("\nYou may add ONE short closing line noting that with their store "
-                      "connected you could point at which of these is actually costing them. "
-                      "Only one line. Do not lead with it. Do not repeat it.")
+    if not has_store and understanding.intent in ("strategy", "recommendation"):
+        store_hint = (
+            "\nIf mentioning that their specific store data would sharpen the answer, "
+            "do so in ONE closing sentence only. Never lead with it."
+        )
 
     prompt = (
         PERSONA
-        + "\nYou have deep expertise in Shopify, WooCommerce, cart recovery, checkout "
-        + "optimisation, conversion, retention, churn, LTV, segmentation, lifecycle "
-        + "marketing, email, SMS and WhatsApp commerce.\n"
+        + "\n\nYou are one of the most knowledgeable ecommerce experts on the planet. "
+        + "You have complete mastery of:\n"
+        + "- Shopify: admin, analytics, checkout, payment, themes, apps, Shopify Plus, "
+        + "  Markets, B2B, Flow, Functions, Hydrogen, Storefront API, Liquid\n"
+        + "- WooCommerce, BigCommerce, Magento, PrestaShop, Squarespace Commerce\n"
+        + "- DTC strategy, brand building, retention economics\n"
+        + "- Cart abandonment: psychology, signals, recovery timing, channel selection\n"
+        + "- Checkout optimisation: friction, trust, mobile, payment methods\n"
+        + "- Conversion rate optimisation: product pages, PDP, PLP, UX, A/B testing\n"
+        + "- Customer retention, churn, repeat purchase, LTV, cohort analysis, RFM\n"
+        + "- Email marketing: flows, broadcasts, deliverability, segmentation, copy\n"
+        + "- SMS marketing: compliance, timing, recovery, TCPA, GDPR\n"
+        + "- WhatsApp Commerce: Business API, catalogues, order messaging\n"
+        + "- Performance marketing: Meta, Google, TikTok, attribution, ROAS, CAC\n"
+        + "- Customer segmentation, CLV modelling, predictive analytics\n"
+        + "- Pricing strategy, promotions, discounting, bundles, upsells, cross-sells\n"
+        + "- Supply chain, inventory management, dropshipping, 3PL, fulfilment\n"
+        + "- Ecommerce metrics: AOV, CVR, RPV, CAC, LTV, NPS, churn rate, ARPU\n"
+        + "- Marketplace selling: Amazon, Etsy, eBay, TikTok Shop, Walmart\n"
+        + "- Ecommerce law: consumer rights, returns, VAT, sales tax, customs\n"
+        + "- Product strategy, merchandising, catalogue management, seasonal planning\n"
+        + "- Ecommerce operations, team structure, tools, integrations, workflows\n"
         + constraint_block
-        + "\nCONVERSATION SO FAR:\n"
+        + "\nCONVERSATION CONTEXT:\n"
         + (history_text if history_text else "(first message)")
-        + f"\n\nMERCHANT ASKED:\n{message[:500]}\n\n"
-        + f"Their goal: {understanding.goal}\n\n"
+        + f"\n\nQUESTION:\n{message[:800]}\n\n"
+        + f"Goal: {understanding.goal}\n\n"
         + depth
         + store_hint
-        + "\nUse markdown sparingly: bold for key terms, short bullets if listing. "
-        + "No headings. No em dashes. No corporate language."
+        + "\n\nFormatting rules: Use **bold** for key terms. Use short bullets when "
+        + "listing multiple things. Use numbered steps for processes. "
+        + "No headings. No em dashes. No corporate filler. No 'certainly' or 'absolutely'. "
+        + "Sound like the sharpest ecommerce operator the merchant has ever spoken to."
     )
+
+    # Use sonnet for knowledge — haiku is too shallow for deep ecom expertise
     try:
-        return sanitise(_call(FAST_MODEL, prompt, 500, 12.0))
+        return sanitise(_call(DEEP_MODEL, prompt, 1000, 15.0))
     except Exception as e:
-        print(f"RESPONDER_KNOWLEDGE_ERROR {type(e).__name__}: {e}")
-        return _static_knowledge(message, understanding)
+        print(f"RESPONDER_KNOWLEDGE_SONNET_ERROR {type(e).__name__}: {e}")
+        # Fall back to haiku
+        try:
+            return sanitise(_call(FAST_MODEL, prompt, 600, 12.0))
+        except Exception as e2:
+            print(f"RESPONDER_KNOWLEDGE_HAIKU_ERROR {type(e2).__name__}: {e2}")
+            return _static_knowledge(message, understanding)
 
 
 # ── Capability ────────────────────────────────────────────────────────────────
