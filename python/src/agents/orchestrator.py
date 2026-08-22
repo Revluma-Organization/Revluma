@@ -102,11 +102,14 @@ class OrchestrationResult:
 
 
 def orchestrate(organization_id: str, user_id: str, message: str,
-                conversation_id: str | None, db) -> OrchestrationResult:
+                conversation_id: str | None, db,
+                image_base64: str | None = None,
+                image_media_type: str | None = None) -> OrchestrationResult:
     correlation_id = str(uuid.uuid4())
     start = time.time()
     try:
-        result = _run(organization_id, user_id, message, conversation_id, db, correlation_id)
+        result = _run(organization_id, user_id, message, conversation_id, db, correlation_id,
+                     image_base64=image_base64, image_media_type=image_media_type)
     except Exception as e:
         import traceback
         print(f"ORCHESTRATE_FATAL {type(e).__name__}: {e}")
@@ -131,7 +134,8 @@ def orchestrate(organization_id: str, user_id: str, message: str,
     return result
 
 
-def _run(organization_id, user_id, message, conversation_id, db, correlation_id):
+def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
+         image_base64=None, image_media_type=None):
     message = message.strip()[:MAX_MESSAGE_CHARS]
     if not message:
         raise ValueError("Empty message")
@@ -143,7 +147,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id)
     memories     = _load_memories(organization_id, db)
 
     # ── 2. UNDERSTAND (before anything else) ──────────────────────────────────
-    u = understand(message, history)
+    u = understand(message, history, image_base64=image_base64)
     print(f"UNDERSTANDING intent={u.intent} store={u.requires_store_data} "
           f"web={u.requires_web} mode={u.response_mode} conf={u.confidence}")
 
@@ -180,7 +184,9 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id)
         # conversational, feedback, identity, greeting, casual
         has_store = _has_store(organization_id, db)
         return finish("chat",
-                      responder.compose_conversational(message, u, history_text, memories, has_store))
+                      responder.compose_conversational(message, u, history_text, memories, has_store,
+                                                        image_base64=image_base64,
+                                                        image_media_type=image_media_type))
 
     # ── 6. Store data IS required. Load it. ───────────────────────────────────
     business_state = load_current_business_state(organization_id, db)
