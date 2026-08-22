@@ -109,7 +109,18 @@ exports.chat = async (req, res, next) => {
         error: { code: 'VALIDATION_ERROR', message: 'Message must not be empty.' },
       });
     }
-    const conversationId = req.body?.conversation_id || null;
+    const conversationId  = req.body?.conversation_id || null;
+    const imageBase64     = req.body?.image_base64     || null;
+    const imageMediaType  = req.body?.image_media_type || null;
+
+    // Validate image if provided
+    const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (imageBase64 && !ALLOWED_IMAGE_TYPES.includes(imageMediaType)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Unsupported image type.' },
+      });
+    }
 
     // 2. Resolve org from JWT — never from body
     const org = await getAuthenticatedOrg(req.user.id);
@@ -163,6 +174,8 @@ exports.chat = async (req, res, next) => {
       message,
       conversationId: activeConvId,
       correlationId,
+      imageBase64,
+      imageMediaType,
     });
 
     // 7. Handle Python failure — persist failed Rev message so history is intact
@@ -464,6 +477,58 @@ exports.intelligenceHealth = async (req, res, next) => {
       success: true,
       data: { node: 'healthy', python: pythonHealth },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── DELETE /api/v1/rev/conversation/:id ──────────────────────────────────────
+
+exports.deleteConversation = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ID required.' } });
+
+    const org = await getAuthenticatedOrg(req.user.id);
+    // Verify ownership
+    await verifyConversationOwnership(id, org.id);
+
+    // Soft delete — mark as deleted so history is preserved but hidden
+    await prisma.$executeRaw`
+      UPDATE conversations SET status = 'deleted', updated_at = NOW()
+      WHERE id = ${id}::uuid AND organization_id = ${org.id}::uuid
+    `;
+
+    logger.info('conversation_deleted', { orgId: org.id, conversationId: id });
+    return res.status(200).json({ success: true, data: { id } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── PATCH /api/v1/rev/conversation/:id/title ─────────────────────────────────
+
+exports.renameConversation = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { title } = req.body;
+
+    if (!id) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ID required.' } });
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Title is required.' } });
+    }
+    const cleanTitle = title.trim().slice(0, 100);
+
+    const org = await getAuthenticatedOrg(req.user.id);
+    await verifyConversationOwnership(id, org.id);
+
+    await prisma.$executeRaw`
+      UPDATE conversations SET title = ${cleanTitle}, updated_at = NOW()
+      WHERE id = ${id}::uuid AND organization_id = ${org.id}::uuid
+    `;
+
+    logger.info('conversation_renamed', { orgId: org.id, conversationId: id });
+    return res.status(200).json({ success: true, data: { id, title: cleanTitle } });
   } catch (error) {
     next(error);
   }
