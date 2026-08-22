@@ -79,7 +79,9 @@ def _call(model: str, prompt: str, max_tokens: int, timeout: float) -> str:
 # ── Conversational / identity / capability / feedback ─────────────────────────
 
 def compose_conversational(message: str, understanding, history_text: str,
-                           memories: list[dict], has_store: bool) -> str:
+                           memories: list[dict], has_store: bool,
+                           image_base64: str | None = None,
+                           image_media_type: str | None = None) -> str:
     """
     Natural conversation. Never mentions store connection unless the merchant
     raised it. Uses conversation history so replies are contextual, not canned.
@@ -374,6 +376,95 @@ def _static_needs_store(understanding) -> str:
 
 
 # ── Analysis (6-part card) ────────────────────────────────────────────────────
+
+
+def compose_web_research(message: str, understanding, history_text: str,
+                         memories: list[dict]) -> str:
+    """
+    Use Anthropic web_search tool to answer questions needing current information.
+    Clearly distinguishes external research from store data.
+    """
+    import anthropic, os
+
+    try:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("no key")
+
+        constraint_block = ""
+        hard = [m for m in memories if m.get("authority_level", 0) >= 4 and m.get("is_active")]
+        if hard:
+            pairs = ", ".join(f"{m['memory_key']}={m['memory_value']}" for m in hard)
+            constraint_block = f"Merchant constraints: {pairs}\n"
+
+        prompt = (
+            PERSONA
+            + "\n\nYou have access to the web_search tool. Use it to find current, "
+            + "accurate information when the question requires recent or external data.\n"
+            + constraint_block
+            + "\nCONVERSATION SO FAR:\n"
+            + (history_text if history_text else "(first message)")
+            + f"\n\nMERCHANT ASKED:\n{message[:500]}\n\n"
+            + "Search for current information to answer this well. "
+            + "After searching, give a clear, concise answer. "
+            + "If you cite external sources, note them briefly. "
+            + "Distinguish what you found from external research vs what you know from expertise. "
+            + "No em dashes. No corporate language. Be direct and useful."
+        )
+
+        client = anthropic.Anthropic(api_key=api_key, timeout=20.0)
+        resp = client.messages.create(
+            model=FAST_MODEL,
+            max_tokens=600,
+            tools=[{"type": "web_search_20250305", "name": "web_search"}],
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        # Extract text from response (may include tool_use blocks)
+        text = "".join(
+            b.text for b in resp.content
+            if getattr(b, "type", "") == "text"
+        ).strip()
+
+        if text:
+            return sanitise(text)
+
+        # If model used tool but no text yet, do agentic follow-through
+        messages = [{"role": "user", "content": prompt}]
+        messages.append({"role": "assistant", "content": resp.content})
+        # Add tool results if present
+        tool_results = []
+        for block in resp.content:
+            if getattr(block, "type", "") == "tool_use":
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": "Search completed.",
+                })
+        if tool_results:
+            messages.append({"role": "user", "content": tool_results})
+            resp2 = client.messages.create(
+                model=FAST_MODEL,
+                max_tokens=600,
+                tools=[{"type": "web_search_20250305", "name": "web_search"}],
+                messages=messages,
+            )
+            text2 = "".join(
+                b.text for b in resp2.content
+                if getattr(b, "type", "") == "text"
+            ).strip()
+            if text2:
+                return sanitise(text2)
+
+        return "I searched for that but could not find a clear answer. Try rephrasing the question."
+
+    except Exception as e:
+        print(f"RESPONDER_WEB_RESEARCH_ERROR {type(e).__name__}: {e}")
+        # Fall back to knowledge response
+        u_mock = type("U", (), {"intent": "knowledge", "goal": understanding.goal,
+                                 "response_mode": "explanation", "domains": understanding.domains})()
+        return compose_knowledge(message, u_mock, history_text, memories, False)
+
 
 def compose_analysis(message: str, understanding, state_json: str, agent_json: str,
                      constraints_json: str, history_text: str) -> dict:
