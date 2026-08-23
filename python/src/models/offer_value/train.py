@@ -179,7 +179,7 @@ def _load_real_offer_rows(db_connection) -> pd.DataFrame:
 
     except Exception as e:
         raise RuntimeError(
-            f"[M5] Real-data query against orders/abandoned_carts/customer_events failed: {e}"
+            f"[M5] Real-data query against orders/abandoned_carts/events failed: {e}"
         ) from e
 
 

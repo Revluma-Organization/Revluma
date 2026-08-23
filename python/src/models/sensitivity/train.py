@@ -110,7 +110,7 @@ def _generate_synthetic_sensitivity_data(n: int = 3000) -> pd.DataFrame:
 
 def _load_real_sensitivity_rows(db_connection) -> pd.DataFrame:
     """
-    Builds real M2 training rows from customers + orders + customer_events.
+    Builds real M2 training rows from customers + orders + events.
 
     Row unit: one abandoned/recovered checkout session per customer.
     Features: computed with the exact pipeline.py functions from that
@@ -184,7 +184,7 @@ def _load_real_sensitivity_rows(db_connection) -> pd.DataFrame:
 
     except Exception as e:
         raise RuntimeError(
-            f"[M2] Real-data query against checkout/orders/customer_events failed: {e}"
+            f"[M2] Real-data query against checkout/orders/events failed: {e}"
         ) from e
 
 

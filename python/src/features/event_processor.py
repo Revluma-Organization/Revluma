@@ -7,7 +7,7 @@ engineering pipeline processes them.
 
 This sits between:
     [Tracking Pixel] → POST /api/tracking/event
-                     → customer_events table (S4)
+                     → events table (S4)
                      → [THIS PROCESSOR]
                      → Feature Engineering Pipeline (pipeline.py)
                      → Redis Feature Store (S8)
@@ -379,7 +379,7 @@ def group_events_by_session(events: list) -> dict:
     in a single job run efficiently.
 
     Args:
-        events (list): Flat list of raw events from customer_events table,
+        events (list): Flat list of raw events from events table,
                        potentially spanning multiple sessions and customers.
 
     Returns:

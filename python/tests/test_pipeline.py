@@ -9,7 +9,8 @@ from src.features.pipeline import (
     calculate_day_of_week_session,
     calculate_time_on_page_ms,
     calculate_cart_item_add_count,
-    calculate_cart_item_remove_count
+    calculate_cart_item_remove_count,
+    compute_feature_vector,
 )
 
 # ---------------------------------------------------------------------------
@@ -657,6 +658,63 @@ class TestCalculateRfmScores(unittest.TestCase):
             "days_since_last_purchase", "past_orders_total", "avg_order_value"
         }
         self.assertEqual(set(result.keys()), expected_keys)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# compute_feature_vector Tests
+# Verifies anonymous_id extraction, created_at timestamp fallback, and the
+# safe empty-session guarantee — the three schema alignment properties from
+# the critical alignment sweep (August 2026).
+# ---------------------------------------------------------------------------
+
+class TestComputeFeatureVector(unittest.TestCase):
+
+    def test_anonymous_id_extracted_from_events(self):
+        """anonymous_id must be surfaced in the envelope when present in events."""
+        events = [
+            {
+                "event_type": "page_view",
+                "session_id": "sess_anon_1",
+                "anonymous_id": "anon-abc-123",
+                "timestamp": "2026-08-20T10:00:00Z",
+                "payload": {},
+            }
+        ]
+        result = compute_feature_vector("cust_1", events, db=None)
+        self.assertEqual(result["anonymous_id"], "anon-abc-123")
+        self.assertIn("features", result)
+
+    def test_timestamp_fallback_created_at(self):
+        """
+        When events carry created_at (DB source) instead of timestamp (pixel source),
+        the envelope timestamp must still be populated correctly.
+        This verifies the dual-source timestamp strategy.
+        """
+        events = [
+            {
+                "event_type": "page_view",
+                "session_id": "sess_db_1",
+                "created_at": "2026-08-20T09:00:00Z",
+                # No 'timestamp' key — simulates a row returned from DB
+                "payload": {},
+            }
+        ]
+        result = compute_feature_vector("cust_2", events, db=None)
+        self.assertEqual(result["timestamp"], "2026-08-20T09:00:00Z")
+
+    def test_empty_session_returns_safe_defaults(self):
+        """Empty session must never raise — all features default safely."""
+        result = compute_feature_vector("cust_3", [], db=None)
+        self.assertIn("features", result)
+        self.assertIsNone(result["session_id"])
+        self.assertIsNone(result["anonymous_id"])
+        self.assertEqual(result["features"]["scroll_depth_pct"], 0.0)
+        self.assertEqual(result["features"]["tab_switch_count"], 0)
+        self.assertFalse(result["features"]["failed_payment_attempt"])
 
 
 if __name__ == "__main__":

@@ -187,7 +187,7 @@ def _load_real_session_rows(db_connection) -> pd.DataFrame:
 
     except Exception as e:
         raise RuntimeError(
-            f"[M1] Real-data query against checkout/customer_events failed: {e}"
+            f"[M1] Real-data query against checkout/events failed: {e}"
         ) from e
 
 

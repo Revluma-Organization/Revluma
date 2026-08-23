@@ -33,7 +33,7 @@ def calculate_scroll_depth(events: list) -> float:
     Formula: max(depth_pct values) from scroll_depth events on checkout pages.
 
     Models: M1 (Abandonment), M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='scroll', page_type='checkout'
+    Source: events — event_type='scroll', page_type='checkout'
 
     Returns:
         float: 0.0–100.0. Default 0.0 if no scroll data captured.
@@ -69,7 +69,7 @@ def calculate_tab_switch_count(events: list) -> int:
     Formula: COUNT(tab_visibility events WHERE state='hidden').
 
     Models: M1 (Abandonment), M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='tab_switch', state='hidden'
+    Source: events — event_type='tab_switch', state='hidden'
 
     Returns:
         int: 0–50 (capped at 50). Default 0. Values 4+ signal price comparison.
@@ -102,7 +102,7 @@ def calculate_time_on_checkout_step(events: list) -> float:
     Formula: timestamp(step_completed) - timestamp(step_started) for last step.
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: customer_events — event_type='checkout_step' timestamps
+    Source: events — event_type='checkout_step' timestamps
 
     Returns:
         float: 0.0–3600.0 seconds. Returns -1.0 if no checkout step was reached
@@ -137,7 +137,7 @@ def calculate_cursor_hesitation(events: list) -> int:
     Formula: max(blur_timestamp - focus_timestamp) WHERE field_name IN price fields.
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='field_focus' and 'field_blur'
+    Source: events — event_type='field_focus' and 'field_blur'
 
     Returns:
         int: 0–30000ms (capped at 30000). Default 0 if no price field interaction.
@@ -165,7 +165,7 @@ def calculate_cart_item_add_count(events: list) -> int:
     Formula: COUNT(events WHERE event_type='add_to_cart').
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: customer_events — event_type='add_to_cart'
+    Source: events — event_type='add_to_cart'
 
     Returns:
         int: 0+. Default 0 if no add_to_cart events present.
@@ -188,7 +188,7 @@ def calculate_cart_item_remove_count(events: list) -> int:
     Formula: COUNT(events WHERE event_type='remove_from_cart').
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: customer_events — event_type='remove_from_cart'
+    Source: events — event_type='remove_from_cart'
 
     Returns:
         int: 0+. Default 0 if no remove_from_cart events present.
@@ -217,7 +217,7 @@ def calculate_checkout_step_reached(events: list) -> int:
     Formula: MAX(step_number) from checkout_step_completed events WHERE status=ABANDONED.
 
     Models: M1 (Abandonment), M2 (Price/Convenience Classifier)
-    Source: customer_events + checkout table (S5) + platform webhooks (S3)
+    Source: events + checkout table (S5) + platform webhooks (S3)
 
     Returns:
         int: 0–5. Default 0.
@@ -469,7 +469,7 @@ def calculate_visited_coupon_page(events: list) -> bool:
              /coupon, /deal, or /offer (case-insensitive).
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='page_view', url field
+    Source: events — event_type='page_view', url field
 
     Returns:
         bool: True = shopper actively sought discount pages (strong PSS signal).
@@ -505,7 +505,7 @@ def calculate_searched_discount_terms(events: list) -> bool:
              'code', 'coupon', 'sale', 'deal', 'free shipping', or '% off'.
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='search_query', query field
+    Source: events — event_type='search_query', query field
 
     Returns:
         bool: True = shopper explicitly searched for discounts (strongest PSS signal).
@@ -542,7 +542,7 @@ def calculate_abandoned_at_shipping_reveal(events: list) -> bool:
              step 2 completed AND step 3 was never completed.
 
     Models: M2 (Price/Convenience Classifier) — primary CSS signal
-    Source: customer_events (exit_intent + step events) + checkout table
+    Source: events (exit_intent + step events) + checkout table
 
     Returns:
         bool: True = abandoned at shipping cost reveal (strong convenience sensitivity).
@@ -582,7 +582,7 @@ def calculate_failed_payment_attempt(events: list) -> bool:
     WooCommerce order.failed) or pixel payment_failed events.
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: platform webhooks (S3) + customer_events payment_failed event type
+    Source: platform webhooks (S3) + events payment_failed event type
 
     Returns:
         bool: True = payment was attempted but failed (shopper had full intent,
@@ -610,7 +610,7 @@ def calculate_local_hour_of_session(events: list) -> int:
     Timezone captured from pixel via Intl.DateTimeFormat().resolvedOptions().timeZone.
 
     Models: M3 (Optimal Send-Time Predictor)
-    Source: customer_events — event_type='session_start', timezone field
+    Source: events — event_type='session_start', timezone field
 
     Returns:
         int: 0–23. Default 12 (noon) when timezone detection fails.
@@ -643,7 +643,7 @@ def calculate_day_of_week_session(events: list) -> int:
     Note: JavaScript Date.getDay() returns Sunday=0 — pixel must convert before sending.
 
     Models: M3 (Optimal Send-Time Predictor)
-    Source: customer_events — same session_start event as local_hour_of_session
+    Source: events — same session_start event as local_hour_of_session
 
     Returns:
         int: 0–6 (0=Monday). Default 0 when timezone detection fails.
@@ -674,7 +674,7 @@ def calculate_time_on_page_ms(events: list) -> int:
     Formula: max_timestamp - min_timestamp across all events.
 
     Models: M1 (Abandonment Probability Predictor), M2 (Price/Convenience Classifier)
-    Source: customer_events
+    Source: events
 
     Returns:
         int: Total milliseconds spent. Default 0.
@@ -715,7 +715,7 @@ def calculate_google_shopping_referrer(events: list) -> bool:
     Detected via the referrer URL on the first page_view event of the session.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='page_view', payload.referrer field
+    Source: events — event_type='page_view', payload.referrer field
 
     Returns:
         bool: True = session came from Google Shopping. Default False.
@@ -750,7 +750,7 @@ def calculate_time_first_view_to_cart_add_hrs(events: list) -> float:
     A longer deliberation window signals higher price sensitivity.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='page_view' and 'add_to_cart'
+    Source: events — event_type='page_view' and 'add_to_cart'
 
     Returns:
         float: Hours elapsed. 0.0 if add_to_cart happened before or simultaneously
@@ -839,7 +839,7 @@ def calculate_failed_coupon_attempt(events: list) -> bool:
     a failed status in the payload.
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='coupon_error' or coupon_applied with error
+    Source: events — event_type='coupon_error' or coupon_applied with error
 
     Returns:
         bool: True = a discount code was rejected this session. Default False.
@@ -912,7 +912,7 @@ def calculate_account_creation_abandonment(events: list) -> bool:
     forced account creation as a checkout gate.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='account_create_start' without completion
+    Source: events — event_type='account_create_start' without completion
 
     Returns:
         bool: True = abandoned at account registration. Default False.
@@ -945,7 +945,7 @@ def calculate_repeat_checkout_attempts(events: list) -> int:
     with repeated friction — a high-value recovery target.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='checkout_start'
+    Source: events — event_type='checkout_start'
 
     Returns:
         int: 0+ count of checkout initiations. Default 0.
@@ -969,7 +969,7 @@ def calculate_device_type_mobile(events: list) -> bool:
     Mobile sessions have higher abandonment rates, especially at payment step.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — payload.user_agent or payload.device_type field
+    Source: events — payload.user_agent or payload.device_type field
 
     Returns:
         bool: True = mobile device. False = desktop/tablet/unknown. Default False.
@@ -1010,7 +1010,7 @@ def calculate_shipping_eta_dwell_sec(events: list) -> float:
     Long dwell on shipping information signals delivery timeline sensitivity.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='element_view' with element_id
+    Source: events — event_type='element_view' with element_id
             containing 'shipping-eta', 'delivery-estimate', or similar
 
     Returns:
@@ -1075,7 +1075,7 @@ def calculate_trust_page_visited(events: list) -> bool:
     Signals uncertainty or friction with purchase commitment.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='page_view', payload.url field
+    Source: events — event_type='page_view', payload.url field
 
     Returns:
         bool: True = shopper viewed a trust/policy page. Default False.
@@ -1111,7 +1111,7 @@ def calculate_failed_coupon_count(events: list) -> int:
     code during the session. Multiple failures signal strong price sensitivity.
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='coupon_error'
+    Source: events — event_type='coupon_error'
 
     Returns:
         int: 0+ count of failed coupon attempts. Default 0.
@@ -1152,7 +1152,7 @@ def calculate_copied_product_title(events: list) -> bool:
     the shopper is likely checking competitor prices.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='clipboard_copy' with element context
+    Source: events — event_type='clipboard_copy' with element context
 
     Returns:
         bool: True = product title was copied (strong PSS signal). Default False.
@@ -1195,7 +1195,7 @@ def calculate_cart_value_vs_avg_order_value_ratio(customer_id: str, events: list
     usual — higher stakes, higher abandonment risk and higher offer value needed.
 
     Models: M1 (Abandonment Predictor), M5 (Offer Value Optimizer)
-    Source: customer_events (cart_value from payload) + orders table (avg_order_value)
+    Source: events (cart_value from payload) + orders table (avg_order_value)
 
     Args:
         customer_id: UUID of the customer
