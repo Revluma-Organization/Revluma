@@ -70,7 +70,7 @@ from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from fastapi import FastAPI, Depends, HTTPException, Header
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import mlflow.sklearn
 
 # Setup MLflow configuration
@@ -344,13 +344,39 @@ _Session = sessionmaker(bind=engine)
 
 class OrchestrateRequest(BaseModel):
     organization_id: str = Field(..., min_length=36, max_length=36)
-    user_id: str = Field(..., min_length=36, max_length=36)
+    # Accept either user_id (platform auth context) or customer_id (ML/event context).
+    # Same dual-source pattern as event.get("timestamp") or event.get("created_at").
+    # Whichever is provided is normalised to user_id before reaching the orchestrator.
+    user_id: typing.Optional[str] = Field(None, min_length=36, max_length=36)
+    customer_id: typing.Optional[str] = Field(None, min_length=36, max_length=36)
     message: str = Field(..., min_length=1, max_length=2000)
     conversation_id: typing.Optional[str] = Field(None, min_length=36, max_length=36)
     image_base64: typing.Optional[str] = Field(None)  # base64-encoded image
     image_media_type: typing.Optional[str] = Field(None)  # image/jpeg | image/png | image/webp | image/gif
     contract_version: typing.Optional[str] = Field(None)
     correlation_id: typing.Optional[str] = Field(None)
+
+    @model_validator(mode="after")
+    def resolve_user_id(self) -> "OrchestrateRequest":
+        """Normalise user_id / customer_id — accept either, resolve to user_id.
+
+        Mirrors the timestamp dual-source pattern:
+            event.get("timestamp") or event.get("created_at")
+        Here:
+            req.user_id or req.customer_id
+
+        Raises ValueError if neither is supplied, so callers always get a
+        clear validation error rather than a silent None.
+        """
+        resolved = self.user_id or self.customer_id
+        if not resolved:
+            raise ValueError(
+                "Either user_id or customer_id must be provided."
+            )
+        # Normalise: always store the resolved value in user_id so all
+        # downstream code (orchestrator, DB writes) remains unchanged.
+        self.user_id = resolved
+        return self
 
 
 @app.post("/orchestrate", dependencies=[Depends(verify_internal_caller)])
