@@ -151,11 +151,15 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
     print(f"UNDERSTANDING intent={u.intent} store={u.requires_store_data} "
           f"web={u.requires_web} mode={u.response_mode} conf={u.confidence}")
 
-    def finish(rtype: str, text_out: str) -> OrchestrationResult:
+    def finish(rtype: str, text_out: str, agents_used: list[str] | None = None) -> OrchestrationResult:
+        """Persist both turns, update the conversation, then return the result."""
         _update_conversation(conv_id, db, title_hint=message if is_new else None)
+        _persist_messages(conv_id, user_id, message, text_out, rtype,
+                          agents_used=agents_used, db=db)
         return OrchestrationResult(
             success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
             response_type=rtype, text=text_out, intent=u.intent,
+            agents_used=agents_used or [],
             correlation_id=correlation_id,
         )
 
@@ -172,6 +176,11 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
 
     # ── 5. Anything that does NOT need store data ─────────────────────────────
     if not u.requires_store_data:
+        # Web research: questions needing current external information
+        if u.requires_web:
+            return finish("web_research",
+                          responder.compose_web_research(message, u, history_text, memories))
+
         if u.response_mode == MODE_CLARIFICATION:
             return finish("clarification",
                           responder.compose_clarification(message, u, history_text))
@@ -234,6 +243,8 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             memories, True,
         )
         _update_conversation(conv_id, db, title_hint=message if is_new else None)
+        _persist_messages(conv_id, user_id, message, text_out, "knowledge",
+                          agents_used=selected, db=db)
         return OrchestrationResult(
             success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
             response_type="knowledge", text=text_out, intent=u.intent,
@@ -249,7 +260,11 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         _constraints_json(memories),
         history_text,
     )
+    # Persist both turns so this analysis is in history for the next message
+    analysis_text = resp.get("situation", "")  # representative text for history
     _update_conversation(conv_id, db, title_hint=message if is_new else None)
+    _persist_messages(conv_id, user_id, message, analysis_text, "analysis",
+                      agents_used=selected, db=db)
     return OrchestrationResult(
         success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
         response_type="analysis",
@@ -388,6 +403,61 @@ def _save_preference(org_id: str, user_id: str, entities: dict, db) -> bool:
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
+
+def _persist_messages(
+    conv_id: str,
+    user_id: str,
+    merchant_message: str,
+    rev_reply: str,
+    reply_type: str,
+    agents_used: list[str] | None,
+    db,
+) -> None:
+    """
+    Writes both the merchant's message and Rev's reply to conversation_messages.
+
+    This is the function that makes conversation history work. Without it,
+    _load_history always returns an empty list and Rev has no memory of
+    prior turns in the same session.
+
+    Uses a sequence_number derived from the current message_count so rows
+    are always ordered correctly even if two messages arrive in quick
+    succession.
+    """
+    try:
+        # Fetch current count to derive sequence numbers for this pair
+        row = db.execute(
+            text("SELECT message_count FROM conversations WHERE id = :c"),
+            {"c": conv_id},
+        ).fetchone()
+        base_seq = int(row[0]) if row else 0
+
+        agent_label = ",".join(agents_used) if agents_used else None
+
+        db.execute(text("""
+            INSERT INTO conversation_messages
+                (id, conversation_id, role, content, message_type, sequence_number, created_at)
+            VALUES
+                (:id1, :c, 'user',  CAST(:m AS jsonb), 'text', :seq1, NOW()),
+                (:id2, :c, 'rev',   CAST(:r AS jsonb), :rtype, :seq2, NOW())
+        """), {
+            "id1":   str(uuid.uuid4()),
+            "id2":   str(uuid.uuid4()),
+            "c":     conv_id,
+            "m":     json.dumps({"text": merchant_message}),
+            "r":     json.dumps({"text": rev_reply, "agent_name": agent_label}),
+            "rtype": reply_type,
+            "seq1":  base_seq + 1,
+            "seq2":  base_seq + 2,
+        })
+        db.commit()
+    except Exception as e:
+        # Non-fatal: a persistence failure must never break the response
+        print(f"PERSIST_MESSAGES_ERROR {type(e).__name__}: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 def _get_or_create_conversation(org_id, user_id, conv_id, db):
     if conv_id:
