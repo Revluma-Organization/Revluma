@@ -68,7 +68,7 @@ exports.inviteMember = async (req, res, next) => {
     }
 
     // Check for pending invite
-    const existingInvite = await prisma.inviteTokens.findFirst({
+    const existingInvite = await prisma.invite_tokens.findFirst({
       where: {
         organization_id: organizationId,
         email: targetEmail,
@@ -91,7 +91,7 @@ exports.inviteMember = async (req, res, next) => {
     const inviterName = req.user.email; // fallback to email
 
     // Store the hashed token
-    await prisma.inviteTokens.create({
+    await prisma.invite_tokens.create({
       data: {
         organization_id: organizationId,
         email: targetEmail,
@@ -127,7 +127,7 @@ exports.acceptInvite = async (req, res, next) => {
     }
 
     const tokenHash = hashInviteToken(token);
-    const invite = await prisma.inviteTokens.findUnique({
+    const invite = await prisma.invite_tokens.findUnique({
       where: { token_hash: tokenHash },
     });
 
@@ -153,7 +153,7 @@ exports.acceptInvite = async (req, res, next) => {
     // Create membership in a transaction
     const result = await prisma.$transaction(async (tx) => {
       // Mark invite as accepted
-      await tx.inviteTokens.update({
+      await tx.invite_tokens.update({
         where: { id: invite.id },
         data: { accepted_at: new Date() },
       });
