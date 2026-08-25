@@ -94,7 +94,7 @@ export const TeamMembers: FC = () => {
     try {
       await api.post("/org/members/invite", {
         email: inviteEmail.toLowerCase(),
-        role: inviteRole,
+        role: inviteRole.toLowerCase(), 
       });
       
       // Re-fetch the list to get the real Database ID for the new member
