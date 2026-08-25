@@ -204,8 +204,12 @@ exports.listMembers = async (req, res, next) => {
   try {
     const { organizationId } = req.orgMembership;
 
+    // Active organization members
     const members = await prisma.organization_members.findMany({
-      where: { organization_id: organizationId, status: 'active' },
+      where: {
+        organization_id: organizationId,
+        status: 'active',
+      },
       select: {
         id: true,
         role: true,
@@ -214,24 +218,77 @@ exports.listMembers = async (req, res, next) => {
         joined_at: true,
         created_at: true,
         users: {
-          select: { id: true, full_name: true, email: true },
+          select: {
+            id: true,
+            full_name: true,
+            email: true,
+          },
         },
       },
-      orderBy: { created_at: 'asc' },
+      orderBy: {
+        created_at: 'asc',
+      },
     });
+
+    // Pending invitations
+    const invitations = await prisma.invite_tokens.findMany({
+      where: {
+        organization_id: organizationId,
+        accepted_at: null,
+        expires_at: {
+          gt: new Date(),
+        },
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        invited_by: true,
+        expires_at: true,
+        created_at: true,
+      },
+      orderBy: {
+        created_at: 'desc',
+      },
+    });
+
+    // Format active members
+    const activeMembers = members.map((member) => ({
+      membershipId: member.id,
+      invitationId: null,
+      role: member.role,
+      status: member.status,
+      user: member.users,
+      invitedAt: member.invited_at,
+      joinedAt: member.joined_at,
+      createdAt: member.created_at,
+      expiresAt: null,
+    }));
+
+    // Format pending invitations
+    const pendingMembers = invitations.map((invite) => ({
+      membershipId: null,
+      invitationId: invite.id,
+      role: invite.role,
+      status: 'pending',
+      user: {
+        id: null,
+        full_name: null,
+        email: invite.email,
+      },
+      invitedAt: invite.created_at,
+      joinedAt: null,
+      createdAt: invite.created_at,
+      expiresAt: invite.expires_at,
+    }));
 
     return res.status(200).json({
       success: true,
       data: {
-        members: members.map((m) => ({
-          membershipId: m.id,
-          role: m.role,
-          status: m.status,
-          user: m.users,
-          invitedAt: m.invited_at,
-          joinedAt: m.joined_at,
-          createdAt: m.created_at,
-        })),
+        members: [
+          ...activeMembers,
+          ...pendingMembers,
+        ],
       },
     });
   } catch (error) {
