@@ -421,6 +421,182 @@ async def orchestrate_endpoint(req: OrchestrateRequest):
     finally:
         db.close()
 
+
+
+# ── Feature Pipeline Endpoint ─────────────────────────────────────────────────
+# Called by Node.js after every event ingestion.
+# Loads session events from DB, runs the S1/S2 pipeline, returns ML prediction.
+
+class FeaturesComputeRequest(BaseModel):
+    customer_id:  typing.Optional[str] = None
+    anonymous_id: typing.Optional[str] = None
+    session_id:   str
+    store_id:     str
+    merchant_id:  typing.Optional[str] = None
+
+class FeaturesComputeResponse(BaseModel):
+    success:    bool
+    session_id: str
+    prediction: typing.Optional[dict] = None
+    fallback:   bool = False
+    error:      typing.Optional[str] = None
+
+@app.post(
+    "/api/features/compute",
+    response_model=FeaturesComputeResponse,
+    dependencies=[Depends(verify_internal_caller)],
+)
+async def compute_features(req: FeaturesComputeRequest) -> FeaturesComputeResponse:
+    """
+    Triggered by Node.js after a pixel event is saved.
+    Loads all session events, runs the full S1/S2 feature pipeline,
+    runs ML inference, and returns a real-time prediction.
+    """
+    import asyncio
+
+    db = _Session()
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: _run_feature_pipeline(req, db)
+        )
+        return result
+    except Exception as e:
+        import traceback
+        print(f"FEATURE_PIPELINE_ERROR: {type(e).__name__}: {e}")
+        print(traceback.format_exc())
+        return FeaturesComputeResponse(
+            success=False,
+            session_id=req.session_id,
+            fallback=True,
+            error=str(e),
+        )
+    finally:
+        db.close()
+
+
+def _run_feature_pipeline(req: FeaturesComputeRequest, db) -> FeaturesComputeResponse:
+    """
+    Synchronous feature pipeline runner.
+    Imports pipeline functions from David's S1/S2 implementation.
+    """
+    try:
+        from sqlalchemy import text
+        import pandas as pd
+
+        # Load raw events for this session from DB
+        rows = db.execute(text("""
+            SELECT
+                id, store_id, session_id, event_type,
+                customer_id, anonymous_id, payload,
+                created_at
+            FROM events
+            WHERE session_id = :session_id
+              AND store_id   = :store_id
+            ORDER BY created_at ASC
+            LIMIT 200
+        """), {"session_id": req.session_id, "store_id": req.store_id}).fetchall()
+
+        if not rows:
+            return FeaturesComputeResponse(
+                success=True,
+                session_id=req.session_id,
+                prediction=None,
+                fallback=False,
+            )
+
+        # Convert to list of dicts for the pipeline
+        events = []
+        for r in rows:
+            payload = r[6] or {}
+            if isinstance(payload, str):
+                import json
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {}
+            events.append({
+                "id":           str(r[0]),
+                "store_id":     str(r[1]),
+                "session_id":   str(r[2]),
+                "event_type":   r[3],
+                "customer_id":  str(r[4]) if r[4] else None,
+                "anonymous_id": str(r[5]) if r[5] else None,
+                "payload":      payload,
+                "created_at":   r[7].isoformat() if r[7] else None,
+            })
+
+        # Import David's pipeline entry point
+        try:
+            from ..features.pipeline import compute_feature_vector
+            from ..features.event_processor import parse_raw_event
+
+            # Parse raw events through S2 processor
+            parsed_events = [parse_raw_event(e) for e in events]
+            parsed_events = [e for e in parsed_events if e is not None]
+
+            if not parsed_events:
+                return FeaturesComputeResponse(
+                    success=True,
+                    session_id=req.session_id,
+                    prediction=None,
+                    fallback=True,
+                )
+
+            # Compute full 30-feature vector through S1 pipeline
+            feature_vector = compute_feature_vector(parsed_events)
+
+        except ImportError as ie:
+            # Pipeline not yet available — return graceful fallback
+            print(f"FEATURE_PIPELINE_IMPORT_ERROR: {ie}")
+            return FeaturesComputeResponse(
+                success=True,
+                session_id=req.session_id,
+                prediction=None,
+                fallback=True,
+            )
+
+        # Run M1 abandonment prediction on the feature vector
+        prediction = None
+        try:
+            if _models.get("abandonment"):
+                from ..models.abandonment.predict import predict_abandonment
+                pred = predict_abandonment(feature_vector)
+                if pred.get("probability", 0) > 0.65:
+                    prediction = {
+                        "show_offer":       True,
+                        "offer_type":       "recovery_incentive",
+                        "abandonment_prob": pred.get("probability"),
+                        "confidence":       pred.get("confidence"),
+                        "fallback":         pred.get("fallback", False),
+                    }
+                else:
+                    prediction = {
+                        "show_offer":       False,
+                        "abandonment_prob": pred.get("probability"),
+                        "confidence":       pred.get("confidence"),
+                    }
+        except Exception as me:
+            print(f"M1_INFERENCE_ERROR: {me}")
+            prediction = {"show_offer": False, "fallback": True}
+
+        return FeaturesComputeResponse(
+            success=True,
+            session_id=req.session_id,
+            prediction=prediction,
+            fallback=False,
+        )
+
+    except Exception as e:
+        print(f"FEATURE_PIPELINE_INNER_ERROR: {type(e).__name__}: {e}")
+        return FeaturesComputeResponse(
+            success=False,
+            session_id=req.session_id,
+            fallback=True,
+            error=str(e),
+        )
+
+
 @app.get("/health")
 async def health_check() -> dict:
     return {
