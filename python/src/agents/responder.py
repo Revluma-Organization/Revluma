@@ -406,10 +406,81 @@ def _static_knowledge(message: str, understanding) -> str:
                 "social proof, and removing checkout friction. Reserve discounts for customers "
                 "where the data shows price sensitivity is the actual barrier.")
 
-    # General ecommerce
-    return ("That is a good ecommerce question. The answer depends on your specific "
-            "store setup, customer base, and what the data shows. Connect your store "
-            "and I can give you a specific answer rather than a general one.")
+    # Platform questions — Shopify, WooCommerce etc
+    if any(k in msg for k in ["shopify", "woocommerce", "bigcommerce", "magento",
+                               "squarespace", "wix store", "etsy", "amazon fba", "tiktok shop"]):
+        if "shopify" in msg:
+            return ("Shopify is a cloud-based ecommerce platform that lets businesses build "
+                    "and run online stores. It handles hosting, payments (Shopify Payments), "
+                    "checkout, inventory, and order management. It powers over 4 million stores "
+                    "globally across DTC brands, dropshipping, wholesale, and retail. "
+                    "Shopify Plus is the enterprise tier for high-volume merchants. "
+                    "What specifically about Shopify do you want to explore?")
+        if "woocommerce" in msg:
+            return ("WooCommerce is an open-source ecommerce plugin for WordPress. "
+                    "Unlike Shopify, you host it yourself, giving you full control but "
+                    "also full responsibility for hosting, security, and maintenance. "
+                    "It is highly customizable and free at its core, though most stores "
+                    "use paid extensions for payments, shipping, and subscriptions. "
+                    "What are you trying to do with WooCommerce?")
+        return ("That is a platform question. The main ecommerce platforms are Shopify "
+                "(hosted, easiest to start), WooCommerce (WordPress plugin, most flexible), "
+                "BigCommerce (mid-market), and Magento (enterprise). "
+                "The right choice depends on your technical resources, budget, and scale. "
+                "What platform are you evaluating?")
+
+    # Revenue / sales questions
+    if any(k in msg for k in ["revenue", "sales", "gmv", "gross merchandise"]):
+        return ("Revenue in ecommerce is orders × average order value, net of refunds. "
+                "Revenue moves for three reasons: traffic volume, conversion rate, or AOV. "
+                "When diagnosing a revenue change, check which of those three moved first. "
+                "If traffic is flat and revenue dropped, the problem is conversion or AOV. "
+                "If traffic fell, the problem is acquisition or SEO.")
+
+    # ROAS / CAC / paid ads
+    if any(k in msg for k in ["roas", "cac", "cpa", "meta ads", "google ads",
+                               "tiktok ads", "paid ads", "acquisition cost"]):
+        return ("ROAS is return on ad spend: revenue generated divided by ad spend. "
+                "A 3x ROAS means every dollar spent returned three dollars in revenue. "
+                "CAC is customer acquisition cost: total ad spend divided by new customers acquired. "
+                "ROAS tells you channel efficiency. CAC tells you whether the unit economics work. "
+                "High ROAS with high CAC usually means you are acquiring low-LTV customers. "
+                "The metric that matters more long term is LTV:CAC ratio.")
+
+    # Dropshipping
+    if any(k in msg for k in ["dropshipping", "drop ship", "drop-ship"]):
+        return ("Dropshipping is a fulfillment model where you sell products you do not stock. "
+                "When an order comes in, your supplier ships directly to the customer. "
+                "Margins are lower (typically 15-30%) but upfront inventory risk is zero. "
+                "The main challenges are shipping times, product quality control, and "
+                "building a brand when your products are available from many competitors. "
+                "Shopify and WooCommerce both support dropshipping via apps like DSers, Spocket, and Zendrop.")
+
+    # General ecommerce concepts — still give a real answer
+    try:
+        import anthropic as _anth, os as _os
+        api_key = _os.environ.get("ANTHROPIC_API_KEY")
+        if api_key:
+            client = _anth.Anthropic(api_key=api_key, timeout=6.0)
+            resp = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=300,
+                messages=[{"role": "user", "content": (
+                    "You are Rev, an ecommerce intelligence assistant. "
+                    "Answer this question concisely and accurately in 2-4 sentences. "
+                    "Be specific and practical. No corporate language. No em dashes. "
+                    f"Question: {message[:300]}"
+                )}]
+            )
+            text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
+            if text:
+                return text
+    except Exception as e:
+        print(f"STATIC_FALLBACK_LLM_ERROR: {e}")
+
+    return ("Good question. I have deep expertise in ecommerce, Shopify, WooCommerce, "
+            "cart recovery, retention, conversion, and revenue operations. "
+            "Could you give me a bit more detail about what you are trying to understand?")
 
 
 
