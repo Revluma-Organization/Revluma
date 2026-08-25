@@ -71,6 +71,9 @@ router.delete('/conversation/:id',        authenticateToken,               revCo
 // Rename a conversation
 router.patch('/conversation/:id/title',   authenticateToken,               revController.renameConversation);
 
+// Morning briefing — called on first dashboard load each day
+router.get('/briefing',                   authenticateToken,               revController.getMorningBriefing);
+
 // Python service health (authenticated — internal use)
 router.get('/health',                     authenticateToken,               revController.intelligenceHealth);
 
