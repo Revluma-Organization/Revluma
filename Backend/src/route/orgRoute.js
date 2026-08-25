@@ -1,11 +1,23 @@
 const express = require('express');
 const router = express.Router();
-const { body } = require('express-validator');
+const { body, validationResult } = require('express-validator');
 
 const orgMemberController = require('../controller/orgMemberController');
 const { authenticateToken } = require('../middlewares/authMiddleware');
 const { attachOrgMembership, requireRole } = require('../middlewares/orgAuth');
 const { passwordResetLimiter } = require('../middlewares/rateLimiter');
+
+const rejectInvalidRequest = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      error: errors.array()[0].msg,
+      details: errors.array(),
+    });
+  }
+  next();
+};
 
 // All org routes require authentication + org context
 router.use(authenticateToken);
@@ -27,6 +39,7 @@ router.post(
       .optional()
       .isIn(['admin', 'member']).withMessage('Role must be admin or member'),
   ],
+  rejectInvalidRequest,
   orgMemberController.inviteMember
 );
 

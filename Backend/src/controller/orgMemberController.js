@@ -13,14 +13,23 @@ const dbConfig = require('../configs/database');
 const prisma = dbConfig.prisma;
 const emailService = require('../utils/emailService');
 const { generateInviteToken, hashInviteToken } = require('../utils/tokens');
+const logger = require('../utils/logger');
 
 const INVITE_GENERIC_MESSAGE =
   'If this email is associated with a Revluma account, an invitation has been sent.';
 
 // ─── INVITE MEMBER ───────────────────────────────────────────────────────────
 
+
 exports.inviteMember = async (req, res, next) => {
   try {
+    logger.info('invite_member_request', {
+      body: req.body,
+      organizationId: req.orgMembership?.organizationId,
+      role: req.orgMembership?.role,
+      userId: req.user?.id,
+    });
+
     const { email, role } = req.body;
     const { organizationId, role: callerRole } = req.orgMembership;
 
