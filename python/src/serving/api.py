@@ -597,6 +597,50 @@ def _run_feature_pipeline(req: FeaturesComputeRequest, db) -> FeaturesComputeRes
         )
 
 
+
+
+# ── Morning Briefing Endpoint ─────────────────────────────────────────────────
+
+class BriefingResponse(BaseModel):
+    success:                bool
+    briefing:               typing.Optional[dict] = None
+    error:                  typing.Optional[str]  = None
+
+@app.post(
+    "/briefing/generate",
+    response_model=BriefingResponse,
+    dependencies=[Depends(verify_internal_caller)],
+)
+async def generate_morning_briefing(
+    organization_id: str = fastapi.Query(..., min_length=36, max_length=36),
+) -> BriefingResponse:
+    """
+    Generate (or return cached) morning briefing for an organisation.
+    Called by Node.js on first dashboard load of the day.
+    Returns the 6-section MorningBriefing as a dict.
+    """
+    import asyncio
+    db = _Session()
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: _generate_briefing(organization_id, db)
+        )
+        return result
+    finally:
+        db.close()
+
+
+def _generate_briefing(organization_id: str, db) -> BriefingResponse:
+    try:
+        from ..intelligence.morning_briefing import generate_briefing
+        briefing = generate_briefing(organization_id, db)
+        return BriefingResponse(success=True, briefing=briefing.to_dict())
+    except Exception as e:
+        print(f"BRIEFING_ERROR: {type(e).__name__}: {e}")
+        return BriefingResponse(success=False, error=str(e))
+
+
 @app.get("/health")
 async def health_check() -> dict:
     return {
