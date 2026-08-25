@@ -69,7 +69,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Query
 from pydantic import BaseModel, Field, model_validator
 import mlflow.sklearn
 
@@ -612,7 +612,7 @@ class BriefingResponse(BaseModel):
     dependencies=[Depends(verify_internal_caller)],
 )
 async def generate_morning_briefing(
-    organization_id: str = fastapi.Query(..., min_length=36, max_length=36),
+    organization_id: str = Query(..., min_length=36, max_length=36),
 ) -> BriefingResponse:
     """
     Generate (or return cached) morning briefing for an organisation.
