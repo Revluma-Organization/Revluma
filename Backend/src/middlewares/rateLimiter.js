@@ -166,6 +166,22 @@ const passwordResetLimiter = rateLimit({
 
 
 
+// Rev Intelligence chat limiter — per authenticated user
+// 30 messages per minute per user (generous for normal use, blocks abuse/scraping)
+const chatLimiter = rateLimit({
+  windowMs:       60 * 1000, // 1 minute
+  max:            30,
+  keyGenerator:   (req) => req.user?.id || req.ip, // per user, not per IP
+  store:          resolveStore(),
+  standardHeaders: true,
+  legacyHeaders:  false,
+  message: {
+    success: false,
+    error:   'Too many messages. Please wait a moment before sending more.',
+  },
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
 module.exports = {
   registerLimiter,
   loginLimiter,
@@ -176,4 +192,5 @@ module.exports = {
   waitlistJoinLimiter,
   referralCheckLimiter,
   passwordResetLimiter,
+  chatLimiter,
 };
