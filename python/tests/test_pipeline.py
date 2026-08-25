@@ -68,11 +68,20 @@ def test_tab_switch_count_malformed():
 # ---------------------------------------------------------------------------
 def test_cursor_hesitation_normal():
     events = [
-        {"event_type": "exit_intent"},
-        {"event_type": "scroll"},
-        {"event_type": "exit_intent"}
+        {"event_type": "field_focus", "timestamp": "2026-08-25T14:30:00Z", "payload": {"field_name": "coupon"}},
+        {"event_type": "scroll", "timestamp": "2026-08-25T14:30:02Z", "payload": {}},
+        {"event_type": "field_blur", "timestamp": "2026-08-25T14:30:05Z", "payload": {"field_name": "coupon"}}
     ]
-    assert calculate_cursor_hesitation(events) == 2
+    # 5 seconds duration = 5000ms. 5000 // 1000 = 5.
+    assert calculate_cursor_hesitation(events) == 5
+
+def test_cursor_hesitation_capped():
+    events = [
+        {"event_type": "field_focus", "timestamp": "2026-08-25T14:30:00Z", "payload": {"field_name": "email"}},
+        # 20 seconds later = 20,000ms. 20,000 // 1000 = 20. But max is capped at 10.
+        {"event_type": "field_blur", "timestamp": "2026-08-25T14:30:20Z", "payload": {"field_name": "email"}}
+    ]
+    assert calculate_cursor_hesitation(events) == 10
 
 def test_cursor_hesitation_empty():
     assert calculate_cursor_hesitation([]) == 0

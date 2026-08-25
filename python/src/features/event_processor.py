@@ -44,10 +44,9 @@ def parse_raw_event(raw_payload: dict) -> dict:
 
     The pixel sends events to POST /api/tracking/event in this shape:
         {
-            "event_type": "scroll_depth" | "tab_visibility" | "page_view" |
-                          "checkout_step_completed" | "field_focus" |
-                          "field_blur" | "search_query" | "exit_intent" |
-                          "payment_failed" | "session_start",
+            "event_type": "scroll" | "tab_switch" | "page_view" |
+                          "checkout_step" | "search_query" | "exit_intent" |
+                          "failed_payment" | "session_start",
             "session_id": "uuid-v4",
             "customer_id": "uuid-v4",
             "merchant_id": "uuid-v4",

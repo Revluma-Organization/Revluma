@@ -132,27 +132,56 @@ def calculate_cursor_hesitation(events: list) -> int:
     """
     Feature: cursor_hesitation
 
-    Duration in milliseconds between focus and blur on any price-related field
-    during the session. Uses the maximum hesitation across all price field interactions.
-    Formula: max(blur_timestamp - focus_timestamp) WHERE field_name IN price fields.
-
-    Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
+    Calculates the maximum hesitation (time between field_focus and field_blur)
+    on any field during the session, returning a capped score from 0-10.
+    
+    Models: M1, M2, M5
     Source: events — event_type='field_focus' and 'field_blur'
 
     Returns:
-        int: 0–30000ms (capped at 30000). Default 0 if no price field interaction.
+        int: Score 0-10 (calculated as max_duration_ms // 1000, capped at 10).
+             Default 0 if no focus/blur interaction.
     """
     if not isinstance(events, list):
         return 0
 
-    count = 0
+    max_duration_ms = 0.0
+    active_focus = {}
+
     for event in events:
         if not isinstance(event, dict):
             continue
-        if event.get("event_type") == "exit_intent":
-            count += 1
             
-    return count
+        event_type = event.get("event_type")
+        if event_type not in ("field_focus", "field_blur"):
+            continue
+            
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
+        if ts is None:
+            continue
+            
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+            
+        field_name = payload.get("field_name")
+        if not field_name:
+            continue
+            
+        if event_type == "field_focus":
+            active_focus[field_name] = ts
+        elif event_type == "field_blur":
+            focus_ts = active_focus.get(field_name)
+            if focus_ts and ts > focus_ts:
+                duration_ms = (ts - focus_ts).total_seconds() * 1000.0
+                if duration_ms > max_duration_ms:
+                    max_duration_ms = duration_ms
+            if field_name in active_focus:
+                del active_focus[field_name]
+
+    score = int(max_duration_ms // 1000)
+    return min(score, 10)
 
 
 def calculate_cart_item_add_count(events: list) -> int:

@@ -167,6 +167,22 @@ All events MUST follow this exact envelope. No silent field transformations are 
 
 ---
 
+### 2.15 `FIELD_FOCUS`
+```json
+"payload": {
+  "field_name": "string" // e.g. "discount_code", "email"
+}
+```
+
+### 2.16 `FIELD_BLUR`
+```json
+"payload": {
+  "field_name": "string" // e.g. "discount_code", "email"
+}
+```
+
+---
+
 ## 3. Shopper Feature Vector (ML Contract)
 
 ### 3.1 Vector Size & Constraint
