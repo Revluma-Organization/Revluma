@@ -17,6 +17,7 @@ const rateLimit  = require('express-rate-limit');
 const router     = express.Router();
 
 const { authenticateToken } = require('../middlewares/authMiddleware');
+const { chatLimiter }       = require('../middlewares/rateLimiter');
 const revController          = require('../controller/revController');
 
 // ── Rate limiter: chat endpoint ───────────────────────────────────────────────
