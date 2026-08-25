@@ -341,7 +341,7 @@ const Profile: FC = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/80 p-4 backdrop-blur-sm"
             onClick={(e) => {
               if (e.target === e.currentTarget && !isVerifying2FA) {
                 setIs2FAModalOpen(false);
@@ -353,70 +353,78 @@ const Profile: FC = () => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 16 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 p-6 text-slate-100 shadow-2xl sm:p-8"
+              className="relative w-full max-w-md overflow-hidden rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-6 text-slate-900 dark:text-slate-100 shadow-2xl sm:p-8"
             >
               <button
                 type="button"
                 onClick={() => setIs2FAModalOpen(false)}
                 disabled={isVerifying2FA}
-                className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white disabled:opacity-50"
+                className="absolute right-4 top-4 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white disabled:opacity-50"
                 aria-label="Close modal"
               >
                 <X className="h-5 w-5" />
               </button>
 
               <div className="flex flex-col items-center text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
-                  <ShieldCheck className="h-6 w-6" />
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-50 dark:bg-sky-500/10 text-[#007FFF] dark:text-sky-400 ring-1 ring-sky-500/20">
+                  <ShieldCheck className="h-7 w-7" />
                 </div>
-                <h3 className="mt-4 text-lg font-bold text-white">
+                <h3 className="mt-5 text-xl font-bold text-slate-900 dark:text-white">
                   Setup Two-Factor Authentication
                 </h3>
-                <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
                   Scan the QR code below using your authenticator app (e.g. Google Authenticator, 1Password, or Authy).
                 </p>
               </div>
 
               {/* Placeholder QR Code */}
               <div className="my-6 flex flex-col items-center justify-center gap-3">
-                <div className="flex h-36 w-36 items-center justify-center rounded-2xl border border-slate-200 bg-white p-4 shadow-md">
+                <div className="flex h-40 w-40 items-center justify-center rounded-2xl border border-slate-200 dark:border-slate-700 bg-white p-3 shadow-sm">
                   {qrCodeUrl ? (
-    <img src={qrCodeUrl} alt="2FA QR Code" className="h-32 w-32 rounded-md bg-white p-1" />
-  ) : (
-    <div className="h-32 w-32 animate-pulse rounded-md bg-slate-800" />
-  )}
+                    <img src={qrCodeUrl} alt="2FA QR Code" className="h-full w-full rounded-lg object-contain" />
+                  ) : (
+                    <div className="h-full w-full animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+                  )}
                 </div>
-                <p className="text-[0.7rem] text-slate-500">
-                  Can&apos;t scan? Enter the secret key manually:
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-2">
+                  Can't scan? Use the secret key:
                 </p>
               </div>
 
-              {/* Secret Key Copy Block */}
-              <div className="mb-6 flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-2 font-mono text-xs text-slate-300">
-                <span className="select-all tracking-widest">{setupSecret}</span>
-                <button
-                  type="button"
-                  onClick={handleCopySecret}
-                  className="inline-flex items-center gap-1 rounded bg-slate-800 px-2 py-1 text-[0.7rem] font-sans text-slate-300 hover:bg-slate-700 hover:text-white"
-                >
-                  {copiedSecret ? (
-                    <>
-                      <Check className="h-3 w-3 text-emerald-400" />
-                      <span className="text-emerald-400">Copied</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-3 w-3" />
-                      <span>Copy Secret Key</span>
-                    </>
-                  )}
-                </button>
+              {/* Secret Key Copy Block - Wrapped to 2 lines! */}
+              <div className="mb-6 flex flex-col gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 p-3">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[0.65rem] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Secret Key
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopySecret}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-all"
+                  >
+                    {copiedSecret ? (
+                      <>
+                        <Check className="h-3.5 w-3.5 text-emerald-500" />
+                        <span className="text-emerald-600 dark:text-emerald-400">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                {/* break-all forces long strings to wrap automatically */}
+                <div className="select-all break-all rounded-lg bg-white dark:bg-slate-950 p-2.5 text-center font-mono text-sm font-medium tracking-[0.15em] text-slate-800 dark:text-slate-200 border border-slate-200/60 dark:border-slate-800/60">
+                  {setupSecret || "FY2D65JTIBNUORKUOR5UQSK5JVOXIPCHMQXGQVX"}
+                </div>
               </div>
 
               {/* 6-Digit OTP Form */}
-              <form onSubmit={handleVerify2FA} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="otp-code" className="text-xs font-semibold text-slate-300">
+              <form onSubmit={handleVerify2FA} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="otp-code" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                     Verification Code
                   </Label>
                   <Input
@@ -427,7 +435,7 @@ const Profile: FC = () => {
                     placeholder="123456"
                     value={otpCode}
                     onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
-                    className="h-11 text-center font-mono text-base tracking-[0.35em] border-slate-700 bg-slate-900/80 text-white placeholder:tracking-normal placeholder:text-slate-600 focus-visible:border-sky-500"
+                    className="h-12 text-center font-mono text-lg tracking-[0.35em] border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900/80 dark:text-white placeholder:tracking-normal placeholder:text-slate-400 dark:placeholder:text-slate-600 focus-visible:border-[#007FFF] dark:focus-visible:border-sky-500 shadow-sm transition-all"
                     disabled={isVerifying2FA}
                   />
                 </div>
@@ -438,14 +446,14 @@ const Profile: FC = () => {
                     variant="outline"
                     onClick={() => setIs2FAModalOpen(false)}
                     disabled={isVerifying2FA}
-                    className="h-10 flex-1 border-slate-700 bg-transparent text-slate-300 hover:bg-slate-800 hover:text-white"
+                    className="h-11 flex-1 border-slate-200 dark:border-slate-700 bg-white dark:bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 dark:hover:text-white shadow-sm transition-all"
                   >
                     Cancel
                   </Button>
                   <Button
                     type="submit"
                     disabled={otpCode.length !== 6 || isVerifying2FA}
-                    className="h-10 flex-1 bg-[#007FFF] font-semibold text-white hover:bg-[#007FFF]/90 disabled:opacity-50"
+                    className="h-11 flex-1 bg-[#007FFF] font-semibold text-white hover:bg-[#007FFF]/90 disabled:opacity-50 shadow-sm transition-all"
                   >
                     {isVerifying2FA ? (
                       <span className="flex items-center justify-center gap-2">
@@ -461,7 +469,7 @@ const Profile: FC = () => {
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>    
     </PageTransition>
   );
 };
