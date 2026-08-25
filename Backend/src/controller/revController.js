@@ -115,11 +115,20 @@ exports.chat = async (req, res, next) => {
 
     // Validate image if provided
     const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (imageBase64 && !ALLOWED_IMAGE_TYPES.includes(imageMediaType)) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Unsupported image type.' },
-      });
+    const MAX_IMAGE_B64_CHARS = 7_000_000; // ~5MB decoded
+    if (imageBase64) {
+      if (!ALLOWED_IMAGE_TYPES.includes(imageMediaType)) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Unsupported image type.' },
+        });
+      }
+      if (imageBase64.length > MAX_IMAGE_B64_CHARS) {
+        return res.status(413).json({
+          success: false,
+          error: { code: 'PAYLOAD_TOO_LARGE', message: 'Image must be under 5MB.' },
+        });
+      }
     }
 
     // 2. Resolve org from JWT — never from body
@@ -355,9 +364,11 @@ exports.getConversation = async (req, res, next) => {
         id, role, content, sequence_number,
         agent_name, confidence_score, has_error, error_code, error_message,
         created_at
-      FROM conversation_messages
-      WHERE conversation_id = ${id}::uuid
-      ORDER BY sequence_number ASC
+      FROM conversation_messages cm
+      JOIN conversations cv ON cv.id = cm.conversation_id
+      WHERE cm.conversation_id = ${id}::uuid
+        AND cv.organization_id = ${org.id}::uuid
+      ORDER BY cm.sequence_number ASC
       LIMIT ${limit} OFFSET ${offset}
     `;
 
