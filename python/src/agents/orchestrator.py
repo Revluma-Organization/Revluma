@@ -236,8 +236,8 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
     if business_state.is_stale():
         warnings.append(f"Store data is {state_age:.0f} minutes old.")
 
-    # ── 8. Short factual answer does not need the full card ───────────────────
-    if u.response_mode == MODE_DIRECT_ANSWER:
+    # ── 8. Short factual/metrics answer — direct path, no 6-part card ──────────
+    if u.response_mode == MODE_DIRECT_ANSWER or u.intent == "metrics":
         text_out = responder.compose_knowledge(
             message, u, history_text + "\n\nSTORE DATA:\n" + _state_json(business_state),
             memories, True,
