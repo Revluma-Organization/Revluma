@@ -548,8 +548,21 @@ function AttachMenu({ onFile, onMedia, card, border, t1, t2 }: {
   card: string; border: string; t1: string; t2: string;
 }) {
   const [open, setOpen] = useState(false);
+  // Keep file inputs OUTSIDE the animated menu so they are never unmounted
+  // when the dropdown closes. Unmounting the <input> before onChange fires
+  // silently drops the file selection on Chrome/Safari.
+  const fileRef  = useRef<HTMLInputElement>(null);
+  const mediaRef = useRef<HTMLInputElement>(null);
+
+  const triggerFile  = () => { setOpen(false); setTimeout(() => fileRef.current?.click(),  50); };
+  const triggerMedia = () => { setOpen(false); setTimeout(() => mediaRef.current?.click(), 50); };
+
   return (
     <div style={{ position: "relative" }}>
+      {/* Persistent file inputs — never unmounted */}
+      <input ref={fileRef}  type="file" accept="*/*"               className="hidden" onChange={onFile} />
+      <input ref={mediaRef} type="file" accept="image/*,video/*"   className="hidden" onChange={onMedia} />
+
       <button onClick={() => setOpen(v => !v)} title="Attach"
         className="p-1.5 rounded-lg transition-colors opacity-60 hover:opacity-100" style={{ color: t2 }}>
         <Plus size={17} />
@@ -563,20 +576,18 @@ function AttachMenu({ onFile, onMedia, card, border, t1, t2 }: {
               style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 20,
                 background: card, border: `1px solid ${border}`, borderRadius: 14,
                 boxShadow: "0 8px 32px rgba(0,0,0,0.15)", padding: "6px", minWidth: 180 }}>
-              <label onClick={() => setOpen(false)}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[0.8rem] font-medium cursor-pointer transition-colors hover:bg-black/5"
-                style={{ color: t1 }}>
+              <button onClick={triggerFile}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[0.8rem] font-medium cursor-pointer transition-colors hover:bg-black/5 w-full text-left"
+                style={{ color: t1, background: "transparent", border: "none", fontFamily: "inherit" }}>
                 <FileText size={15} style={{ color: "#5865f2" }} />
                 Attach file
-                <input type="file" accept="*/*" className="hidden" onChange={onFile} />
-              </label>
-              <label onClick={() => setOpen(false)}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[0.8rem] font-medium cursor-pointer transition-colors hover:bg-black/5"
-                style={{ color: t1 }}>
+              </button>
+              <button onClick={triggerMedia}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[0.8rem] font-medium cursor-pointer transition-colors hover:bg-black/5 w-full text-left"
+                style={{ color: t1, background: "transparent", border: "none", fontFamily: "inherit" }}>
                 <ImageIcon size={15} style={{ color: "#db2777" }} />
                 Photos & Videos
-                <input type="file" accept="image/*,video/*" className="hidden" onChange={onMedia} />
-              </label>
+              </button>
             </motion.div>
           </>
         )}
