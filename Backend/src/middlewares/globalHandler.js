@@ -2,6 +2,7 @@ const logger = require('../utils/logger');
 
 module.exports = (err, req, res, next) => {
   const isProd = process.env.NODE_ENV === 'production';
+  const exposeErrorDetails = process.env.EXPOSE_ERROR_DETAILS === 'true';
 
   // Structured error log — always includes request context
   logger.error('unhandled_error', {
@@ -58,9 +59,9 @@ module.exports = (err, req, res, next) => {
 
   return res.status(statusCode).json({
     success: false,
-    error:
-      statusCode === 500
-        ? 'An unexpected server error occurred'
-        : err.message,
+    error: exposeErrorDetails || statusCode !== 500
+      ? err.message
+      : 'An unexpected server error occurred',
+    ...(exposeErrorDetails ? { stack: err.stack } : {}),
   });
 };
