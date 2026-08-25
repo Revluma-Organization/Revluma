@@ -21,13 +21,27 @@ const TONE: Record<string, { bg: string; border: string; color: string }> = {
 };
 
 const TAG_COLOR_MAP: Record<string, string> = {
-  recovery: 'green',
-  cart:     'amber',
-  campaign: 'blue',
-  subscribe:'purple',
-  alert:    'amber',
-  insight:  'purple',
-  system:   'gray',
+  recovery:        'green',
+  cart:            'amber',
+  cart_anomaly:    'amber',
+  campaign:        'blue',
+  subscribe:       'purple',
+  alert:           'amber',
+  anomaly_alert:   'amber',
+  revenue_anomaly: 'amber',
+  churn_risk:      'purple',
+  insight:         'purple',
+  system:          'gray',
+};
+
+// Human-readable tags for anomaly types
+const TYPE_TAG_MAP: Record<string, string> = {
+  revenue_anomaly: 'Revenue Alert',
+  cart_anomaly:    'Cart Alert',
+  churn_risk:      'Churn Risk',
+  anomaly_alert:   'Alert',
+  recovery:        'Recovery',
+  campaign:        'Campaign',
 };
 
 function formatRelativeTime(iso: string): string {
@@ -69,13 +83,14 @@ export function NotificationsPanel() {
     )
       .then((res) => {
         setItems(
-          res.data.data.notifications.map((n) => ({
-            id: n.id,
-            unread: n.unread,
-            tag: n.type,
-            tagColor: TAG_COLOR_MAP[n.type] ?? 'gray',
-            text: n.message,
-            time: formatRelativeTime(n.created_at),
+          res.data.data.notifications.map((n: any) => ({
+            id:        n.id,
+            unread:    n.unread,
+            tag:       TYPE_TAG_MAP[n.type] ?? n.type ?? 'system',
+            tagColor:  TAG_COLOR_MAP[n.type] ?? 'gray',
+            text:      n.message,
+            time:      formatRelativeTime(n.created_at),
+            actionUrl: n.action_url || null,
           }))
         );
       })
