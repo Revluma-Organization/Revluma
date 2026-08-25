@@ -572,3 +572,56 @@ exports.getMorningBriefing = async (req, res, next) => {
     next(error);
   }
 };
+
+// ── POST /api/v1/rev/alerts/check ────────────────────────────────────────────
+// Called every 15 minutes by a cron job (or manually) after business state rebuild.
+// Checks Python for anomalies and creates notifications for all org users.
+
+exports.checkAndCreateAlerts = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+
+    // Get all active users in this org
+    const members = await prisma.organization_members.findMany({
+      where:  { organization_id: org.id, status: "active" },
+      select: { user_id: true },
+    });
+    const userIds = members.map(m => m.user_id);
+
+    const pythonUrl = process.env.PYTHON_SERVICE_URL || 'https://revluma-python.onrender.com';
+    const response = await require('axios').post(
+      `${pythonUrl}/api/alerts/check`,
+      { organization_id: org.id, user_ids: userIds },
+      {
+        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': process.env.ML_INTERNAL_KEY || '' },
+        timeout: 8000,
+      }
+    );
+
+    const { alerts = [] } = response.data;
+    if (!alerts.length) {
+      return res.status(200).json({ success: true, data: { alerts_created: 0 } });
+    }
+
+    // Create a notification for each user for each alert
+    const { createAnomalyAlert } = require('./notificationController');
+    let created = 0;
+    for (const userId of userIds) {
+      for (const alert of alerts) {
+        await createAnomalyAlert({
+          userId,
+          orgId:     org.id,
+          type:      alert.type,
+          message:   alert.message,
+          actionUrl: alert.action_url,
+        });
+        created++;
+      }
+    }
+
+    logger.info('anomaly_alerts_created', { orgId: org.id, count: created });
+    return res.status(200).json({ success: true, data: { alerts_created: created, alerts } });
+  } catch (error) {
+    next(error);
+  }
+};
