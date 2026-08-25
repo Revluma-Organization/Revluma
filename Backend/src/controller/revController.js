@@ -533,3 +533,42 @@ exports.renameConversation = async (req, res, next) => {
     next(error);
   }
 };
+
+// ── GET /api/v1/rev/briefing ──────────────────────────────────────────────────
+
+exports.getMorningBriefing = async (req, res, next) => {
+  const correlationId = uuidv4();
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+
+    const pythonUrl = process.env.PYTHON_SERVICE_URL || 'https://revluma-python.onrender.com';
+    const response  = await require('axios').post(
+      `${pythonUrl}/briefing/generate?organization_id=${org.id}`,
+      {},
+      {
+        headers: {
+          'Content-Type':   'application/json',
+          'X-Internal-Key': process.env.ML_INTERNAL_KEY || '',
+        },
+        timeout: 12000,
+      }
+    );
+
+    const data = response.data;
+    if (!data?.success) {
+      return res.status(500).json({
+        success: false,
+        error: { code: 'BRIEFING_UNAVAILABLE', message: 'Morning briefing could not be generated.' },
+      });
+    }
+
+    return res.status(200).json({ success: true, data: data.briefing });
+  } catch (error) {
+    logger.error('get_morning_briefing_failed', {
+      correlationId,
+      userId: req.user?.id,
+      error:  error.message,
+    });
+    next(error);
+  }
+};
