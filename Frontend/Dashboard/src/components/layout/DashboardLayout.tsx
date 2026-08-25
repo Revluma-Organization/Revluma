@@ -7,11 +7,13 @@ import { CommandPalette } from "./CommandPalette";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { CopilotPanel } from "./CopilotPanel";
 import { ProductTour } from "./ProductTour";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUI } from "@/store/ui";
 import { useThemeStore } from "@/store";
 import { useRegisterCommands } from "@/store/commandRegistryStore";
 import type { PaletteCommand } from "@/lib/commandPalette/types";
+import { OnboardingPaywallModal } from "./OnboardingPaywallModal";
+import { useAuth } from "@/context/AuthContext";
 
 const SECTION_TITLES: Record<string, string> = {
   "/dashboard/overview": "Overview",
@@ -30,6 +32,8 @@ export function DashboardLayout() {
   const { pathname } = useLocation();
   // Use basePath for animation key to prevent re-mounting the entire layout for nested routes
   const basePath = pathname.split('/').slice(0, 3).join('/');
+  const { user } = useAuth(); // Grabs the logged-in user
+  const [isPaywallOpen, setIsPaywallOpen] = useState(true);
 
   const globalCommands = useMemo<PaletteCommand[]>(() => [
     {
@@ -116,6 +120,11 @@ export function DashboardLayout() {
       <NotificationsPanel />
       <CopilotPanel />
       <ProductTour />
+      <OnboardingPaywallModal 
+        isOpen={isPaywallOpen} 
+        onClose={() => setIsPaywallOpen(false)} 
+        userStatus={user?.status || "free"} 
+      />
     </div>
   );
 }
