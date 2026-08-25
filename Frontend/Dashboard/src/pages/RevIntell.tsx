@@ -156,8 +156,52 @@ function LoadingBar({ isDark }: { isDark: boolean }) {
 // ── ResponseCard — adaptive to response type ──────────────────────────────────
 
 function renderInline(text: string) {
+  // Handle markdown image: ![alt](url)
+  const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  if (imgRegex.test(text)) {
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    const re = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) parts.push(<span key={last}>{text.slice(last, m.index)}</span>);
+      parts.push(
+        <img key={m.index} src={m[2]} alt={m[1]}
+          style={{ maxWidth: "100%", borderRadius: 8, margin: "8px 0", display: "block" }}
+          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+        />
+      );
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push(<span key={last}>{text.slice(last)}</span>);
+    return <>{parts}</>;
+  }
+  // Handle markdown link: [text](url)
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  if (linkRegex.test(text)) {
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    const re = /\[([^\]]+)\]\(([^)]+)\)/g;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) parts.push(<span key={last}>{renderBasicInline(text.slice(last, m.index))}</span>);
+      parts.push(
+        <a key={m.index} href={m[2]} target="_blank" rel="noopener noreferrer"
+          style={{ color: "#5865f2", textDecoration: "underline", textDecorationColor: "rgba(88,101,242,0.4)" }}>
+          {m[1]}
+        </a>
+      );
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) parts.push(<span key={last}>{renderBasicInline(text.slice(last))}</span>);
+    return <>{parts}</>;
+  }
+  return renderBasicInline(text);
+}
+
+function renderBasicInline(text: string) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
-  return parts.map((p, i) => {
+  return <>{parts.map((p, i) => {
     if (p.startsWith("**") && p.endsWith("**"))
       return <strong key={i} style={{ fontWeight: 650 }}>{p.slice(2, -2)}</strong>;
     if (p.startsWith("`") && p.endsWith("`"))
@@ -165,7 +209,7 @@ function renderInline(text: string) {
         background: "rgba(88,101,242,0.12)", padding: "1px 5px",
         borderRadius: 4, fontSize: "0.86em" }}>{p.slice(1, -1)}</code>;
     return <span key={i}>{p}</span>;
-  });
+  })}</>;
 }
 
 /** Renders rich markdown: headings, bold, bullets, numbers, blockquotes, paragraphs. */
@@ -346,20 +390,50 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
 
       {response.actions && response.actions.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {response.actions.map((action, i) => (
-            <button key={i} style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "7px 14px", borderRadius: 999, fontSize: "0.8rem", fontWeight: 600,
-              background: "rgba(88,101,242,0.1)", color: "#5865f2",
-              border: "1px solid rgba(88,101,242,0.25)", cursor: "pointer",
-              fontFamily: "inherit", transition: "background 0.15s",
-            }}
-              onMouseEnter={e => (e.currentTarget.style.background = "rgba(88,101,242,0.18)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "rgba(88,101,242,0.1)")}
-            >
-              <Zap size={11} />{action.label}
-            </button>
-          ))}
+          {response.actions.map((action, i) => {
+            // Map tool names to real dashboard routes
+            const toolRoutes: Record<string, string> = {
+              view_carts:       "/dashboard/cart-recovery",
+              view_customers:   "/dashboard/customers",
+              view_revenue:     "/dashboard/analytics",
+              view_analytics:   "/dashboard/analytics",
+              view_products:    "/dashboard/analytics",
+              view_checkout:    "/dashboard/checkout",
+              create_campaign:  "/dashboard/campaign",
+              view_retention:   "/dashboard/customers",
+            };
+            const route = action.tool ? toolRoutes[action.tool] : null;
+            return (
+              <button key={i} style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "7px 14px", borderRadius: 999, fontSize: "0.8rem", fontWeight: 600,
+                background: "rgba(88,101,242,0.1)", color: "#5865f2",
+                border: "1px solid rgba(88,101,242,0.25)", cursor: "pointer",
+                fontFamily: "inherit", transition: "all 0.15s",
+              }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = "rgba(88,101,242,0.2)";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = "rgba(88,101,242,0.1)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                }}
+                onClick={() => {
+                  if (route) {
+                    window.location.href = route;
+                  } else if (action.tool === "ask_rev") {
+                    // Send a follow-up message to Rev
+                    const followUp = action.params?.message as string;
+                    if (followUp) send(followUp);
+                  }
+                  // Other tool types will be wired as capabilities are built
+                }}
+              >
+                <Zap size={11} />{action.label}
+              </button>
+            );
+          })}
         </div>
       )}
 
