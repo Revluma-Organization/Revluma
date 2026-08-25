@@ -641,6 +641,89 @@ def _generate_briefing(organization_id: str, db) -> BriefingResponse:
         return BriefingResponse(success=False, error=str(e))
 
 
+
+
+# ── Proactive Anomaly Alert Endpoint ─────────────────────────────────────────
+# Called automatically after every Business State rebuild.
+# If anomalies are detected, POST to Node.js to create notifications.
+
+class AnomalyAlertRequest(BaseModel):
+    organization_id: str
+    user_ids:        typing.List[str]  # users in this org to notify
+
+class AnomalyAlertResponse(BaseModel):
+    success:  bool
+    alerts:   typing.List[dict] = []
+    error:    typing.Optional[str] = None
+
+@app.post(
+    "/api/alerts/check",
+    response_model=AnomalyAlertResponse,
+    dependencies=[Depends(verify_internal_caller)],
+)
+async def check_anomalies(req: AnomalyAlertRequest) -> AnomalyAlertResponse:
+    """
+    Checks current Business State for anomalies and returns structured alerts.
+    Node.js calls this after each Business State rebuild, then creates
+    notifications for the org's users via the existing notifications table.
+    """
+    import asyncio
+    db = _Session()
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: _check_anomalies(req, db)
+        )
+        return result
+    finally:
+        db.close()
+
+
+def _check_anomalies(req: AnomalyAlertRequest, db) -> AnomalyAlertResponse:
+    try:
+        from ..intelligence.business_state import load_current_business_state
+        state = load_current_business_state(req.organization_id, db)
+        if not state:
+            return AnomalyAlertResponse(success=True, alerts=[])
+
+        alerts = []
+
+        # Revenue anomaly
+        if state.revenue_anomaly and state.revenue_delta_pct is not None:
+            direction = "dropped" if state.revenue_delta_pct < 0 else "spiked"
+            pct = abs(state.revenue_delta_pct)
+            alerts.append({
+                "type":       "revenue_anomaly",
+                "severity":   "high" if pct > 30 else "medium",
+                "message":    f"Revenue {direction} {pct:.1f}% compared to yesterday. Rev has more details.",
+                "action_url": "/dashboard/rev-intell",
+            })
+
+        # Cart abandonment anomaly
+        if state.cart_anomaly and state.abandoned_cart_value is not None:
+            val = float(state.abandoned_cart_value)
+            alerts.append({
+                "type":       "cart_anomaly",
+                "severity":   "high",
+                "message":    f"Cart abandonment rate spiked. ${val:,.0f} in carts at risk. Ask Rev why.",
+                "action_url": "/dashboard/cart-recovery",
+            })
+
+        # High churn risk
+        if state.churn_risk_count and state.churn_risk_count >= 10:
+            alerts.append({
+                "type":       "churn_risk",
+                "severity":   "medium",
+                "message":    f"{state.churn_risk_count} customers showing early churn signals.",
+                "action_url": "/dashboard/customers",
+            })
+
+        return AnomalyAlertResponse(success=True, alerts=alerts)
+
+    except Exception as e:
+        print(f"CHECK_ANOMALIES_ERROR: {type(e).__name__}: {e}")
+        return AnomalyAlertResponse(success=False, error=str(e))
+
+
 @app.get("/health")
 async def health_check() -> dict:
     return {
