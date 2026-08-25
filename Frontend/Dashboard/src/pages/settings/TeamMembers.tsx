@@ -34,14 +34,28 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// Defines the structure we use in the UI
 export interface TeamMemberItem {
   id: string;
-  fullName: string;
+  fullName: string | null;
   email: string;
   role: "Admin" | "Member";
   avatarUrl?: string;
-  joinedDate: string;
+  status: "pending" | "active";
 }
+
+// Defines what backend actually sends
+interface ApiMemberResponse {
+  membershipId: string | null;
+  invitationId: string | null;
+  role: string;
+  status: string;
+  user: {
+    id: string | null;
+    full_name: string | null;
+    email: string;
+  };
+  }
 
 export const TeamMembers: FC = () => {
   const [members, setMembers] = useState<TeamMemberItem[]>([]);
@@ -50,11 +64,19 @@ export const TeamMembers: FC = () => {
   const fetchMembers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await api.get<TeamMemberItem[]>("/org/members", undefined, {
+      const res = await api.get<{ members: ApiMemberResponse[] }>("/org/members", undefined, {
         skipAuthRedirect: true,
       });
-      if (res && Array.isArray(res.data)) {
-        setMembers(res.data);
+
+      if (res?.data?.members && Array.isArray(res.data.members)) {
+        const mappedMembers: TeamMemberItem[] = res.data.members.map((m) => ({
+          id: m.membershipId || m.invitationId || Math.random().toString(),
+          fullName: m.user.full_name,
+          email: m.user.email,
+          role: m.role.toLowerCase() === "admin" ? "Admin" : "Member",
+          status: m.status === "pending" ? "pending" : "active",
+        }));
+        setMembers(mappedMembers);
       } else {
         setMembers([]);
       }
@@ -251,12 +273,17 @@ export const TeamMembers: FC = () => {
                             />
                           )}
                           <AvatarFallback className="bg-slate-800 text-xs font-bold text-sky-400">
-                            {getInitials(member.fullName)}
+                            {getInitials(member.fullName || member.email)}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <div className="font-semibold text-slate-900 dark:text-white">
-                            {member.fullName}
+                          <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white">
+                            {member.fullName || member.email}
+                            {member.status === "pending" && (
+                              <Badge variant="outline" className="h-5 px-1.5 text-[0.65rem] border-amber-500/40 bg-amber-500/10 text-amber-500">
+                                Pending
+                              </Badge>
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
                             <Mail className="h-3 w-3 opacity-60" />
