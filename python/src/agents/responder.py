@@ -493,15 +493,19 @@ def compose_web_research(message: str, understanding, history_text: str,
             + f"\n\nMERCHANT ASKED:\n{message[:500]}\n\n"
             + "Search for current information to answer this well. "
             + "After searching, give a clear, concise answer. "
-            + "If you cite external sources, note them briefly. "
-            + "Distinguish what you found from external research vs what you know from expertise. "
-            + "No em dashes. No corporate language. Be direct and useful."
+            + "Use ## headings for distinct sections when the answer covers multiple topics. "
+            + "Use numbered lists or bullets where listing multiple items. "
+            + "If you found relevant images or diagrams from sources, include them as markdown: ![description](url). "
+            + "If you cite external sources, add them as [Source Name](url) inline. "
+            + "Distinguish external research from your own expertise. "
+            + "No em dashes. No corporate filler. Be direct and useful. "
+            + "End with one follow-up question to continue the conversation."
         )
 
         client = anthropic.Anthropic(api_key=api_key, timeout=20.0)
         resp = client.messages.create(
             model=FAST_MODEL,
-            max_tokens=600,
+            max_tokens=900,
             tools=[{"type": "web_search_20250305", "name": "web_search"}],
             messages=[{"role": "user", "content": prompt}],
         )
@@ -531,7 +535,7 @@ def compose_web_research(message: str, understanding, history_text: str,
             messages.append({"role": "user", "content": tool_results})
             resp2 = client.messages.create(
                 model=FAST_MODEL,
-                max_tokens=600,
+                max_tokens=900,
                 tools=[{"type": "web_search_20250305", "name": "web_search"}],
                 messages=messages,
             )
@@ -571,14 +575,17 @@ def compose_analysis(message: str, understanding, state_json: str, agent_json: s
         + f"Their goal: {understanding.goal}\n\n"
         + "Return ONLY this JSON object:\n"
         + "{\n"
-        + '  "situation": "1-2 sentences. What is actually happening, with real numbers.",\n'
-        + '  "insight": "1-2 sentences. Why, based on evidence.",\n'
-        + '  "implication": "1 sentence. What it costs or gains commercially.",\n'
-        + '  "recommendation": "1-2 sentences. The single highest-value next action.",\n'
-        + '  "confidence": {"score": 0.0, "basis": "why this level"},\n'
-        + '  "actions": [{"label": "Short verb phrase", "tool": null, "params": {}}]\n'
+        + '  "situation": "1-2 sentences. What is actually happening, with real numbers. If this is a simple metrics request, just state the number clearly.",\n'
+        + '  "insight": "1-2 sentences. Why this matters or what drives it. Skip if the question was purely factual.",\n'
+        + '  "implication": "1 sentence. Commercial impact. Only include if genuinely meaningful — do not pad.",\n'
+        + '  "recommendation": "1-2 sentences. The single most important next action. Be specific.",\n'
+        + '  "confidence": {"score": 0.0, "basis": "one phrase explaining confidence level"},\n'
+        + '  "actions": [{"label": "Short verb phrase", "tool": "tool_name_or_null", "params": {}}]\n'
         + "}\n\n"
-        + "Actions must relate directly to what you just said. Two or three maximum."
+        + "CRITICAL: Actions must map to real tools: view_carts, view_customers, view_revenue, "
+        + "create_campaign, view_analytics, view_products, view_checkout. "
+        + "If no real action applies, return empty actions array. Never invent fake actions. "
+        + "Two or three maximum."
     )
     for attempt in range(2):
         try:
