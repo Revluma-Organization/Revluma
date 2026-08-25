@@ -178,7 +178,7 @@ export const OnboardingPaywallModal: FC<OnboardingPaywallModalProps> = ({
               </div>
 
               {/* Mobile Swipe / Desktop Grid Container */}
-              <div className="mt-10 flex w-full snap-x snap-mandatory gap-6 overflow-x-auto pb-8 md:grid md:grid-cols-2 md:overflow-visible md:pb-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+               <div className="mt-10 flex w-full items-start snap-x snap-mandatory gap-6 overflow-x-auto py-4 md:grid md:grid-cols-2 md:overflow-visible md:py-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 {plans.map((plan) => {
                   const price = isYearly ? plan.yearlyPrice : plan.monthlyPrice;
                   const isProcessingThisPlan = processingPlanId === plan.id;
