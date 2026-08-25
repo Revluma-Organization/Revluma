@@ -510,6 +510,7 @@ model organization_members {
   @@index([status], map: "idx_org_members_status")
 }
 
+
 /// Single-use organization invitations stored as hashed tokens.
 model invite_tokens {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -529,13 +530,29 @@ model invite_tokens {
 
 /// Merchant subscription record — created after Paystack payment confirmed
 model subscriptions {
+ id                         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+ organization_id            String        @unique @db.Uuid
+ plan                       String        @default("free")
+ billing_cycle              String        @default("monthly")
+ status                     String        @default("trialing")
+  paystack_customer_id       String?
+  paystack_subscription_code String?
+  paystack_customer_id       String?         
+  paystack_subscription_code String? 
+ paystack_plan_code         String?
+ amount_kobo                Int?
+ currency                   String?       @default("NGN")
+}
+
+/// Merchant subscription record — created after Paystack payment confirmed
+model subscriptions {
   id                         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organization_id            String        @unique @db.Uuid
   plan                       String        @default("free")
   billing_cycle              String        @default("monthly")
   status                     String        @default("trialing")
-  paystack_customer_id       String?
-  paystack_subscription_code String?
+  paystack_customer_id       String?         
+  paystack_subscription_code String? 
   paystack_plan_code         String?
   amount_kobo                Int?
   currency                   String?       @default("NGN")
