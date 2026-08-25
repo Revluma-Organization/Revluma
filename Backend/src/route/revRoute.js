@@ -74,6 +74,9 @@ router.patch('/conversation/:id/title',   authenticateToken,               revCo
 // Morning briefing — called on first dashboard load each day
 router.get('/briefing',                   authenticateToken,               revController.getMorningBriefing);
 
+// Anomaly alert check — called after every business state rebuild
+router.post('/alerts/check',               authenticateToken,               revController.checkAndCreateAlerts);
+
 // Python service health (authenticated — internal use)
 router.get('/health',                     authenticateToken,               revController.intelligenceHealth);
 
