@@ -599,6 +599,14 @@ def _run_feature_pipeline(req: FeaturesComputeRequest, db) -> FeaturesComputeRes
 
 
 
+# ── UUID format validator ────────────────────────────────────────────────────
+import re as _re
+_UUID_RE = _re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', _re.I)
+
+def _validate_uuid(value: str, field: str) -> None:
+    if not _UUID_RE.match(value):
+        raise HTTPException(status_code=400, detail=f"Invalid {field} format.")
+
 # ── Morning Briefing Endpoint ─────────────────────────────────────────────────
 
 class BriefingResponse(BaseModel):
@@ -620,6 +628,7 @@ async def generate_morning_briefing(
     Returns the 6-section MorningBriefing as a dict.
     """
     import asyncio
+    _validate_uuid(organization_id, "organization_id")
     db = _Session()
     try:
         result = await asyncio.get_event_loop().run_in_executor(
