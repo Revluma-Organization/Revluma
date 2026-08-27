@@ -81,11 +81,9 @@ CHURN_SIGNAL_RULES = (
     ("no_recent_purchase",          lambda f: _num(f, "days_since_last_purchase", -1) > 90),
     ("purchase_frequency_decline",  lambda f: _num(f, "purchase_frequency_trend") < 0),
     ("email_engagement_decline",    lambda f: _num(f, "email_open_rate_delta") < -0.15),
-    ("site_visit_decline",          lambda f: _num(f, "site_visit_frequency_delta") < -0.15),
+    ("site_visit_decline",          lambda f: _num(f, "site_visit_delta") < -0.15),
     ("unsubscribe_risk",            lambda f: _num(f, "unsubscribe_risk_score") >= 0.60),
     ("discount_seeking",            lambda f: _num(f, "discount_seeking_escalation") > 0),
-    ("competitor_exposure",         lambda f: _num(f, "competitor_referral_flag") > 0),
-    ("negative_sentiment",          lambda f: _num(f, "review_sentiment_score") < -0.25),
 )
 NO_SIGNAL = "none_detected"
 DECAY_SIGNAL = "engagement_decay"
@@ -256,8 +254,8 @@ def _build_result(tier: str, churn_probability: float, decay_score: float,
         "primary_churn_signal":   _primary_churn_signal(feature_vector, decay_score),
         "engagement_decay_score": round(float(decay_score), 2),
         "recommended_channel":    _recommended_channel(tier, feature_vector),
-        "offer_required":         tier in OFFER_REQUIRED_TIERS,
-        "escalate_to_human":      bool(ltv > ESCALATION_LTV_THRESHOLD and tier == "CRITICAL"),
+        "offer_required":         tier in OFFER_REQUIRED_TIERS or (tier == "AT_RISK" and _num(feature_vector, "coupon_dependency_score", 0.0) > 0.4),
+        "escalate_to_human":      bool(ltv > ESCALATION_LTV_THRESHOLD and tier in ("HIGH_RISK", "CRITICAL")),
         "fallback":               fallback,
         "model_version":          "fallback" if fallback else MODEL_VERSION,
     }
@@ -320,7 +318,7 @@ def predict(customer_id: str, feature_vector: dict, merchant_id: str) -> dict:
         churn_probability = 1.0 - float(proba[healthy_idx]) if healthy_idx is not None else 1.0
 
         early_proba = _early_warning_probability(features, decay_score, merchant_id)
-        tier = resolve_churn_tier(base_tier, decay_score, early_proba)
+        tier = resolve_churn_tier(base_tier, decay_score, early_proba, 0.5, features)
 
         return _build_result(tier, churn_probability, decay_score, ltv,
                              fallback=False, feature_vector=features)
@@ -333,7 +331,7 @@ def predict(customer_id: str, feature_vector: dict, merchant_id: str) -> dict:
         base_tier, churn_probability = _fallback_tier(features.get("days_since_last_purchase", -1))
         # No model here, so resolve_churn_tier falls through to the decay
         # threshold. The early warning survives losing the registry entirely.
-        tier = resolve_churn_tier(base_tier, decay_score)
+        tier = resolve_churn_tier(base_tier, decay_score, features=features)
         if tier == "EARLY_WARNING":
             churn_probability = FALLBACK_EARLY_WARNING_PROBABILITY
         return _build_result(tier, churn_probability, decay_score, ltv,

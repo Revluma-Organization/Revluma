@@ -28,7 +28,7 @@ logger = logging.getLogger("rev.agent.retention")
 # spec; EARLY_WARNING is excluded because the tier exists to reach someone
 # cheaply while they are still reachable — discounting there spends margin on
 # customers who have not yet decided to leave.
-DISCOUNT_ELIGIBLE_TIERS = ("HIGH_RISK", "CRITICAL")
+DISCOUNT_ELIGIBLE_TIERS = ("AT_RISK", "HIGH_RISK", "CRITICAL")
 WINBACK_ELIGIBLE_TIERS = ("AT_RISK", "HIGH_RISK", "CRITICAL")
 NEVER_DISCOUNT_TIERS = ("HEALTHY", "EARLY_WARNING")
 

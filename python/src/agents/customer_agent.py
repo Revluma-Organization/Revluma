@@ -32,7 +32,7 @@ VIP_SEGMENTS = ("champion", "loyal")
 # LTV bands. 500 is not arbitrary — it is the same figure M4 escalates a
 # CRITICAL customer to a human at, so a customer approaching it is approaching
 # the point where they are worth a phone call.
-LTV_THRESHOLDS = (500.0, 1000.0, 2500.0)
+LTV_THRESHOLDS = (100.0, 500.0, 1000.0, 2500.0)
 # Within 15% below a threshold is close enough that one more order crosses it.
 LTV_APPROACH_BAND = 0.15
 
@@ -92,6 +92,18 @@ def _approaching_ltv_threshold(customers: list[dict]) -> list[dict]:
     return sorted(out, key=lambda c: c["ltv_gap"])
 
 
+def _approaching_second_purchase(customers: list[dict]) -> list[dict]:
+    """Customers who have made exactly one purchase and are approaching their second."""
+    out = []
+    for c in customers:
+        try:
+            orders = int(c.get("past_orders_total") or c.get("orders_count") or 0)
+        except (TypeError, ValueError):
+            continue
+        if orders == 1:
+            out.append(c)
+    return sorted(out, key=lambda c: int(c.get("days_inactive") or 0))
+
 class CustomerAgent(BaseAgent):
 
     @property
@@ -147,6 +159,8 @@ class CustomerAgent(BaseAgent):
         ml = _customer_ml_signals(business_state)
         vip_inactive = _vip_inactive(ml["customers"])
         approaching = _approaching_ltv_threshold(ml["customers"])
+        second_purchase = _approaching_second_purchase(ml["customers"])
+        second_purchase = _approaching_second_purchase(ml["customers"])
 
         findings = [
             {"code": f.get("metric", "").upper(), "metric": f.get("metric"),
@@ -180,6 +194,16 @@ class CustomerAgent(BaseAgent):
                 "channel": channel,
                 "discount_allowed": False,
                 "ltv_threshold": approaching[0]["ltv_threshold"],
+            }
+        elif second_purchase:
+            recommended_action = {
+                "action": "second_purchase_nudge",
+                "target_segment": None,
+                "target_count": len(second_purchase),
+                "min_days_inactive": None,
+                "channel": channel,
+                "discount_allowed": True,
+                "ltv_threshold": None,
             }
         elif result.recommendations:
             top = result.recommendations[0]
@@ -232,6 +256,8 @@ class CustomerAgent(BaseAgent):
         ml = _customer_ml_signals(bs)
         vip_inactive = _vip_inactive(ml["customers"])
         approaching = _approaching_ltv_threshold(ml["customers"])
+        second_purchase = _approaching_second_purchase(ml["customers"])
+        second_purchase = _approaching_second_purchase(ml["customers"])
         if ml["available"]:
             data_sources.append("ml_signals.customer")
         else:
@@ -374,6 +400,28 @@ class CustomerAgent(BaseAgent):
                 "note": "One well-sized order each — the gap is already computed per customer",
             })
 
+        if second_purchase:
+            facts.append({
+                "type": "fact",
+                "metric": "one_time_buyer_count",
+                "value": len(second_purchase),
+                "description": f"{len(second_purchase)} customers have made exactly one purchase",
+                "source": "ml_signals.customer — aggregate count only",
+            })
+            signals.append({
+                "type": "signal",
+                "metric": "second_purchase_opportunity",
+                "value": len(second_purchase),
+                "description": f"{len(second_purchase)} customers are at the critical one-time buyer milestone",
+                "severity": "medium",
+            })
+            opportunities.append({
+                "category": "repeat_purchase_growth",
+                "description": f"Convert {len(second_purchase)} one-time buyers into repeat customers",
+                "urgency": "medium",
+                "note": "The second purchase is the most important milestone for long-term retention",
+            })
+
         # ── Recommendations 
         preferred_channel = _get_memory(memories, "preferred_channel", "email")
 
@@ -407,6 +455,20 @@ class CustomerAgent(BaseAgent):
                     "customer_ids": [c.get("customer_id") for c in approaching[:25]],
                     "channel": preferred_channel,
                     "use_discount": False,
+                },
+            })
+
+        if second_purchase:
+            recommendations.append({
+                "action": "second_purchase_nudge",
+                "description": f"Target {len(second_purchase)} one-time buyers to secure their second purchase.",
+                "predicted_impact": "Securing a second purchase significantly increases probability of long-term retention",
+                "confidence": 0.70,
+                "category": "repeat_purchase_growth",
+                "params": {
+                    "customer_ids": [c.get("customer_id") for c in second_purchase[:25]],
+                    "channel": preferred_channel,
+                    "use_discount": True,
                 },
             })
 

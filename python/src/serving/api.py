@@ -202,11 +202,20 @@ class ChurnFeatures(BaseModel):
     rfm_recency_score: int = Field(1, ge=1, le=5)
     rfm_frequency_score: int = Field(1, ge=1, le=5)
     rfm_monetary_score: int = Field(1, ge=1, le=5)
-    # NOTE: the doc's escalate_to_human rule needs customer LTV, which
-    # isn't among M4's 7 trained features. Accepted here as an optional
-    # input; if not provided we approximate LTV as
-    # past_orders_total * avg_order_value. Flagged - a real LTV field
-    # from the customer_crm table would be more accurate than this proxy.
+    historical_aov_trend: int = Field(0, ge=-1, le=1)
+    email_open_rate_30d: float = Field(0.0, ge=0.0, le=1.0)
+    email_open_rate_90d: float = Field(0.0, ge=0.0, le=1.0)
+    email_open_rate_delta: float = Field(0.0, ge=-1.0, le=1.0)
+    sms_click_rate_30d: float = Field(0.0, ge=0.0, le=1.0)
+    site_visit_frequency_30d: float = Field(0.0, ge=0.0)
+    site_visit_frequency_90d: float = Field(0.0, ge=0.0)
+    site_visit_delta: float = Field(0.0)
+    browse_to_cart_conversion_trend: int = Field(0, ge=-1, le=1)
+    coupon_dependency_score: float = Field(0.0, ge=0.0, le=1.0)
+    return_rate: float = Field(0.0, ge=0.0, le=1.0)
+    support_contact_frequency_90d: int = Field(0, ge=0)
+    discount_seeking_escalation: int = Field(0, ge=0, le=1)
+    unsubscribe_risk_score: float = Field(0.0, ge=0.0, le=1.0)
     customer_ltv: float = Field(0.0, ge=0.0)
 
 
@@ -873,6 +882,7 @@ async def predict_churn(features: ChurnFeatures) -> ChurnRiskResponse:
             churn_probability=churn_probability,
             churn_tier=tier,
             win_back_urgency=urgency,
+            primary_churn_signal="no_recent_purchase",
             engagement_decay_score=engagement_decay_score,
             recommended_channel=TIER_TO_CHANNEL[tier],
             offer_required=tier in ("HIGH_RISK", "CRITICAL"),
@@ -885,6 +895,7 @@ async def predict_churn(features: ChurnFeatures) -> ChurnRiskResponse:
             churn_probability=0.5,
             churn_tier="AT_RISK",
             win_back_urgency="MEDIUM",
+            primary_churn_signal="no_recent_purchase",
             engagement_decay_score=50.0,
             recommended_channel="email",
             offer_required=False,
@@ -913,6 +924,7 @@ def _get_churn_fallback(days: int, ltv: float) -> ChurnRiskResponse:
         churn_probability=churn_probability,
         churn_tier=tier,
         win_back_urgency=urgency,
+        primary_churn_signal="no_recent_purchase",
         engagement_decay_score=churn_probability * 100,
         recommended_channel=TIER_TO_CHANNEL[tier],
         offer_required=tier in ("HIGH_RISK", "CRITICAL"),

@@ -65,6 +65,20 @@ def test_churn_valid():
         "rfm_recency_score": 4,
         "rfm_frequency_score": 3,
         "rfm_monetary_score": 5,
+        "historical_aov_trend": 0,
+        "email_open_rate_30d": 0.2,
+        "email_open_rate_90d": 0.3,
+        "email_open_rate_delta": -0.1,
+        "sms_click_rate_30d": 0.1,
+        "site_visit_frequency_30d": 5.0,
+        "site_visit_frequency_90d": 15.0,
+        "site_visit_delta": 0.0,
+        "browse_to_cart_conversion_trend": 0,
+        "coupon_dependency_score": 0.2,
+        "return_rate": 0.0,
+        "support_contact_frequency_90d": 0,
+        "discount_seeking_escalation": 0,
+        "unsubscribe_risk_score": 0.1,
         "customer_ltv": 750.0
     }, headers=headers)
     assert response.status_code == 200
