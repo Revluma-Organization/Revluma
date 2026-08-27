@@ -264,6 +264,7 @@ class ChurnRiskResponse(BaseModel):
     churn_probability: float
     churn_tier: str
     win_back_urgency: str
+    primary_churn_signal: str
     engagement_decay_score: float
     recommended_channel: str
     offer_required: bool
