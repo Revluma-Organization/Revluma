@@ -1077,3 +1077,49 @@ async def predict_offer_value(features: OfferValueFeatures) -> OfferValueRespons
             reasoning="Inference error - defaulting to safe no-discount nudge.",
             fallback=True
         )
+
+
+# ---------------------------------------------------------------------------
+# S4 - RFM sync (internal, called by the Node backend after a store sync)
+#
+# RevIntell_AI_LLM_Team_Tasks.txt:312 - "the Node.js layer calls
+# POST /internal/rfm-sync with { store_id }. Samuel's RFM sync runs. This is
+# automatic. No manual triggering."
+#
+# Until this existed, rfm_sync was reachable only from its CLI entry point, so
+# rfm_segment was never repopulated after a store sync - which is what leaves
+# ml_signals empty in production and blocks the M4-driven paths in the
+# retention agent and the VIP/LTV paths in the customer agent.
+# ---------------------------------------------------------------------------
+
+from ..jobs.rfm_sync import run as _run_rfm_sync
+
+
+class RfmSyncRequest(BaseModel):
+    store_id: str = Field(..., min_length=1,
+                          description="UUID of the store/merchant to process")
+
+
+class RfmSyncResponse(BaseModel):
+    processed_count:      int
+    failed_customer_ids:  typing.List[str]
+    segment_distribution: typing.Dict[str, int]
+
+
+@app.post("/internal/rfm-sync", response_model=RfmSyncResponse,
+          dependencies=[Depends(verify_internal_caller)])
+async def internal_rfm_sync(request: RfmSyncRequest) -> RfmSyncResponse:
+    """Recalculate RFM scores and segments for every customer in one store.
+
+    Thin wrapper over the S4 job. `rfm_sync.run` opens and closes its own
+    connection and never raises - on a missing DATABASE_URL or a failed
+    connect it returns a zeroed summary - so this endpoint has no error path
+    of its own beyond the auth dependency.
+
+    The job is blocking (psycopg2, plus a loop over every customer in the
+    store), so it is offloaded to the thread pool rather than run on the event
+    loop. Without that, one large store would stall every other request in
+    flight.
+    """
+    result = await _run_inference(_run_rfm_sync, request.store_id)
+    return RfmSyncResponse(**result)
