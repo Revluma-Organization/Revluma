@@ -21,6 +21,10 @@ recency tiers cannot.
 
 import os
 import sys
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 
 import mlflow
 import numpy as np
@@ -420,7 +424,7 @@ def _compute_churn_records(customer_ids: list, db_connection) -> pd.DataFrame:
 
     missing = [column for column in FEATURE_COLUMNS if column not in frame.columns]
     if missing:
-        print(
+        logger.info(
             f"[M4] WARNING: {len(missing)} of the 24 features have no data source "
             f"yet and are filled with 0 for every real customer: {', '.join(missing)}. "
             f"Engagement drift is among them, so engagement_decay_score is not "
@@ -459,7 +463,7 @@ def load_training_data(n: int = 4000, db_connection=None) -> tuple:
             purchase history.
     """
     if db_connection is None:
-        print("[M4] No db_connection provided — using synthetic data.")
+        logger.info("[M4] No db_connection provided — using synthetic data.")
         frame = _generate_synthetic_data(n=n)
         train_df, test_df = train_test_split(
             frame, test_size=0.2, random_state=42, stratify=frame["churn_tier"]
@@ -478,14 +482,14 @@ def load_training_data(n: int = 4000, db_connection=None) -> tuple:
 
     below_minimum = len(real_df) < MIN_REAL_CUSTOMERS
     if below_minimum:
-        print(
+        logger.info(
             f"[M4] WARNING: training on {len(real_df)} real customer "
             f"records, below the recommended minimum of {MIN_REAL_CUSTOMERS}. "
             f"Proceeding per strict real-data policy — treat churn_tier "
             f"metrics as provisional, not production-reliable."
         )
     else:
-        print(f"[M4] Training on {len(real_df)} real customer records.")
+        logger.info(f"[M4] Training on {len(real_df)} real customer records.")
 
     try:
         train_df, test_df = train_test_split(
@@ -497,7 +501,7 @@ def load_training_data(n: int = 4000, db_connection=None) -> tuple:
         # that. Fall back to a non-stratified split rather than crashing —
         # this does not touch synthetic data, it only changes the split
         # strategy for a genuinely tiny real dataset.
-        print(
+        logger.info(
             "[M4] WARNING: stratified split not possible (a churn_tier "
             "class has fewer than 2 real examples) — using a plain random "
             "split instead."
@@ -571,7 +575,7 @@ def train_early_warning_layer(train_df: pd.DataFrame, test_df: pd.DataFrame) -> 
     healthy_test = test_df[test_df["churn_tier"] == "HEALTHY"]
 
     if healthy_train["early_warning"].nunique() < 2 or len(healthy_test) == 0:
-        print(
+        logger.info(
             "[M4] WARNING: the HEALTHY cohort does not hold both classes — "
             "EARLY_WARNING falls back to the decay-threshold rule "
             f"(engagement_decay_score >= {EARLY_WARNING_DECAY_THRESHOLD})."
@@ -623,14 +627,14 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
 
-    print("Loading training data (real if db_connection given, else synthetic N=4000)...")
+    logger.info("Loading training data (real if db_connection given, else synthetic N=4000)...")
     train_df, test_df, used_real_data, below_minimum = load_training_data(
         n=4000, db_connection=db_connection
     )
     X_train, y_train = train_df[FEATURE_COLUMNS], train_df["churn_tier"]
     X_test, y_test = test_df[FEATURE_COLUMNS], test_df["churn_tier"]
 
-    print("Building M4 GradientBoostingClassifier...")
+    logger.info("Building M4 GradientBoostingClassifier...")
     model = build_model()
 
     with mlflow.start_run(run_name=run_name) as run:
@@ -638,13 +642,13 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
         mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
         mlflow.set_tag("below_minimum_threshold", str(below_minimum))
 
-        print("Training M4 model...")
+        logger.info("Training M4 model...")
         model.fit(X_train, y_train)
 
-        print("Training the EARLY_WARNING detection layer...")
+        logger.info("Training the EARLY_WARNING detection layer...")
         early_model, early_metrics = train_early_warning_layer(train_df, test_df)
 
-        print("Evaluating model...")
+        logger.info("Evaluating model...")
         y_pred = model.predict(X_test)
         y_prob = model.predict_proba(X_test)
 
@@ -697,37 +701,37 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
                 registered_model_name="churn_early_warning",
             )
 
-        print(f"\n--- M4 CHURN RISK MODEL METRICS ---")
-        print(f"Data source: {'real' if used_real_data else 'synthetic'}")
-        print(f"Features:    {len(FEATURE_COLUMNS)}")
-        print(f"Accuracy: {report['accuracy']:.4f}")
-        print(f"Macro F1: {report['macro avg']['f1-score']:.4f}")
-        print(f"AUC-ROC:  {auc_roc:.4f}")
+        logger.info(f"\n--- M4 CHURN RISK MODEL METRICS ---")
+        logger.info(f"Data source: {'real' if used_real_data else 'synthetic'}")
+        logger.info(f"Features:    {len(FEATURE_COLUMNS)}")
+        logger.info(f"Accuracy: {report['accuracy']:.4f}")
+        logger.info(f"Macro F1: {report['macro avg']['f1-score']:.4f}")
+        logger.info(f"AUC-ROC:  {auc_roc:.4f}")
 
-        print("\nPer-class (precision / recall / F1):")
+        logger.info("\nPer-class (precision / recall / F1):")
         for tier in CHURN_TIERS:
             if f"precision_{tier}" not in per_class:
                 continue
-            print(f"  {tier:<10} {per_class[f'precision_{tier}']:.4f}  "
+            logger.info(f"  {tier:<10} {per_class[f'precision_{tier}']:.4f}  "
                   f"{per_class[f'recall_{tier}']:.4f}  {per_class[f'f1_{tier}']:.4f}")
 
         if early_metrics:
-            print("\nEARLY_WARNING layer (binary, engagement_decay_score):")
-            print(f"  AUC-ROC:   {early_metrics.get('early_warning_auc', float('nan')):.4f}")
-            print(f"  Precision: {early_metrics['early_warning_precision']:.4f}")
-            print(f"  Recall:    {early_metrics['early_warning_recall']:.4f}")
+            logger.info("\nEARLY_WARNING layer (binary, engagement_decay_score):")
+            logger.info(f"  AUC-ROC:   {early_metrics.get('early_warning_auc', float('nan')):.4f}")
+            logger.info(f"  Precision: {early_metrics['early_warning_precision']:.4f}")
+            logger.info(f"  Recall:    {early_metrics['early_warning_recall']:.4f}")
         else:
-            print("\nEARLY_WARNING layer: not trained - threshold rule in use.")
+            logger.info("\nEARLY_WARNING layer: not trained - threshold rule in use.")
 
-        print("\nTask S3 gates:")
-        print(f"  AUC-ROC >= {MIN_AUC_ROC}:              "
+        logger.info("\nTask S3 gates:")
+        logger.info(f"  AUC-ROC >= {MIN_AUC_ROC}:              "
               f"{auc_roc:.4f}  {'PASS' if meets_auc else 'FAIL'}")
-        print(f"  HIGH_RISK precision >= {MIN_HIGH_RISK_PRECISION}:  "
+        logger.info(f"  HIGH_RISK precision >= {MIN_HIGH_RISK_PRECISION}:  "
               f"{high_risk_precision:.4f}  {'PASS' if meets_high_risk_precision else 'FAIL'}")
 
-        print(f"\n[OK] MLflow Run ID: {run.info.run_id}")
-        print(f"MLflow Run Name: {run.info.run_name}")
-        print(f"Run URL: {_dagshub_run_url(run)}")
+        logger.info(f"\n[OK] MLflow Run ID: {run.info.run_id}")
+        logger.info(f"MLflow Run Name: {run.info.run_name}")
+        logger.info(f"Run URL: {_dagshub_run_url(run)}")
 
         return {
             "model": model,

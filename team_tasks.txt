@@ -1,0 +1,327 @@
+REVLUMA
+Rev Intelligence
+AI / LLM / Data Engineering Team
+Build Task Assignment Document
+Version 1.0  |  Revluma Internal  |  Confidential
+Before You Read Anything Else
+Rev Intelligence is not a chatbot. Read that again.
+It is the autonomous operating intelligence at the core of Revluma. It monitors every merchant's business continuously, detects anomalies before the merchant notices them, reasons about root causes, recommends specific actions ranked by expected revenue impact, and executes those actions when approved. It remembers everything. It learns continuously. It never stops working.
+Your job as the AI, LLM, and Data Engineering team is to build the intelligence layer that makes all of that possible. The backend team builds the pipes. You build the brain.
+Everything in this document flows from the Rev Intelligence Engineering Specification Series (Documents 01 through 10). You are expected to have read Documents 01, 02, 03, 04, 05, and 09 before you begin any task assigned to you. If you have not read them, stop now and read them first. The specifications define every contract your work must satisfy.
+The standard is simple: Rev must get smarter every day. Every model you train, every pipeline you build, every agent you implement must be designed to compound in intelligence over time. If it does not learn, it is not finished.
+Team
+David Okanlawon — AI/ML Engineer 1 (Lead). Owns M1, M3, the Orchestrator Agent, the Pixel Event Specification, and the session behaviour feature pipeline.
+Samuel Irenikase — AI/ML Engineer 2. Owns M4, the customer history feature pipeline, the event processor, the RFM sync job, and the churn risk serving endpoint.
+Ire Akindipe — ML / Data Scientist. Owns M2, M5, the sensitivity and offer value serving endpoints, the learning loop infrastructure, and model drift detection.
+Where tasks require coordination — specifically where David's pipeline feature names must match Afolabi's schema column names — that alignment must be confirmed in writing in the group chat before Phase 2 begins. No verbal agreements. Written confirmation only.
+David Okanlawon — AI/ML Engineer 1 (Lead)
+David owns the most critical path in the entire Rev Intelligence system: the session-level intelligence that determines whether a shopper is about to abandon, and the Orchestrator Agent that is the cognitive core of Rev. If David's components are late or incorrect, nothing downstream works.
+TASK D1 — Pixel Event Specification (COMPLETE — verify alignment)
+Status: Committed to docs/PIXEL_EVENT_SPEC.md. This document is the contract between the backend ingestion endpoint, the JavaScript tracking pixel, and the ML feature pipeline. It defines every event type, every payload field, and every feature in the 16-feature shopper feature vector.
+Before Phase 2 begins, David must schedule a 10-minute sync with Afolabi to confirm that every column name in the pipeline specification exactly matches the corresponding column name in the live Supabase schema. This confirmation must be posted in the group chat in writing. A mismatch here breaks every downstream ML query without a visible error — it simply returns wrong numbers.
+TASK D2 — Session Behaviour Feature Pipeline (8 functions)
+File: python/src/features/pipeline.py
+Implement the following 8 functions in full. Each function has its docstring already written. Implement the body. Do not change signatures or docstrings. Every function accepts a list of raw pixel event dicts matching the PIXEL_EVENT_SPEC envelope.
+calculate_scroll_depth(events) — Filter event_type == scroll, return max of payload.depth_pct. Default 0.0 on empty input. Never raises on malformed payload.
+calculate_tab_switch_count(events) — Count events where event_type == tab_switch AND payload.direction == blur. Default 0.
+calculate_time_on_page_ms(events) — Parse timestamp fields, return max_timestamp minus min_timestamp in milliseconds. Return 0 if fewer than 2 events.
+calculate_cursor_hesitation_count(events) — Count events where event_type == exit_intent. Each exit intent event is one hesitation moment. Default 0.
+calculate_checkout_step_reached(events) — Filter event_type == checkout_step, return max of payload.step. Default 0 if no checkout_step events.
+calculate_failed_payment_attempt(events) — Return True if any event has event_type == failed_payment. Default False.
+calculate_local_hour_of_session(events) — Parse earliest timestamp, return datetime.hour (0-23). Default 12 on parse failure.
+calculate_day_of_week_session(events) — Parse earliest timestamp, return datetime.weekday() where 0 is Monday. Default 0 on parse failure.
+Requirements for all 8 functions: empty list returns safe default without raising. Malformed events with missing payload or timestamp keys are skipped gracefully. Unit tests in python/tests/test_pipeline.py with minimum 3 test cases per function covering normal input, empty list, and malformed payload.
+TASK D3 — M1 Abandonment Probability Model
+Files: python/src/models/abandonment/train.py and python/src/models/abandonment/predict.py
+This is the most critical model in the entire cascade. Every recovery sequence in Revluma starts when M1 crosses the 0.65 threshold. If M1 is wrong — too many false positives, too many missed abandoners — everything downstream fires incorrectly.
+Training Script Requirements
+generate_synthetic_data(n=5000) — Generate n synthetic sessions with the 8 session behaviour features as columns. Binary abandoned label with 70% base rate. Realistic correlation: higher checkout_step_reached reduces abandonment probability. failed_payment_attempt increases it. Add noise to prevent trivially learnable synthetic patterns.
+load_training_data(db_connection=None) — When None: call generate_synthetic_data(). When db_connection provided (Phase 3): query real events table, group by session_id, apply pipeline functions. This is the hook for real data. The synthetic path must be swappable without changing any other code.
+build_model() — Return LogisticRegression(solver=lbfgs, max_iter=1000, C=1.0, class_weight=balanced). Starting model. Will upgrade to XGBoost in Phase 3 when real data arrives.
+train(run_name, db_connection=None) — Full pipeline: load data, 80/20 split with stratify on label, StandardScaler, fit model, compute accuracy/precision/recall/F1/AUC-ROC on test set. Log to MLflow under Revluma-MVP experiment with tags model=abandonment, version=1.0. Log params, all 5 metrics, model artifact via mlflow.sklearn.log_model, scaler as pickle artifact. Print metric summary to stdout. Return dict with model, scaler, metrics.
+Inference Logic — The 3-Phase System
+This is the most important part of M1 and the part that makes Revluma different from every other cart recovery tool. M1 does not simply score at abandonment. It scores continuously during the session and triggers different interventions at different risk levels.
+Phase 1 — Real-time risk scoring. Runs on every new batch of session events. Computes base_risk from the model output. Applies boost modifiers: +0.18 if failed_payment_attempt is True, +0.12 if checkout_step_reached >= 4 AND checkout_stall_duration > 120 seconds, +0.10 if cursor_hesitation_count >= 2, +0.09 if tab_switch_count >= 3 AND total_hidden_ms > 60 seconds, +0.08 if cart_item_remove_count >= 1, -0.10 if is_return_visitor AND previous_recovery_response is True. Clamp final score to 0.0 to 1.0.
+Phase 2 — Intervention decision. Score >= 0.65: flag as abandoned, compute intervention_window_seconds based on exit speed and hesitation count, trigger M2 immediately. Score 0.55 to 0.64: Yellow zone. Trigger in-session rescue signals only — social proof overlay, urgency if low stock, 1-click payment highlight if failed payment. Do NOT send email or SMS yet. In-session recovery is free and converts at 3x.
+Phase 3 — Pre-abandonment rescue. Score 0.35 to 0.54: monitor and log. Score below 0.35: no action. Normal browsing.
+Failsafe: if model unavailable or inference fails, return final_risk_score = 0.50, intervention_window = 60, fallback = True. Never crash. Never return a 500 from the serving endpoint.
+Performance Requirements
+M1 inference must complete in under 50ms per session batch
+AUC-ROC minimum 0.75 on test set before promotion to production
+Precision at threshold 0.65 minimum 0.70
+Recall at threshold 0.65 minimum 0.65
+Run training script end to end. MLflow run must appear in DagsHub Revluma-MVP experiment. Share run URL in group.
+TASK D4 — M3 Optimal Send-Time Predictor
+Files: python/src/models/timing/train.py, python/src/models/timing/predict.py, python/src/models/timing/README.md
+M3 answers the single most underestimated question in cart recovery: not what to send, but when. A 28 percentage point CTR difference separates a message sent at the right time from one sent at the wrong time. M3 is responsible for that difference.
+The Four-Layer Timing System
+Layer 1 — Immediate override. If failed_payment_attempt is True: send_delay = 5 minutes, channel_override = SMS. If M1 risk_score >= 0.80 AND cart_value_tier is premium: send_delay = 8 minutes. These overrides run before any model inference. They are rules, not predictions.
+Layer 2 — Global channel baselines. Used when no individual history exists. Email: Tuesday 10:00 to 11:00 local (reference). Wednesday 10:00 local. Thursday 09:00 local. Avoid Monday 07:00 to 09:00 (inbox clearing), Friday 16:00 to 18:00 (attention collapse), any day 01:00 to 06:00 (wakes to buried message). SMS: Thursday 18:00 to 20:00 local (reference). Tuesday 12:00 to 13:00. Wednesday 19:00. Avoid any day 22:00 to 08:00 (opt-out risk spikes 3.2x during sleep hours).
+Layer 3 — Individual history personalisation. Build a 24-slot open probability array per customer per channel from sequence_events history. Score: open_prob[h] = opens_in_hour_h / total_sends_in_hour_h. Smooth with Gaussian kernel sigma=1.5 hours. Find next future hour where open_prob[h] >= 0.55 AND not in quiet hours 22:00 to 08:00 local. If fewer than 3 data points: fall back to Layer 2. Cap at 18 hours maximum delay regardless of personalisation.
+Layer 4 — Sequence cadence rules. Message 1: Layer 1/2/3 output. Message 2: +24 hours from Message 1. Message 3: +48 hours from Message 2 on secondary channel. Hard rules: never 2 SMS within 24 hours to same customer. Never send 22:00 to 08:00 local time. If customer opens Message 1 but does not click: gap to 36 hours for Message 2.
+Training Script
+Generate 2000 synthetic send records with: send_hour (0-23), send_day (0-6), channel (email/SMS/WhatsApp), historical open rate per time slot per channel, days_since_last_purchase, cart_value_tier, recovery_action from M2. Binary label: did the customer open AND click within 120 minutes of send. Train GradientBoostingClassifier with CalibratedClassifierCV for probability calibration. Log to MLflow under Revluma-MVP with tag model=timing. Evaluate: CTR improvement vs global baseline minimum +8%, calibration error maximum 0.12. Share DagsHub run URL.
+Output Format
+{ send_at: ISO 8601 timestamp (customer local time),
+  send_at_utc: ISO 8601 UTC,
+  confidence: Float 0.0-1.0,
+  reasoning_layer: "immediate" | "global_baseline" | "personalised" | "hybrid",
+  channel: "email" | "sms" | "whatsapp" | "push" }
+Failsafe: Email: next Tuesday 10:00 local. SMS: next Thursday 18:30 local. Never return null. Always return a valid timestamp.
+TASK D5 — The Orchestrator Agent
+File: python/src/agents/orchestrator.py
+This is the most architecturally significant component David will build. The Orchestrator is the cognitive core of Rev Intelligence. It is the single voice the merchant interacts with. Behind it, seven specialist agents run simultaneously. The merchant never knows this is happening.
+What the Orchestrator Does
+Step 1: Receive the trigger. Triggers arrive from three sources: Alert Queue (anomaly detected), Scheduler (morning briefing, weekly review), Conversation Service (merchant message). Each trigger has a type, priority, and context payload.
+Step 2: Classify intent. Map the trigger to one of seven modes: Analyst (what happened?), Strategist (what should I do?), Operator (do it), Teacher (explain why), Forecaster (what will happen?), Simulator (what if?), Briefing (scheduled proactive summary). Mode is detected automatically from trigger type and content. The merchant never selects a mode.
+Step 3: Assemble context package. Call the Memory Retrieval layer to assemble: current Business State, top-K semantically relevant memories from Vector Store, applicable Semantic Memory entries by entity reference, Strategic Memory entries for similar past situations, User Memory for merchant constraints. This package is what every agent receives. Agents never query the database directly.
+Step 4: Activate specialist agents. Based on the intent mode and trigger type, activate the relevant specialist agents in parallel. Revenue Agent for financial queries. Retention Agent for churn and loyalty. Marketing Agent for campaign and channel questions. Inventory Agent for stock queries. Finance Agent for margin and profitability. Customer Agent for individual customer health. Intelligence Agent always runs in background. Each agent receives the context package and produces a structured JSON output.
+Step 5: Detect contradictions. Before synthesising, check for: internal contradiction (recommendation violates User Memory constraint), historical contradiction (contradicts outcome of similar past recommendation), cross-agent contradiction (two agents disagree). Internal contradictions block the response. Historical contradictions add a disclosure note. Cross-agent contradictions are resolved by the Orchestrator with a stated rationale.
+Step 6: Synthesise and build response. Combine agent outputs into a single coherent response following the six-part structure: Situation (what is happening, specific, data-backed, 2 sentences max), Insight (why it is happening, root cause, 1-3 sentences), Implication (what happens if nothing is done, quantified), Recommendation (specific action, one primary recommendation), Confidence (score and basis, always present), Actions (buttons, always present, minimum 2).
+Step 7: Self-verify. Before delivering: confirm all cited numbers are present in retrieved evidence (no hallucinated statistics), all referenced entities exist in merchant data, response follows six-part structure, action buttons reference available tools, confidence score computed and included, no PII present. Failures trigger re-run of the relevant step, not an error to the merchant.
+Agent Output Schema
+Every specialist agent must return a structured JSON object with exactly these fields:
+{ domain: string,
+  findings: string,
+  confidence: float (0.0-1.0),
+  recommended_action: string | null,
+  evidence_references: string[],
+  contradictions_detected: string[] }
+Agents never return free-form text. The Orchestrator synthesises from structured data. This prevents interpretation errors and ensures the six-part response structure is always achieved.
+The Seven Specialist Agents
+David is responsible for implementing the Orchestrator and the Revenue Agent. Samuel implements the Retention Agent and Customer Agent. Ire implements the Marketing Agent, Intelligence Agent, and Finance Agent. The Inventory Agent is a stub in Phase 1 (returns empty findings) until inventory data integration is complete.
+TASK D6 — Business State Builder
+File: python/src/intelligence/business_state.py
+The Business State is the single most important data structure in Rev Intelligence. Every agent reads from it. No agent queries the live database during a conversation. The Business State must be accurate, complete, and rebuilt every 15 minutes without fail.
+Business State Structure
+{ snapshot_at: ISO timestamp,
+  merchant_id: UUID,
+  revenue: { today, yesterday, delta_pct, trend_7d, anomaly: bool, severity: low|med|high },
+  abandoned_carts: { count, value, delta_pct_vs_avg, anomaly: bool },
+  customers: { at_churn_risk, vip_inactive_45d, returning_rate_delta },
+  inventory: { stockout_risk_72h: [], overstocked: [] },
+  ml_outputs: { active_session_scores: [], pending_recoveries: [] },
+  top_opportunities: [{ type, estimated_value, confidence }],
+  active_concerns: [{ type, severity, root_cause_candidates: [] }] }
+Rebuild Requirements
+Must complete within 90 seconds for stores with up to 100,000 orders
+Must run every 15 minutes via the scheduler without manual triggering
+Must handle database timeouts gracefully — use the previous Business State if a rebuild fails, log the failure, retry at next cycle
+Must write to a persistent store accessible to all agents with sub-100ms read latency
+Anomaly detection runs as part of the rebuild. Any metric outside its expected range triggers an Alert Queue entry
+Expected ranges are computed from a 30-day rolling baseline per merchant, adjusted for day-of-week and seasonal patterns
+TASK D7 — Morning Briefing Generator
+File: python/src/intelligence/morning_briefing.py
+The Morning Briefing is the most important Rev touchpoint of the day. It is prepared during the night, ready on first login, and structured as a complete executive summary. This is not a metrics dump. It is the output of the full Orchestrator pipeline run in Briefing mode.
+Briefing Structure (non-negotiable)
+Greeting line. One sentence. "Good morning [name]. Revenue is up 9% today. One thing needs your attention." Never: "Good morning! I hope you are doing well today!"
+Yesterday in numbers. Three to five key metrics that changed significantly. Only metrics that changed. Stable metrics are suppressed.
+Today's priority. One recommended action with estimated impact and one action button. Not a list. One thing. The most important thing.
+Active concerns. Up to three concerns with severity, one-line root cause, action button. If no concerns: "No active concerns today." explicitly stated. Never leave this section blank.
+Opportunities. Up to three ranked by estimated value with action buttons. Only list opportunities that can be executed immediately with available tools.
+What Rev did overnight. Full log of any autonomous actions taken while the merchant was offline. Nothing hidden.
+The briefing runs at 05:00 UTC daily for all merchants. It must be ready before any merchant in any timezone logs in for their morning. Availability target: ready within 10 minutes of the scheduled generation time.
+Samuel Irenikase — AI/ML Engineer 2
+Samuel owns the customer-level intelligence — the models and pipelines that understand each individual shopper's history, predict whether they will churn, and power the retention side of Rev Intelligence. He also owns the event processor, which is the foundation every other feature pipeline depends on.
+TASK S1 — Customer History Feature Pipeline (6 functions)
+File: python/src/features/pipeline.py
+These 6 functions query the database to build the customer history feature vector. They are the inputs to M2 (sensitivity), M4 (churn), and M5 (offer value). Every function accepts customer_id as a string and db as a psycopg2 connection. All use parameterised queries. None use f-strings or string formatting in SQL.
+calculate_past_orders_total(customer_id, db) — SELECT orders_count FROM customers WHERE id = %s. Return int. Default 0 if not found.
+calculate_avg_order_value(customer_id, db) — SELECT AVG(total) FROM orders WHERE customer_id = %s. Return float. Default 0.0.
+calculate_days_since_last_purchase(customer_id, db) — SELECT MAX(ordered_at) FROM orders WHERE customer_id = %s. Return integer days since that date. Return -1 as sentinel if no orders. Models treat -1 as a separate category meaning no purchase history.
+calculate_purchase_frequency_trend(customer_id, db) — Compare orders in last 30 days vs prior 30 days using a single query with two COUNT(*) FILTER clauses. Return 1 if increasing, -1 if decreasing, 0 if equal or insufficient history.
+calculate_coupon_usage_pct(customer_id, db) — SELECT COUNT(*) FILTER (WHERE coupon_used = true)::float / NULLIF(COUNT(*), 0) FROM orders WHERE customer_id = %s. Return float 0.0 to 1.0. Requires orders.coupon_used column confirmed in schema.
+calculate_rfm_scores(customer_id, db) — Call the three functions above, compute RFM scores. Recency: <30d=5, 30-90d=4, 90-180d=3, 180-365d=2, >365d or no purchase=1. Frequency: >10=5, 6-10=4, 3-5=3, 2=2, 0-1=1. Monetary: >$200=5, $100-200=4, $50-100=3, $20-50=2, <$20=1. Return dict with rfm_recency_score, rfm_frequency_score, rfm_monetary_score, days_since_last_purchase, past_orders_total, avg_order_value.
+Unit tests in python/tests/test_pipeline.py using unittest.mock.MagicMock for the DB cursor. Cover: customer with orders, customer with no orders, DB exception handling for each function.
+TASK S2 — Event Processor (6 functions)
+File: python/src/features/event_processor.py
+The event processor is the foundation of the entire feature pipeline. It takes raw pixel events from the ingestion endpoint and transforms them into clean, structured data that every pipeline function can work with. If the event processor is wrong, every downstream ML component gets wrong inputs.
+parse_raw_event(raw_payload) — Validate required keys: event_type, session_id, timestamp. Return a normalised dict with all keys guaranteed present (None for missing optional fields). Set event_type = unknown for missing or invalid. Add _valid: bool flag. Never raise. Never crash on malformed input.
+filter_events_by_type(events, event_type) — Return filtered list. Return empty list if none match. Never raises.
+extract_session_timeline(events) — Sort by timestamp ascending. Return structured dict: session_start, session_end, checkout_steps list, tab_hidden_events list, exit_intent_at, payment_failed_at. Return safe empty structure if list is empty.
+detect_platform(merchant_id, db) — Query stores table for the merchant's platform. Return shopify, woocommerce, or unknown. Wrap in try/except. Return unknown on any error.
+normalize_checkout_step(platform, platform_step) — Map platform-specific step identifiers to 0-5 integer scale using the normalization table in PIXEL_EVENT_SPEC.md. Pass through integer if already 0-5. Return 0 for unknown inputs.
+group_events_by_session(events) — Return dict keyed by session_id. Events without session_id grouped under __no_session__. Each group sorted by timestamp ascending.
+Unit tests in python/tests/test_event_processor.py. Cover: normal cases, empty input, malformed events with missing required fields, mixed timestamp formats with and without Z suffix and with timezone offsets.
+TASK S3 — M4 Churn Risk Model
+Files: python/src/models/churn/train.py and python/src/models/churn/predict.py
+M4 is the early warning system for the entire retention side of Rev Intelligence. The key innovation in M4 is the EARLY_WARNING tier — it detects churn signals 4 to 6 weeks before the standard 30-day no-purchase threshold. That window is the difference between a gentle win-back email and an emergency discount campaign.
+Feature Set — 24 signals across 4 dimensions
+Dimension 1 — Purchase History: past_orders_total, days_since_last_purchase, avg_order_value, purchase_frequency_trend, rfm_recency_score, rfm_frequency_score, rfm_monetary_score, historical_aov_trend (slope of AOV over last 6 months).
+Dimension 2 — Engagement Drift: email_open_rate_30d, email_open_rate_90d, email_open_rate_delta (30d vs 90d), sms_click_rate_30d, site_visit_frequency_30d, site_visit_frequency_90d, site_visit_delta, browse_to_cart_conversion_trend.
+Dimension 3 — Sentiment Signals: coupon_dependency_score (coupon_usage_pct trend over 90d), return_rate (future integration, stub for Phase 1), support_contact_frequency_90d (future integration, stub for Phase 1).
+Dimension 4 — Competitive Exposure: discount_seeking_escalation (trend in coupon page visits), unsubscribe_risk_score (engagement decay model output).
+The Five Churn Tiers
+HEALTHY (churn_probability 0.05-0.20). days_since_last_purchase <= 30 AND purchase_frequency_trend >= 0 AND email_open_rate_delta > -0.10 AND rfm_recency_score >= 4. Action: standard loyalty content. No intervention.
+EARLY_WARNING (churn_probability 0.21-0.45). engagement_decay_score >= 0.40 OR days_since_last_purchase 31-45 AND email_open_rate_delta < -0.15 OR purchase_frequency_trend == -1 AND rfm_frequency_score <= 3. Action: personalised product recommendation email, no pitch yet, goal is re-engagement only.
+AT_RISK (churn_probability 0.46-0.70). days_since_last_purchase 31-60 OR engagement_decay_score >= 0.60. Action: personalised win-back with product recs. If email_open_rate_30d < 0.05 switch to SMS. Soft incentive if coupon_dependency_score > 0.4.
+HIGH_RISK (churn_probability 0.71-0.88). days_since_last_purchase 61-90 OR engagement_decay_score >= 0.80. Action: aggressive win-back, SMS + email simultaneously if consented. Offer determined by M5. Escalate to human for LTV > $500.
+CRITICAL (churn_probability 0.89-1.00). days_since_last_purchase > 90 OR engagement_decay_score = 1.0 AND no site visit in 60 days. Action: maximum intervention. If no response to all 3 messages: mark churned, stop all sends. Never spam a churned customer.
+Training and Evaluation
+Generate 4000 synthetic customer records with all 24 features. 4-class target: HEALTHY, AT_RISK, HIGH_RISK, CRITICAL. Add EARLY_WARNING detection as a separate binary classifier on the engagement_decay_score composite. Train GradientBoostingClassifier. Compute per-class precision, recall, F1. Overall AUC-ROC minimum 0.78. Precision at HIGH_RISK tier minimum 0.72. Log to MLflow. Share DagsHub run URL.
+Output Format
+{ churn_probability: float,
+  churn_tier: HEALTHY|EARLY_WARNING|AT_RISK|HIGH_RISK|CRITICAL,
+  win_back_urgency: LOW|MEDIUM|HIGH|CRITICAL,
+  primary_churn_signal: string,
+  engagement_decay_score: float,
+  recommended_channel: email|sms|whatsapp|push,
+  offer_required: bool,
+  escalate_to_human: bool }
+TASK S4 — RFM Sync Job
+File: python/src/jobs/rfm_sync.py
+Runs after every Shopify or WooCommerce data sync to calculate RFM scores for all synced customers and write them back to the customers table. This is what populates the rfm_segment field that the dashboard, the Retention Agent, and M4 all read from.
+get_rfm_segment(r, f, m) — all 4-5 = champion, f>=3 AND r>=3 = loyal, r<=2 AND f>=3 = at_risk, r<=2 AND f<=2 AND m>=2 = hibernating, else = lost
+calculate_rfm_for_all_customers(store_id, db) — fetch all customer IDs, loop, call calculate_rfm_scores, call get_rfm_segment, UPDATE customers table, commit. Log total processed and segment distribution.
+run(store_id) — connect to DATABASE_URL, call calculate function, close connection in finally block.
+Command-line entry: python rfm_sync.py <store_id>
+FastAPI endpoint: POST /internal/rfm-sync with body { store_id }. Afolabi calls this after every store data sync completes.
+TASK S5 — Retention Agent and Customer Agent
+File: python/src/agents/retention_agent.py and python/src/agents/customer_agent.py
+Samuel implements two of the seven specialist agents. These agents receive the context package from the Orchestrator and produce structured findings in their domain.
+Retention Agent. Domain: churn risk, repeat purchase rates, customer health scores, loyalty patterns, win-back opportunities. Primary inputs from context package: churn_risk counts from Business State, customer segment distributions, M4 outputs for at-risk customers, purchase frequency trends. Must identify the highest-value win-back opportunity in every response. Must never recommend a win-back discount for a customer with churn_tier = HEALTHY.
+Customer Agent. Domain: individual customer health, VIP relationship management, support sentiment (future), review trends (future). Primary inputs: customer records with RFM scores, purchase history, sequence engagement history. Identifies specific individual customers who need attention: VIPs inactive 45+ days, customers approaching second purchase milestone, customers who just hit LTV thresholds.
+Both agents must produce output in the standard agent output schema defined in Task D5. Neither agent has direct database access. Both reason from the context package provided by the Orchestrator.
+Ire Akindipe — ML / Data Scientist
+Ire owns the sensitivity and offer intelligence layer — the components that determine what to say and what to offer to each individual shopper. She also owns the learning infrastructure: the system that makes Rev smarter over time. This is the component that builds Revluma's competitive moat.
+TASK I1 — Sensitivity Feature Functions (4 functions)
+File: python/src/features/pipeline.py
+calculate_visited_coupon_page(events) — Return True if any page_view event has url containing discount, coupon, promo, or offer (case-insensitive). Default False.
+calculate_searched_discount_terms(events) — Return True if referrer or search params in any page_view event contain discount-related terms. Default False.
+calculate_abandoned_at_shipping_reveal(events) — Return True if the last checkout_step event was step 2 (shipping) and the session ended there without reaching step 3. Default False.
+calculate_coupon_field_visited(events) — Return True if any page_view payload indicates coupon field interaction (field_name contains coupon or promo_code). Default False.
+TASK I2 — M2 Shopper Sensitivity Classifier
+Files: python/src/models/sensitivity/train.py and python/src/models/sensitivity/predict.py
+M2 is the most nuanced model in the cascade because it must distinguish between three fundamentally different types of shoppers who abandon carts — and the wrong classification leads to the wrong recovery action, which makes things worse.
+The Three Sensitivity Scores
+Price Sensitivity Score (PSS) 0-100. Driven by: coupon_usage_pct, visited_coupon_page, searched_discount_terms, cart_item_remove_count, coupon_field_visited, past_orders_with_coupon_pct.
+Convenience Sensitivity Score (CSS) 0-100. Driven by: abandoned_at_shipping_reveal, checkout_step_reached, cursor_hesitation_ms, time_on_page_ms, failed_payment_attempt from form friction.
+Trust Sensitivity Score (TSS) 0-100. Driven by: failed_payment_count > 1, checkout_step_reached = 5 (reached final review but did not submit), is_return_visitor = False AND avg_order_value > $150 (first high-value purchase = trust hesitation).
+The Recovery Action Matrix — 9 Possible Actions
+PSS >= 60, CSS < 40, TSS < 40 → DISCOUNT. Percentage discount code, 24h expiry.
+CSS >= 60, PSS < 40, TSS < 40 → FRICTION_FIX. 1-click checkout link, Apple Pay / Google Pay highlight.
+TSS >= 60, PSS < 40, CSS < 40 → TRUST_REASSURE. Social proof + security badge + money-back guarantee. NEVER include a discount for TSS >= 60.
+PSS >= 60, CSS >= 60, TSS < 40 → HYBRID_BUNDLE. Free shipping + 10% off combined.
+PSS >= 60, TSS >= 60, CSS < 40 → TRUST_PLUS_DEAL. 10% off + 30-day money-back guarantee.
+CSS >= 60, TSS >= 60, PSS < 40 → FRICTION_PLUS_TRUST. 1-click checkout + free returns. No discount needed.
+All three >= 40 → FULL_PERSONALISE. Use M5 to determine exact offer value.
+All three < 40 → NUDGE. Simple reminder with urgency signal. No offer. NEVER offer a discount to non-sensitive shoppers — it trains them to abandon for deals.
+Ambiguous (any 40-59 with no clear winner) → SOFT_NUDGE. Cart persistence confirmation + social proof. Let M3 optimise timing.
+Channel Priority Output
+M2 also outputs a ranked channel list based on the recovery action: DISCOUNT → SMS, EMAIL, WHATSAPP. FRICTION_FIX → SMS, PUSH. TRUST_REASSURE → EMAIL, WHATSAPP. NUDGE → EMAIL only. FULL_PERSONALISE → SMS + EMAIL dual-channel.
+Training
+Generate 3000 synthetic customer records with 8 features. Three separate binary labels: price_sensitive, convenience_sensitive, trust_sensitive. Train three GradientBoostingClassifier models (one per score). Log all three to MLflow as separate runs under Revluma-MVP with tag target=pss, target=css, target=tss. All three DagsHub run URLs shared in group. Minimum F1 per class 0.68, AUC-ROC per model minimum 0.72.
+TASK I3 — M5 Offer Value Optimizer
+Files: python/src/models/offer_value/train.py and python/src/models/offer_value/predict.py
+M5 answers the question that separates profitable cart recovery from margin-destroying recovery: not whether to offer a discount, but what is the minimum discount that will convert this specific shopper, given their history, their sensitivity profile, and the composition of their cart.
+The Offer Value Logic — 5 Steps
+Step 1 — Offer necessity gate. If TSS >= 60: discount_pct = 0.0, offer_type = TRUST_SIGNAL, stop. If PSS < 35 AND CSS < 35: discount_pct = 0.0, offer_type = NUDGE, stop. If recovery_action is NUDGE or SOFT_NUDGE: discount_pct = 0.0, stop. These gates run before any model inference.
+Step 2 — Base discount calculation. discount_pct = 2.0 + (pss_score/100 * 14.0) + (past_orders_with_coupon_pct * 8.0) + (visited_coupon_page ? 3.5 : 0) + (searched_discount_terms ? 2.5 : 0) + (failed_coupon_count/3.0 * 2.0). Intercept is 2.0 — never offer 0% when a discount is warranted.
+Step 3 — Modifier adjustments. LTV > $500 AND past_orders > 5: multiply by 0.70. LTV > $1000: cap at 5.0 and set offer_type_override = VIP_ACCESS. cart_value > $300: multiply by 0.75. cart_value < $30: set offer_type = FREE_SHIPPING, discount_pct = 0.0. churn_tier HIGH_RISK or CRITICAL: add 5.0. is_first_purchase: add 3.0. failed_payment_count >= 1 AND PSS < 40: set discount_pct = 0.0 and offer_type = PAYMENT_FIX.
+Step 4 — Hard caps. discount_pct = MAX(0.0, MIN(25.0, discount_pct)). Round to 1 decimal. 25% is the absolute ceiling. Discounts above 25% signal desperation and train customers to always abandon.
+Step 5 — Offer type selection. discount_pct == 0 AND CSS >= 60: FREE_SHIPPING. discount_pct > 0 AND CSS >= 50: DISCOUNT_PLUS_FREE_SHIPPING. discount_pct > 0: PERCENTAGE_DISCOUNT. else: CART_REMINDER. Expiry rules: DISCOUNT_PLUS_FREE_SHIPPING 12 hours. PERCENTAGE_DISCOUNT 24 hours. FREE_SHIPPING 48 hours. TRUST_SIGNAL no expiry.
+Output Format
+{ discount_pct: float 0.0-25.0,
+  offer_type: PERCENTAGE_DISCOUNT|FREE_SHIPPING|DISCOUNT_PLUS_FREE_SHIPPING|TRUST_SIGNAL|PAYMENT_FIX|VIP_ACCESS|CART_REMINDER,
+  offer_expires_hours: int,
+  minimum_order_value: float,
+  expected_recovery_probability: float,
+  margin_cost_estimate_pct: float,
+  reasoning: string }
+TASK I4 — FastAPI Serving Layer — All 5 Endpoints
+File: python/src/serving/api.py
+All five prediction endpoints are declared and raise 501. Implement all five in full with Pydantic validation, MLflow model loading, module-level cache, and fallback for every error case. The serving layer must never return a 500 under any input condition.
+Module-Level Model Cache
+_model_cache: dict = {}
+def _load_model(name: str):
+    if name in _model_cache: return _model_cache[name]
+    try:
+        model = mlflow.sklearn.load_model(f"models:/{name}/latest")
+        _model_cache[name] = model
+        return model
+    except Exception as e:
+        logger.warning(f"Could not load {name}: {e}")
+        return None
+All five models loaded once at startup. The endpoint never calls MLflow during inference — always reads from the cache. If cache is empty on startup, log which models failed to load and continue. A missing model returns a fallback response, never an error.
+Five Endpoints
+POST /predict/abandonment-probability — M1. AbandonmentFeatures Pydantic schema with 8 fields all with defaults. Returns: abandonment_probability, should_intervene (prob > 0.65), confidence, model_version, fallback.
+POST /predict/shopper-sensitivity — M2. SensitivityFeatures schema with 8 fields. Returns: pss_score (0-100 int), css_score (0-100 int), tss_score (0-100 int), classification, recovery_action, recommended_offer, channel_priority list, fallback.
+POST /predict/send-time — M3. TimingFeatures schema. Returns: send_at (ISO 8601 local), send_at_utc, confidence, reasoning_layer, channel, fallback.
+POST /predict/churn-risk — M4. ChurnFeatures schema with 24 fields all with defaults. Returns: churn_probability, churn_tier, win_back_urgency, primary_churn_signal, engagement_decay_score, recommended_channel, offer_required, escalate_to_human, fallback.
+POST /predict/offer-value — M5. OfferFeatures schema with 20 fields including pss_score and css_score from M2 output. Returns: discount_pct, offer_type, offer_expires_hours, minimum_order_value, expected_recovery_probability, margin_cost_estimate_pct, reasoning, fallback.
+GET /health — returns: status, service, version, models_loaded list, database_url_set bool, uptime_seconds float. Never fails.
+POST /internal/sync/trigger — runs Shopify or WooCommerce sync in background thread. Returns immediately. Restricts access to localhost and internal network only.
+POST /internal/rfm-sync — runs RFM sync job in background thread for the given store_id. Returns immediately.
+TASK I5 — Learning Loop Infrastructure
+File: python/src/learning/feedback_loop.py and python/src/monitoring/drift_detector.py
+This is the component that makes Revluma's competitive moat grow over time. Every recommendation outcome feeds back into the models. The system gets smarter with every cart it recovers.
+Outcome Monitor
+Runs automatically for every executed recommendation within the defined evaluation window. For campaigns: 48 hours after send. For sequences: 7 days. For win-back sequences: 14 days.
+Compare predicted outcome (from model output) with observed outcome (from orders and events tables)
+Compute prediction error for: open rate, click rate, conversion rate, revenue impact
+Identify which reasoning step introduced the largest error
+Generate a learning signal proportional to the error magnitude
+Write a reflection entry to Strategic Memory with: what was predicted, what happened, what changed, how future recommendations differ
+Feed the learning signal to the relevant model feedback queue for retraining
+Model Drift Detector
+Runs weekly for M1 and M2, monthly for M3, M4, M5.
+M1: alert if AUC-ROC drops below 0.70. Trigger retraining when 1,000 new labeled sessions available.
+M2: alert if any class F1 drops below 0.63. Trigger retraining when 500 new recovery outcomes available.
+M3: alert if CTR improvement vs baseline drops below +5%. Trigger retraining when 500 new send events with outcomes available.
+M4: alert if overall accuracy drops below 0.70. Retrain monthly regardless of threshold.
+M5: alert if RMSE exceeds 5.0 on discount percentage. Trigger retraining when 200 new recovered orders with discount data available.
+All monitoring runs log to MLflow under a separate Revluma-Monitoring experiment.
+Alert the engineering Slack channel when any threshold is breached.
+TASK I6 — Marketing Agent, Finance Agent, Intelligence Agent
+File: python/src/agents/ directory
+Ire implements three of the seven specialist agents.
+Marketing Agent. Domain: campaign performance, creative effectiveness, audience quality, attribution across all channels, send-time optimisation, offer effectiveness. Integrates M2 and M3 outputs. Must identify the highest-performing channel for each merchant based on their sequence_events history. Must flag campaigns where offer types are driving discount dependency.
+Finance Agent. Domain: cash flow modelling, margin analysis by product and channel, profitability forecasting, budget impact. Reads from orders table. Computes: gross margin by product category, revenue per channel net of offer costs, LTV-to-CAC ratio estimate. Phase 1: stubs for cash flow and forecasting. Phase 2: full implementation.
+Intelligence Agent. Domain: cross-domain pattern detection, anomaly correlation, emerging trend identification. Runs continuously in the background and feeds proactive insights to the Orchestrator. Must detect: patterns that correlate across multiple metrics simultaneously (e.g., email open rate dropping at the same time cart abandonment rate rising = list quality issue, not product issue), emerging product trends from events and order data, seasonal anomalies (this week's performance vs same week last year).
+Phase Gates — Nothing Moves Forward Without These
+These are the conditions that must be true before the team advances from one phase to the next. No exceptions. No partial credit.
+Phase 1 Gate — Foundation Complete
+All 26 pipeline functions have real implemented logic. Not docstrings. Logic.
+All 6 event processor functions have real implemented logic.
+test_pipeline.py and test_event_processor.py exist with minimum 3 test cases per function. All tests pass.
+M1 training script runs end to end with no errors on a fresh environment.
+M1 MLflow run appears in DagsHub Revluma-MVP. Run URL shared in group.
+M2 training script runs end to end. All three sensitivity model runs appear in DagsHub. All run URLs shared.
+Business State Builder rebuilds successfully and the output can be read by a test agent.
+David has confirmed column name alignment with Afolabi in writing in the group chat.
+No hardcoded credentials anywhere in python/ directory. grep -r "password|secret|token" python/src/ returns zero results.
+Phase 2 Gate — Intelligence Live
+All 5 FastAPI endpoints return valid responses. Fallback mode acceptable. Zero 500 errors under any input condition.
+GET /health returns 200 with models_loaded list.
+Orchestrator Agent routes a test query to the correct specialist agents and produces a six-part structured response.
+Morning Briefing generator produces a valid briefing for a test merchant with seeded data.
+M3, M4, M5 trained and logged to DagsHub. All run URLs shared.
+RFM sync job runs against a real store_id and populates rfm_segment in the customers table.
+Learning loop outcome monitor writes a reflection entry to Strategic Memory after a simulated campaign outcome.
+Phase 3 Gate — Production Ready
+All five models retrained on real data with minimum data requirements met.
+All retrained models show AUC-ROC >= 0.75 on real test data. Any model below threshold must be documented with a remediation plan.
+Drift detection running and alerting correctly on a test breach scenario.
+Load test passed: 500 concurrent prediction requests, p99 latency under 300ms across all endpoints.
+bandit audit: zero high-severity findings across python/ directory.
+pip audit: zero known CVEs in production dependencies.
+No PII in any log output. Verified by grep across the full python/ directory.
+Cross-Team Dependencies
+These are the exact handoff points between the AI/LLM team and the backend team. Both sides must agree on these before Phase 2 begins.
+David confirms pipeline feature names match Afolabi's Supabase schema column names. Written confirmation in group chat by end of Phase 1.
+After Afolabi's Shopify or WooCommerce data sync completes, the Node.js layer calls POST /internal/rfm-sync with { store_id }. Samuel's RFM sync runs. This is automatic. No manual triggering.
+After Afolabi's woocommerce/connect endpoint creates the stores record, the Node.js layer calls POST /internal/sync/trigger with { store_id, platform }. Ire's sync trigger runs the WooCommerce sync. Fire and forget.
+ML_SERVICE_URL is a Render environment variable set by Afolabi. It points to the deployed FastAPI server. Ire provides the correct URL. Afolabi sets it.
+The docs/PIXEL_EVENT_SPEC.md in the repository is the single source of truth for all event schemas and feature names. It is the AI team's responsibility to update it whenever a feature is added, renamed, or removed. Afolabi reads from it. It must never be stale.
+What Done Means
+A task is not done when the code is written. A task is done when:
+The function or model runs without errors on a fresh environment with no manual intervention
+Unit tests cover the function and all tests pass
+MLflow logging is confirmed in the DagsHub Revluma-MVP experiment (for model tasks)
+The DagsHub run URL has been shared in the group chat
+No hardcoded credentials are present in the code
+The code has been committed to the repository on the correct branch
+A written confirmation has been posted in the group chat: "TASK [ID] COMPLETE"
+If any of those seven conditions is not met — the task is not done. A task that runs locally but is not committed is not done. A task that is committed but has no tests is not done. A task that trains a model but has not shared the MLflow run URL is not done.
+Rev Intelligence — AI/LLM Engineering Task Document
+Version 1.0  |  Revluma  |  Confidential

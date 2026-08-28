@@ -19,6 +19,13 @@ from __future__ import annotations
 
 import os
 import sys
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -106,7 +113,7 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
         cursor.execute("SELECT id FROM customers WHERE store_id = %s", (store_id,))
         rows = cursor.fetchall()
     except Exception as e:
-        print(f"Failed to fetch customers for store {store_id}: {e}")
+        logger.error(f"Failed to fetch customers for store {store_id}", exc_info=True)
         return {
             "processed_count": 0,
             "failed_customer_ids": [],
@@ -127,16 +134,14 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
     try:
         db.commit()
     except Exception as e:
-        print(f"Failed to commit RFM batch for store {store_id}: {e}")
+        logger.error(f"Failed to commit RFM batch for store {store_id}", exc_info=True)
 
-    print(f"Processed customers: {processed_count}")
-    print("Segment distribution:")
+    logger.info(f"Processed customers: {processed_count}")
+    logger.info("Segment distribution:")
     for segment, count in segment_distribution.items():
-        print(f"  {segment}: {count}")
+        logger.info(f"  {segment}: {count}")
     if failed_customer_ids:
-        print(
-            f"Failed customer IDs ({len(failed_customer_ids)}): {failed_customer_ids}"
-        )
+        logger.warning(f"Failed customer IDs ({len(failed_customer_ids)}): {failed_customer_ids}")
 
     return {
         "processed_count": processed_count,
@@ -149,8 +154,9 @@ def _process_single_customer(customer_id: str, db) -> tuple:
     """Computes and persists RFM scores for a single customer.
 
     Extracted from calculate_rfm_for_all_customers to keep it under 80 lines.
-    Wraps all DB operations in a try/except so a single bad customer never
-    aborts the full batch — the caller accumulates failures separately.
+    Wraps all DB operations in a try/except with a PostgreSQL SAVEPOINT so a
+    single bad customer never aborts the full batch — the caller accumulates
+    failures separately without poisoning the transaction.
 
     Args:
         customer_id (str): UUID of the customer to process.
@@ -160,13 +166,16 @@ def _process_single_customer(customer_id: str, db) -> tuple:
         tuple: (segment: str, success: bool).
                segment is the RFM segment label on success, or '' on failure.
     """
+    cursor = db.cursor()
     try:
+        cursor.execute("SAVEPOINT sp_customer")
+        
         rfm = calculate_rfm_scores(customer_id, db)
         r = rfm["rfm_recency_score"]
         f = rfm["rfm_frequency_score"]
         m = rfm["rfm_monetary_score"]
         segment = get_rfm_segment(r, f, m)
-        cursor = db.cursor()
+        
         cursor.execute(
             """
             UPDATE customers
@@ -180,9 +189,14 @@ def _process_single_customer(customer_id: str, db) -> tuple:
             """,
             (r, f, m, segment, customer_id),
         )
+        cursor.execute("RELEASE SAVEPOINT sp_customer")
         return segment, True
     except Exception as e:
-        print(f"Failed to process customer {customer_id}: {e}")
+        try:
+            cursor.execute("ROLLBACK TO SAVEPOINT sp_customer")
+        except Exception:
+            pass
+        logger.error(f"Failed to process customer {customer_id}", exc_info=True)
         return "", False
 
 
@@ -222,21 +236,21 @@ def run(store_id: str) -> dict:
     try:
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
-            print("DATABASE_URL environment variable is not set.")
+            logger.error("DATABASE_URL environment variable is not set.")
             return result
 
         db = psycopg2.connect(database_url)
         result = calculate_rfm_for_all_customers(store_id, db)
 
     except Exception as e:
-        print(f"RFM sync job failed for store {store_id}: {e}")
+        logger.error(f"RFM sync job failed for store {store_id}", exc_info=True)
 
     finally:
         if db is not None:
             try:
                 db.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Failed to cleanly close database connection", exc_info=True)
 
     return result
 
@@ -247,7 +261,7 @@ def run(store_id: str) -> dict:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python rfm_sync.py <store_id>")
+        logger.error("Usage: python rfm_sync.py <store_id>")
         sys.exit(1)
 
     store_id_arg = sys.argv[1]

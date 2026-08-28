@@ -49,6 +49,7 @@ class RfmSyncEndpointTestCase(unittest.TestCase):
     """Shared client with the shared secret configured."""
 
     def setUp(self) -> None:
+        api.app.dependency_overrides.clear()
         self.client = TestClient(api.app)
         self._key_patch = patch.object(api, "ML_INTERNAL_KEY", VALID_KEY)
         self._key_patch.start()
