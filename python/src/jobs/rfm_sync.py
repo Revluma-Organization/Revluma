@@ -21,10 +21,6 @@ import os
 import sys
 import logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
 logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -134,7 +130,13 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
     try:
         db.commit()
     except Exception as e:
+        # The commit is the only point at which anything is persisted, so a
+        # failure here loses the whole batch. Reporting the per-customer
+        # counters would tell the Node caller the sync succeeded.
         logger.error(f"Failed to commit RFM batch for store {store_id}", exc_info=True)
+        processed_count = 0
+        failed_customer_ids = list(customer_ids)
+        segment_distribution = {segment: 0 for segment in segment_distribution}
 
     logger.info(f"Processed customers: {processed_count}")
     logger.info("Segment distribution:")
@@ -260,6 +262,14 @@ def run(store_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    # Only the CLI owns the root logger. api.py imports this module, and
+    # basicConfig at import time would reconfigure logging for the whole
+    # FastAPI service.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+
     if len(sys.argv) < 2:
         logger.error("Usage: python rfm_sync.py <store_id>")
         sys.exit(1)

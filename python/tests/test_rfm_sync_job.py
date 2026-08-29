@@ -81,6 +81,32 @@ class TestRfmSyncJob(unittest.TestCase):
         mock_db.commit.assert_called_once()
 
     @patch("src.jobs.rfm_sync.calculate_rfm_scores")
+    def test_commit_failure_is_not_reported_as_success(self, mock_calc):
+        """A failed commit means nothing persisted - the summary must say so.
+
+        The Node backend treats a 200 with a non-zero processed_count as a
+        successful sync, so reporting per-customer successes after the single
+        commit failed would hide total data loss.
+        """
+        mock_db = MagicMock()
+        mock_cursor = MagicMock()
+        mock_db.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = [("cust-1",), ("cust-2",)]
+        mock_db.commit.side_effect = Exception("connection lost before commit")
+
+        mock_calc.return_value = {
+            "rfm_recency_score": 5,
+            "rfm_frequency_score": 5,
+            "rfm_monetary_score": 5,
+        }
+
+        result = calculate_rfm_for_all_customers("store-123", mock_db)
+
+        self.assertEqual(result["processed_count"], 0)
+        self.assertEqual(result["failed_customer_ids"], ["cust-1", "cust-2"])
+        self.assertEqual(sum(result["segment_distribution"].values()), 0)
+
+    @patch("src.jobs.rfm_sync.calculate_rfm_scores")
     def test_calculate_rfm_for_all_customers_empty(self, mock_calc):
         mock_db = MagicMock()
         mock_cursor = MagicMock()
