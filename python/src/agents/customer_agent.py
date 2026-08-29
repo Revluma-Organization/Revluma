@@ -160,7 +160,6 @@ class CustomerAgent(BaseAgent):
         vip_inactive = _vip_inactive(ml["customers"])
         approaching = _approaching_ltv_threshold(ml["customers"])
         second_purchase = _approaching_second_purchase(ml["customers"])
-        second_purchase = _approaching_second_purchase(ml["customers"])
 
         findings = [
             {"code": f.get("metric", "").upper(), "metric": f.get("metric"),
@@ -256,7 +255,6 @@ class CustomerAgent(BaseAgent):
         ml = _customer_ml_signals(bs)
         vip_inactive = _vip_inactive(ml["customers"])
         approaching = _approaching_ltv_threshold(ml["customers"])
-        second_purchase = _approaching_second_purchase(ml["customers"])
         second_purchase = _approaching_second_purchase(ml["customers"])
         if ml["available"]:
             data_sources.append("ml_signals.customer")
