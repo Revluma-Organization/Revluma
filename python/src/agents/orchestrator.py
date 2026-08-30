@@ -112,8 +112,7 @@ def orchestrate(organization_id: str, user_id: str, message: str,
                      image_base64=image_base64, image_media_type=image_media_type)
     except Exception as e:
         import traceback
-        print(f"ORCHESTRATE_FATAL {type(e).__name__}: {e}")
-        print(traceback.format_exc())
+        logger.critical("orchestrate_fatal", extra={"correlation_id": correlation_id, "error": str(e), "exc_type": type(e).__name__}, exc_info=True)
         logger.error("orchestrate_fatal", extra={"correlation_id": correlation_id, "error": str(e)})
         return OrchestrationResult(
             success=False,
@@ -148,8 +147,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
 
     # ── 2. UNDERSTAND (before anything else) ──────────────────────────────────
     u = understand(message, history, image_base64=image_base64)
-    print(f"UNDERSTANDING intent={u.intent} store={u.requires_store_data} "
-          f"web={u.requires_web} mode={u.response_mode} conf={u.confidence}")
+    logger.debug("understanding_complete", extra={"intent": u.intent, "requires_store_data": u.requires_store_data, "requires_web": u.requires_web, "response_mode": u.response_mode, "confidence": u.confidence})
 
     def finish(rtype: str, text_out: str, agents_used: list[str] | None = None) -> OrchestrationResult:
         """Persist both turns, update the conversation, then return the result."""
@@ -205,7 +203,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             business_state = build_business_state(organization_id, db)
             has_store = _state_usable(business_state)
         except Exception as e:
-            print(f"BUILD_STATE_ERROR {type(e).__name__}: {e}")
+            logger.error("build_state_error", extra={"exc_type": type(e).__name__, "error": str(e)}, exc_info=True)
             has_store = False
 
     # No store: give real guidance, one closing line about connecting
@@ -226,7 +224,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         try:
             agent_results.append(agent.analyze(business_state, memories, message))
         except Exception as e:
-            print(f"AGENT_ERROR {name}: {type(e).__name__}: {e}")
+            logger.error("agent_error", extra={"agent": name, "exc_type": type(e).__name__, "error": str(e)}, exc_info=True)
 
     hard = [m for m in memories if m.get("authority_level", 0) >= 5]
     if hard:
@@ -394,7 +392,7 @@ def _save_preference(org_id: str, user_id: str, entities: dict, db) -> bool:
         db.commit()
         return True
     except Exception as e:
-        print(f"SAVE_PREFERENCE_ERROR {type(e).__name__}: {e}")
+        logger.error("save_preference_error", extra={"exc_type": type(e).__name__, "error": str(e)}, exc_info=True)
         try:
             db.rollback()
         except Exception:
@@ -453,7 +451,7 @@ def _persist_messages(
         db.commit()
     except Exception as e:
         # Non-fatal: a persistence failure must never break the response
-        print(f"PERSIST_MESSAGES_ERROR {type(e).__name__}: {e}")
+        logger.error("persist_messages_error", extra={"exc_type": type(e).__name__, "error": str(e)}, exc_info=True)
         try:
             db.rollback()
         except Exception:
@@ -492,7 +490,7 @@ def _update_conversation(conv_id, db, title_hint=None):
             """), {"i": conv_id})
         db.commit()
     except Exception as e:
-        print(f"UPDATE_CONV_ERROR {type(e).__name__}: {e}")
+        logger.error("update_conv_error", extra={"exc_type": type(e).__name__, "error": str(e)}, exc_info=True)
 
 
 def _load_memories(org_id, db) -> list[dict]:
@@ -522,7 +520,7 @@ def _load_memories(org_id, db) -> list[dict]:
             })
         return out
     except Exception as e:
-        print(f"LOAD_MEMORIES_ERROR {type(e).__name__}: {e}")
+        logger.error("load_memories_error", extra={"exc_type": type(e).__name__, "error": str(e)}, exc_info=True)
         return []
 
 
@@ -549,5 +547,5 @@ def _load_history(conv_id, db, limit=12) -> list[dict]:
             out.append(item)
         return out
     except Exception as e:
-        print(f"LOAD_HISTORY_ERROR {type(e).__name__}: {e}")
+        logger.error("load_history_error", extra={"exc_type": type(e).__name__, "error": str(e)}, exc_info=True)
         return []

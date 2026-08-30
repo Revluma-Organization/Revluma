@@ -587,3 +587,39 @@ def _time_ago(dt: datetime) -> str:
         return f"{mins} minutes ago"
     hours = mins // 60
     return f"{hours} hour{'s' if hours != 1 else ''} ago"
+
+
+# ── P2-A: Dynamic Rebuild Interval ────────────────────────────────────────────
+
+# Maps traffic load level to the delay before the next rebuild is triggered.
+# Under a spike (>5x baseline), we rebuild every minute to keep the state fresh.
+TRAFFIC_THRESHOLDS = {
+    "normal":   timedelta(minutes=15),
+    "elevated": timedelta(minutes=5),   # > 2x baseline event rate
+    "spike":    timedelta(minutes=1),   # > 5x baseline event rate
+}
+
+
+def _get_next_rebuild_interval(current_event_rate: float, baseline_rate: float) -> timedelta:
+    """
+    Returns the correct rebuild interval based on current vs baseline event rate.
+    Called at the end of every successful build_business_state() run.
+
+    Guards against division by zero when a new merchant has no baseline yet —
+    we default to normal (15 minutes) in that case.
+
+    Args:
+        current_event_rate: Number of store events in the last 5 minutes.
+        baseline_rate:      30-day rolling average of events per 5-minute window.
+
+    Returns:
+        timedelta — the delay before the next rebuild should be triggered.
+    """
+    # Protect against zero-division for brand-new merchants with no history.
+    ratio = current_event_rate / max(baseline_rate, 1)
+
+    if ratio >= 5.0:
+        return TRAFFIC_THRESHOLDS["spike"]
+    elif ratio >= 2.0:
+        return TRAFFIC_THRESHOLDS["elevated"]
+    return TRAFFIC_THRESHOLDS["normal"]

@@ -1,0 +1,122 @@
+﻿[
+  {
+    "question": "What is a good cart abandonment recovery rate for a fashion e-commerce store?",
+    "ground_truth": "Industry average recovery rate is 5-11%. A strong recovery rate is above 10-15%.",
+    "required_keywords": ["recovery", "5", "10"],
+    "must_not_contain": ["guaranteed", "always", "100%"]
+  },
+  {
+    "question": "What is a healthy email open rate for e-commerce?",
+    "ground_truth": "The average e-commerce email open rate is 15-20%. Above 25% is considered strong.",
+    "required_keywords": ["15", "20", "open"],
+    "must_not_contain": ["guaranteed", "100%"]
+  },
+  {
+    "question": "What ROAS should I aim for on Facebook Ads?",
+    "ground_truth": "A breakeven ROAS depends on your margin. For a 50% margin, you need at least 2.0 ROAS. A healthy target is 3.0-4.0+.",
+    "required_keywords": ["margin", "2", "ROAS"],
+    "must_not_contain": ["guaranteed"]
+  },
+  {
+    "question": "How long should a win-back email sequence be?",
+    "ground_truth": "A win-back sequence typically spans 3-5 emails over 2-4 weeks. The first email should arrive 30-45 days after last purchase.",
+    "required_keywords": ["3", "emails", "weeks"],
+    "must_not_contain": ["guaranteed", "always"]
+  },
+  {
+    "question": "What is the average e-commerce conversion rate?",
+    "ground_truth": "The average e-commerce conversion rate is 1-3%. Top performers achieve 3-5%.",
+    "required_keywords": ["1", "3", "conversion"],
+    "must_not_contain": ["guaranteed", "100%"]
+  },
+  {
+    "question": "When is the best time to send marketing emails?",
+    "ground_truth": "Tuesday through Thursday, between 10am-12pm or 2pm-4pm in the recipient's timezone, typically performs best. However, audience-specific testing always overrides general benchmarks.",
+    "required_keywords": ["Tuesday", "Thursday", "timezone"],
+    "must_not_contain": ["guaranteed", "always best"]
+  },
+  {
+    "question": "What is a good customer lifetime value to customer acquisition cost ratio?",
+    "ground_truth": "A healthy LTV:CAC ratio is 3:1 or higher. Below 1:1 means you are losing money on each customer.",
+    "required_keywords": ["3:1", "LTV", "CAC"],
+    "must_not_contain": ["guaranteed"]
+  },
+  {
+    "question": "How do I reduce my customer churn rate?",
+    "ground_truth": "Key strategies include loyalty programmes, personalised win-back sequences, proactive customer service, and identifying at-risk customers using RFM analysis before they churn.",
+    "required_keywords": ["loyalty", "RFM", "win-back"],
+    "must_not_contain": ["guaranteed", "eliminate churn"]
+  },
+  {
+    "question": "What is the average order value for fashion e-commerce?",
+    "ground_truth": "Average order value for fashion e-commerce typically ranges from $60-$130 depending on price positioning. Luxury brands see $200+.",
+    "required_keywords": ["60", "130", "average"],
+    "must_not_contain": ["guaranteed"]
+  },
+  {
+    "question": "How many abandoned carts are recovered on average?",
+    "ground_truth": "On average, about 5-11% of abandoned carts are recovered. SMS recovery outperforms email for speed, while email drives higher absolute revenue recovery.",
+    "required_keywords": ["5", "11", "abandoned"],
+    "must_not_contain": ["100%", "guaranteed"]
+  },
+  {
+    "question": "What is a good return rate for e-commerce?",
+    "ground_truth": "Average e-commerce return rates are 20-30%. Fashion and apparel are higher, often 30-40%. Reducing return rates through better product descriptions and size guides is standard practice.",
+    "required_keywords": ["20", "30", "return"],
+    "must_not_contain": ["guaranteed", "zero returns"]
+  },
+  {
+    "question": "What is the ideal frequency for sending marketing emails?",
+    "ground_truth": "Most e-commerce brands send 2-4 emails per month. High-frequency senders (daily) see higher unsubscribe rates. Preference centres and segmentation reduce fatigue.",
+    "required_keywords": ["2", "4", "month"],
+    "must_not_contain": ["guaranteed", "daily is always"]
+  },
+  {
+    "question": "How do I improve my product page conversion rate?",
+    "ground_truth": "Key levers are: high-quality images (multiple angles), social proof (reviews), clear return policy, size guides, fast page speed, and urgency signals like stock levels.",
+    "required_keywords": ["reviews", "images", "return"],
+    "must_not_contain": ["guaranteed", "100%"]
+  },
+  {
+    "question": "What is a good click-through rate for e-commerce emails?",
+    "ground_truth": "Average e-commerce email CTR is 2-3%. Above 5% is strong. CTR is lower than open rate and depends heavily on offer clarity and CTA design.",
+    "required_keywords": ["2", "3", "CTR"],
+    "must_not_contain": ["guaranteed"]
+  },
+  {
+    "question": "When should I start a Black Friday campaign?",
+    "ground_truth": "Most successful brands begin Black Friday campaigns 2-4 weeks before the event, with teaser emails 1-2 weeks out, early access for loyalty members, and peak send on the Tuesday-Wednesday before.",
+    "required_keywords": ["weeks", "loyalty", "teaser"],
+    "must_not_contain": ["guaranteed", "always wait until"]
+  },
+  {
+    "question": "What is RFM analysis and why does it matter?",
+    "ground_truth": "RFM stands for Recency, Frequency, and Monetary value. It segments customers by how recently they purchased, how often, and how much they spent. It is the foundational segmentation tool for e-commerce personalisation.",
+    "required_keywords": ["Recency", "Frequency", "Monetary"],
+    "must_not_contain": ["guaranteed"]
+  },
+  {
+    "question": "What percentage of revenue should I spend on marketing?",
+    "ground_truth": "E-commerce companies typically spend 10-20% of revenue on marketing. Early-stage brands may spend 20-30% to acquire customers. Mature brands optimise toward 8-12%.",
+    "required_keywords": ["10", "20", "revenue"],
+    "must_not_contain": ["guaranteed", "spend as much as possible"]
+  },
+  {
+    "question": "How do I calculate my customer acquisition cost?",
+    "ground_truth": "CAC = Total Marketing Spend / Number of New Customers Acquired in the same period. Track CAC per channel to understand which channels are most efficient.",
+    "required_keywords": ["spend", "customers", "channel"],
+    "must_not_contain": ["guaranteed"]
+  },
+  {
+    "question": "What is a good SMS open rate for marketing?",
+    "ground_truth": "SMS open rates are typically 90-98% and are read within 3 minutes on average. This is significantly higher than email but requires stricter consent management.",
+    "required_keywords": ["90", "3 minutes", "consent"],
+    "must_not_contain": ["guaranteed", "100%"]
+  },
+  {
+    "question": "How should I handle a sudden drop in revenue?",
+    "ground_truth": "First, isolate the cause: check if traffic dropped (acquisition problem), conversion rate dropped (product or UX problem), or average order value dropped (mix shift). Each has a different remedy. Do not discount immediately without diagnosing root cause.",
+    "required_keywords": ["traffic", "conversion", "root cause"],
+    "must_not_contain": ["guaranteed", "always discount"]
+  }
+]
