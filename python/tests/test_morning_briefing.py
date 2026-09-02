@@ -10,18 +10,21 @@ Tests validate:
 """
 
 import unittest
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from src.intelligence.business_state import BusinessState
 from src.intelligence.morning_briefing import (
     MorningBriefing,
+    generate_briefing,
     _build_greeting,
     _build_yesterday_in_numbers,
     _build_todays_priority,
     _build_active_concerns,
     _build_opportunities,
+    _load_overnight_actions,
     _fallback_briefing,
     STABLE_DELTA_THRESHOLD_PCT,
 )
@@ -32,7 +35,7 @@ def _make_state(**overrides) -> BusinessState:
     defaults = dict(
         id=str("test-state-id"),
         organization_id="org-123",
-        schema_version="1.0",
+        schema_version="1.1",
         generated_at=datetime(2026, 8, 23, 5, 0, tzinfo=timezone.utc),
         data_freshness_at=None,
         staleness_threshold_mins=30,
@@ -49,11 +52,21 @@ def _make_state(**overrides) -> BusinessState:
         churn_risk_count=4,
         vip_inactive_count=2,
         returning_customer_rate=0.34,
+        returning_customer_rate_delta=0.0,
         opportunities=[],
         risks=[],
         anomalies=[],
         trends=[],
         ml_signals={},
+        inventory_signals={"status": "unavailable"},
+        anomaly_severity="normal",
+        root_causes=[],
+        current_event_rate=10.0,
+        baseline_event_rate=10.0,
+        next_rebuild_at=(
+            datetime(2026, 8, 23, 5, 0, tzinfo=timezone.utc)
+            + timedelta(minutes=15)
+        ),
     )
     defaults.update(overrides)
     return BusinessState(**defaults)
@@ -144,11 +157,23 @@ class TestBuildYesterdayInNumbers(unittest.TestCase):
         labels = [m["metric"] for m in metrics]
         self.assertIn("revenue_today", labels)
 
-    def test_cart_count_always_included_when_nonzero(self):
-        """Abandoned carts are always shown when count > 0."""
+    def test_stable_cart_count_is_suppressed_even_when_nonzero(self):
         state = _make_state(
-            revenue_delta_pct=2.0,   # stable → suppressed
+            revenue_delta_pct=2.0,
             abandoned_cart_count=10,
+            cart_anomaly=False,
+            cart_delta_pct_vs_avg=2.0,
+        )
+        metrics = _build_yesterday_in_numbers(state)
+        labels = [m["metric"] for m in metrics]
+        self.assertNotIn("abandoned_cart_count", labels)
+
+    def test_changed_cart_count_is_included(self):
+        state = _make_state(
+            revenue_delta_pct=2.0,
+            abandoned_cart_count=10,
+            cart_anomaly=True,
+            cart_delta_pct_vs_avg=25.0,
         )
         metrics = _build_yesterday_in_numbers(state)
         labels = [m["metric"] for m in metrics]
@@ -188,7 +213,7 @@ class TestBuildTodaysPriority(unittest.TestCase):
         )
         priority = _build_todays_priority(state)
         self.assertIn("Investigate", priority["action_label"])
-        self.assertEqual(priority["action_tool"], "revenue_diagnosis")
+        self.assertEqual(priority["action_tool"], "view_revenue")
 
     def test_cart_recovery_second_priority(self):
         """When no revenue anomaly, abandoned carts must be the priority."""
@@ -198,7 +223,7 @@ class TestBuildTodaysPriority(unittest.TestCase):
             churn_risk_count=50,
         )
         priority = _build_todays_priority(state)
-        self.assertEqual(priority["action_tool"], "trigger_cart_recovery")
+        self.assertEqual(priority["action_tool"], "view_carts")
 
     def test_priority_always_has_single_action(self):
         """The priority dict must always have exactly one action_label."""
@@ -221,6 +246,34 @@ class TestBuildTodaysPriority(unittest.TestCase):
         priority = _build_todays_priority(state)
         self.assertIn("description", priority)
         self.assertIn("action_label", priority)
+
+    def test_vip_priority_uses_the_45_day_cohort(self):
+        state = _make_state(
+            revenue_anomaly=False,
+            abandoned_cart_count=0,
+            churn_risk_count=0,
+            vip_inactive_count=2,
+            opportunities=[],
+        )
+
+        priority = _build_todays_priority(state)
+
+        self.assertEqual(priority["action_tool"], "view_customers")
+        self.assertIn("45+ days", priority["description"])
+
+    def test_priority_impact_uses_observed_evidence_not_typical_ranges(self):
+        state = _make_state(
+            revenue_anomaly=False,
+            abandoned_cart_count=20,
+            abandoned_cart_value=Decimal("2340.00"),
+            churn_risk_count=0,
+        )
+
+        priority = _build_todays_priority(state)
+
+        self.assertIn("2,340", priority["estimated_impact"])
+        self.assertNotIn("18", priority["estimated_impact"])
+        self.assertNotIn("25%", priority["estimated_impact"])
 
 
 # ── Active concerns tests ──────────────────────────────────────────────────────
@@ -308,6 +361,95 @@ class TestBuildOpportunities(unittest.TestCase):
         ])
         opps = _build_opportunities(state)
         self.assertEqual(len(opps), 0)
+
+    def test_only_d5_allowlisted_tools_are_returned(self):
+        state = _make_state(opportunities=[
+            {
+                "category": "cart_recovery",
+                "description": "Recover carts",
+                "estimated_value": 500.0,
+                "action": "Review carts",
+            },
+            {
+                "category": "churn_prevention",
+                "description": "Review churn risk",
+                "estimated_value": 300.0,
+                "action": "Review customers",
+            },
+        ])
+
+        tools = {item["action_tool"] for item in _build_opportunities(state)}
+
+        self.assertEqual(tools, {"view_carts", "view_customers"})
+
+
+class TestOvernightActions(unittest.TestCase):
+
+    def test_reads_the_canonical_audit_logs_contract(self):
+        db = MagicMock()
+        db.execute.return_value.fetchall.return_value = []
+
+        _load_overnight_actions("org-123", db)
+
+        sql = str(db.execute.call_args.args[0])
+        self.assertIn("FROM audit_logs", sql)
+        self.assertIn("context->>'actor'", sql)
+        self.assertNotIn("FROM audit_log\n", sql)
+
+    def test_failure_log_does_not_expose_exception_text(self):
+        db = MagicMock()
+        db.execute.side_effect = RuntimeError("private-customer@example.com")
+
+        with self.assertLogs("rev.morning_briefing", level=logging.WARNING) as captured:
+            result = _load_overnight_actions("org-123", db)
+
+        self.assertEqual(result, [])
+        self.assertNotIn("private-customer@example.com", " ".join(captured.output))
+
+
+class TestBriefingModeIntegration(unittest.TestCase):
+
+    @patch("src.intelligence.morning_briefing._persist_briefing")
+    @patch("src.intelligence.morning_briefing._load_overnight_actions", return_value=[])
+    @patch("src.intelligence.morning_briefing._load_merchant_name", return_value="Merchant")
+    @patch("src.intelligence.morning_briefing.load_current_business_state")
+    @patch("src.intelligence.morning_briefing._run_briefing_orchestration")
+    def test_orchestrator_recommendation_drives_todays_priority(
+        self,
+        run_orchestration,
+        load_state,
+        _load_name,
+        _load_actions,
+        _persist,
+    ):
+        load_state.return_value = _make_state(
+            abandoned_cart_count=0,
+            churn_risk_count=0,
+            vip_inactive_count=0,
+            opportunities=[],
+        )
+        run_orchestration.return_value = MagicMock(
+            success=True,
+            response_type="analysis",
+            recommendation="Review the verified revenue anomaly.",
+            implication="The observed revenue gap may continue.",
+            actions=[
+                {
+                    "label": "View revenue",
+                    "tool": "view_revenue",
+                    "params": {},
+                }
+            ],
+        )
+
+        briefing = generate_briefing("org-123", MagicMock(), user_id="user-123")
+
+        run_orchestration.assert_called_once()
+        self.assertEqual(
+            briefing.todays_priority["description"],
+            "Review the verified revenue anomaly.",
+        )
+        self.assertEqual(briefing.todays_priority["action_tool"], "view_revenue")
 
 
 # ── Fallback briefing tests ───────────────────────────────────────────────────

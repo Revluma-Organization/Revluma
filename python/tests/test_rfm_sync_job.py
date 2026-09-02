@@ -67,6 +67,8 @@ class TestRfmSyncJob(unittest.TestCase):
         
         self.assertEqual(result["processed_count"], 1)
         self.assertEqual(result["failed_customer_ids"], ["cust-1"])
+        self.assertEqual(result["failed_count"], 1)
+        self.assertFalse(result["success"])
         self.assertEqual(result["segment_distribution"]["champion"], 1)
         
         calls = mock_cursor.execute.call_args_list
@@ -76,7 +78,7 @@ class TestRfmSyncJob(unittest.TestCase):
         
         self.assertEqual(len(savepoint_calls), 2)
         self.assertEqual(len(rollback_calls), 1)
-        self.assertEqual(len(release_calls), 1)
+        self.assertEqual(len(release_calls), 2)
         
         mock_db.commit.assert_called_once()
 
@@ -104,7 +106,11 @@ class TestRfmSyncJob(unittest.TestCase):
 
         self.assertEqual(result["processed_count"], 0)
         self.assertEqual(result["failed_customer_ids"], ["cust-1", "cust-2"])
+        self.assertEqual(result["failed_count"], 2)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "commit_failed")
         self.assertEqual(sum(result["segment_distribution"].values()), 0)
+        mock_db.rollback.assert_called_once()
 
     @patch("src.jobs.rfm_sync.calculate_rfm_scores")
     def test_calculate_rfm_for_all_customers_empty(self, mock_calc):
@@ -117,9 +123,68 @@ class TestRfmSyncJob(unittest.TestCase):
         
         self.assertEqual(result["processed_count"], 0)
         self.assertEqual(result["failed_customer_ids"], [])
+        self.assertEqual(result["failed_count"], 0)
+        self.assertTrue(result["success"])
         self.assertEqual(sum(result["segment_distribution"].values()), 0)
         mock_calc.assert_not_called()
         mock_db.commit.assert_called_once()
+
+    def test_customer_fetch_failure_rolls_back_and_closes_cursor(self):
+        mock_db = MagicMock()
+        mock_cursor = MagicMock()
+        mock_db.cursor.return_value = mock_cursor
+        mock_cursor.execute.side_effect = RuntimeError("query failed")
+
+        result = calculate_rfm_for_all_customers("store-123", mock_db)
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error"], "customer_fetch_failed")
+        self.assertEqual(result["failed_count"], 0)
+        mock_db.rollback.assert_called_once()
+        mock_cursor.close.assert_called_once()
+
+    @patch("src.jobs.rfm_sync.calculate_rfm_scores")
+    def test_customer_update_includes_optional_rfm_timestamp(self, mock_calc):
+        mock_db = MagicMock()
+        mock_cursor = MagicMock()
+        mock_db.cursor.return_value = mock_cursor
+        mock_calc.return_value = {
+            "rfm_recency_score": 5,
+            "rfm_frequency_score": 4,
+            "rfm_monetary_score": 4,
+        }
+
+        segment, success = _process_single_customer(
+            "customer-1",
+            mock_db,
+            include_rfm_updated_at=True,
+        )
+
+        self.assertTrue(success)
+        self.assertEqual(segment, "champion")
+        update_query = next(
+            call.args[0]
+            for call in mock_cursor.execute.call_args_list
+            if "UPDATE customers" in call.args[0]
+        )
+        self.assertIn("rfm_updated_at = NOW()", update_query)
+
+    @patch("src.jobs.rfm_sync.calculate_rfm_scores")
+    def test_batch_logs_failure_count_without_customer_ids(self, mock_calc):
+        mock_db = MagicMock()
+        mock_cursor = MagicMock()
+        mock_db.cursor.return_value = mock_cursor
+        mock_cursor.fetchall.return_value = [("private-customer-id",)]
+        mock_calc.side_effect = RuntimeError("feature calculation failed")
+
+        with self.assertLogs("src.jobs.rfm_sync", level="WARNING") as captured:
+            result = calculate_rfm_for_all_customers("store-123", mock_db)
+
+        self.assertEqual(result["failed_count"], 1)
+        self.assertNotIn("private-customer-id", "\n".join(captured.output))
+        self.assertTrue(
+            any(getattr(record, "failed_count", None) == 1 for record in captured.records)
+        )
 
     @patch("src.jobs.rfm_sync.calculate_rfm_for_all_customers")
     @patch("psycopg2.connect")

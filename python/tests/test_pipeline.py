@@ -10,6 +10,8 @@ from src.features.pipeline import (
     calculate_time_on_page_ms,
     calculate_cart_item_add_count,
     calculate_cart_item_remove_count,
+    calculate_time_first_view_to_cart_add_hrs,
+    calculate_shipping_eta_dwell_sec,
     compute_feature_vector,
 )
 
@@ -89,6 +91,30 @@ def test_cursor_hesitation_empty():
 def test_cursor_hesitation_malformed():
     events = [None, 123, {"event_type": None}, {"no_event_type": "exit_intent"}]
     assert calculate_cursor_hesitation(events) == 0
+
+
+def test_time_first_view_to_cart_add_accepts_created_at_alias():
+    events = [
+        {"event_type": "page_view", "created_at": "2026-08-30T10:00:00Z"},
+        {"event_type": "add_to_cart", "created_at": "2026-08-30T11:30:00Z"},
+    ]
+    assert calculate_time_first_view_to_cart_add_hrs(events) == 1.5
+
+
+def test_shipping_eta_dwell_accepts_created_at_alias():
+    events = [
+        {
+            "event_type": "element_focus",
+            "created_at": "2026-08-30T10:00:00Z",
+            "payload": {"element_id": "shipping_eta"},
+        },
+        {
+            "event_type": "element_blur",
+            "created_at": "2026-08-30T10:00:05Z",
+            "payload": {"element_id": "shipping_eta"},
+        },
+    ]
+    assert calculate_shipping_eta_dwell_sec(events) == 5.0
 
 
 # ---------------------------------------------------------------------------
@@ -314,11 +340,15 @@ class TestDatabaseFeatures(unittest.TestCase):
 
     # 4. purchase_frequency_trend
     def test_purchase_frequency_trend_normal(self):
-        self.cursor.fetchone.return_value = (5, 2)
+        self.cursor.fetchone.return_value = (5, 2, True)
         self.assertEqual(calculate_purchase_frequency_trend("cus_1", self.db), 1)
-        self.cursor.fetchone.return_value = (1, 4)
+        self.cursor.fetchone.return_value = (1, 4, True)
         self.assertEqual(calculate_purchase_frequency_trend("cus_1", self.db), -1)
-        self.cursor.fetchone.return_value = (3, 3)
+        self.cursor.fetchone.return_value = (3, 3, True)
+        self.assertEqual(calculate_purchase_frequency_trend("cus_1", self.db), 0)
+
+    def test_purchase_frequency_trend_is_neutral_without_sixty_days_of_history(self):
+        self.cursor.fetchone.return_value = (1, 0, False)
         self.assertEqual(calculate_purchase_frequency_trend("cus_1", self.db), 0)
 
     def test_purchase_frequency_trend_empty(self):
@@ -333,6 +363,9 @@ class TestDatabaseFeatures(unittest.TestCase):
     def test_coupon_usage_pct_normal(self):
         self.cursor.fetchone.return_value = (0.75,)
         self.assertEqual(calculate_coupon_usage_pct("cus_1", self.db), 0.75)
+        query, params = self.cursor.execute.call_args.args
+        self.assertIn("COUNT(*) FILTER", query)
+        self.assertEqual(params, ("cus_1",))
 
     def test_coupon_usage_pct_empty(self):
         self.cursor.fetchone.return_value = None
@@ -368,6 +401,15 @@ class TestDatabaseFeatures(unittest.TestCase):
         self.cursor.execute.side_effect = Exception("DB Error")
         res = calculate_rfm_scores("cus_1", self.db)
         self.assertEqual(res["rfm_recency_score"], 1)
+
+    def test_rfm_scores_assigns_one_order_to_frequency_band_one(self):
+        with patch("src.features.pipeline.calculate_days_since_last_purchase", return_value=15), \
+             patch("src.features.pipeline.calculate_past_orders_total", return_value=1), \
+             patch("src.features.pipeline.calculate_avg_order_value", return_value=15.0):
+            res = calculate_rfm_scores("cus_1", self.db)
+
+        self.assertEqual(res["rfm_frequency_score"], 1)
+        self.assertEqual(res["rfm_monetary_score"], 1)
 
 # ---------------------------------------------------------------------------
 # Extended Database Tests
@@ -518,17 +560,17 @@ class TestCalculateDaysSinceLastPurchase(unittest.TestCase):
 class TestCalculatePurchaseFrequencyTrend(unittest.TestCase):
 
     def test_increasing_trend(self):
-        db, cursor = make_mock_db(fetchone_return=(5, 2))  # current > previous
+        db, cursor = make_mock_db(fetchone_return=(5, 2, True))  # current > previous
         result = calculate_purchase_frequency_trend("cust_1", db)
         self.assertEqual(result, 1)
 
     def test_decreasing_trend(self):
-        db, cursor = make_mock_db(fetchone_return=(1, 5))  # current < previous
+        db, cursor = make_mock_db(fetchone_return=(1, 5, True))  # current < previous
         result = calculate_purchase_frequency_trend("cust_1", db)
         self.assertEqual(result, -1)
 
     def test_stable_trend(self):
-        db, cursor = make_mock_db(fetchone_return=(3, 3))
+        db, cursor = make_mock_db(fetchone_return=(3, 3, True))
         result = calculate_purchase_frequency_trend("cust_1", db)
         self.assertEqual(result, 0)
 
@@ -538,7 +580,12 @@ class TestCalculatePurchaseFrequencyTrend(unittest.TestCase):
         self.assertEqual(result, 0)
 
     def test_null_values_treated_as_zero(self):
-        db, cursor = make_mock_db(fetchone_return=(None, None))
+        db, cursor = make_mock_db(fetchone_return=(None, None, False))
+        result = calculate_purchase_frequency_trend("cust_1", db)
+        self.assertEqual(result, 0)
+
+    def test_recent_only_history_is_insufficient(self):
+        db, cursor = make_mock_db(fetchone_return=(3, 0, False))
         result = calculate_purchase_frequency_trend("cust_1", db)
         self.assertEqual(result, 0)
 

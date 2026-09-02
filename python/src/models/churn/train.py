@@ -6,7 +6,7 @@ frequency, classifying accounts into churn tiers.
 
 Two models come out of one run:
 
-  1. The main 4-class GradientBoostingClassifier over the 24-feature set
+  1. The main 4-class GradientBoostingClassifier over the 21 named features
      (HEALTHY / AT_RISK / HIGH_RISK / CRITICAL).
   2. A separate binary classifier for the EARLY_WARNING tier, trained on the
      engagement_decay_score alone.
@@ -38,13 +38,14 @@ from sklearn.preprocessing import StandardScaler
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from src.config.mlflow_config import (
     IS_REMOTE,
-    MLFLOW_TRACKING_URI,
     get_or_create_experiment,
+    get_run_url,
 )
 from src.features.pipeline import (
     calculate_past_orders_total,
     calculate_days_since_last_purchase,
     calculate_avg_order_value,
+    calculate_coupon_usage_pct,
     calculate_purchase_frequency_trend,
     calculate_rfm_scores,
 )
@@ -53,13 +54,14 @@ from src.features.pipeline import (
 # with 90+ days of history."
 MIN_REAL_CUSTOMERS = 500
 MIN_HISTORY_DAYS = 90
+SYNTHETIC_GENERATOR_VERSION = "2.0"
 
-# All 24 signals across 4 dimensions per the task doc P2.3 spec.
-# Dimension 1: Purchase History (7) — real pipeline.py functions exist.
-# Dimension 2: Engagement Drift (8) — synthetic placeholders; TODO: implement
-#              real pipeline.py functions once email/SMS tracking tables exist.
-# Dimension 3: Sentiment Signals (4) — synthetic placeholders; TODO: implement.
-# Dimension 4: Competitive Exposure (5) — synthetic placeholders; TODO: implement.
+# The task heading says 24, but it names exactly 21 signals. The named signals
+# are authoritative; three undocumented inputs must not be invented.
+# Dimension 1: Purchase History (8)
+# Dimension 2: Engagement Drift (8)
+# Dimension 3: Sentiment Signals (3)
+# Dimension 4: Competitive Exposure (2)
 FEATURE_COLUMNS = [
     # --- Dimension 1: Purchase History ---
     "past_orders_total",
@@ -88,6 +90,23 @@ FEATURE_COLUMNS = [
     "unsubscribe_risk_score",
 ]
 assert len(FEATURE_COLUMNS) == 21, "S3 specifies a 21-feature set"
+
+# Compatibility is limited to legacy names that represent the same signal and
+# unit. Canonical names always win when callers send both forms.
+FEATURE_ALIASES = {
+    "sms_click_rate": "sms_click_rate_30d",
+    "site_visit_frequency_delta": "site_visit_delta",
+    "browse_to_cart_trend": "browse_to_cart_conversion_trend",
+}
+
+
+def normalize_churn_features(features: dict | None) -> dict:
+    """Returns a copy with known legacy M4 names mapped to canonical names."""
+    normalized = dict(features or {})
+    for alias, canonical in FEATURE_ALIASES.items():
+        if canonical not in normalized and alias in normalized:
+            normalized[canonical] = normalized[alias]
+    return normalized
 
 # The 4 classes the main classifier is trained on. EARLY_WARNING is deliberately
 # not one of them: the task doc calls it a "detection layer based on
@@ -172,10 +191,13 @@ def resolve_churn_tier(
 
 
 def _generate_synthetic_data(n: int = 4000) -> pd.DataFrame:
-    np.random.seed(42)
+    if n < 1:
+        raise ValueError("n must be at least 1")
+
+    rng = np.random.default_rng(42)
     
     # 1. Sample true churn tiers first with realistic class imbalance
-    tiers = np.random.choice(
+    tiers = rng.choice(
         ["HEALTHY", "AT_RISK", "HIGH_RISK", "CRITICAL"], 
         size=n, 
         p=[0.60, 0.20, 0.15, 0.05]
@@ -184,53 +206,53 @@ def _generate_synthetic_data(n: int = 4000) -> pd.DataFrame:
     # 2. Generate features conditionally based on the true tier
     # Dimension 1
     # Adding realistic variance
-    past_orders_total = np.where(tiers == "HEALTHY", np.random.poisson(15, n), np.random.poisson(5, n))
-    past_orders_total = past_orders_total + np.random.randint(-3, 3, n)
+    past_orders_total = np.where(tiers == "HEALTHY", rng.poisson(15, n), rng.poisson(5, n))
+    past_orders_total = past_orders_total + rng.integers(-3, 3, n)
     past_orders_total = np.clip(past_orders_total, 0, 50)
     
     days_mean = {"HEALTHY": 30, "AT_RISK": 40, "HIGH_RISK": 90, "CRITICAL": 120}
     days_std = {"HEALTHY": 30, "AT_RISK": 30, "HIGH_RISK": 5, "CRITICAL": 5}
-    days_since_last_purchase = np.array([np.random.normal(days_mean[t], days_std[t]) for t in tiers])
+    days_since_last_purchase = np.array([rng.normal(days_mean[t], days_std[t]) for t in tiers])
     days_since_last_purchase = np.clip(days_since_last_purchase, 0, 365).astype(int)
     
-    avg_order_value = np.random.uniform(10.0, 1000.0, n)
+    avg_order_value = np.clip(rng.lognormal(4.3, 0.65, n), 10.0, 1000.0)
     
     freq_probs = {"HEALTHY": [0.33, 0.34, 0.33], "AT_RISK": [0.33, 0.34, 0.33], "HIGH_RISK": [0.6, 0.3, 0.1], "CRITICAL": [0.8, 0.2, 0.0]}
-    purchase_frequency_trend = np.array([np.random.choice([-1, 0, 1], p=freq_probs[t]) for t in tiers])
+    purchase_frequency_trend = np.array([rng.choice([-1, 0, 1], p=freq_probs[t]) for t in tiers])
     
-    rfm_recency_score = np.array([np.random.choice([5,4,3,2,1], p=[0.2, 0.2, 0.2, 0.2, 0.2]) for t in tiers]) # Pure random noise for RFM
-    rfm_frequency_score = np.clip(np.random.normal(3, 2, n), 1, 5).astype(int)
-    rfm_monetary_score = np.clip(np.random.normal(3, 2, n), 1, 5).astype(int)
-    historical_aov_trend = np.random.choice([-1, 0, 1], n, p=[0.33, 0.34, 0.33])
+    rfm_recency_score = np.clip(5 - (days_since_last_purchase // 30), 1, 5).astype(int)
+    rfm_frequency_score = np.clip(np.ceil(past_orders_total / 4), 1, 5).astype(int)
+    rfm_monetary_score = np.clip(np.ceil(avg_order_value / 75), 1, 5).astype(int)
+    historical_aov_trend = rng.choice([-1, 0, 1], n, p=[0.30, 0.45, 0.25])
 
     # Dimension 2
     email_90d_mean = {"HEALTHY": 0.3, "AT_RISK": 0.2, "HIGH_RISK": 0.15, "CRITICAL": 0.1}
-    email_open_rate_90d = np.clip(np.array([np.random.normal(email_90d_mean[t], 0.3) for t in tiers]), 0.0, 1.0) # std 0.3
+    email_open_rate_90d = np.clip(np.array([rng.normal(email_90d_mean[t], 0.18) for t in tiers]), 0.0, 1.0)
     
     email_delta_mean = {"HEALTHY": 0.0, "AT_RISK": -0.1, "HIGH_RISK": -0.15, "CRITICAL": -0.2}
-    email_open_rate_delta = np.clip(np.array([np.random.normal(email_delta_mean[t], 0.3) for t in tiers]), -1.0, 1.0)
+    email_open_rate_delta = np.clip(np.array([rng.normal(email_delta_mean[t], 0.18) for t in tiers]), -1.0, 1.0)
     email_open_rate_30d = np.clip(email_open_rate_90d + email_open_rate_delta, 0.0, 1.0)
     
-    sms_click_rate_30d = np.random.uniform(0.0, 0.4, n) # Uncorrelated noise
+    sms_click_rate_30d = np.clip(email_open_rate_30d * 0.45 + rng.normal(0, 0.07, n), 0, 1)
     
     site_90d_mean = {"HEALTHY": 30.0, "AT_RISK": 25.0, "HIGH_RISK": 5.0, "CRITICAL": 1.0}
     site_90d_std = {"HEALTHY": 25.0, "AT_RISK": 25.0, "HIGH_RISK": 2.0, "CRITICAL": 1.0}
-    site_visit_frequency_90d = np.clip(np.array([np.random.normal(site_90d_mean[t], site_90d_std[t]) for t in tiers]), 0.0, 200.0)
+    site_visit_frequency_90d = np.clip(np.array([rng.normal(site_90d_mean[t], site_90d_std[t]) for t in tiers]), 0.0, 200.0)
     
     site_delta_mean = {"HEALTHY": 0.0, "AT_RISK": -2.0, "HIGH_RISK": -5.0, "CRITICAL": -10.0}
-    site_visit_delta = np.array([np.random.normal(site_delta_mean[t], 15.0) for t in tiers])
+    site_visit_delta = np.array([rng.normal(site_delta_mean[t], 10.0) for t in tiers])
     site_visit_frequency_30d = np.clip((site_visit_frequency_90d / 3) + site_visit_delta, 0.0, 100.0)
     
-    browse_to_cart_conversion_trend = np.array([np.random.choice([-1, 0, 1], p=[0.33, 0.34, 0.33]) for t in tiers])
+    browse_to_cart_conversion_trend = rng.choice([-1, 0, 1], n, p=[0.40, 0.40, 0.20])
 
     # Dimension 3
-    coupon_dependency_score = np.random.uniform(0.0, 1.0, n)
-    return_rate = np.random.uniform(0.0, 0.5, n)
-    support_contact_frequency_90d = np.random.poisson(lam=0.5, size=n)
+    coupon_dependency_score = np.clip(rng.beta(2, 3, n) + (tiers != "HEALTHY") * 0.08, 0, 1)
+    return_rate = np.clip(rng.beta(1.5, 8, n) + (tiers == "CRITICAL") * 0.08, 0, 1)
+    support_contact_frequency_90d = rng.poisson(0.25 + 1.2 * return_rate, n)
 
     # Dimension 4
-    discount_seeking_escalation = np.random.choice([0, 1], n, p=[0.5, 0.5])
-    unsubscribe_risk_score = np.random.uniform(0.0, 1.0, n)
+    discount_seeking_escalation = rng.binomial(1, np.clip(0.08 + 0.55 * coupon_dependency_score, 0, 0.75))
+    unsubscribe_risk_score = np.clip(0.45 - email_open_rate_30d + rng.normal(0, 0.12, n), 0, 1)
 
     X = pd.DataFrame({
         "past_orders_total": past_orders_total,
@@ -262,13 +284,13 @@ def _generate_synthetic_data(n: int = 4000) -> pd.DataFrame:
     # EARLY_WARNING target with realistic noise
     healthy_mask = X["churn_tier"] == "HEALTHY"
     early_prob = np.where(X["engagement_decay_score"] >= 40.0, 0.8, 0.05)
-    is_early = np.random.rand(n) < early_prob
+    is_early = rng.random(n) < early_prob
     X["early_warning"] = (healthy_mask & is_early).astype(int)
 
     # Introduce irreducible real-world noise by scrambling 15% of the labels between HEALTHY and AT_RISK.
     # This mathematically guarantees the model cannot achieve > 0.85 AUC on these classes,
     # solving the "too perfect" metrics issue, while leaving HIGH_RISK untouched to pass the precision gate.
-    scramble_mask = (np.random.rand(n) < 0.15) & (X["churn_tier"].isin(["HEALTHY", "AT_RISK"]))
+    scramble_mask = (rng.random(n) < 0.15) & (X["churn_tier"].isin(["HEALTHY", "AT_RISK"]))
     X.loc[scramble_mask, "churn_tier"] = np.where(
         X.loc[scramble_mask, "churn_tier"] == "HEALTHY", "AT_RISK", "HEALTHY"
     )
@@ -359,30 +381,220 @@ def _load_real_customer_rows(db_connection) -> pd.DataFrame:
         ) from e
 
 
+def _trend_direction(recent: float, previous: float, tolerance: float = 0.05) -> int:
+    if previous <= 0:
+        return 0 if recent <= 0 else 1
+    change = (recent - previous) / previous
+    if change > tolerance:
+        return 1
+    if change < -tolerance:
+        return -1
+    return 0
+
+
+def _relation_exists(db_connection, relation_name: str) -> bool:
+    with db_connection.cursor() as cursor:
+        cursor.execute("SELECT to_regclass(%s) IS NOT NULL", (f"public.{relation_name}",))
+        row = cursor.fetchone()
+    return bool(row and row[0])
+
+
+def _calculate_order_and_event_signals(customer_id, db_connection) -> dict:
+    with db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                AVG(total) FILTER (WHERE ordered_at >= NOW() - INTERVAL '90 days'),
+                AVG(total) FILTER (
+                    WHERE ordered_at >= NOW() - INTERVAL '180 days'
+                      AND ordered_at < NOW() - INTERVAL '90 days'
+                )
+            FROM orders
+            WHERE customer_id = %s
+            """,
+            (customer_id,),
+        )
+        aov_row = cursor.fetchone() or (0, 0)
+
+        cursor.execute(
+            """
+            SELECT
+                COUNT(DISTINCT COALESCE(session_id, id::text)) FILTER (
+                    WHERE created_at >= NOW() - INTERVAL '30 days'
+                ),
+                COUNT(DISTINCT COALESCE(session_id, id::text)) FILTER (
+                    WHERE created_at >= NOW() - INTERVAL '90 days'
+                )
+            FROM events
+            WHERE customer_id = %s
+            """,
+            (customer_id,),
+        )
+        visit_row = cursor.fetchone() or (0, 0)
+
+        cursor.execute(
+            """
+            SELECT
+                COUNT(DISTINCT session_id) FILTER (
+                    WHERE event_type = 'product_view'
+                      AND created_at >= NOW() - INTERVAL '30 days'
+                ),
+                COUNT(DISTINCT session_id) FILTER (
+                    WHERE event_type = 'add_to_cart'
+                      AND created_at >= NOW() - INTERVAL '30 days'
+                ),
+                COUNT(DISTINCT session_id) FILTER (
+                    WHERE event_type = 'product_view'
+                      AND created_at >= NOW() - INTERVAL '60 days'
+                      AND created_at < NOW() - INTERVAL '30 days'
+                ),
+                COUNT(DISTINCT session_id) FILTER (
+                    WHERE event_type = 'add_to_cart'
+                      AND created_at >= NOW() - INTERVAL '60 days'
+                      AND created_at < NOW() - INTERVAL '30 days'
+                )
+            FROM events
+            WHERE customer_id = %s
+            """,
+            (customer_id,),
+        )
+        conversion_row = cursor.fetchone() or (0, 0, 0, 0)
+
+        cursor.execute(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days'),
+                COUNT(*) FILTER (
+                    WHERE created_at >= NOW() - INTERVAL '90 days'
+                      AND created_at < NOW() - INTERVAL '30 days'
+                )
+            FROM events
+            WHERE customer_id = %s
+              AND (
+                  event_type IN ('coupon_view', 'coupon_failed')
+                  OR (
+                      event_type = 'search'
+                      AND COALESCE(payload->>'query', '') ~* '(discount|coupon|promo)'
+                  )
+              )
+            """,
+            (customer_id,),
+        )
+        discount_row = cursor.fetchone() or (0, 0)
+
+    recent_aov = float(aov_row[0] or 0)
+    previous_aov = float(aov_row[1] or 0)
+    visits_30d = float(visit_row[0] or 0)
+    visits_90d = float(visit_row[1] or 0)
+    recent_views, recent_carts, previous_views, previous_carts = (
+        float(value or 0) for value in conversion_row
+    )
+    recent_conversion = recent_carts / recent_views if recent_views else 0.0
+    previous_conversion = previous_carts / previous_views if previous_views else 0.0
+    recent_discount = float(discount_row[0] or 0)
+    previous_discount_monthly = float(discount_row[1] or 0) / 2
+
+    return {
+        "historical_aov_trend": _trend_direction(recent_aov, previous_aov),
+        "site_visit_frequency_30d": visits_30d,
+        "site_visit_frequency_90d": visits_90d,
+        "site_visit_delta": visits_30d - (visits_90d / 3),
+        "browse_to_cart_conversion_trend": _trend_direction(
+            recent_conversion,
+            previous_conversion,
+        ),
+        "discount_seeking_escalation": int(
+            recent_discount > previous_discount_monthly * 1.2
+            and recent_discount > 0
+        ),
+    }
+
+
+def _calculate_sequence_signals(customer_id, db_connection) -> dict:
+    with db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                COUNT(DISTINCT ss.id) FILTER (
+                    WHERE ss.channel = 'email'
+                      AND ss.sent_at >= NOW() - INTERVAL '30 days'
+                ),
+                COUNT(DISTINCT ss.id) FILTER (
+                    WHERE ss.channel = 'email'
+                      AND ss.sent_at >= NOW() - INTERVAL '90 days'
+                ),
+                COUNT(DISTINCT se.sequence_send_id) FILTER (
+                    WHERE ss.channel = 'email' AND se.event_type = 'opened'
+                      AND se.occurred_at >= NOW() - INTERVAL '30 days'
+                ),
+                COUNT(DISTINCT se.sequence_send_id) FILTER (
+                    WHERE ss.channel = 'email' AND se.event_type = 'opened'
+                      AND se.occurred_at >= NOW() - INTERVAL '90 days'
+                ),
+                COUNT(DISTINCT ss.id) FILTER (
+                    WHERE ss.channel = 'sms'
+                      AND ss.sent_at >= NOW() - INTERVAL '30 days'
+                ),
+                COUNT(DISTINCT se.sequence_send_id) FILTER (
+                    WHERE ss.channel = 'sms' AND se.event_type = 'clicked'
+                      AND se.occurred_at >= NOW() - INTERVAL '30 days'
+                ),
+                COUNT(DISTINCT se.sequence_send_id) FILTER (
+                    WHERE se.event_type = 'unsubscribed'
+                      AND se.occurred_at >= NOW() - INTERVAL '90 days'
+                )
+            FROM sequence_sends ss
+            LEFT JOIN sequence_events se ON se.sequence_send_id = ss.id
+            WHERE ss.customer_id = %s
+            """,
+            (customer_id,),
+        )
+        row = cursor.fetchone() or (0, 0, 0, 0, 0, 0, 0)
+
+    email_sent_30, email_sent_90, email_open_30, email_open_90 = (
+        float(value or 0) for value in row[:4]
+    )
+    sms_sent_30, sms_click_30, unsubscribed_90 = (
+        float(value or 0) for value in row[4:]
+    )
+    email_rate_30 = email_open_30 / email_sent_30 if email_sent_30 else 0.0
+    email_rate_90 = email_open_90 / email_sent_90 if email_sent_90 else 0.0
+
+    return {
+        "email_open_rate_30d": email_rate_30,
+        "email_open_rate_90d": email_rate_90,
+        "email_open_rate_delta": email_rate_30 - email_rate_90,
+        "sms_click_rate_30d": sms_click_30 / sms_sent_30 if sms_sent_30 else 0.0,
+        "unsubscribe_risk_score": (
+            min(unsubscribed_90 / email_sent_90, 1.0)
+            if email_sent_90 else 0.0
+        ),
+    }
+
+
 def _compute_churn_records(customer_ids: list, db_connection) -> pd.DataFrame:
     """Builds M4 feature rows for each customer using pipeline.py functions.
 
     Extracted from _load_real_customer_rows to keep it under 80 lines.
-    Computes 7 feature columns + churn_tier label for each customer.
+    Computes every signal supported by current order/event sources and uses
+    sequence delivery sources automatically when their backend tables exist.
 
     Args:
         customer_ids (list): Ordered list of customer UUID strings.
         db_connection: Active Postgres connection.
 
-    The 16 features outside Purchase History have no pipeline.py function yet
-    (see the TODOs on FEATURE_COLUMNS), so they are filled with an explicit
-    neutral value rather than left out. Leaving them out was a real bug: the
-    frame this returns is indexed by FEATURE_COLUMNS in load_training_data, so
-    a short frame raised KeyError and the whole real-data path — the one P3.1
-    exists for — could never have run. Neutral, not random: a placeholder that
-    varies would teach the model a pattern that is not in the business.
+    Signals without a real source remain explicitly neutral. This keeps the
+    21-column contract stable without teaching the model a fabricated pattern.
 
     Returns:
         pd.DataFrame: Rows of FEATURE_COLUMNS + 'engagement_decay_score' +
         'churn_tier' + 'early_warning'.
     """
     records = []
-    risk_scores = []
+    sequence_tracking_available = (
+        _relation_exists(db_connection, "sequence_sends")
+        and _relation_exists(db_connection, "sequence_events")
+    )
     for customer_id in customer_ids:
         rfm = calculate_rfm_scores(customer_id, db_connection)
         trend = calculate_purchase_frequency_trend(customer_id, db_connection)
@@ -390,19 +602,18 @@ def _compute_churn_records(customer_ids: list, db_connection) -> pd.DataFrame:
         orders = rfm["past_orders_total"]
         aov = rfm["avg_order_value"]
 
-        if days == -1:
-            risk_score = 0.5
-        else:
-            risk_score = min(days / 180.0, 1.0)
-            if trend == -1:
-                risk_score += 0.3
-            elif trend == 1:
-                risk_score -= 0.3
-            if rfm["rfm_recency_score"] <= 2:
-                risk_score += 0.2
-            if rfm["rfm_frequency_score"] >= 4:
-                risk_score -= 0.2
-        risk_scores.append(float(risk_score))
+        additional_signals = _calculate_order_and_event_signals(
+            customer_id,
+            db_connection,
+        )
+        additional_signals["coupon_dependency_score"] = min(
+            max(calculate_coupon_usage_pct(customer_id, db_connection) / 100.0, 0.0),
+            1.0,
+        )
+        if sequence_tracking_available:
+            additional_signals.update(
+                _calculate_sequence_signals(customer_id, db_connection)
+            )
 
         records.append({
             "past_orders_total": orders,
@@ -412,11 +623,10 @@ def _compute_churn_records(customer_ids: list, db_connection) -> pd.DataFrame:
             "rfm_recency_score": rfm["rfm_recency_score"],
             "rfm_frequency_score": rfm["rfm_frequency_score"],
             "rfm_monetary_score": rfm["rfm_monetary_score"],
+            **additional_signals,
         })
 
     frame = pd.DataFrame.from_records(records)
-    if not frame.empty:
-        frame["churn_tier"] = assign_churn_tiers(risk_scores)
     if frame.empty:
         return pd.DataFrame(
             columns=FEATURE_COLUMNS + ["engagement_decay_score", "churn_tier", "early_warning"]
@@ -425,19 +635,19 @@ def _compute_churn_records(customer_ids: list, db_connection) -> pd.DataFrame:
     missing = [column for column in FEATURE_COLUMNS if column not in frame.columns]
     if missing:
         logger.info(
-            f"[M4] WARNING: {len(missing)} of the 24 features have no data source "
+            f"[M4] WARNING: {len(missing)} of the 21 named features have no data source "
             f"yet and are filled with 0 for every real customer: {', '.join(missing)}. "
-            f"Engagement drift is among them, so engagement_decay_score is not "
-            f"meaningful on this path and EARLY_WARNING will not fire until the "
-            f"email/SMS/site tracking tables exist."
+            f"Neutral values are used so unavailable sources cannot create a "
+            f"fabricated training pattern."
         )
         for column in missing:
             frame[column] = 0
 
-    frame = frame[FEATURE_COLUMNS + ["churn_tier"]]
+    frame = frame[FEATURE_COLUMNS]
     frame["engagement_decay_score"] = compute_engagement_decay_score(frame)
+    frame["churn_tier"] = assign_churn_tiers(frame)
     frame["early_warning"] = 0
-    return frame
+    return frame[FEATURE_COLUMNS + ["churn_tier", "engagement_decay_score", "early_warning"]]
 
 
 def load_training_data(n: int = 4000, db_connection=None) -> tuple:
@@ -614,13 +824,29 @@ def _dagshub_run_url(run) -> str:
     if not IS_REMOTE:
         return (
             "no DagsHub URL — this run went to the local mlruns store. Set "
-            "MLFLOW_TRACKING_URI, MLFLOW_USERNAME and MLFLOW_PASSWORD in .env "
+            "the MLflow tracking and authentication variables in .env "
             "to log to DagsHub."
         )
-    base = MLFLOW_TRACKING_URI.rstrip("/")
-    if base.endswith(".mlflow"):
-        base = base[: -len(".mlflow")]
-    return f"{base}.mlflow/#/experiments/{run.info.experiment_id}/runs/{run.info.run_id}"
+    return get_run_url(
+        run.info.run_id,
+        run.info.experiment_id,
+    ) or "remote run URL unavailable"
+
+
+def _is_production_eligible(
+    *,
+    used_real_data: bool,
+    below_minimum: bool,
+    meets_auc: bool,
+    meets_high_risk_precision: bool,
+) -> bool:
+    """Allow registration only when data and both S3 quality gates are valid."""
+    return (
+        used_real_data
+        and not below_minimum
+        and meets_auc
+        and meets_high_risk_precision
+    )
 
 
 def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
@@ -641,6 +867,9 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
         mlflow.set_tag("model", "churn_risk")
         mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
         mlflow.set_tag("below_minimum_threshold", str(below_minimum))
+        if not used_real_data:
+            mlflow.set_tag("synthetic_generator_version", SYNTHETIC_GENERATOR_VERSION)
+            mlflow.set_tag("synthetic_only_not_for_registration", "true")
 
         logger.info("Training M4 model...")
         model.fit(X_train, y_train)
@@ -670,8 +899,11 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
             per_class[f"f1_{tier}"] = float(scores["f1-score"])
         high_risk_precision = per_class.get("precision_HIGH_RISK", 0.0)
 
+        model_params = model.get_params()
         mlflow.log_params({
-            "n_estimators": 100, "max_depth": 3, "random_state": 42,
+            "n_estimators": model_params["classifier__n_estimators"],
+            "max_depth": model_params["classifier__max_depth"],
+            "random_state": model_params["classifier__random_state"],
             "n_training_samples": len(X_train),
             "n_features": len(FEATURE_COLUMNS),
             "min_real_customers_threshold": MIN_REAL_CUSTOMERS,
@@ -682,6 +914,10 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
             "accuracy": report["accuracy"],
             "macro_avg_f1": report["macro avg"]["f1-score"],
             "auc_roc": auc_roc,
+            **{
+                f"label_rate_{tier.lower()}": float((y_train == tier).mean())
+                for tier in CHURN_TIERS
+            },
             **per_class,
             **early_metrics,
         })
@@ -690,15 +926,43 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
         # visible in the MLflow run list without opening it.
         meets_auc = auc_roc >= MIN_AUC_ROC
         meets_high_risk_precision = high_risk_precision >= MIN_HIGH_RISK_PRECISION
-        mlflow.set_tag("meets_auc_gate", str(meets_auc))
-        mlflow.set_tag("meets_high_risk_precision_gate", str(meets_high_risk_precision))
+        mlflow.set_tag("meets_auc_gate", str(meets_auc).lower())
+        mlflow.set_tag(
+            "meets_high_risk_precision_gate",
+            str(meets_high_risk_precision).lower(),
+        )
+        production_eligible = _is_production_eligible(
+            used_real_data=used_real_data,
+            below_minimum=below_minimum,
+            meets_auc=meets_auc,
+            meets_high_risk_precision=meets_high_risk_precision,
+        )
+        mlflow.set_tag(
+            "quality_gates_passed",
+            str(meets_auc and meets_high_risk_precision).lower(),
+        )
+        mlflow.set_tag("production_eligible", str(production_eligible).lower())
 
-        mlflow.sklearn.log_model(model, "m4_churn_risk_model", registered_model_name="churn_risk")
+        model_registration = (
+            {"registered_model_name": "churn_risk"}
+            if production_eligible
+            else {}
+        )
+        mlflow.sklearn.log_model(
+            model,
+            "m4_churn_risk_model",
+            **model_registration,
+        )
         if early_model is not None:
+            early_registration = (
+                {"registered_model_name": "churn_early_warning"}
+                if production_eligible
+                else {}
+            )
             mlflow.sklearn.log_model(
                 early_model,
                 "m4_early_warning_model",
-                registered_model_name="churn_early_warning",
+                **early_registration,
             )
 
         logger.info(f"\n--- M4 CHURN RISK MODEL METRICS ---")
@@ -740,6 +1004,9 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
             "below_minimum_threshold": below_minimum,
             "meets_auc_gate": meets_auc,
             "meets_high_risk_precision_gate": meets_high_risk_precision,
+            "quality_gates_passed": meets_auc and meets_high_risk_precision,
+            "production_eligible": production_eligible,
+            "run_id": run.info.run_id,
             "run_url": _dagshub_run_url(run),
             "metrics": {
                 "accuracy": report["accuracy"],

@@ -77,11 +77,22 @@ class AdEvaluation:
     fallback:         bool = False # True if image was absent or unreadable
 
     def to_dict(self) -> dict:
+        hook = _dim_to_dict(self.hook)
+        copy = _dim_to_dict(self.copy)
+        visuals = _dim_to_dict(self.visuals)
+        offer = _dim_to_dict(self.offer)
         return {
-            "hook":             _dim_to_dict(self.hook),
-            "copy":             _dim_to_dict(self.copy),
-            "visuals":          _dim_to_dict(self.visuals),
-            "offer":            _dim_to_dict(self.offer),
+            "hook":             hook,
+            "copy":             copy,
+            "visuals":          visuals,
+            "offer":            offer,
+            "creative_hook":    hook,
+            "visual_hierarchy": visuals,
+            "copy_clarity":     copy,
+            "audience_alignment": {
+                "signals": self.audience_signals,
+                "inferred": True,
+            },
             "audience_signals": self.audience_signals,
             "composite_score":  round(self.composite_score, 3),
             "verdict":          self.verdict,
@@ -129,7 +140,10 @@ def evaluate_ad(
             return _evaluate_with_vision(image_base64, image_media_type, ad_copy, context)
         return _evaluate_text_only(ad_copy, context)
     except Exception as err:
-        logger.error("ad_agent_evaluation_failed", extra={"error": str(err)})
+        logger.error(
+            "ad_agent_evaluation_failed",
+            extra={"error_type": type(err).__name__},
+        )
         return _failsafe_evaluation()
 
 

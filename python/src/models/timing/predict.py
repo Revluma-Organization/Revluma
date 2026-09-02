@@ -1,209 +1,395 @@
-"""
-M3 — Optimal Send-Time Predictor: Inference Script
-====================================================
-Runs at message send time, per customer, per recovery event.
-Determines the single best hour + day to send a recovery message
-and which channel to prioritise.
+"""Four-layer scheduling and inference for M3 optimal send time."""
 
-Failsafe: if model unavailable or inference fails for any reason,
-returns a safe default with fallback=True. Never raises.
-"""
+from __future__ import annotations
 
-import os
 import logging
-import typing
-from datetime import datetime, timezone, timedelta
+import math
+from datetime import datetime, time, timedelta, timezone
+from typing import Any
 
 import mlflow.pyfunc
+import pandas as pd
+
+from .train import (
+    CART_VALUE_TIER_MAP,
+    CHANNEL_MAP,
+    FEATURE_COLUMNS,
+    RECOVERY_ACTION_ALIASES,
+    RECOVERY_ACTION_MAP,
+)
 
 logger = logging.getLogger("rev.m3.predict")
 
-# ── Channel constants (must match CHANNEL_MAP in train.py) ────────────────────
-CHANNEL_IDX_TO_NAME = {0: "email", 1: "sms", 2: "whatsapp"}
+QUIET_START_HOUR = 22
+QUIET_END_HOUR = 8
+PERSONAL_HISTORY_MINIMUM = 3
+PERSONAL_THRESHOLD = 0.55
+PERSONAL_MAX_DELAY_HOURS = 18
+GAUSSIAN_SIGMA_HOURS = 1.5
 
-# ── Fallback defaults ─────────────────────────────────────────────────────────
-# Used when the model is unavailable.
-# Research consensus: 10am local is the safest default send time.
-FALLBACK_HOUR           = 10
-FALLBACK_DAY_OFFSET     = 0     # Today
-FALLBACK_CHANNEL        = "email"
-FALLBACK_WINDOW_HOURS   = 2     # Window is always 2 hours wide per spec
+GLOBAL_BASELINES = {
+    "email": (1, 10, 0),
+    "sms": (3, 18, 30),
+    "whatsapp": (3, 18, 30),
+}
 
 
-def load_model(merchant_id: str) -> typing.Any:
-    """
-    Loads the trained M3 model from MLflow model registry or local store.
-
-    Args:
-        merchant_id (str): UUID of the merchant.
-
-    Returns:
-        Loaded sklearn pipeline, or None on failure.
-    """
+def load_model(merchant_id: str = "") -> Any:
+    """Load the registered model without exposing registry error details."""
     try:
         model = mlflow.pyfunc.load_model("models:/send_time/Production")
-        logger.info("m3_model_loaded", extra={"source": "registry", "merchant_id": merchant_id})
+        logger.info("m3_model_loaded", extra={"source": "registry"})
         return model
-    except Exception as registry_err:
-        logger.warning("m3_registry_unavailable", extra={"error": str(registry_err)})
-
-    try:
-        local_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../../../../mlruns")
+    except Exception as exc:
+        logger.warning(
+            "m3_model_load_failed",
+            extra={"error_type": type(exc).__name__},
         )
-        model = mlflow.pyfunc.load_model(f"file://{local_path}/0/latest/artifacts/m3_timing_model")
-        logger.info("m3_model_loaded", extra={"source": "local", "merchant_id": merchant_id})
-        return model
-    except Exception as local_err:
-        logger.error("m3_model_load_failed", extra={"error": str(local_err)})
         return None
 
 
-def _build_send_window(optimal_hour: int, day_offset: int) -> tuple[str, str]:
-    """
-    Builds the ISO 8601 send window start and end strings.
-
-    Window is always 2 hours wide per spec.
-
-    Args:
-        optimal_hour (int): Best local hour (0–23).
-        day_offset (int): 0 = today, 1 = tomorrow, 2 = day after.
-
-    Returns:
-        tuple: (send_window_start, send_window_end) as ISO strings.
-    """
-    now = datetime.now(tz=timezone.utc)
-    target_date = now + timedelta(days=day_offset)
-    start = target_date.replace(hour=optimal_hour, minute=0, second=0, microsecond=0)
-    end   = start + timedelta(hours=FALLBACK_WINDOW_HOURS)
-    return start.isoformat(), end.isoformat()
+def _parse_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
-def _score_all_windows(model, base_features: dict) -> tuple[int, int, str, float]:
-    """
-    Scores all 24-hour × 3-day × 3-channel combinations and returns the best.
+def _timezone_for_offset(offset_hours: int) -> timezone:
+    return timezone(timedelta(hours=max(-12, min(14, int(offset_hours)))))
 
-    Brute-forces all 216 combinations (24h × 3 days × 3 channels), scores
-    each with the M3 model, and returns the combination with the highest
-    predicted conversion probability.
 
-    This approach is intentionally exhaustive rather than a single-point
-    prediction because M3 must answer "when is the BEST time?" not just
-    "will this specific time work?". Latency is acceptable because 216
-    small predict_proba calls on a shallow GBM take well under 10ms.
+def _outside_quiet_hours(local_datetime: datetime) -> bool:
+    return QUIET_END_HOUR <= local_datetime.hour < QUIET_START_HOUR
 
-    Args:
-        model: Loaded sklearn model with predict_proba method.
-        base_features (dict): Non-time features from the request.
 
-    Returns:
-        tuple: (best_hour, best_day_offset, best_channel_name, best_confidence)
-    """
-    import pandas as pd
+def _move_outside_quiet_hours(candidate_utc: datetime, local_tz: timezone) -> datetime:
+    local = candidate_utc.astimezone(local_tz)
+    if _outside_quiet_hours(local):
+        return candidate_utc
+    if local.hour >= QUIET_START_HOUR:
+        local = (local + timedelta(days=1)).replace(
+            hour=QUIET_END_HOUR,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+    else:
+        local = local.replace(
+            hour=QUIET_END_HOUR,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+    return local.astimezone(timezone.utc)
 
-    # CHANNEL_MAP from train.py: email=0, sms=1, whatsapp=2
-    recovery_action = base_features.get("recovery_action", 4)       # int-encoded
-    cart_value_tier = base_features.get("cart_value_tier", 1)       # int-encoded
-    tz_offset       = base_features.get("customer_timezone_offset", 0)
 
-    best_score    = -1.0
-    best_hour     = FALLBACK_HOUR
-    best_day      = FALLBACK_DAY_OFFSET
-    best_channel  = FALLBACK_CHANNEL
+def _respect_sms_interval(
+    candidate_utc: datetime,
+    channel: str,
+    last_sms_sent_at: Any,
+    local_tz: timezone,
+) -> datetime:
+    if channel != "sms":
+        return candidate_utc
+    last_sms = _parse_datetime(last_sms_sent_at)
+    if last_sms is not None:
+        candidate_utc = max(candidate_utc, last_sms + timedelta(hours=24))
+    return _move_outside_quiet_hours(candidate_utc, local_tz)
 
-    for day_offset in range(3):
-        for hour in range(24):
-            for ch_idx, ch_name in CHANNEL_IDX_TO_NAME.items():
-                row = pd.DataFrame([{
-                    "local_hour_of_session":    hour,
-                    "day_of_week_session":      (datetime.now(tz=timezone.utc).weekday() + day_offset) % 7,
-                    "channel":                  ch_idx,
-                    "recovery_action":          recovery_action,
-                    "cart_value_tier":          cart_value_tier,
-                    "customer_timezone_offset": tz_offset,
-                }])
-                score = model.predict_proba(row)[0][1]  # P(conversion)
-                if score > best_score:
-                    best_score   = score
-                    best_hour    = hour
-                    best_day     = day_offset
-                    best_channel = ch_name
 
-    return best_hour, best_day, best_channel, float(best_score)
+def _next_global_baseline(
+    now_utc: datetime,
+    channel: str,
+    local_tz: timezone,
+) -> datetime:
+    target_day, target_hour, target_minute = GLOBAL_BASELINES.get(
+        channel,
+        GLOBAL_BASELINES["email"],
+    )
+    local_now = now_utc.astimezone(local_tz)
+    days_ahead = (target_day - local_now.weekday()) % 7
+    target_date = (local_now + timedelta(days=days_ahead)).date()
+    candidate = datetime.combine(
+        target_date,
+        time(target_hour, target_minute),
+        tzinfo=local_tz,
+    )
+    if candidate <= local_now:
+        candidate += timedelta(days=7)
+    return candidate.astimezone(timezone.utc)
+
+
+def _smooth_open_probabilities(values: Any) -> list[float] | None:
+    if not isinstance(values, (list, tuple)) or len(values) != 24:
+        return None
+    try:
+        probabilities = [min(max(float(value), 0.0), 1.0) for value in values]
+    except (TypeError, ValueError):
+        return None
+
+    smoothed = []
+    for target_hour in range(24):
+        weighted_total = 0.0
+        weight_sum = 0.0
+        for source_hour, probability in enumerate(probabilities):
+            distance = abs(target_hour - source_hour)
+            circular_distance = min(distance, 24 - distance)
+            weight = math.exp(
+                -(circular_distance ** 2) / (2 * GAUSSIAN_SIGMA_HOURS ** 2)
+            )
+            weighted_total += probability * weight
+            weight_sum += weight
+        smoothed.append(weighted_total / weight_sum)
+    return smoothed
+
+
+def _next_personal_hour(
+    now_utc: datetime,
+    local_tz: timezone,
+    smoothed_probabilities: list[float],
+) -> tuple[datetime, float] | None:
+    local_now = now_utc.astimezone(local_tz)
+    first_candidate = local_now.replace(minute=0, second=0, microsecond=0)
+    if first_candidate <= local_now:
+        first_candidate += timedelta(hours=1)
+    for hours_ahead in range(PERSONAL_MAX_DELAY_HOURS + 1):
+        candidate = first_candidate + timedelta(hours=hours_ahead)
+        delay = candidate.astimezone(timezone.utc) - now_utc
+        if delay > timedelta(hours=PERSONAL_MAX_DELAY_HOURS):
+            break
+        probability = smoothed_probabilities[candidate.hour]
+        if _outside_quiet_hours(candidate) and probability >= PERSONAL_THRESHOLD:
+            return candidate.astimezone(timezone.utc), probability
+    return None
+
+
+def _model_candidate(
+    model,
+    now_utc: datetime,
+    local_tz: timezone,
+    channel: str,
+    features: dict,
+    smoothed_probabilities: list[float],
+) -> tuple[datetime, float] | None:
+    rows = []
+    candidates = []
+    local_now = now_utc.astimezone(local_tz)
+    first_candidate = local_now.replace(minute=0, second=0, microsecond=0)
+    if first_candidate <= local_now:
+        first_candidate += timedelta(hours=1)
+
+    action = str(features.get("recovery_action") or "SOFT_NUDGE").upper()
+    action = RECOVERY_ACTION_ALIASES.get(action, action)
+    tier = str(features.get("cart_value_tier") or "medium").lower()
+    days_since_purchase = max(int(features.get("days_since_last_purchase", -1)), -1)
+    for hours_ahead in range(PERSONAL_MAX_DELAY_HOURS + 1):
+        local_candidate = first_candidate + timedelta(hours=hours_ahead)
+        if local_candidate.astimezone(timezone.utc) - now_utc > timedelta(
+            hours=PERSONAL_MAX_DELAY_HOURS
+        ):
+            break
+        if not _outside_quiet_hours(local_candidate):
+            continue
+        candidates.append(local_candidate.astimezone(timezone.utc))
+        rows.append(
+            {
+                "send_hour": local_candidate.hour,
+                "send_day": local_candidate.weekday(),
+                "channel": CHANNEL_MAP.get(channel, CHANNEL_MAP["email"]),
+                "historical_open_rate": smoothed_probabilities[local_candidate.hour],
+                "days_since_last_purchase": days_since_purchase,
+                "cart_value_tier": CART_VALUE_TIER_MAP.get(
+                    tier,
+                    CART_VALUE_TIER_MAP["medium"],
+                ),
+                "recovery_action": RECOVERY_ACTION_MAP.get(
+                    action,
+                    RECOVERY_ACTION_MAP["SOFT_NUDGE"],
+                ),
+            }
+        )
+    if not rows:
+        return None
+    probabilities = model.predict_proba(pd.DataFrame(rows, columns=FEATURE_COLUMNS))[:, 1]
+    best_index = int(probabilities.argmax())
+    return candidates[best_index], float(probabilities[best_index])
+
+
+def _cadence_candidate(
+    now_utc: datetime,
+    local_tz: timezone,
+    channel: str,
+    features: dict,
+) -> tuple[datetime, str] | None:
+    message_number = int(features.get("sequence_message_number", 1) or 1)
+    if message_number not in {2, 3}:
+        return None
+    previous_sent = _parse_datetime(features.get("previous_message_sent_at"))
+    if previous_sent is None:
+        return None
+
+    if message_number == 2:
+        opened_without_click = bool(features.get("previous_message_opened")) and not bool(
+            features.get("previous_message_clicked")
+        )
+        gap = timedelta(hours=36 if opened_without_click else 24)
+    else:
+        gap = timedelta(hours=48)
+        channel = str(features.get("secondary_channel") or channel).lower()
+        if channel not in CHANNEL_MAP:
+            channel = "email"
+    candidate = max(now_utc, previous_sent + gap)
+    candidate = _move_outside_quiet_hours(candidate, local_tz)
+    candidate = _respect_sms_interval(
+        candidate,
+        channel,
+        features.get("last_sms_sent_at"),
+        local_tz,
+    )
+    return candidate, channel
+
+
+def _response(
+    candidate_utc: datetime,
+    local_tz: timezone,
+    channel: str,
+    confidence: float,
+    reasoning_layer: str,
+    fallback: bool,
+) -> dict:
+    return {
+        "send_at": candidate_utc.astimezone(local_tz).isoformat(),
+        "send_at_utc": candidate_utc.astimezone(timezone.utc).isoformat(),
+        "confidence": min(max(float(confidence), 0.0), 1.0),
+        "reasoning_layer": reasoning_layer,
+        "channel": channel,
+        "fallback": fallback,
+    }
 
 
 def predict(
     customer_id: str,
     feature_vector: dict,
     merchant_id: str,
+    *,
+    model=None,
+    now: datetime | None = None,
 ) -> dict:
-    """
-    Predicts the optimal hour and day to send a recovery message.
+    """Return a valid D4 schedule using rules before optional model inference."""
+    features = feature_vector or {}
+    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    offset = int(features.get("customer_timezone_offset", 0) or 0)
+    local_tz = _timezone_for_offset(offset)
+    channel = str(features.get("channel") or "email").lower()
+    if channel not in CHANNEL_MAP:
+        channel = "email"
 
-    Scores all 216 hour/day/channel combinations and returns the one
-    with the highest predicted conversion probability. Output schema
-    matches the 7-field spec from the D4 implementation plan exactly.
-
-    Args:
-        customer_id    (str) : UUID of the customer.
-        feature_vector (dict): Session + customer timing features:
-            {
-                "local_hour_of_session"     : int,   # 0–23
-                "day_of_week_session"       : int,   # 0=Monday
-                "recovery_action"           : int,   # int-encoded (CHANNEL_MAP)
-                "cart_value_tier"           : int,   # 0=low,1=med,2=high
-                "customer_timezone_offset"  : int,   # UTC offset in hours
-            }
-        merchant_id (str): UUID of the merchant.
-
-    Returns:
-        dict: {
-            "optimal_send_hour"      : int,    # 0–23 local hour
-            "optimal_send_day_offset": int,    # 0=today, 1=tomorrow, 2=day after
-            "channel_priority"       : str,    # "email" | "sms" | "whatsapp"
-            "confidence"             : float,  # 0.0–1.0
-            "send_window_start"      : str,    # ISO timestamp
-            "send_window_end"        : str,    # ISO timestamp (window = 2 hours)
-            "fallback"               : bool,   # True if model unavailable
-        }
-    """
     try:
-        model = load_model(merchant_id)
-        if model is None:
-            raise RuntimeError("Model unavailable — activating failsafe.")
+        cadence = _cadence_candidate(now_utc, local_tz, channel, features)
+        if cadence is not None:
+            candidate, cadence_channel = cadence
+            return _response(candidate, local_tz, cadence_channel, 1.0, "hybrid", False)
 
-        best_hour, best_day, best_channel, confidence = _score_all_windows(
-            model, feature_vector
+        if bool(features.get("failed_payment_attempt")):
+            channel = "sms"
+            candidate = _move_outside_quiet_hours(
+                now_utc + timedelta(minutes=5),
+                local_tz,
+            )
+            candidate = _respect_sms_interval(
+                candidate,
+                channel,
+                features.get("last_sms_sent_at"),
+                local_tz,
+            )
+            return _response(candidate, local_tz, channel, 1.0, "immediate", False)
+
+        risk_score = float(features.get("risk_score", 0.0) or 0.0)
+        tier = str(features.get("cart_value_tier") or "medium").lower()
+        if risk_score >= 0.80 and tier in {"high", "premium"}:
+            candidate = _move_outside_quiet_hours(
+                now_utc + timedelta(minutes=8),
+                local_tz,
+            )
+            candidate = _respect_sms_interval(
+                candidate,
+                channel,
+                features.get("last_sms_sent_at"),
+                local_tz,
+            )
+            return _response(candidate, local_tz, channel, 1.0, "immediate", False)
+
+        history_points = int(features.get("history_data_points", 0) or 0)
+        smoothed = _smooth_open_probabilities(
+            features.get("historical_open_probabilities")
         )
-        window_start, window_end = _build_send_window(best_hour, best_day)
+        if history_points >= PERSONAL_HISTORY_MINIMUM and smoothed is not None:
+            personal = _next_personal_hour(now_utc, local_tz, smoothed)
+            if personal is not None:
+                candidate, confidence = personal
+                candidate = _respect_sms_interval(
+                    candidate,
+                    channel,
+                    features.get("last_sms_sent_at"),
+                    local_tz,
+                )
+                return _response(
+                    candidate,
+                    local_tz,
+                    channel,
+                    confidence,
+                    "personalised",
+                    False,
+                )
 
-        return {
-            "optimal_send_hour":       best_hour,
-            "optimal_send_day_offset": best_day,
-            "channel_priority":        best_channel,
-            "confidence":              confidence,
-            "send_window_start":       window_start,
-            "send_window_end":         window_end,
-            "fallback":                False,
-        }
-
-    except Exception as err:
-        # ── Failsafe ─────────────────────────────────────────────────────────
-        # Spec: if model unavailable, return send_window_start = now + 1 hour,
-        # optimal_send_hour = current hour + 1, fallback = True.
+            # The serving layer owns model loading and injects its startup cache.
+            # Request-time registry calls would make latency depend on MLflow.
+            active_model = model
+            if active_model is not None:
+                model_result = _model_candidate(
+                    active_model,
+                    now_utc,
+                    local_tz,
+                    channel,
+                    features,
+                    smoothed,
+                )
+                if model_result is not None:
+                    candidate, confidence = model_result
+                    candidate = _respect_sms_interval(
+                        candidate,
+                        channel,
+                        features.get("last_sms_sent_at"),
+                        local_tz,
+                    )
+                    return _response(
+                        candidate,
+                        local_tz,
+                        channel,
+                        confidence,
+                        "hybrid",
+                        False,
+                    )
+    except Exception as exc:
         logger.error(
-            "m3_inference_failsafe_activated",
-            extra={"customer_id": customer_id, "merchant_id": merchant_id, "error": str(err)},
+            "m3_inference_failed",
+            extra={"error_type": type(exc).__name__},
         )
-        now          = datetime.now(tz=timezone.utc)
-        fallback_dt  = now + timedelta(hours=1)
-        window_end   = fallback_dt + timedelta(hours=FALLBACK_WINDOW_HOURS)
-        return {
-            "optimal_send_hour":       fallback_dt.hour,
-            "optimal_send_day_offset": 0,
-            "channel_priority":        FALLBACK_CHANNEL,
-            "confidence":              0.0,
-            "send_window_start":       fallback_dt.isoformat(),
-            "send_window_end":         window_end.isoformat(),
-            "fallback":                True,
-        }
+
+    candidate = _next_global_baseline(now_utc, channel, local_tz)
+    candidate = _respect_sms_interval(
+        candidate,
+        channel,
+        features.get("last_sms_sent_at"),
+        local_tz,
+    )
+    return _response(candidate, local_tz, channel, 0.0, "global_baseline", True)

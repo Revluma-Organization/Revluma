@@ -8,6 +8,8 @@ Trains a Logistic Regression classifier to score live checkout sessions every
 import sys
 import os
 import pickle
+import logging
+import tempfile
 import numpy as np
 import pandas as pd
 import mlflow
@@ -17,10 +19,13 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
+
+logger = logging.getLogger("rev.models.abandonment.train")
+
 # Ensure the config module can be imported
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 try:
-    from src.config.mlflow_config import get_or_create_experiment
+    from src.config.mlflow_config import get_or_create_experiment, get_run_url
 except ImportError:
     # Fallback if config is missing during isolated execution
     def get_or_create_experiment() -> str:
@@ -28,10 +33,14 @@ except ImportError:
         mlflow.set_experiment("Revluma-MVP")
         return "0"
 
+    def get_run_url(run_id: str, experiment_id: str) -> str | None:
+        return None
+
 from src.features.pipeline import (
     calculate_scroll_depth,
     calculate_tab_switch_count,
     calculate_time_on_page_ms,
+    calculate_cursor_hesitation,
     calculate_checkout_step_reached,
     calculate_failed_payment_attempt,
     calculate_cart_item_add_count,
@@ -43,19 +52,24 @@ from src.features.event_processor import group_events_by_session
 # Below this row count the model is not considered reliable; fall back to
 # synthetic data and flag it loudly in the console + MLflow tags.
 MIN_REAL_LABELED_SESSIONS = 1000
+MIN_AUC_ROC = 0.75
+MIN_PRECISION = 0.70
+MIN_RECALL = 0.65
 
 FEATURE_COLUMNS = [
     "scroll_depth_pct",
     "tab_switch_count",
     "time_on_page_ms",
+    "cursor_hesitation",
     "checkout_step_reached",
     "failed_payment_attempt",
     "cart_item_add_count",
     "cart_item_remove_count",
 ]
+SYNTHETIC_GENERATOR_VERSION = "2.0"
 
 
-def _generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
+def generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
     """
     Generates synthetic training data for the abandonment model.
     Mandatory Correlation Logic:
@@ -68,21 +82,46 @@ def _generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
       - high cart_item_remove_count increases abandonment (price hesitation)
       - high cart_item_add_count with low checkout_step increases abandonment
     """
-    np.random.seed(42)
+    if n < 1:
+        raise ValueError("n must be at least 1")
 
-    # 1. Base features
-    scroll_depth_pct = np.random.uniform(0, 100, n)
-    tab_switch_count = np.random.poisson(lam=1.5, size=n)
-    time_on_page_ms = np.random.exponential(scale=15000, size=n) + 1000
-    checkout_step_reached = np.random.randint(0, 6, n)
-    failed_payment_attempt = np.random.choice([0, 1], size=n, p=[0.9, 0.1])
-    # Cart behaviour: removals are rarer but a strong hesitation signal.
-    cart_item_add_count = np.random.poisson(lam=2.0, size=n)
-    cart_item_remove_count = np.random.poisson(lam=0.5, size=n)
+    rng = np.random.default_rng(42)
 
-    # 2. Log-odds calculation based on features
-    # Base intercept tuned to aim for ~70% abandonment
-    intercept = 4.5
+    # These latent variables create realistic correlations without encoding
+    # demographic or other protected characteristics into the synthetic data.
+    engagement = rng.beta(2.2, 2.0, n)
+    price_friction = rng.beta(1.8, 3.2, n)
+    checkout_step_reached = np.clip(
+        np.floor(engagement * 6 + rng.normal(0, 0.9, n)), 0, 5
+    ).astype(int)
+    scroll_depth_pct = np.clip(
+        12 + 83 * engagement + rng.normal(0, 13, n), 0, 100
+    )
+    time_on_page_ms = np.clip(
+        rng.lognormal(mean=9.25, sigma=0.65, size=n)
+        * (0.75 + 0.65 * engagement),
+        1_000,
+        180_000,
+    )
+    tab_switch_count = rng.poisson(0.45 + 2.4 * price_friction, n)
+    cursor_hesitation = np.clip(
+        rng.poisson(0.35 + 4.0 * price_friction, n), 0, 10
+    )
+    cart_item_add_count = rng.poisson(0.8 + 3.0 * engagement, n)
+    cart_item_remove_count = np.minimum(
+        rng.poisson(0.15 + 1.25 * price_friction, n),
+        cart_item_add_count,
+    )
+    payment_probability = np.clip(
+        0.01 + 0.16 * (checkout_step_reached >= 4) + 0.08 * price_friction,
+        0,
+        0.35,
+    )
+    failed_payment_attempt = rng.binomial(1, payment_probability)
+
+    # Unobserved noise prevents the label from being a perfect restatement of
+    # the features and gives the evaluation a more honest difficulty level.
+    intercept = 3.85
 
     log_odds = (
         intercept
@@ -91,22 +130,25 @@ def _generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
         + 0.5 * tab_switch_count                 # Switching tabs (price comparison) increases abandonment
         - 0.02 * scroll_depth_pct                # Scrolling down decreases abandonment
         - 0.00005 * time_on_page_ms              # Spending more time decreases abandonment
+        + 0.12 * cursor_hesitation                # Longer focus/blur hesitation raises risk
         + 0.4 * cart_item_remove_count           # Repeated removals signal price hesitation
-        + 0.1 * np.where(                        # Window-shopping: adds without progressing
+        + 0.45 * np.where(                       # Window-shopping interaction
             (cart_item_add_count > 3) & (checkout_step_reached < 2), 1, 0
         )
+        + rng.normal(0, 0.8, n)
     )
 
     # Sigmoid function for probability
     probabilities = 1 / (1 + np.exp(-log_odds))
 
     # 3. Label assignment
-    abandoned = np.random.binomial(1, probabilities)
+    abandoned = rng.binomial(1, probabilities)
 
     df = pd.DataFrame({
         "scroll_depth_pct": scroll_depth_pct,
         "tab_switch_count": tab_switch_count,
         "time_on_page_ms": time_on_page_ms,
+        "cursor_hesitation": cursor_hesitation,
         "checkout_step_reached": checkout_step_reached,
         "failed_payment_attempt": failed_payment_attempt,
         "cart_item_add_count": cart_item_add_count,
@@ -124,9 +166,9 @@ def _load_real_session_rows(db_connection) -> pd.DataFrame:
     the non-negotiable "feature names must match exactly" rule in
     PIXEL_EVENT_SPEC.md).
 
-    Label source: `checkout.status` — ABANDONED -> 1, RECOVERED/COMPLETED -> 0.
-    Only ABANDONED/RECOVERED/COMPLETED sessions are used; ACTIVE sessions
-    have no terminal label yet and are excluded.
+    Label source: `abandoned_carts`. An unrecovered abandoned cart is positive;
+    a row with `recovered_at` or status RECOVERED is negative. Rows without a
+    session ID and nonterminal statuses are excluded.
 
     STRICT POLICY: when db_connection is provided, this is the only data
     source used — there is no silent fallback to synthetic data. Any query
@@ -147,9 +189,20 @@ def _load_real_session_rows(db_connection) -> pd.DataFrame:
         with db_connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT c.session_id, c.status
-                FROM checkout c
-                WHERE c.status IN ('ABANDONED', 'RECOVERED', 'COMPLETED')
+                SELECT
+                    ac.session_id,
+                    CASE
+                        WHEN ac.recovered_at IS NOT NULL
+                          OR UPPER(COALESCE(ac.status, '')) = 'RECOVERED'
+                        THEN 'RECOVERED'
+                        ELSE 'ABANDONED'
+                    END AS outcome
+                FROM abandoned_carts ac
+                WHERE ac.session_id IS NOT NULL
+                  AND (
+                      ac.recovered_at IS NOT NULL
+                      OR UPPER(COALESCE(ac.status, '')) IN ('ABANDONED', 'RECOVERED')
+                  )
                 """
             )
             session_rows = cursor.fetchall()
@@ -185,10 +238,10 @@ def _load_real_session_rows(db_connection) -> pd.DataFrame:
         events_by_session = group_events_by_session(raw_events)
         return _compute_m1_feature_records(session_ids, labels, events_by_session)
 
-    except Exception as e:
+    except Exception as exc:
         raise RuntimeError(
-            f"[M1] Real-data query against checkout/events failed: {e}"
-        ) from e
+            f"[M1] Real-data query failed ({type(exc).__name__})."
+        ) from exc
 
 
 def _compute_m1_feature_records(
@@ -216,6 +269,7 @@ def _compute_m1_feature_records(
             "scroll_depth_pct": calculate_scroll_depth(events),
             "tab_switch_count": calculate_tab_switch_count(events),
             "time_on_page_ms": calculate_time_on_page_ms(events),
+            "cursor_hesitation": calculate_cursor_hesitation(events),
             "checkout_step_reached": calculate_checkout_step_reached(events),
             "failed_payment_attempt": int(calculate_failed_payment_attempt(events)),
             "cart_item_add_count": calculate_cart_item_add_count(events),
@@ -247,29 +301,30 @@ def load_training_data(db_connection=None) -> tuple:
             or succeeds but finds zero labelled sessions.
     """
     if db_connection is None:
-        print("[M1] No db_connection provided — using synthetic data.")
-        return _generate_synthetic_data(), False, False
+        logger.info("m1_synthetic_training_data_selected")
+        return generate_synthetic_data(), False, False
 
     real_df = _load_real_session_rows(db_connection)
 
     if len(real_df) == 0:
         raise RuntimeError(
             "[M1] db_connection was provided but zero labelled sessions "
-            "(ABANDONED/RECOVERED/COMPLETED) were found in `checkout`. "
+            "(ABANDONED/RECOVERED) were found in `abandoned_carts`. "
             "Cannot train on real data — check that the sync job has "
-            "populated the checkout table before retrying."
+            "populated cart outcomes before retrying."
         )
 
     below_minimum = len(real_df) < MIN_REAL_LABELED_SESSIONS
     if below_minimum:
-        print(
-            f"[M1] WARNING: training on {len(real_df)} real labelled sessions, "
-            f"below the recommended minimum of {MIN_REAL_LABELED_SESSIONS}. "
-            f"Proceeding per strict real-data policy — treat this model's "
-            f"metrics as provisional, not production-reliable."
+        logger.warning(
+            "m1_training_data_below_minimum",
+            extra={
+                "session_count": len(real_df),
+                "minimum_session_count": MIN_REAL_LABELED_SESSIONS,
+            },
         )
     else:
-        print(f"[M1] Training on {len(real_df)} real labelled sessions.")
+        logger.info("m1_real_training_data_selected", extra={"session_count": len(real_df)})
 
     return real_df, True, below_minimum
 
@@ -284,6 +339,24 @@ def build_model() -> LogisticRegression:
         C=1.0,
         class_weight="balanced",
         random_state=42
+    )
+
+
+def _is_production_eligible(
+    *,
+    used_real_data: bool,
+    below_minimum: bool,
+    auc_roc: float,
+    precision: float,
+    recall: float,
+) -> bool:
+    """Require real minimum data and every assigned M1 quality gate."""
+    return (
+        used_real_data
+        and not below_minimum
+        and auc_roc >= MIN_AUC_ROC
+        and precision >= MIN_PRECISION
+        and recall >= MIN_RECALL
     )
 
 
@@ -304,7 +377,7 @@ def train(run_name: str = "m1-abandonment-training", db_connection=None) -> dict
     get_or_create_experiment()
     mlflow.set_experiment("Revluma-MVP")
 
-    print("Loading data...")
+    logger.info("m1_training_data_loading")
     data, used_real_data, below_minimum = load_training_data(db_connection)
 
     # Split Data
@@ -315,17 +388,20 @@ def train(run_name: str = "m1-abandonment-training", db_connection=None) -> dict
         X, y, test_size=0.2, stratify=y, random_state=42
     )
 
-    print(f"Data loaded. Total samples: {len(data)}, Abandonment Rate: {y.mean():.2%}")
+    logger.info(
+        "m1_training_data_loaded",
+        extra={"sample_count": len(data), "abandonment_rate": float(y.mean())},
+    )
 
     # Start MLflow run
-    with mlflow.start_run(run_name=run_name):
+    with mlflow.start_run(run_name=run_name) as run:
         # Scale
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
 
         # Model Training
-        print("Training model...")
+        logger.info("m1_model_training_started")
         model = build_model()
         model.fit(X_train_scaled, y_train)
 
@@ -340,18 +416,62 @@ def train(run_name: str = "m1-abandonment-training", db_connection=None) -> dict
         f1 = f1_score(y_test, y_pred)
         auc_roc = roc_auc_score(y_test, y_prob)
 
-        print("\n--- Model Metrics ---")
-        print(f"Accuracy:  {accuracy:.4f}")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall:    {recall:.4f}")
-        print(f"F1:        {f1:.4f}")
-        print(f"AUC-ROC:   {auc_roc:.4f}")
-        print("---------------------\n")
+        logger.info(
+            "m1_model_metrics",
+            extra={
+                "accuracy": float(accuracy),
+                "precision": float(precision),
+                "recall": float(recall),
+                "f1": float(f1),
+                "auc_roc": float(auc_roc),
+            },
+        )
+        production_eligible = _is_production_eligible(
+            used_real_data=used_real_data,
+            below_minimum=below_minimum,
+            auc_roc=auc_roc,
+            precision=precision,
+            recall=recall,
+        )
+        _log_training_metrics(
+            model,
+            scaler,
+            X,
+            X_train,
+            accuracy,
+            precision,
+            recall,
+            f1,
+            auc_roc,
+            used_real_data,
+            below_minimum,
+            production_eligible,
+            float(y.mean()),
+        )
 
-        _log_training_metrics(model, scaler, X, X_train, accuracy, precision, recall, f1, auc_roc, used_real_data, below_minimum)
-
-        print("MLflow tracking completed successfully.")
-        return _build_train_result(model, scaler, accuracy, precision, recall, f1, auc_roc, used_real_data, below_minimum)
+        logger.info("m1_mlflow_tracking_completed")
+        result = _build_train_result(
+            model,
+            scaler,
+            accuracy,
+            precision,
+            recall,
+            f1,
+            auc_roc,
+            used_real_data,
+            below_minimum,
+        )
+        result.update(
+            {
+                "production_eligible": production_eligible,
+                "run_id": run.info.run_id,
+                "run_url": get_run_url(
+                    run.info.run_id,
+                    run.info.experiment_id,
+                ),
+            }
+        )
+        return result
 
 
 def _build_train_result(
@@ -393,6 +513,8 @@ def _log_training_metrics(
     auc_roc: float,
     used_real_data: bool,
     below_minimum: bool,
+    production_eligible: bool,
+    label_positive_rate: float,
 ) -> None:
     """Logs model parameters, metrics, and artifacts to the active MLflow run.
     Extracted from train() to keep it under 80 lines."""
@@ -403,18 +525,33 @@ def _log_training_metrics(
     mlflow.log_param("feature_list", list(X.columns))
     mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
     mlflow.set_tag("below_minimum_threshold", str(below_minimum))
+    mlflow.set_tag("quality_gates_passed", str(
+        auc_roc >= MIN_AUC_ROC
+        and precision >= MIN_PRECISION
+        and recall >= MIN_RECALL
+    ).lower())
+    mlflow.set_tag("production_eligible", str(production_eligible).lower())
+    if not used_real_data:
+        mlflow.set_tag("synthetic_generator_version", SYNTHETIC_GENERATOR_VERSION)
+        mlflow.set_tag("synthetic_only_not_for_registration", "true")
     mlflow.log_param("min_real_labeled_sessions_threshold", MIN_REAL_LABELED_SESSIONS)
     mlflow.log_metric("accuracy", accuracy)
     mlflow.log_metric("precision", precision)
     mlflow.log_metric("recall", recall)
     mlflow.log_metric("f1", f1)
     mlflow.log_metric("auc_roc", auc_roc)
-    mlflow.sklearn.log_model(model, "model", registered_model_name="abandonment")
-    os.makedirs("artifacts", exist_ok=True)
-    scaler_path = "artifacts/scaler.pkl"
-    with open(scaler_path, "wb") as f:
-        pickle.dump(scaler, f)
-    mlflow.log_artifact(scaler_path, "preprocessing")
+    mlflow.log_metric("label_positive_rate", label_positive_rate)
+    registration = (
+        {"registered_model_name": "abandonment"}
+        if production_eligible
+        else {}
+    )
+    mlflow.sklearn.log_model(model, "model", **registration)
+    with tempfile.TemporaryDirectory(prefix="revluma-m1-") as temp_dir:
+        scaler_path = os.path.join(temp_dir, "scaler.pkl")
+        with open(scaler_path, "wb") as artifact_file:
+            pickle.dump(scaler, artifact_file)
+        mlflow.log_artifact(scaler_path, "preprocessing")
 
 
 if __name__ == "__main__":

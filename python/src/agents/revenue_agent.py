@@ -5,6 +5,7 @@ Reads exclusively from BusinessState — does NOT query the database directly.
 """
 
 from __future__ import annotations
+import json
 import logging
 from .base_agent import BaseAgent, AgentResult
 
@@ -20,9 +21,36 @@ class RevenueAgent(BaseAgent):
     def analyze(self, business_state, memories: list[dict], question: str) -> AgentResult:
         try:
             return self._analyze(business_state, memories, question)
-        except Exception as e:
-            logger.error("revenue_agent_failed", extra={"error": str(e)})
-            return AgentResult.error("revenue", str(e))
+        except Exception as exc:
+            logger.error(
+                "revenue_agent_failed",
+                extra={"error_type": type(exc).__name__},
+            )
+            return AgentResult.error("revenue", type(exc).__name__)
+
+    def structured_output(self, business_state, memories: list[dict], question: str) -> dict:
+        """Return the exact six-field D5 specialist boundary."""
+        result = self.analyze(business_state, memories, question)
+        findings = {
+            "status": result.status,
+            "facts": result.facts,
+            "signals": result.signals,
+            "diagnosis": result.diagnosis,
+            "opportunities": result.opportunities,
+            "warnings": result.warnings,
+        }
+        action = None
+        if result.recommendations:
+            candidate = result.recommendations[0].get("action")
+            action = str(candidate) if candidate else None
+        return {
+            "domain": "revenue",
+            "findings": json.dumps(findings, default=str, sort_keys=True),
+            "confidence": min(max(float(result.confidence), 0.0), 1.0),
+            "recommended_action": action,
+            "evidence_references": [str(source) for source in result.data_sources],
+            "contradictions_detected": [],
+        }
 
     def _analyze(self, bs, memories: list[dict], question: str) -> AgentResult:
         if bs.revenue_today is None and bs.revenue_yesterday is None:

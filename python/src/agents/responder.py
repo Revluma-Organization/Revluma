@@ -140,8 +140,11 @@ def compose_conversational(message: str, understanding, history_text: str,
             )
             return sanitise("".join(b.text for b in _resp.content if getattr(b, "type", "") == "text").strip())
         return sanitise(_call(FAST_MODEL, prompt, 300, 10.0))
-    except Exception as e:
-        print(f"RESPONDER_CONVERSATIONAL_ERROR {type(e).__name__}: {e}")
+    except Exception as exc:
+        logger.error(
+            "responder_conversational_failed",
+            extra={"error_type": type(exc).__name__},
+        )
         return _static_conversational(message, understanding)
 
 
@@ -281,12 +284,18 @@ def compose_knowledge(message: str, understanding, history_text: str,
             messages=[{"role": "user", "content": _content}]
         )
         return sanitise("".join(b.text for b in _resp2.content if getattr(b, "type", "") == "text").strip())
-    except Exception as e:
-        print(f"RESPONDER_KNOWLEDGE_SONNET_ERROR {type(e).__name__}: {e}")
+    except Exception as exc:
+        logger.error(
+            "responder_knowledge_primary_failed",
+            extra={"error_type": type(exc).__name__},
+        )
         try:
             return sanitise(_call(FAST_MODEL, prompt, 700, 12.0))
-        except Exception as e2:
-            print(f"RESPONDER_KNOWLEDGE_HAIKU_ERROR {type(e2).__name__}: {e2}")
+        except Exception as fallback_exc:
+            logger.error(
+                "responder_knowledge_fallback_failed",
+                extra={"error_type": type(fallback_exc).__name__},
+            )
             return _static_knowledge(message, understanding)
 
 
@@ -475,8 +484,11 @@ def _static_knowledge(message: str, understanding) -> str:
             text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
             if text:
                 return text
-    except Exception as e:
-        print(f"STATIC_FALLBACK_LLM_ERROR: {e}")
+    except Exception as exc:
+        logger.error(
+            "responder_static_fallback_failed",
+            extra={"error_type": type(exc).__name__},
+        )
 
     return ("Good question. I have deep expertise in ecommerce, Shopify, WooCommerce, "
             "cart recovery, retention, conversion, and revenue operations. "
@@ -506,8 +518,11 @@ def compose_needs_store(message: str, understanding, history_text: str) -> str:
     )
     try:
         return sanitise(_call(FAST_MODEL, prompt, 350, 10.0))
-    except Exception as e:
-        print(f"RESPONDER_NEEDSSTORE_ERROR {type(e).__name__}: {e}")
+    except Exception as exc:
+        logger.error(
+            "responder_needs_store_failed",
+            extra={"error_type": type(exc).__name__},
+        )
         return _static_needs_store(understanding)
 
 
@@ -619,8 +634,11 @@ def compose_web_research(message: str, understanding, history_text: str,
 
         return "I searched for that but could not find a clear answer. Try rephrasing the question."
 
-    except Exception as e:
-        print(f"RESPONDER_WEB_RESEARCH_ERROR {type(e).__name__}: {e}")
+    except Exception as exc:
+        logger.error(
+            "responder_web_research_failed",
+            extra={"error_type": type(exc).__name__},
+        )
         # Fall back to knowledge response
         u_mock = type("U", (), {"intent": "knowledge", "goal": understanding.goal,
                                  "response_mode": "explanation", "domains": understanding.domains})()
@@ -655,8 +673,8 @@ def compose_analysis(message: str, understanding, state_json: str, agent_json: s
         + "}\n\n"
         + "CRITICAL: Actions must map to real tools: view_carts, view_customers, view_revenue, "
         + "create_campaign, view_analytics, view_products, view_checkout. "
-        + "If no real action applies, return empty actions array. Never invent fake actions. "
-        + "Two or three maximum."
+        + "Return exactly two or three actions using only those real tools. "
+        + "Never invent fake actions."
     )
     for attempt in range(2):
         try:
@@ -667,8 +685,11 @@ def compose_analysis(message: str, understanding, state_json: str, agent_json: s
                     if isinstance(parsed.get(f), str):
                         parsed[f] = sanitise(parsed[f])
                 return parsed
-        except Exception as e:
-            print(f"RESPONDER_ANALYSIS_ERROR attempt={attempt+1} {type(e).__name__}: {e}")
+        except Exception as exc:
+            logger.error(
+                "responder_analysis_failed",
+                extra={"attempt": attempt + 1, "error_type": type(exc).__name__},
+            )
     return {
         "situation": "I could not complete the analysis.",
         "insight": "The reasoning service did not respond. Nothing was fabricated.",

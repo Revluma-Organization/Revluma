@@ -34,6 +34,7 @@ from .train import (
     EARLY_WARNING_FEATURES,
     FEATURE_COLUMNS,
     compute_engagement_decay_score,
+    normalize_churn_features,
     resolve_churn_tier,
 )
 
@@ -267,8 +268,10 @@ def predict(customer_id: str, feature_vector: dict, merchant_id: str) -> dict:
 
     Args:
         customer_id    (str) : UUID of the customer
-        feature_vector (dict): The 24 M4 features including RFM sub-scores and
-                               synthetic placeholders. Missing keys score as
+        feature_vector (dict): The 21 named M4 features, including RFM
+                               sub-scores. Known legacy aliases are accepted;
+                               canonical names win when both forms are sent.
+                               Missing keys score as
                                zero rather than failing — a partially populated
                                customer is scored, not dropped.
         merchant_id    (str) : UUID of the merchant
@@ -283,8 +286,8 @@ def predict(customer_id: str, feature_vector: dict, merchant_id: str) -> dict:
                                               # CHURN_SIGNAL_RULES
             "engagement_decay_score": float,  # 0-100, higher = falling away faster
             "recommended_channel"   : str,    # email | sms | whatsapp | push
-            "offer_required"        : bool,   # HIGH_RISK and CRITICAL only
-            "escalate_to_human"     : bool,   # LTV > 500 and tier == CRITICAL
+            "offer_required"        : bool,   # High tiers, or coupon-dependent AT_RISK
+            "escalate_to_human"     : bool,   # LTV > 500 and HIGH_RISK/CRITICAL
             "fallback"              : bool,   # True if the day-band rules ran
             "model_version"         : str
         }
@@ -295,7 +298,7 @@ def predict(customer_id: str, feature_vector: dict, merchant_id: str) -> dict:
     model is confident is HEALTHY can still be promoted, and their low
     probability is correct — it is precisely why the tier had to exist.
     """
-    features = feature_vector or {}
+    features = normalize_churn_features(feature_vector)
     ltv = _customer_ltv(features)
     decay_score = float(compute_engagement_decay_score(features))
 

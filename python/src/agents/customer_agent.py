@@ -7,34 +7,34 @@ Uses aggregate counts and segment labels only.
 No database access. The agent reasons only over the context package the
 Orchestrator assembled — business_state and merchant memories.
 
-Proactive attention means two populations: VIPs who have gone quiet for 45+
-days, and customers sitting just under an LTV threshold they could be helped
-across. Per-customer data for both arrives on
+Proactive attention includes VIPs who have gone quiet for 45+ days, one-time
+buyers approaching a second purchase, and customers approaching or newly
+crossing an LTV threshold. Per-customer data arrives on
 business_state.ml_signals["customer"]. Without it the agent falls back to
-business_state.vip_inactive_count, which is a 30-day count, not a 45-day one —
-the SQL behind that column uses INTERVAL '30 days'. In that case the agent
-reports the 30-day figure, labels it as such, and records
-VIP_THRESHOLD_IS_30_NOT_45 rather than passing it off as the number asked for.
+business_state.vip_inactive_count, which is the authoritative aggregate for
+the same 45-day cohort but cannot support customer-level LTV analysis.
 """
 
 from __future__ import annotations
+import json
 import logging
 from .base_agent import BaseAgent, AgentResult
+from ..intelligence.business_state import (
+    LTV_APPROACH_BAND,
+    LTV_THRESHOLDS,
+    VIP_INACTIVE_DAYS,
+)
 
 logger = logging.getLogger("rev.agent.customer")
 
-# S5: VIPs inactive for 45+ days need proactive attention. business_state's own
-# vip_inactive_count is computed at 30 days, so this threshold can only be
-# applied to per-customer rows from ml_signals.
-VIP_INACTIVE_DAYS = 45
-VIP_SEGMENTS = ("champion", "loyal")
+# S5: VIPs inactive for 45+ days need proactive attention. Business State
+# computes the same threshold as an aggregate; ml_signals adds customer detail.
+VIP_SEGMENTS = ("champion",)
 
 # LTV bands. 500 is not arbitrary — it is the same figure M4 escalates a
 # CRITICAL customer to a human at, so a customer approaching it is approaching
 # the point where they are worth a phone call.
-LTV_THRESHOLDS = (100.0, 500.0, 1000.0, 2500.0)
 # Within 15% below a threshold is close enough that one more order crosses it.
-LTV_APPROACH_BAND = 0.15
 
 
 def _customer_ml_signals(bs) -> dict:
@@ -92,6 +92,34 @@ def _approaching_ltv_threshold(customers: list[dict]) -> list[dict]:
     return sorted(out, key=lambda c: c["ltv_gap"])
 
 
+def _just_reached_ltv_threshold(customers: list[dict]) -> list[dict]:
+    """Returns customers whose evidenced prior LTV was below a current band."""
+    out = []
+    for customer in customers:
+        previous = customer.get("previous_ltv")
+        if previous is None:
+            previous = customer.get("ltv_before_last_order")
+        if previous is None:
+            continue
+        try:
+            previous_ltv = float(previous)
+            current_ltv = float(customer.get("ltv") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        crossed = [
+            threshold
+            for threshold in LTV_THRESHOLDS
+            if previous_ltv < threshold <= current_ltv
+        ]
+        if crossed:
+            out.append({**customer, "ltv_threshold": max(crossed)})
+    return sorted(
+        out,
+        key=lambda customer: customer["ltv_threshold"],
+        reverse=True,
+    )
+
+
 def _approaching_second_purchase(customers: list[dict]) -> list[dict]:
     """Customers who have made exactly one purchase and are approaching their second."""
     out = []
@@ -113,9 +141,10 @@ class CustomerAgent(BaseAgent):
     def analyze(self, business_state, memories: list[dict], question: str) -> AgentResult:
         try:
             return self._analyze(business_state, memories, question)
-        except Exception as e:
-            logger.error("customer_agent_failed", extra={"error": str(e)})
-            return AgentResult.error("customer", str(e))
+        except Exception as exc:
+            error_type = type(exc).__name__
+            logger.error("customer_agent_failed", extra={"error_type": error_type})
+            return AgentResult.error("customer", error_type)
 
     def structured_output(self, business_state, memories: list[dict], question: str) -> dict:
         """The S5 agent output schema — six fields, no free-form text.
@@ -127,18 +156,17 @@ class CustomerAgent(BaseAgent):
         """
         try:
             return self._structured_output(business_state, memories, question)
-        except Exception as e:
-            logger.error("customer_structured_output_failed", extra={"error": str(e)})
+        except Exception as exc:
+            error_type = type(exc).__name__
+            logger.error(
+                "customer_structured_output_failed",
+                extra={"error_type": error_type},
+            )
             return {
                 "domain": self.name,
-                "findings": [{"code": "AGENT_ERROR", "metric": "agent_error",
-                              "value": type(e).__name__, "kind": "fact", "severity": "high"}],
+                "findings": f"AGENT_ERROR:{error_type}",
                 "confidence": 0.0,
-                "recommended_action": {
-                    "action": "no_action_required", "target_segment": None, "target_count": None,
-                    "min_days_inactive": None, "channel": None, "discount_allowed": False,
-                    "ltv_threshold": None,
-                },
+                "recommended_action": None,
                 "evidence_references": [],
                 "contradictions_detected": [],
             }
@@ -158,6 +186,7 @@ class CustomerAgent(BaseAgent):
         result = self.analyze(business_state, memories, question)
         ml = _customer_ml_signals(business_state)
         vip_inactive = _vip_inactive(ml["customers"])
+        just_reached = _just_reached_ltv_threshold(ml["customers"])
         approaching = _approaching_ltv_threshold(ml["customers"])
         second_purchase = _approaching_second_purchase(ml["customers"])
 
@@ -183,6 +212,16 @@ class CustomerAgent(BaseAgent):
                 "channel": channel,
                 "discount_allowed": False,
                 "ltv_threshold": None,
+            }
+        elif just_reached:
+            recommended_action = {
+                "action": "ltv_threshold_reached",
+                "target_segment": None,
+                "target_count": len(just_reached),
+                "min_days_inactive": None,
+                "channel": channel,
+                "discount_allowed": False,
+                "ltv_threshold": just_reached[0]["ltv_threshold"],
             }
         elif approaching:
             recommended_action = {
@@ -230,13 +269,23 @@ class CustomerAgent(BaseAgent):
         if any(m.get("memory_key") == "preferred_channel" and m.get("is_active") for m in memories):
             evidence.append("memory:preferred_channel")
 
+        contradictions = _detect_contradictions(business_state, ml, vip_inactive)
+        action = recommended_action.get("action")
+        if action == "no_action_required":
+            action = None
+
         return {
             "domain": self.name,
-            "findings": findings,
+            "findings": json.dumps(
+                findings,
+                default=str,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
             "confidence": result.confidence,
-            "recommended_action": recommended_action,
+            "recommended_action": action,
             "evidence_references": evidence,
-            "contradictions_detected": _detect_contradictions(business_state, ml, vip_inactive),
+            "contradictions_detected": [item["code"] for item in contradictions],
         }
 
     def _analyze(self, bs, memories: list[dict], question: str) -> AgentResult:
@@ -254,6 +303,7 @@ class CustomerAgent(BaseAgent):
 
         ml = _customer_ml_signals(bs)
         vip_inactive = _vip_inactive(ml["customers"])
+        just_reached = _just_reached_ltv_threshold(ml["customers"])
         approaching = _approaching_ltv_threshold(ml["customers"])
         second_purchase = _approaching_second_purchase(ml["customers"])
         if ml["available"]:
@@ -261,8 +311,8 @@ class CustomerAgent(BaseAgent):
         else:
             warnings.append(
                 f"Per-customer rows absent from business_state.ml_signals — the "
-                f"{VIP_INACTIVE_DAYS}-day VIP threshold and LTV proximity could not be "
-                f"applied. vip_inactive_count below is a 30-day count."
+                f"customer-level LTV and purchase thresholds could not be applied. "
+                f"vip_inactive_count remains the authoritative {VIP_INACTIVE_DAYS}-day aggregate."
             )
 
         # ── Facts — aggregate only, no PII 
@@ -280,7 +330,8 @@ class CustomerAgent(BaseAgent):
                 "type": "fact",
                 "metric": "vip_inactive_count",
                 "value": bs.vip_inactive_count,
-                "description": f"{bs.vip_inactive_count} champion-segment customers inactive 30+ days",
+                "description": f"{bs.vip_inactive_count} champion-segment customers inactive "
+                               f"{VIP_INACTIVE_DAYS}+ days",
                 "source": "customers.rfm_segment — aggregate count only",
             })
 
@@ -398,6 +449,28 @@ class CustomerAgent(BaseAgent):
                 "note": "One well-sized order each — the gap is already computed per customer",
             })
 
+        if just_reached:
+            facts.append({
+                "type": "fact",
+                "metric": "ltv_threshold_reached_count",
+                "value": len(just_reached),
+                "description": f"{len(just_reached)} customers crossed an LTV threshold",
+                "source": "ml_signals.customer — current and prior LTV values",
+            })
+            signals.append({
+                "type": "signal",
+                "metric": "ltv_threshold_reached",
+                "value": just_reached[0]["ltv_threshold"],
+                "description": "A customer has newly crossed a tracked LTV band",
+                "severity": "positive",
+            })
+            opportunities.append({
+                "category": "vip_relationship",
+                "description": f"Recognize {len(just_reached)} newly reached LTV milestones",
+                "urgency": "medium",
+                "note": "Use recognition and relationship-building, not a discount",
+            })
+
         if second_purchase:
             facts.append({
                 "type": "fact",
@@ -456,6 +529,21 @@ class CustomerAgent(BaseAgent):
                 },
             })
 
+        if just_reached:
+            recommendations.append({
+                "action": "ltv_threshold_reached",
+                "description": f"Recognize {len(just_reached)} customers who just crossed an LTV milestone.",
+                "predicted_impact": "Strengthens the relationship at a verified value milestone",
+                "confidence": 0.78,
+                "category": "vip_relationship",
+                "params": {
+                    "customer_ids": [c.get("customer_id") for c in just_reached[:25]],
+                    "ltv_threshold": just_reached[0]["ltv_threshold"],
+                    "channel": preferred_channel,
+                    "use_discount": False,
+                },
+            })
+
         if second_purchase:
             recommendations.append({
                 "action": "second_purchase_nudge",
@@ -474,7 +562,7 @@ class CustomerAgent(BaseAgent):
             recommendations.append({
                 "action": "vip_personalised_outreach",
                 "description": f"Send a personalised re-engagement message to your {bs.vip_inactive_count} "
-                               f"top-tier customers who haven't purchased in 30+ days. "
+                               f"top-tier customers who haven't purchased in {VIP_INACTIVE_DAYS}+ days. "
                                f"Reference their previous purchase category. No discount.",
                 "predicted_impact": "VIP re-engagement typically converts at 32-45% without incentives",
                 "confidence": 0.80,
@@ -502,23 +590,12 @@ def _detect_contradictions(bs, ml: dict, vip_inactive: list[dict]) -> list[dict]
     """Places where two sources of truth disagree, as codes rather than prose."""
     found = []
 
-    if not ml["available"] and bs.vip_inactive_count:
-        # Not a disagreement between numbers but between the number asked for
-        # and the number available. Surfacing it stops a 30-day count being
-        # read as a 45-day one downstream.
-        found.append({
-            "code": "VIP_THRESHOLD_IS_30_NOT_45",
-            "left": {"source": "requested", "value": VIP_INACTIVE_DAYS},
-            "right": {"source": "business_states.vip_inactive_count", "value": 30},
-        })
-
     if ml["available"] and bs.vip_inactive_count is not None:
-        # The 45-day cohort is a subset of the 30-day one. More of them than
-        # there are of the superset means the two were computed over different
-        # populations.
+        # Both values describe the same 45-day cohort. A detailed count larger
+        # than its aggregate means they were computed over different populations.
         if len(vip_inactive) > bs.vip_inactive_count:
             found.append({
-                "code": "VIP_45D_EXCEEDS_30D_COUNT",
+                "code": "VIP_45D_DETAIL_EXCEEDS_AGGREGATE",
                 "left": {"source": "ml_signals.customer", "value": len(vip_inactive)},
                 "right": {"source": "business_states.vip_inactive_count",
                           "value": bs.vip_inactive_count},

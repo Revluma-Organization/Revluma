@@ -69,6 +69,28 @@ def get_rfm_segment(r: int, f: int, m: int) -> str:
     return "lost"
 
 
+def _column_exists(db, table_name: str, column_name: str) -> bool:
+    """Checks an optional schema capability without interpolating identifiers."""
+    cursor = db.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = %s
+                  AND column_name = %s
+            )
+            """,
+            (table_name, column_name),
+        )
+        row = cursor.fetchone()
+        return bool(row and row[0])
+    finally:
+        cursor.close()
+
+
 # ---------------------------------------------------------------------------
 # 2. Batch Processing Function
 # ---------------------------------------------------------------------------
@@ -104,22 +126,67 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
     failed_customer_ids = []
     processed_count = 0
 
+    cursor = None
     try:
         cursor = db.cursor()
         cursor.execute("SELECT id FROM customers WHERE store_id = %s", (store_id,))
         rows = cursor.fetchall()
-    except Exception as e:
-        logger.error(f"Failed to fetch customers for store {store_id}", exc_info=True)
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            logger.error("rfm_customer_fetch_rollback_failed")
+        logger.error(
+            "rfm_customer_fetch_failed",
+            extra={"store_id": store_id, "error_type": type(exc).__name__},
+        )
         return {
+            "success": False,
             "processed_count": 0,
             "failed_customer_ids": [],
+            "failed_count": 0,
             "segment_distribution": segment_distribution,
+            "error": "customer_fetch_failed",
         }
+    finally:
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                logger.warning("rfm_customer_fetch_cursor_close_failed")
 
     customer_ids = [row[0] for row in rows] if rows else []
 
+    try:
+        include_rfm_updated_at = _column_exists(
+            db,
+            "customers",
+            "rfm_updated_at",
+        )
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            logger.error("rfm_schema_check_rollback_failed")
+        logger.error(
+            "rfm_schema_capability_check_failed",
+            extra={"store_id": store_id, "error_type": type(exc).__name__},
+        )
+        return {
+            "success": False,
+            "processed_count": 0,
+            "failed_customer_ids": [],
+            "failed_count": 0,
+            "segment_distribution": segment_distribution,
+            "error": "schema_capability_check_failed",
+        }
+
     for customer_id in customer_ids:
-        segment, ok = _process_single_customer(customer_id, db)
+        segment, ok = _process_single_customer(
+            customer_id,
+            db,
+            include_rfm_updated_at=include_rfm_updated_at,
+        )
         if ok:
             segment_distribution[segment] += 1
             processed_count += 1
@@ -127,32 +194,59 @@ def calculate_rfm_for_all_customers(store_id: str, db) -> dict:
             failed_customer_ids.append(customer_id)
 
     # Single commit after the full loop - performance requirement
+    error = "customer_processing_failed" if failed_customer_ids else None
     try:
         db.commit()
-    except Exception as e:
+    except Exception as exc:
         # The commit is the only point at which anything is persisted, so a
         # failure here loses the whole batch. Reporting the per-customer
         # counters would tell the Node caller the sync succeeded.
-        logger.error(f"Failed to commit RFM batch for store {store_id}", exc_info=True)
+        try:
+            db.rollback()
+        except Exception:
+            logger.error("rfm_commit_rollback_failed")
+        logger.error(
+            "rfm_batch_commit_failed",
+            extra={"store_id": store_id, "error_type": type(exc).__name__},
+        )
         processed_count = 0
         failed_customer_ids = list(customer_ids)
         segment_distribution = {segment: 0 for segment in segment_distribution}
+        error = "commit_failed"
 
-    logger.info(f"Processed customers: {processed_count}")
-    logger.info("Segment distribution:")
-    for segment, count in segment_distribution.items():
-        logger.info(f"  {segment}: {count}")
+    failed_count = len(failed_customer_ids)
+    success = error is None
+    logger.info(
+        "rfm_batch_completed",
+        extra={
+            "store_id": store_id,
+            "processed_count": processed_count,
+            "failed_count": failed_count,
+            "segment_distribution": segment_distribution,
+            "success": success,
+        },
+    )
     if failed_customer_ids:
-        logger.warning(f"Failed customer IDs ({len(failed_customer_ids)}): {failed_customer_ids}")
+        logger.warning(
+            "rfm_batch_has_customer_failures",
+            extra={"store_id": store_id, "failed_count": failed_count},
+        )
 
     return {
+        "success": success,
         "processed_count": processed_count,
         "failed_customer_ids": failed_customer_ids,
+        "failed_count": failed_count,
         "segment_distribution": segment_distribution,
+        "error": error,
     }
 
 
-def _process_single_customer(customer_id: str, db) -> tuple:
+def _process_single_customer(
+    customer_id: str,
+    db,
+    include_rfm_updated_at: bool = False,
+) -> tuple:
     """Computes and persists RFM scores for a single customer.
 
     Extracted from calculate_rfm_for_all_customers to keep it under 80 lines.
@@ -168,8 +262,9 @@ def _process_single_customer(customer_id: str, db) -> tuple:
         tuple: (segment: str, success: bool).
                segment is the RFM segment label on success, or '' on failure.
     """
-    cursor = db.cursor()
+    cursor = None
     try:
+        cursor = db.cursor()
         cursor.execute("SAVEPOINT sp_customer")
         
         rfm = calculate_rfm_scores(customer_id, db)
@@ -178,28 +273,55 @@ def _process_single_customer(customer_id: str, db) -> tuple:
         m = rfm["rfm_monetary_score"]
         segment = get_rfm_segment(r, f, m)
         
-        cursor.execute(
-            """
-            UPDATE customers
-            SET
-              rfm_recency = %s,
-              rfm_frequency = %s,
-              rfm_monetary = %s,
-              rfm_segment = %s,
-              updated_at = NOW()
-            WHERE id = %s
-            """,
-            (r, f, m, segment, customer_id),
-        )
+        if include_rfm_updated_at:
+            cursor.execute(
+                """
+                UPDATE customers
+                SET
+                  rfm_recency = %s,
+                  rfm_frequency = %s,
+                  rfm_monetary = %s,
+                  rfm_segment = %s,
+                  rfm_updated_at = NOW(),
+                  updated_at = NOW()
+                WHERE id = %s
+                """,
+                (r, f, m, segment, customer_id),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE customers
+                SET
+                  rfm_recency = %s,
+                  rfm_frequency = %s,
+                  rfm_monetary = %s,
+                  rfm_segment = %s,
+                  updated_at = NOW()
+                WHERE id = %s
+                """,
+                (r, f, m, segment, customer_id),
+            )
         cursor.execute("RELEASE SAVEPOINT sp_customer")
         return segment, True
-    except Exception as e:
-        try:
-            cursor.execute("ROLLBACK TO SAVEPOINT sp_customer")
-        except Exception:
-            pass
-        logger.error(f"Failed to process customer {customer_id}", exc_info=True)
+    except Exception as exc:
+        if cursor is not None:
+            try:
+                cursor.execute("ROLLBACK TO SAVEPOINT sp_customer")
+                cursor.execute("RELEASE SAVEPOINT sp_customer")
+            except Exception:
+                logger.error("rfm_customer_savepoint_recovery_failed")
+        logger.error(
+            "rfm_customer_processing_failed",
+            extra={"error_type": type(exc).__name__},
+        )
         return "", False
+    finally:
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                logger.warning("rfm_customer_cursor_close_failed")
 
 
 # ---------------------------------------------------------------------------
@@ -224,8 +346,10 @@ def run(store_id: str) -> dict:
 
     db = None
     result = {
+        "success": False,
         "processed_count": 0,
         "failed_customer_ids": [],
+        "failed_count": 0,
         "segment_distribution": {
             "champion": 0,
             "loyal": 0,
@@ -233,26 +357,35 @@ def run(store_id: str) -> dict:
             "hibernating": 0,
             "lost": 0,
         },
+        "error": None,
     }
 
     try:
         database_url = os.getenv("DATABASE_URL")
         if not database_url:
             logger.error("DATABASE_URL environment variable is not set.")
+            result["error"] = "database_url_missing"
             return result
 
         db = psycopg2.connect(database_url)
         result = calculate_rfm_for_all_customers(store_id, db)
 
-    except Exception as e:
-        logger.error(f"RFM sync job failed for store {store_id}", exc_info=True)
+    except Exception as exc:
+        result["error"] = "connection_or_job_failed"
+        logger.error(
+            "rfm_sync_job_failed",
+            extra={"store_id": store_id, "error_type": type(exc).__name__},
+        )
 
     finally:
         if db is not None:
             try:
                 db.close()
-            except Exception as e:
-                logger.error("Failed to cleanly close database connection", exc_info=True)
+            except Exception as exc:
+                logger.error(
+                    "rfm_connection_close_failed",
+                    extra={"error_type": type(exc).__name__},
+                )
 
     return result
 

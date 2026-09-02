@@ -3,7 +3,9 @@
 **Objective:** This document serves as the strict, single source of truth and authoritative contract between the Backend ingestion endpoint (2.BE1.6), the future JavaScript tracking pixel, and the ML feature engineering pipeline (`pipeline.py`). 
 
 > **Warning**
-> Any mismatch between this spec and `pipeline.py` is considered a critical system defect. Feature names must match exactly.
+> Any mismatch between this spec and `pipeline.py` is considered a critical
+> system defect. Canonical output feature names must match exactly. Only the
+> explicit ingestion aliases documented below are accepted.
 
 ---
 
@@ -11,6 +13,11 @@
 
 ### 1.1 Root Event Structure
 All events MUST follow this exact envelope. No silent field transformations are allowed across the system boundary.
+
+Event names on the wire use the uppercase values in section 2. After backend
+validation, `event_processor.py` explicitly normalises them to lowercase for
+Python feature consumers. Database rows may expose `created_at`; the processor
+accepts that storage alias but always emits the canonical `timestamp` field.
 
 ```typescript
 {
@@ -158,6 +165,10 @@ All events MUST follow this exact envelope. No silent field transformations are 
 }
 ```
 
+`EXIT_INTENT` is used with checkout progress to calculate
+`abandoned_at_shipping_reveal`. It is not the source of
+`cursor_hesitation` and must not be converted into a hesitation count.
+
 ### 2.14 `FAILED_PAYMENT`
 ```json
 "payload": {
@@ -231,12 +242,43 @@ All events MUST follow this exact envelope. No silent field transformations are 
 29. `copied_product_title`
 30. `cart_value_vs_avg_order_value_ratio`
 
+`cursor_hesitation` is the canonical 0-10 score used by M1, M2, and M5. It is
+calculated from the longest matched `FIELD_FOCUS` to `FIELD_BLUR` duration:
+
+```text
+min(floor(max_focus_blur_duration_ms / 1000), 10)
+```
+
+Missing or invalid focus/blur pairs produce `0`. The M1 prediction boundary
+temporarily accepts `cursor_hesitation_count` as a same-unit legacy alias, but
+the pipeline, model trainers, new APIs, and database integrations must emit
+`cursor_hesitation` only. The canonical value wins if both are supplied.
+
+### 3.3 M4 Churn Feature Contract
+
+M4 does not consume the 30-feature shopper vector above. Its assignment
+heading says 24 features but names exactly 21. The named 21 are authoritative;
+three undocumented inputs must not be invented. The canonical ordered list is
+defined by `FEATURE_COLUMNS` in `python/src/models/churn/train.py` and repeated
+in `docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md`.
+
+Only these same-unit legacy aliases are accepted at the Python boundary:
+
+```text
+sms_click_rate -> sms_click_rate_30d
+site_visit_frequency_delta -> site_visit_delta
+browse_to_cart_trend -> browse_to_cart_conversion_trend
+```
+
+New integrations must send canonical names. A canonical value wins if both
+forms are present.
+
 ---
 
 ## 4. Checkout Step Normalisation
 
 ### 4.1 Purpose & Rules
-Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown step MUST safely fallback to `-1` without breaking the pipeline.
+Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown step MUST safely fall back to `0` (not reached/unknown) without breaking the pipeline.
 
 ### 4.2 Normalised Scale
 | Step Index | Meaning |
@@ -273,9 +315,11 @@ Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown
 ## 5. System Boundaries
 
 - **Pixel (Future JS SDK):** Only emits events. No transformation logic beyond the envelope.
-- **Backend (2.BE1.6):** Validates and stores events. Normalises checkout steps. Forwards clean events to the ML pipeline.
-- **ML Pipeline (`pipeline.py`):** Consumes normalised events only. Computes the 30-feature vector strictly as defined.
+- **Backend (2.BE1.6):** Validates and stores events. Normalizes checkout steps. Forwards clean events to the ML pipeline.
+- **ML Pipeline (`pipeline.py`):** Consumes normalized events only. Computes the 30-feature vector strictly as defined.
 
-## 6. Approval
-- **Author:** Okanlawon David
-- **Shared With:** Afolabi (Backend), Samuel (ML Pipeline)
+## 6. Status
+
+This contract is the shared reference for Backend ingestion and Python feature
+engineering. Changes require coordinated review because feature order, name,
+unit, or default changes can invalidate trained models.

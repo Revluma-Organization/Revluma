@@ -7,6 +7,7 @@ convenience sensitivities.
 
 import os
 import sys
+import logging
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -17,6 +18,9 @@ import mlflow
 import mlflow.sklearn
 import tempfile
 import pickle
+
+
+logger = logging.getLogger("rev.models.sensitivity.train")
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 from src.config.mlflow_config import get_or_create_experiment
@@ -35,6 +39,9 @@ from src.features.event_processor import group_events_by_session
 # Minimum customer records required for real-data training.
 # records with recovery outcomes."
 MIN_REAL_RECORDS = 500
+MIN_AUC_ROC = 0.75
+MIN_F1 = 0.65
+SYNTHETIC_GENERATOR_VERSION = "2.0"
 
 FEATURES = [
     "past_orders_with_coupon_pct", "visited_coupon_page", "searched_discount_terms",
@@ -53,46 +60,65 @@ CONVENIENCE_DRIVEN_ACTIONS = {"FRICTION_FIX", "HYBRID"}
 
 def _generate_synthetic_sensitivity_data(n: int = 3000) -> pd.DataFrame:
     """
-    Generates synthetic session data for M2 training.
-    Includes ~15% stochastic noise to simulate real-world uncertainty.
+    Generates correlated, noisy behavioral session data for M2 training.
     """
-    np.random.seed(42)
+    if n < 1:
+        raise ValueError("n must be at least 1")
 
-    # --- Generate Features ---
-    # past_orders_with_coupon_pct: 0.0 to 1.0 ratio
-    past_orders_with_coupon_pct = np.random.uniform(0.0, 1.0, n)
-    visited_coupon_page = np.random.choice([False, True], n, p=[0.7, 0.3])
-    searched_discount_terms = np.random.choice([False, True], n, p=[0.85, 0.15])
-    cursor_hesitation = np.random.poisson(lam=1.5, size=n)
-    abandoned_at_shipping_reveal = np.random.choice([False, True], n, p=[0.8, 0.2])
-    checkout_step_reached = np.random.randint(1, 5, n)
-    scroll_depth_pct = np.random.uniform(10.0, 100.0, n)
-    tab_switch_count = np.random.poisson(lam=1.0, size=n)
+    rng = np.random.default_rng(42)
+    price_friction = rng.beta(2.0, 3.0, n)
+    convenience_friction = rng.beta(1.8, 3.2, n)
+    engagement = rng.beta(2.4, 1.9, n)
 
-    # PSS logic: strong influence from past_orders_with_coupon_pct and hesitations
-    # Noise added to create realistic overlaps.
-    pss_base = (
-        (past_orders_with_coupon_pct * 40) +
-        (visited_coupon_page * 20) +
-        (searched_discount_terms * 15) +
-        np.clip(cursor_hesitation * 5, 0, 15) +
-        np.clip(tab_switch_count * 2, 0, 10) +
-        np.random.normal(0, 10, n)
+    past_orders_with_coupon_pct = np.clip(
+        0.08 + 0.78 * price_friction + rng.normal(0, 0.12, n), 0, 1
     )
-    
-    # CSS logic: High when early checkout abandonment, low scroll depth, shipping-step dropoff
-    css_base = (
-        ((5 - checkout_step_reached) * 15) +
-        ((100 - scroll_depth_pct) * 0.5) +
-        (abandoned_at_shipping_reveal * 25) +
-        np.random.normal(0, 10, n)
+    visited_coupon_page = rng.binomial(
+        1, np.clip(0.05 + 0.65 * price_friction, 0, 0.85)
     )
+    searched_discount_terms = rng.binomial(
+        1, np.clip(0.02 + 0.42 * price_friction, 0, 0.65)
+    )
+    cursor_hesitation = np.clip(
+        rng.poisson(0.25 + 2.0 * price_friction + 2.2 * convenience_friction),
+        0,
+        10,
+    )
+    checkout_step_reached = np.clip(
+        np.floor(1 + 4 * engagement + rng.normal(0, 0.75, n)), 1, 4
+    ).astype(int)
+    shipping_probability = np.clip(
+        0.03 + 0.58 * convenience_friction * (checkout_step_reached >= 3),
+        0,
+        0.7,
+    )
+    abandoned_at_shipping_reveal = rng.binomial(1, shipping_probability)
+    scroll_depth_pct = np.clip(
+        15 + 78 * engagement - 18 * convenience_friction + rng.normal(0, 12, n),
+        0,
+        100,
+    )
+    tab_switch_count = rng.poisson(0.25 + 2.5 * price_friction, n)
 
-    pss_score = (pss_base / 100.0).clip(0, 1)
-    css_score = (css_base / 100.0).clip(0, 1)
-
-    pss_label = (pss_score > 0.5).astype(int)
-    css_label = (css_score > 0.5).astype(int)
+    pss_log_odds = (
+        -3.2
+        + 5.0 * past_orders_with_coupon_pct
+        + 1.2 * visited_coupon_page
+        + 1.5 * searched_discount_terms
+        + 0.14 * cursor_hesitation
+        + 0.18 * tab_switch_count
+        + rng.normal(0, 0.4, n)
+    )
+    css_log_odds = (
+        -3.2
+        + 2.3 * abandoned_at_shipping_reveal
+        + 0.8 * (5 - checkout_step_reached)
+        + 0.018 * (100 - scroll_depth_pct)
+        + 0.15 * cursor_hesitation
+        + rng.normal(0, 0.4, n)
+    )
+    pss_label = rng.binomial(1, 1 / (1 + np.exp(-pss_log_odds)))
+    css_label = rng.binomial(1, 1 / (1 + np.exp(-css_log_odds)))
 
     return pd.DataFrame({
         "past_orders_with_coupon_pct": past_orders_with_coupon_pct,
@@ -280,7 +306,7 @@ def load_training_data(db_connection=None) -> tuple:
             or succeeds but finds zero rows.
     """
     if db_connection is None:
-        print("[M2] No db_connection provided — using synthetic data.")
+        logger.info("m2_synthetic_training_data_selected")
         return _generate_synthetic_sensitivity_data(), False, False
 
     real_df = _load_real_sensitivity_rows(db_connection)
@@ -295,14 +321,15 @@ def load_training_data(db_connection=None) -> tuple:
 
     below_minimum = len(real_df) < MIN_REAL_RECORDS
     if below_minimum:
-        print(
-            f"[M2] WARNING: training on {len(real_df)} real customer records, "
-            f"below the recommended minimum of {MIN_REAL_RECORDS}. Proceeding "
-            f"per strict real-data policy — treat PSS/CSS metrics as "
-            f"provisional, not production-reliable."
+        logger.warning(
+            "m2_training_data_below_minimum",
+            extra={
+                "record_count": len(real_df),
+                "minimum_record_count": MIN_REAL_RECORDS,
+            },
         )
     else:
-        print(f"[M2] Training on {len(real_df)} real customer records.")
+        logger.info("m2_real_training_data_selected", extra={"record_count": len(real_df)})
 
     return real_df, True, below_minimum
 
@@ -310,20 +337,38 @@ def load_training_data(db_connection=None) -> tuple:
 def build_pss_model() -> GradientBoostingClassifier:
     """Builds the Gradient Boosting Classifier for Price Sensitivity Score."""
     return GradientBoostingClassifier(
-        n_estimators=100,
-        max_depth=3,
-        learning_rate=0.1,
-        random_state=42
+        n_estimators=160,
+        max_depth=2,
+        learning_rate=0.05,
+        min_samples_leaf=20,
+        subsample=0.85,
+        random_state=42,
     )
 
 
 def build_css_model() -> GradientBoostingClassifier:
     """Builds the Gradient Boosting Classifier for Convenience Sensitivity Score."""
     return GradientBoostingClassifier(
-        n_estimators=100,
-        max_depth=3,
-        learning_rate=0.1,
-        random_state=42
+        n_estimators=160,
+        max_depth=2,
+        learning_rate=0.05,
+        min_samples_leaf=20,
+        subsample=0.85,
+        random_state=42,
+    )
+
+
+def _is_production_eligible(
+    used_real_data: bool,
+    below_minimum: bool,
+    metrics: dict,
+) -> bool:
+    """Require sufficient real data and minimum classifier quality."""
+    return (
+        used_real_data
+        and not below_minimum
+        and metrics["auc_roc"] >= MIN_AUC_ROC
+        and metrics["f1"] >= MIN_F1
     )
 
 
@@ -343,7 +388,7 @@ def train(run_name: str = None, db_connection=None) -> dict:
     """
     get_or_create_experiment()
 
-    print("\n--- Loading M2 Training Data ---")
+    logger.info("m2_training_data_loading")
     data, used_real_data, below_minimum = load_training_data(db_connection)
 
     X = data[FEATURES]
@@ -363,38 +408,39 @@ def train(run_name: str = None, db_connection=None) -> dict:
     # -------------------------------------------------------------------------
     # Train PSS Model
     # -------------------------------------------------------------------------
-    print("Training PSS Model...")
+    logger.info("m2_pss_training_started")
     pss_model = build_pss_model()
     pss_model.fit(X_train_scaled, y_pss_train)
-    pss_metrics = _train_and_log_sensitivity_model(
+    pss_metrics, pss_run_id = _train_and_log_sensitivity_model(
         model=pss_model,
         X_train_scaled=X_train_scaled, X_test_scaled=X_test_scaled,
         y_train=y_pss_train, y_test=y_pss_test,
         target="pss", registered_name="sensitivity_pss",
         n_train=len(X_train), used_real_data=used_real_data,
         below_minimum=below_minimum, scaler=scaler,
+        run_name=f"{run_name}-pss" if run_name else None,
     )
 
-    print("Training CSS Model...")
+    logger.info("m2_css_training_started")
     css_model = build_css_model()
     css_model.fit(X_train_scaled, y_css_train)
-    css_metrics = _train_and_log_sensitivity_model(
+    css_metrics, css_run_id = _train_and_log_sensitivity_model(
         model=css_model,
         X_train_scaled=X_train_scaled, X_test_scaled=X_test_scaled,
         y_train=y_css_train, y_test=y_css_test,
         target="css", registered_name="sensitivity_css",
         n_train=len(X_train), used_real_data=used_real_data,
         below_minimum=below_minimum, scaler=scaler,
+        run_name=f"{run_name}-css" if run_name else None,
     )
 
-    print("\n===============================")
-    print("PSS Metrics:")
-    for k, v in pss_metrics.items():
-        print(f"  {k}: {v:.4f}")
-    print("\nCSS Metrics:")
-    for k, v in css_metrics.items():
-        print(f"  {k}: {v:.4f}")
-    print("===============================\n")
+    logger.info(
+        "m2_model_metrics",
+        extra={
+            "pss_metrics": {key: float(value) for key, value in pss_metrics.items()},
+            "css_metrics": {key: float(value) for key, value in css_metrics.items()},
+        },
+    )
 
     return {
         "pss_model": pss_model,
@@ -403,6 +449,17 @@ def train(run_name: str = None, db_connection=None) -> dict:
         "css_metrics": css_metrics,
         "used_real_data": used_real_data,
         "below_minimum_threshold": below_minimum,
+        "production_eligible": _is_production_eligible(
+            used_real_data,
+            below_minimum,
+            pss_metrics,
+        ) and _is_production_eligible(
+            used_real_data,
+            below_minimum,
+            css_metrics,
+        ),
+        "pss_run_id": pss_run_id,
+        "css_run_id": css_run_id,
     }
 
 
@@ -418,7 +475,8 @@ def _train_and_log_sensitivity_model(
     used_real_data: bool,
     below_minimum: bool,
     scaler: StandardScaler,
-) -> dict:
+    run_name: str | None = None,
+) -> tuple[dict, str]:
     """Evaluates a trained sensitivity model and logs it to MLflow.
 
     Extracted from train() to keep that function under 80 lines.
@@ -447,19 +505,42 @@ def _train_and_log_sensitivity_model(
         "f1": f1_score(y_test, y_pred),
         "auc_roc": roc_auc_score(y_test, y_prob),
     }
-    with mlflow.start_run(run_name=f"m2-{target}-training"):
+    production_eligible = _is_production_eligible(
+        used_real_data,
+        below_minimum,
+        metrics,
+    )
+    with mlflow.start_run(run_name=run_name or f"m2-{target}-training") as run:
         mlflow.set_tag("target", target)
         mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
         mlflow.set_tag("below_minimum_threshold", str(below_minimum))
+        mlflow.set_tag("quality_gates_passed", str(
+            metrics["auc_roc"] >= MIN_AUC_ROC and metrics["f1"] >= MIN_F1
+        ).lower())
+        mlflow.set_tag("production_eligible", str(production_eligible).lower())
+        if not used_real_data:
+            mlflow.set_tag("synthetic_generator_version", SYNTHETIC_GENERATOR_VERSION)
+            mlflow.set_tag("synthetic_only_not_for_registration", "true")
         mlflow.log_param("n_training_samples", n_train)
+        mlflow.log_param("n_estimators", model.n_estimators)
+        mlflow.log_param("learning_rate", model.learning_rate)
+        mlflow.log_param("max_depth", model.max_depth)
+        mlflow.log_param("min_samples_leaf", model.min_samples_leaf)
+        mlflow.log_param("subsample", model.subsample)
+        mlflow.log_metric("label_positive_rate", float(y_train.mean()))
         mlflow.log_metrics(metrics)
-        mlflow.sklearn.log_model(model, "model", registered_model_name=registered_name)
+        registration = (
+            {"registered_model_name": registered_name}
+            if production_eligible
+            else {}
+        )
+        mlflow.sklearn.log_model(model, "model", **registration)
         with tempfile.TemporaryDirectory() as tmp_dir:
             scaler_path = os.path.join(tmp_dir, "scaler.pkl")
             with open(scaler_path, "wb") as f:
                 pickle.dump(scaler, f)
             mlflow.log_artifact(scaler_path, "scaler")
-    return metrics
+    return metrics, run.info.run_id
 
 
 if __name__ == "__main__":

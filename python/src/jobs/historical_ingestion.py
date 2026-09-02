@@ -1,4 +1,4 @@
-﻿"""
+"""
 Day 1 Cold-Start Historical Ingestion
 =======================================
 Runs once per store immediately after initial connection.
@@ -13,257 +13,443 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Any, Callable
 
 from sqlalchemy import text
+
+from .rfm_sync import run as run_rfm_sync
 
 logger = logging.getLogger("rev.historical_ingestion")
 
 
+class OptionalTableUnavailable(RuntimeError):
+    """Raised when backend-owned Phase 2 persistence has not been migrated yet."""
+
+
 def run_historical_ingestion(store_id: str, db, lookback_months: int = 12) -> dict:
+    """Backfill RFM, baselines, strategic memories, and segment distribution.
+
+    Each step is idempotent and commits independently. A failed step is rolled
+    back before the next begins, so one optional backend table cannot poison the
+    SQLAlchemy session or hide successful work from the other steps.
     """
-    Main entry point. Called once per store on Day 1.
-
-    Runs four back-fill steps in order:
-      1. RFM scoring for all existing customers
-      2. Revenue and cart abandonment baseline computation
-      3. Strategic Memory seeding (3 entries)
-      4. Customer segment distribution snapshot
-
-    Any single step may fail without aborting the others. The returned
-    status reflects whether all, some, or none completed.
-
-    Returns:
-        dict -- summary:
-        {
-            "store_id": str,
-            "customers_scored": int,
-            "strategic_memories_seeded": int,
-            "baseline_established": bool,
-            "status": "complete" | "partial" | "failed"
-        }
-    """
-    logger.info("historical_ingestion_start", extra={"store_id": store_id, "lookback_months": lookback_months})
-
     result = {
         "store_id": store_id,
         "customers_scored": 0,
         "strategic_memories_seeded": 0,
         "baseline_established": False,
         "status": "complete",
+        "warnings": [],
     }
 
-    steps_completed = 0
-    steps_total = 4
-
-    try:
-        result["customers_scored"] = _backfill_rfm_scores(store_id, db, lookback_months)
-        steps_completed += 1
-    except Exception as e:
-        logger.error("rfm_backfill_failed", extra={"store_id": store_id, "error": str(e)}, exc_info=True)
-
-    try:
-        _establish_baselines(store_id, db, lookback_months)
-        result["baseline_established"] = True
-        steps_completed += 1
-    except Exception as e:
-        logger.error("baseline_failed", extra={"store_id": store_id, "error": str(e)}, exc_info=True)
-
-    try:
-        result["strategic_memories_seeded"] = _seed_strategic_memory(store_id, db, lookback_months)
-        steps_completed += 1
-    except Exception as e:
-        logger.error("strategic_memory_seed_failed", extra={"store_id": store_id, "error": str(e)}, exc_info=True)
-
-    try:
-        _snapshot_segment_distribution(store_id, db)
-        steps_completed += 1
-    except Exception as e:
-        logger.error("segment_snapshot_failed", extra={"store_id": store_id, "error": str(e)}, exc_info=True)
-
-    if steps_completed == steps_total:
-        result["status"] = "complete"
-    elif steps_completed == 0:
+    if not isinstance(lookback_months, int) or not 1 <= lookback_months <= 60:
         result["status"] = "failed"
-    else:
-        result["status"] = "partial"
+        result["warnings"].append("lookback_months must be an integer from 1 to 60.")
+        return result
 
-    logger.info("historical_ingestion_complete", extra=result)
+    logger.info(
+        "historical_ingestion_start",
+        extra={"store_id": store_id, "lookback_months": lookback_months},
+    )
+
+    completed = 0
+    attempted = 4
+
+    try:
+        result["customers_scored"] = _backfill_rfm_scores(store_id)
+        completed += 1
+    except Exception as exc:
+        _record_step_failure(db, result, "rfm_backfill_failed", exc)
+
+    completed += _run_db_step(
+        db,
+        result,
+        "baseline_failed",
+        lambda: _establish_baselines(store_id, db, lookback_months),
+        on_success=lambda _value: result.update(baseline_established=True),
+    )
+
+    completed += _run_db_step(
+        db,
+        result,
+        "strategic_memory_seed_failed",
+        lambda: _seed_strategic_memory(store_id, db, lookback_months),
+        on_success=lambda value: result.update(strategic_memories_seeded=int(value)),
+    )
+
+    completed += _run_db_step(
+        db,
+        result,
+        "segment_snapshot_failed",
+        lambda: _snapshot_segment_distribution(store_id, db),
+    )
+
+    result["status"] = (
+        "complete" if completed == attempted
+        else "failed" if completed == 0
+        else "partial"
+    )
+    logger.info(
+        "historical_ingestion_complete",
+        extra={
+            "store_id": store_id,
+            "status": result["status"],
+            "customers_scored": result["customers_scored"],
+            "strategic_memories_seeded": result["strategic_memories_seeded"],
+            "baseline_established": result["baseline_established"],
+            "warning_count": len(result["warnings"]),
+        },
+    )
     return result
 
 
-def _backfill_rfm_scores(store_id: str, db, lookback_months: int) -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_months * 30)
-    rows = db.execute(
-        text("""
-            SELECT c.id, MAX(o.created_at), COUNT(o.id), SUM(o.total_price)
-            FROM customers c
-            LEFT JOIN orders o ON o.customer_id = c.id
-                               AND o.store_id = :store_id
-                               AND o.created_at >= :cutoff
-            WHERE c.store_id = :store_id
-            GROUP BY c.id
-        """),
-        {"store_id": store_id, "cutoff": cutoff},
-    ).fetchall()
-
-    if not rows:
+def _run_db_step(
+    db,
+    result: dict,
+    event_name: str,
+    operation: Callable[[], Any],
+    on_success: Callable[[Any], None] | None = None,
+) -> int:
+    try:
+        value = operation()
+        db.commit()
+        if on_success:
+            on_success(value)
+        return 1
+    except Exception as exc:
+        _record_step_failure(db, result, event_name, exc)
         return 0
 
-    now = datetime.now(timezone.utc)
-    scored = 0
-    for row in rows:
-        customer_id = str(row[0])
-        last_order = row[1]
-        order_count = int(row[2] or 0)
-        total_spend = float(row[3] or 0)
 
-        days_since = (now - last_order.replace(tzinfo=timezone.utc)).days if last_order else 999
+def _record_step_failure(db, result: dict, event_name: str, exc: Exception) -> None:
+    try:
+        db.rollback()
+    except Exception:
+        logger.exception("historical_ingestion_rollback_failed")
+    logger.exception(event_name, extra={"error_type": type(exc).__name__})
+    if isinstance(exc, OptionalTableUnavailable):
+        result["warnings"].append(str(exc))
+    else:
+        result["warnings"].append(f"{event_name}: {type(exc).__name__}")
 
-        if days_since <= 30 and order_count >= 3 and total_spend >= 200:
-            segment = "champion"
-        elif days_since <= 60 and order_count >= 2:
-            segment = "loyal"
-        elif days_since > 180:
-            segment = "at_risk"
-        elif days_since > 365:
-            segment = "lost"
-        else:
-            segment = "potential_loyalist"
 
-        db.execute(
-            text("UPDATE customers SET rfm_segment = :seg, rfm_updated_at = NOW() WHERE id = :cid AND store_id = :sid"),
-            {"seg": segment, "cid": customer_id, "sid": store_id},
+def _backfill_rfm_scores(store_id: str) -> int:
+    summary = run_rfm_sync(store_id)
+    failed_ids = summary.get("failed_customer_ids", [])
+    if failed_ids:
+        raise RuntimeError(f"RFM refresh failed for {len(failed_ids)} customers.")
+    return int(summary.get("processed_count", 0))
+
+
+def _establish_baselines(store_id: str, db, lookback_months: int) -> bool:
+    if not _table_exists(db, "business_state_baselines"):
+        raise OptionalTableUnavailable(
+            "business_state_baselines is pending the backend Phase 2 migration."
         )
-        scored += 1
 
-    db.commit()
-    return scored
+    organization_id = _get_organization_id(store_id, db)
+    now = datetime.now(timezone.utc)
+    cutoff_30d = now - timedelta(days=30)
+    cutoff_90d = now - timedelta(days=90)
+    observation_start = now - timedelta(days=lookback_months * 30)
 
+    revenue_row = db.execute(
+        text("""
+            WITH daily_revenue AS (
+                SELECT DATE(ordered_at AT TIME ZONE 'UTC') AS order_day,
+                       SUM(total) AS revenue
+                FROM orders
+                WHERE store_id = :store_id
+                  AND ordered_at >= :cutoff_90d
+                GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
+            )
+            SELECT
+                AVG(revenue) FILTER (WHERE order_day >= DATE(:cutoff_30d)),
+                AVG(revenue)
+            FROM daily_revenue
+        """),
+        {
+            "store_id": store_id,
+            "cutoff_30d": cutoff_30d,
+            "cutoff_90d": cutoff_90d,
+        },
+    ).fetchone()
 
-def _establish_baselines(store_id: str, db, lookback_months: int) -> None:
-    cutoff_30d = datetime.now(timezone.utc) - timedelta(days=30)
-    cutoff_90d = datetime.now(timezone.utc) - timedelta(days=90)
-
-    row = db.execute(
+    cart_rate = db.execute(
         text("""
             SELECT
-                AVG(CASE WHEN created_at >= :c30 THEN total_price END) AS rev_30d,
-                AVG(CASE WHEN created_at >= :c90 THEN total_price END) AS rev_90d,
-                COUNT(CASE WHEN created_at >= :c30 AND status = 'abandoned' THEN 1 END)::float
-                    / NULLIF(COUNT(CASE WHEN created_at >= :c30 THEN 1 END), 0) AS abandon_rate
-            FROM orders
-            WHERE store_id = :sid
+                COUNT(*) FILTER (WHERE status = 'abandoned')::float
+                / NULLIF(COUNT(*), 0)
+            FROM abandoned_carts
+            WHERE store_id = :store_id
+              AND abandoned_at >= :cutoff_30d
         """),
-        {"sid": store_id, "c30": cutoff_30d, "c90": cutoff_90d},
-    ).fetchone()
+        {"store_id": store_id, "cutoff_30d": cutoff_30d},
+    ).scalar()
+
+    event_rate = db.execute(
+        text("""
+            SELECT COUNT(*)::float / (30 * 24 * 12)
+            FROM events
+            WHERE store_id = :store_id
+              AND created_at >= :cutoff_30d
+        """),
+        {"store_id": store_id, "cutoff_30d": cutoff_30d},
+    ).scalar()
+
+    returning_rate = db.execute(
+        text("""
+            SELECT COUNT(*) FILTER (WHERE orders_count > 1)::float
+                   / NULLIF(COUNT(*), 0)
+            FROM customers
+            WHERE store_id = :store_id
+              AND status = 'active'
+        """),
+        {"store_id": store_id},
+    ).scalar()
+
+    weekday_rows = db.execute(
+        text("""
+            WITH daily_revenue AS (
+                SELECT DATE(ordered_at AT TIME ZONE 'UTC') AS order_day,
+                       SUM(total)::float AS revenue
+                FROM orders
+                WHERE store_id = :store_id
+                  AND ordered_at >= :cutoff_90d
+                GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
+            )
+            SELECT EXTRACT(DOW FROM order_day)::int AS day_of_week,
+                   AVG(revenue), COALESCE(STDDEV_SAMP(revenue), 0), COUNT(*)
+            FROM daily_revenue
+            GROUP BY day_of_week
+            ORDER BY day_of_week
+        """),
+        {"store_id": store_id, "cutoff_90d": cutoff_90d},
+    ).fetchall()
+    weekday_baseline = {
+        str(int(row[0])): {
+            "average_revenue": float(row[1] or 0),
+            "stddev_revenue": float(row[2] or 0),
+            "sample_days": int(row[3] or 0),
+        }
+        for row in weekday_rows
+    }
 
     db.execute(
         text("""
-            INSERT INTO business_state_baselines (store_id, avg_revenue_30d, avg_revenue_90d, cart_abandonment_rate_30d, computed_at)
-            VALUES (:sid, :r30, :r90, :cart, NOW())
-            ON CONFLICT (store_id) DO UPDATE SET
-                avg_revenue_30d           = EXCLUDED.avg_revenue_30d,
-                avg_revenue_90d           = EXCLUDED.avg_revenue_90d,
+            INSERT INTO business_state_baselines (
+                id, organization_id, event_rate_5m_30d, revenue_avg_30d,
+                revenue_avg_90d, cart_abandonment_rate_30d,
+                returning_customer_rate_30d, day_of_week_baseline,
+                seasonal_baseline, observation_started_at,
+                observation_ended_at, computed_at, metadata,
+                created_at, updated_at
+            ) VALUES (
+                :id, :organization_id, :event_rate, :revenue_30d,
+                :revenue_90d, :cart_rate, :returning_rate,
+                CAST(:weekday_baseline AS JSONB), '{}'::JSONB,
+                :observation_start, :observation_end, :computed_at,
+                CAST(:metadata AS JSONB), NOW(), NOW()
+            )
+            ON CONFLICT (organization_id) DO UPDATE SET
+                event_rate_5m_30d = EXCLUDED.event_rate_5m_30d,
+                revenue_avg_30d = EXCLUDED.revenue_avg_30d,
+                revenue_avg_90d = EXCLUDED.revenue_avg_90d,
                 cart_abandonment_rate_30d = EXCLUDED.cart_abandonment_rate_30d,
-                computed_at               = EXCLUDED.computed_at
+                returning_customer_rate_30d = EXCLUDED.returning_customer_rate_30d,
+                day_of_week_baseline = EXCLUDED.day_of_week_baseline,
+                observation_started_at = EXCLUDED.observation_started_at,
+                observation_ended_at = EXCLUDED.observation_ended_at,
+                computed_at = EXCLUDED.computed_at,
+                metadata = EXCLUDED.metadata,
+                updated_at = NOW()
         """),
-        {"sid": store_id, "r30": float(row[0] or 0), "r90": float(row[1] or 0), "cart": float(row[2] or 0)},
+        {
+            "id": str(uuid.uuid4()),
+            "organization_id": organization_id,
+            "event_rate": float(event_rate or 0),
+            "revenue_30d": float(revenue_row[0] or 0) if revenue_row else 0.0,
+            "revenue_90d": float(revenue_row[1] or 0) if revenue_row else 0.0,
+            "cart_rate": float(cart_rate or 0),
+            "returning_rate": float(returning_rate or 0),
+            "weekday_baseline": json.dumps(weekday_baseline),
+            "observation_start": observation_start,
+            "observation_end": now,
+            "computed_at": now,
+            "metadata": json.dumps({"store_id": store_id, "lookback_months": lookback_months}),
+        },
     )
-    db.commit()
+    return True
 
 
 def _seed_strategic_memory(store_id: str, db, lookback_months: int) -> int:
+    organization_id = _get_organization_id(store_id, db)
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_months * 30)
     seeded = 0
 
     day_row = db.execute(
         text("""
-            SELECT EXTRACT(DOW FROM created_at) AS dow, SUM(total_price) AS rev
-            FROM orders WHERE store_id = :sid AND created_at >= :cutoff
-            GROUP BY dow ORDER BY rev DESC LIMIT 1
+            SELECT EXTRACT(DOW FROM ordered_at)::int AS day_of_week,
+                   SUM(total) AS revenue
+            FROM orders
+            WHERE store_id = :store_id
+              AND ordered_at >= :cutoff
+            GROUP BY day_of_week
+            ORDER BY revenue DESC
+            LIMIT 1
         """),
-        {"sid": store_id, "cutoff": cutoff},
+        {"store_id": store_id, "cutoff": cutoff},
     ).fetchone()
     if day_row:
         days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        _upsert_memory(store_id, db, "best_revenue_day", {
-            "day_of_week": days[int(day_row[0])],
-            "avg_revenue": float(day_row[1]),
-            "insight": f"Historically, {days[int(day_row[0])]} generates the highest revenue.",
-        })
+        day_name = days[int(day_row[0])]
+        _upsert_memory(
+            organization_id,
+            db,
+            "historical.best_revenue_day",
+            {
+                "day_of_week": day_name,
+                "revenue": float(day_row[1] or 0),
+                "insight": f"Historically, {day_name} generates the highest revenue.",
+            },
+        )
         seeded += 1
 
-    cat_row = db.execute(
-        text("""
-            SELECT oi.product_type, COUNT(oi.id) AS cnt
-            FROM order_items oi JOIN orders o ON o.id = oi.order_id
-            WHERE o.store_id = :sid AND o.created_at >= :cutoff
-            GROUP BY oi.product_type ORDER BY cnt DESC LIMIT 1
-        """),
-        {"sid": store_id, "cutoff": cutoff},
-    ).fetchone()
-    if cat_row:
-        _upsert_memory(store_id, db, "best_product_category", {
-            "category": cat_row[0],
-            "order_count": int(cat_row[1]),
-            "insight": f"'{cat_row[0]}' is the most frequently ordered product category.",
-        })
-        seeded += 1
+    if _table_exists(db, "order_items"):
+        category_row = db.execute(
+            text("""
+                SELECT product_type, COUNT(*) AS item_count
+                FROM order_items
+                WHERE store_id = :store_id
+                  AND ordered_at >= :cutoff
+                  AND product_type IS NOT NULL
+                GROUP BY product_type
+                ORDER BY item_count DESC
+                LIMIT 1
+            """),
+            {"store_id": store_id, "cutoff": cutoff},
+        ).fetchone()
+        if category_row:
+            _upsert_memory(
+                organization_id,
+                db,
+                "historical.best_product_category",
+                {
+                    "category": category_row[0],
+                    "item_count": int(category_row[1]),
+                    "insight": f"'{category_row[0]}' is the most frequently ordered category.",
+                },
+            )
+            seeded += 1
 
     hour_row = db.execute(
         text("""
-            SELECT EXTRACT(HOUR FROM created_at) AS hr, COUNT(*) AS cnt
-            FROM orders WHERE store_id = :sid AND status = 'abandoned' AND created_at >= :cutoff
-            GROUP BY hr ORDER BY cnt DESC LIMIT 1
+            SELECT EXTRACT(HOUR FROM abandoned_at)::int AS hour_utc,
+                   COUNT(*) AS abandoned_count
+            FROM abandoned_carts
+            WHERE store_id = :store_id
+              AND abandoned_at >= :cutoff
+            GROUP BY hour_utc
+            ORDER BY abandoned_count DESC
+            LIMIT 1
         """),
-        {"sid": store_id, "cutoff": cutoff},
+        {"store_id": store_id, "cutoff": cutoff},
     ).fetchone()
     if hour_row:
-        peak = int(hour_row[0])
-        _upsert_memory(store_id, db, "peak_abandonment_hour", {
-            "hour_utc": peak,
-            "abandon_count": int(hour_row[1]),
-            "insight": f"Cart abandonment peaks at {peak:02d}:00 UTC.",
-        })
+        peak_hour = int(hour_row[0])
+        _upsert_memory(
+            organization_id,
+            db,
+            "historical.peak_abandonment_hour",
+            {
+                "hour_utc": peak_hour,
+                "abandon_count": int(hour_row[1]),
+                "insight": f"Cart abandonment peaks at {peak_hour:02d}:00 UTC.",
+            },
+        )
         seeded += 1
 
     return seeded
 
 
-def _upsert_memory(store_id: str, db, memory_type: str, payload: dict) -> None:
+def _upsert_memory(organization_id: str, db, memory_key: str, payload: dict) -> None:
     db.execute(
         text("""
-            INSERT INTO strategic_memory (store_id, memory_type, payload, created_at, updated_at)
-            VALUES (:sid, :mt, :payload, NOW(), NOW())
-            ON CONFLICT (store_id, memory_type) DO UPDATE SET
-                payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at
+            INSERT INTO merchant_memories (
+                id, organization_id, memory_type, memory_key, memory_value,
+                memory_source, authority_level, confidence, importance,
+                is_active, use_count, created_at, updated_at
+            ) VALUES (
+                :id, :organization_id, 'strategic', :memory_key,
+                CAST(:memory_value AS JSONB), 'historical_ingestion',
+                2, 0.8, 3, TRUE, 0, NOW(), NOW()
+            )
+            ON CONFLICT (organization_id, memory_key) DO UPDATE SET
+                memory_value = EXCLUDED.memory_value,
+                confidence = EXCLUDED.confidence,
+                is_active = TRUE,
+                updated_at = NOW()
         """),
-        {"sid": store_id, "mt": memory_type, "payload": json.dumps(payload)},
+        {
+            "id": str(uuid.uuid4()),
+            "organization_id": organization_id,
+            "memory_key": memory_key,
+            "memory_value": json.dumps(payload),
+        },
     )
-    db.commit()
 
 
 def _snapshot_segment_distribution(store_id: str, db) -> None:
+    if not _table_exists(db, "business_state_baselines"):
+        raise OptionalTableUnavailable(
+            "business_state_baselines is pending the backend Phase 2 migration."
+        )
+
+    organization_id = _get_organization_id(store_id, db)
     rows = db.execute(
         text("""
-            SELECT rfm_segment, COUNT(*) AS cnt
+            SELECT rfm_segment, COUNT(*)
             FROM customers
-            WHERE store_id = :sid AND rfm_segment IS NOT NULL
+            WHERE store_id = :store_id
+              AND rfm_segment IS NOT NULL
             GROUP BY rfm_segment
         """),
-        {"sid": store_id},
+        {"store_id": store_id},
     ).fetchall()
+    distribution = {str(row[0]): int(row[1]) for row in rows}
 
-    for row in rows:
+    updated = db.execute(
+        text("""
+            UPDATE business_state_baselines
+            SET segment_distribution = CAST(:distribution AS JSONB),
+                updated_at = NOW()
+            WHERE organization_id = :organization_id
+        """),
+        {
+            "distribution": json.dumps(distribution),
+            "organization_id": organization_id,
+        },
+    )
+    if getattr(updated, "rowcount", 0) == 0:
+        raise RuntimeError("A baseline must be established before its segment snapshot.")
+
+
+def _get_organization_id(store_id: str, db) -> str:
+    organization_id = db.execute(
+        text("SELECT organization_id FROM stores WHERE id = :store_id LIMIT 1"),
+        {"store_id": store_id},
+    ).scalar()
+    if not organization_id:
+        raise ValueError("Store does not exist or has no organisation.")
+    return str(organization_id)
+
+
+def _table_exists(db, table_name: str) -> bool:
+    return bool(
         db.execute(
-            text("""
-                INSERT INTO customer_segments (store_id, segment, customer_count, snapshotted_at)
-                VALUES (:sid, :seg, :cnt, NOW())
-                ON CONFLICT (store_id, segment) DO UPDATE SET
-                    customer_count = EXCLUDED.customer_count,
-                    snapshotted_at = EXCLUDED.snapshotted_at
-            """),
-            {"sid": store_id, "seg": row[0], "cnt": int(row[1])},
-        )
-    db.commit()
+            text("SELECT to_regclass(:table_name) IS NOT NULL"),
+            {"table_name": f"public.{table_name}"},
+        ).scalar()
+    )

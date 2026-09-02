@@ -24,6 +24,7 @@ import sys
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 # Root of the python/ package
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -35,6 +36,7 @@ RESULTS_PATH = Path(__file__).parent / "results" / "llm_judge_results.json"
 MIN_CORRECTNESS   = 7.0
 MIN_ACTIONABILITY = 6.0
 MAX_HALLUCINATION = 0.0   # zero tolerance
+JUDGE_MODEL = "claude-haiku-4-5-20251001"
 
 
 def _is_ci_without_key() -> bool:
@@ -43,25 +45,68 @@ def _is_ci_without_key() -> bool:
 
 
 def _get_rev_response(question: str) -> str:
-    """
-    Calls Rev's compose_knowledge() to generate a response to the question.
-    Falls back to a short stub if the import fails (e.g., missing DB env).
-    """
-    try:
-        from src.agents.responder import compose_knowledge
-        return compose_knowledge(question)
-    except Exception:
-        # During benchmark runs without a full environment, return a stub that
-        # will score low -- this surfaces the issue rather than hiding it.
-        return "I am unable to generate a response at this time."
+    """Generate Rev's response through the real non-store knowledge path."""
+    from src.agents.responder import compose_knowledge
+    from src.agents.understanding import MODE_EXPLANATION, Understanding
+
+    understanding = Understanding(
+        intent="strategy",
+        goal="answer the ecommerce strategy question accurately",
+        requires_store_data=False,
+        requires_web=False,
+        requires_action=False,
+        response_mode=MODE_EXPLANATION,
+        domains=[],
+        confidence=1.0,
+        reasoning="benchmark scenario",
+    )
+    return compose_knowledge(
+        question,
+        understanding,
+        history_text="",
+        memories=[],
+        has_store=False,
+    )
 
 
-def _judge_response(question: str, rev_response: str, ground_truth: str, required_keywords: list, must_not_contain: list) -> dict:
+def _validate_scores(raw_scores: object) -> dict:
+    """Validate the independent judge response before it becomes evidence."""
+    if not isinstance(raw_scores, dict):
+        raise ValueError("Judge response must be a JSON object.")
+    if set(raw_scores) != {"correctness", "hallucination", "actionability"}:
+        raise ValueError("Judge response has an unexpected schema.")
+
+    correctness = raw_scores["correctness"]
+    actionability = raw_scores["actionability"]
+    hallucination = raw_scores["hallucination"]
+    if isinstance(correctness, bool) or not isinstance(correctness, (int, float)):
+        raise ValueError("Judge correctness must be numeric.")
+    if isinstance(actionability, bool) or not isinstance(actionability, (int, float)):
+        raise ValueError("Judge actionability must be numeric.")
+    if not 0 <= correctness <= 10 or not 0 <= actionability <= 10:
+        raise ValueError("Judge scores must be between 0 and 10.")
+    if not isinstance(hallucination, bool):
+        raise ValueError("Judge hallucination must be boolean.")
+    return {
+        "correctness": float(correctness),
+        "hallucination": hallucination,
+        "actionability": float(actionability),
+    }
+
+
+def _judge_response(
+    question: str,
+    rev_response: str,
+    ground_truth: str,
+    required_keywords: list,
+    must_not_contain: list,
+) -> dict:
     """
     Uses a secondary Claude call to score Rev's response.
     Returns {"correctness": float, "hallucination": bool, "actionability": float}
 
-    Falls back to keyword-based heuristic scoring when the judge call fails.
+    A failed or malformed judge call fails the benchmark; synthetic scores are
+    never substituted for independent evaluation evidence.
     """
     import anthropic
 
@@ -81,22 +126,53 @@ Score the response strictly on:
 Return JSON only, no other text:
 {{"correctness": 0.0, "hallucination": false, "actionability": 0.0}}"""
 
-    try:
-        message = client.messages.create(
-            model="claude-3-5-haiku-20241022",
-            max_tokens=128,
-            messages=[{"role": "user", "content": prompt}],
+    message = client.messages.create(
+        model=JUDGE_MODEL,
+        max_tokens=128,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text_blocks = [
+        block.text
+        for block in message.content
+        if getattr(block, "type", "") == "text"
+    ]
+    if not text_blocks:
+        raise ValueError("Judge returned no text response.")
+    return _validate_scores(json.loads("".join(text_blocks).strip()))
+
+
+def _write_results(payload: dict) -> None:
+    """Atomically replace the previous evidence only after a complete run."""
+    RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=RESULTS_PATH.parent,
+        prefix="llm_judge_",
+        suffix=".json.tmp",
+        delete=False,
+    ) as output:
+        json.dump(payload, output, indent=2)
+        temporary_path = Path(output.name)
+    temporary_path.replace(RESULTS_PATH)
+
+
+class TestBenchmarkHelpers(unittest.TestCase):
+    def test_validate_scores_accepts_exact_valid_schema(self):
+        scores = _validate_scores(
+            {"correctness": 8, "hallucination": False, "actionability": 7.5}
         )
-        raw = message.content[0].text.strip()
-        return json.loads(raw)
-    except Exception:
-        # Heuristic fallback: keyword presence scoring
-        response_lower = rev_response.lower()
-        keyword_hits = sum(1 for kw in required_keywords if kw.lower() in response_lower)
-        hallucinated = any(phrase.lower() in response_lower for phrase in must_not_contain)
-        correctness = min(10.0, (keyword_hits / max(len(required_keywords), 1)) * 10)
-        actionability = min(10.0, correctness * 0.8)
-        return {"correctness": correctness, "hallucination": hallucinated, "actionability": actionability}
+
+        self.assertEqual(
+            scores,
+            {"correctness": 8.0, "hallucination": False, "actionability": 7.5},
+        )
+
+    def test_validate_scores_rejects_out_of_range_values(self):
+        with self.assertRaises(ValueError):
+            _validate_scores(
+                {"correctness": 11, "hallucination": False, "actionability": 7}
+            )
 
 
 class TestLLMJudgeBenchmark(unittest.TestCase):
@@ -110,8 +186,10 @@ class TestLLMJudgeBenchmark(unittest.TestCase):
         if _is_ci_without_key():
             raise unittest.SkipTest("ANTHROPIC_API_KEY not set -- skipping LLM judge benchmark")
 
-        with open(SCENARIOS_PATH, encoding="utf-8") as f:
+        with open(SCENARIOS_PATH, encoding="utf-8-sig") as f:
             cls.scenarios = json.load(f)
+        if len(cls.scenarios) < 20:
+            raise AssertionError("P2-C requires at least 20 benchmark scenarios.")
 
         cls.results = []
 
@@ -148,15 +226,14 @@ class TestLLMJudgeBenchmark(unittest.TestCase):
         avg_actionability = sum(actionability_scores) / len(actionability_scores)
 
         # Write results for tracking over time
-        RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(RESULTS_PATH, "w", encoding="utf-8") as f:
-            json.dump({
+        _write_results({
                 "run_at":              datetime.now(timezone.utc).isoformat(),
+                "judge_model":         JUDGE_MODEL,
                 "avg_correctness":     avg_correctness,
                 "hallucination_rate":  hallucination_rate,
                 "avg_actionability":   avg_actionability,
                 "scenarios":           self.results,
-            }, f, indent=2)
+            })
 
         self.assertGreaterEqual(avg_correctness, MIN_CORRECTNESS,
             f"Average correctness {avg_correctness:.2f} is below minimum {MIN_CORRECTNESS}")

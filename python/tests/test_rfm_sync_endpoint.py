@@ -28,20 +28,26 @@ VALID_KEY = "test-internal-key"
 STORE_ID = "3f9a1c22-77bd-4f0e-9d1b-2c4a6e8f0b31"
 
 EMPTY_RESULT = {
+    "success": True,
     "processed_count": 0,
     "failed_customer_ids": [],
+    "failed_count": 0,
     "segment_distribution": {
         "champion": 0, "loyal": 0, "at_risk": 0, "hibernating": 0, "lost": 0,
     },
+    "error": None,
 }
 
 BUSY_RESULT = {
+    "success": False,
     "processed_count": 1284,
     "failed_customer_ids": ["c-17", "c-402"],
+    "failed_count": 2,
     "segment_distribution": {
         "champion": 210, "loyal": 435, "at_risk": 301, "hibernating": 250,
         "lost": 88,
     },
+    "error": "customer_processing_failed",
 }
 
 
@@ -123,13 +129,19 @@ class TestResponseContract(RfmSyncEndpointTestCase):
             body = self._post({"store_id": STORE_ID}).json()
         self.assertEqual(body["processed_count"], 1284)
         self.assertEqual(body["failed_customer_ids"], ["c-17", "c-402"])
+        self.assertFalse(body["success"])
+        self.assertEqual(body["failed_count"], 2)
+        self.assertEqual(body["error"], "customer_processing_failed")
         self.assertEqual(body["segment_distribution"]["champion"], 210)
 
     def test_a_store_with_nothing_to_do_returns_zeroes_not_an_error(self):
         with patch.object(api, "_run_rfm_sync", return_value=EMPTY_RESULT):
             response = self._post({"store_id": STORE_ID})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["processed_count"], 0)
+        body = response.json()
+        self.assertEqual(body["processed_count"], 0)
+        self.assertTrue(body["success"])
+        self.assertIsNone(body["error"])
 
     def test_every_segment_in_the_job_contract_survives_serialisation(self):
         # These five keys are what the dashboard reads. A silent rename here

@@ -28,9 +28,9 @@ The discount percentage that historically:
 - `tss_score` (int, 0–100) — Trust Sensitivity Score — **flagged: no backing function or data source exists anywhere in `pipeline.py` or M2's own README yet.** Accepted as an input with a safe default of 0 until M2's owner (Engineer 3) implements real output.
 
 **3.2 Behavioral Features**
-- `calculate_cursor_hesitation(customer_id, db)` — HIGH price signal
-- `calculate_visited_coupon_page(customer_id, db)`
-- `calculate_searched_discount_terms(customer_id, db)`
+- `calculate_cursor_hesitation(events)` — 0–10 focus/blur duration score; HIGH price signal
+- `calculate_visited_coupon_page(events)`
+- `calculate_searched_discount_terms(events)`
 
 **3.3 Purchase History Features**
 - `calculate_avg_order_value(customer_id, db)`
@@ -72,7 +72,9 @@ A new DB field is required (unchanged from original spec — still outstanding):
 ```sql
 ALTER TABLE orders ADD COLUMN discount_pct FLOAT;
 ```
-**Purpose:** store historical discount effectiveness, train regression target, enable causal learning. **Flag to Afolabi** — per the task doc's own note.
+**Purpose:** store historical discount effectiveness and train the regression
+target. The exact additive migration is assigned to the Backend team in
+`docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md`.
 
 ## 7. Output Schema
 
@@ -97,14 +99,18 @@ ALTER TABLE orders ADD COLUMN discount_pct FLOAT;
 ## 9. Training Requirements
 - 3000 synthetic records (per spec) — real labeled recovery-offer data doesn't exist yet, same MVP-stage caveat as M3/M4
 - Must eventually include, once real data exists: discount offered, conversion outcome, behavioral state at decision time
-- **RMSE 2.20, MAE 1.58, R² 0.90** on held-out synthetic test set
+- Latest synthetic-v2 holdout: **RMSE 2.06, MAE 1.41, R² 0.92**
+- Synthetic metrics are development evidence only and do not establish
+  production performance or fairness.
+- Production registration requires at least 200 real recovered orders,
+  `MAE <= 5.0`, and `R² >= 0.70`.
 
 ## 10. Validation Checklist
 - [x] Uses correct pipeline functions (with corrected names/scales)
 - [x] Uses GradientBoostingRegressor
 - [x] Enforces 0–25 clipping (corrected from 0–30)
 - [x] Implements both hard gates (TRUST_SIGNAL + NUDGE, corrected from single PSS guardrail)
-- [ ] Requires `orders.discount_pct` field — still outstanding, flagged to Afolabi
+- [ ] Requires `orders.discount_pct` field — still outstanding and assigned to the backend team
 - [x] Produces valid regression output
 - [ ] `tss_score` is real M2 output — currently synthetic placeholder, flagged blocker
 
@@ -113,4 +119,10 @@ ALTER TABLE orders ADD COLUMN discount_pct FLOAT;
 **Minimize:** unnecessary discount leakage, margin loss
 
 ## MLflow
-Registered under `offer_value` (tag `model=offer_value`) — this exact registry name is required for `api.py`'s `_load_model("offer_value")` to find it.
+
+Every run logs an artifact with tag `model=offer_value`. Synthetic or
+below-minimum runs are tagged `production_eligible=false` and are not
+registered. A run is registered under `offer_value` only when it uses at least
+200 real recovered orders and passes both regression quality gates; this exact
+registry name is required for
+`api.py`'s `_load_model("offer_value")` lookup.

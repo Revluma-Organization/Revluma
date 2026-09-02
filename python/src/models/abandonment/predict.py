@@ -40,6 +40,18 @@ BOOST_CART_REMOVE            = +0.08   # remove_count >= 1
 DISCOUNT_RETURN_RECOVERED    = -0.10   # return visitor who responded to past recovery
 
 
+def _cursor_hesitation_score(session_context: dict) -> float:
+    """Read the canonical score, accepting the former API key temporarily."""
+    value = session_context.get(
+        "cursor_hesitation",
+        session_context.get("cursor_hesitation_count", 0),
+    )
+    try:
+        return max(0.0, min(10.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def load_model(merchant_id: str) -> typing.Any:
     """
     Loads the trained M1 model for a specific merchant from MLflow
@@ -86,12 +98,13 @@ def _compute_boosts(session_context: dict) -> float:
     exclusive. The result is added to base_risk before clamping.
 
     Args:
-        session_context (dict): Extended session signals beyond the 7 base features.
+        session_context (dict): Extended session signals beyond the 8 base features.
             Expected keys (all optional — missing keys default safely):
                 failed_payment_attempt      (bool)
                 checkout_step_reached       (int)
                 checkout_stall_duration_sec (float)
-                cursor_hesitation_count     (int)
+                cursor_hesitation           (float, 0-10 score)
+                cursor_hesitation_count     (legacy input alias)
                 tab_switch_count            (int)
                 total_hidden_ms             (float)
                 cart_item_remove_count      (int)
@@ -110,7 +123,7 @@ def _compute_boosts(session_context: dict) -> float:
             and session_context.get("checkout_stall_duration_sec", 0) > 120):
         boost += BOOST_CHECKOUT_STALL
 
-    if session_context.get("cursor_hesitation_count", 0) >= 2:
+    if _cursor_hesitation_score(session_context) >= 2:
         boost += BOOST_CURSOR_HESITATION
 
     if (session_context.get("tab_switch_count", 0) >= 3
@@ -144,9 +157,9 @@ def _decide_intervention(final_risk: float, session_context: dict) -> dict:
     """
     if final_risk >= ABANDONED_THRESHOLD:
         # Intervention window: shorter window if high hesitation + fast exit
-        hesitation = session_context.get("cursor_hesitation_count", 0)
+        hesitation = _cursor_hesitation_score(session_context)
         base_window = 60  # seconds
-        window = max(15, base_window - (hesitation * 10))
+        window = int(max(15, base_window - (hesitation * 10)))
         return {
             "intervention_tier": "abandoned",
             "intervention_window_seconds": window,
@@ -197,11 +210,12 @@ def predict(
     never raise and must never cause the serving endpoint to return 5xx.
 
     Args:
-        feature_vector (dict): The 7 M1 features from the feature store:
+        feature_vector (dict): The 8 M1 features from the feature store:
             {
                 "scroll_depth_pct"       : float,
                 "tab_switch_count"       : int,
                 "time_on_page_ms"        : int,
+                "cursor_hesitation"      : float,
                 "checkout_step_reached"  : int,
                 "failed_payment_attempt" : bool,
                 "cart_item_add_count"    : int,
@@ -237,6 +251,7 @@ def predict(
             "scroll_depth_pct",
             "tab_switch_count",
             "time_on_page_ms",
+            "cursor_hesitation",
             "checkout_step_reached",
             "failed_payment_attempt",
             "cart_item_add_count",

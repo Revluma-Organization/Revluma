@@ -1,3 +1,4 @@
+import json
 import typing
 """
 Revluma ML Serving API
@@ -11,8 +12,8 @@ CORRECTIONS APPLIED (auditing the uploaded draft against the task doc's
 actual P2.1 spec found several real mismatches - see chat for the full
 audit table). Summary of what changed in this rewrite:
 
-  1. AbandonmentFeatures - added cart_item_add_count and
-     cart_item_remove_count (doc requires 7 fields; draft had 5).
+  1. AbandonmentFeatures - added cursor_hesitation,
+     cart_item_add_count, and cart_item_remove_count (8 fields total).
 
   2. SensitivityFeatures - renamed coupon_usage_pct -> the real
      pipeline.py name past_orders_with_coupon_pct, fixed its scale from
@@ -62,6 +63,7 @@ the in-memory _model_cache design.
 from contextlib import asynccontextmanager
 import asyncio
 import functools
+import logging
 import os
 import secrets
 import sys
@@ -73,13 +75,14 @@ from fastapi import FastAPI, Depends, HTTPException, Header, Query
 from pydantic import BaseModel, Field, model_validator
 import mlflow.sklearn
 
-# Setup MLflow configuration
+from ..models.churn.predict import predict as _predict_churn
+from ..models.churn.train import normalize_churn_features
+from ..models.timing.predict import predict as _predict_timing
+
+
+logger = logging.getLogger("rev.serving.api")
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
-try:
-    from src.config.mlflow_config import get_or_create_experiment
-    get_or_create_experiment()
-except Exception:
-    pass  # Failsafe
 
 
 @asynccontextmanager
@@ -92,7 +95,10 @@ async def lifespan(app: FastAPI):
     for name in MODEL_NAMES:
         model = _load_model(name)
         status = "loaded" if model is not None else "FALLBACK (not found)"
-        print(f"[startup] model '{name}': {status}")
+        logger.info(
+            "model_preload_completed",
+            extra={"model_name": name, "model_status": status},
+        )
     yield  # Application runs here
     # Shutdown: nothing to clean up — model cache lives only in process memory.
 
@@ -173,6 +179,7 @@ class AbandonmentFeatures(BaseModel):
     scroll_depth_pct: float = Field(0.0, ge=0.0, le=100.0)
     tab_switch_count: int = Field(0, ge=0)
     time_on_page_ms: int = Field(0, ge=0)
+    cursor_hesitation: int = Field(0, ge=0, le=10)
     checkout_step_reached: int = Field(0, ge=0, le=5)
     failed_payment_attempt: bool = Field(False)
     cart_item_add_count: int = Field(0, ge=0)
@@ -187,7 +194,7 @@ class SensitivityFeatures(BaseModel):
     past_orders_with_coupon_pct: float = Field(0.0, ge=0.0, le=1.0)
     visited_coupon_page: bool = Field(False)
     searched_discount_terms: bool = Field(False)
-    cursor_hesitation: int = Field(0, ge=0)
+    cursor_hesitation: int = Field(0, ge=0, le=10)
     abandoned_at_shipping_reveal: bool = Field(False)
     checkout_step_reached: int = Field(0, ge=0, le=5)
     scroll_depth_pct: float = Field(0.0, ge=0.0, le=100.0)
@@ -218,17 +225,51 @@ class ChurnFeatures(BaseModel):
     unsubscribe_risk_score: float = Field(0.0, ge=0.0, le=1.0)
     customer_ltv: float = Field(0.0, ge=0.0)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_feature_names(cls, values):
+        if isinstance(values, dict):
+            return normalize_churn_features(values)
+        return values
+
 
 class SendTimeFeatures(BaseModel):
+    # Legacy session fields remain accepted while the canonical M3 model scores
+    # candidate send_hour/send_day values internally.
     local_hour_of_session: int = Field(12, ge=0, le=23)
     day_of_week_session: int = Field(0, ge=0, le=6)
     channel: str = Field("email", pattern="^(email|sms|whatsapp)$")
     recovery_action: str = Field(
         "SOFT_NUDGE",
-        pattern="^(DISCOUNT|FRICTION_FIX|HYBRID|NUDGE|SOFT_NUDGE)$"
+        pattern="^(DISCOUNT|FRICTION_FIX|TRUST_REASSURE|HYBRID_BUNDLE|"
+                "TRUST_PLUS_DEAL|FRICTION_PLUS_TRUST|FULL_PERSONALISE|"
+                "HYBRID|NUDGE|SOFT_NUDGE)$"
     )
-    cart_value_tier: str = Field("medium", pattern="^(low|medium|high)$")
+    cart_value_tier: str = Field("medium", pattern="^(low|medium|high|premium)$")
     customer_timezone_offset: int = Field(0, ge=-12, le=14)
+    historical_open_probabilities: list[float] = Field(default_factory=list)
+    history_data_points: int = Field(0, ge=0)
+    days_since_last_purchase: int = Field(-1, ge=-1)
+    failed_payment_attempt: bool = False
+    risk_score: float = Field(0.0, ge=0.0, le=1.0)
+    sequence_message_number: int = Field(1, ge=1, le=3)
+    previous_message_sent_at: typing.Optional[datetime] = None
+    previous_message_opened: bool = False
+    previous_message_clicked: bool = False
+    last_sms_sent_at: typing.Optional[datetime] = None
+    secondary_channel: typing.Optional[str] = Field(
+        None,
+        pattern="^(email|sms|whatsapp)$",
+    )
+
+    @model_validator(mode="after")
+    def validate_open_probability_slots(self) -> "SendTimeFeatures":
+        slots = self.historical_open_probabilities
+        if slots and len(slots) != 24:
+            raise ValueError("historical_open_probabilities must contain exactly 24 slots")
+        if any(probability < 0.0 or probability > 1.0 for probability in slots):
+            raise ValueError("historical open probabilities must be between 0 and 1")
+        return self
 
 
 class OfferValueFeatures(BaseModel):
@@ -239,7 +280,7 @@ class OfferValueFeatures(BaseModel):
     # Defaults to 0 (not trust-blocked) so the TRUST_SIGNAL gate doesn't
     # spuriously fire until real TSS data is available.
     tss_score: int = Field(0, ge=0, le=100)
-    cursor_hesitation: int = Field(0, ge=0)
+    cursor_hesitation: int = Field(0, ge=0, le=10)
     past_orders_total: int = Field(0, ge=0)
     past_orders_with_coupon_pct: float = Field(0.0, ge=0.0, le=1.0)
     days_since_last_purchase: int = Field(-1, ge=-1)
@@ -305,37 +346,6 @@ class OfferValueResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Shared constants / small helpers
 # ---------------------------------------------------------------------------
-CHURN_TIERS = ["HEALTHY", "AT_RISK", "HIGH_RISK", "CRITICAL"]
-TIER_TO_URGENCY = {"HEALTHY": "LOW", "AT_RISK": "MEDIUM", "HIGH_RISK": "HIGH", "CRITICAL": "CRITICAL"}
-TIER_TO_CHANNEL = {"HEALTHY": "email", "AT_RISK": "email", "HIGH_RISK": "sms", "CRITICAL": "phone_call"}
-
-TIMING_CHANNEL_MAP = {"email": 0, "sms": 1, "whatsapp": 2}
-RECOVERY_ACTION_MAP = {"DISCOUNT": 0, "FRICTION_FIX": 1, "HYBRID": 2, "NUDGE": 3, "SOFT_NUDGE": 4}
-CART_VALUE_TIER_MAP = {"low": 0, "medium": 1, "high": 2}
-
-FALLBACK_SEND_HOUR = {"email": 10, "sms": 18, "whatsapp": 18}
-FALLBACK_SEND_DAY = {"email": 1, "sms": 3, "whatsapp": 3}  # ISO: 0=Mon .. Tue=1, Thu=3
-
-
-def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int) -> tuple[datetime, datetime]:
-    """
-    Given a target local hour (0-23), target ISO day-of-week (0=Mon..6=Sun),
-    and the customer's UTC offset in hours, returns the next occurrence as
-    (local_datetime, utc_datetime).
-    """
-    now_utc = datetime.now(timezone.utc)
-    local_now = now_utc + timedelta(hours=tz_offset_hours)
-
-    days_ahead = (target_day - local_now.weekday()) % 7
-    candidate_local = local_now.replace(hour=target_hour, minute=0, second=0, microsecond=0) + timedelta(days=days_ahead)
-
-    if candidate_local <= local_now:
-        candidate_local += timedelta(days=7)
-
-    candidate_utc = candidate_local - timedelta(hours=tz_offset_hours)
-    return candidate_local, candidate_utc
-
-
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -346,10 +356,21 @@ def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int
 # ============================================================================
 
 from ..agents.orchestrator import orchestrate as _orchestrate
+from ..intelligence.morning_briefing import (
+    run_briefings_for_all_merchants as _run_briefing_job,
+)
 from ..config.database import engine
 from sqlalchemy.orm import sessionmaker
 
 _Session = sessionmaker(bind=engine)
+_ALLOWED_IMAGE_MEDIA_TYPES = {
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+_MAX_IMAGE_BASE64_CHARS = ((_MAX_IMAGE_BYTES + 2) // 3) * 4
 
 
 class OrchestrateRequest(BaseModel):
@@ -361,10 +382,22 @@ class OrchestrateRequest(BaseModel):
     customer_id: typing.Optional[str] = Field(None, min_length=36, max_length=36)
     message: str = Field(..., min_length=1, max_length=2000)
     conversation_id: typing.Optional[str] = Field(None, min_length=36, max_length=36)
-    image_base64: typing.Optional[str] = Field(None)  # base64-encoded image
+    image_base64: typing.Optional[str] = Field(
+        None,
+        max_length=_MAX_IMAGE_BASE64_CHARS,
+    )
     image_media_type: typing.Optional[str] = Field(None)  # image/jpeg | image/png | image/webp | image/gif
     contract_version: typing.Optional[str] = Field(None)
     correlation_id: typing.Optional[str] = Field(None)
+    trigger_type: str = Field(
+        "conversation",
+        pattern="^(conversation|alert|scheduler)$",
+    )
+    trigger_priority: str = Field(
+        "normal",
+        pattern="^(low|normal|high|critical)$",
+    )
+    context_payload: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def resolve_user_id(self) -> "OrchestrateRequest":
@@ -383,6 +416,24 @@ class OrchestrateRequest(BaseModel):
             raise ValueError(
                 "Either user_id or customer_id must be provided."
             )
+        if len(json.dumps(self.context_payload, default=str).encode("utf-8")) > 16_384:
+            raise ValueError("context_payload must not exceed 16 KiB.")
+        if bool(self.image_base64) != bool(self.image_media_type):
+            raise ValueError(
+                "image_base64 and image_media_type must be provided together."
+            )
+        if self.image_media_type:
+            if self.image_media_type not in _ALLOWED_IMAGE_MEDIA_TYPES:
+                raise ValueError("Unsupported image_media_type.")
+            import base64
+            import binascii
+
+            try:
+                decoded_image = base64.b64decode(self.image_base64, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise ValueError("image_base64 must contain valid base64 data.") from exc
+            if len(decoded_image) > _MAX_IMAGE_BYTES:
+                raise ValueError("Decoded image must not exceed 8 MiB.")
         # Normalise: always store the resolved value in user_id so all
         # downstream code (orchestrator, DB writes) remains unchanged.
         self.user_id = resolved
@@ -410,10 +461,13 @@ async def orchestrate_endpoint(req: OrchestrateRequest):
                 db=db,
                 image_base64=req.image_base64,
                 image_media_type=req.image_media_type,
+                trigger_type=req.trigger_type,
+                trigger_priority=req.trigger_priority,
+                context_payload=req.context_payload,
             )
         )
         return result.to_dict()
-    except Exception as e:
+    except Exception:
         import uuid as _uuid
         return {
             "success": False,
@@ -426,11 +480,63 @@ async def orchestrate_endpoint(req: OrchestrateRequest):
             "confidence_basis": None, "actions": [],
             "agents_used": [], "business_state_age_minutes": 0.0,
             "business_state_id": None, "warnings": [],
+            "ad_evaluation": None,
+            "orchestrator_mode": None,
             "correlation_id": str(_uuid.uuid4()), "latency_ms": 0,
         }
     finally:
         db.close()
 
+
+
+class MorningBriefingRunResponse(BaseModel):
+    total: int = Field(..., ge=0)
+    success: int = Field(..., ge=0)
+    failed: int = Field(..., ge=0)
+    error: typing.Optional[str] = None
+
+
+def _run_morning_briefings() -> dict:
+    """Own the database session for one complete scheduled briefing run."""
+    db = _Session()
+    try:
+        return _run_briefing_job(db)
+    except Exception as exc:
+        logger.error(
+            "morning_briefing_job_failed",
+            extra={"error_type": type(exc).__name__},
+        )
+        return {
+            "total": 0,
+            "success": 0,
+            "failed": 0,
+            "errors": ["briefing_job_failed"],
+        }
+    finally:
+        db.close()
+
+
+@app.post(
+    "/internal/morning-briefings",
+    response_model=MorningBriefingRunResponse,
+    dependencies=[Depends(verify_internal_caller)],
+)
+async def internal_morning_briefings() -> MorningBriefingRunResponse:
+    """Generate all daily briefings without blocking the API event loop."""
+    result = await _run_inference(_run_morning_briefings)
+    has_job_error = bool(result.get("errors"))
+    failed = int(result.get("failed") or 0)
+    error = None
+    if has_job_error:
+        error = "partial_failure" if result.get("success") else "job_failed"
+    elif failed:
+        error = "partial_failure"
+    return MorningBriefingRunResponse(
+        total=int(result.get("total") or 0),
+        success=int(result.get("success") or 0),
+        failed=failed,
+        error=error,
+    )
 
 
 # ── Feature Pipeline Endpoint ─────────────────────────────────────────────────
@@ -471,10 +577,11 @@ async def compute_features(req: FeaturesComputeRequest) -> FeaturesComputeRespon
             lambda: _run_feature_pipeline(req, db)
         )
         return result
-    except Exception as e:
-        import traceback
-        print(f"FEATURE_PIPELINE_ERROR: {type(e).__name__}: {e}")
-        print(traceback.format_exc())
+    except Exception:
+        logger.exception(
+            "feature_pipeline_failed",
+            extra={"error_type": type(e).__name__},
+        )
         return FeaturesComputeResponse(
             success=False,
             session_id=req.session_id,
@@ -558,7 +665,10 @@ def _run_feature_pipeline(req: FeaturesComputeRequest, db) -> FeaturesComputeRes
 
         except ImportError as ie:
             # Pipeline not yet available — return graceful fallback
-            print(f"FEATURE_PIPELINE_IMPORT_ERROR: {ie}")
+            logger.warning(
+                "feature_pipeline_import_failed",
+                extra={"error_type": type(ie).__name__},
+            )
             return FeaturesComputeResponse(
                 success=True,
                 session_id=req.session_id,
@@ -587,7 +697,10 @@ def _run_feature_pipeline(req: FeaturesComputeRequest, db) -> FeaturesComputeRes
                         "confidence":       pred.get("confidence"),
                     }
         except Exception as me:
-            print(f"M1_INFERENCE_ERROR: {me}")
+            logger.exception(
+                "m1_inference_failed",
+                extra={"error_type": type(me).__name__},
+            )
             prediction = {"show_offer": False, "fallback": True}
 
         return FeaturesComputeResponse(
@@ -597,8 +710,11 @@ def _run_feature_pipeline(req: FeaturesComputeRequest, db) -> FeaturesComputeRes
             fallback=False,
         )
 
-    except Exception as e:
-        print(f"FEATURE_PIPELINE_INNER_ERROR: {type(e).__name__}: {e}")
+    except Exception:
+        logger.exception(
+            "feature_pipeline_inner_failed",
+            extra={"error_type": type(e).__name__},
+        )
         return FeaturesComputeResponse(
             success=False,
             session_id=req.session_id,
@@ -656,7 +772,10 @@ def _generate_briefing(organization_id: str, db) -> BriefingResponse:
         briefing = generate_briefing(organization_id, db)
         return BriefingResponse(success=True, briefing=briefing.to_dict())
     except Exception as e:
-        print(f"BRIEFING_ERROR: {type(e).__name__}: {e}")
+        logger.exception(
+            "briefing_generation_failed",
+            extra={"error_type": type(e).__name__},
+        )
         return BriefingResponse(success=False, error=str(e))
 
 
@@ -739,7 +858,10 @@ def _check_anomalies(req: AnomalyAlertRequest, db) -> AnomalyAlertResponse:
         return AnomalyAlertResponse(success=True, alerts=alerts)
 
     except Exception as e:
-        print(f"CHECK_ANOMALIES_ERROR: {type(e).__name__}: {e}")
+        logger.exception(
+            "anomaly_check_failed",
+            extra={"error_type": type(e).__name__},
+        )
         return AnomalyAlertResponse(success=False, error=str(e))
 
 
@@ -841,160 +963,38 @@ async def predict_sensitivity(features: SensitivityFeatures) -> SensitivityRespo
 
 @app.post("/predict/churn-risk", response_model=ChurnRiskResponse,
           dependencies=[Depends(verify_internal_caller)])
-async def predict_churn(features: ChurnFeatures) -> ChurnRiskResponse:
-    days = features.days_since_last_purchase
-    ltv = features.customer_ltv if features.customer_ltv > 0 else (
-        features.past_orders_total * features.avg_order_value
+async def predict_churn(
+    features: ChurnFeatures,
+    x_customer_id: str = Header("", alias="X-Customer-ID"),
+    x_merchant_id: str = Header("", alias="X-Merchant-ID"),
+) -> ChurnRiskResponse:
+    result = await _run_inference(
+        _predict_churn,
+        x_customer_id,
+        features.model_dump(),
+        x_merchant_id,
     )
-
-    try:
-        model = _load_model("churn_risk")
-        if not model:
-            return _get_churn_fallback(days, ltv)
-
-        feature_cols = [
-            'past_orders_total', 'days_since_last_purchase', 'avg_order_value',
-            'purchase_frequency_trend', 'rfm_recency_score', 'rfm_frequency_score',
-            'rfm_monetary_score'
-        ]
-        feature_vector = pd.DataFrame([{k: getattr(features, k) for k in feature_cols}])
-
-        # M4 is a 4-CLASS classifier (see train.py), NOT binary. The earlier
-        # draft's predict_proba(X)[0][1] indexing was a real bug - it would
-        # have silently returned P(AT_RISK) as if it were a generic churn
-        # probability regardless of the actual predicted class.
-        proba = (await _run_inference(model.predict_proba, feature_vector))[0]
-        predicted_idx = int(proba.argmax())
-        tier = CHURN_TIERS[predicted_idx]
-        # churn_probability = P(anything other than HEALTHY) - a single
-        # scalar "risk of churning at all", distinct from churn_tier which
-        # is the discrete predicted class.
-        churn_probability = float(1.0 - proba[0])
-        urgency = TIER_TO_URGENCY[tier]
-
-        # engagement_decay_score has no dedicated model output - approximated
-        # from the predicted tier's own probability mass. Flagged: a real
-        # engagement-decay signal would need actual engagement event data
-        # (see M4's flagged missing 17 signals).
-        engagement_decay_score = float(proba[predicted_idx] * 100)
-
-        return ChurnRiskResponse(
-            churn_probability=churn_probability,
-            churn_tier=tier,
-            win_back_urgency=urgency,
-            primary_churn_signal="no_recent_purchase",
-            engagement_decay_score=engagement_decay_score,
-            recommended_channel=TIER_TO_CHANNEL[tier],
-            offer_required=tier in ("HIGH_RISK", "CRITICAL"),
-            escalate_to_human=(ltv > 500 and tier == "CRITICAL"),
-            model_version="1.0",
-            fallback=False
-        )
-    except Exception:
-        return ChurnRiskResponse(
-            churn_probability=0.5,
-            churn_tier="AT_RISK",
-            win_back_urgency="MEDIUM",
-            primary_churn_signal="no_recent_purchase",
-            engagement_decay_score=50.0,
-            recommended_channel="email",
-            offer_required=False,
-            escalate_to_human=False,
-            model_version="fallback",
-            fallback=True
-        )
-
-
-def _get_churn_fallback(days: int, ltv: float) -> ChurnRiskResponse:
-    """Algorithmic fallback per doc's exact day-based tier rules."""
-    if days == -1:
-        tier = "AT_RISK"
-        churn_probability = 0.5
-    elif days <= 30:
-        tier, churn_probability = "HEALTHY", 0.15
-    elif days <= 60:
-        tier, churn_probability = "AT_RISK", 0.45
-    elif days <= 90:
-        tier, churn_probability = "HIGH_RISK", 0.70
-    else:
-        tier, churn_probability = "CRITICAL", 0.90
-
-    urgency = TIER_TO_URGENCY[tier]
-    return ChurnRiskResponse(
-        churn_probability=churn_probability,
-        churn_tier=tier,
-        win_back_urgency=urgency,
-        primary_churn_signal="no_recent_purchase",
-        engagement_decay_score=churn_probability * 100,
-        recommended_channel=TIER_TO_CHANNEL[tier],
-        offer_required=tier in ("HIGH_RISK", "CRITICAL"),
-        escalate_to_human=(ltv > 500 and tier == "CRITICAL"),
-        model_version="fallback",
-        fallback=True
-    )
+    return ChurnRiskResponse(**result)
 
 
 @app.post("/predict/send-time", response_model=SendTimeResponse,
           dependencies=[Depends(verify_internal_caller)])
-async def predict_send_time(features: SendTimeFeatures) -> SendTimeResponse:
-    try:
-        model = _load_model("send_time")
-        if not model:
-            # Global baseline rules from the doc: email -> Tue 10:00 local,
-            # sms -> Thu 18:30 local. whatsapp not specified; treat like sms.
-            hour = FALLBACK_SEND_HOUR.get(features.channel, 10)
-            day = FALLBACK_SEND_DAY.get(features.channel, 1)
-            local_dt, utc_dt = _next_occurrence_utc(hour, day, features.customer_timezone_offset)
-            return SendTimeResponse(
-                send_at=local_dt.isoformat(),
-                send_at_utc=utc_dt.isoformat(),
-                confidence=0.0,
-                reasoning_layer="global_baseline",
-                channel=features.channel,
-                fallback=True
-            )
-
-        # Grid-search candidate hours (0-23) for this channel/day context,
-        # holding the business-context fields fixed, and pick the
-        # highest-scoring hour. Day is taken from the request as-is.
-        base_row = {
-            'day_of_week_session': features.day_of_week_session,
-            'channel': TIMING_CHANNEL_MAP[features.channel],
-            'recovery_action': RECOVERY_ACTION_MAP[features.recovery_action],
-            'cart_value_tier': CART_VALUE_TIER_MAP[features.cart_value_tier],
-            'customer_timezone_offset': features.customer_timezone_offset,
-        }
-        grid = pd.DataFrame([
-            {**base_row, 'local_hour_of_session': h} for h in range(24)
-        ])[['local_hour_of_session', 'day_of_week_session', 'channel',
-            'recovery_action', 'cart_value_tier', 'customer_timezone_offset']]
-
-        probs = (await _run_inference(model.predict_proba, grid))[:, 1]
-        best_hour = int(probs.argmax())
-        confidence = float(probs[best_hour])
-
-        local_dt, utc_dt = _next_occurrence_utc(
-            best_hour, features.day_of_week_session, features.customer_timezone_offset
+async def predict_send_time(
+    features: SendTimeFeatures,
+    x_customer_id: str = Header("", alias="X-Customer-ID"),
+    x_merchant_id: str = Header("", alias="X-Merchant-ID"),
+) -> SendTimeResponse:
+    # Startup owns registry access; requests only read the in-memory cache.
+    model = _model_cache.get("send_time")
+    result = await _run_inference(
+        lambda: _predict_timing(
+            x_customer_id,
+            features.model_dump(),
+            x_merchant_id,
+            model=model,
         )
-
-        return SendTimeResponse(
-            send_at=local_dt.isoformat(),
-            send_at_utc=utc_dt.isoformat(),
-            confidence=confidence,
-            reasoning_layer="personalised",
-            channel=features.channel,
-            fallback=False
-        )
-    except Exception:
-        local_dt, utc_dt = _next_occurrence_utc(10, 1, 0)
-        return SendTimeResponse(
-            send_at=local_dt.isoformat(),
-            send_at_utc=utc_dt.isoformat(),
-            confidence=0.0,
-            reasoning_layer="global_baseline",
-            channel=features.channel if features else "email",
-            fallback=True
-        )
+    )
+    return SendTimeResponse(**result)
 
 
 @app.post("/predict/offer-value", response_model=OfferValueResponse,
@@ -1104,6 +1104,9 @@ class RfmSyncResponse(BaseModel):
     processed_count:      int
     failed_customer_ids:  typing.List[str]
     segment_distribution: typing.Dict[str, int]
+    success:              bool = False
+    failed_count:         int = 0
+    error:                typing.Optional[str] = None
 
 
 @app.post("/internal/rfm-sync", response_model=RfmSyncResponse,
@@ -1112,9 +1115,10 @@ async def internal_rfm_sync(request: RfmSyncRequest) -> RfmSyncResponse:
     """Recalculate RFM scores and segments for every customer in one store.
 
     Thin wrapper over the S4 job. `rfm_sync.run` opens and closes its own
-    connection and never raises - on a missing DATABASE_URL or a failed
-    connect it returns a zeroed summary - so this endpoint has no error path
-    of its own beyond the auth dependency.
+    connection and never raises. A missing DATABASE_URL, failed connection,
+    partial customer failure, or failed commit is represented by `success`,
+    `failed_count`, and a sanitized `error` code. Backend callers must inspect
+    those fields even though the failsafe endpoint still returns HTTP 200.
 
     The job is blocking (psycopg2, plus a loop over every customer in the
     store), so it is offloaded to the thread pool rather than run on the event

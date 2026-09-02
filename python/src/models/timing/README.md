@@ -1,146 +1,100 @@
 # M3 — Optimal Send-Time Predictor
 
-## 1. Problem Statement
-This model determines the optimal send time for lifecycle recovery messages that maximize engagement.
-The goal is to predict:
-- when a message sent via a given channel is most likely to convert (open AND click) within 120 minutes
-This is a temporal behavioral optimization problem, scored per candidate hour and grid-searched by the serving layer.
+M3 schedules a recovery message using deterministic safety rules, customer
+engagement history, and a calibrated model. Rules are evaluated before model
+inference, and the endpoint always returns valid local and UTC timestamps.
 
-## 2. Target Variable Definition
-**Binary Label:** `conversion_within_120min`
+## Seven-feature model contract
 
-**Positive class (1):**
-A send is considered successful if:
-- user opens message
-- AND user clicks message
-- AND both occur within 120 minutes of send timestamp
+The model is trained and served with these columns in this exact order:
 
-**Negative class (0):**
-- opened but no click
-- click outside 120 minutes
-- no interaction at all
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `send_hour` | integer, 0–23 | Candidate hour in the customer's local time |
+| `send_day` | integer, 0–6 | Candidate local weekday, Monday = 0 |
+| `channel` | encoded category | Email, SMS, or WhatsApp |
+| `historical_open_rate` | float, 0–1 | Prior open rate for this customer, channel, and hour slot |
+| `days_since_last_purchase` | integer, -1+ | Purchase recency; `-1` means no history |
+| `cart_value_tier` | encoded category | Low, medium, or premium (`high` is an accepted alias) |
+| `recovery_action` | encoded category | Canonical M2 action |
 
-## 3. Feature Inputs
+Canonical recovery actions are `DISCOUNT`, `FRICTION_FIX`,
+`TRUST_REASSURE`, `HYBRID_BUNDLE`, `TRUST_PLUS_DEAL`,
+`FRICTION_PLUS_TRUST`, `FULL_PERSONALISE`, `NUDGE`, and `SOFT_NUDGE`.
+Legacy `HYBRID` is accepted only at the input boundary and normalized to
+`HYBRID_BUNDLE`.
 
-**3.1 Session Context**
-- `local_hour_of_session` (int, 0–23) — grid-searched by the endpoint across all 24 hours
-- `day_of_week_session` (int, 0–6, ISO)
-- `customer_timezone_offset` (int, UTC offset in hours) — used to convert local hour to `send_at_utc`
+The target is `conversion_within_120min`: both an open and a click must occur
+at or after the send and within 120 minutes.
 
-**3.2 Channel**
-- `channel` (str: `email` | `sms` | `whatsapp`)
+## Four scheduling layers
 
-**3.3 Upstream Business Context (from M2's decision matrix, not raw pipeline.py functions)**
-- `recovery_action` (str: `DISCOUNT` | `FRICTION_FIX` | `HYBRID` | `NUDGE` | `SOFT_NUDGE`)
-- `cart_value_tier` (str: `low` | `medium` | `high`)
+1. Immediate overrides: a failed payment schedules SMS after five minutes. A
+   risk score of at least 0.80 with a premium/high cart schedules after eight
+   minutes.
+2. Global baselines: email uses the next Tuesday at 10:00 local; SMS and
+   WhatsApp use the next Thursday at 18:30 local.
+3. Individual history: at least three observations are required. The 24 hourly
+   probabilities are Gaussian-smoothed with sigma 1.5 hours. The first future
+   slot at or above 0.55 is selected, capped at 18 hours.
+4. Sequence cadence: message 2 waits 24 hours after message 1, or 36 hours when
+   message 1 was opened but not clicked. Message 3 waits 48 hours after message
+   2 and uses the supplied secondary channel.
 
-**3.4 Critical Rule**
-`channel`, `recovery_action`, and `cart_value_tier` are categorical and must be encoded identically in both `train.py` and `api.py` — the exact maps used are:
-```python
-CHANNEL_MAP = {"email": 0, "sms": 1, "whatsapp": 2}
-RECOVERY_ACTION_MAP = {"DISCOUNT": 0, "FRICTION_FIX": 1, "HYBRID": 2, "NUDGE": 3, "SOFT_NUDGE": 4}
-CART_VALUE_TIER_MAP = {"low": 0, "medium": 1, "high": 2}
-```
-If these maps ever drift out of sync between the two files, predictions become meaningless without raising any error.
+All layers enforce quiet hours from 22:00 through 07:59 local. SMS messages are
+never scheduled within 24 hours of the previous SMS. When history is sparse or
+invalid, the channel baseline is returned immediately without registry access.
 
-**3.5 Known gap (flagged, not fixed)**
-The task doc also references a "historical open rate" signal. No corresponding function or data source exists anywhere in the repo yet — left out until that data exists.
+## API output
 
-## 4. Required Database Schema
-Still required for future real (non-synthetic) training data collection — unchanged from the original spec:
+`POST /predict/send-time` returns:
 
-**4.1 sequence_sends**
-```sql
-CREATE TABLE sequence_sends (
-    id UUID PRIMARY KEY,
-    customer_id UUID NOT NULL,
-    campaign_id UUID,
-    channel TEXT NOT NULL, -- email | push | sms | whatsapp
-    sent_at TIMESTAMP NOT NULL,
-    template_id TEXT,
-    metadata JSONB
-);
-```
-
-**4.2 sequence_events**
-```sql
-CREATE TABLE sequence_events (
-    id UUID PRIMARY KEY,
-    send_id UUID REFERENCES sequence_sends(id),
-    customer_id UUID NOT NULL,
-    event_type TEXT NOT NULL, -- open | click | ignore
-    event_time TIMESTAMP NOT NULL,
-    metadata JSONB
-);
-```
-
-**4.3 Required Indexes (Performance Critical)**
-- `sequence_events(send_id)`
-- `sequence_events(customer_id)`
-- `sequence_sends(customer_id, sent_at)`
-
-## 5. Model Type
-**Algorithm:** GradientBoostingClassifier, wrapped in CalibratedClassifierCV
-
-**Hyperparameters (as built):**
-- `n_estimators = 150`
-- `max_depth = 3`
-- `learning_rate = 0.05`
-- `random_state = 42`
-
-**Why this model:**
-- handles nonlinear time/channel/context interactions
-- robust to sparse behavioral signals
-- calibrated probabilities are essential since the endpoint compares scores across 24 candidate hours, not a single threshold
-
-## 6. Calibration Method
-`CalibratedClassifierCV(method='sigmoid', cv=3)` — Platt Scaling, applied at training time so `predict_proba` outputs are directly comparable across candidates.
-
-## 7. Training Requirements
-**Spec minimum:** 500 labeled send events before a model is considered reliable enough for production; below this, fallback logic is used.
-**Current status:** built on 2000 **synthetic** records per the P2.2 task spec (MVP stage — real `sequence_sends`/`sequence_events` data doesn't exist yet). **AUC-ROC 0.845** on held-out synthetic test data, clearing the doc's 0.70 production threshold. This number will change once retrained on real data — treat it as a code-correctness check, not a real-world performance guarantee.
-
-## 8. Output Schema
-
-**Model-backed response:**
 ```json
 {
-  "send_at": "2026-07-21T10:00:00+02:00",
-  "send_at_utc": "2026-07-21T08:00:00+00:00",
-  "confidence": 0.0 - 1.0,
-  "reasoning_layer": "personalised",
-  "channel": "email",
+  "send_at": "2026-09-03T18:30:00+01:00",
+  "send_at_utc": "2026-09-03T17:30:00+00:00",
+  "confidence": 0.72,
+  "reasoning_layer": "immediate | global_baseline | personalised | hybrid",
+  "channel": "email | sms | whatsapp | push",
   "fallback": false
 }
 ```
 
-**Fallback response (mandatory, per doc's global baseline rule):**
-```json
-{
-  "send_at": "...(next Tue 10:00 local for email, Thu 18:30 for sms/whatsapp)...",
-  "send_at_utc": "...",
-  "confidence": 0.0,
-  "reasoning_layer": "global_baseline",
-  "channel": "email",
-  "fallback": true
-}
-```
+`fallback` is an additive serving field. It is `true` only when a global
+baseline is used because sufficient personalized evidence is unavailable.
 
-## 9. Constraints
-- Never predict outside valid hour (0–23) / day (0–6) ranges
-- Must not output negative time values
-- Must not output probabilities outside [0,1]
-- Must degrade gracefully (never 500) if the model is unavailable
+The API reads only its startup model cache. It never contacts MLflow during a
+request.
 
-## 10. Business Objective
-**Improve:** open rate, click-through rate, conversion speed
-**Reduce:** notification fatigue, irrelevant timing delivery
+## Training and production gates
 
-## 11. Validation Checklist
-- [x] Feature set matches the real `/predict/send-time` endpoint contract (not raw pipeline.py event functions)
-- [x] Categorical encodings match exactly between `train.py` and `api.py`
-- [ ] Trained on real `sequence_sends` + `sequence_events` data (currently synthetic — MVP stage)
-- [x] Target correctly defined (open + click ≤120min)
-- [x] Outputs valid time ranges, ISO 8601 timestamps
-- [x] Has fallback values implemented (global baseline per channel)
-- [x] AUC-ROC ≥ 0.70 production threshold met (0.845)
+Development training may use 5,000 deterministic synthetic records, but such a
+run is tagged `data_source=synthetic` and is never production-eligible.
+Production training requires at least 500 chronologically ordered, labeled real
+send events containing both outcome classes. No synthetic fallback is allowed
+when a database connection is supplied.
+
+The calibrated classifier is a regularized 200-tree
+`GradientBoostingClassifier` (`learning_rate=0.05`, `max_depth=2`,
+`min_samples_leaf=20`, `subsample=0.85`) wrapped in five-fold sigmoid
+`CalibratedClassifierCV`. Sigmoid calibration avoids the small-cohort
+overfitting risk of isotonic calibration at the 500-event production minimum.
+A model artifact is registered as
+`send_time` only when both gates pass:
+
+- CTR improvement over the held-out global baseline is at least 0.08.
+- Expected calibration error is at most 0.12.
+
+MLflow logs the data-source and production-eligibility tags, exact feature
+order, sample count, threshold parameters, accuracy, precision, recall, F1,
+AUC-ROC, baseline CTR, selected-slot CTR, CTR improvement, calibration error,
+run ID, and a credential-free run URL when the tracking server is HTTP(S).
+
+## Required real-data fields
+
+Each `sequence_sends.metadata` record must capture the M2 recovery action, cart
+value tier, purchase recency at decision time, and the historical open rate
+computed strictly from earlier events. These values are immutable training
+evidence; later profile changes must not rewrite them. The detailed database,
+index, webhook, idempotency, and backfill requirements are in
+[`docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md`](../../../../docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md).

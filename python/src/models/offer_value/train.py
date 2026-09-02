@@ -7,14 +7,18 @@ percentage required to convert an abandoned cart.
 
 import mlflow
 import sys, os
+import logging
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
+
+logger = logging.getLogger("rev.models.offer_value.train")
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
-from src.config.mlflow_config import get_or_create_experiment
+from src.config.mlflow_config import get_or_create_experiment, get_run_url
 from src.features.pipeline import (
     calculate_cursor_hesitation,
     calculate_past_orders_total,
@@ -34,6 +38,9 @@ CSS_NUDGE_FLOOR = 35
 # Minimum recovered orders required for real-data training.
 # orders with discount data."
 MIN_REAL_RECOVERED_ORDERS = 200
+MAX_MAE = 5.0
+MIN_R2 = 0.70
+SYNTHETIC_GENERATOR_VERSION = "2.0"
 
 FEATURE_COLUMNS = [
     'pss_score', 'css_score', 'tss_score', 'cursor_hesitation',
@@ -72,22 +79,38 @@ def _generate_synthetic_data(n: int = 3000) -> tuple:
         tuple: (X_train, X_test, y_train, y_test)
                y: minimum discount % (0-25) that led to conversion
     """
-    np.random.seed(42)
+    if n < 1:
+        raise ValueError("n must be at least 1")
 
-    pss_score = np.random.uniform(0, 100, n)
-    css_score = np.random.uniform(0, 100, n)
+    rng = np.random.default_rng(42)
+    price_friction = rng.beta(2.0, 2.8, n)
+    convenience_friction = rng.beta(1.8, 3.0, n)
+    trust_friction = rng.beta(1.5, 5.0, n)
+
+    pss_score = np.clip(100 * price_friction + rng.normal(0, 7, n), 0, 100)
+    css_score = np.clip(100 * convenience_friction + rng.normal(0, 7, n), 0, 100)
     # tss_score: synthetic placeholder. No real backing data exists yet -
     # see module docstring. Distribution skewed low since most sessions
     # aren't trust-blocked, with a meaningful tail so the TRUST_SIGNAL
     # gate actually gets exercised in training/testing.
-    tss_score = np.random.beta(2, 5, n) * 100
-    cursor_hesitation = np.random.randint(0, 10, n)
-    past_orders_total = np.random.randint(0, 50, n)
-    past_orders_with_coupon_pct = np.random.uniform(0, 1, n)
-    days_since_last_purchase = np.random.randint(0, 365, n)
-    avg_order_value = np.random.uniform(10.0, 500.0, n)
-    visited_coupon_page = np.random.choice([0, 1], size=n, p=[0.6, 0.4])
-    searched_discount_terms = np.random.choice([0, 1], size=n, p=[0.7, 0.3])
+    tss_score = np.clip(100 * trust_friction + rng.normal(0, 5, n), 0, 100)
+    cursor_hesitation = np.clip(
+        rng.poisson(0.4 + 3.5 * price_friction + 2.0 * convenience_friction),
+        0,
+        10,
+    )
+    past_orders_total = np.clip(rng.negative_binomial(3, 0.25, n), 0, 50)
+    past_orders_with_coupon_pct = np.clip(
+        0.05 + 0.82 * price_friction + rng.normal(0, 0.1, n), 0, 1
+    )
+    days_since_last_purchase = np.clip(rng.exponential(70, n), 0, 365).astype(int)
+    avg_order_value = np.clip(rng.lognormal(4.5, 0.65, n), 10, 500)
+    visited_coupon_page = rng.binomial(
+        1, np.clip(0.05 + 0.7 * price_friction, 0, 0.85)
+    )
+    searched_discount_terms = rng.binomial(
+        1, np.clip(0.02 + 0.5 * price_friction, 0, 0.7)
+    )
 
     # Base discount driven by price-sensitivity signals
     base = (
@@ -96,9 +119,10 @@ def _generate_synthetic_data(n: int = 3000) -> tuple:
         + past_orders_with_coupon_pct * 6.0
         + visited_coupon_page * 5.0
         + searched_discount_terms * 4.0
-        - (css_score / 100.0) * 10.0   # convenience-sensitive shoppers need less $ off
+        - (css_score / 100.0) * 8.0
+        - np.minimum(past_orders_total, 20) * 0.08
     )
-    base += np.random.normal(0, 2.0, n)
+    base += rng.normal(0, 2.2, n)
 
     y = apply_hard_constraints(base, pss_score, css_score, tss_score)
 
@@ -255,7 +279,7 @@ def load_training_data(n: int = 3000, db_connection=None) -> tuple:
             or succeeds but finds zero recovered orders with a discount_pct.
     """
     if db_connection is None:
-        print("[M5] No db_connection provided — using synthetic data.")
+        logger.info("m5_synthetic_training_data_selected")
         X_train, X_test, y_train, y_test = _generate_synthetic_data(n=n)
         return X_train, X_test, y_train, y_test, False, False
 
@@ -271,14 +295,15 @@ def load_training_data(n: int = 3000, db_connection=None) -> tuple:
 
     below_minimum = len(real_df) < MIN_REAL_RECOVERED_ORDERS
     if below_minimum:
-        print(
-            f"[M5] WARNING: training on {len(real_df)} real recovered "
-            f"orders, below the recommended minimum of "
-            f"{MIN_REAL_RECOVERED_ORDERS}. Proceeding per strict real-data "
-            f"policy — treat discount_pct predictions as provisional."
+        logger.warning(
+            "m5_training_data_below_minimum",
+            extra={
+                "order_count": len(real_df),
+                "minimum_order_count": MIN_REAL_RECOVERED_ORDERS,
+            },
         )
     else:
-        print(f"[M5] Training on {len(real_df)} real recovered orders.")
+        logger.info("m5_real_training_data_selected", extra={"order_count": len(real_df)})
 
     X = real_df[FEATURE_COLUMNS]
     y = real_df["discount_pct"]
@@ -298,27 +323,45 @@ def build_model() -> GradientBoostingRegressor:
     )
 
 
+def _is_production_eligible(
+    used_real_data: bool,
+    below_minimum: bool,
+    mae: float,
+    r2: float,
+) -> bool:
+    """Require sufficient real data and minimum regression quality."""
+    return (
+        used_real_data
+        and not below_minimum
+        and mae <= MAX_MAE
+        and r2 >= MIN_R2
+    )
+
+
 def train(run_name: str = "m5-offervalue-training", db_connection=None) -> dict:
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
 
-    print("Loading training data (real if db_connection given, else synthetic N=3000)...")
+    logger.info("m5_training_data_loading")
     X_train, X_test, y_train, y_test, used_real_data, below_minimum = load_training_data(
         n=3000, db_connection=db_connection
     )
 
-    print("Building GradientBoostingRegressor...")
+    logger.info("m5_model_building")
     model = build_model()
 
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.set_tag("model", "offer_value")
         mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
         mlflow.set_tag("below_minimum_threshold", str(below_minimum))
+        if not used_real_data:
+            mlflow.set_tag("synthetic_generator_version", SYNTHETIC_GENERATOR_VERSION)
+            mlflow.set_tag("synthetic_only_not_for_registration", "true")
 
-        print("Training model...")
+        logger.info("m5_model_training_started")
         model.fit(X_train, y_train)
 
-        print("Evaluating model...")
+        logger.info("m5_model_evaluation_started")
         raw_pred = model.predict(X_test)
         # Safety net: enforce hard constraints on predictions too, not just labels
         y_pred = apply_hard_constraints(
@@ -333,6 +376,16 @@ def train(run_name: str = "m5-offervalue-training", db_connection=None) -> dict:
         rmse = np.sqrt(mean_squared_error(y_test, y_pred))
         mae = mean_absolute_error(y_test, y_pred)
         r2 = r2_score(y_test, y_pred)
+        production_eligible = _is_production_eligible(
+            used_real_data,
+            below_minimum,
+            mae,
+            r2,
+        )
+        mlflow.set_tag("quality_gates_passed", str(
+            mae <= MAX_MAE and r2 >= MIN_R2
+        ).lower())
+        mlflow.set_tag("production_eligible", str(production_eligible).lower())
 
         mlflow.log_params({
             "n_estimators": 150,
@@ -345,32 +398,48 @@ def train(run_name: str = "m5-offervalue-training", db_connection=None) -> dict:
             "css_nudge_floor": CSS_NUDGE_FLOOR,
             "n_training_samples": len(X_train),
             "min_real_recovered_orders_threshold": MIN_REAL_RECOVERED_ORDERS,
+            "max_mae": MAX_MAE,
+            "min_r2": MIN_R2,
         })
 
         mlflow.log_metrics({
             "rmse": rmse,
             "mae": mae,
             "r2": r2,
+            "label_zero_discount_rate": float(np.mean(y_train == 0)),
         })
 
-        # registered_model_name added: api.py calls
-        # mlflow.sklearn.load_model("models:/offer_value/latest") - without
-        # this, the model never registers and /predict/offer-value always
-        # falls back.
-        mlflow.sklearn.log_model(model, "m5_offer_value_model", registered_model_name="offer_value")
+        registration = (
+            {"registered_model_name": "offer_value"}
+            if production_eligible
+            else {}
+        )
+        mlflow.sklearn.log_model(
+            model,
+            "m5_offer_value_model",
+            **registration,
+        )
 
-        print(f"\n--- M5 OFFER VALUE MODEL METRICS ---")
-        print(f"Data source: {'real' if used_real_data else 'synthetic'}")
-        print(f"RMSE: {rmse:.4f}")
-        print(f"MAE:  {mae:.4f}")
-        print(f"R2:   {r2:.4f}")
-
-        print(f"\n[OK] MLflow Run ID: {run.info.run_id}")
-        print(f"MLflow Run Name: {run.info.run_name}")
-        print(f"Check DagsHub UI for the full tracking details.")
+        logger.info(
+            "m5_model_metrics",
+            extra={
+                "data_source": "real" if used_real_data else "synthetic",
+                "rmse": float(rmse),
+                "mae": float(mae),
+                "r2": float(r2),
+                "mlflow_run_id": run.info.run_id,
+                "mlflow_run_name": run.info.run_name,
+            },
+        )
 
         return {"model": model, "used_real_data": used_real_data,
                 "below_minimum_threshold": below_minimum,
+                "production_eligible": production_eligible,
+                "run_id": run.info.run_id,
+                "run_url": get_run_url(
+                    run.info.run_id,
+                    run.info.experiment_id,
+                ),
                 "metrics": {"rmse": rmse, "mae": mae, "r2": r2}}
 
 

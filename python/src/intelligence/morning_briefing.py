@@ -83,7 +83,11 @@ class MorningBriefing:
 
 # ── Public entry points ───────────────────────────────────────────────────────
 
-def generate_briefing(organization_id: str, db) -> MorningBriefing:
+def generate_briefing(
+    organization_id: str,
+    db,
+    user_id: str | None = None,
+) -> MorningBriefing:
     """
     Generates the morning briefing for a single merchant.
 
@@ -94,6 +98,7 @@ def generate_briefing(organization_id: str, db) -> MorningBriefing:
     Args:
         organization_id: The merchant's organisation UUID.
         db: SQLAlchemy session.
+        user_id: Authorized organization member receiving the briefing.
 
     Returns:
         MorningBriefing — always. Never raises.
@@ -117,6 +122,16 @@ def generate_briefing(organization_id: str, db) -> MorningBriefing:
     greeting          = _build_greeting(merchant_name, state)
     yesterday_numbers = _build_yesterday_in_numbers(state)
     todays_priority   = _build_todays_priority(state)
+    if user_id:
+        orchestration = _run_briefing_orchestration(
+            organization_id,
+            user_id,
+            db,
+        )
+        todays_priority = _apply_orchestrator_priority(
+            todays_priority,
+            orchestration,
+        )
     concerns          = _build_active_concerns(state)
     opportunities     = _build_opportunities(state)
 
@@ -158,31 +173,37 @@ def run_briefings_for_all_merchants(db) -> dict:
     try:
         rows = db.execute(
             text("""
-                SELECT o.id
+                SELECT o.id, o.owner_id
                 FROM organizations o
                 JOIN stores s ON s.organization_id = o.id
                 WHERE s.status = 'connected'
                   AND o.status = 'active'
-                GROUP BY o.id
+                GROUP BY o.id, o.owner_id
             """)
         ).fetchall()
-        org_ids = [str(r[0]) for r in rows]
-    except Exception as e:
-        logger.error("morning_briefing_org_fetch_failed", extra={"error": str(e)})
-        results["errors"].append(f"Could not fetch organisations: {e}")
+        merchants = [(str(row[0]), str(row[1])) for row in rows]
+    except Exception as exc:
+        logger.error(
+            "morning_briefing_org_fetch_failed",
+            extra={"error_type": type(exc).__name__},
+        )
+        results["errors"].append("Could not fetch organizations.")
         return results
 
-    results["total"] = len(org_ids)
+    results["total"] = len(merchants)
 
-    for org_id in org_ids:
+    for org_id, user_id in merchants:
         try:
-            generate_briefing(org_id, db)
+            generate_briefing(org_id, db, user_id=user_id)
             results["success"] += 1
             logger.info("morning_briefing_generated", extra={"org_id": org_id})
-        except Exception as e:
+        except Exception as exc:
             results["failed"] += 1
-            results["errors"].append(f"{org_id}: {e}")
-            logger.error("morning_briefing_failed", extra={"org_id": org_id, "error": str(e)})
+            results["errors"].append(f"{org_id}: briefing generation failed")
+            logger.error(
+                "morning_briefing_failed",
+                extra={"org_id": org_id, "error_type": type(exc).__name__},
+            )
 
     logger.info(
         "morning_briefing_run_complete",
@@ -193,6 +214,65 @@ def run_briefings_for_all_merchants(db) -> dict:
         },
     )
     return results
+
+
+def _run_briefing_orchestration(organization_id: str, user_id: str, db):
+    """Run the full D5 pipeline for the scheduled proactive briefing."""
+    try:
+        from ..agents.orchestrator import orchestrate
+
+        return orchestrate(
+            organization_id=organization_id,
+            user_id=user_id,
+            message="Prepare today's morning business briefing.",
+            conversation_id=None,
+            db=db,
+            trigger_type="scheduler",
+            trigger_priority="normal",
+            context_payload={"schedule": "morning_briefing"},
+        )
+    except Exception as exc:
+        logger.error(
+            "morning_briefing_orchestration_failed",
+            extra={"error_type": type(exc).__name__},
+        )
+        return None
+
+
+def _apply_orchestrator_priority(priority: dict, orchestration) -> dict:
+    """Use only a verified Orchestrator analysis to replace the primary action."""
+    if (
+        orchestration is None
+        or not getattr(orchestration, "success", False)
+        or getattr(orchestration, "response_type", None) != "analysis"
+        or not str(getattr(orchestration, "recommendation", "") or "").strip()
+    ):
+        return priority
+
+    actions = getattr(orchestration, "actions", None) or []
+    action = actions[0] if actions and isinstance(actions[0], dict) else {}
+    tool = action.get("tool")
+    if tool not in {
+        "view_carts",
+        "view_customers",
+        "view_revenue",
+        "create_campaign",
+        "view_analytics",
+        "view_products",
+        "view_checkout",
+    }:
+        return priority
+
+    return {
+        "description": str(orchestration.recommendation).strip(),
+        "estimated_impact": (
+            str(getattr(orchestration, "implication", "") or "").strip()
+            or priority["estimated_impact"]
+        ),
+        "action_label": str(action.get("label") or priority["action_label"]),
+        "action_tool": tool,
+        "action_params": action.get("params") or {},
+    }
 
 
 # ── Section builders ──────────────────────────────────────────────────────────
@@ -292,15 +372,30 @@ def _build_yesterday_in_numbers(state: BusinessState) -> list[dict]:
         })
 
     # Cart abandonment (always include if non-zero — it's always actionable)
-    if state.abandoned_cart_count and state.abandoned_cart_count > 0:
+    cart_delta = state.cart_delta_pct_vs_avg
+    if (
+        state.abandoned_cart_count
+        and state.abandoned_cart_count > 0
+        and (
+            state.cart_anomaly
+            or (
+                cart_delta is not None
+                and abs(cart_delta) >= STABLE_DELTA_THRESHOLD_PCT
+            )
+        )
+    ):
         metrics.append({
             "metric":          "abandoned_cart_count",
             "label":           "Abandoned carts",
             "value":           state.abandoned_cart_count,
-            "delta":           None,
+            "delta":           cart_delta,
             "direction":       "down",   # abandonment is always bad
             "formatted_value": str(state.abandoned_cart_count),
-            "formatted_delta": f"${float(state.abandoned_cart_value):,.2f} total value" if state.abandoned_cart_value else "",
+            "formatted_delta": (
+                f"{cart_delta:+.1f}% vs 30-day average"
+                if cart_delta is not None
+                else "outside the expected range"
+            ),
         })
 
     # Churn risk (include only if there are at-risk customers)
@@ -349,34 +444,34 @@ def _build_todays_priority(state: BusinessState) -> dict:
     if state.revenue_anomaly and state.revenue_delta_pct is not None and state.revenue_delta_pct < -20:
         return {
             "description":      "Revenue has dropped significantly. Investigate today's orders for payment failures, traffic source changes, or stockouts before the pattern continues.",
-            "estimated_impact": f"Potential recovery of {abs(state.revenue_delta_pct):.0f}% revenue gap",
+            "estimated_impact": f"Observed revenue gap: {abs(state.revenue_delta_pct):.0f}% versus yesterday",
             "action_label":     "Investigate revenue drop",
-            "action_tool":      "revenue_diagnosis",
+            "action_tool":      "view_revenue",
         }
 
     if state.abandoned_cart_count and state.abandoned_cart_count > 0:
         val = float(state.abandoned_cart_value or 0)
         return {
             "description":      f"Launch a recovery sequence for {state.abandoned_cart_count} abandoned carts worth ${val:,.0f}. The sooner the recovery fires, the higher the conversion rate.",
-            "estimated_impact": f"Estimated 18–25% recovery on ${val:,.0f}",
-            "action_label":     "Launch cart recovery",
-            "action_tool":      "trigger_cart_recovery",
+            "estimated_impact": f"At-risk cart value: ${val:,.0f}",
+            "action_label":     "Review abandoned carts",
+            "action_tool":      "view_carts",
         }
 
     if state.churn_risk_count and state.churn_risk_count > 5:
         return {
             "description":      f"Send a win-back sequence to {state.churn_risk_count} customers showing early churn signals before they go cold.",
-            "estimated_impact": "Estimated 12–18% reactivation rate",
-            "action_label":     "Launch win-back sequence",
-            "action_tool":      "trigger_winback",
+            "estimated_impact": f"Customers requiring review: {state.churn_risk_count}",
+            "action_label":     "Review at-risk customers",
+            "action_tool":      "view_customers",
         }
 
     if state.vip_inactive_count and state.vip_inactive_count > 0:
         return {
-            "description":      f"Re-engage {state.vip_inactive_count} VIP customers who have been inactive for 30+ days. These are your highest-LTV customers.",
-            "estimated_impact": "High-value segment — typical reactivation AOV 2–3× average",
-            "action_label":     "Send VIP re-engagement",
-            "action_tool":      "trigger_vip_reengagement",
+            "description":      f"Re-engage {state.vip_inactive_count} VIP customers who have been inactive for 45+ days. These are your highest-LTV customers.",
+            "estimated_impact": f"Inactive VIPs requiring review: {state.vip_inactive_count}",
+            "action_label":     "Review inactive VIPs",
+            "action_tool":      "view_customers",
         }
 
     if state.opportunities:
@@ -385,14 +480,14 @@ def _build_todays_priority(state: BusinessState) -> dict:
             "description":      opp.get("description", "No critical actions required today."),
             "estimated_impact": f"${opp['estimated_value']:,.0f} estimated value" if opp.get("estimated_value") else "Positive impact expected",
             "action_label":     opp.get("action", "View details"),
-            "action_tool":      None,
+            "action_tool":      _opp_tool(opp.get("category", "")) or "view_analytics",
         }
 
     return {
         "description":      "No critical actions required today. Monitor incoming orders and keep recovery sequences live.",
         "estimated_impact": "Preventative",
         "action_label":     "View store overview",
-        "action_tool":      "view_overview",
+        "action_tool":      "view_analytics",
     }
 
 
@@ -417,6 +512,7 @@ def _build_active_concerns(state: BusinessState) -> list[dict]:
             "severity":    risk.get("severity", "medium"),
             "description": risk.get("description", "Unknown risk."),
             "action_label": "Investigate",
+            "action_tool": "view_analytics",
         })
 
     if state.revenue_anomaly and not any(c["description"].startswith("Revenue") for c in concerns):
@@ -425,6 +521,7 @@ def _build_active_concerns(state: BusinessState) -> list[dict]:
             "severity":    "high" if delta < -30 else "medium",
             "description": f"Revenue anomaly detected: {delta:+.1f}% vs yesterday.",
             "action_label": "View revenue",
+            "action_tool": "view_revenue",
         })
 
     if state.cart_anomaly and not any("cart" in c["description"].lower() for c in concerns):
@@ -432,6 +529,7 @@ def _build_active_concerns(state: BusinessState) -> list[dict]:
             "severity":    "medium",
             "description": "Cart abandonment rate is elevated above the 30-day average.",
             "action_label": "View carts",
+            "action_tool": "view_carts",
         })
 
     concerns = concerns[:3]
@@ -442,6 +540,7 @@ def _build_active_concerns(state: BusinessState) -> list[dict]:
             "severity":    "none",
             "description": "No active concerns today.",
             "action_label": None,
+            "action_tool": None,
         }]
 
     return concerns
@@ -463,12 +562,13 @@ def _build_opportunities(state: BusinessState) -> list[dict]:
     opps = []
 
     for raw in state.opportunities:
-        if raw.get("estimated_value") is not None:
+        action_tool = _opp_tool(raw.get("category", ""))
+        if raw.get("estimated_value") is not None and action_tool:
             opps.append({
                 "description":     raw.get("description", ""),
                 "estimated_value": raw.get("estimated_value"),
                 "action_label":    raw.get("action", "Take action"),
-                "action_tool":     _opp_tool(raw.get("category", "")),
+                "action_tool":     action_tool,
             })
 
     # Sort by estimated value descending
@@ -479,9 +579,11 @@ def _build_opportunities(state: BusinessState) -> list[dict]:
 def _opp_tool(category: str) -> str | None:
     """Maps an opportunity category to an available tool identifier."""
     return {
-        "cart_recovery":    "trigger_cart_recovery",
-        "churn_prevention": "trigger_winback",
-        "retention":        "trigger_vip_reengagement",
+        "cart_recovery":    "view_carts",
+        "churn_prevention": "view_customers",
+        "retention":        "view_customers",
+        "revenue":          "view_revenue",
+        "product":          "view_products",
     }.get(category)
 
 
@@ -503,7 +605,7 @@ def _load_overnight_actions(organization_id: str, db) -> list[str]:
     """
     Loads a log of any autonomous actions Rev took while the merchant was offline.
 
-    Queries the audit_log table (or equivalent) for actions in the last 12 hours
+    Queries the canonical audit_logs table for actions in the last 12 hours
     that were triggered autonomously (not by the merchant directly).
 
     Returns an empty list if no autonomous actions were taken — the frontend
@@ -512,18 +614,21 @@ def _load_overnight_actions(organization_id: str, db) -> list[str]:
     try:
         rows = db.execute(
             text("""
-                SELECT action_description, created_at
-                FROM audit_log
+                SELECT action, created_at
+                FROM audit_logs
                 WHERE organization_id = :o
-                  AND triggered_by = 'rev_autonomous'
+                  AND context->>'actor' = 'rev_autonomous'
                   AND created_at >= NOW() - INTERVAL '12 hours'
                 ORDER BY created_at ASC
             """),
             {"o": organization_id},
         ).fetchall()
         return [f"{r[0]} ({_format_time(r[1])})" for r in rows]
-    except Exception as e:
-        logger.warning("overnight_actions_load_failed", extra={"error": str(e)})
+    except Exception as exc:
+        logger.warning(
+            "overnight_actions_load_failed",
+            extra={"error_type": type(exc).__name__},
+        )
         return []
 
 
@@ -586,12 +691,15 @@ def _persist_briefing(briefing: MorningBriefing, db) -> None:
             },
         )
         db.commit()
-    except Exception as e:
-        logger.error("morning_briefing_persist_failed", extra={"error": str(e)})
+    except Exception as exc:
+        logger.error(
+            "morning_briefing_persist_failed",
+            extra={"error_type": type(exc).__name__},
+        )
         try:
             db.rollback()
         except Exception:
-            pass
+            logger.error("morning_briefing_persist_rollback_failed")
 
 
 def _fallback_briefing(
@@ -618,12 +726,13 @@ def _fallback_briefing(
             "description":      "Check your store connection in Revluma settings. If the issue persists, Rev will retry automatically.",
             "estimated_impact": "Data will be available once store sync completes.",
             "action_label":     "Check store connection",
-            "action_tool":      "check_store_connection",
+            "action_tool":      "view_analytics",
         },
         active_concerns=[{
             "severity":    "medium",
             "description": "Business State could not be loaded. Store data may be unavailable.",
             "action_label": "Check store connection",
+            "action_tool": "view_analytics",
         }],
         opportunities=[],
         overnight_log=[],

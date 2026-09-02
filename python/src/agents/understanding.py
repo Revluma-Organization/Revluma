@@ -139,8 +139,6 @@ def understand(message: str, history: list[dict],
     import anthropic, os
 
     context = _format_history(history)
-
-    context = _format_history(history)
     text_prompt = (
         _SCHEMA_PROMPT
         + "\n\nCONVERSATION SO FAR:\n"
@@ -188,13 +186,15 @@ def understand(message: str, history: list[dict],
             })
             return parsed
 
-        print(f"UNDERSTANDING_PARSE_FAILED raw={raw[:200]}")
+        logger.warning("understanding_parse_failed")
         return _safe_fallback(message, history, "parse failed")
 
     except Exception as e:
-        print(f"UNDERSTANDING_ERROR {type(e).__name__}: {e}")
-        logger.warning("understanding_failed", extra={"error": str(e)})
-        return _safe_fallback(message, history, str(e))
+        logger.warning(
+            "understanding_failed",
+            extra={"error_type": type(e).__name__},
+        )
+        return _safe_fallback(message, history, type(e).__name__)
 
 
 def _parse(raw: str) -> Understanding | None:

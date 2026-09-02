@@ -38,6 +38,48 @@ class TestParseRawEvent(unittest.TestCase):
         self.assertEqual(result["session_id"], "sess_1")
         self.assertTrue(result["_valid"])
 
+    def test_uppercase_wire_event_is_normalised_for_python_consumers(self):
+        payload = {
+            "event_type": "EXIT_INTENT",
+            "session_id": "sess_1",
+            "timestamp": "2026-06-26T10:00:00Z",
+        }
+        result = parse_raw_event(payload)
+        self.assertEqual(result["event_type"], "exit_intent")
+        self.assertTrue(result["_valid"])
+
+    def test_unknown_event_type_is_invalid(self):
+        payload = {
+            "event_type": "made_up_event",
+            "session_id": "sess_1",
+            "timestamp": "2026-06-26T10:00:00Z",
+        }
+        result = parse_raw_event(payload)
+        self.assertEqual(result["event_type"], "unknown")
+        self.assertFalse(result["_valid"])
+
+    def test_created_at_alias_is_emitted_as_canonical_timestamp(self):
+        payload = {
+            "event_type": "SCROLL",
+            "session_id": "sess_1",
+            "created_at": "2026-06-26T10:00:00Z",
+        }
+        result = parse_raw_event(payload)
+        self.assertEqual(result["timestamp"], payload["created_at"])
+        self.assertTrue(result["_valid"])
+
+    def test_optional_envelope_keys_are_always_present(self):
+        result = parse_raw_event({
+            "event_type": "scroll",
+            "session_id": "sess_1",
+            "timestamp": "2026-06-26T10:00:00Z",
+        })
+        expected_optional = {
+            "id", "customer_id", "anonymous_id", "store_id", "merchant_id",
+            "platform", "page", "device", "payload",
+        }
+        self.assertTrue(expected_optional.issubset(result))
+
     def test_missing_event_type(self):
         payload = {"session_id": "sess_1", "timestamp": "2026-06-26T10:00:00Z"}
         result = parse_raw_event(payload)
@@ -172,6 +214,18 @@ class TestExtractSessionTimeline(unittest.TestCase):
             self.fail(f"extract_session_timeline raised: {e}")
         self.assertEqual(result["session_start"], "2026-06-26T10:00:00Z")
 
+    def test_created_at_alias_is_used_throughout_timeline(self):
+        events = [
+            {"event_type": "checkout_step", "created_at": "2026-06-26T10:00:00Z"},
+            {"event_type": "exit_intent", "created_at": "2026-06-26T10:01:00Z"},
+            {"event_type": "failed_payment", "created_at": "2026-06-26T10:02:00Z"},
+        ]
+        result = extract_session_timeline(events)
+        self.assertEqual(result["session_start"], "2026-06-26T10:00:00Z")
+        self.assertEqual(result["session_end"], "2026-06-26T10:02:00Z")
+        self.assertEqual(result["exit_intent_at"], "2026-06-26T10:01:00Z")
+        self.assertEqual(result["payment_failed_at"], "2026-06-26T10:02:00Z")
+
     def test_none_input(self):
         result = extract_session_timeline(None)
         self.assertIsNone(result["session_start"])
@@ -183,13 +237,19 @@ class TestDetectPlatform(unittest.TestCase):
         def __init__(self, return_value=None, raise_exception=False):
             self.return_value = return_value
             self.raise_exception = raise_exception
+            self.execute_args = None
+            self.closed = False
 
         def execute(self, query, params):
+            self.execute_args = (query, params)
             if self.raise_exception:
                 raise Exception("DB connection failed")
 
         def fetchone(self):
             return self.return_value
+
+        def close(self):
+            self.closed = True
 
     class MockDB:
         def __init__(self, cursor):
@@ -203,6 +263,10 @@ class TestDetectPlatform(unittest.TestCase):
         db = self.MockDB(mock_cursor)
         result = detect_platform("merchant_123", db)
         self.assertEqual(result, "shopify")
+        query, params = mock_cursor.execute_args
+        self.assertIn("organization_id = %s", query)
+        self.assertEqual(params, ("merchant_123",))
+        self.assertTrue(mock_cursor.closed)
 
     def test_no_row_found(self):
         mock_cursor = self.MockCursor(return_value=None)
@@ -218,6 +282,7 @@ class TestDetectPlatform(unittest.TestCase):
         except Exception as e:
             self.fail(f"detect_platform raised: {e}")
         self.assertEqual(result, "unknown")
+        self.assertTrue(mock_cursor.closed)
 
     def test_invalid_platform_value(self):
         mock_cursor = self.MockCursor(return_value=("magento",))

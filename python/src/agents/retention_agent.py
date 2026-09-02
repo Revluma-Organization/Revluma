@@ -19,6 +19,7 @@ action is built, not only at the point customers are selected.
 """
 
 from __future__ import annotations
+import json
 import logging
 from .base_agent import BaseAgent, AgentResult
 
@@ -103,9 +104,10 @@ class RetentionAgent(BaseAgent):
     def analyze(self, business_state, memories: list[dict], question: str) -> AgentResult:
         try:
             return self._analyze(business_state, memories, question)
-        except Exception as e:
-            logger.error("retention_agent_failed", extra={"error": str(e)})
-            return AgentResult.error("retention", str(e))
+        except Exception as exc:
+            error_type = type(exc).__name__
+            logger.error("retention_agent_failed", extra={"error_type": error_type})
+            return AgentResult.error("retention", error_type)
 
     def structured_output(self, business_state, memories: list[dict], question: str) -> dict:
         """The S5 agent output schema — six fields, no free-form text.
@@ -117,18 +119,17 @@ class RetentionAgent(BaseAgent):
         """
         try:
             return self._structured_output(business_state, memories, question)
-        except Exception as e:
-            logger.error("retention_structured_output_failed", extra={"error": str(e)})
+        except Exception as exc:
+            error_type = type(exc).__name__
+            logger.error(
+                "retention_structured_output_failed",
+                extra={"error_type": error_type},
+            )
             return {
                 "domain": self.name,
-                "findings": [{"code": "AGENT_ERROR", "metric": "agent_error",
-                              "value": type(e).__name__, "kind": "fact", "severity": "high"}],
+                "findings": f"AGENT_ERROR:{error_type}",
                 "confidence": 0.0,
-                "recommended_action": {
-                    "action": "no_action_required", "customer_id": None, "churn_tier": None,
-                    "channel": None, "discount_allowed": False, "discount_pct": 0,
-                    "expected_value": None, "escalate_to_human": False,
-                },
+                "recommended_action": None,
                 "evidence_references": [],
                 "contradictions_detected": [],
             }
@@ -204,13 +205,23 @@ class RetentionAgent(BaseAgent):
             if any(m.get("memory_key") == key and m.get("is_active") for m in memories):
                 evidence.append(f"memory:{key}")
 
+        contradictions = _detect_contradictions(business_state, m4, memories)
+        action = recommended_action.get("action")
+        if action == "no_action_required":
+            action = None
+
         return {
             "domain": self.name,
-            "findings": findings,
+            "findings": json.dumps(
+                findings,
+                default=str,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
             "confidence": result.confidence,
-            "recommended_action": recommended_action,
+            "recommended_action": action,
             "evidence_references": evidence,
-            "contradictions_detected": _detect_contradictions(business_state, m4, memories),
+            "contradictions_detected": [item["code"] for item in contradictions],
         }
 
     def _analyze(self, bs, memories: list[dict], question: str) -> AgentResult:
@@ -256,7 +267,7 @@ class RetentionAgent(BaseAgent):
                 "type": "fact",
                 "metric": "vip_inactive_count",
                 "value": bs.vip_inactive_count,
-                "description": f"{bs.vip_inactive_count} VIP customers (champion segment) inactive for 30+ days",
+                "description": f"{bs.vip_inactive_count} VIP customers (champion segment) inactive for 45+ days",
                 "source": "customers.rfm_segment + customers.updated_at",
             })
 
@@ -437,7 +448,7 @@ class RetentionAgent(BaseAgent):
         if bs.vip_inactive_count and bs.vip_inactive_count > 0:
             recommendations.append({
                 "action": "vip_reengagement",
-                "description": f"Re-engage {bs.vip_inactive_count} VIP customers inactive 30+ days. "
+                "description": f"Re-engage {bs.vip_inactive_count} VIP customers inactive 45+ days. "
                                f"Use personalised recommendation, no discount — they buy on value.",
                 "predicted_impact": "VIPs have 3-4x higher conversion rate on re-engagement vs standard customers",
                 "confidence": 0.78,

@@ -16,7 +16,31 @@ This sits between:
 
 from __future__ import annotations
 from datetime import datetime
+import logging
 from typing import Any
+
+
+logger = logging.getLogger("rev.features.event_processor")
+
+KNOWN_EVENT_TYPES = frozenset({
+    "page_view",
+    "scroll",
+    "product_view",
+    "add_to_cart",
+    "remove_from_cart",
+    "checkout_started",
+    "checkout_step",
+    "purchase_completed",
+    "customer_created",
+    "text_copied",
+    "coupon_rejected",
+    "tab_switch",
+    "exit_intent",
+    "failed_payment",
+    "field_focus",
+    "field_blur",
+})
+
 
 def _safe_parse_timestamp(ts: str) -> datetime | None:
     """
@@ -33,7 +57,7 @@ def _safe_parse_timestamp(ts: str) -> datetime | None:
     if not ts or not isinstance(ts, str):
         return None
     try:
-        normalized = ts.replace("Z", "+00:00")
+        normalized = ts[:-1] + "+00:00" if ts.endswith("Z") else ts
         return datetime.fromisoformat(normalized)
     except (ValueError, TypeError):
         return None
@@ -68,13 +92,7 @@ def parse_raw_event(raw_payload: dict) -> dict:
         malformed or partial payloads gracefully (missing fields, null values).
     """
     if not isinstance(raw_payload, dict):
-        return {
-            "event_type": "unknown",
-            "session_id": None,
-            "timestamp": None,
-            "payload": {},
-            "_valid": False
-        }
+        raw_payload = {}
 
     event_type = raw_payload.get("event_type")
     session_id = raw_payload.get("session_id")
@@ -86,6 +104,11 @@ def parse_raw_event(raw_payload: dict) -> dict:
     if not event_type or not isinstance(event_type, str):
         event_type = "unknown"
         is_valid = False
+    else:
+        event_type = event_type.strip().lower()
+        if event_type not in KNOWN_EVENT_TYPES:
+            event_type = "unknown"
+            is_valid = False
 
     if not session_id or not isinstance(session_id, str):
         session_id = None
@@ -95,20 +118,27 @@ def parse_raw_event(raw_payload: dict) -> dict:
         timestamp = None
         is_valid = False
     elif _safe_parse_timestamp(timestamp) is None:
+        timestamp = None
         is_valid = False
 
     if not isinstance(payload, dict):
         payload = {}
 
     return {
+        "id": raw_payload.get("id"),
         "event_type": event_type,
         "session_id": session_id,
         "timestamp": timestamp,
+        "customer_id": raw_payload.get("customer_id"),
+        "anonymous_id": raw_payload.get("anonymous_id"),
+        "store_id": raw_payload.get("store_id"),
+        "merchant_id": raw_payload.get("merchant_id"),
+        "platform": raw_payload.get("platform"),
+        "page": raw_payload.get("page"),
+        "device": raw_payload.get("device"),
         "payload": payload,
         "_valid": is_valid
     }
-
-    # pass
 
 
 def filter_events_by_type(events: list, event_type: str) -> list:
@@ -168,6 +198,11 @@ def _sort_events_by_timestamp(events: list) -> list:
     return sorted(events, key=_sort_key)
 
 
+def _event_timestamp(event: dict) -> str | None:
+    """Return the canonical or database timestamp alias for an event."""
+    return event.get("timestamp") or event.get("created_at")
+
+
 
 def _extract_timeline_fields(sorted_events: list) -> dict:
     """Extracts key timeline fields from a pre-sorted list of session events.
@@ -186,8 +221,8 @@ def _extract_timeline_fields(sorted_events: list) -> dict:
         e for e in sorted_events
         if _safe_parse_timestamp(e.get("timestamp") or e.get("created_at")) is not None
     ]
-    session_start = timestamped[0]["timestamp"] if timestamped else None
-    session_end   = timestamped[-1]["timestamp"] if timestamped else None
+    session_start = _event_timestamp(timestamped[0]) if timestamped else None
+    session_end = _event_timestamp(timestamped[-1]) if timestamped else None
 
     checkout_steps = [
         e for e in sorted_events if e.get("event_type") == "checkout_step"
@@ -208,8 +243,8 @@ def _extract_timeline_fields(sorted_events: list) -> dict:
         "session_end":        session_end,
         "checkout_steps":     checkout_steps,
         "tab_hidden_events":  tab_hidden_events,
-        "exit_intent_at":     exit_intent_events[0]["timestamp"] if exit_intent_events else None,
-        "payment_failed_at":  failed_payment_events[0]["timestamp"] if failed_payment_events else None,
+        "exit_intent_at": _event_timestamp(exit_intent_events[0]) if exit_intent_events else None,
+        "payment_failed_at": _event_timestamp(failed_payment_events[0]) if failed_payment_events else None,
     }
 
 
@@ -220,7 +255,7 @@ def extract_session_timeline(events: list) -> dict:
 
     Features that need this:
         - time_on_checkout_step_sec (Feature 3) — needs step start/end timestamps
-        - cursor_hesitation_ms_on_price_field (Feature 4) — needs focus/blur pairs
+        - cursor_hesitation (Feature 4) — focus/blur duration converted to a 0-10 score
         - abandoned_at_shipping_reveal (Feature 13) — needs step 2→exit sequence
         - failed_payment_attempt (Feature 14) — needs payment_failed event timing
 
@@ -286,11 +321,20 @@ def detect_platform(merchant_id: str, db) -> str:
 
     try:
         cursor = db.cursor()
-        cursor.execute(
-            "SELECT platform FROM stores WHERE merchant_id = %s",
-            (merchant_id,)
-        )
-        row = cursor.fetchone()
+        try:
+            cursor.execute(
+                """
+                SELECT platform
+                FROM stores
+                WHERE organization_id = %s
+                ORDER BY (status = 'connected') DESC, created_at DESC
+                LIMIT 1
+                """,
+                (merchant_id,),
+            )
+            row = cursor.fetchone()
+        finally:
+            cursor.close()
 
         if not row or not row[0]:
             return "unknown"
@@ -299,8 +343,8 @@ def detect_platform(merchant_id: str, db) -> str:
         return platform if platform in valid_platforms else "unknown"
 
     except Exception:
+        logger.exception("platform_detection_failed")
         return "unknown"
-    # pass
 
 _SHOPIFY_STEP_MAP = {
     "product": 0,
@@ -366,7 +410,6 @@ def normalize_checkout_step(platform: str, platform_step: Any) -> int:
     elif platform_key == "woocommerce":
         return _WOOCOMMERCE_STEP_MAP.get(step_key, 0)
     return 0
-    # pass
 
 
 def group_events_by_session(events: list) -> dict:

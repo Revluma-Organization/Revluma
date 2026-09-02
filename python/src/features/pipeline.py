@@ -7,6 +7,11 @@ All 30 features fully implemented.
 
 from __future__ import annotations
 
+import logging
+
+
+logger = logging.getLogger("rev.features.pipeline")
+
 
 # ---------------------------------------------------------------------------
 # BEHAVIOURAL FEATURES — from tracking pixel events (real-time, per session)
@@ -308,6 +313,7 @@ def calculate_past_orders_total(customer_id: str, db) -> int:
             return int(row[0])
         return 0
     except Exception:
+        logger.exception("past_orders_total_query_failed")
         return 0
 
 
@@ -336,7 +342,7 @@ def calculate_coupon_usage_pct(customer_id: str, db) -> float:
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT CAST(SUM(CASE WHEN coupon_used THEN 1 ELSE 0 END) AS FLOAT)
+                SELECT COUNT(*) FILTER (WHERE coupon_used = true)::float
                        / NULLIF(COUNT(*), 0)
                 FROM orders
                 WHERE customer_id = %s
@@ -348,6 +354,7 @@ def calculate_coupon_usage_pct(customer_id: str, db) -> float:
             return float(row[0])
         return 0.0
     except Exception:
+        logger.exception("coupon_usage_query_failed")
         return 0.0
 def calculate_days_since_last_purchase(customer_id: str, db) -> int:
     """
@@ -401,6 +408,7 @@ def calculate_days_since_last_purchase(customer_id: str, db) -> int:
         delta = now - last_order
         return int(delta.days)
     except Exception:
+        logger.exception("days_since_last_purchase_query_failed")
         return -1
 def calculate_avg_order_value(customer_id: str, db) -> float:
     """
@@ -433,6 +441,7 @@ def calculate_avg_order_value(customer_id: str, db) -> float:
             return float(row[0])
         return 0.0
     except Exception:
+        logger.exception("average_order_value_query_failed")
         return 0.0
 
 def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
@@ -466,9 +475,17 @@ def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
             cursor.execute(
                 """
                 SELECT
-                    COUNT(CASE WHEN ordered_at >= NOW() - INTERVAL '30 days' THEN 1 END),
-                    COUNT(CASE WHEN ordered_at >= NOW() - INTERVAL '60 days'
-                               AND ordered_at  < NOW() - INTERVAL '30 days' THEN 1 END)
+                    COUNT(*) FILTER (
+                        WHERE ordered_at >= NOW() - INTERVAL '30 days'
+                    ),
+                    COUNT(*) FILTER (
+                        WHERE ordered_at >= NOW() - INTERVAL '60 days'
+                          AND ordered_at < NOW() - INTERVAL '30 days'
+                    ),
+                    COALESCE(
+                        MIN(ordered_at) <= NOW() - INTERVAL '60 days',
+                        false
+                    )
                 FROM orders
                 WHERE customer_id = %s
                 """,
@@ -480,6 +497,10 @@ def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
 
         current = int(row[0]) if row[0] is not None else 0
         previous = int(row[1]) if row[1] is not None else 0
+        has_sufficient_history = bool(row[2]) if len(row) > 2 else False
+
+        if not has_sufficient_history:
+            return 0
 
         if current > previous:
             return 1
@@ -488,6 +509,7 @@ def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
         else:
             return 0
     except Exception:
+        logger.exception("purchase_frequency_trend_query_failed")
         return 0
 def calculate_visited_coupon_page(events: list) -> bool:
     """
@@ -796,7 +818,7 @@ def calculate_time_first_view_to_cart_add_hrs(events: list) -> float:
             continue
 
         event_type = event.get("event_type")
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts = _parse_timestamp(event.get("timestamp") or event.get("created_at"))
         if ts is None:
             continue
 
@@ -1079,7 +1101,7 @@ def calculate_shipping_eta_dwell_sec(events: list) -> float:
         if not is_shipping:
             continue
 
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts = _parse_timestamp(event.get("timestamp") or event.get("created_at"))
         if ts is None:
             continue
 
@@ -1266,7 +1288,7 @@ def calculate_pss_score(feature_dict: dict) -> int:
 
     Composite score representing how price-sensitive this shopper is.
     Weighted combination of PSS signals:
-        HIGH   (30pts) — cursor_hesitation count (capped contribution)
+        HIGH   (30pts) — cursor_hesitation score (capped contribution)
         HIGH   (25pts) — past_orders_with_coupon_pct
         MEDIUM (20pts) — visited_coupon_page
         MEDIUM (15pts) — searched_discount_terms
@@ -1447,7 +1469,7 @@ def calculate_rfm_scores(customer_id: str, db) -> dict:
         f_score = 4
     elif orders >= 3:
         f_score = 3
-    elif orders >= 1:
+    elif orders == 2:
         f_score = 2
     else:
         f_score = 1
@@ -1459,7 +1481,7 @@ def calculate_rfm_scores(customer_id: str, db) -> dict:
         m_score = 4
     elif aov >= 50:
         m_score = 3
-    elif aov >= 10:
+    elif aov >= 20:
         m_score = 2
     else:
         m_score = 1

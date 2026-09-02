@@ -4,7 +4,12 @@
 Classifies each abandoning shopper as **price-sensitive**, **convenience-sensitive**, **dual-sensitive**, or **neutral**. The output directly determines what type of recovery offer to send — a discount, a free-shipping offer, both, or just a reminder nudge.
 
 ## Model type
-Gradient Boosting (multi-output regressor → PSS + CSS scores)
+Two Gradient Boosting binary classifiers: one for price sensitivity and one
+for convenience sensitivity. Inference converts their probabilities to the
+0-100 PSS and CSS scores.
+
+Each classifier uses 160 estimators, `learning_rate=0.05`, `max_depth=2`,
+`min_samples_leaf=20`, and `subsample=0.85` to reduce synthetic overfitting.
 
 ## What it predicts
 - `pss_score` (int 0–100) — Price Sensitivity Score
@@ -21,7 +26,7 @@ Gradient Boosting (multi-output regressor → PSS + CSS scores)
 | < 40 | < 40 | Neutral | Soft reminder nudge, no offer |
 | 40–59 | 40–59 | Ambiguous | Hold or soft nudge with 5% discount |
 
-## Features consumed (18)
+## Features consumed (8)
 
 | Feature | Type | PSS/CSS | Weight |
 |---|---|---|---|
@@ -33,22 +38,27 @@ Gradient Boosting (multi-output regressor → PSS + CSS scores)
 | `searched_discount_terms` | bool | PSS | MEDIUM |
 | `scroll_depth_pct` | float | CSS | MEDIUM |
 | `tab_switch_count` | int | PSS | LOW |
-| `google_shopping_referrer` | bool | PSS/CSS | TBD |
-| `time_first_view_to_cart_add_hrs` | float | PSS/CSS | TBD |
-| `sale_period_purchase_only` | bool | PSS/CSS | TBD |
-| `failed_coupon_attempt` | bool | PSS/CSS | TBD |
-| `merchant_avg_order_value` | float | PSS/CSS | TBD |
-| `account_creation_abandonment` | bool | PSS/CSS | TBD |
-| `repeat_checkout_attempts` | int | PSS/CSS | TBD |
-| `device_type_mobile` | bool | PSS/CSS | TBD |
-| `shipping_eta_dwell_sec` | float | PSS/CSS | TBD |
-| `trust_page_visited` | bool | PSS/CSS | TBD |
+The longer 18-signal list is a future expansion proposal, not the current
+training contract. Adding those fields requires a separately versioned model
+and migration plan.
 
-## Schema gaps (Backend Engineer 1 action needed)
-- `abandoned_carts.pss_score` (FLOAT) — column needs adding (P0)
-- `abandoned_carts.css_score` (FLOAT) — column needs adding (P0)
-- `Order.coupon_used` (BOOLEAN) — verify exists, populate from webhook (P0)
+## Schema dependencies
 
-## Note on ownership
-AI/ML Engineer 3 owns the PSS/CSS weighting and scoring logic.
-AI/ML Engineer 2 owns the pipeline skeleton and feature input assembly.
+The required PSS/CSS persistence and coupon-use contracts are specified in
+`docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md`. The Python repository does not
+apply those backend migrations.
+
+## Training and MLflow
+
+Without a database connection, training logs deterministic synthetic PSS and
+CSS artifacts for development evidence. Synthetic runs are tagged
+`production_eligible=false` and are never registered. Registration under
+`sensitivity_pss` and `sensitivity_css` requires at least 500 real labeled
+records and requires that classifier to achieve `AUC-ROC >= 0.75` and
+`F1 >= 0.65`. Synthetic metrics do not establish production performance or
+fairness.
+
+## Ownership boundary
+
+The model module owns PSS/CSS training and scoring. The feature pipeline owns
+canonical input assembly. Backend owns persistence and delivery integration.

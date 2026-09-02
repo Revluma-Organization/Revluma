@@ -257,8 +257,18 @@ class TestFailsafeEvaluation(unittest.TestCase):
         ev = _failsafe_evaluation()
         d = ev.to_dict()
         required = {"hook", "copy", "visuals", "offer", "audience_signals",
-                    "composite_score", "verdict", "top_priority", "fallback"}
+                    "composite_score", "verdict", "top_priority", "fallback",
+                    "creative_hook", "visual_hierarchy", "copy_clarity",
+                    "audience_alignment"}
         self.assertTrue(required.issubset(d.keys()))
+
+    def test_canonical_audit_dimensions_preserve_legacy_values(self):
+        data = _make_eval().to_dict()
+
+        self.assertEqual(data["creative_hook"], data["hook"])
+        self.assertEqual(data["visual_hierarchy"], data["visuals"])
+        self.assertEqual(data["copy_clarity"], data["copy"])
+        self.assertTrue(data["audience_alignment"]["inferred"])
 
     def test_failsafe_composite_is_zero(self):
         ev = _failsafe_evaluation()
