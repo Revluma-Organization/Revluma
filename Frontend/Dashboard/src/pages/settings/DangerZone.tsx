@@ -1,6 +1,9 @@
+import { useAuthStore } from "@/store/authStore";
+import { TwoFactorVerifyModal } from "@components/TwoFactorVerifyModal";
 import { FC, useState, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  ArrowRightLeft,
   AlertTriangle,
   ShieldAlert,
   Trash2,
@@ -33,20 +36,62 @@ export const DangerZone: FC = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState<string>("");
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [isDeletedSuccess, setIsDeletedSuccess] = useState<boolean>(false);
+  // Check if user actually has 2FA enabled!
+  const is2FAEnabled = useAuthStore((s) => s.user?.two_factor_enabled); 
+  
+  // Modal routing states
+  const [is2FAOpen, setIs2FAOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"transfer" | "delete" | null>(null);
+  const [isTransferConfirmOpen, setIsTransferConfirmOpen] = useState(false);
 
-  const handleTransferOwnership = async (e: FormEvent) => {
+  // --- THE INTERCEPTORS ---
+  
+  // Intercept the Transfer Button
+  const handleInitiateTransfer = (e: FormEvent) => {
     e.preventDefault();
     if (!transferEmail || !transferEmail.includes("@")) {
-      setTransferFeedback({
-        type: "error",
-        message: "Please enter a valid email address.",
-      });
+      setTransferFeedback({ type: "error", message: "Please enter a valid email address." });
       return;
     }
-    setIsTransferring(true);
     setTransferFeedback({ type: null, message: "" });
+    
+    // If 2FA is on, show 2FA modal. If off, skip straight to Confirmation!
+    if (is2FAEnabled) {
+      setPendingAction("transfer");
+      setIs2FAOpen(true);
+    } else {
+      setIsTransferConfirmOpen(true);
+    }
+  };
+
+  // Intercept the Delete Button
+  const handleInitiateDelete = () => {
+    if (is2FAEnabled) {
+      setPendingAction("delete");
+      setIs2FAOpen(true);
+    } else {
+      setIsDeleteModalOpen(true);
+    }
+  };
+
+  // --- THE ROUTER ---
+  
+  // This fires when the 2FA modal says "Success!"
+  const handle2FASuccess = () => {
+    setIs2FAOpen(false);
+    if (pendingAction === "transfer") setIsTransferConfirmOpen(true);
+    if (pendingAction === "delete") setIsDeleteModalOpen(true);
+    setPendingAction(null);
+  };
+
+  // --- THE EXECUTORS (API CALLS) ---
+
+  // Execute the Transfer
+  const executeTransfer = async () => {
+    setIsTransferring(true);
     try {
       await api.post("/workspace/transfer", { email: transferEmail }, { skipAuthRedirect: true });
+      setIsTransferConfirmOpen(false); // Close the modal on success
       setTransferFeedback({
         type: "success",
         message: `Ownership transfer invitation sent to ${transferEmail}.`,
@@ -54,6 +99,7 @@ export const DangerZone: FC = () => {
       setTransferEmail("");
     } catch (err) {
       console.error("Failed to initiate ownership transfer:", err);
+      setIsTransferConfirmOpen(false); // Close the modal on error too
       setTransferFeedback({
         type: "error",
         message: "Failed to send transfer invitation. Please try again.",
@@ -63,18 +109,7 @@ export const DangerZone: FC = () => {
     }
   };
 
-  const handleOpenDeleteModal = () => {
-    setDeleteConfirmText("");
-    setIsDeletedSuccess(false);
-    setIsDeleteModalOpen(true);
-  };
-
-  const handleCloseDeleteModal = () => {
-    if (isDeleting) return;
-    setIsDeleteModalOpen(false);
-    setDeleteConfirmText("");
-  };
-
+  // Execute the Delete
   const handleConfirmDelete = async () => {
     if (deleteConfirmText !== "DELETE") return;
     setIsDeleting(true);
@@ -82,7 +117,6 @@ export const DangerZone: FC = () => {
       await api.delete("/workspace", { skipAuthRedirect: true });
       setIsDeleting(false);
       setIsDeletedSuccess(true);
-      // Auto-close modal after showing success state briefly
       setTimeout(() => {
         setIsDeleteModalOpen(false);
         setDeleteConfirmText("");
@@ -92,6 +126,12 @@ export const DangerZone: FC = () => {
       console.error("Failed to delete workspace:", err);
       setIsDeleting(false);
     }
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (isDeleting) return;
+    setIsDeleteModalOpen(false);
+    setDeleteConfirmText("");
   };
 
     return (
@@ -135,7 +175,7 @@ export const DangerZone: FC = () => {
             </div>
 
             <form
-              onSubmit={handleTransferOwnership}
+              onSubmit={handleInitiateTransfer}
               className="flex w-full flex-col gap-3 sm:flex-row md:w-auto md:min-w-[340px]"
             >
               <div className="flex-1">
@@ -148,7 +188,7 @@ export const DangerZone: FC = () => {
                   value={transferEmail}
                   onChange={(e) => setTransferEmail(e.target.value)}
                   placeholder="new.owner@company.com"
-                  className="h-10 w-full border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/80 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:ring-red-500/50 shadow-sm"
+                  className="h-10 w-full border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950/80 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus-visible:ring-red-500/50 shadow-sm"
                   disabled={isTransferring}
                 />
               </div>
@@ -214,10 +254,9 @@ export const DangerZone: FC = () => {
               </p>
             </div>
 
-            <div className="flex shrink-0">
-              <button
+            <button
                 type="button"
-                onClick={handleOpenDeleteModal}
+                onClick={handleInitiateDelete} 
                 className="h-10 w-full whitespace-nowrap rounded-md px-6 font-semibold shadow-sm transition-colors active:scale-[0.98] sm:w-auto"
                 style={{ backgroundColor: '#dc2626', color: '#ffffff', border: '1px solid #dc2626' }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#b91c1c'; }}
