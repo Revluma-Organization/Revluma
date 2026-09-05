@@ -1,5 +1,5 @@
 import { useAuthStore } from "@/store/authStore";
-import { TwoFactorVerifyModal } from "@components/TwoFactorVerifyModal";
+import { TwoFactorVerifyModal } from "@/components/TwoFactorVerifyModal";
 import { FC, useState, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
