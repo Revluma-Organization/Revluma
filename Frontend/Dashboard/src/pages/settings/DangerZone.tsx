@@ -265,7 +265,6 @@ export const DangerZone: FC = () => {
                 Delete Workspace
               </button>
             </div>
-          </div>
         </motion.section>
       </div>
 
@@ -399,6 +398,11 @@ export const DangerZone: FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+      <TwoFactorVerifyModal
+          isOpen={is2FAOpen}
+          onClose={() => setIs2FAOpen(false)}
+          onSuccess={handle2FASuccess}
+        />
     </div>
   );
 };
