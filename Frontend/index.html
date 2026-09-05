@@ -43,29 +43,33 @@
             margin: 0;
             padding: 0;
             font-family: 'Satoshi', sans-serif;
-            background-color: #f8fafc;
-            color: #0f172a;
+            background-color: #0A0A0A;
+            color: white;
             overflow-x: hidden;
             min-height: 100%;
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
-        .dark body {
-            background-color: #0A0A0A;
-            color: white;
-        }
-
-        .glass {
-            background: rgba(255, 255, 255, 0.75);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(0, 0, 0, 0.08);
-        }
-
-        .dark .glass {
-            background: rgba(14, 14, 14, 0.65);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-        }
+        /* ── LIGHT MODE OVERRIDES (Inverts all hardcoded colors instantly) ── */
+        html.light-mode body { background-color: #f8fafc !important; color: #0f172a !important; }
+        html.light-mode .bg-\[\#0D0D0D\], html.light-mode .bg-\[\#0A0A0A\], html.light-mode .bg-\[\#0F0F0F\], html.light-mode .bg-\[\#111\], html.light-mode .bg-black { background-color: #ffffff !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important; }
+        html.light-mode .text-white, html.light-mode .text-\[\#D1D1D1\], html.light-mode .text-\[\#F8FAFC\] { color: #0f172a !important; }
+        html.light-mode .text-\[\#A1A1AA\], html.light-mode .text-\[\#888\], html.light-mode .text-\[\#777\], html.light-mode .text-\[\#555\], html.light-mode .text-\[\#CCCCCC\] { color: #475569 !important; }
+        html.light-mode .border-\[\#1F1F1F\], html.light-mode .border-\[\#161616\], html.light-mode .border-white\/10, html.light-mode .border-white\/15, html.light-mode .border-white\/20 { border-color: #e2e8f0 !important; }
+        html.light-mode .premium-headline { background: linear-gradient(135deg, #0f172a, #334155 45%, #475569) !important; -webkit-background-clip: text !important; }
+        html.light-mode .premium-headline span { color: #0f172a !important; }
+        html.light-mode .glass { background: rgba(255, 255, 255, 0.8) !important; border-color: rgba(0, 0, 0, 0.1) !important; }
+        html.light-mode .glass-btn { background: rgba(0, 0, 0, 0.05) !important; color: #0f172a !important; border-color: rgba(0, 0, 0, 0.15) !important; }
+        html.light-mode section[style*="linear-gradient"], html.light-mode div[style*="linear-gradient"] { background: #f8fafc !important; box-shadow: none !important; }
+        html.light-mode .hiw-card, html.light-mode .hiw-node { background: #ffffff !important; border-color: #e2e8f0 !important; }
+        html.light-mode .video-promo-title, html.light-mode .hiw-title, html.light-mode .logo-name { color: #0f172a !important; }
+        html.light-mode img.filter.brightness-0.invert { filter: none !important; opacity: 0.6; }
+        html.light-mode .hero-video { filter: brightness(0.95) saturate(1.1) contrast(1.05) !important; }
+        html.light-mode .hero-video-overlay { background: linear-gradient(180deg, rgba(248,250,252, 0.55), rgba(248,250,252, 1)) !important; }
+        html.light-mode .promo-slash path { stroke: #cbd5e1 !important; }
+        html.light-mode .promo-arrow { border-color: #cbd5e1 !important; }
+        html.light-mode .promo-arrow svg { stroke: #0f172a !important; }
+        html.light-mode .grid-bg { background-image: linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px) !important; }
 
         .glass-btn {
             display: inline-flex;
@@ -1009,13 +1013,14 @@
   </script>
 </head>
 
-<body x-data="{ scrolled: false, mobileMenu: false, isDark: document.documentElement.classList.contains('dark') }" @scroll.window="scrolled = (window.pageYOffset > 50)">
+<body x-data="{ scrolled: false, mobileMenu: false, isDark: localStorage.getItem('theme') !== 'light' }" 
+      x-init="$watch('isDark', val => { localStorage.setItem('theme', val ? 'dark' : 'light'); if(val) document.documentElement.classList.remove('light-mode'); else document.documentElement.classList.add('light-mode'); }); if(!isDark) document.documentElement.classList.add('light-mode');" 
+      @scroll.window="scrolled = (window.pageYOffset > 50)">
 
     <!-- ── Navigation ── -->
     <nav :class="scrolled ? 'glass shadow-sm shadow-black/30' : 'glass'" class="fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] md:w-[calc(100%-4rem)] max-w-7xl z-50 rounded-full transition-all duration-500 border border-white/10">
         <div class="flex items-center justify-between gap-2 px-3 py-1.5">
-            <a href="/"
-                class="flex items-center gap-2.5 transition-transform duration-300 hover:-translate-y-0.5">
+            <a href="/" class="flex items-center gap-2.5 transition-transform duration-300 hover:-translate-y-0.5">
                 <div class="logo-mark">
                     <img src="assets/images/Revluma-icon.png" alt="Revluma" style="mix-blend-mode: screen;" />
                 </div>
@@ -1024,66 +1029,56 @@
                 </div>
             </a>
 
-            <div
-                class="hidden md:flex items-center gap-5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#CCCCCC]">
+            <div class="hidden md:flex items-center gap-5 text-[10px] font-medium uppercase tracking-[0.18em] text-[#CCCCCC]">
                 <a href="#features" @click.prevent="document.getElementById('features').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Features
-                    <span
-                        class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
+                    <span class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
                 <a href="#pricing" @click.prevent="document.getElementById('pricing').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Pricing
-                    <span
-                        class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
+                    <span class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
                 <a href="#integrations" @click.prevent="document.getElementById('integrations').scrollIntoView({behavior: 'smooth'})" class="group relative hover:text-white transition-colors">Integrations
-                    <span
-                        class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
+                    <span class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
                 <a href="#" class="group relative hover:text-white transition-colors">Contact
-                    <span
-                        class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
+                    <span class="absolute left-0 -bottom-1 h-px w-0 bg-white transition-all duration-300 group-hover:w-full"></span>
                 </a>
             </div>
 
             <div class="hidden md:flex items-center gap-2" id="auth-nav">
+                <a href="/dashboard/overview" id="dashboard-link" class="hidden px-4 py-1.5 rounded-full bg-white text-black/95 font-bold text-xs uppercase tracking-wide shadow-sm hover:shadow-md hover:scale-[1.02] hover:bg-white/90 transition-all duration-300 whitespace-nowrap text-[11px]">
+                    Go to Dashboard
+                </a>
+                <a href="./auth/login.html" id="login-link" class="text-[11px] font-semibold text-[#CCCCCC] hover:text-white transition-colors">Login</a>
+                <a href="./auth/signup.html" id="signup-link">
+                    <button class="bg-white text-black px-3 py-1.5 rounded-full text-[11px] font-bold hover:-translate-y-0.5 transition-transform">Get Started</button>
+                </a>
+            </div>
+
+            <!-- Theme Toggle & Mobile Menu Group -->
+            <div class="flex items-center gap-2">
                 <!-- Theme Toggle Button -->
-                <button @click="isDark = !isDark; if(isDark){ document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); } else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }" 
-                    class="p-2 mr-2 rounded-full border border-black/10 dark:border-white/10 bg-white/50 dark:bg-white/5 text-slate-600 dark:text-[#A1A1AA] hover:text-black dark:hover:text-white transition-all">
-                    <!-- Sun Icon (shows in Dark Mode to switch to Light) -->
-                    <svg x-show="isDark" x-cloak class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <button @click="isDark = !isDark" class="p-2 rounded-full border border-white/10 bg-white/5 text-[#A1A1AA] hover:text-white transition-all" aria-label="Toggle Theme">
+                    <!-- Sun Icon (Shows when dark) -->
+                    <svg x-show="isDark" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                     </svg>
-                    <!-- Moon Icon (shows in Light Mode to switch to Dark) -->
-                    <svg x-show="!isDark" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <!-- Moon Icon (Shows when light) -->
+                    <svg x-show="!isDark" x-cloak class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                     </svg>
                 </button>
 
-                <a href="/dashboard/overview" id="dashboard-link"
-                    class="hidden px-4 py-1.5 rounded-full bg-white text-black/95 font-bold text-xs uppercase tracking-wide shadow-sm hover:shadow-md hover:scale-[1.02] hover:bg-white/90 transition-all duration-300 whitespace-nowrap text-[11px]">
-                    Go to Dashboard
-                </a>
-                <a href="./auth/login.html" id="login-link"
-                    class="text-[11px] font-semibold text-[#CCCCCC] hover:text-white transition-colors">Login</a>
-                <a href="./auth/signup.html" id="signup-link">
-                    <button
-                        class="bg-white text-black px-3 py-1.5 rounded-full text-[11px] font-bold hover:-translate-y-0.5 transition-transform">Get
-                        Started</button>
-                </a>
+                <!-- Mobile Menu Button -->
+                <button @click="mobileMenu = !mobileMenu" class="md:hidden p-2 rounded-full border border-white/10 bg-white/5 text-[#A1A1AA]">
+                    <svg x-show="!mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                    <svg x-show="mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
             </div>
-
-            <button @click="mobileMenu = !mobileMenu"
-                class="md:hidden p-2 rounded-full border border-white/10 bg-white/5 text-[#A1A1AA]">
-                <svg x-show="!mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                    stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16m-7 6h7" />
-                </svg>
-                <svg x-show="mobileMenu" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                    stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
         </div>
-    </nav>
 
     <!-- ── Mobile Menu ── -->
     <div x-show="mobileMenu" x-transition.opacity x-cloak
