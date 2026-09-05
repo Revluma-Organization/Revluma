@@ -50,27 +50,44 @@
             transition: background-color 0.3s ease, color 0.3s ease;
         }
 
-        /* ── LIGHT MODE OVERRIDES (Inverts all hardcoded colors instantly) ── */
+        /* ── LIGHT MODE OVERRIDES ── */
         html.light-mode body { background-color: #f8fafc !important; color: #0f172a !important; }
-        html.light-mode .bg-\[\#0D0D0D\], html.light-mode .bg-\[\#0A0A0A\], html.light-mode .bg-\[\#0F0F0F\], html.light-mode .bg-\[\#111\], html.light-mode .bg-black { background-color: #ffffff !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important; }
+        
+        /* Backgrounds */
+        html.light-mode .bg-\[\#0D0D0D\], html.light-mode .bg-\[\#0A0A0A\], html.light-mode .bg-\[\#0F0F0F\], html.light-mode .bg-\[\#111\], html.light-mode .bg-black { background-color: #ffffff !important; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+        html.light-mode .bg-white\/5, html.light-mode .bg-white\/\[0\.04\], html.light-mode .bg-white\/\[0\.03\] { background-color: rgba(0,0,0,0.03) !important; }
+        html.light-mode .bg-white\/10, html.light-mode .bg-white\/15 { background-color: rgba(0,0,0,0.06) !important; }
+        
+        /* Text Colors */
         html.light-mode .text-white, html.light-mode .text-\[\#D1D1D1\], html.light-mode .text-\[\#F8FAFC\] { color: #0f172a !important; }
-        html.light-mode .text-\[\#A1A1AA\], html.light-mode .text-\[\#888\], html.light-mode .text-\[\#777\], html.light-mode .text-\[\#555\], html.light-mode .text-\[\#CCCCCC\] { color: #475569 !important; }
-        html.light-mode .border-\[\#1F1F1F\], html.light-mode .border-\[\#161616\], html.light-mode .border-white\/10, html.light-mode .border-white\/15, html.light-mode .border-white\/20 { border-color: #e2e8f0 !important; }
+        html.light-mode .text-\[\#A1A1AA\], html.light-mode .text-\[\#888\], html.light-mode .text-\[\#777\], html.light-mode .text-\[\#555\], html.light-mode .text-\[\#CCCCCC\], html.light-mode .text-zinc-300, html.light-mode .text-zinc-400 { color: #475569 !important; }
+        html.light-mode .text-zinc-500 { color: #64748b !important; }
+        
+        /* Borders */
+        html.light-mode .border-\[\#1F1F1F\], html.light-mode .border-\[\#161616\], html.light-mode .border-white\/10, html.light-mode .border-white\/15, html.light-mode .border-white\/20, html.light-mode .border-white\/\[0\.08\] { border-color: rgba(0,0,0,0.1) !important; }
+        
+        /* Specific Elements & Forms */
+        html.light-mode .glass { background: rgba(255,255,255,0.85) !important; border-color: rgba(0,0,0,0.1) !important; }
+        html.light-mode .glass-btn { background: rgba(0,0,0,0.05) !important; color: #0f172a !important; border-color: rgba(0,0,0,0.1) !important; }
         html.light-mode .premium-headline { background: linear-gradient(135deg, #0f172a, #334155 45%, #475569) !important; -webkit-background-clip: text !important; }
         html.light-mode .premium-headline span { color: #0f172a !important; }
-        html.light-mode .glass { background: rgba(255, 255, 255, 0.8) !important; border-color: rgba(0, 0, 0, 0.1) !important; }
-        html.light-mode .glass-btn { background: rgba(0, 0, 0, 0.05) !important; color: #0f172a !important; border-color: rgba(0, 0, 0, 0.15) !important; }
+        html.light-mode .hero-video { filter: brightness(0.95) saturate(1.1) contrast(1.05) !important; opacity: 0.15 !important; }
+        html.light-mode .hero-video-overlay { background: linear-gradient(180deg, rgba(248,250,252, 0.5), rgba(248,250,252, 1)) !important; }
+        html.light-mode .grid-bg { background-image: linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px) !important; }
         html.light-mode section[style*="linear-gradient"], html.light-mode div[style*="linear-gradient"] { background: #f8fafc !important; box-shadow: none !important; }
-        html.light-mode .hiw-card, html.light-mode .hiw-node { background: #ffffff !important; border-color: #e2e8f0 !important; }
+        html.light-mode .hiw-card, html.light-mode .hiw-node { background: #ffffff !important; border-color: rgba(0,0,0,0.1) !important; }
         html.light-mode .video-promo-title, html.light-mode .hiw-title, html.light-mode .logo-name { color: #0f172a !important; }
         html.light-mode img.filter.brightness-0.invert { filter: none !important; opacity: 0.6; }
-        html.light-mode .hero-video { filter: brightness(0.95) saturate(1.1) contrast(1.05) !important; }
-        html.light-mode .hero-video-overlay { background: linear-gradient(180deg, rgba(248,250,252, 0.55), rgba(248,250,252, 1)) !important; }
         html.light-mode .promo-slash path { stroke: #cbd5e1 !important; }
         html.light-mode .promo-arrow { border-color: #cbd5e1 !important; }
         html.light-mode .promo-arrow svg { stroke: #0f172a !important; }
-        html.light-mode .grid-bg { background-image: linear-gradient(to right, #cbd5e1 1px, transparent 1px), linear-gradient(to bottom, #cbd5e1 1px, transparent 1px) !important; }
-
+        html.light-mode .int-pill { border-color: rgba(0,0,0,0.1) !important; background: rgba(0,0,0,0.02) !important; }
+        html.light-mode .int-name { color: #475569 !important; }
+        html.light-mode input, html.light-mode textarea, html.light-mode select { background-color: #ffffff !important; color: #0f172a !important; border-color: rgba(0,0,0,0.1) !important; }
+        html.light-mode .checkbox-custom { border-color: rgba(0,0,0,0.2) !important; background: rgba(0,0,0,0.05) !important; }
+        html.light-mode .checkbox-custom:checked { background: #0f172a !important; border-color: #0f172a !important; }
+        html.light-mode .checkbox-custom:checked::after { color: #ffffff !important; }
+        
         .glass-btn {
             display: inline-flex;
             align-items: center;
@@ -1079,7 +1096,8 @@
                 </button>
             </div>
         </div>
-
+    </nav>
+    
     <!-- ── Mobile Menu ── -->
     <div x-show="mobileMenu" x-transition.opacity x-cloak
         class="fixed inset-x-0 top-20 z-40 rounded-b-3xl border border-white/10 bg-[#090909]/95 px-6 py-8 md:hidden">
