@@ -8,7 +8,20 @@
     </link>
     <title>Revluma</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script>
+        // Check system preference immediately before page loads to prevent flashing
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
     <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,500,400&f[]=inter@400,700&display=swap"
         rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
@@ -30,16 +43,27 @@
             margin: 0;
             padding: 0;
             font-family: 'Satoshi', sans-serif;
-            background-color: #0A0A0A;
-            color: white;
+            background-color: #f8fafc;
+            color: #0f172a;
             overflow-x: hidden;
             min-height: 100%;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .dark body {
+            background-color: #0A0A0A;
+            color: white;
         }
 
         .glass {
-            background: rgba(14, 14, 14, 0.65);
+            background: rgba(255, 255, 255, 0.75);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .dark .glass {
+            background: rgba(14, 14, 14, 0.65);
             border: 1px solid rgba(255, 255, 255, 0.08);
         }
 
@@ -985,7 +1009,7 @@
   </script>
 </head>
 
-<body x-data="{ scrolled: false, mobileMenu: false }" @scroll.window="scrolled = (window.pageYOffset > 50)">
+<body x-data="{ scrolled: false, mobileMenu: false, isDark: document.documentElement.classList.contains('dark') }" @scroll.window="scrolled = (window.pageYOffset > 50)">
 
     <!-- ── Navigation ── -->
     <nav :class="scrolled ? 'glass shadow-sm shadow-black/30' : 'glass'" class="fixed top-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] md:w-[calc(100%-4rem)] max-w-7xl z-50 rounded-full transition-all duration-500 border border-white/10">
@@ -1021,6 +1045,19 @@
             </div>
 
             <div class="hidden md:flex items-center gap-2" id="auth-nav">
+                <!-- Theme Toggle Button -->
+                <button @click="isDark = !isDark; if(isDark){ document.documentElement.classList.add('dark'); localStorage.setItem('theme', 'dark'); } else { document.documentElement.classList.remove('dark'); localStorage.setItem('theme', 'light'); }" 
+                    class="p-2 mr-2 rounded-full border border-black/10 dark:border-white/10 bg-white/50 dark:bg-white/5 text-slate-600 dark:text-[#A1A1AA] hover:text-black dark:hover:text-white transition-all">
+                    <!-- Sun Icon (shows in Dark Mode to switch to Light) -->
+                    <svg x-show="isDark" x-cloak class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                    <!-- Moon Icon (shows in Light Mode to switch to Dark) -->
+                    <svg x-show="!isDark" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                </button>
+
                 <a href="/dashboard/overview" id="dashboard-link"
                     class="hidden px-4 py-1.5 rounded-full bg-white text-black/95 font-bold text-xs uppercase tracking-wide shadow-sm hover:shadow-md hover:scale-[1.02] hover:bg-white/90 transition-all duration-300 whitespace-nowrap text-[11px]">
                     Go to Dashboard
