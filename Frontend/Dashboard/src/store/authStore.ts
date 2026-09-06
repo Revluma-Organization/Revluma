@@ -44,7 +44,7 @@ interface AuthActions {
   setCsrfToken: (token: string | null) => void;
   setHydrated: (hydrated: boolean) => void;
   login: (email: string, password: string) => Promise<{ requires2FA: boolean; tempToken?: string } | void>;
-  verify2FA: (code: string, tempToken: string) => Promise<void>;
+  verify2FA: (code: string, tempToken: string, trustDevice: boolean) => Promise<void>;
   logout: (allSessions?: boolean) => Promise<void>;
   checkSession: () => Promise<void>;
   clearError: () => void;
@@ -179,13 +179,13 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      // --- PHASE 2: BRAND NEW 2FA VERIFICATION ---
-      verify2FA: async (code, tempToken) => {
+      // --- PHASE 2: 2FA VERIFICATION ---
+      verify2FA: async (code, tempToken, trustDevice) => {
         set({ loading: true, error: null });
         try {
-          // Sending to exact endpoint with the temp token in the Authorization header
+          // Pass the boolean to backend's endpoint
           const res = await api.post<any>('/auth/2fa/verify', 
-            { code }, 
+            { code, trust_device: trustDevice }, 
             { headers: { Authorization: `Bearer ${tempToken}` } }
           );
 
