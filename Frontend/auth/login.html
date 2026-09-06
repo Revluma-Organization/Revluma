@@ -912,6 +912,21 @@
           <p>Too many failed attempts. Try again in <strong id="lockoutTimer">--</strong>.</p>
         </div>
 
+        <!-- ── 2FA Verification Section ── -->
+        <div id="twoFactorSection" class="verify-section">
+          <label>Two-Factor Authentication</label>
+          <p style="font-size: 11.5px; color: var(--muted); margin-bottom: 12px; margin-top: -4px;">Enter the 6-digit code from your authenticator app.</p>
+          <div class="verify-input-row">
+            <input type="text" id="twoFactorCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" />
+            <button type="button" id="verify2FaBtn">Verify</button>
+          </div>
+          <div id="twoFactorError" class="field-error"></div>
+          <div class="resend-row" style="justify-content: center; margin-top: 12px;">
+            <button type="button" id="cancel2FaBtn" class="resend-btn">Cancel & Back to Login</button>
+          </div>
+        </div>
+
+        <div id="mainLoginFields">
         <!-- Sign in with Google -->
         <button type="button" id="googleSignInBtn" class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 hover:opacity-90 mb-5" style="background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif;">
           <svg class="w-5 h-5" viewBox="0 0 24 24">
@@ -1003,6 +1018,7 @@
         <div class="signup-row">
           No account? <a href="signup.html">Create one free →</a>
         </div>
+        </div> <!-- Close mainLoginFields -->
 
       </form>
     </div>
@@ -1103,10 +1119,11 @@
       pendingToken: null,   // token for pending-registration verify flow
       countdownTimer: null,
       lockoutTimer: null,
+      temp2FAToken: null, // Stores the token when 2FA is required
     };
 
-
     const el = {
+      // Login Fields
       form: document.getElementById('loginForm'),
       email: document.getElementById('email'),
       password: document.getElementById('password'),
@@ -1119,6 +1136,7 @@
       btnSpinner: document.getElementById('btnSpinner'),
       emailError: document.getElementById('emailError'),
       passwordError: document.getElementById('passwordError'),
+      
       // Banners
       errorBanner: document.getElementById('errorBanner'),
       bannerTitle: document.getElementById('bannerTitle'),
@@ -1130,13 +1148,15 @@
       infoBannerAction: document.getElementById('infoBannerAction'),
       lockoutBar: document.getElementById('lockoutBar'),
       lockoutTimer: document.getElementById('lockoutTimer'),
-      // Verify section
+      
+      // Verify section (Email verification)
       verifySection: document.getElementById('verifySection'),
       verifyCode: document.getElementById('verifyCode'),
       verifyBtn: document.getElementById('verifyBtn'),
       verifyError: document.getElementById('verifyError'),
       resendBtn: document.getElementById('resendBtn'),
       resendCountdown: document.getElementById('resendCountdown'),
+      
       // Toasts
       errorToast: document.getElementById('errorToast'),
       errorMessage: document.getElementById('errorMessage'),
@@ -1144,8 +1164,15 @@
       successMessage: document.getElementById('successMessage'),
       infoToast: document.getElementById('infoToast'),
       infoMessage: document.getElementById('infoMessage'),
-    };
 
+      // --- 2FA ELEMENTS ---
+      mainLoginFields: document.getElementById('mainLoginFields'),
+      twoFactorSection: document.getElementById('twoFactorSection'),
+      twoFactorCode: document.getElementById('twoFactorCode'),
+      verify2FaBtn: document.getElementById('verify2FaBtn'),
+      twoFactorError: document.getElementById('twoFactorError'),
+      cancel2FaBtn: document.getElementById('cancel2FaBtn'),
+    };
 
     function showToast(toastEl, msgEl, message, duration = 4000) {
       msgEl.textContent = message;
@@ -1550,6 +1577,56 @@ storage.setItem('rv-auth', JSON.stringify(authData));
     });
 
     
+    // --- 2FA LOGIC & LISTENERS ---
+    el.twoFactorCode.addEventListener('input', function () {
+      this.value = this.value.replace(/\D/g, '').slice(0, 6);
+    });
+
+    el.cancel2FaBtn.addEventListener('click', () => {
+      // User cancelled 2FA, return to standard login fields
+      state.temp2FAToken = null;
+      el.twoFactorSection.classList.remove('show');
+      el.mainLoginFields.style.display = 'block';
+      el.twoFactorCode.value = '';
+    });
+
+    el.verify2FaBtn.addEventListener('click', async () => {
+      const code = el.twoFactorCode.value.trim();
+      el.twoFactorError.classList.remove('visible');
+
+      if (!code || code.length !== 6) {
+        el.twoFactorError.textContent = 'Enter a valid 6-digit code';
+        el.twoFactorError.classList.add('visible');
+        return;
+      }
+
+      el.verify2FaBtn.disabled = true;
+      el.verify2FaBtn.textContent = '…';
+
+      try {
+        await window.revlumaAuth.verify2FA(code, state.temp2FAToken);
+        
+        // Success!
+        showGlassmorphismCard('success',
+          'Verification successful!',
+          "You're signed in. Taking you to your dashboard…",
+          () => window.location.href = '/dashboard/overview',
+          'Continue to Dashboard'
+        );
+
+        setTimeout(() => {
+          window.location.href = '/dashboard/overview';
+        }, 1200);
+
+      } catch (err) {
+        el.twoFactorError.textContent = err.message || 'Invalid 2FA code. Please try again.';
+        el.twoFactorError.classList.add('visible');
+        el.verify2FaBtn.disabled = false;
+        el.verify2FaBtn.textContent = 'Verify';
+      }
+    });
+
+    // --- MAIN LOGIN SUBMIT ---
     el.form.addEventListener('submit', async e => {
       e.preventDefault();
       console.log('[AUTH] Login form submitted', { timestamp: new Date().toISOString() });
@@ -1568,8 +1645,23 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       showGlassmorphismCard('loading', 'Signing you in…', 'Just a moment while we verify your details.');
 
       try {
-        await window.revlumaAuth.login(email, password);
+        const loginResult = await window.revlumaAuth.login(email, password);
 
+        // --- PHASE 1 INTERCEPTION: If 2FA is required! ---
+        if (loginResult && loginResult.requires2FA) {
+          hideGlassmorphismCard(); // Hide the loading card
+          
+          state.temp2FAToken = loginResult.tempToken;
+          
+          // Swap UI: Hide email/password, show 2FA input
+          el.mainLoginFields.style.display = 'none';
+          el.twoFactorSection.classList.add('show');
+          el.twoFactorCode.focus();
+          
+          return; // Stop execution here and wait for the user to verify!
+        }
+
+        // --- STANDARD FLOW (If 2FA is OFF) ---
         showGlassmorphismCard('success',
           'Welcome back!',
           "You're signed in. Taking you to your dashboard…",
@@ -1577,7 +1669,6 @@ storage.setItem('rv-auth', JSON.stringify(authData));
           'Continue to Dashboard'
         );
 
-        // Auto-redirect shortly after, in case the user doesn't click through
         setTimeout(() => {
           window.location.href = '/dashboard/overview';
         }, 1200);
