@@ -67,6 +67,54 @@ class RevlumaAuth {
         }
 
         const tokenData = result.data || result;
+
+        // --- 2FA INTERCEPTION ---
+        if (tokenData.requires_2fa) {
+            return {
+                requires2FA: true,
+                tempToken: tokenData.temp_token || tokenData.access_token
+            };
+        }
+
+        // --- STANDARD FLOW (No 2FA) ---
+        this._storeTokens(
+            tokenData.access_token || tokenData.accessToken || tokenData.token,
+            tokenData.refresh_token || tokenData.refreshToken,
+            tokenData.user
+        );
+        return result;
+                    }
+
+    async verify2FA(code, tempToken, trustDevice) {
+        const response = await fetch(`${this.apiBase}/auth/2fa/verify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${tempToken}`
+            },
+            credentials: 'include',
+            body: JSON.stringify({ 
+                code: code,
+                trust_device: trustDevice 
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            let errorMsg = result.error || result.message || 'Invalid 2FA code';
+            if (result.errors && Array.isArray(result.errors)) {
+                errorMsg = result.errors.join(', ');
+            }
+            console.error('2FA Verification error data:', result);
+
+            const simulatedAxiosError = new Error(errorMsg);
+            simulatedAxiosError.response = { data: result };
+            throw simulatedAxiosError;
+        }
+
+        // --- FINAL LOGIN (Tokens received!) ---
+        const tokenData = result.data || result;
         this._storeTokens(
             tokenData.access_token || tokenData.accessToken || tokenData.token,
             tokenData.refresh_token || tokenData.refreshToken,
