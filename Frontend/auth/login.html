@@ -916,17 +916,27 @@
         <div id="twoFactorSection" class="verify-section">
           <label>Two-Factor Authentication</label>
           <p style="font-size: 11.5px; color: var(--muted); margin-bottom: 12px; margin-top: -4px;">Enter the 6-digit code from your authenticator app.</p>
+          
           <div class="verify-input-row">
             <input type="text" id="twoFactorCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" />
             <button type="button" id="verify2FaBtn">Verify</button>
           </div>
+          
+          <!-- 30-Day Trust Checkbox -->
+          <div class="row-aux" style="margin-top: 16px; margin-bottom: 0; justify-content: flex-start;">
+            <label class="remember-label">
+              <input type="checkbox" id="trustDevice" class="checkbox-custom mt-0.5" checked />
+              Trust this device for 30 days
+            </label>
+          </div>
+          
           <div id="twoFactorError" class="field-error"></div>
+          
           <div class="resend-row" style="justify-content: center; margin-top: 12px;">
             <button type="button" id="cancel2FaBtn" class="resend-btn">Cancel & Back to Login</button>
           </div>
         </div>
-
-        <div id="mainLoginFields">
+        
         <!-- Sign in with Google -->
         <button type="button" id="googleSignInBtn" class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 hover:opacity-90 mb-5" style="background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif;">
           <svg class="w-5 h-5" viewBox="0 0 24 24">
@@ -1172,6 +1182,8 @@
       verify2FaBtn: document.getElementById('verify2FaBtn'),
       twoFactorError: document.getElementById('twoFactorError'),
       cancel2FaBtn: document.getElementById('cancel2FaBtn'),
+      trustDevice: document.getElementById('trustDevice'),
+    };
     };
 
     function showToast(toastEl, msgEl, message, duration = 4000) {
@@ -1514,6 +1526,7 @@ storage.setItem('rv-auth', JSON.stringify(authData));
 
     el.verifyBtn.addEventListener('click', async () => {
       const code = el.verifyCode.value.trim();
+      const trustDevice = el.trustDevice.checked;
       el.verifyError.classList.remove('visible');
 
       if (!code) {
@@ -1604,7 +1617,7 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       el.verify2FaBtn.textContent = '…';
 
       try {
-        await window.revlumaAuth.verify2FA(code, state.temp2FAToken);
+        await window.revlumaAuth.verify2FA(code, state.temp2FAToken, trustDevice);
         
         // Success!
         showGlassmorphismCard('success',
