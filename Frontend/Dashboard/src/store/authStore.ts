@@ -43,7 +43,8 @@ interface AuthActions {
   setError: (error: string | null) => void;
   setCsrfToken: (token: string | null) => void;
   setHydrated: (hydrated: boolean) => void;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ requires2FA: boolean; tempToken?: string } | void>;
+  verify2FA: (code: string, tempToken: string) => Promise<void>;
   logout: (allSessions?: boolean) => Promise<void>;
   checkSession: () => Promise<void>;
   clearError: () => void;
@@ -137,14 +138,19 @@ export const useAuthStore = create<AuthStore>()(
       login: async (email, password) => {
         set({ loading: true, error: null });
         try {
-          const res = await api.post<{
-            data: {
-              access_token: string;
-              refresh_token: string;
-              user: { id: string; full_name: string; email: string };
-            };
-          }>('/auth/login', { account: { email, password } });
+          // Changed typing to 'any' to dynamically handle both 2FA and normal login responses
+          const res = await api.post<any>('/auth/login', { account: { email, password } });
 
+          // --- PHASE 1: 2FA INTERCEPTION ---
+          if (res.data.requires_2fa || res.data.data?.requires_2fa) {
+            set({ loading: false });
+            return { 
+              requires2FA: true, 
+              tempToken: res.data.temp_token || res.data.data?.temp_token || res.data.data?.access_token 
+            };
+          }
+
+          // --- PHASE 1: STANDARD LOGIN (If 2FA is OFF) ---
           const { access_token, refresh_token, user } = res.data.data;
 
           storeRefreshToken(refresh_token);
@@ -158,7 +164,7 @@ export const useAuthStore = create<AuthStore>()(
               full_name: user.full_name,
               display_name: user.full_name.split(' ')[0],
               avatar_url: null,
-             profile_picture_url: (user as any).profile_picture_url || null,
+              profile_picture_url: (user as any).profile_picture_url || null,
               role: (user as any).role || 'member', 
               tenant_id: '',
               email_verified: true,
@@ -167,8 +173,48 @@ export const useAuthStore = create<AuthStore>()(
             loading: false,
             error: null,
           });
-        } catch {
+        } catch (err: any) {
           set({ loading: false, error: 'Invalid email or password. Please try again.' });
+          throw err;
+        }
+      },
+
+      // --- PHASE 2: BRAND NEW 2FA VERIFICATION ---
+      verify2FA: async (code, tempToken) => {
+        set({ loading: true, error: null });
+        try {
+          // Sending to exact endpoint with the temp token in the Authorization header
+          const res = await api.post<any>('/auth/2fa/verify', 
+            { code }, 
+            { headers: { Authorization: `Bearer ${tempToken}` } }
+          );
+
+          // Once verified, grab the real tokens and finally log the user in!
+          const { access_token, refresh_token, user } = res.data.data;
+
+          storeRefreshToken(refresh_token);
+          broadcastLogin();
+
+          set({
+            csrfToken: access_token,
+            user: {
+              id: user.id,
+              email: user.email,
+              full_name: user.full_name,
+              display_name: user.full_name.split(' ')[0],
+              avatar_url: null,
+              profile_picture_url: (user as any).profile_picture_url || null,
+              role: (user as any).role || 'member', 
+              tenant_id: '',
+              email_verified: true,
+              onboarding_status: 'completed',
+            },
+            loading: false,
+            error: null,
+          });
+        } catch (err: any) {
+          set({ loading: false, error: 'Invalid 2FA code. Please try again.' });
+          throw err;
         }
       },
 
