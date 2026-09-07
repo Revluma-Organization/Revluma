@@ -6,6 +6,7 @@ Never hardcode or log tracking credentials.
 
 import os
 import logging
+from pathlib import Path
 from urllib.parse import unquote, urlsplit, urlunsplit
 import mlflow
 
@@ -32,7 +33,7 @@ _LOCAL_MLRUNS = os.path.abspath(
 _RAW_TRACKING_URI = (
     os.getenv("MLFLOW_TRACKING_URI")
     or os.getenv("MLFLOW_REMOTE_URL")
-    or _LOCAL_MLRUNS
+    or Path(_LOCAL_MLRUNS).as_uri()
 )
 
 
