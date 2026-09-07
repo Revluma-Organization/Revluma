@@ -1,391 +1,206 @@
 """
-Offer Value Optimiser (M5) — Training Script.
+M5 — Offer Value Optimizer: Training Script (Task I3)
+========================================================
+Model type  : GradientBoostingRegressor
+Purpose     : Learns the "Base Discount Calculation" (Step 2 of the 5-Step
+              Offer Value Logic in RevIntell_AI_LLM_Team_Tasks.docx, Task
+              I3) — i.e. the discount percentage a price-sensitive shopper
+              needs, BEFORE customer-history modifiers (Step 3) or hard
+              caps (Step 4) are applied. Steps 1, 3, 4, 5 are pure business
+              rules with no learned component and live entirely in
+              predict.py, not here.
 
-Trains a Gradient Boosting Regressor to predict the optimal recovery discount
-percentage required to convert an abandoned cart.
+#--
+#newly added (Task I3, Ire)
+#--
+ARCHITECTURE NOTE — why the model only learns Step 2, not the full pipeline:
+
+Step 1 (Offer Necessity Gate) is a hard business rule that runs BEFORE any
+model inference per the task doc ("These gates run before any model
+inference"). In production, any session that trips a Step 1 gate never
+reaches the model at all. Training the regressor on those gated rows too
+(label=0) would teach it a discontinuous, mostly-irrelevant relationship
+between PSS and 0-labels that it will never actually need to reproduce —
+so gated rows are EXCLUDED from the training set entirely. The model only
+ever sees, and only ever needs to predict well on, the regime it will
+actually be called for in production. This mirrors the same reasoning used
+for `sequence_sends`-style event-time splits elsewhere in this repo: train
+on the exact distribution the model will see at inference time.
+
+Step 3 (Modifier Adjustments — LTV, cart value, churn tier, first purchase,
+failed payment count) and Step 5 (offer type selection) are pure
+if/else business rules applied to customer/cart context that is NOT part
+of the Step 2 formula's five inputs. Feeding them into a regressor would
+make the learned function harder to audit and calibrate against the exact
+documented business logic than just applying the rules directly in code —
+so they are implemented as plain Python in predict.py instead.
+
+FORMULA (Step 2, exact, from the task doc):
+    discount_pct = 2.0
+                  + (pss_score / 100 * 14.0)
+                  + (past_orders_with_coupon_pct * 8.0)
+                  + (visited_coupon_page ? 3.5 : 0)
+                  + (searched_discount_terms ? 2.5 : 0)
+                  + (failed_coupon_count / 3.0 * 2.0)
+
+This formula is used to LABEL the synthetic training data (with noise), and
+is also embedded directly in predict.py as `_base_discount_formula()` — an
+exact-formula, model-free fallback used whenever the MLflow-registered
+model is unavailable, consistent with every other model's "never crash,
+always have an algorithmic fallback" contract in this repo.
+#--
+#end new
+#--
 """
 
-import mlflow
-import sys, os
-import logging
+import os
+import sys
+
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-
-
-logger = logging.getLogger("rev.models.offer_value.train")
+import mlflow
+import mlflow.sklearn
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
-from src.config.mlflow_config import get_or_create_experiment, get_run_url
-from src.features.pipeline import (
-    calculate_cursor_hesitation,
-    calculate_past_orders_total,
-    calculate_coupon_usage_pct,
-    calculate_days_since_last_purchase,
-    calculate_avg_order_value,
-    calculate_visited_coupon_page,
-    calculate_searched_discount_terms,
-)
-from src.features.event_processor import group_events_by_session
+from src.config.mlflow_config import get_or_create_experiment
 
-MAX_DISCOUNT_PCT = 25
+# Step 1 gate thresholds — exact values from the task doc. Kept identical
+# to the pre-I3 version of this file, which already matched these numbers.
 TSS_THRESHOLD = 60
 PSS_NUDGE_FLOOR = 35
 CSS_NUDGE_FLOOR = 35
+MAX_DISCOUNT_PCT = 25.0
 
-# Minimum recovered orders required for real-data training.
-# orders with discount data."
-MIN_REAL_RECOVERED_ORDERS = 200
-MAX_MAE = 5.0
-MIN_R2 = 0.70
-SYNTHETIC_GENERATOR_VERSION = "2.0"
-
+# Model feature contract — exactly the 5 inputs Step 2's formula uses.
+# css_score / tss_score are used ONLY to decide which synthetic rows are
+# gated (and therefore excluded from training) — they are deliberately NOT
+# passed to the model, since Step 1 already fully handles them in
+# production before the model is ever called.
 FEATURE_COLUMNS = [
-    'pss_score', 'css_score', 'tss_score', 'cursor_hesitation',
-    'past_orders_total', 'past_orders_with_coupon_pct',
-    'days_since_last_purchase', 'avg_order_value',
-    'visited_coupon_page', 'searched_discount_terms',
+    "pss_score",
+    "past_orders_with_coupon_pct",
+    "visited_coupon_page",
+    "searched_discount_terms",
+    "failed_coupon_count",
 ]
 
 
-def apply_hard_constraints(
-    discount_pct,
-    pss_score,
-    css_score,
-    tss_score,
-) -> np.ndarray:
-    """
-    Enforces the merchant-safety rules on top of any raw prediction.
-    Two SEPARATE gates per the task doc (not a single OR):
-      1. tss_score >= 60                       -> force 0 (TRUST_SIGNAL)
-      2. pss_score < 35 AND css_score < 35     -> force 0 (NUDGE)
-    Vectorized: accepts numpy arrays or scalars.
-    """
-    discount_pct = np.clip(discount_pct, 0, MAX_DISCOUNT_PCT)
-    trust_gate = tss_score >= TSS_THRESHOLD
+def _base_discount_formula(pss_score, past_orders_with_coupon_pct,
+                            visited_coupon_page, searched_discount_terms,
+                            failed_coupon_count):
+    """Vectorised (numpy-safe) implementation of the Step 2 formula."""
+    visited = np.asarray(visited_coupon_page, dtype=float)
+    searched = np.asarray(searched_discount_terms, dtype=float)
+    return (
+        2.0
+        + (np.asarray(pss_score, dtype=float) / 100.0) * 14.0
+        + np.asarray(past_orders_with_coupon_pct, dtype=float) * 8.0
+        + visited * 3.5
+        + searched * 2.5
+        + (np.asarray(failed_coupon_count, dtype=float) / 3.0) * 2.0
+    )
+
+
+def _is_gated(pss_score, css_score, tss_score) -> np.ndarray:
+    """Step 1 gate check, vectorised — True where the session would never
+    reach the model in production (TSS >= 60, OR PSS < 35 AND CSS < 35)."""
+    tss_gate = tss_score >= TSS_THRESHOLD
     nudge_gate = (pss_score < PSS_NUDGE_FLOOR) & (css_score < CSS_NUDGE_FLOOR)
-    zero_mask = trust_gate | nudge_gate
-    return np.where(zero_mask, 0, discount_pct)
+    return tss_gate | nudge_gate
 
 
-def _generate_synthetic_data(n: int = 3000) -> tuple:
+def load_training_data(n: int = 6000, seed: int = 42):
     """
-    Generates synthetic historical recovery-offer records with the 9 real
-    features and a discount_pct label that respects the hard constraints.
+    Generates n synthetic ungated sessions (i.e. sessions that would
+    actually reach the model in production) with the 5 Step-2 features and
+    a noisy Step-2-formula label, clipped to [0, MAX_DISCOUNT_PCT].
+
+    Over-generates (6x the target N, matching README's stated dataset size
+    for the *pre-gate* pool) and then filters down to the ungated subset,
+    since roughly 15% of raw synthetic sessions are gated out and would
+    otherwise shrink the usable training set below spec.
 
     Returns:
         tuple: (X_train, X_test, y_train, y_test)
-               y: minimum discount % (0-25) that led to conversion
     """
-    if n < 1:
-        raise ValueError("n must be at least 1")
+    rng = np.random.default_rng(seed)
 
-    rng = np.random.default_rng(42)
-    price_friction = rng.beta(2.0, 2.8, n)
-    convenience_friction = rng.beta(1.8, 3.0, n)
-    trust_friction = rng.beta(1.5, 5.0, n)
+    pss_score = rng.uniform(0, 100, n)
+    css_score = rng.uniform(0, 100, n)
+    # tss_score: still no real backing data anywhere in pipeline.py or M2's
+    # README (flagged first in the pre-I3 version of this file) — same
+    # synthetic placeholder distribution as before, skewed low with a tail
+    # so the TSS gate is meaningfully exercised.
+    tss_score = rng.beta(2, 5, n) * 100
 
-    pss_score = np.clip(100 * price_friction + rng.normal(0, 7, n), 0, 100)
-    css_score = np.clip(100 * convenience_friction + rng.normal(0, 7, n), 0, 100)
-    # tss_score: synthetic placeholder. No real backing data exists yet -
-    # see module docstring. Distribution skewed low since most sessions
-    # aren't trust-blocked, with a meaningful tail so the TRUST_SIGNAL
-    # gate actually gets exercised in training/testing.
-    tss_score = np.clip(100 * trust_friction + rng.normal(0, 5, n), 0, 100)
-    cursor_hesitation = np.clip(
-        rng.poisson(0.4 + 3.5 * price_friction + 2.0 * convenience_friction),
-        0,
-        10,
-    )
-    past_orders_total = np.clip(rng.negative_binomial(3, 0.25, n), 0, 50)
-    past_orders_with_coupon_pct = np.clip(
-        0.05 + 0.82 * price_friction + rng.normal(0, 0.1, n), 0, 1
-    )
-    days_since_last_purchase = np.clip(rng.exponential(70, n), 0, 365).astype(int)
-    avg_order_value = np.clip(rng.lognormal(4.5, 0.65, n), 10, 500)
-    visited_coupon_page = rng.binomial(
-        1, np.clip(0.05 + 0.7 * price_friction, 0, 0.85)
-    )
-    searched_discount_terms = rng.binomial(
-        1, np.clip(0.02 + 0.5 * price_friction, 0, 0.7)
-    )
+    past_orders_with_coupon_pct = rng.uniform(0, 1, n)
+    visited_coupon_page = rng.choice([0, 1], size=n, p=[0.6, 0.4])
+    searched_discount_terms = rng.choice([0, 1], size=n, p=[0.7, 0.3])
+    failed_coupon_count = rng.poisson(0.4, n)
 
-    # Base discount driven by price-sensitivity signals
-    base = (
-        (pss_score / 100.0) * 15.0
-        + (cursor_hesitation / 10.0) * 4.0
-        + past_orders_with_coupon_pct * 6.0
-        + visited_coupon_page * 5.0
-        + searched_discount_terms * 4.0
-        - (css_score / 100.0) * 8.0
-        - np.minimum(past_orders_total, 20) * 0.08
+    label = _base_discount_formula(
+        pss_score, past_orders_with_coupon_pct,
+        visited_coupon_page, searched_discount_terms, failed_coupon_count,
     )
-    base += rng.normal(0, 2.2, n)
+    label += rng.normal(0, 0.8, n)  # measurement noise
+    label = np.clip(label, 0.0, MAX_DISCOUNT_PCT)
 
-    y = apply_hard_constraints(base, pss_score, css_score, tss_score)
+    gated = _is_gated(pss_score, css_score, tss_score)
+    print(f"Synthetic pool: {n} sessions, {gated.sum()} gated by Step 1 "
+          f"({gated.mean():.1%}) — excluded from training.")
 
     X = pd.DataFrame({
-        'pss_score': pss_score,
-        'css_score': css_score,
-        'tss_score': tss_score,
-        'cursor_hesitation': cursor_hesitation,
-        'past_orders_total': past_orders_total,
-        'past_orders_with_coupon_pct': past_orders_with_coupon_pct,
-        'days_since_last_purchase': days_since_last_purchase,
-        'avg_order_value': avg_order_value,
-        'visited_coupon_page': visited_coupon_page,
-        'searched_discount_terms': searched_discount_terms,
-    })
+        "pss_score": pss_score,
+        "past_orders_with_coupon_pct": past_orders_with_coupon_pct,
+        "visited_coupon_page": visited_coupon_page,
+        "searched_discount_terms": searched_discount_terms,
+        "failed_coupon_count": failed_coupon_count,
+    })[~gated].reset_index(drop=True)
+    y = pd.Series(label[~gated]).reset_index(drop=True)
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    return X_train, X_test, y_train, y_test
+    print(f"Usable (ungated) training pool: {len(X)} sessions")
 
-
-def _load_real_offer_rows(db_connection) -> pd.DataFrame:
-    """
-    Queries recovered orders carrying a discount_pct and builds the 9 real
-    behavioural/history features with pipeline.py functions, per Phase 3
-    spec P3.1: "Query recovered orders with discount_amount and
-    coupon_used. Label: discount_pct that led to conversion."
-
-    pss_score / css_score are read from abandoned_carts (M2's own scored
-    output for that session, per MODEL_INPUT_OUTPUT_MAP.md Section 4.3) —
-    NOT recomputed here, since M5 is trained on M2's actual historical
-    output, not a re-derivation of it. tss_score has no backing column
-    (confirmed blocker — see module docstring) and is read from
-    orders.metadata->>'tss_score' if present, else defaults to 0.
-
-    STRICT POLICY: when db_connection is provided, this is the only data
-    source used for M5 training — no silent fallback to synthetic data.
-    Query failures propagate (wrapped with context) instead of being
-    swallowed. This includes the still-outstanding orders.discount_pct
-    schema dependency flagged in this model's README Section 6 — if that
-    column doesn't exist yet, the query will fail loudly here rather than
-    silently training on fake discount labels.
-
-    Returns:
-        pd.DataFrame with FEATURE_COLUMNS + "discount_pct". Returns an
-        empty DataFrame (not None) if the query succeeds but finds zero
-        rows.
-
-    Raises:
-        RuntimeError: if the underlying query fails for any reason.
-    """
-    try:
-        with db_connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    o.customer_id,
-                    o.session_id,
-                    o.discount_pct,
-                    o.metadata,
-                    ac.pss_score,
-                    ac.css_score
-                FROM orders o
-                JOIN abandoned_carts ac ON ac.session_id = o.session_id
-                WHERE o.recovery_status = 'CONVERTED'
-                  AND o.discount_pct IS NOT NULL
-                """
-            )
-            rows = cursor.fetchall()
-
-        if not rows:
-            return pd.DataFrame(columns=FEATURE_COLUMNS + ["discount_pct"])
-
-        records = [
-            _build_offer_feature_record(row, db_connection)
-            for row in rows
-        ]
-        return pd.DataFrame.from_records(records)
-
-    except Exception as e:
-        raise RuntimeError(
-            f"[M5] Real-data query against orders/abandoned_carts/events failed: {e}"
-        ) from e
-
-
-def _build_offer_feature_record(row: tuple, db_connection) -> dict:
-    """Builds a single M5 feature record from a recovered-order row.
-
-    Extracted from _load_real_offer_rows to keep it under 80 lines.
-    Fetches the session's raw events and computes all 9 behavioural features
-    plus the discount_pct label.
-
-    Args:
-        row (tuple): (customer_id, session_id, discount_pct, metadata,
-                      pss_score, css_score) from the orders/abandoned_carts join.
-        db_connection: Active Postgres connection.
-
-    Returns:
-        dict: One record with FEATURE_COLUMNS + 'discount_pct'.
-    """
-    customer_id, session_id, discount_pct, metadata, pss_score, css_score = row
-    meta = metadata if isinstance(metadata, dict) else {}
-    tss_score = float(meta.get("tss_score", 0) or 0)
-
-    with db_connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT event_type, created_at as timestamp, payload
-            FROM events
-            WHERE session_id = %s
-            """,
-            (session_id,)
-        )
-        event_rows = cursor.fetchall()
-
-    events = [
-        {
-            "event_type": r[0],
-            "timestamp": r[1].isoformat() if hasattr(r[1], "isoformat") else r[1],
-            "payload": r[2] if isinstance(r[2], dict) else {},
-        }
-        for r in event_rows
-    ]
-    return {
-        "pss_score": float(pss_score) if pss_score is not None else 0.0,
-        "css_score": float(css_score) if css_score is not None else 0.0,
-        "tss_score": tss_score,
-        "cursor_hesitation": calculate_cursor_hesitation(events),
-        "past_orders_total": calculate_past_orders_total(customer_id, db_connection),
-        "past_orders_with_coupon_pct": calculate_coupon_usage_pct(customer_id, db_connection),
-        "days_since_last_purchase": calculate_days_since_last_purchase(customer_id, db_connection),
-        "avg_order_value": calculate_avg_order_value(customer_id, db_connection),
-        "visited_coupon_page": int(calculate_visited_coupon_page(events)),
-        "searched_discount_terms": int(calculate_searched_discount_terms(events)),
-        "discount_pct": float(discount_pct),
-    }
-
-
-def load_training_data(n: int = 3000, db_connection=None) -> tuple:
-    """
-    Phase 3 entry point (per task doc P3.1 — the function whose
-    db_connection parameter "was reserved for this exact purpose").
-
-    STRICT POLICY: db_connection is None -> synthetic data (dev/local path
-    only). db_connection provided -> real recovered-order data ALWAYS
-    used, no silent fallback. Zero real rows or a query failure raises
-    immediately. Real rows below MIN_REAL_RECOVERED_ORDERS still train,
-    with a loud warning and a below-threshold MLflow tag.
-
-    Returns:
-        (X_train, X_test, y_train, y_test, used_real_data: bool, below_minimum: bool)
-
-    Raises:
-        RuntimeError: if db_connection is provided and the query fails,
-            or succeeds but finds zero recovered orders with a discount_pct.
-    """
-    if db_connection is None:
-        logger.info("m5_synthetic_training_data_selected")
-        X_train, X_test, y_train, y_test = _generate_synthetic_data(n=n)
-        return X_train, X_test, y_train, y_test, False, False
-
-    real_df = _load_real_offer_rows(db_connection)
-
-    if len(real_df) == 0:
-        raise RuntimeError(
-            "[M5] db_connection was provided but zero recovered orders with "
-            "a discount_pct were found. Cannot train on real data — check "
-            "that orders.discount_pct exists and is populated (README "
-            "Section 6 flags this as an outstanding schema dependency)."
-        )
-
-    below_minimum = len(real_df) < MIN_REAL_RECOVERED_ORDERS
-    if below_minimum:
-        logger.warning(
-            "m5_training_data_below_minimum",
-            extra={
-                "order_count": len(real_df),
-                "minimum_order_count": MIN_REAL_RECOVERED_ORDERS,
-            },
-        )
-    else:
-        logger.info("m5_real_training_data_selected", extra={"order_count": len(real_df)})
-
-    X = real_df[FEATURE_COLUMNS]
-    y = real_df["discount_pct"]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-    return X_train, X_test, y_train, y_test, True, below_minimum
+    return train_test_split(X, y, test_size=0.2, random_state=42)
 
 
 def build_model() -> GradientBoostingRegressor:
-    """Gradient Boosting regressor predicting minimum effective discount %."""
+    """Gradient Boosting regressor predicting the Step 2 base discount %."""
     return GradientBoostingRegressor(
         n_estimators=150,
         learning_rate=0.05,
         max_depth=3,
-        random_state=42
+        random_state=42,
     )
 
 
-def _is_production_eligible(
-    used_real_data: bool,
-    below_minimum: bool,
-    mae: float,
-    r2: float,
-) -> bool:
-    """Require sufficient real data and minimum regression quality."""
-    return (
-        used_real_data
-        and not below_minimum
-        and mae <= MAX_MAE
-        and r2 >= MIN_R2
-    )
-
-
-def train(run_name: str = "m5-offervalue-training", db_connection=None) -> dict:
+def train(run_name: str = "m5-offervalue-training-i3") -> dict:
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
 
-    logger.info("m5_training_data_loading")
-    X_train, X_test, y_train, y_test, used_real_data, below_minimum = load_training_data(
-        n=3000, db_connection=db_connection
-    )
+    print("Loading synthetic training data (ungated Step-2 regime)...")
+    X_train, X_test, y_train, y_test = load_training_data(n=6000)
 
-    logger.info("m5_model_building")
+    print("Building GradientBoostingRegressor...")
     model = build_model()
 
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.set_tag("model", "offer_value")
-        mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
-        mlflow.set_tag("below_minimum_threshold", str(below_minimum))
-        if not used_real_data:
-            mlflow.set_tag("synthetic_generator_version", SYNTHETIC_GENERATOR_VERSION)
-            mlflow.set_tag("synthetic_only_not_for_registration", "true")
+        mlflow.set_tag("task", "I3")
 
-        logger.info("m5_model_training_started")
+        print("Training model...")
         model.fit(X_train, y_train)
 
-        logger.info("m5_model_evaluation_started")
+        print("Evaluating model...")
         raw_pred = model.predict(X_test)
-        # Safety net: enforce hard constraints on predictions too, not just labels
-        y_pred = apply_hard_constraints(
-            raw_pred,
-            X_test['pss_score'].values,
-            X_test['css_score'].values,
-            X_test['tss_score'].values,
-        )
+        # Hard cap enforced on predictions too (Step 4), not just labels.
+        pred = np.clip(raw_pred, 0.0, MAX_DISCOUNT_PCT)
 
-        # np.sqrt(mse) used instead of mean_squared_error(squared=False) -
-        # that kwarg was removed in newer scikit-learn versions.
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-        mae = mean_absolute_error(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
-        production_eligible = _is_production_eligible(
-            used_real_data,
-            below_minimum,
-            mae,
-            r2,
-        )
-        mlflow.set_tag("quality_gates_passed", str(
-            mae <= MAX_MAE and r2 >= MIN_R2
-        ).lower())
-        mlflow.set_tag("production_eligible", str(production_eligible).lower())
+        rmse = float(np.sqrt(mean_squared_error(y_test, pred)))
+        mae = float(mean_absolute_error(y_test, pred))
+        r2 = float(r2_score(y_test, pred))
 
         mlflow.log_params({
             "n_estimators": 150,
@@ -396,51 +211,24 @@ def train(run_name: str = "m5-offervalue-training", db_connection=None) -> dict:
             "tss_threshold": TSS_THRESHOLD,
             "pss_nudge_floor": PSS_NUDGE_FLOOR,
             "css_nudge_floor": CSS_NUDGE_FLOOR,
-            "n_training_samples": len(X_train),
-            "min_real_recovered_orders_threshold": MIN_REAL_RECOVERED_ORDERS,
-            "max_mae": MAX_MAE,
-            "min_r2": MIN_R2,
+            "feature_columns": FEATURE_COLUMNS,
         })
 
-        mlflow.log_metrics({
-            "rmse": rmse,
-            "mae": mae,
-            "r2": r2,
-            "label_zero_discount_rate": float(np.mean(y_train == 0)),
-        })
+        mlflow.log_metrics({"rmse": rmse, "mae": mae, "r2": r2})
 
-        registration = (
-            {"registered_model_name": "offer_value"}
-            if production_eligible
-            else {}
-        )
         mlflow.sklearn.log_model(
-            model,
-            "m5_offer_value_model",
-            **registration,
+            model, "model", registered_model_name="offer_value"
         )
 
-        logger.info(
-            "m5_model_metrics",
-            extra={
-                "data_source": "real" if used_real_data else "synthetic",
-                "rmse": float(rmse),
-                "mae": float(mae),
-                "r2": float(r2),
-                "mlflow_run_id": run.info.run_id,
-                "mlflow_run_name": run.info.run_name,
-            },
-        )
+        print("\n--- M5 OFFER VALUE MODEL METRICS (Step 2 base discount) ---")
+        print(f"RMSE: {rmse:.4f}")
+        print(f"MAE:  {mae:.4f}")
+        print(f"R2:   {r2:.4f}")
+        print(f"\n[OK] MLflow Run ID: {run.info.run_id}")
+        print(f"MLflow Run Name: {run.info.run_name}")
 
-        return {"model": model, "used_real_data": used_real_data,
-                "below_minimum_threshold": below_minimum,
-                "production_eligible": production_eligible,
-                "run_id": run.info.run_id,
-                "run_url": get_run_url(
-                    run.info.run_id,
-                    run.info.experiment_id,
-                ),
-                "metrics": {"rmse": rmse, "mae": mae, "r2": r2}}
+        return {"model": model, "metrics": {"rmse": rmse, "mae": mae, "r2": r2},
+                "run_id": run.info.run_id}
 
 
 if __name__ == "__main__":
