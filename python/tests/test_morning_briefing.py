@@ -82,7 +82,7 @@ class TestBuildGreeting(unittest.TestCase):
             revenue_anomaly=True,
             revenue_delta_pct=-25.0,
         )
-        greeting = _build_greeting("David Okanlawon", state)
+        greeting = _build_greeting("Merchant", state)
         self.assertIn("down", greeting)
         self.assertIn("25", greeting)
 

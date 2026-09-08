@@ -1,6 +1,6 @@
 """
-M2 — Shopper Sensitivity Classifier: Training Script (Task I2)
-=================================================================
+M2 — Shopper Sensitivity Classifier: Training Script
+====================================================
 Trains THREE independent binary GradientBoostingClassifier models:
     - PSS (Price Sensitivity Score)
     - CSS (Convenience Sensitivity Score)
@@ -10,19 +10,8 @@ Each score is the calibration-free predict_proba()[:, 1] * 100 of its
 respective binary classifier, matching the pattern already established by
 the PSS/CSS pair in the earlier version of this file.
 
-#--
-#newly added (Task I2, Ire)
-#--
-CHANGES IN THIS REVISION:
-
-1. Added TSS (Trust Sensitivity Score) as a third model
-
-2. FEATURE SET EXPANDED from 8 to 13 columns, and re-scoped per score
-   rather than shared indiscriminately.
-
-#--
-#end new
-#--
+The 13-feature contract is intentionally shared by all three scores so
+training and inference use one ordered representation.
 """
 
 import os
@@ -53,13 +42,16 @@ FEATURE_COLUMNS = [
     "coupon_field_visited",          # bool -> 0/1    (PSS) [I1 function]
     "abandoned_at_shipping_reveal",  # bool -> 0/1    (CSS)
     "checkout_step_reached",         # int 0-5        (CSS, TSS)
-    "cursor_hesitation_ms",          # int            (CSS)
+    "cursor_hesitation_score",       # int 0-10       (CSS)
     "time_on_page_ms",               # int            (CSS)
     "failed_payment_attempt",        # bool -> 0/1    (CSS)
     "failed_payment_count",          # int            (TSS) [pipeline gap]
     "is_return_visitor",             # bool -> 0/1    (TSS, derived)
     "avg_order_value",               # float          (TSS)
 ]
+
+# Backward-compatible export used by existing training-quality checks.
+FEATURES = FEATURE_COLUMNS
 
 MIN_F1_PER_CLASS = 0.68
 MIN_AUC_ROC = 0.72
@@ -83,7 +75,7 @@ def _generate_synthetic_sensitivity_data(n: int = 3000, seed: int = 42) -> pd.Da
 
     abandoned_at_shipping_reveal = rng.choice([0, 1], size=n, p=[0.6, 0.4])
     checkout_step_reached = rng.integers(0, 6, n)
-    cursor_hesitation_ms = np.clip(rng.exponential(1500, n), 0, 30000)
+    cursor_hesitation_score = np.minimum(rng.poisson(2.0, n), 10)
     time_on_page_ms = rng.exponential(20000, n) + 1000
     failed_payment_attempt = rng.choice([0, 1], size=n, p=[0.85, 0.15])
 
@@ -108,7 +100,7 @@ def _generate_synthetic_sensitivity_data(n: int = 3000, seed: int = 42) -> pd.Da
     css_prob = (
         0.30 * abandoned_at_shipping_reveal
         + 0.25 * (checkout_step_reached / 5.0)
-        + 0.20 * np.clip(cursor_hesitation_ms / 10000.0, 0, 1)
+        + 0.20 * (cursor_hesitation_score / 10.0)
         + 0.15 * np.clip(time_on_page_ms / 120000.0, 0, 1)
         + 0.10 * failed_payment_attempt
     )
@@ -132,7 +124,7 @@ def _generate_synthetic_sensitivity_data(n: int = 3000, seed: int = 42) -> pd.Da
         "coupon_field_visited": coupon_field_visited,
         "abandoned_at_shipping_reveal": abandoned_at_shipping_reveal,
         "checkout_step_reached": checkout_step_reached,
-        "cursor_hesitation_ms": cursor_hesitation_ms,
+        "cursor_hesitation_score": cursor_hesitation_score,
         "time_on_page_ms": time_on_page_ms,
         "failed_payment_attempt": failed_payment_attempt,
         "failed_payment_count": failed_payment_count,
@@ -187,6 +179,8 @@ def _log_and_train(target: str, X_train, X_test, y_train, y_test, run_name: str)
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.set_tag("model", "sensitivity")
         mlflow.set_tag("target", target)
+        mlflow.set_tag("data_source", "synthetic")
+        mlflow.set_tag("production_eligible", "false")
         mlflow.log_param("n_estimators", 100)
         mlflow.log_param("max_depth", 3)
         mlflow.log_param("learning_rate", 0.1)

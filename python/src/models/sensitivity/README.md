@@ -45,7 +45,7 @@ and migration plan.
 ## Schema dependencies
 
 The required PSS/CSS persistence and coupon-use contracts are specified in
-`docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md`. The Python repository does not
+`docs/BACKEND_IMPLEMENTATION_GUIDE.md`. The Python repository does not
 apply those backend migrations.
 
 ## Training and MLflow

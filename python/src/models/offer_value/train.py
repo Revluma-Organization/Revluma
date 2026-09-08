@@ -1,22 +1,18 @@
 """
-M5 — Offer Value Optimizer: Training Script (Task I3)
-========================================================
+M5 — Offer Value Optimizer: Training Script
+============================================
 Model type  : GradientBoostingRegressor
 Purpose     : Learns the "Base Discount Calculation" (Step 2 of the 5-Step
-              Offer Value Logic in RevIntell_AI_LLM_Team_Tasks.docx, Task
-              I3) — i.e. the discount percentage a price-sensitive shopper
+              offer-value decision logic — i.e. the discount percentage a price-sensitive shopper
               needs, BEFORE customer-history modifiers (Step 3) or hard
               caps (Step 4) are applied. Steps 1, 3, 4, 5 are pure business
               rules with no learned component and live entirely in
               predict.py, not here.
 
-#--
-#newly added (Task I3, Ire)
-#--
 ARCHITECTURE NOTE — why the model only learns Step 2, not the full pipeline:
 
 Step 1 (Offer Necessity Gate) is a hard business rule that runs BEFORE any
-model inference per the task doc ("These gates run before any model
+model inference (these gates run before any model
 inference"). In production, any session that trips a Step 1 gate never
 reaches the model at all. Training the regressor on those gated rows too
 (label=0) would teach it a discontinuous, mostly-irrelevant relationship
@@ -35,7 +31,7 @@ make the learned function harder to audit and calibrate against the exact
 documented business logic than just applying the rules directly in code —
 so they are implemented as plain Python in predict.py instead.
 
-FORMULA (Step 2, exact, from the task doc):
+FORMULA (Step 2):
     discount_pct = 2.0
                   + (pss_score / 100 * 14.0)
                   + (past_orders_with_coupon_pct * 8.0)
@@ -48,13 +44,11 @@ is also embedded directly in predict.py as `_base_discount_formula()` — an
 exact-formula, model-free fallback used whenever the MLflow-registered
 model is unavailable, consistent with every other model's "never crash,
 always have an algorithmic fallback" contract in this repo.
-#--
-#end new
-#--
 """
 
 import os
 import sys
+import logging
 
 import numpy as np
 import pandas as pd
@@ -66,13 +60,21 @@ import mlflow.sklearn
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 from src.config.mlflow_config import get_or_create_experiment
+from src.features.pipeline import (
+    calculate_coupon_usage_pct,
+    calculate_failed_coupon_count,
+    calculate_searched_discount_terms,
+    calculate_visited_coupon_page,
+)
 
-# Step 1 gate thresholds — exact values from the task doc. Kept identical
-# to the pre-I3 version of this file, which already matched these numbers.
+logger = logging.getLogger("rev.models.offer_value.train")
+
+# Step 1 gate thresholds.
 TSS_THRESHOLD = 60
 PSS_NUDGE_FLOOR = 35
 CSS_NUDGE_FLOOR = 35
 MAX_DISCOUNT_PCT = 25.0
+MIN_REAL_RECOVERED_ORDERS = 200
 
 # Model feature contract — exactly the 5 inputs Step 2's formula uses.
 # css_score / tss_score are used ONLY to decide which synthetic rows are
@@ -112,7 +114,7 @@ def _is_gated(pss_score, css_score, tss_score) -> np.ndarray:
     return tss_gate | nudge_gate
 
 
-def load_training_data(n: int = 6000, seed: int = 42):
+def _generate_synthetic_training_data(n: int = 6000, seed: int = 42):
     """
     Generates n synthetic ungated sessions (i.e. sessions that would
     actually reach the model in production) with the 5 Step-2 features and
@@ -166,6 +168,66 @@ def load_training_data(n: int = 6000, seed: int = 42):
     return train_test_split(X, y, test_size=0.2, random_state=42)
 
 
+def _load_real_training_rows(db_connection) -> pd.DataFrame:
+    """Build the M5 feature contract from recovered orders and pixel events.
+
+    This path intentionally raises when the required records are unavailable:
+    a caller that requested real-data training must never silently receive a
+    synthetic replacement.
+    """
+    try:
+        with db_connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT o.customer_id, o.session_id, o.discount_pct, ac.pss_score
+                FROM orders o
+                JOIN abandoned_carts ac ON ac.session_id = o.session_id
+                WHERE o.recovery_status = 'CONVERTED'
+                  AND o.discount_pct IS NOT NULL
+                  AND o.session_id IS NOT NULL
+                """
+            )
+            order_rows = cursor.fetchall()
+        records = []
+        for customer_id, session_id, discount_pct, pss_score in order_rows:
+            with db_connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT event_type, created_at, payload FROM events WHERE session_id = %s ORDER BY created_at",
+                    (session_id,),
+                )
+                event_rows = cursor.fetchall()
+            events = [
+                {
+                    "event_type": event_type,
+                    "timestamp": created_at.isoformat() if hasattr(created_at, "isoformat") else created_at,
+                    "payload": payload if isinstance(payload, dict) else {},
+                }
+                for event_type, created_at, payload in event_rows
+            ]
+            records.append({
+                "pss_score": float(pss_score or 0.0),
+                "past_orders_with_coupon_pct": calculate_coupon_usage_pct(customer_id, db_connection),
+                "visited_coupon_page": int(calculate_visited_coupon_page(events)),
+                "searched_discount_terms": int(calculate_searched_discount_terms(events)),
+                "failed_coupon_count": calculate_failed_coupon_count(events),
+                "discount_pct": min(MAX_DISCOUNT_PCT, max(0.0, float(discount_pct))),
+            })
+        return pd.DataFrame.from_records(records, columns=FEATURE_COLUMNS + ["discount_pct"])
+    except Exception as exc:
+        raise RuntimeError(f"Could not load real offer-value training records: {exc}") from exc
+
+
+def load_training_data(n: int = 6000, seed: int = 42, db_connection=None):
+    """Return synthetic development data or strict real-data training data."""
+    if db_connection is None:
+        return _generate_synthetic_training_data(n=n, seed=seed)
+    rows = _load_real_training_rows(db_connection)
+    if len(rows) < 2:
+        raise RuntimeError("Real offer-value training requires at least two recovered orders with discount data.")
+    X, y = rows[FEATURE_COLUMNS], rows["discount_pct"]
+    return train_test_split(X, y, test_size=0.2, random_state=42)
+
+
 def build_model() -> GradientBoostingRegressor:
     """Gradient Boosting regressor predicting the Step 2 base discount %."""
     return GradientBoostingRegressor(
@@ -176,19 +238,21 @@ def build_model() -> GradientBoostingRegressor:
     )
 
 
-def train(run_name: str = "m5-offervalue-training-i3") -> dict:
+def train(run_name: str = "m5-offervalue-training", db_connection=None) -> dict:
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
 
     print("Loading synthetic training data (ungated Step-2 regime)...")
-    X_train, X_test, y_train, y_test = load_training_data(n=6000)
+    X_train, X_test, y_train, y_test = load_training_data(n=6000, db_connection=db_connection)
+    used_real_data = db_connection is not None
 
     print("Building GradientBoostingRegressor...")
     model = build_model()
 
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.set_tag("model", "offer_value")
-        mlflow.set_tag("task", "I3")
+        mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
+        mlflow.set_tag("production_eligible", str(used_real_data and len(X_train) + len(X_test) >= MIN_REAL_RECOVERED_ORDERS).lower())
 
         print("Training model...")
         model.fit(X_train, y_train)
@@ -216,9 +280,10 @@ def train(run_name: str = "m5-offervalue-training-i3") -> dict:
 
         mlflow.log_metrics({"rmse": rmse, "mae": mae, "r2": r2})
 
-        mlflow.sklearn.log_model(
-            model, "model", registered_model_name="offer_value"
-        )
+        registration = {"registered_model_name": "offer_value"} if (
+            used_real_data and len(X_train) + len(X_test) >= MIN_REAL_RECOVERED_ORDERS
+        ) else {}
+        mlflow.sklearn.log_model(model, "model", **registration)
 
         print("\n--- M5 OFFER VALUE MODEL METRICS (Step 2 base discount) ---")
         print(f"RMSE: {rmse:.4f}")
@@ -228,7 +293,8 @@ def train(run_name: str = "m5-offervalue-training-i3") -> dict:
         print(f"MLflow Run Name: {run.info.run_name}")
 
         return {"model": model, "metrics": {"rmse": rmse, "mae": mae, "r2": r2},
-                "run_id": run.info.run_id}
+                "run_id": run.info.run_id, "used_real_data": used_real_data,
+                "production_eligible": bool(registration)}
 
 
 if __name__ == "__main__":

@@ -5,12 +5,14 @@ import pytest
 
 from src.models.churn import predict as churn_predict
 from src.models.churn.train import (
+    AT_RISK_SAMPLE_WEIGHT,
     FEATURE_COLUMNS,
     _calculate_order_and_event_signals,
     _calculate_sequence_signals,
     _compute_churn_records,
     _is_production_eligible,
     _trend_direction,
+    build_training_sample_weights,
     normalize_churn_features,
 )
 
@@ -69,6 +71,14 @@ class SingleCursorConnection:
 def test_feature_contract_uses_the_21_named_s3_signals_in_order():
     assert FEATURE_COLUMNS == EXPECTED_FEATURE_COLUMNS
     assert len(FEATURE_COLUMNS) == 21
+
+
+def test_training_weights_only_raise_the_at_risk_class():
+    weights = build_training_sample_weights(
+        np.array(["HEALTHY", "AT_RISK", "HIGH_RISK", "CRITICAL"])
+    )
+
+    assert weights.tolist() == [1.0, AT_RISK_SAMPLE_WEIGHT, 1.0, 1.0]
 
 
 def test_feature_aliases_normalize_without_overwriting_canonical_values():

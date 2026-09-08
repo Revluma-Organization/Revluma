@@ -1,4 +1,4 @@
-# Backend D/S Implementation Handoff
+# Backend Integration Guide
 
 ## Boundary
 
@@ -17,13 +17,156 @@ changed by the Python implementation.
 | Order | Exact location | Required work |
 |---:|---|---|
 | 1 | `Backend/prisma/schema.prisma` | Add the columns, models, relations, constraints, and indexes below. |
-| 2 | `Backend/prisma/migrations/<timestamp>_add_ds_contract/migration.sql` | Generate a forward migration. Do not edit `0_baseline`. |
+| 2 | `Backend/prisma/migrations/<timestamp>_add_intelligence_contract/migration.sql` | Generate a forward migration. Do not edit `0_baseline`. |
 | 3 | `Backend/src/services/mlService.js` | Add Node-to-Python wrappers. No controller may create a separate Axios client. |
 | 4 | `Backend/src/services/shopifySync.js` | Persist order items and call RFM after a successful commerce-sync commit. |
 | 5 | `Backend/src/services/schedulerService.js` | Add bounded, locked jobs for state, alerts, outcomes, churn, and briefings. |
 | 6 | `Backend/server.js` | Start schedulers after startup and stop them during graceful shutdown. |
 | 7 | `Backend/src/controller/revController.js` | Keep calls through `mlService`; add only authenticated result/action handlers. |
 | 8 | Tests beside each changed module | Add migration, tenancy, gateway, idempotency, and scheduler tests below. |
+
+## 0. Storefront events, commerce webhooks, and Python execution
+
+This is the required end-to-end data path. Keep browser events and provider
+webhooks separate: a browser pixel records shopper behavior, while a verified
+provider webhook records server-side commerce or messaging outcomes.
+
+```text
+Storefront pixel -> event ingestion -> events table -> feature job -> Python pipeline
+Provider webhook -> verified delivery -> commerce/outcome tables -> feature or outcome job
+Python model decision -> recommendation/sequence records -> provider send
+Provider delivery webhook -> sequence_events/recommendation_outcomes -> learning loop
+```
+
+### A. Storefront behavioral events
+
+**Existing backend locations:**
+
+- `Backend/src/route/eventRoute.js`
+- `Backend/src/controller/eventController.js`
+- `Backend/src/app.js`
+- `docs/PIXEL_EVENT_SPEC.md`
+
+Keep `POST /api/v1/events/ingest` as the browser-pixel ingestion endpoint.
+It must accept the canonical event envelope from `PIXEL_EVENT_SPEC.md`, not an
+ad hoc Shopify-only payload. A browser pixel does not possess a Shopify or
+WooCommerce webhook secret, so it must not be treated as a signed provider
+webhook.
+
+The controller must perform these steps in this order:
+
+1. Resolve the receiving store from a public, opaque store tracking key or a
+   server-generated signed token. Do not trust a raw `store_id` supplied by a
+   public browser request.
+2. Validate `id`, `event_type`, `session_id`, `timestamp`, platform, payload
+   shape, and maximum payload size against `PIXEL_EVENT_SPEC.md`.
+3. Normalize the accepted timestamp to `events.created_at`, retain the
+   original event ID as `events.source_event_id`, and set `events.source` to
+   `pixel`.
+4. Insert idempotently. A retry of the same pixel event must return success
+   without creating another row.
+5. Commit the event before scheduling feature computation. Return a small
+   acknowledgement; do not wait for model inference in the storefront request.
+
+Add these fields to the existing `events` model through the migration:
+
+```text
+source TEXT NOT NULL DEFAULT 'pixel'
+source_event_id TEXT nullable
+received_at TIMESTAMPTZ(6) NOT NULL DEFAULT now()
+```
+
+Add a unique partial index for non-null event IDs:
+
+```text
+UNIQUE (store_id, source, source_event_id) WHERE source_event_id IS NOT NULL
+```
+
+The existing controller currently posts to `/api/features/compute`. That route
+does not exist in `python/src/serving/api.py`. Remove that synchronous call;
+it is a dead integration path. Instead, enqueue an idempotent feature job after
+the event commit. The Python-side feature worker must read the committed
+normalized events and calculate `pipeline.compute_feature_vector`; the backend
+must not recreate feature formulas in JavaScript.
+
+### B. Shopify and WooCommerce server-to-server webhooks
+
+**Add backend locations:**
+
+- `Backend/src/route/commerceWebhookRoute.js`
+- `Backend/src/controller/commerceWebhookController.js`
+- `Backend/src/services/commerceWebhookService.js`
+- Mount the route in `Backend/src/app.js` before the global JSON parser for
+  webhook paths, using `express.raw({ type: 'application/json' })`.
+
+**Add routes:**
+
+```text
+POST /api/v1/webhooks/shopify/:topic
+POST /api/v1/webhooks/woocommerce/:topic
+```
+
+The controller must first verify the raw request body signature, identify the
+store from the verified provider domain/store identifier, deduplicate the
+delivery, and only then parse/process the body. Shopify verification uses the
+Shopify HMAC header and the app secret. WooCommerce verification uses the
+configured webhook signature and the per-store webhook secret. Never parse the
+body before signature verification, and never log raw webhook bodies or
+secrets.
+
+Register and process these topics:
+
+| Provider event | Backend action after verified, idempotent receipt |
+|---|---|
+| Shopify `orders/create`, `orders/updated`, `orders/cancelled` | Upsert the order and line items, update customer aggregates, mark matching cart/recommendation outcomes where applicable, then enqueue RFM and feature/outcome work. |
+| Shopify `customers/create`, `customers/update` | Upsert the customer identity/profile fields allowed by the schema. |
+| Shopify `app/uninstalled` | Mark the store inactive, stop jobs, and revoke or securely retire provider access. |
+| WooCommerce `order.created`, `order.updated`, `order.deleted` | Perform the same store-scoped order, line-item, outcome, RFM, and feature/outcome workflow. |
+| WooCommerce `customer.created`, `customer.updated` | Upsert the allowed customer identity/profile fields. |
+
+Use the storefront pixel, not provider order webhooks, for `PAGE_VIEW`, cart,
+checkout-step, coupon-field, focus/blur, payment-attempt, and similar shopper
+behavior. Provider webhooks are authoritative for completed, changed, or
+cancelled commerce records. Normalize both sources through the event contract
+where an event row is needed; do not manufacture behavioral events from an
+order webhook.
+
+### C. Messaging delivery webhooks and learning outcomes
+
+**Add backend locations:**
+
+- `Backend/src/route/messageWebhookRoute.js`
+- `Backend/src/controller/messageWebhookController.js`
+- `Backend/src/services/messageWebhookService.js`
+
+Add one raw-body, signature-verified route per messaging provider. Map verified
+delivery callbacks to `sequence_events` using `external_message_id` and write
+only the canonical `delivered`, `opened`, `clicked`, `converted`, or
+`unsubscribed` event. The unique sequence-event key in this guide prevents
+provider retries from double-counting outcomes. After a `converted` event or a
+matching completed order, update the relevant recommendation outcome and leave
+the due-outcome worker to create the learning signal.
+
+### D. Feature and prediction call order
+
+`pipeline.py` owns feature formulas. The backend owns durable job dispatch and
+calls only documented Python routes through `mlService.js` after a feature job
+has produced a complete feature snapshot.
+
+| Decision point | Required inputs | Python call | Persist after a successful response |
+|---|---|---|---|
+| Session has enough checkout behavior | Normalized event snapshot and customer-history features from the Python feature job | `POST /predict/abandonment-probability` | Intervention decision, model version, fallback flag, and safe decision metadata. |
+| Abandonment intervention is warranted | Complete M2 feature vector | `POST /predict/shopper-sensitivity` | PSS/CSS/TSS, recovery action, channel priority, model version, and fallback flag. |
+| Recovery action needs an offer | M2 output plus M5 feature vector | `POST /predict/offer-value` | Offer type, discount, expiry, expected probability, margin estimate, model version, and fallback flag. |
+| A message is about to be queued | The exact send-time contract in section 2 | `POST /predict/send-time` | `send_at_utc`, local send time, confidence, reasoning layer, model version, and fallback flag in `sequence_sends.metadata`. |
+| Daily or explicit customer review | The 21 churn features in section 2 | `POST /predict/churn-risk` | The mapped churn fields listed below. |
+| Merchant conversation, alert, or scheduled insight | Authorized organization/user context only | `POST /orchestrate` | Sanitized response/audit record; execute actions only after backend authorization and confirmation. |
+
+Do not call Python from the public pixel request, from inside a database
+transaction, or before the source event/order commit succeeds. Enqueue durable
+work with an idempotency key instead. If Python is unavailable, preserve the
+event and retry the job; never discard the shopper event or invent a model
+decision.
 
 ## 1. Prisma changes
 
@@ -177,9 +320,45 @@ order first, then its items, in the same store-scoped transaction.
    - Unique `(organization_id, idempotency_key)`; indexes `(status,
      created_at)` and `recommendation_id`.
 
+6. `strategic_memory`
+   - Organization FK; nullable recommendation FK with set-null delete.
+   - `entry_type`, JSONB `payload`, `created_at`.
+   - Allow only service-owned writes. Index `(organization_id, created_at DESC)`.
+   - Python writes `entry_type = reflection` when an observed recommendation
+     outcome differs materially from its prediction.
+
+7. `model_evaluation_metrics`
+   - Organization FK; `model_name`, `metric_name`, numeric `metric_value`,
+     `sample_size`, `observed_at`, and optional JSONB `metadata`.
+   - Unique `(organization_id, model_name, metric_name, observed_at)` and
+     index `(model_name, metric_name, observed_at DESC)`.
+   - Record `ctr_improvement` for send-time evaluation and `discount_rmse`
+     for offer-value evaluation. Python reads these aggregates for monthly
+     monitoring; it does not write directly to backend-owned tables.
+
 Add reverse Prisma relations to `organizations`, `users`, `stores`, `orders`,
 `customers`, `sequences`, `business_states`, `recommendations`, and
 `recommendation_outcomes` as required by the foreign keys.
+
+### Intelligence-model data requirements
+
+1. Keep event payloads available for `page_view` discount search/referrer data,
+   coupon-field interactions, checkout steps, and failed-payment events.
+2. Preserve `orders.session_id`, `orders.recovery_status`, `orders.discount_pct`,
+   and the M2 scores captured with a recovery decision. These are required for
+   real-data offer-value training; synthetic runs must not be promoted.
+3. Populate Business State `ml_signals` with safe aggregate margin and
+   channel-profitability signals. Finance and Intelligence agents consume only
+   that shared state and never query tables during a conversation.
+4. Write the evaluation metrics above after outcome windows close. Do not infer
+   model quality from a single recommendation or unlabelled delivery event.
+5. Add a safe aggregate `ml_signals.marketing` payload to each Business State.
+   It must contain per-channel delivery and outcome totals/rates, M2 recovery
+   action counts, M3 send-time outcome summaries, and offer-type outcome
+   summaries for a defined comparison window. The Marketing Agent must read
+   this shared aggregate only; it must not query `sequence_events` during a
+   conversation. This is required before it can identify a best-performing
+   channel or flag discount dependency from measured results.
 
 ## 2. `mlService.js` wrappers
 
@@ -400,6 +579,13 @@ Minimum acceptance tests:
 - Send-time builds exactly 24 ordered local-hour rates and prevents SMS sends
   less than 24 hours apart.
 - Webhook retries do not duplicate sequence events.
+- Pixel requests cannot select another store by changing a raw `store_id`, and
+  duplicate pixel event IDs do not create duplicate `events` rows.
+- Shopify and WooCommerce webhook routes reject invalid signatures before
+  parsing a body; valid duplicate deliveries do not repeat order, RFM, or
+  outcome work.
+- The event controller no longer calls `/api/features/compute`; feature work is
+  enqueued only after the normalized event has committed.
 - Queue workers use atomic claims and cannot duplicate outcomes or alerts.
 - 05:00 scheduling uses UTC, date locking, and graceful shutdown.
 - 44-day inactivity is excluded; 45-day inactivity is included.

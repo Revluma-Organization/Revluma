@@ -93,6 +93,9 @@ units or meanings are not aliased.
   recommended minimum, so resulting metrics remain provisional.
 - The main model must be evaluated against AUC-ROC ≥ 0.78 and HIGH_RISK
   precision ≥ 0.72 on each run. No fixed score is claimed in this document.
+- The final classifier fit applies a 1.5 sample weight only to the actionable
+  `AT_RISK` label. It preserves the canonical feature set, labels, and
+  inference thresholds, and the configured weight is logged with each run.
 - The early-warning model uses `engagement_decay_score`. If its training cohort
   does not contain both labels, inference uses the documented decay threshold.
 
@@ -101,10 +104,12 @@ units or meanings are not aliased.
 Python owns feature calculation, training, and inference. Backend-owned work,
 including optional sequence tables, persistence, scheduling, indexes,
 idempotency, and rollout steps, is specified in
-[`BACKEND_D_S_IMPLEMENTATION_HANDOFF.md`](../../../../docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md).
+[`BACKEND_IMPLEMENTATION_GUIDE.md`](../../../../docs/BACKEND_IMPLEMENTATION_GUIDE.md).
 No Python training path applies migrations or writes Backend schema files.
 
 ## MLflow
 
-The main model is registered as `churn_risk`. The optional early-warning model
-is registered as `churn_early_warning`. Inference uses those exact names.
+An eligible real-data run is registered as `churn_risk`; its optional
+early-warning model is registered as `churn_early_warning`. Synthetic and
+provisional runs are logged but not registered. Inference uses those exact
+names when they are available.

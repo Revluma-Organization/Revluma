@@ -1,9 +1,13 @@
+import warnings
+
 import numpy as np
 import pandas as pd
 from pandas.testing import assert_frame_equal
+from sklearn.exceptions import ConvergenceWarning
 
 from src.models.abandonment.train import (
     FEATURE_COLUMNS as ABANDONMENT_FEATURES,
+    build_model as build_abandonment_model,
     generate_synthetic_data as generate_abandonment_data,
 )
 from src.models.churn.train import (
@@ -13,7 +17,8 @@ from src.models.churn.train import (
 )
 from src.models.offer_value.train import (
     MAX_DISCOUNT_PCT,
-    _generate_synthetic_data as generate_offer_data,
+    FEATURE_COLUMNS as OFFER_VALUE_FEATURES,
+    load_training_data as generate_offer_data,
 )
 from src.models.sensitivity.train import (
     FEATURES as SENSITIVITY_FEATURES,
@@ -39,18 +44,31 @@ def test_abandonment_data_is_reproducible_and_directionally_valid():
     assert early > late
 
 
+def test_abandonment_model_converges_on_the_synthetic_contract():
+    data = generate_abandonment_data(2_000)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        build_abandonment_model().fit(
+            data[ABANDONMENT_FEATURES], data["abandoned"]
+        )
+    assert not any(issubclass(item.category, ConvergenceWarning) for item in caught)
+
+
 def test_sensitivity_data_has_both_labels_and_expected_signal_directions():
     data = generate_sensitivity_data(3_000)
 
-    assert list(data.columns) == SENSITIVITY_FEATURES + ["PSS_label", "CSS_label"]
+    assert list(data.columns) == SENSITIVITY_FEATURES + ["PSS_label", "CSS_label", "TSS_label"]
     assert set(data["PSS_label"]) == {0, 1}
     assert set(data["CSS_label"]) == {0, 1}
+    assert set(data["TSS_label"]) == {0, 1}
     pss_by_coupon_visit = data.groupby("visited_coupon_page")["PSS_label"].mean()
     css_by_shipping_reveal = data.groupby("abandoned_at_shipping_reveal")[
         "CSS_label"
     ].mean()
     assert pss_by_coupon_visit[1] > pss_by_coupon_visit[0]
     assert css_by_shipping_reveal[1] > css_by_shipping_reveal[0]
+    tss_by_repeat_payment_failure = data.groupby(data["failed_payment_count"] > 1)["TSS_label"].mean()
+    assert tss_by_repeat_payment_failure[True] > tss_by_repeat_payment_failure[False]
 
 
 def test_timing_data_covers_contract_and_rewards_peak_windows():
@@ -76,7 +94,7 @@ def test_churn_data_covers_all_21_features_and_tiers():
     assert data["days_since_last_purchase"].corr(data["rfm_recency_score"]) < -0.7
 
 
-def test_offer_data_is_reproducible_and_respects_hard_constraints():
+def test_offer_data_is_reproducible_and_respects_the_ungated_training_contract():
     first = generate_offer_data(3_000)
     second = generate_offer_data(3_000)
     x_train, x_test, y_train, y_test = first
@@ -89,8 +107,6 @@ def test_offer_data_is_reproducible_and_respects_hard_constraints():
         else:
             np.testing.assert_array_equal(first_part, second_part)
     assert np.isfinite(x.to_numpy()).all()
+    assert list(x.columns) == OFFER_VALUE_FEATURES
     assert np.all((y >= 0) & (y <= MAX_DISCOUNT_PCT))
-    forced_zero = (x["tss_score"] >= 60) | (
-        (x["pss_score"] < 35) & (x["css_score"] < 35)
-    )
-    assert np.all(y[forced_zero.to_numpy()] == 0)
+    assert (x["pss_score"] >= 0).all()

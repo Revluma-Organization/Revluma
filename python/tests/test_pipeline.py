@@ -3,6 +3,10 @@ from src.features.pipeline import (
     calculate_scroll_depth,
     calculate_tab_switch_count,
     calculate_cursor_hesitation,
+    calculate_coupon_field_visited,
+    calculate_searched_discount_terms,
+    calculate_abandoned_at_shipping_reveal,
+    calculate_failed_payment_count,
     calculate_checkout_step_reached,
     calculate_failed_payment_attempt,
     calculate_local_hour_of_session,
@@ -91,6 +95,46 @@ def test_cursor_hesitation_empty():
 def test_cursor_hesitation_malformed():
     events = [None, 123, {"event_type": None}, {"no_event_type": "exit_intent"}]
     assert calculate_cursor_hesitation(events) == 0
+
+
+def test_coupon_field_visited_requires_a_page_view_interaction():
+    events = [
+        {"event_type": "field_focus", "payload": {"field_name": "coupon"}},
+        {"event_type": "page_view", "payload": {"field_name": "promo_code"}},
+    ]
+    assert calculate_coupon_field_visited(events) is True
+
+
+def test_coupon_field_visited_handles_empty_and_malformed_events():
+    assert calculate_coupon_field_visited([]) is False
+    assert calculate_coupon_field_visited([None, {"event_type": "page_view", "payload": []}]) is False
+
+
+def test_discount_search_accepts_page_view_referrer_and_legacy_query_events():
+    assert calculate_searched_discount_terms([
+        {"event_type": "page_view", "payload": {"referrer": "https://search.example/?q=coupon"}}
+    ]) is True
+    assert calculate_searched_discount_terms([
+        {"event_type": "search_query", "payload": {"query": "free shipping code"}}
+    ]) is True
+
+
+def test_shipping_reveal_requires_final_step_two_without_step_three():
+    assert calculate_abandoned_at_shipping_reveal([
+        {"event_type": "checkout_step", "payload": {"step": 1}},
+        {"event_type": "checkout_step", "payload": {"step": 2}},
+    ]) is True
+    assert calculate_abandoned_at_shipping_reveal([
+        {"event_type": "checkout_step", "payload": {"step": 2}},
+        {"event_type": "checkout_step", "payload": {"step": 3}},
+    ]) is False
+
+
+def test_failed_payment_count_is_safe_and_counts_all_matching_events():
+    assert calculate_failed_payment_count([
+        {"event_type": "failed_payment"}, None, {"event_type": "failed_payment"}
+    ]) == 2
+    assert calculate_failed_payment_count("not a list") == 0
 
 
 def test_time_first_view_to_cart_add_accepts_created_at_alias():

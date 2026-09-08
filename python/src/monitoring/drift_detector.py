@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import typing
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -30,16 +31,17 @@ except ImportError:  # pragma: no cover
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from src.config.mlflow_config import get_or_create_experiment  # noqa: E402
 from src.features.pipeline import (  # noqa: E402
-    calculate_scroll_depth,
-    calculate_tab_switch_count,
     calculate_time_on_page_ms,
     calculate_checkout_step_reached,
     calculate_failed_payment_attempt,
+    calculate_failed_payment_count,
     calculate_coupon_usage_pct,
     calculate_cursor_hesitation,
     calculate_abandoned_at_shipping_reveal,
     calculate_visited_coupon_page,
     calculate_searched_discount_terms,
+    calculate_cart_item_remove_count,
+    calculate_coupon_field_visited,
     calculate_past_orders_total,
     calculate_days_since_last_purchase,
     calculate_avg_order_value,
@@ -51,9 +53,15 @@ from src.features.event_processor import group_events_by_session  # noqa: E402
 MONITORING_EXPERIMENT_NAME = "Revluma-Monitoring"
 
 # Thresholds — exact values from the Phase 3 task.
-M1_AUC_ROC_FLOOR = 0.65
-M2_CLASS_F1_FLOOR = 0.60
+M1_AUC_ROC_FLOOR = 0.70
+M2_CLASS_F1_FLOOR = 0.63
 M4_ACCURACY_FLOOR = 0.70
+M3_CTR_IMPROVEMENT_FLOOR = 0.05
+M5_DISCOUNT_RMSE_CEILING = 5.0
+M1_RETRAIN_MIN_SAMPLES = 1000
+M2_RETRAIN_MIN_SAMPLES = 500
+M3_RETRAIN_MIN_SAMPLES = 500
+M5_RETRAIN_MIN_SAMPLES = 200
 
 # Trailing windows used to pull "fresh" labelled data for each check.
 M1_WINDOW_DAYS = 7
@@ -267,7 +275,7 @@ def check_m1_drift(db_connection, auto_retrain: bool = True) -> DriftCheckResult
         result.sample_size = len(eval_df)
         result.breached = auc < M1_AUC_ROC_FLOOR
 
-        if result.breached and auto_retrain:
+        if result.breached and auto_retrain and result.sample_size >= M1_RETRAIN_MIN_SAMPLES:
             result.retraining_triggered = _trigger_m1_retraining(db_connection)
 
     except Exception as e:
@@ -295,7 +303,7 @@ def _trigger_m1_retraining(db_connection) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# M2 — Sensitivity per-class F1 (weekly, alert only)
+# M2 — Sensitivity per-class F1 (weekly)
 # ---------------------------------------------------------------------------
 
 def _load_recent_m2_eval_set(db_connection, days: int = M2_WINDOW_DAYS) -> pd.DataFrame | None:
@@ -356,8 +364,9 @@ def _load_recent_m2_eval_set(db_connection, days: int = M2_WINDOW_DAYS) -> pd.Da
     for session_id, action in recovery_rows:
         converted_action.setdefault(session_id, action)
 
-    price_actions = {"DISCOUNT", "HYBRID"}
-    convenience_actions = {"FRICTION_FIX", "HYBRID"}
+    price_actions = {"DISCOUNT", "HYBRID_BUNDLE", "TRUST_PLUS_DEAL", "FULL_PERSONALISE"}
+    convenience_actions = {"FRICTION_FIX", "HYBRID_BUNDLE", "FRICTION_PLUS_TRUST", "FULL_PERSONALISE"}
+    trust_actions = {"TRUST_REASSURE", "TRUST_PLUS_DEAL", "FRICTION_PLUS_TRUST", "FULL_PERSONALISE"}
 
     records = []
     for session_id in session_ids:
@@ -366,31 +375,38 @@ def _load_recent_m2_eval_set(db_connection, days: int = M2_WINDOW_DAYS) -> pd.Da
         action = converted_action.get(session_id)
 
         records.append({
-            "coupon_usage_pct": calculate_coupon_usage_pct(customer_id, db_connection) * 100.0,
+            # This record must use the exact 13-field contract in
+            # sensitivity/train.py and sensitivity/predict.py.  Monitoring a
+            # retired feature vector can produce a plausible, but invalid,
+            # F1 score.
+            "past_orders_with_coupon_pct": calculate_coupon_usage_pct(customer_id, db_connection),
             "visited_coupon_page": int(calculate_visited_coupon_page(events)),
             "searched_discount_terms": int(calculate_searched_discount_terms(events)),
-            "cursor_hesitation": calculate_cursor_hesitation(events),
+            "cart_item_remove_count": calculate_cart_item_remove_count(events),
+            "coupon_field_visited": int(calculate_coupon_field_visited(events)),
             "abandoned_at_shipping_reveal": int(calculate_abandoned_at_shipping_reveal(events)),
             "checkout_step_reached": calculate_checkout_step_reached(events),
-            "scroll_depth_pct": calculate_scroll_depth(events),
+            "cursor_hesitation_score": calculate_cursor_hesitation(events),
             "time_on_page_ms": calculate_time_on_page_ms(events),
+            "failed_payment_attempt": int(calculate_failed_payment_attempt(events)),
+            "failed_payment_count": calculate_failed_payment_count(events),
+            "is_return_visitor": int(calculate_past_orders_total(customer_id, db_connection) > 0),
+            "avg_order_value": calculate_avg_order_value(customer_id, db_connection),
             "PSS_label": int(action in price_actions) if action else 0,
             "CSS_label": int(action in convenience_actions) if action else 0,
+            "TSS_label": int(action in trust_actions) if action else 0,
         })
     return pd.DataFrame.from_records(records)
 
 
 def check_m2_drift(db_connection) -> list[DriftCheckResult]:
-    """Weekly M2 per-class F1 check for both PSS and CSS models. Returns
-    one DriftCheckResult per class (4 total: PSS-0, PSS-1, CSS-0, CSS-1),
-    since the Phase 3 task requires alerting "if any class F1 drops below
-    0.60" — each class is tracked and alerted independently."""
+    """Weekly M2 per-class F1 check for PSS, CSS, and TSS models.
+
+    One result is returned for each binary class so a low-performing class
+    is visible even when aggregate accuracy appears acceptable.
+    """
     results: list[DriftCheckResult] = []
-    feature_cols = [
-        "coupon_usage_pct", "visited_coupon_page", "searched_discount_terms",
-        "cursor_hesitation", "abandoned_at_shipping_reveal",
-        "checkout_step_reached", "scroll_depth_pct", "time_on_page_ms",
-    ]
+    from src.models.sensitivity.predict import FEATURE_COLUMNS
 
     try:
         eval_df = _load_recent_m2_eval_set(db_connection)
@@ -407,11 +423,12 @@ def check_m2_drift(db_connection) -> list[DriftCheckResult]:
             return [skipped]
 
         from sklearn.metrics import f1_score
-        X = eval_df[feature_cols]
+        X = eval_df[FEATURE_COLUMNS]
 
         for target_name, model, label_col in (
             ("sensitivity_pss", pss_model, "PSS_label"),
             ("sensitivity_css", css_model, "CSS_label"),
+            ("sensitivity_tss", _load_registered_model("sensitivity_tss"), "TSS_label"),
         ):
             if model is None or eval_df[label_col].nunique() < 2:
                 results.append(DriftCheckResult(
@@ -555,6 +572,69 @@ def check_m4_drift(db_connection) -> DriftCheckResult:
     return result
 
 
+def _load_aggregate_evaluation_metric(db_connection, model_name: str, metric_name: str, days: int):
+    """Load a persisted, tenant-safe monitoring aggregate.
+
+    The backend handoff defines ``model_evaluation_metrics`` as the durable
+    source for metrics that cannot be reconstructed faithfully from a single
+    model artifact, such as timing lift and discount RMSE.
+    """
+    with db_connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT AVG(metric_value), COUNT(*)
+            FROM model_evaluation_metrics
+            WHERE model_name = %s AND metric_name = %s
+              AND observed_at >= NOW() - INTERVAL '%s days'
+            """,
+            (model_name, metric_name, days),
+        )
+        value, sample_size = cursor.fetchone() or (None, 0)
+    return (float(value) if value is not None else None), int(sample_size or 0)
+
+
+def _check_aggregate_metric(db_connection, *, model_name: str, metric_name: str,
+                            threshold: float, breach_when_below: bool,
+                            minimum_samples: int) -> DriftCheckResult:
+    result = DriftCheckResult(
+        model_name=model_name, check_type="monthly", metric_name=metric_name,
+        metric_value=None, threshold=threshold, breached=False, sample_size=0,
+    )
+    try:
+        value, sample_size = _load_aggregate_evaluation_metric(
+            db_connection, model_name, metric_name, 30
+        )
+        result.metric_value, result.sample_size = value, sample_size
+        if value is None or sample_size < minimum_samples:
+            result.error = f"insufficient evaluation records (requires {minimum_samples})"
+        else:
+            result.breached = value < threshold if breach_when_below else value > threshold
+    except Exception as exc:
+        result.error = str(exc)
+    _log_result_to_mlflow(result)
+    if result.breached:
+        _send_slack_alert(_format_alert(result))
+    return result
+
+
+def check_m3_drift(db_connection) -> DriftCheckResult:
+    """Check monthly send-time CTR lift against its global baseline."""
+    return _check_aggregate_metric(
+        db_connection, model_name="send_time", metric_name="ctr_improvement",
+        threshold=M3_CTR_IMPROVEMENT_FLOOR, breach_when_below=True,
+        minimum_samples=M3_RETRAIN_MIN_SAMPLES,
+    )
+
+
+def check_m5_drift(db_connection) -> DriftCheckResult:
+    """Check monthly offer-value discount RMSE against the hard ceiling."""
+    return _check_aggregate_metric(
+        db_connection, model_name="offer_value", metric_name="discount_rmse",
+        threshold=M5_DISCOUNT_RMSE_CEILING, breach_when_below=False,
+        minimum_samples=M5_RETRAIN_MIN_SAMPLES,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
@@ -569,11 +649,12 @@ def run_weekly_checks(db_connection, auto_retrain: bool = True) -> dict:
 
 
 def run_monthly_checks(db_connection) -> dict:
-    """Runs the monthly check (M4 accuracy). Intended to be invoked by a
-    monthly cron/scheduler entry."""
+    """Run the monthly M3, M4, and M5 monitoring checks."""
     print(f"[drift_detector] Running monthly checks at {datetime.now(timezone.utc).isoformat()}")
     m4_result = check_m4_drift(db_connection)
-    return {"m4": m4_result}
+    m3_result = check_m3_drift(db_connection)
+    m5_result = check_m5_drift(db_connection)
+    return {"m3": m3_result, "m4": m4_result, "m5": m5_result}
 
 
 def run_all_checks(db_connection, auto_retrain: bool = True) -> dict:

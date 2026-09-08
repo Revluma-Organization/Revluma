@@ -260,7 +260,7 @@ M4 does not consume the 30-feature shopper vector above. Its assignment
 heading says 24 features but names exactly 21. The named 21 are authoritative;
 three undocumented inputs must not be invented. The canonical ordered list is
 defined by `FEATURE_COLUMNS` in `python/src/models/churn/train.py` and repeated
-in `docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md`.
+in `docs/BACKEND_IMPLEMENTATION_GUIDE.md`.
 
 Only these same-unit legacy aliases are accepted at the Python boundary:
 

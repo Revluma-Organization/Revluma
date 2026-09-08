@@ -1,24 +1,23 @@
 """
-Revluma ML Serving API (Task I4)
+Revluma ML Serving API
 ====================================
 Real-time inference endpoints for Revluma's five predictive models, plus
 health and internal sync/RFM endpoints.
 uvicorn src.serving.api:app --reload --port 8000
 
 #--
-#newly added (Task I4, Ire)
+# Revision notes
 #--
 ARCHITECTURE NOTE — model loading is split across three caches, not one:
 
-The task doc's literal `_load_model()` snippet implies a single
+The cache contract implies a single
 module-level `_model_cache` dict owning every model. For M1 (abandonment),
 M4 (churn), and M3 (timing) — none of which have a real predict.py
-business-logic layer yet (those are David's/Samuel's tasks, still `pass`
-stubs) — this file owns loading and inference directly, via its own
+business-logic layer yet — this file owns loading and inference directly, via its own
 `_model_cache`, exactly as the snippet describes.
 
-For M2 (sensitivity) and M5 (offer value) — BOTH of which Ire already
-built full, tested predict.py modules for in Tasks I2 and I3, each with
+For M2 (sensitivity) and M5 (offer value), the dedicated predict.py modules
+own the decision logic and each has
 their own gate/modifier/matrix business logic and their OWN independent
 `_model_cache` dict — this file does NOT re-implement that logic a second
 time here. Duplicating ~300 lines of already-tested gate/matrix logic
@@ -35,23 +34,27 @@ drift this repo repeatedly flags, e.g. M3's CHANNEL_MAP warning). Instead:
     - `GET /health` reports `models_loaded` by inspecting all three
       caches together, so this split is invisible to callers.
 This is a deliberate architecture choice, not an oversight — flagged here
-in case product/Ire prefer a single unified cache in a future refactor.
+in case product prefers a single unified cache in a future refactor.
 #--
 #end new
 #--
 """
 
 import ipaddress
+import base64
+import binascii
+import json
 import logging
 import os
 import secrets
 import sys
 import time
+import typing
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 import mlflow.sklearn
 
@@ -63,15 +66,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.
 logger = logging.getLogger("revluma.ml_serving")
 logging.basicConfig(level=logging.INFO)
 
-try:
-    from src.config.mlflow_config import get_or_create_experiment
-    get_or_create_experiment()
-except Exception:
-    pass  # Failsafe — serving must start even if MLflow config is broken
-
 from src.models.sensitivity import predict as sensitivity_predict
 from src.models.offer_value import predict as offer_value_predict
+from src.models.churn.predict import predict as _predict_churn
+from src.models.timing.predict import predict as _predict_timing
 from src.jobs import rfm_sync
+from src.agents.orchestrator import orchestrate as _orchestrate
+from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
+from src.config.database import engine
+from sqlalchemy.orm import sessionmaker
+
+_Session = sessionmaker(bind=engine)
 
 app = FastAPI(
     title="Revluma ML Serving API",
@@ -125,7 +130,7 @@ def _is_internal_ip(host: str | None) -> bool:
 
 async def verify_internal_network(request: Request):
     """Restricts /internal/sync/trigger to localhost / internal network
-    ranges, per Task I4's explicit requirement for that endpoint. Runs
+    ranges. Runs
     IN ADDITION to verify_internal_caller (defense in depth), not instead
     of it."""
     client_host = request.client.host if request.client else None
@@ -194,18 +199,13 @@ def _all_loaded_model_names() -> list:
 # ---------------------------------------------------------------------------
 class AbandonmentFeatures(BaseModel):
     """
-    8 fields, all with defaults, per Task I4. The trained M1 model
+    Eight fields, all with defaults. The trained M1 model
     (abandonment/train.py) consumes exactly 5 of these
     (scroll_depth_pct, tab_switch_count, time_on_page_ms,
     checkout_step_reached, failed_payment_attempt) — cart_item_add_count
     and cart_item_remove_count were already accepted-but-unused in the
     pre-I4 version of this schema (flagged there too). `cursor_hesitation_count`
-    is the 8th field added in this revision: the task doc says "8 fields"
-    without naming the 8th, and this is the most directly-evidenced
-    candidate — it's explicitly named as an M1 risk-score boost modifier
-    in Task D3 ("+0.10 if cursor_hesitation_count >= 2"). Like the other
-    two extras, it is accepted for forward-compatibility but not yet fed
-    to the trained model (that would require retraining M1 on 6+ columns).
+    uses the same eight feature names as its training pipeline.
     """
     scroll_depth_pct: float = Field(0.0, ge=0.0, le=100.0)
     tab_switch_count: int = Field(0, ge=0)
@@ -214,7 +214,7 @@ class AbandonmentFeatures(BaseModel):
     failed_payment_attempt: bool = Field(False)
     cart_item_add_count: int = Field(0, ge=0)
     cart_item_remove_count: int = Field(0, ge=0)
-    cursor_hesitation_count: int = Field(0, ge=0)  # flagged 8th field, see docstring
+    cursor_hesitation: int = Field(0, ge=0, le=10)
 
 
 class AbandonmentResponse(BaseModel):
@@ -230,10 +230,8 @@ class AbandonmentResponse(BaseModel):
 # ---------------------------------------------------------------------------
 class SensitivityFeatures(BaseModel):
     """
-    The task doc says "8 fields", but that figure is the same stale
-    carryover already flagged in Task I2's train.py (it predates TSS).
-    This schema uses the FULL 13-field contract sensitivity_predict.py
-    was actually trained and tested against (see Task I2 delivery notes)
+    This schema uses the complete 13-field contract sensitivity_predict.py
+    is trained and tested against.
     — an 8-field schema here would silently break real inference by
     passing sensitivity_predict.predict() a feature vector it wasn't
     built for. `past_orders_total` is accepted separately (not one of
@@ -247,7 +245,8 @@ class SensitivityFeatures(BaseModel):
     coupon_field_visited: bool = Field(False)
     abandoned_at_shipping_reveal: bool = Field(False)
     checkout_step_reached: int = Field(0, ge=0, le=5)
-    cursor_hesitation_ms: int = Field(0, ge=0, le=30000)
+    cursor_hesitation_ms: int | None = Field(None, ge=0, le=30000)
+    cursor_hesitation_score: int | None = Field(None, ge=0, le=10)
     time_on_page_ms: int = Field(0, ge=0)
     failed_payment_attempt: bool = Field(False)
     failed_payment_count: int = Field(0, ge=0)
@@ -280,8 +279,11 @@ class SendTimeFeatures(BaseModel):
         pattern="^(DISCOUNT|FRICTION_FIX|TRUST_REASSURE|HYBRID_BUNDLE|TRUST_PLUS_DEAL|"
                 "FRICTION_PLUS_TRUST|FULL_PERSONALISE|NUDGE|SOFT_NUDGE)$",
     )
-    cart_value_tier: str = Field("medium", pattern="^(low|medium|high)$")
+    cart_value_tier: str = Field("medium", pattern="^(low|medium|high|premium)$")
     customer_timezone_offset: int = Field(0, ge=-12, le=14)
+    historical_open_probabilities: list[float] | None = Field(None, min_length=24, max_length=24)
+    history_data_points: int = Field(0, ge=0)
+    days_since_last_purchase: int = Field(0, ge=0)
 
 
 class SendTimeResponse(BaseModel):
@@ -298,7 +300,7 @@ class SendTimeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 class ChurnFeatures(BaseModel):
     """
-    Task I4 says "24 fields". The task doc's own Dimension 1-4 lists only
+    The requirements refer to 24 fields but list only
     name 21 signals total (8 + 8 + 3 + 2) — 24 doesn't match either
     number I can derive from the spec, and I'm not fabricating 3 more
     field names to force a round number.
@@ -340,6 +342,22 @@ class ChurnFeatures(BaseModel):
     discount_seeking_escalation: float = Field(0.0)
     unsubscribe_risk_score: float = Field(0.0, ge=0.0, le=1.0)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_feature_names(cls, values):
+        if not isinstance(values, dict):
+            return values
+        normalized = dict(values)
+        aliases = {
+            "sms_click_rate": "sms_click_rate_30d",
+            "site_visit_frequency_delta": "site_visit_delta",
+            "browse_to_cart_trend": "browse_to_cart_conversion_trend",
+        }
+        for legacy_name, canonical_name in aliases.items():
+            if canonical_name not in normalized and legacy_name in normalized:
+                normalized[canonical_name] = normalized[legacy_name]
+        return normalized
+
 
 class ChurnRiskResponse(BaseModel):
     churn_probability: float
@@ -359,7 +377,7 @@ class ChurnRiskResponse(BaseModel):
 # ---------------------------------------------------------------------------
 class OfferFeatures(BaseModel):
     """
-    Task I4 says "20 fields including pss_score and css_score from M2
+    The requirements refer to 20 fields including pss_score and css_score from M2
     output". The 14 fields below are the complete, real contract
     offer_value_predict.predict() was built and tested against in Task
     I3 (3 M2 scores + recovery_action + 4 Step-2 model inputs + 6 Step-3
@@ -409,6 +427,50 @@ class SyncTriggerRequest(BaseModel):
 
 class RfmSyncRequest(BaseModel):
     store_id: str = Field(..., min_length=1)
+
+
+_ALLOWED_IMAGE_MEDIA_TYPES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
+_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+
+
+class OrchestrateRequest(BaseModel):
+    organization_id: str = Field(..., min_length=36, max_length=36)
+    user_id: str | None = Field(None, min_length=36, max_length=36)
+    customer_id: str | None = Field(None, min_length=36, max_length=36)
+    message: str = Field(..., min_length=1, max_length=2000)
+    conversation_id: str | None = None
+    image_base64: str | None = None
+    image_media_type: str | None = None
+    trigger_type: str = Field("conversation", pattern="^(conversation|alert|scheduler)$")
+    trigger_priority: str = Field("normal", pattern="^(low|normal|high|critical)$")
+    context_payload: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_context(self):
+        self.user_id = self.user_id or self.customer_id
+        if not self.user_id:
+            raise ValueError("Either user_id or customer_id must be provided.")
+        if len(json.dumps(self.context_payload, default=str).encode("utf-8")) > 16_384:
+            raise ValueError("context_payload must not exceed 16 KiB.")
+        if bool(self.image_base64) != bool(self.image_media_type):
+            raise ValueError("image_base64 and image_media_type must be provided together.")
+        if self.image_media_type not in (None, *_ALLOWED_IMAGE_MEDIA_TYPES):
+            raise ValueError("Unsupported image_media_type.")
+        if self.image_base64:
+            try:
+                decoded = base64.b64decode(self.image_base64, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise ValueError("image_base64 must contain valid base64 data.") from exc
+            if len(decoded) > _MAX_IMAGE_BYTES:
+                raise ValueError("Decoded image must not exceed 8 MiB.")
+        return self
+
+
+class MorningBriefingRunResponse(BaseModel):
+    total: int = Field(..., ge=0)
+    success: int = Field(..., ge=0)
+    failed: int = Field(..., ge=0)
+    error: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -467,7 +529,58 @@ def _derive_primary_churn_signal(features: ChurnFeatures) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Endpoints
+# Orchestration and scheduled briefing endpoints
+# ---------------------------------------------------------------------------
+@app.post("/orchestrate", dependencies=[Depends(verify_internal_caller)])
+async def orchestrate_endpoint(req: OrchestrateRequest):
+    db = _Session()
+    try:
+        result = await run_in_threadpool(
+            lambda: _orchestrate(
+                organization_id=req.organization_id,
+                user_id=req.user_id,
+                message=req.message,
+                conversation_id=req.conversation_id,
+                db=db,
+                image_base64=req.image_base64,
+                image_media_type=req.image_media_type,
+                trigger_type=req.trigger_type,
+                trigger_priority=req.trigger_priority,
+                context_payload=req.context_payload,
+            )
+        )
+        return result.to_dict()
+    except Exception:
+        return {"success": False, "response_type": "error", "text": "Something went wrong. Please try again in a moment.", "orchestrator_mode": None}
+    finally:
+        db.close()
+
+
+def _run_morning_briefings() -> dict:
+    db = _Session()
+    try:
+        return _run_briefing_job(db)
+    except Exception:
+        logger.exception("morning_briefing_job_failed")
+        return {"total": 0, "success": 0, "failed": 0, "errors": ["briefing_job_failed"]}
+    finally:
+        db.close()
+
+
+@app.post("/internal/morning-briefings", response_model=MorningBriefingRunResponse,
+          dependencies=[Depends(verify_internal_caller)])
+async def internal_morning_briefings() -> MorningBriefingRunResponse:
+    result = await run_in_threadpool(_run_morning_briefings)
+    failed = int(result.get("failed") or 0)
+    error = "partial_failure" if failed or result.get("errors") else None
+    return MorningBriefingRunResponse(
+        total=int(result.get("total") or 0), success=int(result.get("success") or 0),
+        failed=failed, error=error,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Prediction endpoints
 # ---------------------------------------------------------------------------
 @app.get("/health")
 async def health_check():
@@ -495,7 +608,9 @@ async def predict_abandonment(features: AbandonmentFeatures):
         # Only the 5 columns the trained model actually consumes — see
         # AbandonmentFeatures docstring for why 3 accepted fields are excluded.
         model_cols = ["scroll_depth_pct", "tab_switch_count", "time_on_page_ms",
-                       "checkout_step_reached", "failed_payment_attempt"]
+                      "cursor_hesitation", "checkout_step_reached",
+                      "failed_payment_attempt", "cart_item_add_count",
+                      "cart_item_remove_count"]
         row = pd.DataFrame([{k: getattr(features, k) for k in model_cols}])
         prob = float(model.predict_proba(row)[0][1])
         return AbandonmentResponse(
@@ -523,61 +638,16 @@ async def predict_sensitivity(features: SensitivityFeatures, request: Request = 
 
 @app.post("/predict/churn-risk", response_model=ChurnRiskResponse,
           dependencies=[Depends(verify_internal_caller)])
-async def predict_churn(features: ChurnFeatures):
-    days = features.days_since_last_purchase
-    ltv = features.customer_ltv if features.customer_ltv > 0 else (
-        features.past_orders_total * features.avg_order_value
-    )
-    primary_signal = _derive_primary_churn_signal(features)
-
+async def predict_churn(
+    features: ChurnFeatures,
+    x_customer_id: str = Header("", alias="X-Customer-ID"),
+    x_merchant_id: str = Header("", alias="X-Merchant-ID"),
+):
     try:
-        model = _load_model("churn_risk")
-        if not model:
-            if days == -1:
-                tier, churn_probability = "AT_RISK", 0.5
-            elif days <= 30:
-                tier, churn_probability = "HEALTHY", 0.15
-            elif days <= 60:
-                tier, churn_probability = "AT_RISK", 0.45
-            elif days <= 90:
-                tier, churn_probability = "HIGH_RISK", 0.70
-            else:
-                tier, churn_probability = "CRITICAL", 0.90
-
-            urgency = TIER_TO_URGENCY[tier]
-            return ChurnRiskResponse(
-                churn_probability=churn_probability, churn_tier=tier,
-                win_back_urgency=urgency, primary_churn_signal=primary_signal,
-                engagement_decay_score=churn_probability * 100,
-                recommended_channel=TIER_TO_CHANNEL[tier],
-                offer_required=tier in ("HIGH_RISK", "CRITICAL"),
-                escalate_to_human=(ltv > 500 and tier == "CRITICAL"),
-                model_version="fallback", fallback=True,
-            )
-
-        feature_cols = [
-            "past_orders_total", "days_since_last_purchase", "avg_order_value",
-            "purchase_frequency_trend", "rfm_recency_score", "rfm_frequency_score",
-            "rfm_monetary_score",
-        ]
-        row = pd.DataFrame([{k: getattr(features, k) for k in feature_cols}])
-
-        proba = model.predict_proba(row)[0]
-        predicted_idx = int(proba.argmax())
-        tier = CHURN_TIERS[predicted_idx]
-        churn_probability = float(1.0 - proba[0])
-        urgency = TIER_TO_URGENCY[tier]
-        engagement_decay_score = float(proba[predicted_idx] * 100)
-
-        return ChurnRiskResponse(
-            churn_probability=churn_probability, churn_tier=tier,
-            win_back_urgency=urgency, primary_churn_signal=primary_signal,
-            engagement_decay_score=engagement_decay_score,
-            recommended_channel=TIER_TO_CHANNEL[tier],
-            offer_required=tier in ("HIGH_RISK", "CRITICAL"),
-            escalate_to_human=(ltv > 500 and tier == "CRITICAL"),
-            model_version="1.0", fallback=False,
+        result = await run_in_threadpool(
+            _predict_churn, x_customer_id, features.model_dump(), x_merchant_id
         )
+        return ChurnRiskResponse(**result)
     except Exception:
         return ChurnRiskResponse(
             churn_probability=0.5, churn_tier="AT_RISK", win_back_urgency="MEDIUM",
@@ -590,43 +660,19 @@ async def predict_churn(features: ChurnFeatures):
 
 @app.post("/predict/send-time", response_model=SendTimeResponse,
           dependencies=[Depends(verify_internal_caller)])
-async def predict_send_time(features: SendTimeFeatures):
+async def predict_send_time(
+    features: SendTimeFeatures,
+    x_customer_id: str = Header("", alias="X-Customer-ID"),
+    x_merchant_id: str = Header("", alias="X-Merchant-ID"),
+):
     try:
-        model = _load_model("send_time")
-        if not model:
-            hour = FALLBACK_SEND_HOUR.get(features.channel, 10)
-            day = FALLBACK_SEND_DAY.get(features.channel, 1)
-            local_dt, utc_dt = _next_occurrence_utc(hour, day, features.customer_timezone_offset)
-            return SendTimeResponse(
-                send_at=local_dt.isoformat(), send_at_utc=utc_dt.isoformat(),
-                confidence=0.0, reasoning_layer="global_baseline",
-                channel=features.channel, fallback=True,
+        result = await run_in_threadpool(
+            lambda: _predict_timing(
+                x_customer_id, features.model_dump(), x_merchant_id,
+                model=_model_cache.get("send_time"),
             )
-
-        base_row = {
-            "day_of_week_session": features.day_of_week_session,
-            "channel": TIMING_CHANNEL_MAP[features.channel],
-            "recovery_action": RECOVERY_ACTION_MAP.get(features.recovery_action, 8),
-            "cart_value_tier": CART_VALUE_TIER_MAP[features.cart_value_tier],
-            "customer_timezone_offset": features.customer_timezone_offset,
-        }
-        grid = pd.DataFrame([
-            {**base_row, "local_hour_of_session": h} for h in range(24)
-        ])[["local_hour_of_session", "day_of_week_session", "channel",
-            "recovery_action", "cart_value_tier", "customer_timezone_offset"]]
-
-        probs = model.predict_proba(grid)[:, 1]
-        best_hour = int(probs.argmax())
-        confidence = float(probs[best_hour])
-
-        local_dt, utc_dt = _next_occurrence_utc(
-            best_hour, features.day_of_week_session, features.customer_timezone_offset
         )
-        return SendTimeResponse(
-            send_at=local_dt.isoformat(), send_at_utc=utc_dt.isoformat(),
-            confidence=confidence, reasoning_layer="personalised",
-            channel=features.channel, fallback=False,
-        )
+        return SendTimeResponse(**result)
     except Exception:
         local_dt, utc_dt = _next_occurrence_utc(10, 1, 0)
         return SendTimeResponse(
@@ -662,8 +708,8 @@ def _trigger_platform_sync(store_id: str, platform: str):
     Placeholder hook for the real Shopify/WooCommerce data-sync job.
 
     GAP (flagged, not fixed here): no such sync module exists anywhere in
-    this repo yet — RevIntell_AI_LLM_Team_Tasks.docx describes the
-    Node.js -> POST /internal/sync/trigger -> "Ire's sync trigger runs the
+    this repository yet. The integration contract describes the
+    Node.js -> POST /internal/sync/trigger flow.
     WooCommerce sync" contract, but the actual sync implementation is not
     part of Task Group I's file list and isn't present anywhere in the
     provided codebase. This function logs the trigger so the endpoint's
@@ -680,7 +726,7 @@ async def trigger_sync(payload: SyncTriggerRequest, background_tasks: Background
     """
     Runs a Shopify/WooCommerce sync in the background and returns
     immediately. Restricted to internal-network callers (IP allowlist) AND
-    the shared internal key, per Task I4.
+    the shared internal key.
     """
     background_tasks.add_task(_trigger_platform_sync, payload.store_id, payload.platform)
     return {"status": "accepted", "store_id": payload.store_id, "platform": payload.platform}
@@ -693,7 +739,7 @@ async def trigger_rfm_sync(payload: RfmSyncRequest):
     once complete, per the established backend_rfm_integration_guide.md
     contract (which explicitly needs processed_count/failed_customer_ids/
     segment_distribution back synchronously for logging — this is a
-    documented deviation from the shorter I4 task doc's "returns
+    documented behavior from the endpoint contract's "returns
     immediately" phrasing, which is a better fit for /internal/sync/trigger
     than for this endpoint).
 

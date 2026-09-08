@@ -19,13 +19,15 @@ from __future__ import annotations
 import json
 import logging
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import text
  
 logger = logging.getLogger("revluma.learning.feedback_loop")
  
 # ---------------------------------------------------------------------------
-# Evaluation windows (task doc, verbatim): campaigns 48h, sequences 7d,
-# win-back sequences 14d.
+# Evaluation windows: campaigns 48h, sequences 7d, and win-back sequences 14d.
 # ---------------------------------------------------------------------------
 EVALUATION_WINDOWS = {
     "campaign": timedelta(hours=48),
@@ -33,6 +35,20 @@ EVALUATION_WINDOWS = {
     "winback": timedelta(days=14),
 }
 DEFAULT_EVALUATION_WINDOW = EVALUATION_WINDOWS["sequence"]
+
+# Fast-path windows remain part of the public learning-loop API. They are
+# narrower than the aggregate evaluation windows above and are used to pause
+# an underperforming delivery variant before it spends more budget.
+FEEDBACK_WINDOWS = {
+    "cart_recovery_email": timedelta(minutes=45),
+    "cart_recovery_sms": timedelta(minutes=20),
+    "win_back_campaign": timedelta(hours=48),
+    "win_back_sequence": timedelta(days=7),
+}
+PAUSE_THRESHOLDS = {
+    "cart_recovery_email": {"open_rate": 0.15, "click_rate": 0.03},
+    "cart_recovery_sms": {"click_rate": 0.05},
+}
  
 OUTCOME_METRIC_KEYS = ("open_rate", "click_rate", "conversion_rate", "revenue_impact")
  
@@ -338,6 +354,176 @@ def run_outcome_monitor_for_pending(pending_recommendations: list, observed_outc
             continue
  
     return summary
+
+
+def schedule_outcome_check(recommendation_id: str, channel: str, sent_at: datetime, db) -> None:
+    """Schedule an idempotent fast-path evaluation for one recommendation."""
+    if channel not in FEEDBACK_WINDOWS:
+        raise ValueError(f"Unsupported feedback channel: {channel}")
+    if sent_at.tzinfo is None:
+        sent_at = sent_at.replace(tzinfo=timezone.utc)
+    check_at = sent_at + FEEDBACK_WINDOWS[channel]
+    try:
+        result = db.execute(
+            text("""
+                UPDATE recommendations
+                SET channel = :channel, evaluate_after = :check_at,
+                    outcome_checked_at = NULL, updated_at = NOW()
+                WHERE id = :recommendation_id
+            """),
+            {"recommendation_id": recommendation_id, "channel": channel, "check_at": check_at},
+        )
+        if getattr(result, "rowcount", 1) == 0:
+            raise ValueError("Recommendation does not exist.")
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def run_due_outcome_checks(db, limit: int = 100) -> int:
+    """Claim and evaluate due recommendations without duplicate workers."""
+    if not isinstance(limit, int) or not 1 <= limit <= 1000:
+        raise ValueError("limit must be an integer from 1 to 1000.")
+    _require_feedback_persistence(db)
+    processed = 0
+    for _ in range(limit):
+        try:
+            due = _claim_one_due_recommendation(db)
+            if not due:
+                db.rollback()
+                break
+            _evaluate_outcome(str(due[0]), str(due[2]), db, organization_id=str(due[1]))
+            db.commit()
+            processed += 1
+        except Exception:
+            db.rollback()
+            logger.exception("due_outcome_check_failed")
+            break
+    return processed
+
+
+def _claim_one_due_recommendation(db):
+    return db.execute(text("""
+        UPDATE recommendations SET outcome_checked_at = NOW(), updated_at = NOW()
+        WHERE id = (
+            SELECT id FROM recommendations
+            WHERE evaluate_after <= NOW() AND outcome_checked_at IS NULL
+              AND channel IS NOT NULL
+              AND status NOT IN ('paused', 'rejected', 'cancelled')
+            ORDER BY evaluate_after, id FOR UPDATE SKIP LOCKED LIMIT 1
+        )
+        RETURNING id, organization_id, channel
+    """)).fetchone()
+
+
+def _evaluate_outcome(recommendation_id: str, channel: str, db, organization_id: str | None = None) -> None:
+    """Persist observed delivery results and pause only a breached variant."""
+    if organization_id is None:
+        row = db.execute(text("SELECT organization_id FROM recommendations WHERE id = :id"), {"id": recommendation_id}).fetchone()
+        organization_id = str(row[0]) if row else ""
+    sent_count, opened_count, clicked_count = _load_delivery_metrics(recommendation_id, db)
+    sent_count, opened_count, clicked_count = int(sent_count or 0), int(opened_count or 0), int(clicked_count or 0)
+    open_rate = opened_count / sent_count if sent_count else 0.0
+    click_rate = clicked_count / sent_count if sent_count else 0.0
+    breach, actual, threshold = _first_breach(PAUSE_THRESHOLDS.get(channel, {}), open_rate, click_rate) if sent_count else (None, None, None)
+    status = "insufficient_data" if not sent_count else "underperformed" if breach else "met_threshold"
+    factors = {"channel": channel, "sent_count": sent_count, "opened_count": opened_count, "clicked_count": clicked_count, "open_rate": open_rate, "click_rate": click_rate, "threshold_breached": breach, "threshold_value": threshold}
+    outcome_id = _upsert_outcome(recommendation_id, organization_id, status, -1.0 if breach else 1.0 if sent_count else 0.0, factors, db)
+    if not breach:
+        return
+    now = datetime.now(timezone.utc)
+    reason = f"{breach}_below_threshold"
+    db.execute(text("""
+        UPDATE recommendations SET status = 'paused', paused_at = :paused_at,
+            pause_reason = :reason, updated_at = NOW()
+        WHERE id = :recommendation_id AND organization_id = :organization_id
+    """), {"recommendation_id": recommendation_id, "organization_id": organization_id, "paused_at": now, "reason": reason})
+    _write_audit_log(recommendation_id, organization_id, channel, reason, factors, now, db)
+    _write_strategic_memory_reflection(recommendation_id, organization_id, channel, reason, actual, threshold, now, db)
+    _enqueue_retraining_signals(recommendation_id, outcome_id, organization_id, channel, factors, db)
+
+
+def _load_delivery_metrics(recommendation_id: str, db):
+    row = db.execute(text("""
+        WITH sends AS (
+            SELECT id FROM sequence_sends WHERE recommendation_id = :recommendation_id
+              AND status IN ('sent', 'delivered')
+        )
+        SELECT (SELECT COUNT(*) FROM sends),
+               COUNT(DISTINCT sequence_send_id) FILTER (WHERE event_type = 'opened'),
+               COUNT(DISTINCT sequence_send_id) FILTER (WHERE event_type = 'clicked')
+        FROM sequence_events WHERE sequence_send_id IN (SELECT id FROM sends)
+    """), {"recommendation_id": recommendation_id}).fetchone()
+    return row or (0, 0, 0)
+
+
+def _first_breach(thresholds: dict, open_rate: float, click_rate: float):
+    for metric, actual in (("open_rate", open_rate), ("click_rate", click_rate)):
+        threshold = thresholds.get(metric)
+        if threshold is not None and actual < threshold:
+            return metric, actual, threshold
+    return None, None, None
+
+
+def _upsert_outcome(recommendation_id: str, organization_id: str, status: str, learning_signal: float, factors: dict, db) -> str:
+    outcome_id = str(uuid.uuid4())
+    row = db.execute(text("""
+        INSERT INTO recommendation_outcomes (id, recommendation_id, organization_id,
+            actual_result, measured_at, outcome_status, learning_signal,
+            contributing_factors, should_repeat, created_at, updated_at)
+        VALUES (:id, :recommendation_id, :organization_id, :actual_result, NOW(),
+            :outcome_status, :learning_signal, CAST(:factors AS JSONB),
+            :should_repeat, NOW(), NOW())
+        ON CONFLICT (recommendation_id) DO UPDATE SET actual_result = EXCLUDED.actual_result,
+            measured_at = NOW(), outcome_status = EXCLUDED.outcome_status,
+            learning_signal = EXCLUDED.learning_signal,
+            contributing_factors = EXCLUDED.contributing_factors,
+            should_repeat = EXCLUDED.should_repeat, updated_at = NOW()
+        RETURNING id
+    """), {"id": outcome_id, "recommendation_id": recommendation_id,
+        "organization_id": organization_id, "actual_result": status,
+        "outcome_status": status, "learning_signal": learning_signal,
+        "factors": json.dumps(factors), "should_repeat": status == "met_threshold"}).fetchone()
+    return str(row[0]) if row else outcome_id
+
+
+def _write_audit_log(recommendation_id: str, organization_id: str, channel: str, reason: str, factors: dict, paused_at: datetime, db) -> None:
+    db.execute(text("""
+        INSERT INTO audit_logs (organization_id, entity_type, entity_id, action, context, created_at)
+        VALUES (:organization_id, 'recommendation', :recommendation_id,
+            'auto_paused', CAST(:context AS JSONB), :paused_at)
+    """), {"organization_id": organization_id, "recommendation_id": recommendation_id,
+        "context": json.dumps({**factors, "channel": channel, "reason": reason}), "paused_at": paused_at})
+
+
+def _write_strategic_memory_reflection(recommendation_id: str, organization_id: str, channel: str, reason: str, actual: float, threshold: float, paused_at: datetime, db) -> None:
+    db.execute(text("""
+        INSERT INTO strategic_memory (organization_id, recommendation_id, entry_type, payload, created_at)
+        VALUES (:organization_id, :recommendation_id, 'reflection', CAST(:payload AS JSONB), :created_at)
+    """), {"organization_id": organization_id, "recommendation_id": recommendation_id,
+        "payload": json.dumps({"channel": channel, "reason": reason, "actual": actual, "threshold": threshold}), "created_at": paused_at})
+
+
+def _enqueue_retraining_signals(recommendation_id: str, outcome_id: str, organization_id: str, channel: str, factors: dict, db) -> None:
+    for model_name in ("m1_abandonment", "m2_sensitivity"):
+        db.execute(text("""
+            INSERT INTO model_feedback_queue (organization_id, recommendation_id,
+                recommendation_outcome_id, model_name, signal_type, payload,
+                status, idempotency_key, created_at, updated_at)
+            VALUES (:organization_id, :recommendation_id, :outcome_id, :model_name,
+                'delivery_outcome', CAST(:payload AS JSONB), 'pending', :idempotency_key, NOW(), NOW())
+            ON CONFLICT (organization_id, idempotency_key) DO NOTHING
+        """), {"organization_id": organization_id, "recommendation_id": recommendation_id,
+            "outcome_id": outcome_id, "model_name": model_name,
+            "payload": json.dumps({"channel": channel, **factors}),
+            "idempotency_key": f"{recommendation_id}:{model_name}:delivery"})
+
+
+def _require_feedback_persistence(db) -> None:
+    """Compatibility hook for callers that verify backend migrations first."""
+    if db is None:
+        raise ValueError("A database connection is required for due outcome checks.")
  
  
 if __name__ == "__main__":

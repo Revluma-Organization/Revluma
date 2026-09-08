@@ -21,6 +21,12 @@ def disable_external_model_loading(monkeypatch):
     """API unit tests must never resolve models from MLflow or the network."""
     monkeypatch.setattr(serving_api, "_load_model", lambda _model_name: None)
     monkeypatch.setattr(
+        serving_api.sensitivity_predict,
+        "load_model",
+        lambda _merchant_id: {"pss": None, "css": None, "tss": None},
+    )
+    monkeypatch.setattr(serving_api.offer_value_predict, "load_model", lambda _merchant_id: None)
+    monkeypatch.setattr(
         serving_api,
         "_predict_churn",
         lambda _customer_id, _features, _merchant_id: {

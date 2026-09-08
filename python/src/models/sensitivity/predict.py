@@ -1,6 +1,6 @@
 """
-M2 — Shopper Sensitivity Classifier: Inference Script (Task I2)
-==================================================================
+M2 — Shopper Sensitivity Classifier: Inference Script
+======================================================
 Loads the three PSS/CSS/TSS models trained by train.py, scores a shopper's
 feature vector, and applies the 9-condition Recovery Action Matrix to
 decide the recovery_action, classification, and channel_priority.
@@ -18,8 +18,7 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 
-# See train.py's module docstring (Task I2 section) for the full rationale
-# behind this exact 13-column feature contract and its flagged gaps.
+# This ordered 13-column contract is shared with train.py.
 FEATURE_COLUMNS = [
     "past_orders_with_coupon_pct",
     "visited_coupon_page",
@@ -28,7 +27,7 @@ FEATURE_COLUMNS = [
     "coupon_field_visited",
     "abandoned_at_shipping_reveal",
     "checkout_step_reached",
-    "cursor_hesitation_ms",
+    "cursor_hesitation_score",
     "time_on_page_ms",
     "failed_payment_attempt",
     "failed_payment_count",
@@ -36,8 +35,7 @@ FEATURE_COLUMNS = [
     "avg_order_value",
 ]
 
-# Tier boundaries per SENSITIVITY_SCORING_RULES.md / I2 task doc: HIGH >=60,
-# LOW <40, everything in between is MID ("ambiguous").
+# Tier boundaries: HIGH >=60, LOW <40, and MID otherwise.
 HIGH_THRESHOLD = 60
 LOW_THRESHOLD = 40
 
@@ -67,15 +65,15 @@ _EXACT_MATRIX = {
     ),
     ("HIGH", "HIGH", "LOW"): (
         "price_and_convenience_sensitive", "HYBRID_BUNDLE", "discount_plus_free_shipping",
-        ["sms", "email", "push"],  # flagged default — not specified in task doc
+        ["sms", "email", "push"],
     ),
     ("HIGH", "LOW", "HIGH"): (
         "price_and_trust_sensitive", "TRUST_PLUS_DEAL", "discount_plus_money_back_guarantee",
-        ["email", "sms"],  # flagged default — not specified in task doc
+        ["email", "sms"],
     ),
     ("LOW", "HIGH", "HIGH"): (
         "convenience_and_trust_sensitive", "FRICTION_PLUS_TRUST", "one_click_checkout_plus_free_returns",
-        ["push", "email"],  # flagged default — not specified in task doc
+        ["push", "email"],
     ),
 }
 
@@ -84,8 +82,8 @@ def classify(pss_score: int, css_score: int, tss_score: int) -> dict:
     """
     Applies the 9-condition Recovery Action Matrix to three 0-100 scores.
 
-    CRITICAL RULE (task doc, verbatim): "TSS >= 60 should NEVER include a
-    discount; it defaults to TRUST_REASSURE" for the pure-trust case
+    A pure high-trust score never includes a discount; it uses TRUST_REASSURE.
+    This rule applies to the pure-trust case
     (condition 3). This is enforced by construction — condition 3 in the
     exact matrix maps to TRUST_REASSURE with no discount, and none of the
     fallback conditions (7/8/9) ever select a discount-bearing action when
@@ -136,7 +134,7 @@ def classify(pss_score: int, css_score: int, tss_score: int) -> dict:
         "classification": "ambiguous",
         "recovery_action": "SOFT_NUDGE",
         "recommended_offer": "cart_persistence_confirmation",
-        "channel_priority": ["email"],  # flagged default — not specified in task doc
+        "channel_priority": ["email"],
     }
 
 
@@ -194,7 +192,7 @@ def _build_feature_row(feature_vector: dict) -> list:
         "coupon_field_visited": False,
         "abandoned_at_shipping_reveal": False,
         "checkout_step_reached": 0,
-        "cursor_hesitation_ms": 0,
+        "cursor_hesitation_score": 0,
         "time_on_page_ms": 0,
         "failed_payment_attempt": False,
         "failed_payment_count": 0,
@@ -204,6 +202,23 @@ def _build_feature_row(feature_vector: dict) -> list:
 
     if not isinstance(feature_vector, dict):
         feature_vector = {}
+
+    # The event pipeline exposes the normalized 0-10 score. Older callers
+    # may still send raw milliseconds, so preserve that input compatibility
+    # at the boundary without changing the trained feature contract.
+    if "cursor_hesitation_score" not in feature_vector:
+        legacy_value = feature_vector.get(
+            "cursor_hesitation", feature_vector.get("cursor_hesitation_ms", 0)
+        )
+        try:
+            feature_vector["cursor_hesitation_score"] = min(
+                10,
+                max(0, int(float(legacy_value) // 1000))
+                if "cursor_hesitation_ms" in feature_vector
+                else max(0, int(float(legacy_value))),
+            )
+        except (TypeError, ValueError):
+            feature_vector["cursor_hesitation_score"] = 0
 
     row = []
     for col in FEATURE_COLUMNS:

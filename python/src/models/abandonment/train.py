@@ -335,7 +335,9 @@ def build_model() -> LogisticRegression:
     """
     return LogisticRegression(
         solver="lbfgs",
-        max_iter=1000,
+        # Raw event features span very different scales. Give LBFGS enough
+        # iterations to converge reliably without changing the model family.
+        max_iter=3000,
         C=1.0,
         class_weight="balanced",
         random_state=42

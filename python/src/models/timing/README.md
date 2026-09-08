@@ -97,4 +97,4 @@ value tier, purchase recency at decision time, and the historical open rate
 computed strictly from earlier events. These values are immutable training
 evidence; later profile changes must not rewrite them. The detailed database,
 index, webhook, idempotency, and backfill requirements are in
-[`docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md`](../../../../docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md).
+[`docs/BACKEND_IMPLEMENTATION_GUIDE.md`](../../../../docs/BACKEND_IMPLEMENTATION_GUIDE.md).

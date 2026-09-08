@@ -551,9 +551,9 @@ def calculate_searched_discount_terms(events: list) -> bool:
     """
     Feature: searched_discount_terms
 
-    Boolean flag — did the shopper search for discount-related terms on-site?
-    Formula: EXISTS search_query events WHERE query contains 'discount', 'promo',
-             'code', 'coupon', 'sale', 'deal', 'free shipping', or '% off'.
+    Boolean flag — did the shopper search for discount-related terms?
+    Checks page-view referrers and search parameters, as well as legacy
+    ``search_query`` events emitted by older pixel versions.
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
     Source: events — event_type='search_query', query field
@@ -571,26 +571,58 @@ def calculate_searched_discount_terms(events: list) -> bool:
     for event in events:
         if not isinstance(event, dict):
             continue
-        if event.get("event_type") != "search_query":
+        if event.get("event_type") not in ("page_view", "search_query"):
             continue
         payload = event.get("payload")
         if not isinstance(payload, dict):
             continue
-        query = payload.get("query", "")
-        if not isinstance(query, str):
-            continue
-        query_lower = query.lower()
-        if any(term in query_lower for term in DISCOUNT_TERMS):
+        values = (
+            payload.get("query"),
+            payload.get("search"),
+            payload.get("search_params"),
+            payload.get("referrer"),
+            payload.get("url"),
+        )
+        if any(
+            isinstance(value, str)
+            and any(term in value.lower() for term in DISCOUNT_TERMS)
+            for value in values
+        ):
             return True
 
+    return False
+
+
+def calculate_coupon_field_visited(events: list) -> bool:
+    """Return whether a page-view event records coupon-field interaction.
+
+    Only page-view payloads are considered because this is a page interaction
+    signal, not evidence that a coupon was successfully applied. Missing or
+    malformed events safely produce ``False``.
+    """
+    if not isinstance(events, list):
+        return False
+
+    for event in events:
+        if not isinstance(event, dict) or event.get("event_type") != "page_view":
+            continue
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        field_name = payload.get("field_name", "")
+        if isinstance(field_name, str) and (
+            "coupon" in field_name.lower() or "promo_code" in field_name.lower()
+        ):
+            return True
     return False
 def calculate_abandoned_at_shipping_reveal(events: list) -> bool:
     """
     Feature: abandoned_at_shipping_reveal
 
     Boolean flag — did the shopper abandon specifically after seeing shipping costs?
-    Formula: checkout_step_reached IN (2,3) AND exit_intent event fired AFTER
-             step 2 completed AND step 3 was never completed.
+    The final checkout step must be step 2 and the session must never reach
+    step 3. An exit-intent event is not required because some platforms do not
+    emit one when the shopper closes a checkout tab.
 
     Models: M2 (Price/Convenience Classifier) — primary CSS signal
     Source: events (exit_intent + step events) + checkout table
@@ -602,8 +634,7 @@ def calculate_abandoned_at_shipping_reveal(events: list) -> bool:
     if not isinstance(events, list):
         return False
 
-    max_step = 0
-    has_exit_intent = False
+    checkout_steps = []
 
     for event in events:
         if not isinstance(event, dict):
@@ -615,15 +646,21 @@ def calculate_abandoned_at_shipping_reveal(events: list) -> bool:
             payload = event.get("payload")
             if isinstance(payload, dict):
                 step = payload.get("step")
-                if isinstance(step, (int, float)):
-                    max_step = max(max_step, int(step))
+                if isinstance(step, (int, float)) and not isinstance(step, bool):
+                    checkout_steps.append(int(step))
 
-        elif event_type == "exit_intent":
-            has_exit_intent = True
+    return bool(checkout_steps) and checkout_steps[-1] == 2 and max(checkout_steps) == 2
 
-    # Abandoned at shipping reveal = reached step 2 or 3 but not further,
-    # and an exit intent was detected
-    return has_exit_intent and max_step in (2, 3)
+
+def calculate_failed_payment_count(events: list) -> int:
+    """Count failed-payment events without raising on malformed input."""
+    if not isinstance(events, list):
+        return 0
+    return sum(
+        1
+        for event in events
+        if isinstance(event, dict) and event.get("event_type") == "failed_payment"
+    )
 def calculate_failed_payment_attempt(events: list) -> bool:
     """
     Feature: failed_payment_attempt
@@ -1415,8 +1452,11 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
         "purchase_frequency_trend":            calculate_purchase_frequency_trend(customer_id, db),
         "visited_coupon_page":                 calculate_visited_coupon_page(session_events),
         "searched_discount_terms":             calculate_searched_discount_terms(session_events),
+        "coupon_field_visited":                calculate_coupon_field_visited(session_events),
         "abandoned_at_shipping_reveal":        calculate_abandoned_at_shipping_reveal(session_events),
         "failed_payment_attempt":              calculate_failed_payment_attempt(session_events),
+        "failed_payment_count":                calculate_failed_payment_count(session_events),
+        "cursor_hesitation_score":             calculate_cursor_hesitation(session_events),
         "local_hour_of_session":               calculate_local_hour_of_session(session_events),
         "day_of_week_session":                 calculate_day_of_week_session(session_events),
         "time_on_page_ms":                     calculate_time_on_page_ms(session_events),

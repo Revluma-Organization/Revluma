@@ -30,6 +30,8 @@ from .revenue_agent import RevenueAgent
 from .retention_agent import RetentionAgent
 from .customer_agent import CustomerAgent
 from .marketing_agent import MarketingAgent
+from .finance_agent import FinanceAgent
+from .intelligence_agent import IntelligenceAgent
 from .ad_agent import evaluate_ad
 from .understanding import (
     understand, _format_history,
@@ -97,8 +99,8 @@ _AGENTS = {
     "customer":  CustomerAgent(),
     "marketing": MarketingAgent(),
     "inventory": _NoDataSpecialist("inventory"),
-    "finance": _NoDataSpecialist("finance"),
-    "intelligence": _NoDataSpecialist("intelligence"),
+    "finance": FinanceAgent(),
+    "intelligence": IntelligenceAgent(),
 }
 
 _DOMAIN_TO_AGENTS = {

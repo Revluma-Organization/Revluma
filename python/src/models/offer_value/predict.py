@@ -1,8 +1,7 @@
 """
-M5 — Offer Value Optimizer: Inference Script (Task I3)
-==========================================================
-Implements the full 5-Step Offer Value Logic from
-RevIntell_AI_LLM_Team_Tasks.docx (Task I3):
+M5 — Offer Value Optimizer: Inference Script
+=============================================
+Implements the full five-step offer-value decision flow:
 
     Step 1 — Offer Necessity Gate   (hard business rules, no model)
     Step 2 — Base Discount Calculation (trained model, exact-formula fallback)
@@ -179,7 +178,7 @@ def _apply_modifiers(base_discount: float, feature_vector: dict) -> dict:
     discount, then resolves any categorical override (VIP_ACCESS,
     FREE_SHIPPING, PAYMENT_FIX).
 
-    ORDERING NOTE (flagged deviation from literal doc order): the task doc
+    Ordering note: the decision flow
     lists these 7 rules in a flat sequence, but applying them literally in
     that order produces inconsistent outcomes when multiple rules fire
     together — e.g. a VIP customer (LTV > $1000, listed 2nd) whose current
@@ -199,7 +198,7 @@ def _apply_modifiers(base_discount: float, feature_vector: dict) -> dict:
          longer-lived merchant-value signal than the current cart's
          dollar size, so it outranks the small-cart free-shipping rule.
     This priority choice is an explicit engineering judgment call, not
-    given by the doc, and should be confirmed with product/Ire.
+    given by the specification and should be confirmed with product.
 
     Returns:
         dict: {
@@ -268,7 +267,7 @@ _EXPIRY_HOURS = {
     "PERCENTAGE_DISCOUNT": 24,
     "FREE_SHIPPING": 48,
     "TRUST_SIGNAL": 0,       # 0 = no expiry, matching existing api.py convention
-    # Not specified in the task doc — reasonable defaults, flagged:
+    # Conservative defaults when the merchant has not configured a value.
     "PAYMENT_FIX": 24,       # matches urgency of a standard discount reminder
     "VIP_ACCESS": 48,        # VIP customers get more time, not less
     "NUDGE": 24,
@@ -430,7 +429,7 @@ def predict(feature_vector: dict, merchant_id: str, db=None) -> dict:
         expires_hours = _EXPIRY_HOURS.get(offer_type, 24)
 
         # Heuristic estimates — no calibrated outcome data exists yet
-        # (that's Task I5's Outcome Monitor / feedback loop). Flagged as
+        # The outcome monitor records later recovery results.
         # placeholders pending real conversion data.
         expected_recovery_probability = round(
             min(0.95, 0.30 + (discount_pct / MAX_DISCOUNT_PCT) * 0.35 + (pss_score / 100.0) * 0.15),
@@ -455,7 +454,7 @@ def predict(feature_vector: dict, merchant_id: str, db=None) -> dict:
             "discount_pct": discount_pct,
             "offer_type": offer_type,
             "offer_expires_hours": expires_hours,
-            "minimum_order_value": 0.0,  # not specified by task doc; flagged
+            "minimum_order_value": 0.0,
             "expected_recovery_probability": expected_recovery_probability,
             "margin_cost_estimate_pct": margin_cost_estimate_pct,
             "reasoning": reasoning,

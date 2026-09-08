@@ -74,7 +74,7 @@ ALTER TABLE orders ADD COLUMN discount_pct FLOAT;
 ```
 **Purpose:** store historical discount effectiveness and train the regression
 target. The exact additive migration is assigned to the Backend team in
-`docs/BACKEND_D_S_IMPLEMENTATION_HANDOFF.md`.
+`docs/BACKEND_IMPLEMENTATION_GUIDE.md`.
 
 ## 7. Output Schema
 
