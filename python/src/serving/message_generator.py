@@ -1,7 +1,7 @@
 """
 LLM Message Generation Service.
 
-Generates personalised, channel-specific customer recovery messages using
+Generates personalized, channel-specific customer recovery messages using
 outputs from the sensitivity, offer value, and churn risk models.
 """
 
@@ -184,7 +184,7 @@ def _touch_angle_instructions(ctx: MessageContext) -> str:
             "offer back entirely."
         )
         return (
-            "TOUCH 1 ANGLE: Warm, highly personalised, helpful. No pressure. "
+            "TOUCH 1 ANGLE: Warm, highly personalized, helpful. No pressure. "
             f"{offer_rule if ctx.pss_score > 80 and ctx.offer_value else 'Do not mention any offer_value in this message.'}"
         )
     if ctx.touch_number == 2:
@@ -227,7 +227,7 @@ def _no_discount_guardrail(ctx: MessageContext) -> str:
 
 def _build_system_prompt(ctx: MessageContext) -> str:
     """Assembles the full server-side system prompt. All context fields are
-    inserted as clearly labelled DATA values inside a fenced context block
+    inserted as clearly labeled DATA values inside a fenced context block
     — the model is never given raw user text as if it were an instruction.
     This is the single point where sanitised context becomes prompt text;
     callers must pass an already-sanitised MessageContext (see `generate`).

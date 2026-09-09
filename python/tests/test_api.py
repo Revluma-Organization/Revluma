@@ -382,7 +382,7 @@ def test_all_null_input():
 
 
 # ---------------------------------------------------------------------------
-# Sensitivity edge cases (P2.6)
+# Sensitivity edge cases
 # ---------------------------------------------------------------------------
 
 def test_sensitivity_empty():
@@ -406,7 +406,7 @@ def test_sensitivity_all_null():
 
 
 # ---------------------------------------------------------------------------
-# Churn edge cases (P2.6)
+# Churn edge cases
 # ---------------------------------------------------------------------------
 
 def test_churn_empty():
@@ -430,7 +430,7 @@ def test_churn_all_null():
 
 
 # ---------------------------------------------------------------------------
-# Send-time edge cases (P2.6)
+# Send-time edge cases
 # ---------------------------------------------------------------------------
 
 def test_send_time_empty():
@@ -454,7 +454,7 @@ def test_send_time_all_null():
 
 
 # ---------------------------------------------------------------------------
-# Offer-value edge cases including hard-gate verification (P2.6)
+# Offer-value edge cases including hard-gate verification
 # ---------------------------------------------------------------------------
 
 def test_offer_value_empty():

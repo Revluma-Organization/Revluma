@@ -203,6 +203,23 @@ Keep `orders.total`, `orders.coupon_used`, `orders.ordered_at`,
 `events.session_id`, `events.event_type`, `events.payload`, and
 `events.created_at` authoritative.
 
+### Existing `orders`, `abandoned_carts`, and `ml_session_features` models
+
+- Add `orders.session_id String?`, `orders.discount_pct Float?`, and an index on
+  `orders.session_id`. Validate `discount_pct` in the service layer as 0–25.
+- Add nullable `pss_score`, `css_score`, and `tss_score` integer fields to
+  `abandoned_carts`, each validated as 0–100, plus nullable
+  `recovery_action`, `sensitivity_model_version`, and
+  `sensitivity_scored_at DateTime? @db.Timestamptz(6)`.
+- Add `cart_item_add_count Int?`, `cart_item_remove_count Int?`,
+  `coupon_field_visited Boolean?`, and `failed_payment_count Int?` to
+  `ml_session_features`. These fields are absent from the current Prisma model
+  and complete the canonical 34-field shopper vector in
+  `docs/PIXEL_EVENT_SPEC.md`; do not add `cursor_hesitation_score` as a second
+  stored feature.
+- Write the complete feature snapshot and the M2 response in one transaction
+  after Python succeeds. Preserve the prior valid snapshot on transport failure.
+
 ### Existing `recommendations` model
 
 Add `channel String?`, `paused_at DateTime? @db.Timestamptz(6)`,
@@ -332,9 +349,43 @@ order first, then its items, in the same store-scoped transaction.
      `sample_size`, `observed_at`, and optional JSONB `metadata`.
    - Unique `(organization_id, model_name, metric_name, observed_at)` and
      index `(model_name, metric_name, observed_at DESC)`.
-   - Record `ctr_improvement` for send-time evaluation and `discount_rmse`
-     for offer-value evaluation. Python reads these aggregates for monthly
-     monitoring; it does not write directly to backend-owned tables.
+   - Record `randomized_policy_ctr_improvement` for send-time evaluation and
+     `discount_rmse` for offer-value evaluation. The send-time metric is valid
+     only for an approved randomized-control evaluation; do not copy the
+     model's score-selected enrichment metric into this table. Python reads
+     these aggregates for monthly monitoring; it does not write directly to
+     backend-owned tables.
+
+8. `churn_training_observations`
+   - UUID `id`; organization, store, and customer FKs with cascade delete.
+   - `prediction_at`, `observation_due_at`, nullable `finalized_at`, nullable
+     `next_completed_order_at`, and nullable `observed_churn_tier`.
+   - JSONB `feature_snapshot` containing all 21 canonical M4 fields exactly as
+     sent to Python at `prediction_at`; never rebuild this snapshot from the
+     customer's later profile.
+   - `label_policy_version` text identifying the reviewed outcome-window policy
+     used to assign `HEALTHY`, `AT_RISK`, `HIGH_RISK`, or `CRITICAL`.
+   - Unique `(customer_id, prediction_at)`; indexes `(finalized_at,
+     observed_churn_tier)` and `(store_id, observation_due_at)`.
+   - Insert the observation in the same transaction that accepts the churn
+     response. A worker may finalize it only after `observation_due_at` and
+     must use completed, non-cancelled orders occurring after `prediction_at`.
+     Product and data owners must approve the tier-window policy before the
+     worker is enabled; never copy the model prediction into the observed label.
+
+9. `sensitivity_training_observations`
+   - UUID `id`; organization, store, customer, and optional abandoned-cart FKs.
+   - `decision_at`, `observation_due_at`, nullable `finalized_at`, nullable
+     Boolean `pss_label`, `css_label`, and `tss_label`, plus
+     `label_policy_version` text.
+   - JSONB `feature_snapshot` containing all 13 canonical M2 model fields at
+     `decision_at`; never rebuild it from later customer state.
+   - Unique `(customer_id, decision_at)`; indexes `(store_id,
+     observation_due_at)` and `(finalized_at)`.
+   - Finalize labels only through an approved experiment/outcome-attribution
+     policy that can distinguish price, convenience, and trust response. Do not
+     copy predicted scores or the selected recovery action into labels. Leave a
+     label null when the outcome cannot support it; Python excludes such rows.
 
 Add reverse Prisma relations to `organizations`, `users`, `stores`, `orders`,
 `customers`, `sequences`, `business_states`, `recommendations`, and
@@ -347,12 +398,19 @@ Add reverse Prisma relations to `organizations`, `users`, `stores`, `orders`,
 2. Preserve `orders.session_id`, `orders.recovery_status`, `orders.discount_pct`,
    and the M2 scores captured with a recovery decision. These are required for
    real-data offer-value training; synthetic runs must not be promoted.
-3. Populate Business State `ml_signals` with safe aggregate margin and
+3. Persist every M2 decision-time feature set and its later attributed labels in
+   `sensitivity_training_observations`. Do not infer a label merely because the
+   model selected an action or a converted order exists.
+4. Persist every M4 decision-time feature set in
+   `churn_training_observations.feature_snapshot`, then finalize the observed
+   tier only after its outcome window closes. Python rejects incomplete
+   snapshots and reads no unfinalized rows.
+5. Populate Business State `ml_signals` with safe aggregate margin and
    channel-profitability signals. Finance and Intelligence agents consume only
    that shared state and never query tables during a conversation.
-4. Write the evaluation metrics above after outcome windows close. Do not infer
+6. Write the evaluation metrics above after outcome windows close. Do not infer
    model quality from a single recommendation or unlabelled delivery event.
-5. Add a safe aggregate `ml_signals.marketing` payload to each Business State.
+7. Add a safe aggregate `ml_signals.marketing` payload to each Business State.
    It must contain per-channel delivery and outcome totals/rates, M2 recovery
    action counts, M3 send-time outcome summaries, and offer-type outcome
    summaries for a defined comparison window. The Marketing Agent must read
@@ -450,12 +508,37 @@ Persist immutable decision evidence in `sequence_sends.metadata`:
 recovery_action, cart_value_tier, customer_timezone_offset,
 historical_open_rate, history_data_points, days_since_last_purchase,
 risk_score, reasoning_layer, model_confidence, model_fallback,
-model_name, model_version, decision_at
+model_name, model_version, decision_at, policy_version,
+eligible_send_slots, chosen_send_slot, assignment_arm,
+assignment_probability
 ```
 
 Use an idempotency key from sequence, customer, message number, and decision
 time. Before sending, recheck consent and atomically claim the row. Base SMS
 cadence on actual prior `sent_at`.
+
+For M3 training and evaluation:
+
+1. Freeze every feature above at `decision_at`; never rebuild historical rates
+   or customer state after the outcome is known.
+2. Set `assignment_arm` to `model`, `control`, or `exploration`. Record the
+   actual probability of receiving that arm/slot in `assignment_probability`.
+3. Product and data owners must approve the control-slot policy and exploration
+   rate. Do not infer causal lift from model scores or ordinary historical sends.
+4. Label a send only after 120 minutes have elapsed. The M3 engagement outcome
+   is positive only when both canonical `opened` and `clicked` events occurred
+   between `sent_at` and `sent_at + 120 minutes`.
+5. Calculate CTR for eligible randomized model and control observations using
+   the same attribution window. Write the absolute model-minus-control result
+   to `model_evaluation_metrics.metric_value` with
+   `metric_name = randomized_policy_ctr_improvement`, the total evaluated send
+   count in `sample_size`, and
+   `metadata.evaluation_design = randomized_control`.
+6. Store one current rolling evaluation row per organization and observation
+   time. Keep at least 500 eligible events across the latest organization-level
+   evaluations in the trailing 30 days before production registration. Python
+   uses only the latest valid row per organization and weights those rows by
+   `sample_size`; incomplete or non-randomized records cannot satisfy the gate.
 
 ### Orchestrator contract
 

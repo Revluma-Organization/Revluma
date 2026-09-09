@@ -9,11 +9,17 @@ from src.models.timing.predict import predict
 from src.models.timing.train import (
     FEATURE_COLUMNS,
     RECOVERY_ACTION_MAP,
+    TARGET_COLUMN,
+    _bootstrap_probability_intervals,
     _build_send_feature_record,
+    _evaluate_probabilities,
     _expected_calibration_error,
     _generate_synthetic_data,
     _is_production_eligible,
     _load_real_send_rows,
+    _load_verified_policy_ctr_improvement,
+    _probability_quality_passed,
+    _temporal_calibration_splits,
     load_training_data,
 )
 
@@ -21,7 +27,7 @@ from src.models.timing.train import (
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
 
 
-def test_training_uses_the_seven_assigned_features():
+def test_training_uses_the_seven_canonical_features():
     assert FEATURE_COLUMNS == [
         "send_hour",
         "send_day",
@@ -69,7 +75,7 @@ def test_real_send_record_reads_historical_rate_and_purchase_recency():
 
     record = _build_send_feature_record(row)
 
-    assert list(record) == FEATURE_COLUMNS + ["conversion_within_120min"]
+    assert list(record) == FEATURE_COLUMNS + [TARGET_COLUMN]
     assert record["historical_open_rate"] == 0.65
     assert record["days_since_last_purchase"] == 12
     assert record["cart_value_tier"] == 2
@@ -87,7 +93,22 @@ def test_real_query_uses_the_documented_sequence_event_schema():
     assert "e.occurred_at" in sql
     assert "e.event_type = 'opened'" in sql
     assert "e.event_type = 'clicked'" in sql
+    assert "s.sent_at <= NOW() - INTERVAL '120 minutes'" in sql
+    assert "s.status IN ('sent', 'delivered')" in sql
     assert frame.empty
+
+
+def test_real_loader_rejects_incomplete_feature_snapshots():
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchall.return_value = [
+        ("send-1", "customer-1", "email", NOW, {"recovery_action": "NUDGE"}, 1)
+    ]
+
+    frame = _load_real_send_rows(connection)
+
+    assert frame.empty
+    assert list(frame.columns) == FEATURE_COLUMNS + [TARGET_COLUMN]
 
 
 def test_legacy_hybrid_action_maps_to_canonical_hybrid_bundle():
@@ -109,7 +130,7 @@ def test_real_training_rejects_a_chronological_split_missing_a_class(monkeypatch
     rows = pd.DataFrame(
         {
             **{column: [0] * 500 for column in FEATURE_COLUMNS},
-            "conversion_within_120min": [0] * 425 + [1] * 75,
+            TARGET_COLUMN: [0] * 425 + [1] * 75,
         }
     )
     monkeypatch.setattr(timing_train, "_load_real_send_rows", lambda _db: rows)
@@ -126,6 +147,46 @@ def test_calibration_error_uses_probability_bins():
     )
 
     assert error == 0.15
+
+
+def test_probability_metrics_and_intervals_show_honest_skill_over_null():
+    labels = [0, 0, 0, 0, 1, 1, 1, 1]
+    probabilities = [0.02, 0.05, 0.08, 0.12, 0.88, 0.92, 0.95, 0.98]
+
+    metrics, _ = _evaluate_probabilities(labels, probabilities)
+    metrics.update(
+        _bootstrap_probability_intervals(labels, probabilities, n_resamples=100)
+    )
+
+    assert metrics["average_precision"] == 1.0
+    assert metrics["brier_improvement"] > 0
+    assert metrics["log_loss_improvement"] > 0
+    assert metrics["score_selection_lift"] == 0.5
+    assert _probability_quality_passed(metrics)
+
+
+def test_temporal_calibration_never_trains_on_future_rows():
+    labels = pd.Series(([0, 1] * 50))
+
+    splits = _temporal_calibration_splits(labels)
+
+    assert len(splits) == 5
+    assert all(train_index.max() < test_index.min() for train_index, test_index in splits)
+
+
+def test_policy_gate_reads_only_randomized_control_evidence():
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchone.side_effect = [("model_evaluation_metrics",), (0.09, 650)]
+
+    lift, sample_size = _load_verified_policy_ctr_improvement(connection)
+
+    evaluation_sql = cursor.execute.call_args_list[1].args[0]
+    assert lift == 0.09
+    assert sample_size == 650
+    assert "DISTINCT ON (organization_id)" in evaluation_sql
+    assert "randomized_policy_ctr_improvement" in evaluation_sql
+    assert "metadata->>'evaluation_design' = 'randomized_control'" in evaluation_sql
 
 
 def test_failed_payment_uses_immediate_sms_override():
@@ -257,24 +318,52 @@ def test_model_failure_does_not_expose_exception_text(caplog):
     assert "private-customer@example.com" not in caplog.text
 
 
-def test_timing_registration_requires_real_data_and_both_quality_gates():
+def test_timing_registration_requires_real_data_predictive_quality_and_policy_lift():
     assert _is_production_eligible(
         used_real_data=True,
-        ctr_improvement=0.08,
+        score_selection_lift=0.08,
         calibration_error=0.12,
+        probability_quality_passed=True,
+        verified_policy_ctr_improvement=0.08,
+        policy_evaluation_events=500,
     )
     assert not _is_production_eligible(
         used_real_data=False,
-        ctr_improvement=0.50,
+        score_selection_lift=0.50,
         calibration_error=0.01,
+        probability_quality_passed=True,
+        verified_policy_ctr_improvement=0.50,
+        policy_evaluation_events=500,
     )
     assert not _is_production_eligible(
         used_real_data=True,
-        ctr_improvement=0.07,
+        score_selection_lift=0.07,
         calibration_error=0.01,
+        probability_quality_passed=True,
+        verified_policy_ctr_improvement=0.50,
+        policy_evaluation_events=500,
     )
     assert not _is_production_eligible(
         used_real_data=True,
-        ctr_improvement=0.20,
+        score_selection_lift=0.20,
         calibration_error=0.13,
+        probability_quality_passed=True,
+        verified_policy_ctr_improvement=0.50,
+        policy_evaluation_events=500,
+    )
+    assert not _is_production_eligible(
+        used_real_data=True,
+        score_selection_lift=0.20,
+        calibration_error=0.01,
+        probability_quality_passed=False,
+        verified_policy_ctr_improvement=0.50,
+        policy_evaluation_events=500,
+    )
+    assert not _is_production_eligible(
+        used_real_data=True,
+        score_selection_lift=0.20,
+        calibration_error=0.01,
+        probability_quality_passed=True,
+        verified_policy_ctr_improvement=None,
+        policy_evaluation_events=0,
     )

@@ -1,5 +1,5 @@
 ﻿"""
-Unit tests for P2-B -- Day 1 Cold-Start Historical Ingestion
+Unit tests for cold-start historical ingestion.
 Tests run_historical_ingestion and all four internal steps.
 """
 
@@ -143,7 +143,7 @@ class TestHistoricalIngestionSteps:
             if "to_regclass" in sql:
                 result.scalar.return_value = True
             elif "SELECT organization_id" in sql:
-                result.scalar.return_value = "organisation-id"
+                result.scalar.return_value = "organization-id"
             elif "WITH daily_revenue" in sql and "STDDEV_SAMP" not in sql:
                 result.fetchone.return_value = (100.0, 90.0)
             elif "STDDEV_SAMP" in sql:
@@ -168,7 +168,7 @@ class TestHistoricalIngestionSteps:
             sql = str(statement)
             result = MagicMock()
             if "SELECT organization_id" in sql:
-                result.scalar.return_value = "organisation-id"
+                result.scalar.return_value = "organization-id"
             elif "EXTRACT(DOW" in sql:
                 result.fetchone.return_value = (1, 500.0)
             elif "to_regclass" in sql:

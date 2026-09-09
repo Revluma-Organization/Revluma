@@ -11,6 +11,7 @@ from src.models.churn.train import (
     _calculate_sequence_signals,
     _compute_churn_records,
     _is_production_eligible,
+    _load_real_customer_rows,
     _trend_direction,
     build_training_sample_weights,
     normalize_churn_features,
@@ -68,9 +69,56 @@ class SingleCursorConnection:
         return self.cursor_instance
 
 
-def test_feature_contract_uses_the_21_named_s3_signals_in_order():
+class ObservationCursor:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def execute(self, query, parameters):
+        self.query = query
+        self.parameters = parameters
+
+    def fetchall(self):
+        return self.rows
+
+
+class ObservationConnection:
+    def __init__(self, rows):
+        self.cursor_instance = ObservationCursor(rows)
+
+    def cursor(self):
+        return self.cursor_instance
+
+
+def test_feature_contract_uses_the_21_named_signals_in_order():
     assert FEATURE_COLUMNS == EXPECTED_FEATURE_COLUMNS
     assert len(FEATURE_COLUMNS) == 21
+
+
+def test_real_training_uses_complete_immutable_observed_snapshots():
+    snapshot = {feature: index for index, feature in enumerate(FEATURE_COLUMNS)}
+    frame = _load_real_customer_rows(
+        ObservationConnection([(snapshot, "AT_RISK")])
+    )
+
+    assert list(frame.columns) == FEATURE_COLUMNS + ["churn_tier"]
+    assert frame.loc[0, "churn_tier"] == "AT_RISK"
+    assert frame.loc[0, "coupon_dependency_score"] == snapshot[
+        "coupon_dependency_score"
+    ]
+
+
+def test_real_training_rejects_incomplete_observed_snapshots():
+    frame = _load_real_customer_rows(
+        ObservationConnection([({"past_orders_total": 3}, "HEALTHY")])
+    )
+
+    assert frame.empty
 
 
 def test_training_weights_only_raise_the_at_risk_class():
@@ -202,7 +250,7 @@ def test_real_rows_use_sequence_data_and_preserve_the_complete_contract():
         patch("src.models.churn.train.calculate_rfm_scores", return_value=rfm),
         patch("src.models.churn.train.calculate_purchase_frequency_trend", return_value=-1),
         patch("src.models.churn.train._calculate_order_and_event_signals", return_value=order_signals),
-        patch("src.models.churn.train.calculate_coupon_usage_pct", return_value=35.0),
+        patch("src.models.churn.train.calculate_coupon_usage_pct", return_value=0.35),
         patch("src.models.churn.train._calculate_sequence_signals", return_value=sequence_signals),
     ):
         frame = _compute_churn_records(["customer-1"], object())
@@ -259,18 +307,27 @@ def test_real_rows_use_neutral_sequence_values_when_tables_are_unavailable():
 
 
 @pytest.mark.parametrize(
-    ("used_real_data", "below_minimum", "meets_auc", "meets_precision", "expected"),
+    (
+        "used_real_data",
+        "below_minimum",
+        "labels_are_observed",
+        "meets_auc",
+        "meets_precision",
+        "expected",
+    ),
     [
-        (True, False, True, True, True),
-        (False, False, True, True, False),
-        (True, True, True, True, False),
-        (True, False, False, True, False),
-        (True, False, True, False, False),
+        (True, False, True, True, True, True),
+        (False, False, True, True, True, False),
+        (True, True, True, True, True, False),
+        (True, False, False, True, True, False),
+        (True, False, True, False, True, False),
+        (True, False, True, True, False, False),
     ],
 )
 def test_production_registration_requires_real_data_and_every_quality_gate(
     used_real_data,
     below_minimum,
+    labels_are_observed,
     meets_auc,
     meets_precision,
     expected,
@@ -278,6 +335,7 @@ def test_production_registration_requires_real_data_and_every_quality_gate(
     assert _is_production_eligible(
         used_real_data=used_real_data,
         below_minimum=below_minimum,
+        labels_are_observed=labels_are_observed,
         meets_auc=meets_auc,
         meets_high_risk_precision=meets_precision,
     ) is expected

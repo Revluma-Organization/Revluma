@@ -5,7 +5,7 @@ Pipeline:
     UNDERSTAND -> retrieve context -> decide tools -> fetch only what is needed
     -> reason -> compose per response_mode -> return
 
-Architectural rule that fixes the 1/10 behaviour:
+Architectural rule that fixes the 1/10 behavior:
     The store-connection message is gated on understanding.requires_store_data.
     It is NEVER a fallback. If understanding fails, we fall back to conversation.
 """
@@ -116,7 +116,7 @@ _DOMAIN_TO_AGENTS = {
 
 
 def _classify_orchestrator_mode(understanding, trigger_type: str, message: str) -> str:
-    """Map trigger and intent evidence to one of the seven D5 modes."""
+    """Map trigger and intent evidence to one of the seven operating modes."""
     trigger = str(trigger_type or "conversation").lower()
     intent = str(getattr(understanding, "intent", "") or "").lower()
     response_mode = str(getattr(understanding, "response_mode", "") or "").lower()
@@ -290,7 +290,7 @@ def _standardize_agent_result(
     result: AgentResult,
     contradiction_codes: list[str] | None = None,
 ) -> dict:
-    """Convert the rich internal result to the exact six-field D5 boundary."""
+    """Convert the rich internal result to the exact six-field boundary."""
     findings = {
         "status": result.status,
         "facts": result.facts,

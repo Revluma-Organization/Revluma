@@ -1,5 +1,5 @@
 """
-Unit tests for P3-A -- Sub-1-Hour Feedback Loop for Cart Recovery
+Unit tests for the sub-one-hour cart-recovery feedback loop.
 Tests all four channel windows, pause trigger logic, and side effects.
 """
 
@@ -71,7 +71,7 @@ class TestFeedbackLoop:
                 "rec-002",
                 "cart_recovery_email",
                 db,
-                organization_id="organisation-id",
+                organization_id="organization-id",
             )
             mem_mock.assert_not_called()
             queue_mock.assert_not_called()
@@ -87,7 +87,7 @@ class TestFeedbackLoop:
                 "rec-003",
                 "cart_recovery_email",
                 db,
-                organization_id="organisation-id",
+                organization_id="organization-id",
             )
             audit_mock.assert_called_once()
             mem_mock.assert_called_once()
@@ -97,7 +97,7 @@ class TestFeedbackLoop:
         db = MagicMock()
         _write_audit_log(
             "rec-004",
-            "organisation-id",
+            "organization-id",
             "cart_recovery_email",
             "open_rate_below_threshold",
             {"open_rate": 0.05},
@@ -120,7 +120,7 @@ class TestFeedbackLoop:
                 "rec-005",
                 "cart_recovery_email",
                 db,
-                organization_id="organisation-id",
+                organization_id="organization-id",
             )
             mock_mem.assert_called_once()
 
@@ -129,7 +129,7 @@ class TestFeedbackLoop:
         _enqueue_retraining_signals(
             "rec-006",
             "outcome-id",
-            "organisation-id",
+            "organization-id",
             "cart_recovery_email",
             {"open_rate": 0.05, "click_rate": 0.01},
             db,
@@ -148,7 +148,7 @@ class TestFeedbackLoop:
                 "rec-007",
                 "cart_recovery_email",
                 db,
-                organization_id="organisation-id",
+                organization_id="organization-id",
             )
             mem_mock.assert_not_called()
 
@@ -162,13 +162,13 @@ class TestFeedbackLoop:
                 "rec-008",
                 "win_back_sequence",
                 db,
-                organization_id="organisation-id",
+                organization_id="organization-id",
             )
             mem_mock.assert_not_called()
 
     def test_due_worker_commits_one_atomic_recommendation(self):
         db = MagicMock()
-        due = ("rec-009", "organisation-id", "cart_recovery_sms")
+        due = ("rec-009", "organization-id", "cart_recovery_sms")
         with patch("src.learning.feedback_loop._require_feedback_persistence"), \
              patch("src.learning.feedback_loop._claim_one_due_recommendation", side_effect=[due, None]), \
              patch("src.learning.feedback_loop._evaluate_outcome") as evaluate:
@@ -181,7 +181,7 @@ class TestFeedbackLoop:
 
     def test_due_worker_rolls_back_failed_recommendation(self):
         db = MagicMock()
-        due = ("rec-010", "organisation-id", "cart_recovery_email")
+        due = ("rec-010", "organization-id", "cart_recovery_email")
         with patch("src.learning.feedback_loop._require_feedback_persistence"), \
              patch("src.learning.feedback_loop._claim_one_due_recommendation", return_value=due), \
              patch("src.learning.feedback_loop._evaluate_outcome", side_effect=RuntimeError):

@@ -2,15 +2,15 @@
 Revluma Raw Event Processor
 ============================
 Converts raw tracking pixel events (from POST /api/tracking/event)
-into a clean, normalised, feature-ready format before the feature
+into a clean, normalized, feature-ready format before the feature
 engineering pipeline processes them.
 
 This sits between:
     [Tracking Pixel] → POST /api/tracking/event
-                     → events table (S4)
+                     → events table
                      → [THIS PROCESSOR]
                      → Feature Engineering Pipeline (pipeline.py)
-                     → Redis Feature Store (S8)
+                     → Redis Feature Store
 
 """
 
@@ -64,17 +64,15 @@ def _safe_parse_timestamp(ts: str) -> datetime | None:
     
 def parse_raw_event(raw_payload: dict) -> dict:
     """
-    Validates and normalises a single raw event payload from the tracking pixel.
+    Validates and normalizes a single raw event payload from the tracking pixel.
 
     The pixel sends events to POST /api/tracking/event in this shape:
         {
-            "event_type": "scroll" | "tab_switch" | "page_view" |
-                          "checkout_step" | "search_query" | "exit_intent" |
-                          "failed_payment" | "session_start",
+            "event_type": one of KNOWN_EVENT_TYPES,
             "session_id": "uuid-v4",
             "customer_id": "uuid-v4",
             "merchant_id": "uuid-v4",
-            "timestamp": "ISO8601",
+            "timestamp": "ISO8601",  # created_at is also accepted
             "payload": { ...event-specific fields... }
         }
 
@@ -82,14 +80,11 @@ def parse_raw_event(raw_payload: dict) -> dict:
         raw_payload (dict): Raw JSON body from the tracking pixel POST request
 
     Returns:
-        dict: Validated, normalised event with guaranteed required fields.
+        dict: Validated, normalized event with guaranteed required fields.
               Unknown event types are returned with event_type = 'unknown'
               so they can be logged without crashing the pipeline.
 
-    Engineering note:
-        Pixel gap — the generic POST /api/tracking/event endpoint is marked
-        "TO BUILD" in the engineering spec. This processor must handle
-        malformed or partial payloads gracefully (missing fields, null values).
+    Malformed or partial payloads are handled without raising.
     """
     if not isinstance(raw_payload, dict):
         raw_payload = {}
@@ -190,7 +185,7 @@ def _sort_events_by_timestamp(events: list) -> list:
         if parsed is None:
             # Place unparseable timestamps at the very end.
             return (True, datetime.min.replace(tzinfo=_tz.utc))
-        # Normalise naive datetimes to UTC-aware so all values are comparable.
+        # Normalize naive datetimes to UTC-aware so all values are comparable.
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=_tz.utc)
         return (False, parsed)
@@ -293,7 +288,7 @@ def detect_platform(merchant_id: str, db) -> str:
 
     Platform differences that affect event processing:
         - Checkout step numbering differs between Shopify and WooCommerce
-          (platform adapters normalise to standard 1–5 scale)
+          (platform adapters normalize to standard 1–5 scale)
         - Price field CSS selectors differ per platform:
             Shopify    → .order-summary__total
             WooCommerce → .wc-block-components-totals-item
@@ -368,9 +363,9 @@ _WOOCOMMERCE_STEP_MAP = {
 def normalize_checkout_step(platform: str, platform_step: Any) -> int:
     """
     Converts a platform-native checkout step identifier into the
-    normalised step number (0–5) used across all Revluma models.
+    normalized step number (0–5) used across all Revluma models.
 
-    Normalised step scale:
+    Normalized step scale:
         0 = Never reached checkout
         1 = Cart Review
         2 = Shipping Information
@@ -387,12 +382,12 @@ def normalize_checkout_step(platform: str, platform_step: Any) -> int:
         platform_step (Any): The raw step identifier from the platform event
 
     Returns:
-        int: Normalised step number 0–5.
+        int: Normalized step number 0–5.
              Returns 0 if the mapping is unknown or step is None.
 
     Engineering note:
         Full mapping tables to be defined in Week 4 once platform adapter
-        code is reviewed. The adapters should emit a normalised step number
+        code is reviewed. The adapters should emit a normalized step number
         directly — this function is a safety fallback for any cases where
         the raw platform value leaks through.
     """
@@ -434,7 +429,7 @@ def group_events_by_session(events: list) -> dict:
 
     Engineering note:
         Feature freshness requirements (FEATURE_VECTOR_SPEC Section 4.3):
-            Behavioural  → Real-time, recomputed on every pixel event
+            Behavioral  → Real-time, recomputed on every pixel event
             Transactional → Every 5 min (active) / hourly (all profiles)
             Temporal     → Captured once at session start, static for session
     """

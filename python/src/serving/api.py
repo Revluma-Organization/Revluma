@@ -1,43 +1,11 @@
-"""
-Revluma ML Serving API
-====================================
-Real-time inference endpoints for Revluma's five predictive models, plus
-health and internal sync/RFM endpoints.
-uvicorn src.serving.api:app --reload --port 8000
+"""Revluma ML serving API.
 
-#--
-# Revision notes
-#--
-ARCHITECTURE NOTE — model loading is split across three caches, not one:
+Provides authenticated inference for five predictive models plus health,
+orchestration, synchronization, and RFM endpoints. Model-specific modules own
+their prediction rules and caches; this layer validates requests, warms models,
+and delegates inference without duplicating those rules.
 
-The cache contract implies a single
-module-level `_model_cache` dict owning every model. For M1 (abandonment),
-M4 (churn), and M3 (timing) — none of which have a real predict.py
-business-logic layer yet — this file owns loading and inference directly, via its own
-`_model_cache`, exactly as the snippet describes.
-
-For M2 (sensitivity) and M5 (offer value), the dedicated predict.py modules
-own the decision logic and each has
-their own gate/modifier/matrix business logic and their OWN independent
-`_model_cache` dict — this file does NOT re-implement that logic a second
-time here. Duplicating ~300 lines of already-tested gate/matrix logic
-into api.py would be a real duplication-of-truth risk (the exact kind of
-drift this repo repeatedly flags, e.g. M3's CHANNEL_MAP warning). Instead:
-    - At startup, this file calls `sensitivity_predict.load_model(None)`
-      and `offer_value_predict.load_model(None)` to warm THEIR caches
-      too, alongside its own three models.
-    - At request time, this file calls their `predict()` entrypoints
-      directly. Since their caches are already warm from startup, this
-      never triggers an MLflow call during inference — the "never call
-      MLflow during inference" requirement holds across all three cache
-      stores, just not as one dict.
-    - `GET /health` reports `models_loaded` by inspecting all three
-      caches together, so this split is invisible to callers.
-This is a deliberate architecture choice, not an oversight — flagged here
-in case product prefers a single unified cache in a future refactor.
-#--
-#end new
-#--
+Run locally with ``uvicorn src.serving.api:app --reload --port 8000``.
 """
 
 import ipaddress
@@ -49,12 +17,12 @@ import os
 import secrets
 import sys
 import time
-import typing
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 import mlflow.sklearn
 
@@ -78,10 +46,18 @@ from sqlalchemy.orm import sessionmaker
 
 _Session = sessionmaker(bind=engine)
 
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    await _preload_models()
+    yield
+
+
 app = FastAPI(
     title="Revluma ML Serving API",
     description="Real-time inference endpoints for Revluma's five predictive models.",
     version="0.4.0",
+    lifespan=_lifespan,
 )
 
 _START_TIME = time.time()
@@ -155,7 +131,7 @@ def _load_model(model_name: str):
     if model_name in _model_cache:
         return _model_cache[model_name]
     try:
-        model = mlflow.sklearn.load_model(f"models:/{model_name}/latest")
+        model = mlflow.sklearn.load_model(f"models:/{model_name}/Production")
         _model_cache[model_name] = model
         return model
     except Exception as e:
@@ -163,7 +139,6 @@ def _load_model(model_name: str):
         return None
 
 
-@app.on_event("startup")
 async def _preload_models():
     """
     Attempts to load all models into cache on startup — this file's own
@@ -198,15 +173,7 @@ def _all_loaded_model_names() -> list:
 # Request Schemas — M1 Abandonment
 # ---------------------------------------------------------------------------
 class AbandonmentFeatures(BaseModel):
-    """
-    Eight fields, all with defaults. The trained M1 model
-    (abandonment/train.py) consumes exactly 5 of these
-    (scroll_depth_pct, tab_switch_count, time_on_page_ms,
-    checkout_step_reached, failed_payment_attempt) — cart_item_add_count
-    and cart_item_remove_count were already accepted-but-unused in the
-    pre-I4 version of this schema (flagged there too). `cursor_hesitation_count`
-    uses the same eight feature names as its training pipeline.
-    """
+    """The complete eight-feature abandonment model contract."""
     scroll_depth_pct: float = Field(0.0, ge=0.0, le=100.0)
     tab_switch_count: int = Field(0, ge=0)
     time_on_page_ms: int = Field(0, ge=0)
@@ -217,7 +184,11 @@ class AbandonmentFeatures(BaseModel):
     cursor_hesitation: int = Field(0, ge=0, le=10)
 
 
-class AbandonmentResponse(BaseModel):
+class _ModelVersionResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+
+class AbandonmentResponse(_ModelVersionResponse):
     abandonment_probability: float
     should_intervene: bool
     confidence: float
@@ -229,15 +200,7 @@ class AbandonmentResponse(BaseModel):
 # Request Schemas — M2 Sensitivity (delegates to sensitivity_predict)
 # ---------------------------------------------------------------------------
 class SensitivityFeatures(BaseModel):
-    """
-    This schema uses the complete 13-field contract sensitivity_predict.py
-    is trained and tested against.
-    — an 8-field schema here would silently break real inference by
-    passing sensitivity_predict.predict() a feature vector it wasn't
-    built for. `past_orders_total` is accepted separately (not one of
-    the 13) purely to let predict() derive `is_return_visitor` — see
-    that function's docstring.
-    """
+    """The 13 model inputs plus compatibility and derivation fields."""
     past_orders_with_coupon_pct: float = Field(0.0, ge=0.0, le=1.0)
     visited_coupon_page: bool = Field(False)
     searched_discount_terms: bool = Field(False)
@@ -245,6 +208,7 @@ class SensitivityFeatures(BaseModel):
     coupon_field_visited: bool = Field(False)
     abandoned_at_shipping_reveal: bool = Field(False)
     checkout_step_reached: int = Field(0, ge=0, le=5)
+    cursor_hesitation: int | None = Field(None, ge=0, le=10)
     cursor_hesitation_ms: int | None = Field(None, ge=0, le=30000)
     cursor_hesitation_score: int | None = Field(None, ge=0, le=10)
     time_on_page_ms: int = Field(0, ge=0)
@@ -255,7 +219,7 @@ class SensitivityFeatures(BaseModel):
     past_orders_total: int | None = Field(None, ge=0)
 
 
-class SensitivityResponse(BaseModel):
+class SensitivityResponse(_ModelVersionResponse):
     pss_score: int = 50
     css_score: int = 50
     tss_score: int = 50
@@ -299,21 +263,7 @@ class SendTimeResponse(BaseModel):
 # Request Schemas — M4 Churn
 # ---------------------------------------------------------------------------
 class ChurnFeatures(BaseModel):
-    """
-    The requirements refer to 24 fields but list only
-    name 21 signals total (8 + 8 + 3 + 2) — 24 doesn't match either
-    number I can derive from the spec, and I'm not fabricating 3 more
-    field names to force a round number.
-
-    Only the 7 Dimension-1 fields below the divider are actually fed to
-    the trained churn_risk model (matching churn/train.py's real
-    feature_cols exactly — this must stay in sync or every real
-    inference call breaks). The remaining 14 named Dimension 2-4 signals
-    are accepted for schema forward-compatibility (all default-valued)
-    but NOT wired into inference: churn/README.md's own "Schema gaps"
-    section already flags that none of them have a backing pipeline.py
-    function or database column anywhere in this repo yet.
-    """
+    """The 21 model inputs plus customer-LTV decision context."""
     # --- fed to the trained model ---
     past_orders_total: int = Field(0, ge=0)
     days_since_last_purchase: int = Field(-1, ge=-1)
@@ -359,7 +309,7 @@ class ChurnFeatures(BaseModel):
         return normalized
 
 
-class ChurnRiskResponse(BaseModel):
+class ChurnRiskResponse(_ModelVersionResponse):
     churn_probability: float
     churn_tier: str
     win_back_urgency: str
@@ -376,15 +326,7 @@ class ChurnRiskResponse(BaseModel):
 # Request Schemas — M5 Offer Value (delegates to offer_value_predict)
 # ---------------------------------------------------------------------------
 class OfferFeatures(BaseModel):
-    """
-    The requirements refer to 20 fields including pss_score and css_score from M2
-    output". The 14 fields below are the complete, real contract
-    offer_value_predict.predict() was built and tested against in Task
-    I3 (3 M2 scores + recovery_action + 4 Step-2 model inputs + 6 Step-3
-    modifier inputs). Padding to exactly 20 with invented field names
-    that predict() wouldn't consume would look complete without being
-    functional — flagged rather than done.
-    """
+    """The offer decision contract: five model inputs and rule context."""
     pss_score: int = Field(0, ge=0, le=100)
     css_score: int = Field(0, ge=0, le=100)
     tss_score: int = Field(0, ge=0, le=100)
@@ -405,7 +347,7 @@ class OfferFeatures(BaseModel):
     failed_payment_count: int = Field(0, ge=0)
 
 
-class OfferValueResponse(BaseModel):
+class OfferValueResponse(_ModelVersionResponse):
     discount_pct: float
     offer_type: str
     offer_expires_hours: int
@@ -476,22 +418,6 @@ class MorningBriefingRunResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Shared constants / helpers
 # ---------------------------------------------------------------------------
-CHURN_TIERS = ["HEALTHY", "AT_RISK", "HIGH_RISK", "CRITICAL"]
-TIER_TO_URGENCY = {"HEALTHY": "LOW", "AT_RISK": "MEDIUM", "HIGH_RISK": "HIGH", "CRITICAL": "CRITICAL"}
-TIER_TO_CHANNEL = {"HEALTHY": "email", "AT_RISK": "email", "HIGH_RISK": "sms", "CRITICAL": "phone_call"}
-
-TIMING_CHANNEL_MAP = {"email": 0, "sms": 1, "whatsapp": 2}
-RECOVERY_ACTION_MAP = {
-    "DISCOUNT": 0, "FRICTION_FIX": 1, "TRUST_REASSURE": 2, "HYBRID_BUNDLE": 3,
-    "TRUST_PLUS_DEAL": 4, "FRICTION_PLUS_TRUST": 5, "FULL_PERSONALISE": 6,
-    "NUDGE": 7, "SOFT_NUDGE": 8,
-}
-CART_VALUE_TIER_MAP = {"low": 0, "medium": 1, "high": 2}
-
-FALLBACK_SEND_HOUR = {"email": 10, "sms": 18, "whatsapp": 18}
-FALLBACK_SEND_DAY = {"email": 1, "sms": 3, "whatsapp": 3}
-
-
 def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int):
     now_utc = datetime.now(timezone.utc)
     local_now = now_utc + timedelta(hours=tz_offset_hours)
@@ -501,31 +427,6 @@ def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int
         candidate_local += timedelta(days=7)
     candidate_utc = candidate_local - timedelta(hours=tz_offset_hours)
     return candidate_local, candidate_utc
-
-
-def _derive_primary_churn_signal(features: ChurnFeatures) -> str:
-    """
-    Simple, deterministic priority-ordered driver identification —
-    NOT a SHAP/feature-importance calculation (CHURN_MODEL_RESEARCH.md
-    calls for real SHAP-based top_drivers post-MVP; this is the
-    documented MVP-stage stand-in). Priority order follows the "Key
-    churn signal" note in churn/README.md: purchase_frequency_trend=-1
-    combined with high recency is the strongest predictor in this
-    feature set.
-    """
-    if features.days_since_last_purchase == -1:
-        return "no purchase history"
-    if features.purchase_frequency_trend == -1 and features.days_since_last_purchase > 60:
-        return "declining purchase frequency with rising recency"
-    if features.days_since_last_purchase > 90:
-        return "purchase recency (90+ days since last order)"
-    if features.purchase_frequency_trend == -1:
-        return "declining purchase frequency"
-    if features.rfm_frequency_score <= 2:
-        return "low historical order frequency"
-    if features.rfm_monetary_score <= 2:
-        return "low average order value"
-    return "no dominant risk signal identified"
 
 
 # ---------------------------------------------------------------------------
@@ -605,8 +506,7 @@ async def predict_abandonment(features: AbandonmentFeatures):
                 confidence=0.0, model_version="fallback", fallback=True,
             )
 
-        # Only the 5 columns the trained model actually consumes — see
-        # AbandonmentFeatures docstring for why 3 accepted fields are excluded.
+        # Preserve the exact eight-column training order.
         model_cols = ["scroll_depth_pct", "tab_switch_count", "time_on_page_ms",
                       "cursor_hesitation", "checkout_step_reached",
                       "failed_payment_attempt", "cart_item_add_count",
@@ -614,7 +514,7 @@ async def predict_abandonment(features: AbandonmentFeatures):
         row = pd.DataFrame([{k: getattr(features, k) for k in model_cols}])
         prob = float(model.predict_proba(row)[0][1])
         return AbandonmentResponse(
-            abandonment_probability=prob, should_intervene=prob > 0.65,
+            abandonment_probability=prob, should_intervene=prob >= 0.65,
             confidence=0.9, model_version="1.0", fallback=False,
         )
     except Exception:
@@ -628,7 +528,7 @@ async def predict_abandonment(features: AbandonmentFeatures):
           dependencies=[Depends(verify_internal_caller)])
 async def predict_sensitivity(features: SensitivityFeatures, request: Request = None):
     try:
-        feature_vector = features.model_dump()
+        feature_vector = features.model_dump(exclude_none=True)
         merchant_id = request.headers.get("x-merchant-id") if request else None
         result = sensitivity_predict.predict(feature_vector, merchant_id)
         return SensitivityResponse(**result)
@@ -704,18 +604,7 @@ async def predict_offer_value(features: OfferFeatures, request: Request = None):
 # Internal endpoints
 # ---------------------------------------------------------------------------
 def _trigger_platform_sync(store_id: str, platform: str):
-    """
-    Placeholder hook for the real Shopify/WooCommerce data-sync job.
-
-    GAP (flagged, not fixed here): no such sync module exists anywhere in
-    this repository yet. The integration contract describes the
-    Node.js -> POST /internal/sync/trigger flow.
-    WooCommerce sync" contract, but the actual sync implementation is not
-    part of Task Group I's file list and isn't present anywhere in the
-    provided codebase. This function logs the trigger so the endpoint's
-    fire-and-forget contract is honoured end-to-end, and is the exact
-    integration point a real sync module should be wired into.
-    """
+    """Record a platform-sync request until the backend worker is connected."""
     logger.info(f"[sync-trigger] platform={platform} store_id={store_id} "
                 f"— no real sync module wired yet (flagged gap, see docstring).")
 

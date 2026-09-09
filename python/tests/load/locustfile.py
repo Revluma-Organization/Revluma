@@ -108,7 +108,7 @@ class RevlumaMLUser(HttpUser):
     Simulates a backend caller exercising the Revluma ML API.
 
     Each virtual user waits 0.1–0.5 s between requests, modelling
-    the bursting behaviour of a Node backend fan-out during a checkout
+    the bursting behavior of a Node backend fan-out during a checkout
     spike. All five endpoints are weighted equally.
     """
 

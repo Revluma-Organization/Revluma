@@ -1,6 +1,6 @@
 """
 Rev Intelligence — Business State Builder
-Queries real commerce data for an organisation and computes a structured
+Queries real commerce data for an organization and computes a structured
 BusinessState that every specialist agent reads from. No agent queries the
 database directly during a conversation — they all reason from this object.
 
@@ -278,7 +278,7 @@ class BusinessState:
             "risks": self.risks,
             "trends": self.trends,
             "ml_signals": self.ml_signals,
-            # Exact D6 assignment contract. Existing keys below remain for
+            # Stable business-state contract. Existing keys below remain for
             # consumers that adopted the richer 1.1 representation.
             "snapshot_at": self.generated_at.isoformat(),
             "merchant_id": self.organization_id,
@@ -329,14 +329,14 @@ class BusinessState:
 
 def build_business_state(organization_id: str, db) -> BusinessState:
     """
-    Builds a complete BusinessState for an organisation from real database data.
+    Builds a complete BusinessState for an organization from real database data.
 
     Resilient to partial failures: if one data source fails, the state is
     marked partial and the failed section is None with a warning. The old
     current state is never overwritten until the new one is fully computed.
 
     Args:
-        organization_id: The organisation's UUID string.
+        organization_id: The organization's UUID string.
         db: SQLAlchemy connection or session.
 
     Returns:
@@ -353,7 +353,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         "state_id": state_id,
     })
 
-    # ── 1. Get stores for this organisation 
+    # ── 1. Get stores for this organization
     try:
         stores_result = db.execute(
             text("""
@@ -688,7 +688,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                 "description": f"{vip_inactive_count} VIP customers inactive for 45+ days",
                 "estimated_value": None,
                 "urgency": "medium",
-                "action": "Send personalised re-engagement",
+                "action": "Send personalized re-engagement",
             })
 
     except Exception as exc:
@@ -1109,7 +1109,7 @@ def _time_ago(dt: datetime) -> str:
     return f"{hours} hour{'s' if hours != 1 else ''} ago"
 
 
-# ── P2-A: Dynamic Rebuild Interval ────────────────────────────────────────────
+# Dynamic rebuild interval
 
 # Maps traffic load level to the delay before the next rebuild is triggered.
 # Under a spike (>5x baseline), we rebuild every minute to keep the state fresh.

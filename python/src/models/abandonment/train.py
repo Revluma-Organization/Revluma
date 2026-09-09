@@ -7,15 +7,14 @@ Trains a Logistic Regression classifier to score live checkout sessions every
 
 import sys
 import os
-import pickle
 import logging
-import tempfile
 import numpy as np
 import pandas as pd
 import mlflow
 import mlflow.sklearn
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
@@ -48,7 +47,7 @@ from src.features.pipeline import (
 )
 from src.features.event_processor import group_events_by_session
 
-# Minimum labelled sessions required for real-data training.
+# Minimum labeled sessions required for real-data training.
 # Below this row count the model is not considered reliable; fall back to
 # synthetic data and flag it loudly in the console + MLflow tags.
 MIN_REAL_LABELED_SESSIONS = 1000
@@ -161,7 +160,7 @@ def generate_synthetic_data(n: int = 5000) -> pd.DataFrame:
 
 def _load_real_session_rows(db_connection) -> pd.DataFrame:
     """
-    Queries labelled checkout sessions from Postgres and computes the 5 M1
+    Queries labeled checkout sessions from Postgres and computes the 8 M1
     features for each session using the exact pipeline.py functions (per
     the non-negotiable "feature names must match exactly" rule in
     PIXEL_EVENT_SPEC.md).
@@ -281,7 +280,7 @@ def _compute_m1_feature_records(
 
 def load_training_data(db_connection=None) -> tuple:
     """
-    Loads labelled training data for the abandonment model.
+    Loads labeled training data for the abandonment model.
 
     Queries real database records when a connection is provided, raising an exception if rows are insufficient... the db_connection parameter
     was reserved for this exact purpose"):
@@ -298,7 +297,7 @@ def load_training_data(db_connection=None) -> tuple:
 
     Raises:
         RuntimeError: if db_connection is provided and the query fails,
-            or succeeds but finds zero labelled sessions.
+            or succeeds but finds zero labeled sessions.
     """
     if db_connection is None:
         logger.info("m1_synthetic_training_data_selected")
@@ -308,7 +307,7 @@ def load_training_data(db_connection=None) -> tuple:
 
     if len(real_df) == 0:
         raise RuntimeError(
-            "[M1] db_connection was provided but zero labelled sessions "
+            "[M1] db_connection was provided but zero labeled sessions "
             "(ABANDONED/RECOVERED) were found in `abandoned_carts`. "
             "Cannot train on real data — check that the sync job has "
             "populated cart outcomes before retrying."
@@ -352,7 +351,7 @@ def _is_production_eligible(
     precision: float,
     recall: float,
 ) -> bool:
-    """Require real minimum data and every assigned M1 quality gate."""
+    """Require real minimum data and every M1 quality gate."""
     return (
         used_real_data
         and not below_minimum
@@ -548,12 +547,11 @@ def _log_training_metrics(
         if production_eligible
         else {}
     )
-    mlflow.sklearn.log_model(model, "model", **registration)
-    with tempfile.TemporaryDirectory(prefix="revluma-m1-") as temp_dir:
-        scaler_path = os.path.join(temp_dir, "scaler.pkl")
-        with open(scaler_path, "wb") as artifact_file:
-            pickle.dump(scaler, artifact_file)
-        mlflow.log_artifact(scaler_path, "preprocessing")
+    inference_pipeline = Pipeline([
+        ("scaler", scaler),
+        ("classifier", model),
+    ])
+    mlflow.sklearn.log_model(inference_pipeline, "model", **registration)
 
 
 if __name__ == "__main__":

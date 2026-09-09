@@ -10,6 +10,9 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     REDIS_URL: str = os.getenv("REDIS_URL", "")
     MLFLOW_TRACKING_URI: str = os.getenv("MLFLOW_TRACKING_URI", "")
+    SQL_ECHO: bool = os.getenv("SQL_ECHO", "false").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
 
 
 settings = Settings()

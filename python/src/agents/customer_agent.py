@@ -27,7 +27,7 @@ from ..intelligence.business_state import (
 
 logger = logging.getLogger("rev.agent.customer")
 
-# S5: VIPs inactive for 45+ days need proactive attention. Business State
+# VIPs inactive for 45+ days need proactive attention. Business State
 # computes the same threshold as an aggregate; ml_signals adds customer detail.
 VIP_SEGMENTS = ("champion",)
 
@@ -147,7 +147,7 @@ class CustomerAgent(BaseAgent):
             return AgentResult.error("customer", error_type)
 
     def structured_output(self, business_state, memories: list[dict], question: str) -> dict:
-        """The S5 agent output schema — six fields, no free-form text.
+        """The agent output schema — six fields, no free-form text.
 
         Same guarantee as analyze(): this never raises. A caller serialising
         agent output cannot be left holding an exception instead of a schema,
@@ -172,7 +172,7 @@ class CustomerAgent(BaseAgent):
             }
 
     def _structured_output(self, business_state, memories: list[dict], question: str) -> dict:
-        """The S5 agent output schema — six fields, no free-form text.
+        """The agent output schema — six fields, no free-form text.
 
         analyze() still returns an AgentResult because BaseAgent and the
         Orchestrator both require it and neither file is in scope to change.
@@ -369,7 +369,7 @@ class CustomerAgent(BaseAgent):
                 "type": "signal",
                 "metric": "churn_signal",
                 "value": bs.churn_risk_count,
-                "description": f"{bs.churn_risk_count} customers showing behavioural churn indicators",
+                "description": f"{bs.churn_risk_count} customers showing behavioral churn indicators",
                 "severity": urgency,
             })
 
@@ -389,7 +389,7 @@ class CustomerAgent(BaseAgent):
                 "category": "vip_retention",
                 "description": f"Re-engage {bs.vip_inactive_count} high-value dormant customers",
                 "urgency": "high",
-                "note": "VIP customers have highest LTV — personalised outreach, no discount needed",
+                "note": "VIP customers have highest LTV — personalized outreach, no discount needed",
             })
 
         if bs.churn_risk_count and bs.churn_risk_count > 0:
@@ -499,7 +499,7 @@ class CustomerAgent(BaseAgent):
         if vip_inactive:
             recommendations.append({
                 "action": "vip_45d_outreach",
-                "description": f"Personalised re-engagement for {len(vip_inactive)} VIPs inactive "
+                "description": f"Personalized re-engagement for {len(vip_inactive)} VIPs inactive "
                                f"{VIP_INACTIVE_DAYS}+ days, highest LTV first. No discount.",
                 "predicted_impact": "VIP re-engagement typically converts at 32-45% without incentives",
                 "confidence": 0.80,
@@ -561,7 +561,7 @@ class CustomerAgent(BaseAgent):
         if bs.vip_inactive_count and bs.vip_inactive_count > 0 and not vip_inactive:
             recommendations.append({
                 "action": "vip_personalised_outreach",
-                "description": f"Send a personalised re-engagement message to your {bs.vip_inactive_count} "
+                "description": f"Send a personalized re-engagement message to your {bs.vip_inactive_count} "
                                f"top-tier customers who haven't purchased in {VIP_INACTIVE_DAYS}+ days. "
                                f"Reference their previous purchase category. No discount.",
                 "predicted_impact": "VIP re-engagement typically converts at 32-45% without incentives",
