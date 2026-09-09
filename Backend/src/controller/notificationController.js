@@ -125,3 +125,22 @@ exports.markAsRead = async (req, res, next) => {
     next(error);
   }
 };
+// ── Internal: create anomaly alert from business state ────────────────────────
+// Called by the Python service (via revController) when an anomaly is detected.
+// Uses existing notifications infrastructure — no new tables needed.
+exports.createAnomalyAlert = async ({ userId, orgId, type, message, actionUrl }) => {
+  try {
+    await prisma.notifications.create({
+      data: {
+        user_id:    userId,
+        type:       type || "anomaly_alert",
+        message:    message,
+        action_url: actionUrl || "/dashboard/rev-intell",
+        read_at:    null,
+      },
+    });
+  } catch (err) {
+    // Never crash the business state pipeline over a notification failure
+    console.error("createAnomalyAlert failed:", err.message);
+  }
+};

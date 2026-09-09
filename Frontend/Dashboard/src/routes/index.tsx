@@ -7,6 +7,9 @@ import CartRecovery from "../pages/CartRecovery";
 import Customers from "../pages/Customers";
 import NotFound from "../pages/NotFound";
 import PlaceholderPage from "../pages/PlaceholderPage";
+import Checkout from "../pages/Checkout";
+import AcceptInvite from "../pages/auth/AcceptInvite";
+
 
 // Settings Pages
 import SettingsLayout from "../pages/settings/SettingsLayout";
@@ -29,10 +32,13 @@ import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
 export function DashboardRoutes() {
   return (
     <Routes>
+      <Route path="checkout" element={<Checkout />} />
+      <Route path="/auth/accept-invite" element={<AcceptInvite />} />
       <Route element={<DashboardLayout />}>
         <Route index element={<Navigate to="/dashboard/overview" replace />} />
         <Route path="overview"      element={<Overview />} />
         <Route path="rev-intell"     element={<RevIntell />} />
+        <Route path="rev-intell/:conversationId" element={<RevIntell />} />
         <Route path="integrations"  element={<Integrations />} />
         <Route path="cart-recovery" element={<CartRecovery />} />
         <Route path="customers"     element={<Customers />} />

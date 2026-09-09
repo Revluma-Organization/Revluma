@@ -72,11 +72,11 @@ export const Organization: FC = () => {
     const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
+            if (file.size > 5 * 1024 * 1024) {
         setSaveStatus("error");
-        setErrorMessage("Logo image file size must be under 2MB.");
+        setErrorMessage("Logo image file size must be under 5MB.");
         return;
-      }
+            }
       const url = URL.createObjectURL(file);
       setLogoPreview(url);
       setSaveStatus("idle");
@@ -127,9 +127,14 @@ export const Organization: FC = () => {
         industry: finalIndustry,
       });
       setSaveStatus("success");
-    } catch (err: any) {
+        } catch (err: any) {
       setSaveStatus("error");
-      setErrorMessage("Failed to save organization settings. Please try again.");
+      // Check if the backend threw a 409 Conflict for a taken slug
+      if (err?.response?.status === 409 || err?.status === 409) {
+        setErrorMessage("That workspace URL slug is already taken. Please choose another.");
+      } else {
+        setErrorMessage("Failed to save organization settings. Please try again.");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -187,10 +192,10 @@ export const Organization: FC = () => {
             </Avatar>
 
             <div className="flex flex-col items-center space-y-3 sm:items-start">
-              <input
+                            <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/svg+xml"
+                accept="image/png,image/jpeg,image/webp"
                 onChange={handleFileChange}
                 className="hidden"
                 aria-label="Upload logo image file"
@@ -205,7 +210,7 @@ export const Organization: FC = () => {
                 <span>Upload Image</span>
               </Button>
               <p className="text-center text-xs text-slate-500 dark:text-slate-500 sm:text-left">
-                Recommended size: 400x400px. PNG, JPG, or SVG up to 2MB.
+                Recommended size: 400x400px. PNG, JPG, or WEBP up to 5MB.
               </p>
             </div>
           </div>

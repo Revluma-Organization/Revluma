@@ -3,13 +3,20 @@ from src.features.pipeline import (
     calculate_scroll_depth,
     calculate_tab_switch_count,
     calculate_cursor_hesitation,
+    calculate_coupon_field_visited,
+    calculate_searched_discount_terms,
+    calculate_abandoned_at_shipping_reveal,
+    calculate_failed_payment_count,
     calculate_checkout_step_reached,
     calculate_failed_payment_attempt,
     calculate_local_hour_of_session,
     calculate_day_of_week_session,
     calculate_time_on_page_ms,
     calculate_cart_item_add_count,
-    calculate_cart_item_remove_count
+    calculate_cart_item_remove_count,
+    calculate_time_first_view_to_cart_add_hrs,
+    calculate_shipping_eta_dwell_sec,
+    compute_feature_vector,
 )
 
 # ---------------------------------------------------------------------------
@@ -67,11 +74,20 @@ def test_tab_switch_count_malformed():
 # ---------------------------------------------------------------------------
 def test_cursor_hesitation_normal():
     events = [
-        {"event_type": "exit_intent"},
-        {"event_type": "scroll"},
-        {"event_type": "exit_intent"}
+        {"event_type": "field_focus", "timestamp": "2026-08-25T14:30:00Z", "payload": {"field_name": "coupon"}},
+        {"event_type": "scroll", "timestamp": "2026-08-25T14:30:02Z", "payload": {}},
+        {"event_type": "field_blur", "timestamp": "2026-08-25T14:30:05Z", "payload": {"field_name": "coupon"}}
     ]
-    assert calculate_cursor_hesitation(events) == 2
+    # 5 seconds duration = 5000ms. 5000 // 1000 = 5.
+    assert calculate_cursor_hesitation(events) == 5
+
+def test_cursor_hesitation_capped():
+    events = [
+        {"event_type": "field_focus", "timestamp": "2026-08-25T14:30:00Z", "payload": {"field_name": "email"}},
+        # 20 seconds later = 20,000ms. 20,000 // 1000 = 20. But max is capped at 10.
+        {"event_type": "field_blur", "timestamp": "2026-08-25T14:30:20Z", "payload": {"field_name": "email"}}
+    ]
+    assert calculate_cursor_hesitation(events) == 10
 
 def test_cursor_hesitation_empty():
     assert calculate_cursor_hesitation([]) == 0
@@ -79,6 +95,70 @@ def test_cursor_hesitation_empty():
 def test_cursor_hesitation_malformed():
     events = [None, 123, {"event_type": None}, {"no_event_type": "exit_intent"}]
     assert calculate_cursor_hesitation(events) == 0
+
+
+def test_coupon_field_visited_requires_a_page_view_interaction():
+    events = [
+        {"event_type": "field_focus", "payload": {"field_name": "coupon"}},
+        {"event_type": "page_view", "payload": {"field_name": "promo_code"}},
+    ]
+    assert calculate_coupon_field_visited(events) is True
+
+
+def test_coupon_field_visited_handles_empty_and_malformed_events():
+    assert calculate_coupon_field_visited([]) is False
+    assert calculate_coupon_field_visited([None, {"event_type": "page_view", "payload": []}]) is False
+
+
+def test_discount_search_accepts_page_view_referrer_and_legacy_query_events():
+    assert calculate_searched_discount_terms([
+        {"event_type": "page_view", "payload": {"referrer": "https://search.example/?q=coupon"}}
+    ]) is True
+    assert calculate_searched_discount_terms([
+        {"event_type": "search_query", "payload": {"query": "free shipping code"}}
+    ]) is True
+
+
+def test_shipping_reveal_requires_final_step_two_without_step_three():
+    assert calculate_abandoned_at_shipping_reveal([
+        {"event_type": "checkout_step", "payload": {"step": 1}},
+        {"event_type": "checkout_step", "payload": {"step": 2}},
+    ]) is True
+    assert calculate_abandoned_at_shipping_reveal([
+        {"event_type": "checkout_step", "payload": {"step": 2}},
+        {"event_type": "checkout_step", "payload": {"step": 3}},
+    ]) is False
+
+
+def test_failed_payment_count_is_safe_and_counts_all_matching_events():
+    assert calculate_failed_payment_count([
+        {"event_type": "failed_payment"}, None, {"event_type": "failed_payment"}
+    ]) == 2
+    assert calculate_failed_payment_count("not a list") == 0
+
+
+def test_time_first_view_to_cart_add_accepts_created_at_alias():
+    events = [
+        {"event_type": "page_view", "created_at": "2026-08-30T10:00:00Z"},
+        {"event_type": "add_to_cart", "created_at": "2026-08-30T11:30:00Z"},
+    ]
+    assert calculate_time_first_view_to_cart_add_hrs(events) == 1.5
+
+
+def test_shipping_eta_dwell_accepts_created_at_alias():
+    events = [
+        {
+            "event_type": "element_focus",
+            "created_at": "2026-08-30T10:00:00Z",
+            "payload": {"element_id": "shipping_eta"},
+        },
+        {
+            "event_type": "element_blur",
+            "created_at": "2026-08-30T10:00:05Z",
+            "payload": {"element_id": "shipping_eta"},
+        },
+    ]
+    assert calculate_shipping_eta_dwell_sec(events) == 5.0
 
 
 # ---------------------------------------------------------------------------
@@ -304,11 +384,15 @@ class TestDatabaseFeatures(unittest.TestCase):
 
     # 4. purchase_frequency_trend
     def test_purchase_frequency_trend_normal(self):
-        self.cursor.fetchone.return_value = (5, 2)
+        self.cursor.fetchone.return_value = (5, 2, True)
         self.assertEqual(calculate_purchase_frequency_trend("cus_1", self.db), 1)
-        self.cursor.fetchone.return_value = (1, 4)
+        self.cursor.fetchone.return_value = (1, 4, True)
         self.assertEqual(calculate_purchase_frequency_trend("cus_1", self.db), -1)
-        self.cursor.fetchone.return_value = (3, 3)
+        self.cursor.fetchone.return_value = (3, 3, True)
+        self.assertEqual(calculate_purchase_frequency_trend("cus_1", self.db), 0)
+
+    def test_purchase_frequency_trend_is_neutral_without_sixty_days_of_history(self):
+        self.cursor.fetchone.return_value = (1, 0, False)
         self.assertEqual(calculate_purchase_frequency_trend("cus_1", self.db), 0)
 
     def test_purchase_frequency_trend_empty(self):
@@ -323,6 +407,9 @@ class TestDatabaseFeatures(unittest.TestCase):
     def test_coupon_usage_pct_normal(self):
         self.cursor.fetchone.return_value = (0.75,)
         self.assertEqual(calculate_coupon_usage_pct("cus_1", self.db), 0.75)
+        query, params = self.cursor.execute.call_args.args
+        self.assertIn("COUNT(*) FILTER", query)
+        self.assertEqual(params, ("cus_1",))
 
     def test_coupon_usage_pct_empty(self):
         self.cursor.fetchone.return_value = None
@@ -358,6 +445,15 @@ class TestDatabaseFeatures(unittest.TestCase):
         self.cursor.execute.side_effect = Exception("DB Error")
         res = calculate_rfm_scores("cus_1", self.db)
         self.assertEqual(res["rfm_recency_score"], 1)
+
+    def test_rfm_scores_assigns_one_order_to_frequency_band_one(self):
+        with patch("src.features.pipeline.calculate_days_since_last_purchase", return_value=15), \
+             patch("src.features.pipeline.calculate_past_orders_total", return_value=1), \
+             patch("src.features.pipeline.calculate_avg_order_value", return_value=15.0):
+            res = calculate_rfm_scores("cus_1", self.db)
+
+        self.assertEqual(res["rfm_frequency_score"], 1)
+        self.assertEqual(res["rfm_monetary_score"], 1)
 
 # ---------------------------------------------------------------------------
 # Extended Database Tests
@@ -508,17 +604,17 @@ class TestCalculateDaysSinceLastPurchase(unittest.TestCase):
 class TestCalculatePurchaseFrequencyTrend(unittest.TestCase):
 
     def test_increasing_trend(self):
-        db, cursor = make_mock_db(fetchone_return=(5, 2))  # current > previous
+        db, cursor = make_mock_db(fetchone_return=(5, 2, True))  # current > previous
         result = calculate_purchase_frequency_trend("cust_1", db)
         self.assertEqual(result, 1)
 
     def test_decreasing_trend(self):
-        db, cursor = make_mock_db(fetchone_return=(1, 5))  # current < previous
+        db, cursor = make_mock_db(fetchone_return=(1, 5, True))  # current < previous
         result = calculate_purchase_frequency_trend("cust_1", db)
         self.assertEqual(result, -1)
 
     def test_stable_trend(self):
-        db, cursor = make_mock_db(fetchone_return=(3, 3))
+        db, cursor = make_mock_db(fetchone_return=(3, 3, True))
         result = calculate_purchase_frequency_trend("cust_1", db)
         self.assertEqual(result, 0)
 
@@ -528,7 +624,12 @@ class TestCalculatePurchaseFrequencyTrend(unittest.TestCase):
         self.assertEqual(result, 0)
 
     def test_null_values_treated_as_zero(self):
-        db, cursor = make_mock_db(fetchone_return=(None, None))
+        db, cursor = make_mock_db(fetchone_return=(None, None, False))
+        result = calculate_purchase_frequency_trend("cust_1", db)
+        self.assertEqual(result, 0)
+
+    def test_recent_only_history_is_insufficient(self):
+        db, cursor = make_mock_db(fetchone_return=(3, 0, False))
         result = calculate_purchase_frequency_trend("cust_1", db)
         self.assertEqual(result, 0)
 
@@ -657,6 +758,63 @@ class TestCalculateRfmScores(unittest.TestCase):
             "days_since_last_purchase", "past_orders_total", "avg_order_value"
         }
         self.assertEqual(set(result.keys()), expected_keys)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+# ---------------------------------------------------------------------------
+# compute_feature_vector Tests
+# Verifies anonymous_id extraction, created_at timestamp fallback, and the
+# safe empty-session guarantee — the three schema alignment properties from
+# the critical alignment sweep (August 2026).
+# ---------------------------------------------------------------------------
+
+class TestComputeFeatureVector(unittest.TestCase):
+
+    def test_anonymous_id_extracted_from_events(self):
+        """anonymous_id must be surfaced in the envelope when present in events."""
+        events = [
+            {
+                "event_type": "page_view",
+                "session_id": "sess_anon_1",
+                "anonymous_id": "anon-abc-123",
+                "timestamp": "2026-08-20T10:00:00Z",
+                "payload": {},
+            }
+        ]
+        result = compute_feature_vector("cust_1", events, db=None)
+        self.assertEqual(result["anonymous_id"], "anon-abc-123")
+        self.assertIn("features", result)
+
+    def test_timestamp_fallback_created_at(self):
+        """
+        When events carry created_at (DB source) instead of timestamp (pixel source),
+        the envelope timestamp must still be populated correctly.
+        This verifies the dual-source timestamp strategy.
+        """
+        events = [
+            {
+                "event_type": "page_view",
+                "session_id": "sess_db_1",
+                "created_at": "2026-08-20T09:00:00Z",
+                # No 'timestamp' key — simulates a row returned from DB
+                "payload": {},
+            }
+        ]
+        result = compute_feature_vector("cust_2", events, db=None)
+        self.assertEqual(result["timestamp"], "2026-08-20T09:00:00Z")
+
+    def test_empty_session_returns_safe_defaults(self):
+        """Empty session must never raise — all features default safely."""
+        result = compute_feature_vector("cust_3", [], db=None)
+        self.assertIn("features", result)
+        self.assertIsNone(result["session_id"])
+        self.assertIsNone(result["anonymous_id"])
+        self.assertEqual(result["features"]["scroll_depth_pct"], 0.0)
+        self.assertEqual(result["features"]["tab_switch_count"], 0)
+        self.assertFalse(result["features"]["failed_payment_attempt"])
 
 
 if __name__ == "__main__":

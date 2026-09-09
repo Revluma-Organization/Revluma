@@ -191,19 +191,19 @@ export const Branding: FC = () => {
     }
   };
 
-  return (
-    <div className="w-full max-w-5xl space-y-8 rounded-2xl bg-slate-950 p-6 text-slate-100 shadow-2xl sm:p-8 md:p-10">
+      return (
+    <div className="w-full max-w-5xl space-y-8 bg-transparent text-slate-900 dark:text-slate-100 pb-10">
       {/* Page Header */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-800 pb-6 sm:flex-row sm:items-center">
+      <div className="flex flex-col justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6 sm:flex-row sm:items-center">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-500/10 text-sky-400 ring-1 ring-sky-500/20">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-50 dark:bg-sky-500/10 text-[#007FFF] dark:text-sky-400 ring-1 ring-sky-500/20">
             <Palette className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               Branding Customization
             </h1>
-            <p className="mt-1 text-sm text-slate-400">
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Customize the color palette, logo, and favicon for your specific storefront and customer emails.
             </p>
           </div>
@@ -215,7 +215,7 @@ export const Branding: FC = () => {
           size="sm"
           onClick={handleResetDefaults}
           disabled={isSaving}
-          className="flex items-center gap-2 border-slate-700 bg-slate-900/80 text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
+          className="flex items-center gap-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/80 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white shadow-sm transition-all"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           <span>Reset Defaults</span>
@@ -228,13 +228,13 @@ export const Branding: FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 shadow-xl transition-all duration-300 hover:border-slate-700/80 sm:p-8"
+          className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-6 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700/80 sm:p-8"
         >
           <div className="space-y-2">
-            <h2 className="text-lg font-semibold text-white sm:text-xl">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
               Color Palette
             </h2>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Pick your primary and accent brand colors visually. Click any swatch to open your standard system color picker.
             </p>
           </div>
@@ -244,13 +244,13 @@ export const Branding: FC = () => {
             <div className="space-y-2.5">
               <Label
                 htmlFor="primary-color-picker"
-                className="text-sm font-medium text-slate-300"
+                className="text-sm font-medium text-slate-700 dark:text-slate-300"
               >
                 Primary Color
               </Label>
-              <div className="flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-950/80 p-3 shadow-sm transition-colors hover:border-slate-700">
+              <div className="flex items-center gap-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/80 p-3 shadow-sm transition-colors hover:border-slate-300 dark:hover:border-slate-700">
                 {/* Visual native color picker */}
-                <div className="relative flex h-12 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-slate-700 shadow-md transition-transform hover:scale-105 active:scale-95">
+                <div className="relative flex h-12 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 shadow-md transition-transform hover:scale-105 active:scale-95">
                   <input
                     id="primary-color-picker"
                     type="color"
@@ -267,10 +267,10 @@ export const Branding: FC = () => {
 
                 {/* Dynamically displayed hex code text */}
                 <div className="flex flex-col">
-                  <span className="font-mono text-base font-bold tracking-wider text-white">
+                  <span className="font-mono text-base font-bold tracking-wider text-slate-900 dark:text-white">
                     {primaryColor.toUpperCase()}
                   </span>
-                  <span className="text-[0.7rem] text-slate-400">
+                  <span className="text-[0.7rem] text-slate-500 dark:text-slate-400">
                     Click swatch to pick color
                   </span>
                 </div>
@@ -284,13 +284,13 @@ export const Branding: FC = () => {
             <div className="space-y-2.5">
               <Label
                 htmlFor="accent-color-picker"
-                className="text-sm font-medium text-slate-300"
+                className="text-sm font-medium text-slate-700 dark:text-slate-300"
               >
                 Accent Color
               </Label>
-              <div className="flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-950/80 p-3 shadow-sm transition-colors hover:border-slate-700">
+              <div className="flex items-center gap-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/80 p-3 shadow-sm transition-colors hover:border-slate-300 dark:hover:border-slate-700">
                 {/* Visual native color picker */}
-                <div className="relative flex h-12 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-slate-700 shadow-md transition-transform hover:scale-105 active:scale-95">
+                <div className="relative flex h-12 w-16 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 shadow-md transition-transform hover:scale-105 active:scale-95">
                   <input
                     id="accent-color-picker"
                     type="color"
@@ -307,10 +307,10 @@ export const Branding: FC = () => {
 
                 {/* Dynamically displayed hex code text */}
                 <div className="flex flex-col">
-                  <span className="font-mono text-base font-bold tracking-wider text-white">
+                  <span className="font-mono text-base font-bold tracking-wider text-slate-900 dark:text-white">
                     {accentColor.toUpperCase()}
                   </span>
-                  <span className="text-[0.7rem] text-slate-400">
+                  <span className="text-[0.7rem] text-slate-500 dark:text-slate-400">
                     Click swatch to pick color
                   </span>
                 </div>
@@ -321,8 +321,8 @@ export const Branding: FC = () => {
             </div>
 
             {/* Live Theme Preview Box */}
-            <div className="flex flex-col justify-center rounded-xl border border-slate-800 bg-slate-950 p-4 shadow-inner">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <div className="flex flex-col justify-center rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-4 shadow-inner">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 Live Swatch Preview
               </span>
               <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -336,7 +336,7 @@ export const Branding: FC = () => {
                 <span
                   className="rounded-full px-3 py-1 text-xs font-medium"
                   style={{
-                    backgroundColor: `${accentColor}20`,
+                    backgroundColor: `${accentColor}15`,
                     color: accentColor,
                     border: `1px solid ${accentColor}40`,
                   }}
@@ -353,22 +353,22 @@ export const Branding: FC = () => {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
-          className="rounded-2xl border border-slate-800 bg-slate-900/50 p-6 shadow-xl transition-all duration-300 hover:border-slate-700/80 sm:p-8"
+          className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-6 shadow-sm dark:shadow-xl transition-all duration-300 hover:border-slate-300 dark:hover:border-slate-700/80 sm:p-8"
         >
           <div className="space-y-2">
-            <h2 className="text-lg font-semibold text-white sm:text-xl">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white sm:text-xl">
               Brand Assets
             </h2>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Upload your primary store logo and favicon using the dashed upload dropzones below.
             </p>
           </div>
 
           <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
             {/* Brand Logo Upload Zone */}
-            <div className="flex flex-col justify-between rounded-2xl border-2 border-dashed border-slate-800 bg-slate-950/60 p-6 transition-all duration-200 hover:border-slate-700">
+            <div className="flex flex-col justify-between rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-6 transition-all duration-200 hover:border-[#007FFF]/50 dark:hover:border-slate-700">
               <div className="flex flex-col items-center text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-sky-400 border border-slate-800">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white dark:bg-slate-900 text-[#007FFF] dark:text-sky-400 border border-slate-200 dark:border-slate-800 shadow-sm">
                   {logoPreview ? (
                     <img
                       src={logoPreview}
@@ -380,15 +380,15 @@ export const Branding: FC = () => {
                   )}
                 </div>
 
-                <h3 className="mt-4 text-base font-bold text-white">
+                <h3 className="mt-4 text-base font-bold text-slate-900 dark:text-white">
                   Brand Logo
                 </h3>
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Primary logo displayed on your storefront header, checkout, and email notifications.
                 </p>
 
                 {logoFileName && (
-                  <span className="mt-2 inline-block max-w-[220px] truncate rounded-full bg-slate-800 px-3 py-1 text-[0.7rem] text-slate-300">
+                  <span className="mt-2 inline-block max-w-[220px] truncate rounded-full bg-slate-200 dark:bg-slate-800 px-3 py-1 text-[0.7rem] text-slate-700 dark:text-slate-300 font-medium">
                     {logoFileName}
                   </span>
                 )}
@@ -408,9 +408,9 @@ export const Branding: FC = () => {
                   variant="outline"
                   size="sm"
                   onClick={() => logoInputRef.current?.click()}
-                  className="w-full border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 hover:text-white"
+                  className="w-full border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white shadow-sm"
                 >
-                  <Upload className="mr-2 h-4 w-4 text-sky-400" />
+                  <Upload className="mr-2 h-4 w-4 text-[#007FFF] dark:text-sky-400" />
                   <span>{logoPreview ? "Change Logo" : "Upload Logo"}</span>
                 </Button>
                 <span className="text-[0.68rem] text-slate-500">
@@ -420,9 +420,9 @@ export const Branding: FC = () => {
             </div>
 
             {/* Favicon Upload Zone */}
-            <div className="flex flex-col justify-between rounded-2xl border-2 border-dashed border-slate-800 bg-slate-950/60 p-6 transition-all duration-200 hover:border-slate-700">
+            <div className="flex flex-col justify-between rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 p-6 transition-all duration-200 hover:border-[#007FFF]/50 dark:hover:border-slate-700">
               <div className="flex flex-col items-center text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-emerald-400 border border-slate-800">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white dark:bg-slate-900 text-emerald-500 dark:text-emerald-400 border border-slate-200 dark:border-slate-800 shadow-sm">
                   {faviconPreview ? (
                     <img
                       src={faviconPreview}
@@ -434,15 +434,15 @@ export const Branding: FC = () => {
                   )}
                 </div>
 
-                <h3 className="mt-4 text-base font-bold text-white">
+                <h3 className="mt-4 text-base font-bold text-slate-900 dark:text-white">
                   Favicon
                 </h3>
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   Small square icon shown in browser tabs, favorites bars, and mobile bookmark icons.
                 </p>
 
                 {faviconFileName && (
-                  <span className="mt-2 inline-block max-w-[220px] truncate rounded-full bg-slate-800 px-3 py-1 text-[0.7rem] text-slate-300">
+                  <span className="mt-2 inline-block max-w-[220px] truncate rounded-full bg-slate-200 dark:bg-slate-800 px-3 py-1 text-[0.7rem] text-slate-700 dark:text-slate-300 font-medium">
                     {faviconFileName}
                   </span>
                 )}
@@ -462,9 +462,9 @@ export const Branding: FC = () => {
                   variant="outline"
                   size="sm"
                   onClick={() => faviconInputRef.current?.click()}
-                  className="w-full border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800 hover:text-white"
+                  className="w-full border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white shadow-sm"
                 >
-                  <Upload className="mr-2 h-4 w-4 text-emerald-400" />
+                  <Upload className="mr-2 h-4 w-4 text-emerald-500 dark:text-emerald-400" />
                   <span>{faviconPreview ? "Change Favicon" : "Upload Favicon"}</span>
                 </Button>
                 <span className="text-[0.68rem] text-slate-500">
@@ -482,9 +482,9 @@ export const Branding: FC = () => {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-300"
+              className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-300"
             >
-              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500 dark:text-emerald-400" />
               <span>
                 Branding settings and color palette saved successfully.
               </span>
@@ -496,9 +496,9 @@ export const Branding: FC = () => {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300"
+              className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 p-4 text-sm text-rose-700 dark:text-rose-300"
             >
-              <AlertCircle className="h-5 w-5 shrink-0 text-red-400" />
+              <AlertCircle className="h-5 w-5 shrink-0 text-rose-500 dark:text-rose-400" />
               <span>{errorMessage}</span>
             </motion.div>
           )}
@@ -509,7 +509,7 @@ export const Branding: FC = () => {
           <Button
             type="submit"
             disabled={isSaving}
-            className="h-11 w-full min-w-[170px] bg-sky-600 px-6 font-semibold text-white shadow-lg shadow-sky-600/20 transition-all hover:bg-sky-500 active:scale-[0.98] sm:w-auto"
+            className="h-11 w-full min-w-[170px] bg-[#007FFF] px-6 font-semibold text-white shadow-lg shadow-sky-600/20 transition-all hover:bg-[#007FFF]/90 active:scale-[0.98] sm:w-auto"
           >
             {isSaving ? (
               <>

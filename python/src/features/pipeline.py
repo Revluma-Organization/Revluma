@@ -1,11 +1,16 @@
 """
 Revluma Feature Engineering Pipeline
 
-Computes the 32-feature Shopper Feature Vector fed into all five ML models.
-All 32 features fully implemented.
+Computes the 30-feature Shopper Feature Vector fed into all five ML models.
+All 30 features fully implemented.
 """
 
 from __future__ import annotations
+
+import logging
+
+
+logger = logging.getLogger("rev.features.pipeline")
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +38,7 @@ def calculate_scroll_depth(events: list) -> float:
     Formula: max(depth_pct values) from scroll_depth events on checkout pages.
 
     Models: M1 (Abandonment), M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='scroll', page_type='checkout'
+    Source: events — event_type='scroll', page_type='checkout'
 
     Returns:
         float: 0.0–100.0. Default 0.0 if no scroll data captured.
@@ -69,7 +74,7 @@ def calculate_tab_switch_count(events: list) -> int:
     Formula: COUNT(tab_visibility events WHERE state='hidden').
 
     Models: M1 (Abandonment), M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='tab_switch', state='hidden'
+    Source: events — event_type='tab_switch', state='hidden'
 
     Returns:
         int: 0–50 (capped at 50). Default 0. Values 4+ signal price comparison.
@@ -102,7 +107,7 @@ def calculate_time_on_checkout_step(events: list) -> float:
     Formula: timestamp(step_completed) - timestamp(step_started) for last step.
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: customer_events — event_type='checkout_step' timestamps
+    Source: events — event_type='checkout_step' timestamps
 
     Returns:
         float: 0.0–3600.0 seconds. Returns -1.0 if no checkout step was reached
@@ -117,7 +122,8 @@ def calculate_time_on_checkout_step(events: list) -> float:
             continue
         if event.get("event_type") != "checkout_step":
             continue
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
         if ts is not None:
             checkout_events.append(ts)
 
@@ -131,27 +137,56 @@ def calculate_cursor_hesitation(events: list) -> int:
     """
     Feature: cursor_hesitation
 
-    Duration in milliseconds between focus and blur on any price-related field
-    during the session. Uses the maximum hesitation across all price field interactions.
-    Formula: max(blur_timestamp - focus_timestamp) WHERE field_name IN price fields.
-
-    Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='field_focus' and 'field_blur'
+    Calculates the maximum hesitation (time between field_focus and field_blur)
+    on any field during the session, returning a capped score from 0-10.
+    
+    Models: M1, M2, M5
+    Source: events — event_type='field_focus' and 'field_blur'
 
     Returns:
-        int: 0–30000ms (capped at 30000). Default 0 if no price field interaction.
+        int: Score 0-10 (calculated as max_duration_ms // 1000, capped at 10).
+             Default 0 if no focus/blur interaction.
     """
     if not isinstance(events, list):
         return 0
 
-    count = 0
+    max_duration_ms = 0.0
+    active_focus = {}
+
     for event in events:
         if not isinstance(event, dict):
             continue
-        if event.get("event_type") == "exit_intent":
-            count += 1
             
-    return count
+        event_type = event.get("event_type")
+        if event_type not in ("field_focus", "field_blur"):
+            continue
+            
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
+        if ts is None:
+            continue
+            
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+            
+        field_name = payload.get("field_name")
+        if not field_name:
+            continue
+            
+        if event_type == "field_focus":
+            active_focus[field_name] = ts
+        elif event_type == "field_blur":
+            focus_ts = active_focus.get(field_name)
+            if focus_ts and ts > focus_ts:
+                duration_ms = (ts - focus_ts).total_seconds() * 1000.0
+                if duration_ms > max_duration_ms:
+                    max_duration_ms = duration_ms
+            if field_name in active_focus:
+                del active_focus[field_name]
+
+    score = int(max_duration_ms // 1000)
+    return min(score, 10)
 
 
 def calculate_cart_item_add_count(events: list) -> int:
@@ -164,7 +199,7 @@ def calculate_cart_item_add_count(events: list) -> int:
     Formula: COUNT(events WHERE event_type='add_to_cart').
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: customer_events — event_type='add_to_cart'
+    Source: events — event_type='add_to_cart'
 
     Returns:
         int: 0+. Default 0 if no add_to_cart events present.
@@ -187,7 +222,7 @@ def calculate_cart_item_remove_count(events: list) -> int:
     Formula: COUNT(events WHERE event_type='remove_from_cart').
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: customer_events — event_type='remove_from_cart'
+    Source: events — event_type='remove_from_cart'
 
     Returns:
         int: 0+. Default 0 if no remove_from_cart events present.
@@ -216,7 +251,7 @@ def calculate_checkout_step_reached(events: list) -> int:
     Formula: MAX(step_number) from checkout_step_completed events WHERE status=ABANDONED.
 
     Models: M1 (Abandonment), M2 (Price/Convenience Classifier)
-    Source: customer_events + checkout table (S5) + platform webhooks (S3)
+    Source: events + checkout table (S5) + platform webhooks (S3)
 
     Returns:
         int: 0–5. Default 0.
@@ -278,6 +313,7 @@ def calculate_past_orders_total(customer_id: str, db) -> int:
             return int(row[0])
         return 0
     except Exception:
+        logger.exception("past_orders_total_query_failed")
         return 0
 
 
@@ -306,7 +342,7 @@ def calculate_coupon_usage_pct(customer_id: str, db) -> float:
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT CAST(SUM(CASE WHEN coupon_used THEN 1 ELSE 0 END) AS FLOAT)
+                SELECT COUNT(*) FILTER (WHERE coupon_used = true)::float
                        / NULLIF(COUNT(*), 0)
                 FROM orders
                 WHERE customer_id = %s
@@ -318,6 +354,7 @@ def calculate_coupon_usage_pct(customer_id: str, db) -> float:
             return float(row[0])
         return 0.0
     except Exception:
+        logger.exception("coupon_usage_query_failed")
         return 0.0
 def calculate_days_since_last_purchase(customer_id: str, db) -> int:
     """
@@ -371,6 +408,7 @@ def calculate_days_since_last_purchase(customer_id: str, db) -> int:
         delta = now - last_order
         return int(delta.days)
     except Exception:
+        logger.exception("days_since_last_purchase_query_failed")
         return -1
 def calculate_avg_order_value(customer_id: str, db) -> float:
     """
@@ -403,6 +441,7 @@ def calculate_avg_order_value(customer_id: str, db) -> float:
             return float(row[0])
         return 0.0
     except Exception:
+        logger.exception("average_order_value_query_failed")
         return 0.0
 
 def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
@@ -436,9 +475,17 @@ def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
             cursor.execute(
                 """
                 SELECT
-                    COUNT(CASE WHEN ordered_at >= NOW() - INTERVAL '30 days' THEN 1 END),
-                    COUNT(CASE WHEN ordered_at >= NOW() - INTERVAL '60 days'
-                               AND ordered_at  < NOW() - INTERVAL '30 days' THEN 1 END)
+                    COUNT(*) FILTER (
+                        WHERE ordered_at >= NOW() - INTERVAL '30 days'
+                    ),
+                    COUNT(*) FILTER (
+                        WHERE ordered_at >= NOW() - INTERVAL '60 days'
+                          AND ordered_at < NOW() - INTERVAL '30 days'
+                    ),
+                    COALESCE(
+                        MIN(ordered_at) <= NOW() - INTERVAL '60 days',
+                        false
+                    )
                 FROM orders
                 WHERE customer_id = %s
                 """,
@@ -450,6 +497,10 @@ def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
 
         current = int(row[0]) if row[0] is not None else 0
         previous = int(row[1]) if row[1] is not None else 0
+        has_sufficient_history = bool(row[2]) if len(row) > 2 else False
+
+        if not has_sufficient_history:
+            return 0
 
         if current > previous:
             return 1
@@ -458,6 +509,7 @@ def calculate_purchase_frequency_trend(customer_id: str, db) -> int:
         else:
             return 0
     except Exception:
+        logger.exception("purchase_frequency_trend_query_failed")
         return 0
 def calculate_visited_coupon_page(events: list) -> bool:
     """
@@ -468,7 +520,7 @@ def calculate_visited_coupon_page(events: list) -> bool:
              /coupon, /deal, or /offer (case-insensitive).
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='page_view', url field
+    Source: events — event_type='page_view', url field
 
     Returns:
         bool: True = shopper actively sought discount pages (strong PSS signal).
@@ -499,12 +551,12 @@ def calculate_searched_discount_terms(events: list) -> bool:
     """
     Feature: searched_discount_terms
 
-    Boolean flag — did the shopper search for discount-related terms on-site?
-    Formula: EXISTS search_query events WHERE query contains 'discount', 'promo',
-             'code', 'coupon', 'sale', 'deal', 'free shipping', or '% off'.
+    Boolean flag — did the shopper search for discount-related terms?
+    Checks page-view referrers and search parameters, as well as legacy
+    ``search_query`` events emitted by older pixel versions.
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='search_query', query field
+    Source: events — event_type='search_query', query field
 
     Returns:
         bool: True = shopper explicitly searched for discounts (strongest PSS signal).
@@ -519,29 +571,61 @@ def calculate_searched_discount_terms(events: list) -> bool:
     for event in events:
         if not isinstance(event, dict):
             continue
-        if event.get("event_type") != "search_query":
+        if event.get("event_type") not in ("page_view", "search_query"):
             continue
         payload = event.get("payload")
         if not isinstance(payload, dict):
             continue
-        query = payload.get("query", "")
-        if not isinstance(query, str):
-            continue
-        query_lower = query.lower()
-        if any(term in query_lower for term in DISCOUNT_TERMS):
+        values = (
+            payload.get("query"),
+            payload.get("search"),
+            payload.get("search_params"),
+            payload.get("referrer"),
+            payload.get("url"),
+        )
+        if any(
+            isinstance(value, str)
+            and any(term in value.lower() for term in DISCOUNT_TERMS)
+            for value in values
+        ):
             return True
 
+    return False
+
+
+def calculate_coupon_field_visited(events: list) -> bool:
+    """Return whether a page-view event records coupon-field interaction.
+
+    Only page-view payloads are considered because this is a page interaction
+    signal, not evidence that a coupon was successfully applied. Missing or
+    malformed events safely produce ``False``.
+    """
+    if not isinstance(events, list):
+        return False
+
+    for event in events:
+        if not isinstance(event, dict) or event.get("event_type") != "page_view":
+            continue
+        payload = event.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        field_name = payload.get("field_name", "")
+        if isinstance(field_name, str) and (
+            "coupon" in field_name.lower() or "promo_code" in field_name.lower()
+        ):
+            return True
     return False
 def calculate_abandoned_at_shipping_reveal(events: list) -> bool:
     """
     Feature: abandoned_at_shipping_reveal
 
     Boolean flag — did the shopper abandon specifically after seeing shipping costs?
-    Formula: checkout_step_reached IN (2,3) AND exit_intent event fired AFTER
-             step 2 completed AND step 3 was never completed.
+    The final checkout step must be step 2 and the session must never reach
+    step 3. An exit-intent event is not required because some platforms do not
+    emit one when the shopper closes a checkout tab.
 
     Models: M2 (Price/Convenience Classifier) — primary CSS signal
-    Source: customer_events (exit_intent + step events) + checkout table
+    Source: events (exit_intent + step events) + checkout table
 
     Returns:
         bool: True = abandoned at shipping cost reveal (strong convenience sensitivity).
@@ -550,8 +634,7 @@ def calculate_abandoned_at_shipping_reveal(events: list) -> bool:
     if not isinstance(events, list):
         return False
 
-    max_step = 0
-    has_exit_intent = False
+    checkout_steps = []
 
     for event in events:
         if not isinstance(event, dict):
@@ -563,15 +646,21 @@ def calculate_abandoned_at_shipping_reveal(events: list) -> bool:
             payload = event.get("payload")
             if isinstance(payload, dict):
                 step = payload.get("step")
-                if isinstance(step, (int, float)):
-                    max_step = max(max_step, int(step))
+                if isinstance(step, (int, float)) and not isinstance(step, bool):
+                    checkout_steps.append(int(step))
 
-        elif event_type == "exit_intent":
-            has_exit_intent = True
+    return bool(checkout_steps) and checkout_steps[-1] == 2 and max(checkout_steps) == 2
 
-    # Abandoned at shipping reveal = reached step 2 or 3 but not further,
-    # and an exit intent was detected
-    return has_exit_intent and max_step in (2, 3)
+
+def calculate_failed_payment_count(events: list) -> int:
+    """Count failed-payment events without raising on malformed input."""
+    if not isinstance(events, list):
+        return 0
+    return sum(
+        1
+        for event in events
+        if isinstance(event, dict) and event.get("event_type") == "failed_payment"
+    )
 def calculate_failed_payment_attempt(events: list) -> bool:
     """
     Feature: failed_payment_attempt
@@ -581,7 +670,7 @@ def calculate_failed_payment_attempt(events: list) -> bool:
     WooCommerce order.failed) or pixel payment_failed events.
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: platform webhooks (S3) + customer_events payment_failed event type
+    Source: platform webhooks (S3) + events payment_failed event type
 
     Returns:
         bool: True = payment was attempted but failed (shopper had full intent,
@@ -609,7 +698,7 @@ def calculate_local_hour_of_session(events: list) -> int:
     Timezone captured from pixel via Intl.DateTimeFormat().resolvedOptions().timeZone.
 
     Models: M3 (Optimal Send-Time Predictor)
-    Source: customer_events — event_type='session_start', timezone field
+    Source: events — event_type='session_start', timezone field
 
     Returns:
         int: 0–23. Default 12 (noon) when timezone detection fails.
@@ -621,7 +710,8 @@ def calculate_local_hour_of_session(events: list) -> int:
     for event in events:
         if not isinstance(event, dict):
             continue
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
         if ts is not None:
             if earliest_time is None or ts < earliest_time:
                 earliest_time = ts
@@ -641,7 +731,7 @@ def calculate_day_of_week_session(events: list) -> int:
     Note: JavaScript Date.getDay() returns Sunday=0 — pixel must convert before sending.
 
     Models: M3 (Optimal Send-Time Predictor)
-    Source: customer_events — same session_start event as local_hour_of_session
+    Source: events — same session_start event as local_hour_of_session
 
     Returns:
         int: 0–6 (0=Monday). Default 0 when timezone detection fails.
@@ -653,7 +743,8 @@ def calculate_day_of_week_session(events: list) -> int:
     for event in events:
         if not isinstance(event, dict):
             continue
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
         if ts is not None:
             if earliest_time is None or ts < earliest_time:
                 earliest_time = ts
@@ -671,7 +762,7 @@ def calculate_time_on_page_ms(events: list) -> int:
     Formula: max_timestamp - min_timestamp across all events.
 
     Models: M1 (Abandonment Probability Predictor), M2 (Price/Convenience Classifier)
-    Source: customer_events
+    Source: events
 
     Returns:
         int: Total milliseconds spent. Default 0.
@@ -685,7 +776,8 @@ def calculate_time_on_page_ms(events: list) -> int:
     for event in events:
         if not isinstance(event, dict):
             continue
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts_val = event.get("timestamp") or event.get("created_at")
+        ts = _parse_timestamp(ts_val)
         if ts is not None:
             if min_time is None or ts < min_time:
                 min_time = ts
@@ -711,7 +803,7 @@ def calculate_google_shopping_referrer(events: list) -> bool:
     Detected via the referrer URL on the first page_view event of the session.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='page_view', payload.referrer field
+    Source: events — event_type='page_view', payload.referrer field
 
     Returns:
         bool: True = session came from Google Shopping. Default False.
@@ -746,7 +838,7 @@ def calculate_time_first_view_to_cart_add_hrs(events: list) -> float:
     A longer deliberation window signals higher price sensitivity.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='page_view' and 'add_to_cart'
+    Source: events — event_type='page_view' and 'add_to_cart'
 
     Returns:
         float: Hours elapsed. 0.0 if add_to_cart happened before or simultaneously
@@ -763,7 +855,7 @@ def calculate_time_first_view_to_cart_add_hrs(events: list) -> float:
             continue
 
         event_type = event.get("event_type")
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts = _parse_timestamp(event.get("timestamp") or event.get("created_at"))
         if ts is None:
             continue
 
@@ -835,7 +927,7 @@ def calculate_failed_coupon_attempt(events: list) -> bool:
     a failed status in the payload.
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='coupon_error' or coupon_applied with error
+    Source: events — event_type='coupon_error' or coupon_applied with error
 
     Returns:
         bool: True = a discount code was rejected this session. Default False.
@@ -908,7 +1000,7 @@ def calculate_account_creation_abandonment(events: list) -> bool:
     forced account creation as a checkout gate.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='account_create_start' without completion
+    Source: events — event_type='account_create_start' without completion
 
     Returns:
         bool: True = abandoned at account registration. Default False.
@@ -941,7 +1033,7 @@ def calculate_repeat_checkout_attempts(events: list) -> int:
     with repeated friction — a high-value recovery target.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='checkout_start'
+    Source: events — event_type='checkout_start'
 
     Returns:
         int: 0+ count of checkout initiations. Default 0.
@@ -965,7 +1057,7 @@ def calculate_device_type_mobile(events: list) -> bool:
     Mobile sessions have higher abandonment rates, especially at payment step.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — payload.user_agent or payload.device_type field
+    Source: events — payload.user_agent or payload.device_type field
 
     Returns:
         bool: True = mobile device. False = desktop/tablet/unknown. Default False.
@@ -1006,7 +1098,7 @@ def calculate_shipping_eta_dwell_sec(events: list) -> float:
     Long dwell on shipping information signals delivery timeline sensitivity.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='element_view' with element_id
+    Source: events — event_type='element_view' with element_id
             containing 'shipping-eta', 'delivery-estimate', or similar
 
     Returns:
@@ -1046,7 +1138,7 @@ def calculate_shipping_eta_dwell_sec(events: list) -> float:
         if not is_shipping:
             continue
 
-        ts = _parse_timestamp(event.get("timestamp"))
+        ts = _parse_timestamp(event.get("timestamp") or event.get("created_at"))
         if ts is None:
             continue
 
@@ -1071,7 +1163,7 @@ def calculate_trust_page_visited(events: list) -> bool:
     Signals uncertainty or friction with purchase commitment.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='page_view', payload.url field
+    Source: events — event_type='page_view', payload.url field
 
     Returns:
         bool: True = shopper viewed a trust/policy page. Default False.
@@ -1107,7 +1199,7 @@ def calculate_failed_coupon_count(events: list) -> int:
     code during the session. Multiple failures signal strong price sensitivity.
 
     Models: M2 (Price/Convenience Classifier), M5 (Offer Value Optimizer)
-    Source: customer_events — event_type='coupon_error'
+    Source: events — event_type='coupon_error'
 
     Returns:
         int: 0+ count of failed coupon attempts. Default 0.
@@ -1148,7 +1240,7 @@ def calculate_copied_product_title(events: list) -> bool:
     the shopper is likely checking competitor prices.
 
     Models: M2 (Price/Convenience Classifier)
-    Source: customer_events — event_type='clipboard_copy' with element context
+    Source: events — event_type='clipboard_copy' with element context
 
     Returns:
         bool: True = product title was copied (strong PSS signal). Default False.
@@ -1191,7 +1283,7 @@ def calculate_cart_value_vs_avg_order_value_ratio(customer_id: str, events: list
     usual — higher stakes, higher abandonment risk and higher offer value needed.
 
     Models: M1 (Abandonment Predictor), M5 (Offer Value Optimizer)
-    Source: customer_events (cart_value from payload) + orders table (avg_order_value)
+    Source: events (cart_value from payload) + orders table (avg_order_value)
 
     Args:
         customer_id: UUID of the customer
@@ -1233,7 +1325,7 @@ def calculate_pss_score(feature_dict: dict) -> int:
 
     Composite score representing how price-sensitive this shopper is.
     Weighted combination of PSS signals:
-        HIGH   (30pts) — cursor_hesitation count (capped contribution)
+        HIGH   (30pts) — cursor_hesitation score (capped contribution)
         HIGH   (25pts) — past_orders_with_coupon_pct
         MEDIUM (20pts) — visited_coupon_page
         MEDIUM (15pts) — searched_discount_terms
@@ -1332,16 +1424,19 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
 
     # Extract metadata from events
     session_id = None
+    anonymous_id = None
     merchant_id = None
     timestamp = None
     for event in session_events:
         if isinstance(event, dict):
             if session_id is None:
                 session_id = event.get("session_id")
+            if anonymous_id is None:
+                anonymous_id = event.get("anonymous_id")
             if merchant_id is None:
                 merchant_id = event.get("merchant_id") or event.get("store_id")
             if timestamp is None:
-                timestamp = event.get("timestamp")
+                timestamp = event.get("timestamp") or event.get("created_at")
 
     # Build the raw feature dict first (needed for composite scores)
     raw = {
@@ -1357,8 +1452,11 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
         "purchase_frequency_trend":            calculate_purchase_frequency_trend(customer_id, db),
         "visited_coupon_page":                 calculate_visited_coupon_page(session_events),
         "searched_discount_terms":             calculate_searched_discount_terms(session_events),
+        "coupon_field_visited":                calculate_coupon_field_visited(session_events),
         "abandoned_at_shipping_reveal":        calculate_abandoned_at_shipping_reveal(session_events),
         "failed_payment_attempt":              calculate_failed_payment_attempt(session_events),
+        "failed_payment_count":                calculate_failed_payment_count(session_events),
+        "cursor_hesitation_score":             calculate_cursor_hesitation(session_events),
         "local_hour_of_session":               calculate_local_hour_of_session(session_events),
         "day_of_week_session":                 calculate_day_of_week_session(session_events),
         "time_on_page_ms":                     calculate_time_on_page_ms(session_events),
@@ -1379,11 +1477,12 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
     }
 
     return {
-        "session_id":  session_id,
-        "customer_id": customer_id,
-        "merchant_id": merchant_id,
-        "timestamp":   timestamp,
-        "features":    raw,
+        "session_id":   session_id,
+        "anonymous_id": anonymous_id,
+        "customer_id":  customer_id,
+        "merchant_id":  merchant_id,
+        "timestamp":    timestamp,
+        "features":     raw,
     }
 def calculate_rfm_scores(customer_id: str, db) -> dict:
     """Calculates RFM (Recency, Frequency, Monetary) scores for a customer."""
@@ -1410,7 +1509,7 @@ def calculate_rfm_scores(customer_id: str, db) -> dict:
         f_score = 4
     elif orders >= 3:
         f_score = 3
-    elif orders >= 1:
+    elif orders == 2:
         f_score = 2
     else:
         f_score = 1
@@ -1422,7 +1521,7 @@ def calculate_rfm_scores(customer_id: str, db) -> dict:
         m_score = 4
     elif aov >= 50:
         m_score = 3
-    elif aov >= 10:
+    elif aov >= 20:
         m_score = 2
     else:
         m_score = 1

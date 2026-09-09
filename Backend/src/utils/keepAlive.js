@@ -1,47 +1,51 @@
 // Render Free Tier Keep-Alive Service
-// Pings backend every 10 minutes to prevent auto-sleep
-// This keeps your Revluma backend running 24/7
+// Pings both Node backend and Python intelligence service every 10 minutes
+// Prevents Render free tier auto-sleep on both services
 
 const axios = require('axios');
 require('dotenv').config();
 const logger = require('./logger');
 
-const BACKEND_URL = process.env.BACKEND_URL || 'https://revluma-backend.onrender.com';
-const PING_INTERVAL = 10 * 60 * 1000; // 10 minutes in milliseconds
+const BACKEND_URL    = process.env.BACKEND_URL    || 'https://revluma-backend.onrender.com';
+const PYTHON_URL     = process.env.PYTHON_SERVICE_URL;
+const PING_INTERVAL  = 10 * 60 * 1000; // 10 minutes
 
-// Keep-alive function
-const keepAliveBackend = async () => {
+const ping = async (url, name) => {
   try {
-    const response = await axios.get(`${BACKEND_URL}/health`, {
-      timeout: 5000,
-    });
-
-    logger.debug('keepalive_ok', { status: response.status });
+    const response = await axios.get(`${url}/health`, { timeout: 8000 });
+    logger.debug('keepalive_ok', { service: name, status: response.status });
     return true;
   } catch (error) {
-    logger.warn('keepalive_failed', { message: error.message });
-
-    // Retry logic - try again in 1 minute if failed
-    setTimeout(keepAliveBackend, 60 * 1000);
+    logger.warn('keepalive_failed', { service: name, message: error.message });
+    // Retry in 1 minute on failure
+    setTimeout(() => ping(url, name), 60 * 1000);
     return false;
   }
 };
 
-// Start the keep-alive service
-const startKeepAlive = () => {
-  logger.info('keepalive_started', { url: BACKEND_URL, interval: '10m' });
-
-  // Initial ping immediately
-  keepAliveBackend();
-
-  // Then ping every 10 minutes
-  setInterval(keepAliveBackend, PING_INTERVAL);
+const pingAll = () => {
+  ping(BACKEND_URL, 'node-backend');
+  if (PYTHON_URL) {
+    ping(PYTHON_URL, 'python-intelligence');
+  }
 };
 
-// Export for use in other files
-module.exports = { startKeepAlive, keepAliveBackend };
+const startKeepAlive = () => {
+  logger.info('keepalive_started', {
+    backend: BACKEND_URL,
+    python:  PYTHON_URL || 'not configured',
+    interval: '10m',
+  });
 
-// Start if run directly
+  // Initial ping immediately
+  pingAll();
+
+  // Then every 10 minutes
+  setInterval(pingAll, PING_INTERVAL);
+};
+
+module.exports = { startKeepAlive, keepAliveBackend: pingAll };
+
 if (require.main === module) {
   startKeepAlive();
 }

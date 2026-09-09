@@ -166,6 +166,9 @@ const passwordResetLimiter = rateLimit({
 
 
 
+// Rev Intelligence chat limiter is defined inline in revRoute.js
+// to avoid the express-rate-limit IPv6 keyGenerator validation error
+
 module.exports = {
   registerLimiter,
   loginLimiter,

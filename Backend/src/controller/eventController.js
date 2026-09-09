@@ -1,25 +1,24 @@
-const prisma = require("../configs/database");
+/**
+ * Revluma Event Ingestion Controller
+ *
+ * Receives raw Shopify pixel events, validates them, persists to DB,
+ * then triggers the Python feature pipeline for ML inference.
+ *
+ * Security:
+ *   - Public endpoint (Shopify webhooks are not authenticated users)
+ *   - store_id validated against DB before processing
+ *   - Rate limited at the router level (ingestLimiter)
+ *   - platform/page/device bundled into payload per Python pipeline spec
+ *
+ * Pipeline:
+ *   Shopify pixel → POST /api/v1/events/ingest → save to events table
+ *   → POST /api/features/compute → Python ML pipeline → prediction
+ *   → return prediction to pixel for real-time offer display
+ */
 
 const { prisma }  = require('../configs/database');
 const axios        = require('axios');
 const logger       = require('../utils/logger');
-
-const ALLOWED_EVENT_TYPES = [
-  'PAGE_VIEW',
-  'SCROLL',
-  'PRODUCT_VIEW',
-  'ADD_TO_CART',
-  'REMOVE_FROM_CART',
-  'CHECKOUT_STARTED',
-  'CHECKOUT_STEP',
-  'PURCHASE_COMPLETED',
-  'CUSTOMER_CREATED',
-  'TEXT_COPIED',
-  'COUPON_REJECTED',
-  'TAB_SWITCH',
-  'EXIT_INTENT',
-  'FAILED_PAYMENT',
-];
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'https://revluma-python.onrender.com';
 const ML_INTERNAL_KEY    = process.env.ML_INTERNAL_KEY    || '';
@@ -32,20 +31,26 @@ exports.ingest = async (req, res, next) => {
       session_id,
       event_type,
       customer_id,
-      payload,
+      anonymous_id,
+      merchant_id,
+      timestamp,
+      payload = {},
+      // These come from the pixel root — must be bundled into payload
+      platform,
+      page,
+      device,
     } = req.body;
 
-    // Validate required fields
-    const missingFields = [];
+    // ── Validate required fields ──────────────────────────────────────────────
+    const missing = [];
+    if (!store_id)   missing.push('store_id');
+    if (!session_id) missing.push('session_id');
+    if (!event_type) missing.push('event_type');
 
-    if (!store_id) missingFields.push("store_id");
-    if (!session_id) missingFields.push("session_id");
-    if (!event_type) missingFields.push("event_type");
-
-    if (missingFields.length > 0) {
+    if (missing.length > 0) {
       return res.status(400).json({
         success: false,
-        message: `Missing required field(s): ${missingFields.join(", ")}`,
+        error: { code: 'VALIDATION_ERROR', message: `Missing required fields: ${missing.join(', ')}` },
       });
     }
 
@@ -80,7 +85,7 @@ exports.ingest = async (req, res, next) => {
     if (!store) {
       return res.status(404).json({
         success: false,
-        message: "Store not found.",
+        error: { code: 'NOT_FOUND', message: 'Store not found.' },
       });
     }
 
@@ -267,9 +272,72 @@ exports.ingestBatch = async (req, res, next) => {
     logger.info('batch_ingested', { store_id, count: result.count });
 
     return res.status(201).json({
+      success:    true,
+      event_id:   event.id,
+      prediction: prediction || null,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── POST /api/v1/events/ingest/batch ─────────────────────────────────────────
+// For bulk historical imports (CSV export from Shopify Admin)
+exports.ingestBatch = async (req, res, next) => {
+  try {
+    const { store_id, events } = req.body;
+
+    if (!store_id || !Array.isArray(events) || events.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'store_id and events[] required.' },
+      });
+    }
+
+    if (events.length > 1000) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Maximum 1000 events per batch.' },
+      });
+    }
+
+    const store = await prisma.stores.findUnique({ where: { id: store_id } });
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Store not found.' },
+      });
+    }
+
+    // Build records
+    const records = events.map(e => ({
+      store_id,
+      session_id:   e.session_id   || `batch-${Date.now()}-${Math.random()}`,
+      event_type:   e.event_type   || 'unknown',
+      customer_id:  e.customer_id  || null,
+      anonymous_id: e.anonymous_id || null,
+      payload: {
+        ...((e.payload) || {}),
+        ...(e.platform && { platform: e.platform }),
+        ...(e.page     && { referrer: e.page }),
+        ...(e.device   && { device_type: e.device }),
+        _batch_import: true,
+      },
+      ...(e.timestamp && { created_at: new Date(e.timestamp) }),
+    }));
+
+    const result = await prisma.events.createMany({
+      data: records,
+      skipDuplicates: true,
+    });
+
+    logger.info('batch_ingested', { store_id, count: result.count });
+
+    return res.status(201).json({
       success: true,
-      message: "Event ingested successfully.",
-      data: event,
+      ingested: result.count,
+      skipped:  events.length - result.count,
     });
 
   } catch (error) {

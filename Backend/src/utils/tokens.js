@@ -17,7 +17,7 @@ const crypto   = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { JWT_ISSUER, JWT_AUDIENCE, ALLOWED_ALGORITHMS } = require('../middlewares/authMiddleware');
 
-const ACCESS_TOKEN_TTL  = '15m';
+const ACCESS_TOKEN_TTL  = '24h';
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 const INVITE_TOKEN_TTL  = 7 * 24 * 60 * 60; // 7 days in seconds
 

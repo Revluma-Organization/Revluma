@@ -20,6 +20,8 @@ const sessionRoutes = require("./route/SessionRoute");
 const settingsRoutes = require("./route/settingsRoute");
 const workspaceRoutes = require("./route/workspaceRoute");
 const subscriptionRoutes = require("./route/subscriptionRoute");
+const revRoutes           = require("./route/revRoute");
+const memoryRoutes        = require("./route/memoryRoute");
 
 
 
@@ -87,6 +89,8 @@ app.use("/api/v1/auth/",sessionRoutes);
 app.use("/api/v1/settings",settingsRoutes);
 app.use("/api/v1/workspace", workspaceRoutes);
 app.use("/api/v1/subscriptions", subscriptionRoutes);
+app.use("/api/v1/rev",           revRoutes);
+app.use("/api/v1/memory",        memoryRoutes);
 
 
 // ── Health check
