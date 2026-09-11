@@ -54,6 +54,32 @@ exports.ingest = async (req, res, next) => {
       });
     }
 
+    if (!ALLOWED_EVENT_TYPES.includes(event_type)) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: `Unsupported event type: ${event_type}`,
+        },
+      });
+    }
+
+    if (
+      !timestamp ||
+      typeof timestamp !== 'string' ||
+      Number.isNaN(Date.parse(timestamp))
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Valid ISO 8601 timestamp is required.',
+        },
+      });
+    }
+
+    const eventTimestamp = new Date(timestamp);
+
     // ── Validate store exists ─────────────────────────────────────────────────
     const store = await prisma.stores.findUnique({ where: { id: store_id } });
     if (!store) {
@@ -66,12 +92,30 @@ exports.ingest = async (req, res, next) => {
     // ── Bundle platform/page/device into payload per David's spec ────────────
     // The events table has no columns for these — they live in payload JSONB.
     // The Python pipeline reads them from payload.referrer and payload.device_type.
-    const enrichedPayload = {
-      ...payload,
-      ...(platform && { platform }),
-      ...(page     && { referrer: page }),
-      ...(device   && { device_type: device }),
-    };
+    // ── Normalize page data ────────────────────────────────────────────────────
+
+const pageUrl = page?.url || null;
+const pageReferrer = page?.referrer || null;
+
+// ── Normalize device data ──────────────────────────────────────────────────
+const deviceType = device?.type || null;
+const userAgent = device?.user_agent || null;
+
+// ── Build ML-compatible payload ────────────────────────────────────────────
+const enrichedPayload = {
+  ...payload,
+
+  ...(platform && { platform }),
+
+  ...(pageUrl && { page_url: pageUrl }),
+  ...(pageReferrer && { referrer: pageReferrer }),
+
+  ...(deviceType && { device_type: deviceType }),
+  ...(userAgent && { user_agent: userAgent }),
+
+  // Preserve the original event timestamp
+  timestamp,
+};
 
     // ── Persist raw event ─────────────────────────────────────────────────────
     const event = await prisma.events.create({
@@ -83,7 +127,7 @@ exports.ingest = async (req, res, next) => {
         anonymous_id: anonymous_id || null,
         payload:      enrichedPayload,
         // timestamp accepted as-is; Python pipeline accepts both timestamp and created_at
-        ...(timestamp && { created_at: new Date(timestamp) }),
+        created_at: eventTimestamp,
       },
     });
 
@@ -111,6 +155,8 @@ exports.ingest = async (req, res, next) => {
             session_id,
             store_id,
             merchant_id:  merchant_id || store.organization_id,
+            timestamp,
+
           },
           {
             headers: {
@@ -141,6 +187,90 @@ exports.ingest = async (req, res, next) => {
     }
 
     // ── Respond to pixel ──────────────────────────────────────────────────────
+    return res.status(201).json({
+      success:    true,
+      event_id:   event.id,
+      prediction: prediction || null,
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── POST /api/v1/events/ingest/batch ─────────────────────────────────────────
+// For bulk historical imports (CSV export from Shopify Admin)
+exports.ingestBatch = async (req, res, next) => {
+  try {
+    const { store_id, events } = req.body;
+
+    if (!store_id || !Array.isArray(events) || events.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'store_id and events[] required.' },
+      });
+    }
+
+    if (events.length > 1000) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Maximum 1000 events per batch.' },
+      });
+    }
+
+    const store = await prisma.stores.findUnique({ where: { id: store_id } });
+    if (!store) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Store not found.' },
+      });
+    }
+
+    // Build records
+    const invalidEventIndex = events.findIndex(e =>
+      !e ||
+      !e.session_id ||
+      !ALLOWED_EVENT_TYPES.includes(e.event_type) ||
+      typeof e.timestamp !== 'string' ||
+      Number.isNaN(Date.parse(e.timestamp))
+    );
+
+    if (invalidEventIndex !== -1) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: `Invalid event at index ${invalidEventIndex}. Each event requires a valid session_id, event_type, and timestamp.`,
+        },
+      });
+    }
+
+    const records = events.map(e => ({
+      store_id,
+      session_id:   e.session_id   || `batch-${Date.now()}-${Math.random()}`,
+      event_type:   e.event_type   || 'unknown',
+      customer_id:  e.customer_id  || null,
+      anonymous_id: e.anonymous_id || null,
+      payload: {
+        ...(e.payload || {}),
+        ...(e.platform && { platform: e.platform }),
+        ...(e.page?.url && { page_url: e.page.url }),
+        ...(e.page?.referrer && { referrer: e.page.referrer }),
+        ...(e.device?.type && { device_type: e.device.type }),
+        ...(e.device?.user_agent && { user_agent: e.device.user_agent }),
+        ...(e.timestamp && { timestamp: e.timestamp }),
+        _batch_import: true,
+      },
+      created_at: new Date(e.timestamp),
+    }));
+
+    const result = await prisma.events.createMany({
+      data: records,
+      skipDuplicates: true,
+    });
+
+    logger.info('batch_ingested', { store_id, count: result.count });
+
     return res.status(201).json({
       success:    true,
       event_id:   event.id,
