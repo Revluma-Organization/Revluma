@@ -1,11 +1,11 @@
 ﻿"""
-P2-C -- LLM-as-a-Judge Benchmark Runner
-=========================================
+LLM-as-a-Judge Benchmark Runner
+===============================
 Feeds Rev's compose_knowledge() responses to a secondary LLM judge that
 scores each response for correctness, hallucination, and actionability.
 
-Skipped automatically when ANTHROPIC_API_KEY is not set so CI never fails
-on missing credentials.
+Runs only when RUN_LIVE_LLM_JUDGE=1 and ANTHROPIC_API_KEY is set, so ordinary
+test runs never spend API quota or depend on network access.
 
 Thresholds (all must pass for the suite to pass):
   - correctness average  >= 7.0 / 10
@@ -39,9 +39,13 @@ MAX_HALLUCINATION = 0.0   # zero tolerance
 JUDGE_MODEL = "claude-haiku-4-5-20251001"
 
 
-def _is_ci_without_key() -> bool:
-    """Returns True when no API key is present so CI can skip gracefully."""
-    return not os.environ.get("ANTHROPIC_API_KEY")
+def _live_benchmark_skip_reason() -> str | None:
+    """Return why the paid, network-dependent benchmark must be skipped."""
+    if os.environ.get("RUN_LIVE_LLM_JUDGE") != "1":
+        return "set RUN_LIVE_LLM_JUDGE=1 to run the live LLM judge benchmark"
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return "ANTHROPIC_API_KEY is required for the live LLM judge benchmark"
+    return None
 
 
 def _get_rev_response(question: str) -> str:
@@ -178,18 +182,19 @@ class TestBenchmarkHelpers(unittest.TestCase):
 class TestLLMJudgeBenchmark(unittest.TestCase):
     """
     Runs all 20 strategy scenarios through Rev and evaluates each response.
-    The suite is skipped when ANTHROPIC_API_KEY is not set.
+    The suite runs only after explicit opt-in and with an API key configured.
     """
 
     @classmethod
     def setUpClass(cls):
-        if _is_ci_without_key():
-            raise unittest.SkipTest("ANTHROPIC_API_KEY not set -- skipping LLM judge benchmark")
+        skip_reason = _live_benchmark_skip_reason()
+        if skip_reason:
+            raise unittest.SkipTest(skip_reason)
 
         with open(SCENARIOS_PATH, encoding="utf-8-sig") as f:
             cls.scenarios = json.load(f)
         if len(cls.scenarios) < 20:
-            raise AssertionError("P2-C requires at least 20 benchmark scenarios.")
+            raise AssertionError("The benchmark requires at least 20 scenarios.")
 
         cls.results = []
 

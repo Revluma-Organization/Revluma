@@ -7,7 +7,7 @@ import math
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
-import mlflow.pyfunc
+import mlflow.sklearn
 import pandas as pd
 
 from .train import (
@@ -37,7 +37,7 @@ GLOBAL_BASELINES = {
 def load_model(merchant_id: str = "") -> Any:
     """Load the registered model without exposing registry error details."""
     try:
-        model = mlflow.pyfunc.load_model("models:/send_time/Production")
+        model = mlflow.sklearn.load_model("models:/send_time/Production")
         logger.info("m3_model_loaded", extra={"source": "registry"})
         return model
     except Exception as exc:
@@ -284,7 +284,7 @@ def predict(
     model=None,
     now: datetime | None = None,
 ) -> dict:
-    """Return a valid D4 schedule using rules before optional model inference."""
+    """Return a valid schedule using rules before optional model inference."""
     features = feature_vector or {}
     now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     offset = int(features.get("customer_timezone_offset", 0) or 0)

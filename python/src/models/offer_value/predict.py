@@ -58,7 +58,7 @@ def load_model(merchant_id: str):
         return _model_cache["offer_value"]
     try:
         import mlflow.sklearn
-        model = mlflow.sklearn.load_model("models:/offer_value/latest")
+        model = mlflow.sklearn.load_model("models:/offer_value/Production")
         _model_cache["offer_value"] = model
         return model
     except Exception:
@@ -363,7 +363,7 @@ def predict(feature_vector: dict, merchant_id: str, db=None) -> dict:
                     "won't address a trust/security blocker — surfacing a trust reassurance "
                     "signal instead."
                 ),
-                "model_version": "5-step-i3",
+                "model_version": "1.0.0",
                 "fallback": False,
             }
 
@@ -380,7 +380,7 @@ def predict(feature_vector: dict, merchant_id: str, db=None) -> dict:
                     "low sensitivity on both axes — a soft reminder is more appropriate "
                     "than a discount."
                 ),
-                "model_version": "5-step-i3",
+                "model_version": "1.0.0",
                 "fallback": False,
             }
 
@@ -397,7 +397,7 @@ def predict(feature_vector: dict, merchant_id: str, db=None) -> dict:
                     f"Upstream M2 recovery_action is {recovery_action}: holding the "
                     "discount at 0 per the M2 recommendation."
                 ),
-                "model_version": "5-step-i3",
+                "model_version": "1.0.0",
                 "fallback": False,
             }
 
@@ -458,7 +458,7 @@ def predict(feature_vector: dict, merchant_id: str, db=None) -> dict:
             "expected_recovery_probability": expected_recovery_probability,
             "margin_cost_estimate_pct": margin_cost_estimate_pct,
             "reasoning": reasoning,
-            "model_version": "5-step-i3" if used_model else "5-step-i3-formula-fallback",
+            "model_version": "1.0.0" if used_model else "1.0.0-formula-fallback",
             "fallback": False,
         }
 

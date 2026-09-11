@@ -17,9 +17,9 @@ data, assigned quality gates, subgroup review, drift monitoring, and a canary.
 Each task section follows the same order: **location** identifies the files,
 **implementation** explains what the code does, **data flow** explains how the
 component connects to adjacent Python or backend work, and **remaining work**
-states only what cannot be completed within the Python repository. The I-task
-section also links to `docs/I_TASK_WALKTHROUGH.md`, which records the review
-finding, corrective change, and reason for every I-task file.
+states only what cannot be completed within the Python repository. I-task
+findings and corrections remain in this walkthrough rather than a separate
+document.
 
 ## Contract decisions
 
@@ -27,11 +27,11 @@ finding, corrective change, and reason for every I-task file.
 |---|---|
 | Event time | `timestamp` is canonical. Ingestion accepts database alias `created_at` and normalizes it. |
 | User identity | Orchestration accepts `user_id` or compatibility input `customer_id`, then resolves one canonical `user_id`. Missing identity fails. |
-| Cursor hesitation | `cursor_hesitation` is the canonical 0-10 score from longest focus/blur duration in seconds, capped at 10. `cursor_hesitation_count` is an M1 input alias only. |
+| Cursor hesitation | `cursor_hesitation` is the canonical 0-10 score from longest focus/blur duration in seconds, capped at 10. M1 accepts same-unit `cursor_hesitation_count`; M2 accepts same-unit `cursor_hesitation_score` and converts raw `cursor_hesitation_ms` once. |
 | Exit intent | `EXIT_INTENT` supports `abandoned_at_shipping_reveal`; it is not converted into cursor hesitation. |
 | M4 feature count | The assignment says 24 but names 21. The 21 named features are authoritative; no undocumented inputs were invented. |
 | Business baseline | Business State uses a rolling 30-day baseline, with 90-day revenue context where specified. |
-| M4 history | Real M4 training requires at least 90 days of customer history. |
+| M4 labels | Real M4 training reads immutable 21-feature snapshots paired with finalized observed churn tiers; it never treats its own heuristic prediction as a label. |
 | M5 discount | The hard maximum remains 25%; trust and low-sensitivity gates force zero discount. |
 
 The shared pixel contract is in `docs/PIXEL_EVENT_SPEC.md`.
@@ -63,9 +63,10 @@ shape without guessing how the Python feature pipeline will interpret it.
 **Location:** `python/src/features/pipeline.py` and
 `python/tests/test_pipeline.py`
 
-The pipeline turns a session's normalized events into model-ready values. It
+The pipeline turns a session's normalized events into a canonical 34-feature
+vector. It
 calculates behavioral features such as scroll depth, tab switches, checkout
-progress, time on page, cart additions/removals, failed payments, coupon
+progress, time on page, cart-add and cart-remove counts, failed payments, coupon
 behavior, shipping-reveal abandonment, and cursor hesitation. Each function
 returns a safe default for missing or malformed events instead of failing a
 prediction request. `compute_feature_vector` is the single assembly point that
@@ -90,13 +91,16 @@ can be considered production eligible.
 `python/src/models/timing/predict.py`, `python/src/models/timing/README.md`,
 and timing-model tests
 
-M3 uses send hour, day, channel, historical open rate, purchase recency, cart
-value tier, and recovery action to estimate conversion likelihood. It uses a
-regularized gradient-boosting classifier with sigmoid calibration. Inference
+M3 uses the unchanged seven-feature contract: send hour, day, channel,
+historical open rate, purchase recency, cart value tier, and recovery action.
+It estimates the likelihood that a send is opened and clicked within 120
+minutes using regularized gradient boosting with sigmoid calibration. Inference
 chooses a send time and returns both local and UTC timestamps, channel,
 confidence, reasoning layer, and a fallback result when a model is unavailable.
-The training gate checks conversion-rate lift and calibration error; synthetic
-training never makes the model deployable.
+Training now excludes incomplete or immature real observations, uses temporal
+calibration folds for real sends, reports ranking and probability-quality
+metrics with bootstrap intervals, and distinguishes score enrichment from
+randomized policy lift. Synthetic training never makes the model deployable.
 
 ### D5 — Orchestrator
 
@@ -172,9 +176,10 @@ churn-model tests
 M4 uses the 21 explicitly named customer-history, engagement, RFM, coupon,
 return, support, and unsubscribe features. It produces four tiers:
 `HEALTHY`, `AT_RISK`, `HIGH_RISK`, and `CRITICAL`, plus a separate early-warning
-layer for engagement decay within the healthy cohort. Training requires at
-least 90 days of customer history for real data and checks AUC plus
-`HIGH_RISK` precision before production eligibility. The final fit gives
+layer for engagement decay within the healthy cohort. Real training reads only
+complete, immutable 21-feature snapshots with finalized observed outcomes and
+checks sample count, AUC, and `HIGH_RISK` precision before production
+eligibility. The final fit gives
 `AT_RISK` examples a modest 1.5 sample weight. Five-fold validation improved
 macro F1, `AT_RISK` F1, and AUC while retaining strong `HIGH_RISK` precision;
 it does not add or infer protected attributes, change the 21-feature contract,
@@ -209,9 +214,7 @@ them. Neither agent queries the database directly during a conversation.
 The I-task review covers sensitivity features and models, offer-value logic,
 the FastAPI prediction surface, the learning loop, and specialist agents. The
 table below is based on verified repository behavior, not task wording that
-conflicts with the implemented model contract. Full file-level details and
-future shared-file guidance are in
-[I_TASK_WALKTHROUGH.md](I_TASK_WALKTHROUGH.md).
+conflicts with the implemented model contract.
 
 | Item | Status | Verified implementation or remaining dependency |
 |---|---|---|
@@ -219,7 +222,7 @@ future shared-file guidance are in
 | I2 M2 sensitivity | Complete for synthetic training and inference | `python/src/models/sensitivity/train.py` and `predict.py` use one 13-field PSS/CSS/TSS contract. `python/src/monitoring/drift_detector.py` evaluates that same contract. Real-data M2 retraining is still required before production promotion. |
 | I3 M5 offer value | Complete for inference; real-data training guarded | `python/src/models/offer_value/predict.py` applies offer gates and caps. `train.py` requires real recovered-order data for a production-eligible run. |
 | I4 FastAPI serving | Complete for the verified API surface | `python/src/serving/api.py` contains the five prediction endpoints, validation, fallbacks, health, and retained orchestration/internal routes. |
-| I5 Learning loop | Partially complete | `python/src/learning/feedback_loop.py` produces outcome, reflection, and feedback-queue records. Monitoring is present, but real-data M2 retraining still requires a worker and labelled training path. |
+| I5 Learning loop | Partially complete | `python/src/learning/feedback_loop.py` produces outcome, reflection, and feedback-queue records. The real M2 labeled-data loader is implemented; backend scheduling and a retraining worker remain. |
 | I6 Specialist agents | Partially complete | Finance and Intelligence are implemented in `python/src/agents/`; Marketing still requires aggregate M2/M3 and sequence-performance signals to rank channels and identify discount dependency. |
 
 ### I1 — Sensitivity feature functions
@@ -249,9 +252,11 @@ convenience sensitivity uses checkout friction; trust sensitivity uses payment
 failure, final-review, return-visitor, and order-value signals. The inference
 module scores all three, applies the recovery-action matrix, selects channel
 priority, and converts old cursor-hesitation input names to the canonical
-0–10 score. The drift detector uses this same 13-field contract and evaluates
-all three classifiers, preventing invalid monitoring against the retired
-eight-field vector.
+0–10 score. Real training and drift monitoring read immutable feature snapshots
+with finalized observed PSS/CSS/TSS labels from
+`sensitivity_training_observations`. They do not infer truth from the action a
+model selected, preventing circular evaluation and invalid monitoring against
+the retired eight-field vector.
 
 ### I3 — M5 offer value
 
@@ -292,8 +297,9 @@ adds model-feedback records for later retraining. The monitoring service logs
 checks to the separate MLflow monitoring experiment and evaluates M1/M2 weekly
 and M3/M4/M5 monthly. It can alert configured engineering channels on a
 threshold breach. A production worker still needs to consume the feedback
-queue and real labelled M2 data before it can safely retrain a deployable M2
-model.
+queue and invoke the guarded retraining workflow on a schedule. The backend
+must also populate finalized sensitivity observations before a real M2 run can
+be production eligible.
 
 ### I6 — Marketing, Finance, and Intelligence agents
 
@@ -301,7 +307,7 @@ model.
 `python/src/agents/finance_agent.py`,
 `python/src/agents/intelligence_agent.py`,
 `python/src/agents/orchestrator.py`, and
-`python/tests/test_i_specialist_agents.py`
+`python/tests/test_specialist_agents.py`
 
 Finance and Intelligence are registered concrete specialists. Finance reads
 safe revenue, recoverable-cart, margin, and profitability aggregates from the
@@ -319,26 +325,27 @@ aggregate payload required from the backend is listed in
 |---|---|---|
 | Dynamic Business State | Python complete | Adaptive 15/5/1-minute cadence and 30-day baselines in `python/src/intelligence/business_state.py`; backend scheduler/persistence pending. |
 | Historical ingestion | Python complete | `python/src/jobs/historical_ingestion.py`; backend initial-sync trigger and `order_items` persistence pending. |
-| LLM judge | Runner complete; live score blocked | `python/tests/benchmarks/test_benchmark_llm_judge.py`; configured Anthropic account previously reported insufficient credit. No substitute scores were fabricated. |
+| LLM judge | Runner complete; live execution opt-in | `python/tests/benchmarks/test_benchmark_llm_judge.py`; ordinary tests skip paid network calls unless `RUN_LIVE_LLM_JUDGE=1` and a key are both present. No substitute scores are fabricated. |
 | Fast feedback | Python complete; production worker pending | `python/src/learning/feedback_loop.py`; backend outcome queue, pause integration, and scheduled worker pending. |
 
 ## Model improvements and DagsHub evidence
 
-All seven current runs were retrieved back from DagsHub with status `FINISHED`,
-`data_source=synthetic`, `production_eligible=false`, and passed code-defined
-quality gates.
+The latest finalized runs were logged to DagsHub from the audited code. Every
+run uses synthetic development data, passes its code-defined quality gates,
+remains `production_eligible=false`, and cannot replace a Production-stage
+model.
 
 ### Latest runs
 
 | Model | DagsHub run | Verified holdout metrics |
 |---|---|---|
-| M1 Abandonment | [`526076887228481cba315eaecb4cfd35`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/526076887228481cba315eaecb4cfd35) | Accuracy 0.7700; AUC 0.8465; precision 0.8883; recall 0.7581; F1 0.8180 |
-| M2 Price sensitivity | [`d8168aeae3124de6bc5f5d5be414ea34`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/d8168aeae3124de6bc5f5d5be414ea34) | AUC 0.9431; minimum class F1 0.7616; accuracy 0.8717 |
-| M2 Convenience sensitivity | [`d455265b59204469b842b261017d104c`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/d455265b59204469b842b261017d104c) | AUC 0.9594; minimum class F1 0.7576; accuracy 0.8933 |
-| M2 Trust sensitivity | [`a3b26f8176e3461aa06610bef9f51aaf`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/a3b26f8176e3461aa06610bef9f51aaf) | AUC 0.9969; minimum class F1 0.9091; accuracy 0.9717 |
-| M3 Send time | [`625c84b605954fca88fc63fb7acfd02f`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/625c84b605954fca88fc63fb7acfd02f) | AUC 0.6665; CTR improvement 0.1604; calibration error 0.0172 |
-| M4 Churn risk | [`0ffcae967ef746c586d02d93a5dd0b28`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/0ffcae967ef746c586d02d93a5dd0b28) | AUC 0.9233; macro-F1 0.8549; HIGH_RISK precision 0.9600; AT_RISK F1 0.6313 |
-| M5 Offer value | [`05b27a4154dc48daada29e7a75337ddb`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/05b27a4154dc48daada29e7a75337ddb) | RMSE 0.8632; MAE 0.6829; R² 0.9700 |
+| M1 Abandonment | [`3d6c8733f5af4f22bd25110ec242aa6e`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/3d6c8733f5af4f22bd25110ec242aa6e) | Accuracy 0.7700; AUC 0.8465; precision 0.8883; recall 0.7581; F1 0.8180 |
+| M2 Price sensitivity | [`e97be66b180449f292ea070745a03085`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/e97be66b180449f292ea070745a03085) | AUC 0.9421; minimum class F1 0.7414; average precision 0.8458; Brier 0.0874; log loss 0.2691 |
+| M2 Convenience sensitivity | [`7b1178fa9e864461b151593142f7979f`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/7b1178fa9e864461b151593142f7979f) | AUC 0.9609; minimum class F1 0.7663; average precision 0.8771; Brier 0.0676; log loss 0.2099 |
+| M2 Trust sensitivity | [`4172d678a9ec4e47afe95cc85fd36306`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/4172d678a9ec4e47afe95cc85fd36306) | AUC 0.9971; minimum class F1 0.9167; average precision 0.9843; Brier 0.0153; log loss 0.0519 |
+| M3 Send time | [`badbb805c36f4f2991245de97a3aa095`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/badbb805c36f4f2991245de97a3aa095) | AUC 0.6665 (95% CI 0.6316–0.7002); average precision 0.4801; score-selection lift 0.1604; Brier 0.2047; log loss 0.5953; calibration error 0.0172 |
+| M4 Churn risk | [`17d6476028eb46b3862dd28937e08978`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/17d6476028eb46b3862dd28937e08978) | AUC 0.9233; macro-F1 0.8549; HIGH_RISK precision 0.9600; AT_RISK F1 0.6313 |
+| M5 Offer value | [`c625c9cafd9c46a2a8ba9318e07d9e52`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/c625c9cafd9c46a2a8ba9318e07d9e52) | RMSE 0.8091; MAE 0.6398; R² 0.9736 |
 
 ### Metric assessment and decisions
 
@@ -349,13 +356,13 @@ representative, chronologically held-out real data before deployment.
 
 | Model | Metrics reviewed | Assessment and action |
 |---|---|---|
-| M1 Abandonment | Accuracy 0.7700; precision 0.8883; recall 0.7581; F1 0.8180; AUC 0.8465. Five-fold AUC 0.8415 and F1 0.8149. | Good and stable for synthetic data; all assigned gates pass. Five-fold validation exposed solver convergence warnings, so `max_iter` was increased from 1,000 to 3,000 and a regression test was added. The retrained result is unchanged and converged. |
-| M2 PSS | Accuracy 0.8717; positive/minimum class F1 0.7616; AUC 0.9431. Five-fold AUC 0.9449 and minimum F1 0.7530. | Good and stable on synthetic data; both assigned gates pass. |
-| M2 CSS | Accuracy 0.8933; positive/minimum class F1 0.7576; AUC 0.9594. Five-fold AUC 0.9576 and minimum F1 0.7715. | Good and stable on synthetic data; both assigned gates pass. |
-| M2 TSS | Accuracy 0.9717; positive/minimum class F1 0.9091; AUC 0.9969. Five-fold AUC 0.9977 and minimum F1 0.9193. | The value is unusually high, so it must not be treated as real-world performance. It reflects the synthetic trust-label rules being strongly represented by the intended inputs. The run remains synthetic and non-production; no artificial degradation or misleading “improvement” was applied. |
-| M3 Send time | Accuracy 0.6650; precision 0.4904; recall 0.3879; F1 0.4332; AUC 0.6665; baseline CTR 0.3300; selected CTR 0.4904; CTR improvement 0.1604; calibration error 0.0172. | The assigned uplift and calibration gates pass. Candidate comparison favored the current calibrated boosting model: AUC/ECE 0.6846/0.0215 versus histogram boosting 0.6819/0.0337, random forest 0.6709/0.1176, and logistic regression 0.6227/0.1533. No replacement was justified. |
+| M1 Abandonment | Accuracy 0.7700; precision 0.8883; recall 0.7581; F1 0.8180; AUC 0.8465. Five-fold AUC 0.8415 and F1 0.8149. | Keep the current class-balanced logistic model. The unweighted alternative raised positive-class F1 to 0.8506 and recall to 0.8930 but reduced precision to 0.8120 and minimum-class F1 from 0.6875 to 0.6232. Boosting alternatives reduced AUC. The current model retains the better intervention precision and class balance. |
+| M2 PSS | Accuracy 0.8617; precision 0.7256; recall 0.7580; minimum class F1 0.7414; AUC 0.9421; average precision 0.8458; Brier 0.0874; log loss 0.2691. | Adopt five-fold sigmoid calibration. Compared with the prior run, F1, recall, AUC, and log loss improved; the 0.0002 Brier change is negligible. Real observed labels are still required. |
+| M2 CSS | Accuracy 0.8983; precision 0.7752; recall 0.7576; minimum class F1 0.7663; AUC 0.9609; average precision 0.8771; Brier 0.0676; log loss 0.2099. | Adopt five-fold sigmoid calibration. Accuracy, F1, Brier, and log loss improved while AUC changed by less than 0.0004. Real observed labels are still required. |
+| M2 TSS | Accuracy 0.9733; precision 0.8800; recall 0.9565; minimum class F1 0.9167; AUC 0.9971; average precision 0.9843; Brier 0.0153; log loss 0.0519. | Adopt five-fold sigmoid calibration. Recall, F1, accuracy, Brier, and log loss improved; the 0.0054 precision reduction is the only material trade-off. The unusually high synthetic result is not real-world evidence and remains non-production. |
+| M3 Send time | Accuracy 0.6650; precision 0.4904; recall 0.3879; F1 0.4332; AUC 0.6665 (95% CI 0.6316–0.7002); average precision 0.4801 versus 0.3300 prevalence; Brier 0.2047 versus null 0.2211; log loss 0.5953 versus null 0.6342; score-selection lift 0.1604 (95% CI 0.1101–0.2071); calibration error 0.0172. | Keep the current calibrated gradient booster and unchanged seven-feature contract. On fixed validation and untouched test data, XGBoost tied AUC but did not improve the overall metric set; histogram boosting, LightGBM, random forest, extra trees, and tuned boosting were worse overall. F1/recall are threshold diagnostics only because serving ranks candidate times rather than making a binary decision. Production registration now additionally requires mature complete real rows, time-ordered calibration, statistically better-than-null performance, and controlled policy lift. |
 | M4 Churn | Accuracy 0.8213; macro F1 0.8549; AUC 0.9233; HIGH_RISK precision 0.9600; AT_RISK F1 0.6313; early-warning AUC 0.8947, precision 0.7794, recall 0.8833, F1 0.8281. | All assigned gates pass. AT_RISK remains the weakest tier and needs real-data monitoring. A five-fold 1.5 `AT_RISK` sample weight improved macro F1 from 0.8645 to 0.8654, AT_RISK F1 from 0.6425 to 0.6504, and AUC from 0.9225 to 0.9227, while HIGH_RISK precision remained 0.9550. The change was adopted because it improves the actionable tier without degrading the protected high-risk quality requirement. |
-| M5 Offer value | RMSE 0.8632; MAE 0.6829; R² 0.9700. Five-fold RMSE 0.8854; MAE 0.7032; R² 0.9680. | Good and stable for the deterministic Step-2 synthetic pricing regime. It remains non-production because real recovered-order outcomes are required to validate margin impact and calibration. |
+| M5 Offer value | RMSE 0.8091; MAE 0.6398; R² 0.9736. | Adopt histogram gradient boosting. It beat the prior gradient booster on both validation (RMSE 0.8709 vs 0.9038; MAE 0.6848 vs 0.7080; R² 0.9694 vs 0.9671) and untouched test data. Random forest and extra trees were worse overall. Real recovered-order outcomes are still required to validate margin impact. |
 
 ### Earlier run records
 
@@ -371,18 +378,24 @@ representative, chronologically held-out real data before deployment.
 Changes made:
 
 - M1 now generates correlated checkout behavior with irreducible noise and
-  isolated randomness while retaining the contract-required logistic model.
+  isolated randomness. Its fitted scaler and logistic classifier are logged as
+  one sklearn pipeline, so serving applies the same transformation as training.
 - M2 now uses probabilistic PSS/CSS/TSS outcomes, regularized shallow
-  boosting, and AUC/F1 registration gates.
+  boosting, five-fold sigmoid calibration, expanded probability metrics, and
+  AUC/F1 registration gates.
 - M3 removed calibration-distorting class weights and uses regularized boosting
-  with five-fold sigmoid calibration. Its assigned uplift and calibration gates
-  now pass.
+  with five-fold sigmoid calibration. Its seven input features remain unchanged.
+  Real-data rows must be complete and mature; temporal calibration, bootstrap
+  uncertainty, null-model comparisons, and controlled-policy lift now prevent
+  score enrichment from being mistaken for deployment evidence.
 - M4 now produces internally consistent RFM, engagement, and sentiment signals
-  while retaining the canonical 21-feature order and 90-day rule. Its final
-  fit adds a cross-validated 1.5 weight only for the actionable `AT_RISK`
+  while retaining the canonical 21-feature order. Real training requires
+  finalized observed outcomes instead of self-derived tiers. Its final fit
+  adds a cross-validated 1.5 weight only for the actionable `AT_RISK`
   class; the weight is logged with the M4 run.
-- M5 now produces correlated sensitivity/discount behavior and requires MAE/R²
-  gates in addition to real-data volume.
+- M5 now uses the validated histogram booster, produces correlated
+  sensitivity/discount behavior, and requires MAE/R² gates in addition to
+  real-data volume.
 - `python/tests/test_synthetic_model_quality.py` verifies reproducibility,
   ranges, directional relationships, class coverage, and hard constraints.
 
@@ -408,19 +421,18 @@ set; synthetic holdout results must not be used to choose a production winner.
 
 ## Validation
 
-- Earlier focused Python validation: `python -m compileall -q python/src` and
-  the API, pipeline, feedback-loop, synthetic-quality, and specialist-agent
-  tests completed with **152 passed**. After the final M4 adjustment, the
-  targeted churn, synthetic-quality, and API suite completed with **54 passed**.
+- The complete offline Python suite passed after final cleanup with **464
+  passed and 1 skipped**. The skipped test is the paid, network-dependent LLM
+  judge, which now requires explicit opt-in.
 - The M1 convergence regression test confirms the corrected logistic-regression
   configuration fits the synthetic contract without a `ConvergenceWarning`.
 - `git diff --check` completed without whitespace errors.
-- DagsHub verification: the seven current training runs were retrieved as
-  `FINISHED`, are tagged `synthetic`, and are not production eligible.
-- The earlier full-suite evidence recorded 452 passing tests before the latest
-  focused model and documentation updates. It was not rerun in this pass.
-- The live LLM judge is not included in the current validation because its
-  external account was unavailable during the earlier verified attempt.
+- DagsHub accepted the finalized synthetic runs listed above. Their exact run
+  IDs, links, and returned metrics are recorded in the latest-runs table;
+  synthetic registration guards reported `production_eligible=false` for every
+  newly trained model.
+- The live LLM judge was intentionally excluded from offline validation because
+  it consumes an external paid service and requires explicit opt-in.
 
 ## Remaining work
 
@@ -429,7 +441,7 @@ set; synthetic holdout results must not be used to choose a production winner.
    calibration, drift, and operational impact before model promotion.
 3. The team runs the 100,000-order Business State benchmark on
    production-shaped infrastructure and records the under-90-second evidence.
-4. The team funds/enables the Anthropic judge account and reruns the 20-scenario
-   live benchmark.
+4. The team explicitly enables and runs the 20-scenario Anthropic benchmark
+   when paid external evaluation is intended.
 5. The team reviews the broader evaluation datasets before treating them as
    approved ground truth.

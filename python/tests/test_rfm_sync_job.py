@@ -41,6 +41,16 @@ class TestRfmSyncJob(unittest.TestCase):
         self.assertEqual(get_rfm_segment(2, 2, 1), "lost")
         self.assertEqual(get_rfm_segment(1, 1, 1), "lost")
 
+    def test_every_valid_score_combination_returns_a_known_segment(self):
+        valid_segments = {"champion", "loyal", "at_risk", "hibernating", "lost"}
+        for recency in range(1, 6):
+            for frequency in range(1, 6):
+                for monetary in range(1, 6):
+                    self.assertIn(
+                        get_rfm_segment(recency, frequency, monetary),
+                        valid_segments,
+                    )
+
     @patch("src.jobs.rfm_sync.calculate_rfm_scores")
     def test_per_customer_failure_does_not_abort_batch(self, mock_calc):
         mock_db = MagicMock()

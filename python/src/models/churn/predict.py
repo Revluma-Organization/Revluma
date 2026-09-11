@@ -56,7 +56,7 @@ TIER_TO_URGENCY = {
     "HIGH_RISK":     "HIGH",
     "CRITICAL":      "CRITICAL",
 }
-# The S3 output contract fixes this enum at email | sms | whatsapp | push.
+# The output contract fixes this enum at email | sms | whatsapp | push.
 # CRITICAL was "phone_call", which is outside that set and which the Backend
 # has no send path for, so it could only ever fail downstream. WhatsApp is the
 # highest-touch value the contract actually allows. See DECISION D-2.
@@ -70,12 +70,12 @@ TIER_TO_CHANNEL = {
 VALID_CHANNELS = ("email", "sms", "whatsapp", "push")
 OFFER_REQUIRED_TIERS = ("HIGH_RISK", "CRITICAL")
 
-# S3, AT_RISK action: "If email_open_rate_30d < 0.05 switch to SMS." A dead
+# AT_RISK action: when email_open_rate_30d is below 0.05, switch to SMS. A dead
 # inbox makes the tier's default channel worthless, so the rule overrides it.
 DEAD_INBOX_OPEN_RATE = 0.05
 
 # primary_churn_signal — evaluated in order, first match wins. The order is the
-# ranking: purchase behaviour outranks engagement decay, which outranks the
+# ranking: purchase behavior outranks engagement decay, which outranks the
 # competitive signals, because that is the order in which a merchant can act on
 # them. Each entry is (signal name, predicate over the feature vector).
 CHURN_SIGNAL_RULES = (
@@ -90,7 +90,7 @@ NO_SIGNAL = "none_detected"
 DECAY_SIGNAL = "engagement_decay"
 DECAY_SIGNAL_THRESHOLD = 35.0
 
-# ── Fallback day bands (spec P3.1 / S3) ───────────────────────────────────────
+# ── Fallback day bands ────────────────────────────────────────────────────────
 FALLBACK_BANDS = [(30, "HEALTHY", 0.15), (60, "AT_RISK", 0.45), (90, "HIGH_RISK", 0.70)]
 FALLBACK_CRITICAL = ("CRITICAL", 0.90)
 FALLBACK_UNKNOWN = ("AT_RISK", 0.50)       # days_since_last_purchase == -1
@@ -111,7 +111,7 @@ def _load_registry_model(name: str, merchant_id: str) -> typing.Any:
     if name in _model_cache:
         return _model_cache[name]
     try:
-        model = mlflow.sklearn.load_model(f"models:/{name}/latest")
+        model = mlflow.sklearn.load_model(f"models:/{name}/Production")
         _model_cache[name] = model
         logger.info("m4_model_loaded", extra={"model": name, "merchant_id": merchant_id})
         return model
@@ -235,7 +235,7 @@ def _recommended_channel(tier: str, feature_vector: dict) -> str:
 
 def _build_result(tier: str, churn_probability: float, decay_score: float,
                   ltv: float, fallback: bool, feature_vector: dict) -> dict:
-    """Assembles the response the S3 output contract specifies.
+    """Assemble the churn response contract.
 
     Args:
         tier: resolved churn tier.
@@ -293,7 +293,7 @@ def predict(customer_id: str, feature_vector: dict, merchant_id: str) -> dict:
         }
 
     churn_probability and churn_tier answer different questions and can
-    disagree: the probability is purchase-behaviour risk from the main model,
+    disagree: the probability is purchase-behavior risk from the main model,
     while an EARLY_WARNING tier comes from engagement decay. A customer the
     model is confident is HEALTHY can still be promoted, and their low
     probability is correct — it is precisely why the tier had to exist.

@@ -24,8 +24,9 @@ Canonical recovery actions are `DISCOUNT`, `FRICTION_FIX`,
 Legacy `HYBRID` is accepted only at the input boundary and normalized to
 `HYBRID_BUNDLE`.
 
-The target is `conversion_within_120min`: both an open and a click must occur
-at or after the send and within 120 minutes.
+The target is `engaged_within_120min`: both an open and a click must occur at
+or after the send and within 120 minutes. This is an engagement/CTR target,
+not a purchase-conversion label.
 
 ## Four scheduling layers
 
@@ -71,30 +72,57 @@ request.
 Development training may use 5,000 deterministic synthetic records, but such a
 run is tagged `data_source=synthetic` and is never production-eligible.
 Production training requires at least 500 chronologically ordered, labeled real
-send events containing both outcome classes. No synthetic fallback is allowed
-when a database connection is supplied.
+send events containing both outcome classes. A send is eligible only after its
+full 120-minute outcome window has closed and only when its immutable feature
+snapshot is complete. No synthetic fallback or default-filled real row is
+allowed when a database connection is supplied.
 
 The calibrated classifier is a regularized 200-tree
 `GradientBoostingClassifier` (`learning_rate=0.05`, `max_depth=2`,
 `min_samples_leaf=20`, `subsample=0.85`) wrapped in five-fold sigmoid
 `CalibratedClassifierCV`. Sigmoid calibration avoids the small-cohort
 overfitting risk of isotonic calibration at the 500-event production minimum.
-A model artifact is registered as
-`send_time` only when both gates pass:
+Synthetic development uses stratified folds. Real training uses the largest
+valid expanding-window split up to five folds so no calibration fold learns
+from future sends.
 
-- CTR improvement over the held-out global baseline is at least 0.08.
+An artifact is registered as `send_time` only when all of these checks pass:
+
+- Real, complete, mature send outcomes are used.
+- Score-selected engagement lift is at least 0.08 and its 95% bootstrap
+  interval remains above zero.
 - Expected calibration error is at most 0.12.
+- The lower 95% bootstrap bounds show AUC-ROC above 0.50, average precision
+  above the held-out positive rate, and both Brier score and log loss better
+  than a constant-rate predictor.
+- At least 500 recent events from a backend-recorded randomized control
+  evaluation show policy CTR improvement of at least 0.08.
 
-MLflow logs the data-source and production-eligibility tags, exact feature
-order, sample count, threshold parameters, accuracy, precision, recall, F1,
-AUC-ROC, baseline CTR, selected-slot CTR, CTR improvement, calibration error,
-run ID, and a credential-free run URL when the tracking server is HTTP(S).
+`score_selection_lift` measures enrichment among high-scoring held-out rows; it
+is useful for model comparison but is not causal uplift. The compatibility
+metric `ctr_improvement` carries the same non-causal value for old dashboards.
+Only `randomized_policy_ctr_improvement`, produced from an approved control
+design, satisfies the live policy gate.
+
+Serving loads only `models:/send_time/Production`; if it is unavailable, the
+scheduling rules return a safe baseline.
+
+MLflow logs data source, production eligibility, exact feature order, sample
+count, the descriptive evaluation threshold, accuracy, precision, recall, F1,
+AUC-ROC, average precision, Brier score, log loss, null-model comparisons,
+selection rate, score-selected engagement lift, calibration error, 95%
+bootstrap intervals, controlled-policy evidence, run ID, and a credential-free
+run URL when the tracking server is HTTP(S).
 
 ## Required real-data fields
 
 Each `sequence_sends.metadata` record must capture the M2 recovery action, cart
-value tier, purchase recency at decision time, and the historical open rate
-computed strictly from earlier events. These values are immutable training
-evidence; later profile changes must not rewrite them. The detailed database,
-index, webhook, idempotency, and backfill requirements are in
+value tier, purchase recency at decision time, and historical open rate
+computed strictly from earlier events. It must also retain the policy version,
+eligible slots, chosen slot, assignment arm, and assignment probability needed
+for controlled evaluation. These values are immutable training evidence; later
+profile changes must not rewrite them. The detailed database, index, webhook,
+idempotency, experiment, and backfill requirements are in
 [`docs/BACKEND_IMPLEMENTATION_GUIDE.md`](../../../../docs/BACKEND_IMPLEMENTATION_GUIDE.md).
+
+Tests are in `python/tests/test_timing_model.py` and `python/tests/test_api.py`.

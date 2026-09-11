@@ -1,5 +1,5 @@
 ﻿"""
-Unit tests for P2-A -- Dynamic Business State Refresh
+Unit tests for dynamic Business State refresh behavior.
 Tests the _get_next_rebuild_interval function in business_state.py.
 """
 
@@ -73,7 +73,7 @@ def _complete_state() -> BusinessState:
     generated_at = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
     return BusinessState(
         id="state-id",
-        organization_id="organisation-id",
+        organization_id="organization-id",
         schema_version="1.1",
         generated_at=generated_at,
         data_freshness_at=generated_at,

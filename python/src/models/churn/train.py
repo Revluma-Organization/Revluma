@@ -22,6 +22,7 @@ recency tiers cannot.
 import os
 import sys
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
@@ -50,14 +51,12 @@ from src.features.pipeline import (
     calculate_rfm_scores,
 )
 
-# Minimum customer records required for real-data training.
-# with 90+ days of history."
+# Minimum finalized observed customer records required for real-data training.
 MIN_REAL_CUSTOMERS = 500
-MIN_HISTORY_DAYS = 90
 SYNTHETIC_GENERATOR_VERSION = "2.0"
 
-# The task heading says 24, but it names exactly 21 signals. The named signals
-# are authoritative; three undocumented inputs must not be invented.
+# The source requirement says 24 features but names exactly 21 signals. The
+# named signals are authoritative; three undocumented inputs must not be invented.
 # Dimension 1: Purchase History (8)
 # Dimension 2: Engagement Drift (8)
 # Dimension 3: Sentiment Signals (3)
@@ -89,7 +88,7 @@ FEATURE_COLUMNS = [
     "discount_seeking_escalation",
     "unsubscribe_risk_score",
 ]
-assert len(FEATURE_COLUMNS) == 21, "S3 specifies a 21-feature set"
+assert len(FEATURE_COLUMNS) == 21, "M4 requires a 21-feature set"
 
 # Compatibility is limited to legacy names that represent the same signal and
 # unit. Canonical names always win when callers send both forms.
@@ -330,59 +329,66 @@ def assign_churn_tiers(df: pd.DataFrame) -> list:
     return tiers
 
 
-def _load_real_customer_rows(db_connection) -> pd.DataFrame:
-    """
-    Queries every customer with at least MIN_HISTORY_DAYS of order history
-    and computes the 7 real M4 features using the exact pipeline.py
-    functions, per the "no aliases, no deviations" rule in
-    PIXEL_EVENT_SPEC.md.
-
-    Label derivation: since a real, confirmed churn outcome (did the
-    customer actually fail to reorder within the merchant's window) needs
-    a completed future observation window that most customers won't have
-    yet this early in Phase 3, the interim label uses the same
-    risk-score-from-signals rule as the synthetic generator, but computed
-    from each customer's *real* days_since_last_purchase,
-    purchase_frequency_trend, and RFM scores rather than random values.
-    This is documented in CHURN_MODEL_RESEARCH.md Section 3.3 as the
-    approach to use until enough completed prediction windows exist for
-    a true time-to-event label.
-
-    STRICT POLICY: when db_connection is provided, this is the only data
-    source used for M4 training — no silent fallback to synthetic data.
-    Query failures propagate (wrapped with context) instead of being
-    swallowed.
-
-    Returns:
-        pd.DataFrame with FEATURE_COLUMNS + "churn_tier". Returns an
-        empty DataFrame (not None) if the query succeeds but finds zero
-        qualifying customers.
-
-    Raises:
-        RuntimeError: if the underlying query fails for any reason.
-    """
+def _load_real_customer_rows(
+    db_connection,
+    finalized_within_days: int | None = None,
+) -> pd.DataFrame:
+    """Load immutable feature snapshots with finalized observed churn tiers."""
     try:
         with db_connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT DISTINCT c.id
-                FROM customers c
-                JOIN orders o ON o.customer_id = c.id
-                WHERE o.ordered_at <= NOW() - INTERVAL '%s days'
+                SELECT feature_snapshot, observed_churn_tier
+                FROM churn_training_observations
+                WHERE finalized_at IS NOT NULL
+                  AND observed_churn_tier IN (
+                      'HEALTHY', 'AT_RISK', 'HIGH_RISK', 'CRITICAL'
+                  )
+                  AND (
+                      %s IS NULL
+                      OR finalized_at >= NOW() - (%s * INTERVAL '1 day')
+                  )
+                ORDER BY prediction_at
                 """,
-                (MIN_HISTORY_DAYS,)
+                (finalized_within_days, finalized_within_days),
             )
             rows = cursor.fetchall()
 
-        customer_ids = [r[0] for r in rows]
-        if not customer_ids:
-            return pd.DataFrame(columns=FEATURE_COLUMNS + ["churn_tier"])
+        records = []
+        invalid_rows = 0
+        for raw_snapshot, raw_tier in rows:
+            try:
+                snapshot = (
+                    json.loads(raw_snapshot)
+                    if isinstance(raw_snapshot, str)
+                    else raw_snapshot
+                )
+                if not isinstance(snapshot, dict):
+                    raise TypeError("feature_snapshot must be an object")
+                snapshot = normalize_churn_features(snapshot)
+                missing = [name for name in FEATURE_COLUMNS if name not in snapshot]
+                if missing:
+                    raise ValueError("feature_snapshot is incomplete")
+                record = {name: float(snapshot[name]) for name in FEATURE_COLUMNS}
+                record["churn_tier"] = str(raw_tier).upper()
+                records.append(record)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                invalid_rows += 1
 
-        return _compute_churn_records(customer_ids, db_connection)
+        if invalid_rows:
+            logger.warning(
+                "m4_invalid_observed_training_rows",
+                extra={"invalid_row_count": invalid_rows},
+            )
+
+        return pd.DataFrame.from_records(
+            records,
+            columns=FEATURE_COLUMNS + ["churn_tier"],
+        )
 
     except Exception as e:
         raise RuntimeError(
-            f"[M4] Real-data query against customers/orders failed: {e}"
+            f"[M4] Observed churn training-data query failed: {e}"
         ) from e
 
 
@@ -612,7 +618,7 @@ def _compute_churn_records(customer_ids: list, db_connection) -> pd.DataFrame:
             db_connection,
         )
         additional_signals["coupon_dependency_score"] = min(
-            max(calculate_coupon_usage_pct(customer_id, db_connection) / 100.0, 0.0),
+            max(calculate_coupon_usage_pct(customer_id, db_connection), 0.0),
             1.0,
         )
         if sequence_tracking_available:
@@ -689,10 +695,9 @@ def load_training_data(n: int = 4000, db_connection=None) -> tuple:
 
     if len(real_df) == 0:
         raise RuntimeError(
-            f"[M4] db_connection was provided but zero customers with "
-            f"{MIN_HISTORY_DAYS}+ days of order history were found. Cannot "
-            f"train on real data — check that `customers`/`orders` are "
-            f"populated (see rfm_sync.py's known gap re: these tables)."
+            "[M4] db_connection was provided but zero complete observed churn "
+            "records were found. Finalize `churn_training_observations` after "
+            "their observation windows close before training."
         )
 
     below_minimum = len(real_df) < MIN_REAL_CUSTOMERS
@@ -842,13 +847,15 @@ def _is_production_eligible(
     *,
     used_real_data: bool,
     below_minimum: bool,
+    labels_are_observed: bool,
     meets_auc: bool,
     meets_high_risk_precision: bool,
 ) -> bool:
-    """Allow registration only when data and both S3 quality gates are valid."""
+    """Allow registration only for valid observed outcomes and quality gates."""
     return (
         used_real_data
         and not below_minimum
+        and labels_are_observed
         and meets_auc
         and meets_high_risk_precision
     )
@@ -867,6 +874,8 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
     train_df, test_df, used_real_data, below_minimum = load_training_data(
         n=4000, db_connection=db_connection
     )
+    labels_are_observed = used_real_data
+    label_source = "observed_outcome" if used_real_data else "synthetic_rules"
     X_train, y_train = train_df[FEATURE_COLUMNS], train_df["churn_tier"]
     X_test, y_test = test_df[FEATURE_COLUMNS], test_df["churn_tier"]
 
@@ -876,6 +885,8 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.set_tag("model", "churn_risk")
         mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
+        mlflow.set_tag("label_source", label_source)
+        mlflow.set_tag("labels_are_observed", str(labels_are_observed).lower())
         mlflow.set_tag("below_minimum_threshold", str(below_minimum))
         if not used_real_data:
             mlflow.set_tag("synthetic_generator_version", SYNTHETIC_GENERATOR_VERSION)
@@ -899,10 +910,8 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
         # roc_auc_score for multi-class requires OvR and probability
         auc_roc = roc_auc_score(y_test, y_prob, multi_class="ovr")
 
-        # Per-class precision / recall / F1, per P2.3. These were computed
-        # before and then thrown away - only accuracy and the macro average
-        # reached MLflow, which is exactly where a gate on one tier's precision
-        # cannot be checked.
+        # Per-class metrics are required to evaluate the actionable tiers,
+        # especially HIGH_RISK precision.
         per_class = {}
         for tier in CHURN_TIERS:
             scores = report.get(tier)
@@ -949,6 +958,7 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
         production_eligible = _is_production_eligible(
             used_real_data=used_real_data,
             below_minimum=below_minimum,
+            labels_are_observed=labels_are_observed,
             meets_auc=meets_auc,
             meets_high_risk_precision=meets_high_risk_precision,
         )
@@ -1017,6 +1027,8 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
             "early_warning_model": early_model,
             "used_real_data": used_real_data,
             "below_minimum_threshold": below_minimum,
+            "label_source": label_source,
+            "labels_are_observed": labels_are_observed,
             "meets_auc_gate": meets_auc,
             "meets_high_risk_precision_gate": meets_high_risk_precision,
             "quality_gates_passed": meets_auc and meets_high_risk_precision,

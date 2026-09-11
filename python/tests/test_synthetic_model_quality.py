@@ -2,9 +2,12 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.ensemble import HistGradientBoostingRegressor
 from pandas.testing import assert_frame_equal
 from sklearn.exceptions import ConvergenceWarning
 
+from src.features.pipeline import compute_feature_vector
 from src.models.abandonment.train import (
     FEATURE_COLUMNS as ABANDONMENT_FEATURES,
     build_model as build_abandonment_model,
@@ -18,11 +21,17 @@ from src.models.churn.train import (
 from src.models.offer_value.train import (
     MAX_DISCOUNT_PCT,
     FEATURE_COLUMNS as OFFER_VALUE_FEATURES,
+    build_model as build_offer_value_model,
     load_training_data as generate_offer_data,
 )
 from src.models.sensitivity.train import (
     FEATURES as SENSITIVITY_FEATURES,
     _generate_synthetic_sensitivity_data as generate_sensitivity_data,
+    build_model as build_sensitivity_model,
+)
+from src.models.sensitivity.predict import (
+    FEATURE_COLUMNS as SENSITIVITY_PREDICT_FEATURES,
+    _build_feature_row as build_sensitivity_row,
 )
 from src.models.timing.train import (
     FEATURE_COLUMNS as TIMING_FEATURES,
@@ -71,10 +80,38 @@ def test_sensitivity_data_has_both_labels_and_expected_signal_directions():
     assert tss_by_repeat_payment_failure[True] > tss_by_repeat_payment_failure[False]
 
 
+def test_sensitivity_training_and_inference_share_the_canonical_contract():
+    assert SENSITIVITY_FEATURES == SENSITIVITY_PREDICT_FEATURES
+    assert "cursor_hesitation" in SENSITIVITY_FEATURES
+    assert "cursor_hesitation_score" not in SENSITIVITY_FEATURES
+
+
+def test_sensitivity_scores_use_calibrated_probabilities():
+    assert isinstance(build_sensitivity_model(), CalibratedClassifierCV)
+
+
+def test_session_vector_supplies_direct_m1_and_m2_model_inputs():
+    session_features = compute_feature_vector("customer-1", [], None)["features"]
+
+    assert set(ABANDONMENT_FEATURES).issubset(session_features)
+    assert set(SENSITIVITY_FEATURES) - {"is_return_visitor"} <= set(session_features)
+
+
+def test_sensitivity_cursor_hesitation_aliases_normalize_once():
+    canonical = build_sensitivity_row({"cursor_hesitation": 7})
+    same_unit_alias = build_sensitivity_row({"cursor_hesitation_score": 6})
+    millisecond_alias = build_sensitivity_row({"cursor_hesitation_ms": 5_900})
+    position = SENSITIVITY_PREDICT_FEATURES.index("cursor_hesitation")
+
+    assert canonical[position] == 7
+    assert same_unit_alias[position] == 6
+    assert millisecond_alias[position] == 5
+
+
 def test_timing_data_covers_contract_and_rewards_peak_windows():
     x_train, x_test, y_train, y_test = generate_timing_data(4_000)
     features = pd.concat([x_train, x_test], ignore_index=True)
-    labels = pd.Series(np.concatenate([y_train, y_test]), name="converted")
+    labels = pd.Series(np.concatenate([y_train, y_test]), name="engaged")
 
     assert list(features.columns) == TIMING_FEATURES
     assert set(labels) == {0, 1}
@@ -110,3 +147,7 @@ def test_offer_data_is_reproducible_and_respects_the_ungated_training_contract()
     assert list(x.columns) == OFFER_VALUE_FEATURES
     assert np.all((y >= 0) & (y <= MAX_DISCOUNT_PCT))
     assert (x["pss_score"] >= 0).all()
+
+
+def test_offer_value_uses_the_validated_histogram_boosting_candidate():
+    assert isinstance(build_offer_value_model(), HistGradientBoostingRegressor)

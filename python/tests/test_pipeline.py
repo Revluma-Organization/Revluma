@@ -767,8 +767,7 @@ if __name__ == "__main__":
 # ---------------------------------------------------------------------------
 # compute_feature_vector Tests
 # Verifies anonymous_id extraction, created_at timestamp fallback, and the
-# safe empty-session guarantee — the three schema alignment properties from
-# the critical alignment sweep (August 2026).
+# safe empty-session guarantee.
 # ---------------------------------------------------------------------------
 
 class TestComputeFeatureVector(unittest.TestCase):
@@ -815,6 +814,22 @@ class TestComputeFeatureVector(unittest.TestCase):
         self.assertEqual(result["features"]["scroll_depth_pct"], 0.0)
         self.assertEqual(result["features"]["tab_switch_count"], 0)
         self.assertFalse(result["features"]["failed_payment_attempt"])
+
+    def test_emits_exact_canonical_34_feature_contract(self):
+        events = [
+            {"event_type": "add_to_cart"},
+            {"event_type": "add_to_cart"},
+            {"event_type": "remove_from_cart"},
+        ]
+        features = compute_feature_vector("cust_4", events, db=None)["features"]
+
+        self.assertEqual(len(features), 34)
+        self.assertIn("cursor_hesitation", features)
+        self.assertIn("coupon_field_visited", features)
+        self.assertIn("failed_payment_count", features)
+        self.assertEqual(features["cart_item_add_count"], 2)
+        self.assertEqual(features["cart_item_remove_count"], 1)
+        self.assertNotIn("cursor_hesitation_score", features)
 
 
 if __name__ == "__main__":

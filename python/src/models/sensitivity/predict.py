@@ -27,7 +27,7 @@ FEATURE_COLUMNS = [
     "coupon_field_visited",
     "abandoned_at_shipping_reveal",
     "checkout_step_reached",
-    "cursor_hesitation_score",
+    "cursor_hesitation",
     "time_on_page_ms",
     "failed_payment_attempt",
     "failed_payment_count",
@@ -151,7 +151,7 @@ def _load_model(target: str):
         return _model_cache[target]
     try:
         import mlflow.sklearn
-        model = mlflow.sklearn.load_model(f"models:/sensitivity_{target}/latest")
+        model = mlflow.sklearn.load_model(f"models:/sensitivity_{target}/Production")
         _model_cache[target] = model
         return model
     except Exception:
@@ -192,7 +192,7 @@ def _build_feature_row(feature_vector: dict) -> list:
         "coupon_field_visited": False,
         "abandoned_at_shipping_reveal": False,
         "checkout_step_reached": 0,
-        "cursor_hesitation_score": 0,
+        "cursor_hesitation": 0,
         "time_on_page_ms": 0,
         "failed_payment_attempt": False,
         "failed_payment_count": 0,
@@ -206,19 +206,20 @@ def _build_feature_row(feature_vector: dict) -> list:
     # The event pipeline exposes the normalized 0-10 score. Older callers
     # may still send raw milliseconds, so preserve that input compatibility
     # at the boundary without changing the trained feature contract.
-    if "cursor_hesitation_score" not in feature_vector:
-        legacy_value = feature_vector.get(
-            "cursor_hesitation", feature_vector.get("cursor_hesitation_ms", 0)
-        )
+    if "cursor_hesitation" not in feature_vector:
+        if "cursor_hesitation_score" in feature_vector:
+            legacy_value = feature_vector["cursor_hesitation_score"]
+            divisor = 1
+        else:
+            legacy_value = feature_vector.get("cursor_hesitation_ms", 0)
+            divisor = 1000 if "cursor_hesitation_ms" in feature_vector else 1
         try:
-            feature_vector["cursor_hesitation_score"] = min(
+            feature_vector["cursor_hesitation"] = min(
                 10,
-                max(0, int(float(legacy_value) // 1000))
-                if "cursor_hesitation_ms" in feature_vector
-                else max(0, int(float(legacy_value))),
+                max(0, int(float(legacy_value) // divisor)),
             )
         except (TypeError, ValueError):
-            feature_vector["cursor_hesitation_score"] = 0
+            feature_vector["cursor_hesitation"] = 0
 
     row = []
     for col in FEATURE_COLUMNS:
@@ -311,7 +312,7 @@ def predict(feature_vector: dict, merchant_id: str, db=None) -> dict:
             "css_score": css_score,
             "tss_score": tss_score,
             **decision,
-            "model_version": "2.0.0-i2",
+            "model_version": "2.0.0",
             "fallback": False,
         }
     except Exception:

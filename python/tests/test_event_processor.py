@@ -381,7 +381,7 @@ class TestGroupEventsBySession(unittest.TestCase):
 
 class TestTimestampFormatVariants(unittest.TestCase):
     """
-    Covers the mixed timestamp format requirement from the S2 spec.
+    Covers the supported timestamp format variants.
     The pixel sends timestamps in three real-world forms:
         1. ISO 8601 with Z suffix  → "2026-06-26T10:00:00Z"
         2. ISO 8601 without suffix → "2026-06-26T10:00:00"  (naive, assumed UTC)
