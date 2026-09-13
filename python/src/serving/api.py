@@ -40,7 +40,9 @@ from src.models.churn.predict import predict as _predict_churn
 from src.models.timing.predict import predict as _predict_timing
 from src.jobs import rfm_sync
 from src.agents.orchestrator import orchestrate as _orchestrate
+from src.intelligence.business_state import build_business_state as _build_business_state
 from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
+from src.learning.feedback_loop import run_due_outcome_checks as _run_due_outcome_checks
 from src.config.database import engine
 from sqlalchemy.orm import sessionmaker
 
@@ -371,6 +373,26 @@ class RfmSyncRequest(BaseModel):
     store_id: str = Field(..., min_length=1)
 
 
+class BusinessStateRebuildRequest(BaseModel):
+    organization_id: str = Field(..., min_length=36, max_length=36)
+
+
+class BusinessStateRebuildResponse(BaseModel):
+    organization_id: str
+    state_id: str
+    computation_status: str
+    next_rebuild_at: datetime
+    warnings: list[str] = Field(default_factory=list)
+
+
+class RecommendationOutcomeEvaluationRequest(BaseModel):
+    limit: int = Field(100, ge=1, le=1000)
+
+
+class RecommendationOutcomeEvaluationResponse(BaseModel):
+    processed: int = Field(..., ge=0)
+
+
 _ALLOWED_IMAGE_MEDIA_TYPES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
 _MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
@@ -478,6 +500,52 @@ async def internal_morning_briefings() -> MorningBriefingRunResponse:
         total=int(result.get("total") or 0), success=int(result.get("success") or 0),
         failed=failed, error=error,
     )
+
+
+def _rebuild_business_state(organization_id: str) -> BusinessStateRebuildResponse:
+    db = _Session()
+    try:
+        state = _build_business_state(organization_id, db)
+        return BusinessStateRebuildResponse(
+            organization_id=state.organization_id,
+            state_id=state.id,
+            computation_status=state.computation_status,
+            next_rebuild_at=state.next_rebuild_at,
+            warnings=state.warnings,
+        )
+    finally:
+        db.close()
+
+
+@app.post(
+    "/internal/business-state/rebuild",
+    response_model=BusinessStateRebuildResponse,
+    dependencies=[Depends(verify_internal_caller)],
+)
+async def internal_business_state_rebuild(
+    req: BusinessStateRebuildRequest,
+) -> BusinessStateRebuildResponse:
+    return await run_in_threadpool(_rebuild_business_state, req.organization_id)
+
+
+def _evaluate_due_recommendation_outcomes(limit: int) -> int:
+    db = _Session()
+    try:
+        return _run_due_outcome_checks(db, limit=limit)
+    finally:
+        db.close()
+
+
+@app.post(
+    "/internal/recommendation-outcomes/evaluate",
+    response_model=RecommendationOutcomeEvaluationResponse,
+    dependencies=[Depends(verify_internal_caller)],
+)
+async def internal_recommendation_outcome_evaluation(
+    req: RecommendationOutcomeEvaluationRequest,
+) -> RecommendationOutcomeEvaluationResponse:
+    processed = await run_in_threadpool(_evaluate_due_recommendation_outcomes, req.limit)
+    return RecommendationOutcomeEvaluationResponse(processed=processed)
 
 
 # ---------------------------------------------------------------------------

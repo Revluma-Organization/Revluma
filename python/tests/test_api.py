@@ -181,6 +181,63 @@ def test_internal_morning_briefings_returns_sanitized_job_totals(monkeypatch):
         "error": "partial_failure",
     }
 
+
+def test_internal_business_state_rebuild_returns_job_result(monkeypatch):
+    expected = {
+        "organization_id": "11111111-1111-1111-1111-111111111111",
+        "state_id": "22222222-2222-2222-2222-222222222222",
+        "computation_status": "complete",
+        "next_rebuild_at": "2026-09-13T12:15:00Z",
+        "warnings": [],
+    }
+    monkeypatch.setattr(
+        serving_api,
+        "_rebuild_business_state",
+        lambda _organization_id: serving_api.BusinessStateRebuildResponse(**expected),
+    )
+
+    response = client.post(
+        "/internal/business-state/rebuild",
+        json={"organization_id": expected["organization_id"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+def test_internal_business_state_rebuild_requires_organization_id():
+    response = client.post("/internal/business-state/rebuild", json={})
+
+    assert response.status_code == 422
+
+
+def test_internal_recommendation_outcomes_returns_processed_count(monkeypatch):
+    captured = {}
+
+    def fake_evaluate(limit):
+        captured["limit"] = limit
+        return 7
+
+    monkeypatch.setattr(serving_api, "_evaluate_due_recommendation_outcomes", fake_evaluate)
+
+    response = client.post(
+        "/internal/recommendation-outcomes/evaluate",
+        json={"limit": 25},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"processed": 7}
+    assert captured["limit"] == 25
+
+
+def test_internal_recommendation_outcomes_rejects_excessive_limit():
+    response = client.post(
+        "/internal/recommendation-outcomes/evaluate",
+        json={"limit": 1001},
+    )
+
+    assert response.status_code == 422
+
 def test_abandonment_valid():
     response = client.post("/predict/abandonment-probability", json={
         "scroll_depth_pct": 50.0,

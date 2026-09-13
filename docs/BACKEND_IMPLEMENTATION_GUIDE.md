@@ -428,10 +428,10 @@ only safe identifiers, latency, status, and sanitized error type.
 | Python call | Backend trigger |
 |---|---|
 | `POST /internal/rfm-sync` `{ store_id }` | After successful store-sync commit. |
-| Business State due rebuild | Every minute; Python selects 15/5/1-minute cadence. |
-| Alert queue drain | After rebuild and every minute for recovery. |
+| `POST /internal/business-state/rebuild` `{ organization_id }` | Every minute for each due organization; Python writes the next 15/5/1-minute cadence. |
+| Backend-owned alert queue drain; no Python endpoint | After rebuild and every minute for recovery. Call `POST /orchestrate` only when an alert needs agent-generated output. |
 | `POST /internal/morning-briefings` | 05:00 UTC daily. |
-| Due recommendation outcomes | Worker selects `evaluate_after <= now`. |
+| `POST /internal/recommendation-outcomes/evaluate` `{ limit }` | Configured interval; Python claims rows where `evaluate_after <= now`. `limit` defaults to 100 and must be 1-1,000. |
 | `POST /predict/churn-risk` | Daily and explicit customer re-score. |
 | `POST /predict/send-time` | Before each recovery message is queued. |
 | `POST /orchestrate` | Conversation, alert, or scheduler trigger. |
@@ -586,13 +586,22 @@ Create `Backend/src/services/schedulerService.js`; register it only from
 
 Schedules:
 
-- Every minute: due Business State rebuilds and alert delivery recovery.
+- Every minute: select due organizations from
+  `business_state_baselines.next_rebuild_at`, then call
+  `POST /internal/business-state/rebuild` once per organization with
+  `{ "organization_id": "<uuid>" }`. Python persists the next adaptive rebuild
+  time. After each rebuild, and every minute for recovery, the backend must
+  transactionally drain pending `alert_queue` rows. Alert delivery is a backend
+  job, not a separate Python endpoint; call `POST /orchestrate` with
+  `trigger_type = "alert"` only when agent-generated output is required.
 - Daily UTC: churn scoring in bounded customer pages.
 - 05:00 UTC: `/internal/morning-briefings` under a date lock.
 - 05:10 UTC: verify one briefing per active organization; retry only missing or
   failed organizations.
-- Configured interval: due recommendation outcomes using `evaluate_after` and
-  `outcome_checked_at`.
+- Configured interval: call
+  `POST /internal/recommendation-outcomes/evaluate` with `{ "limit": 100 }`.
+  Python transactionally claims due recommendations using `evaluate_after` and
+  `outcome_checked_at`; repeat bounded calls while `processed` equals `limit`.
 
 Claim queue rows transactionally with `FOR UPDATE SKIP LOCKED` or an equivalent
 Prisma-safe pattern. Retries must not duplicate alerts, events, outcomes,
