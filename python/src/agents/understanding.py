@@ -292,9 +292,14 @@ def _safe_fallback(message: str, history: list[dict], reason: str) -> Understand
         return Understanding("knowledge", "learn a concept", False, False, False,
                              MODE_DIRECT_ANSWER, {}, domains, "low", 0.8, reason)
 
-    # General strategy
+    # General strategy and ecommerce reasoning
     if any(p in msg for p in ["how do i", "how can i", "how to", "tips for", "best way",
-                              "should i", "strategy for", "ways to"]) and not needs_store:
+                              "should i", "strategy for", "ways to",
+                              "why do", "why does", "why are", "why is", "real reason",
+                              "reason why", "what causes", "what drives", "how should",
+                              "what happens", "what makes", "identify", "diagnose",
+                              "increase", "reduce", "improve", "fix", "solve",
+                              "most common", "biggest problem", "main reason"]) and not needs_store:
         return Understanding("strategy", "get ecommerce guidance", False, False, False,
                              MODE_EXPLANATION, {}, domains, "low", 0.8, reason)
 
