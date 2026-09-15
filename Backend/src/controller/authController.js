@@ -52,6 +52,16 @@ const FORGOT_PASSWORD_GENERIC_MESSAGE =
 const PASSWORD_COMPLEXITY =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
 
+function createOrganizationSlug(companyName, uniqueId) {
+  const baseSlug = String(companyName || 'organization')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'organization';
+
+  return `${baseSlug}-${uniqueId}`;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
@@ -271,6 +281,7 @@ exports.register = async (req, res, next) => {
           country: storeSetup.country,
           state_region: storeSetup.state || null,
           monthly_revenue_range: preferences?.monthlyRevenue || null,
+          slug: createOrganizationSlug(storeSetup.brand_name, user.id),
         },
       });
 
@@ -555,7 +566,6 @@ exports.refresh = async (req, res, next) => {
     // ── Rotate tokens ─────────────────────────────────────────────────────────
     // Revoke old token, issue a new one in the same family
     const { raw: newRawRefresh, hash: newRefreshHash, expiresAt } = generateRefreshToken();
-    const familyId = uuidv4();
 
     const rotationResult = await prisma.$transaction(async (tx) => {
       await tx.refresh_tokens.update({
@@ -567,7 +577,7 @@ exports.refresh = async (req, res, next) => {
         data: {
           user_id: user.id,
           token_hash: newRefreshHash,
-          family_id: familyId,
+          family_id: storedToken.family_id,
           device_hint: getDeviceHint(req),
           ip_address: ip,
           expires_at: expiresAt,
@@ -595,7 +605,6 @@ exports.refresh = async (req, res, next) => {
       success: true,
       data: {
         access_token: rotationResult.accessToken,
-        refresh_token: newRawRefresh,
       },
     });
 
@@ -956,19 +965,6 @@ exports.getProfile = async (req, res) => {
 exports.updateProfilePicture = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    // Temporary debug logging to diagnose missing file / bad request
-    logger.debug('updateProfilePicture - headers', {
-      'content-type': req.headers['content-type'] || null,
-      authorization: req.headers['authorization'] || null,
-      'x-forwarded-for': req.headers['x-forwarded-for'] || null,
-    });
-
-    logger.debug('updateProfilePicture - req.file', req.file ? {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size || (req.file.buffer ? req.file.buffer.length : null),
-    } : null);
-
     // Make sure an image was uploaded
     if (!req.file) {
       return res.status(400).json({
@@ -1175,15 +1171,6 @@ exports.verifyTwoFactor = async (req, res, next) => {
     const { code } = req.body;
     const normalizedCode = normalizeTotpCode(code);
 
-    // Temporary debug logging to help frontend verification debugging
-    logger.debug('verifyTwoFactor - headers', {
-      'content-type': req.headers['content-type'] || null,
-      authorization: req.headers['authorization'] || null,
-      'x-forwarded-for': req.headers['x-forwarded-for'] || null,
-    });
-
-    logger.debug('verifyTwoFactor - body', { rawBody: req.body, code, normalizedCode });
-
     const userId = req.user.id;
 
     const user = await prisma.users.findUnique({
@@ -1191,20 +1178,9 @@ exports.verifyTwoFactor = async (req, res, next) => {
         id: userId,
       },
     });
-    logger.info("2fa_user_check", {
-  userId,
-  userExists: !!user,
-  tempSecretExists: !!user?.two_factor_temp_secret,
-  tempSecretLength: user?.two_factor_temp_secret?.length,
-  secretExists: !!user?.two_factor_secret,
-  secretLength: user?.two_factor_secret?.length,
-});
-
-
     // Prefer the temp secret created during setup; fall back to the permanent
     // secret for other verification flows. If neither exists, return error.
     const secretToVerify = user?.two_factor_temp_secret || user?.two_factor_secret;
-    logger.debug('verifyTwoFactor - secretToVerify', { exists: !!secretToVerify, length: secretToVerify?.length || 0 });
     if (!user || !secretToVerify) {
       logger.warn('2fa_verify_no_secret', { userId, ip: getClientIp(req) });
       return res.status(400).json({
@@ -1220,22 +1196,6 @@ exports.verifyTwoFactor = async (req, res, next) => {
         error: 'Verification code must be a 6-digit number',
       });
     }
-
-const currentTotp = speakeasy.totp({
-  secret: secretToVerify,
-  encoding: "base32",
-  digits: 6,
-  step: 30,
-});
-
-logger.info("2fa_totp_debug", {
-  userId,
-  codeReceived: normalizedCode,
-  generatedCode: currentTotp,
-  codeMatches: currentTotp === normalizedCode,
-  serverTime: new Date().toISOString(),
-  timestamp: Math.floor(Date.now() / 1000),
-});
 
     // Determine which time-step matched so we can prevent replay attacks.
     const matchedStep = findMatchedTotpStep(secretToVerify, normalizedCode, 2);

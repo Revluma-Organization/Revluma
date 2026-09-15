@@ -81,37 +81,44 @@ model onboarding_tools {
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model organizations {
-  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  owner_id                String                    @db.Uuid
-  company_name            String
-  website_url             String?
-  store_url               String?
-  industry                String
-  custom_industry         String?
-  country                 String
-  state_region            String?
-  team_size               String?
-  monthly_revenue_range   String?
-  monthly_order_volume    String?
-  created_at              DateTime?                 @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime?                 @default(now()) @db.Timestamptz(6)
-  primary_color           String?
-  accent_color            String?
-  logo_url                String?
-  favicon_url             String?
-  slug                    String                    @unique
-  ai_preferences          ai_preferences?
-  business_states         business_states[]
-  conversation_messages   conversation_messages[]
-  conversations           conversations[]
-  merchant_memories       merchant_memories[]
-  members                 organization_members[]
-  users                   users                     @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  payment_transactions    payment_transactions[]
-  recommendation_outcomes recommendation_outcomes[]
-  recommendations         recommendations[]
-  stores                  stores[]
-  subscriptions           subscriptions?
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id                 String                     @db.Uuid
+  company_name             String
+  website_url              String?
+  store_url                String?
+  industry                 String
+  custom_industry          String?
+  country                  String
+  state_region             String?
+  team_size                String?
+  monthly_revenue_range    String?
+  monthly_order_volume     String?
+  created_at               DateTime?                  @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime?                  @default(now()) @db.Timestamptz(6)
+  primary_color            String?
+  accent_color             String?
+  logo_url                 String?
+  favicon_url              String?
+  slug                     String                     @unique
+  ai_preferences           ai_preferences?
+  alert_queue              alert_queue[]
+  audit_logs               audit_logs[]
+  business_state_baselines business_state_baselines?
+  business_states          business_states[]
+  conversation_messages    conversation_messages[]
+  conversations            conversations[]
+  merchant_memories        merchant_memories[]
+  model_evaluation_metrics model_evaluation_metrics[]
+  model_feedback_queue     model_feedback_queue[]
+  morning_briefings        morning_briefings[]
+  members                  organization_members[]
+  users                    users                      @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  payment_transactions     payment_transactions[]
+  recommendation_outcomes  recommendation_outcomes[]
+  recommendations          recommendations[]
+  stores                   stores[]
+  strategic_memory         strategic_memory[]
+  subscriptions            subscriptions?
 
   @@index([owner_id], map: "idx_organizations_owner")
 }
@@ -138,6 +145,7 @@ model users {
   two_factor_last_used_step Int?
   profile_picture_url       String?
   notification_preferences  Json?
+  audit_logs                audit_logs[]
   conversation_messages     conversation_messages[]
   conversations             conversations[]
   merchant_memories         merchant_memories[]
@@ -236,6 +244,7 @@ model stores {
   customers              customers[]
   events                 events[]
   mlSessionFeatures      ml_session_features[]
+  order_items            order_items[]
   orders                 orders[]
   product_attributes     product_attributes[]
   product_categories     product_categories[]
@@ -244,6 +253,7 @@ model stores {
   product_tag_links      product_tag_links[]
   product_tags           product_tags[]
   products               products[]
+  sequence_sends         sequence_sends[]
   sequences              sequences[]
   store_settings         store_settings[]
   organizations          organizations            @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -256,30 +266,43 @@ model stores {
 /// Stores consent flags for email/SMS marketing (legal compliance).
 /// RFM fields are written by the Python rfm_sync job.
 model customers {
-  id                 String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id           String                @db.Uuid
-  external_id        String
-  email              String
-  full_name          String?
-  phone              String?
-  anonymous_id       String?
-  consent_email      Boolean?              @default(false)
-  consent_sms        Boolean?              @default(false)
-  consent_updated_at DateTime?             @db.Timestamptz(6)
-  ltv                Decimal?              @default(0) @db.Decimal(10, 2)
-  orders_count       Int?                  @default(0)
-  rfm_recency        Int?
-  rfm_frequency      Int?
-  rfm_monetary       Int?
-  rfm_segment        String?
-  status             String?               @default("active")
-  created_at         DateTime?             @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime?             @default(now()) @db.Timestamptz(6)
-  abandoned_carts    abandoned_carts[]
-  stores             stores                @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  events             events[]
-  mlSessionFeatures  ml_session_features[]
-  orders             orders[]
+  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id                String                @db.Uuid
+  external_id             String
+  email                   String
+  full_name               String?
+  phone                   String?
+  anonymous_id            String?
+  consent_email           Boolean?              @default(false)
+  consent_sms             Boolean?              @default(false)
+  consent_updated_at      DateTime?             @db.Timestamptz(6)
+  ltv                     Decimal?              @default(0) @db.Decimal(10, 2)
+  orders_count            Int?                  @default(0)
+  rfm_recency             Int?
+  rfm_frequency           Int?
+  rfm_monetary            Int?
+  rfm_segment             String?
+  status                  String?               @default("active")
+  created_at              DateTime?             @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime?             @default(now()) @db.Timestamptz(6)
+  churn_escalate_to_human Boolean?
+  churn_model_version     String?
+  churn_offer_required    Boolean?
+  churn_probability       Float?
+  churn_score_fallback    Boolean?
+  churn_scored_at         DateTime?             @db.Timestamptz(6)
+  churn_tier              String?
+  engagement_decay_score  Float?
+  primary_churn_signal    String?
+  recommended_channel     String?
+  rfm_updated_at          DateTime?             @db.Timestamptz(6)
+  win_back_urgency        String?
+  abandoned_carts         abandoned_carts[]
+  stores                  stores                @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  events                  events[]
+  mlSessionFeatures       ml_session_features[]
+  orders                  orders[]
+  sequence_sends          sequence_sends[]
 
   @@unique([store_id, external_id], map: "uq_customers_store_external")
   @@index([store_id], map: "idx_customers_store")
@@ -288,6 +311,10 @@ model customers {
   @@index([status], map: "idx_customers_status")
   @@index([anonymous_id], map: "idx_customers_anonymous")
   @@index([consent_email], map: "idx_customers_consent_email")
+  @@index([store_id, rfm_updated_at])
+  @@index([store_id, churn_tier, churn_scored_at])
+  @@index([store_id, status, rfm_segment])
+  @@index([store_id, status, orders_count])
 }
 
 /// An abandoned checkout / cart detected on a merchant's store.
@@ -353,12 +380,16 @@ model orders {
   abandoned_cart_id       String?          @db.Uuid
   ordered_at              DateTime         @db.Timestamptz(6)
   created_at              DateTime?        @default(now()) @db.Timestamptz(6)
+  discount_pct            Float?
+  session_id              String?
+  orderItems              order_items[]
   abandoned_carts         abandoned_carts? @relation(fields: [abandoned_cart_id], references: [id], onUpdate: NoAction)
   sequences               sequences?       @relation(fields: [attribution_sequence_id], references: [id], onUpdate: NoAction)
   customers               customers        @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
   stores                  stores           @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([store_id, external_order_id], map: "uq_orders_store_external")
+  @@index([customer_id, ordered_at(sort: Desc)])
 }
 
 /// Recovery message sequence configuration.
@@ -375,6 +406,7 @@ model sequences {
   updated_at      DateTime?         @default(now()) @db.Timestamptz(6)
   abandoned_carts abandoned_carts[]
   orders          orders[]
+  sequence_sends  sequence_sends[]
   stores          stores            @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
@@ -395,16 +427,22 @@ model notifications {
 /// Source for Live Activity feed, ML feature pipeline, and identity resolution.
 /// event_type values defined in docs/PIXEL_EVENT_SPEC.md.
 model events {
-  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id     String     @db.Uuid
-  customer_id  String?    @db.Uuid
-  session_id   String?
-  anonymous_id String?
-  event_type   String
-  payload      Json?
-  created_at   DateTime?  @default(now()) @db.Timestamptz(6)
-  customers    customers? @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
-  stores       stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id        String     @db.Uuid
+  customer_id     String?    @db.Uuid
+  session_id      String?
+  anonymous_id    String?
+  event_type      String
+  payload         Json?
+  created_at      DateTime?  @default(now()) @db.Timestamptz(6)
+  source          String?
+  source_event_id String?
+  customers       customers? @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  stores          stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, source, source_event_id])
+  @@index([customer_id, created_at(sort: Desc)])
+  @@index([customer_id, event_type, created_at(sort: Desc)])
 }
 
 model ml_session_features {
@@ -534,8 +572,8 @@ model subscriptions {
   plan                       String        @default("free")
   billing_cycle              String        @default("monthly")
   status                     String        @default("trialing")
-  paystack_customer_id       String?         
-  paystack_subscription_code String? 
+  paystack_customer_id       String?
+  paystack_subscription_code String?
   paystack_plan_code         String?
   amount_kobo                Int?
   currency                   String?       @default("NGN")
@@ -602,6 +640,7 @@ model business_states {
   source_data              Json?
   metadata                 Json?
   created_at               DateTime                @default(now()) @db.Timestamptz(6)
+  alertQueues              alert_queue[]
   organizations            organizations           @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   conversation_messages    conversation_messages[]
   recommendations          recommendations[]
@@ -888,14 +927,14 @@ model products {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model recommendation_outcomes {
-  id                     String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  recommendation_id      String          @unique @db.Uuid
-  organization_id        String          @db.Uuid
+  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recommendation_id      String                 @unique @db.Uuid
+  organization_id        String                 @db.Uuid
   actual_result          String
   actual_uplift_pct      Float?
-  actual_value           Decimal?        @db.Decimal(12, 2)
+  actual_value           Decimal?               @db.Decimal(12, 2)
   measurement_window_hrs Int?
-  measured_at            DateTime        @db.Timestamptz(6)
+  measured_at            DateTime               @db.Timestamptz(6)
   outcome_status         String
   prediction_error_pct   Float?
   accuracy_score         Float?
@@ -907,10 +946,11 @@ model recommendation_outcomes {
   agent_evaluation       Json?
   should_repeat          Boolean?
   metadata               Json?
-  created_at             DateTime        @default(now()) @db.Timestamptz(6)
-  updated_at             DateTime        @default(now()) @db.Timestamptz(6)
-  organizations          organizations   @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  recommendations        recommendations @relation(fields: [recommendation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  created_at             DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime               @default(now()) @db.Timestamptz(6)
+  model_feedback_queue   model_feedback_queue[]
+  organizations          organizations          @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recommendations        recommendations        @relation(fields: [recommendation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([organization_id, created_at(sort: Desc)], map: "idx_outcome_org")
   @@index([outcome_status], map: "idx_outcome_status")
@@ -952,13 +992,22 @@ model recommendations {
   metadata                Json?
   created_at              DateTime                 @default(now()) @db.Timestamptz(6)
   updated_at              DateTime                 @default(now()) @db.Timestamptz(6)
+  channel                 String?
+  outcome_checked_at      DateTime?                @db.Timestamptz(6)
+  pause_reason            String?
+  paused_at               DateTime?                @db.Timestamptz(6)
+  audit_logs              audit_logs[]
+  model_feedback_queue    model_feedback_queue[]
   recommendation_outcomes recommendation_outcomes?
   conversations           conversations?           @relation(fields: [conversation_id], references: [id], onUpdate: NoAction)
   conversation_messages   conversation_messages?   @relation(fields: [message_id], references: [id], onUpdate: NoAction)
   organizations           organizations            @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   business_states         business_states?         @relation(fields: [source_state_id], references: [id], onUpdate: NoAction)
   users                   users                    @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sequence_sends          sequence_sends[]
+  strategic_memory        strategic_memory[]
 
+  @@index([status, evaluate_after])
   @@index([conversation_id], map: "idx_rec_conversation")
   @@index([organization_id, created_at(sort: Desc)], map: "idx_rec_org_created")
 }
@@ -973,6 +1022,214 @@ model store_settings {
   stores         stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([store_id, settings_group])
+}
+
+model sequence_sends {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sequence_id         String            @db.Uuid
+  recommendation_id   String?           @db.Uuid
+  store_id            String            @db.Uuid
+  customer_id         String?           @db.Uuid
+  external_message_id String?
+  channel             String
+  status              String            @default("queued")
+  sent_at             DateTime?         @db.Timestamptz(6)
+  delivered_at        DateTime?         @db.Timestamptz(6)
+  metadata            Json?
+  created_at          DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime          @default(now()) @db.Timestamptz(6)
+  sequence_events     sequence_events[]
+  customers           customers?        @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  recommendations     recommendations?  @relation(fields: [recommendation_id], references: [id], onUpdate: NoAction)
+  sequences           sequences         @relation(fields: [sequence_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores              stores            @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([sequence_id, external_message_id])
+  @@index([recommendation_id, sent_at])
+  @@index([store_id, sent_at])
+  @@index([customer_id, channel, sent_at])
+  @@index([status])
+}
+
+model sequence_events {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sequence_send_id  String         @db.Uuid
+  event_type        String
+  external_event_id String?
+  occurred_at       DateTime       @db.Timestamptz(6)
+  metadata          Json?
+  created_at        DateTime       @default(now()) @db.Timestamptz(6)
+  sequence_sends    sequence_sends @relation(fields: [sequence_send_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([sequence_send_id, external_event_id])
+  @@index([sequence_send_id, event_type, occurred_at])
+}
+
+model order_items {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id              String   @db.Uuid
+  store_id              String   @db.Uuid
+  external_line_item_id String
+  external_product_id   String?
+  external_variant_id   String?
+  product_name          String
+  product_type          String?
+  quantity              Int
+  unit_price            Decimal  @db.Decimal(10, 2)
+  line_total            Decimal  @db.Decimal(12, 2)
+  ordered_at            DateTime @db.Timestamptz(6)
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  orders                orders   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  stores                stores   @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, external_line_item_id])
+  @@index([order_id])
+  @@index([store_id, ordered_at])
+  @@index([store_id, product_type, ordered_at])
+}
+
+model business_state_baselines {
+  id                          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id             String        @unique @db.Uuid
+  event_rate_5m_30d           Float?
+  revenue_avg_30d             Decimal?      @db.Decimal(12, 2)
+  revenue_avg_90d             Decimal?      @db.Decimal(12, 2)
+  cart_abandonment_rate_30d   Float?
+  returning_customer_rate_30d Float?
+  segment_distribution        Json?
+  day_of_week_baseline        Json?
+  seasonal_baseline           Json?
+  metadata                    Json?
+  observation_started_at      DateTime?     @db.Timestamptz(6)
+  observation_ended_at        DateTime?     @db.Timestamptz(6)
+  computed_at                 DateTime?     @db.Timestamptz(6)
+  next_rebuild_at             DateTime?     @db.Timestamptz(6)
+  created_at                  DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime      @default(now()) @db.Timestamptz(6)
+  alert_queue                 alert_queue[]
+  organizations               organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([next_rebuild_at])
+}
+
+model alert_queue {
+  id                         String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id            String                    @db.Uuid
+  business_state_id          String?                   @db.Uuid
+  alert_type                 String
+  severity                   String
+  message                    String
+  action_url                 String?
+  payload                    Json?
+  status                     String                    @default("pending")
+  dedupe_key                 String
+  available_at               DateTime                  @default(now()) @db.Timestamptz(6)
+  delivered_at               DateTime?                 @db.Timestamptz(6)
+  failed_at                  DateTime?                 @db.Timestamptz(6)
+  attempt_count              Int                       @default(0)
+  last_error                 String?
+  created_at                 DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime                  @default(now()) @db.Timestamptz(6)
+  business_state_baselinesId String?                   @db.Uuid
+  businessStateBaselines     business_state_baselines? @relation(fields: [business_state_baselinesId], references: [id])
+  business_states            business_states?          @relation(fields: [business_state_id], references: [id], onUpdate: NoAction)
+  organizations              organizations             @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([organization_id, dedupe_key])
+  @@index([status, available_at])
+  @@index([organization_id, created_at(sort: Desc)])
+}
+
+model audit_logs {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id   String           @db.Uuid
+  user_id           String?          @db.Uuid
+  recommendation_id String?          @db.Uuid
+  entity_type       String
+  entity_id         String?
+  action            String
+  context           Json?
+  created_at        DateTime         @default(now()) @db.Timestamptz(6)
+  organizations     organizations    @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recommendations   recommendations? @relation(fields: [recommendation_id], references: [id], onUpdate: NoAction)
+  users             users?           @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([organization_id, created_at(sort: Desc)])
+  @@index([entity_type, entity_id])
+}
+
+model morning_briefings {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id      String        @db.Uuid
+  briefing_date        DateTime      @db.Date
+  generated_at         DateTime      @db.Timestamptz(6)
+  merchant_name        String
+  greeting             String
+  yesterday_in_numbers Json
+  todays_priority      Json
+  active_concerns      Json
+  opportunities        Json
+  overnight_log        Json
+  has_concerns         Boolean       @default(false)
+  fallback_used        Boolean       @default(false)
+  created_at           DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime      @default(now()) @db.Timestamptz(6)
+  organizations        organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([organization_id, briefing_date])
+  @@index([organization_id, generated_at(sort: Desc)])
+}
+
+model model_feedback_queue {
+  id                        String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id           String                   @db.Uuid
+  recommendation_id         String                   @db.Uuid
+  recommendation_outcome_id String?                  @db.Uuid
+  model_name                String
+  signal_type               String
+  payload                   Json
+  status                    String                   @default("pending")
+  idempotency_key           String
+  attempt_count             Int                      @default(0)
+  processed_at              DateTime?                @db.Timestamptz(6)
+  last_error                String?
+  created_at                DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                 @default(now()) @db.Timestamptz(6)
+  organizations             organizations            @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recommendations           recommendations          @relation(fields: [recommendation_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recommendation_outcomes   recommendation_outcomes? @relation(fields: [recommendation_outcome_id], references: [id], onUpdate: NoAction)
+
+  @@unique([organization_id, idempotency_key])
+  @@index([status, created_at])
+  @@index([recommendation_id])
+}
+
+model strategic_memory {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id   String           @db.Uuid
+  recommendation_id String?          @db.Uuid
+  entry_type        String
+  payload           Json
+  created_at        DateTime         @default(now()) @db.Timestamptz(6)
+  organizations     organizations    @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recommendations   recommendations? @relation(fields: [recommendation_id], references: [id], onUpdate: NoAction)
+
+  @@index([organization_id, created_at(sort: Desc)])
+}
+
+model model_evaluation_metrics {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String        @db.Uuid
+  model_name      String
+  metric_name     String
+  metric_value    Float
+  sample_size     Int
+  observed_at     DateTime      @db.Timestamptz(6)
+  metadata        Json?
+  organizations   organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([organization_id, model_name, metric_name, observed_at])
+  @@index([model_name, metric_name, observed_at(sort: Desc)])
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
