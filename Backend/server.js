@@ -39,6 +39,39 @@ const server = app.listen(PORT, () => {
     });
 });
 
+
+// ── Keep-alive pings ──────────────────────────────────────────────────────────
+// Render free tier sleeps after 15 minutes of inactivity.
+// Ping both services every 9 minutes to prevent cold starts.
+// Self-ping: Node pings itself. Python-ping: Node pings Python health endpoint.
+
+const SELF_URL   = process.env.RENDER_EXTERNAL_URL || 'https://revluma-backend.onrender.com';
+const PYTHON_URL = process.env.PYTHON_SERVICE_URL  || 'https://revluma-python.onrender.com';
+
+function keepAlive() {
+  const http = require('https');
+
+  // Ping Node backend
+  http.get(`${SELF_URL}/health`, (res) => {
+    logger.info('keep_alive_node', { status: res.statusCode });
+  }).on('error', (err) => {
+    logger.warn('keep_alive_node_error', { error: err.message });
+  });
+
+  // Ping Python service
+  http.get(`${PYTHON_URL}/health`, (res) => {
+    logger.info('keep_alive_python', { status: res.statusCode });
+  }).on('error', (err) => {
+    logger.warn('keep_alive_python_error', { error: err.message });
+  });
+}
+
+// Start pinging 60 seconds after boot, then every 9 minutes
+setTimeout(() => {
+  keepAlive();
+  setInterval(keepAlive, 9 * 60 * 1000);
+}, 60 * 1000);
+
 // Graceful shutdown
 function gracefulShutdown(signal) {
     logger.info(`shutdown_signal_received`, { signal });
