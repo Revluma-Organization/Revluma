@@ -34,7 +34,7 @@ const {
 // -----------------------------------------------------------------------------
 
 const BUSINESS_STATE_INTERVAL_MS = parseInt(
-    process.env.BUSINESS_STATE_INTERVAL_MS || '60000',
+    process.env.BUSINESS_STATE_INTERVAL_MS || '300000', // 5 minutes default
     10
 );
 
@@ -195,14 +195,19 @@ async function runBusinessStateRebuild() {
         return;
     }
 
-    const lock = await acquireLock('business-state');
-
-    if (!lock) {
-        logger.debug?.('scheduler_business_state_lock_not_acquired');
-        return;
+    // When Redis is unavailable, use process-level flag as fallback guard
+    // This prevents simultaneous runs but does not prevent multi-instance overlap
+    if (!isRedisReady()) {
+        logger.warn('scheduler_business_state_no_redis_fallback');
+        businessStateRunning = true;
+    } else {
+        const lock = await acquireLock('business-state');
+        if (!lock) {
+            logger.debug?.('scheduler_business_state_lock_not_acquired');
+            return;
+        }
+        businessStateRunning = true;
     }
-
-    businessStateRunning = true;
 
     const startedAt = Date.now();
 
