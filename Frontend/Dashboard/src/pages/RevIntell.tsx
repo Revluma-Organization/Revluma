@@ -1087,6 +1087,8 @@ export default function RevIntell() {
   };
 
   const hasMessages = messages.length > 0;
+  const isActiveConversation = Boolean(activeId || urlConvId);
+  const showComposer = !convLoading && !convNotFound && (hasMessages || isActiveConversation);
 
   return (
     <div className="relative flex flex-col overflow-hidden"
@@ -1255,6 +1257,16 @@ export default function RevIntell() {
           </div>
         )}
 
+        {!hasMessages && !convLoading && !convNotFound && activeId && (
+          <div className="flex flex-col items-center justify-center min-h-full px-6 py-10 max-w-xl mx-auto w-full text-center">
+            <OrbHero size={72} />
+            <h3 className="text-[1.3rem] font-bold mt-6 mb-2" style={{ color: t1 }}>New conversation</h3>
+            <p className="text-[0.86rem] leading-relaxed" style={{ color: t2 }}>
+              This conversation is ready. Ask Rev anything about your revenue, customers, or growth.
+            </p>
+          </div>
+        )}
+
         {/* Message thread */}
         {hasMessages && !convLoading && (
           <div className="max-w-2xl mx-auto px-5 pt-14 pb-4">
@@ -1268,7 +1280,7 @@ export default function RevIntell() {
       </div>
 
       {/* Sticky input — active conversation */}
-      {hasMessages && !convLoading && (
+      {showComposer && (
         <div className="shrink-0 px-4 pb-4 pt-2 border-t" style={{ borderColor: bdr, background: bg }}>
           <div className="max-w-2xl mx-auto">
             {/* Image attachment preview */}

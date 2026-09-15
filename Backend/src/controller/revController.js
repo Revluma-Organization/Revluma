@@ -361,9 +361,9 @@ exports.getConversation = async (req, res, next) => {
 
     const messages = await prisma.$queryRaw`
       SELECT
-        id, role, content, sequence_number,
-        agent_name, confidence_score, has_error, error_code, error_message,
-        created_at
+        cm.id, cm.role, cm.content, cm.sequence_number,
+        cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
+        cm.created_at
       FROM conversation_messages cm
       JOIN conversations cv ON cv.id = cm.conversation_id
       WHERE cm.conversation_id = ${id}::uuid
