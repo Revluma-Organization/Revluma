@@ -1,0 +1,64 @@
+{
+  "lab_version": "0.1",
+  "store": "Lumé Skincare Lab",
+  "canonical_seed": 20260925,
+  "scenarios": [
+    {
+      "id": "SCN-001",
+      "name": "Mobile Checkout Failure",
+      "category": "Revenue & Conversion",
+      "status": "ready",
+      "difficulty": "medium",
+      "priority_for_pitch": true
+    },
+    {
+      "id": "SCN-009",
+      "name": "Cart Abandonment Spike",
+      "category": "Cart & Checkout",
+      "status": "ready",
+      "difficulty": "medium",
+      "priority_for_pitch": true
+    },
+    {
+      "id": "SCN-017",
+      "name": "CPM Spike With Healthy Economics",
+      "category": "Acquisition",
+      "status": "ready",
+      "difficulty": "hard",
+      "priority_for_pitch": true,
+      "trap": true
+    },
+    {
+      "id": "SCN-027",
+      "name": "Hero Product Collapse",
+      "category": "Product Intelligence",
+      "status": "ready",
+      "difficulty": "medium",
+      "priority_for_pitch": true
+    },
+    {
+      "id": "SCN-035",
+      "name": "VIP Churn Signal",
+      "category": "Customer & Retention",
+      "status": "ready",
+      "difficulty": "hard",
+      "priority_for_pitch": true
+    },
+    {
+      "id": "SCN-042",
+      "name": "Discount Dependency",
+      "category": "Pricing & Margins",
+      "status": "ready",
+      "difficulty": "medium",
+      "priority_for_pitch": false
+    },
+    {
+      "id": "SCN-050",
+      "name": "Multi-Signal Business Incident",
+      "category": "Multi-Signal",
+      "status": "ready",
+      "difficulty": "very_hard",
+      "priority_for_pitch": true
+    }
+  ]
+}

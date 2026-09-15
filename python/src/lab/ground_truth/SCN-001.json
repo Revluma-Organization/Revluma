@@ -1,0 +1,59 @@
+{
+  "scenario_id": "SCN-001",
+  "name": "Mobile Checkout Failure",
+  "hidden_cause": "Mobile checkout completion rate drops 34% due to payment step friction",
+  "intervention": {
+    "start_day_offset": 5,
+    "affected_device": "mobile",
+    "affected_metric": "checkout_completion_rate",
+    "magnitude": -0.34,
+    "secondary_effects": ["revenue_decline", "overall_cvr_decline"]
+  },
+  "signals_available_to_rev": [
+    "revenue_today significantly below revenue_yesterday",
+    "overall conversion rate declined",
+    "traffic unchanged",
+    "desktop metrics stable",
+    "mobile checkout completion deteriorated"
+  ],
+  "expected_diagnosis": "Mobile checkout friction is the primary driver of revenue decline",
+  "expected_evidence": [
+    "Revenue decline without traffic decline",
+    "Desktop conversion stable",
+    "Mobile checkout completion deteriorated",
+    "Problem concentrated in mobile checkout step"
+  ],
+  "expected_priority": "high",
+  "expected_recommendation": "Investigate mobile checkout flow before increasing ad spend",
+  "false_diagnoses": [
+    "Traffic decline caused revenue drop",
+    "Product demand fell",
+    "Creative fatigue reduced conversions",
+    "Increase advertising spend to recover revenue"
+  ],
+  "trap_answers": [
+    "Kill all mobile ads"
+  ],
+  "scoring_rubric": {
+    "detection": {
+      "max": 2,
+      "criteria": "Rev identifies that revenue declined and something changed in conversion or checkout"
+    },
+    "diagnosis": {
+      "max": 2,
+      "criteria": "Rev correctly identifies mobile checkout as the primary cause, not traffic or product"
+    },
+    "evidence": {
+      "max": 2,
+      "criteria": "Rev cites desktop stability and mobile deterioration as supporting evidence"
+    },
+    "prioritization": {
+      "max": 2,
+      "criteria": "Rev does not recommend fixing ads or traffic before fixing checkout"
+    },
+    "recommendation": {
+      "max": 2,
+      "criteria": "Rev recommends investigating mobile checkout specifically"
+    }
+  }
+}

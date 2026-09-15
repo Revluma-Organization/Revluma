@@ -1,0 +1,57 @@
+{
+  "scenario_id": "SCN-050",
+  "name": "Multi-Signal Business Incident",
+  "hidden_cause": "Multiple simultaneous deteriorations across product, mobile checkout, and acquisition",
+  "intervention": {
+    "signals_injected": [
+      "paid traffic increase",
+      "cpm increase",
+      "slight ctr decline",
+      "hero product traffic increase but conversion collapse",
+      "mobile checkout deterioration",
+      "cart abandonment increase",
+      "discount usage increase",
+      "aov decline",
+      "repeat customer behavior stable",
+      "overall revenue decline 18%"
+    ]
+  },
+  "expected_diagnosis": "Revenue decline is primarily driven by product conversion collapse and mobile checkout friction, not acquisition volume",
+  "expected_evidence": [
+    "Traffic increased so acquisition is not the primary problem",
+    "Hero product conversion collapsed despite traffic growth",
+    "Mobile checkout completion deteriorated",
+    "These downstream factors explain the revenue decline"
+  ],
+  "expected_priority": "Fix downstream conversion before scaling acquisition spend",
+  "expected_recommendation": "Investigate hero product conversion and mobile checkout before increasing paid spend",
+  "false_diagnoses": [
+    "List all ten problems equally",
+    "Increase budget to compensate",
+    "The problem is CPM",
+    "Discount more aggressively"
+  ],
+  "critical_behavior": "Rev must prioritize. Listing ten unrelated problems is a failure.",
+  "scoring_rubric": {
+    "detection": {
+      "max": 2,
+      "criteria": "Rev identifies multiple signals moving simultaneously"
+    },
+    "diagnosis": {
+      "max": 2,
+      "criteria": "Rev correctly identifies product and checkout as primary causes, not traffic"
+    },
+    "evidence": {
+      "max": 2,
+      "criteria": "Rev uses traffic stability to rule out acquisition and cites downstream issues"
+    },
+    "prioritization": {
+      "max": 2,
+      "criteria": "Rev gives ONE clear priority, not a list of ten equal problems"
+    },
+    "recommendation": {
+      "max": 2,
+      "criteria": "Fix conversion/checkout before scaling spend"
+    }
+  }
+}
