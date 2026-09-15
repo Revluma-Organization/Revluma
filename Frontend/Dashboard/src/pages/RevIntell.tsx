@@ -735,6 +735,10 @@ export default function RevIntell() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
+  // Set right before we navigate() to a conversation we just created ourselves,
+  // so the URL-sync effect below doesn't redundantly re-fetch and clobber the
+  // (already correct) optimistic messages with a fresh server round trip.
+  const justCreatedIdRef = useRef<string | null>(null);
 
   // Scroll to bottom when messages change
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, thinking]);
@@ -819,6 +823,13 @@ export default function RevIntell() {
   useEffect(() => {
     if (urlConvId) {
       setActiveId(urlConvId);
+      // If this URL change is us navigating to a conversation we just created
+      // in send() below, our local messages are already the authoritative
+      // copy — skip the reload so it can't overwrite them with a duplicate.
+      if (justCreatedIdRef.current === urlConvId) {
+        justCreatedIdRef.current = null;
+        return;
+      }
       loadConversation(urlConvId);
     } else {
       setActiveId(null);
@@ -908,6 +919,7 @@ export default function RevIntell() {
         // Navigate to conversation URL if this is a new conversation
         const convId = data.conversation_id;
         if (convId && convId !== activeId) {
+          justCreatedIdRef.current = convId;
           setActiveId(convId);
           navigate(`/dashboard/rev-intell/${convId}`, { replace: true });
           loadConversations(); // refresh sidebar
