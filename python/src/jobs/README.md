@@ -1,75 +1,54 @@
-# RFM Sync — Scheduled Batch Job
+# Data synchronization jobs
 
-## What this job does
-Runs after Shopify/platform sync completes. Computes RFM (Recency, Frequency, Monetary) scores for every customer in a store, segments them into behavioral groups, and writes the results back to the `customers` table in a single batch commit.
+This package contains the RFM refresh and initial historical-ingestion jobs.
+Both jobs use parameterized database operations, return structured summaries,
+and leave backend-owned scheduling and schema migrations outside Python.
 
-## Non-negotiable rules (all confirmed present in code)
-- ✅ Single DB commit after the full loop completes — not per-customer (performance requirement)
-- ✅ Continues processing on per-customer failure — a single bad row never aborts the batch
-- ✅ Parameterized queries only — no string interpolation anywhere (SQL injection safe)
-- ✅ Fails fast if `store_id` argument is missing from the CLI call
+## RFM refresh
 
-## Segmentation logic
-Priority-ordered, first match wins, always returns a valid segment (never raises):
+`rfm_sync.py` recalculates recency, frequency, and monetary scores for every
+customer in one store. It then assigns the first matching segment:
 
 | Priority | Segment | Rule |
-|---|---|---|
-| 1 | `champion` | r ≥ 4 AND f ≥ 4 AND m ≥ 4 |
-| 2 | `loyal` | f ≥ 3 AND r ≥ 3 |
-| 3 | `at_risk` | r ≤ 2 AND f ≥ 3 |
-| 4 | `hibernating` | r ≤ 2 AND f ≤ 2 AND m ≥ 2 |
-| 5 | `lost` | fallback — everything else |
+| --- | --- | --- |
+| 1 | `champion` | R, F, and M are all at least 4 |
+| 2 | `loyal` | F and R are at least 3 |
+| 3 | `at_risk` | R is at most 2 and F is at least 3 |
+| 4 | `hibernating` | R and F are at most 2 and M is at least 2 |
+| 5 | `lost` | Fallback |
 
-## Required database schema
-Confirmed against the real queries inside `pipeline.py`'s `calculate_rfm_scores()` and the functions it calls:
+The job reads `customers` and `orders`, updates the RFM columns on `customers`,
+and commits once after processing the batch. A per-customer failure is recorded
+without stopping the remaining customers. A fetch, schema-check, or commit
+failure returns `success=false` and a stable error code.
 
-```sql
-create table customers (
-  id uuid primary key default gen_random_uuid(),
-  store_id uuid references stores(id),
-  orders_count int default 0,
-  rfm_recency int,
-  rfm_frequency int,
-  rfm_monetary int,
-  rfm_segment text,
-  updated_at timestamptz default now()
-);
+Run from `python/` with the project environment active:
 
-create table orders (
-  id uuid primary key default gen_random_uuid(),
-  customer_id uuid references customers(id),
-  total numeric,
-  ordered_at timestamptz,
-  coupon_used boolean default false
-);
+```powershell
+python -m src.jobs.rfm_sync <store_id>
 ```
 
-## Usage
-```bash
-export DATABASE_URL="postgresql://..."
-python src/jobs/rfm_sync.py "<store_id_uuid>"
-```
+`DATABASE_URL` must be set. The returned summary contains `success`,
+`processed_count`, `failed_count`, `failed_customer_ids`,
+`segment_distribution`, and `error`.
 
-**Note on connecting to Supabase:** direct connections (`db.xxxxx.supabase.co`) can fail with `Network is unreachable` on networks without proper IPv6 support. Use the **Connection Pooling** string instead (Project Settings → Database → Connection pooling) — format differs slightly: username becomes `postgres.<project-ref>`, host is `...pooler.supabase.com`.
+## Historical ingestion
 
-## Live Verification
-Tested against a real Supabase database with 5 seeded customers spanning a range of recency/frequency/monetary profiles (recent+frequent+high-value, old+low-value, zero-order, etc.).
+`historical_ingestion.py` is an idempotent, programmatic cold-start workflow for
+a newly connected store. It runs the RFM refresh, establishes business-state
+baselines, seeds strategic memories from historical performance, and stores the
+current segment distribution.
 
-**Result:**
-```
-Processed customers: 5
-Segment distribution:
-  champion: 2
-  loyal: 0
-  at_risk: 0
-  hibernating: 2
-  lost: 1
-```
+The optional `lookback_months` value accepts 1–60 and defaults to 12. Each
+database step commits independently and rolls back before continuing after a
+failure, so the result may be `complete`, `partial`, or `failed`.
 
-Confirmed via direct query that `rfm_segment`, `rfm_recency`, `rfm_frequency`, `rfm_monetary`, and `updated_at` were all correctly written back to the `customers` table — not just printed to console.
+The workflow requires backend-owned `business_state_baselines` and
+`strategic_memories` tables in addition to customer, order, and event data.
+Missing optional tables are reported as warnings. Exact migration, trigger,
+index, and idempotency requirements are documented in
+[`docs/BACKEND_IMPLEMENTATION_GUIDE.md`](../../../docs/BACKEND_IMPLEMENTATION_GUIDE.md).
 
-## Known gap (flagged, not fixed)
-The production Supabase database (as of this test) only contains a `stores` table — no `customers` or `orders` tables exist yet in the real schema. This verification was run against a temporary local test schema created solely to prove the script's logic works correctly. **The actual production migration for `customers`/`orders` tables is still outstanding** — flagged to Dave/Backend Engineer, not something fixable from the ML side.
-
-## Output
-`processed_count`, `failed_customer_ids`, `segment_distribution` — printed to console and returned as a dict for programmatic use (e.g. if wired into a cron scheduler or admin dashboard later).
+Relevant tests are in `python/tests/test_rfm_sync_job.py`,
+`python/tests/test_rfm_sync_endpoint.py`, and
+`python/tests/test_historical_ingestion.py`.

@@ -1,5 +1,5 @@
 """
-Rev Intelligence -- Sub-1-Hour Feedback Loop for Cart Recovery (P3-A)
+Rev Intelligence -- Sub-One-Hour Feedback Loop for Cart Recovery
 =======================================================================
 Provides a fast-path feedback channel for time-sensitive campaign types.
 
@@ -9,7 +9,7 @@ Channel-specific windows:
   - win_back_campaign:   48 hours
   - win_back_sequence:   7 days
 
-Due recommendations are measured from normalised sequence delivery events.
+Due recommendations are measured from normalized sequence delivery events.
 Underperforming variants are paused and their audit, memory, outcome, and model
 feedback records are committed atomically.
 """
@@ -105,7 +105,7 @@ def is_due_for_evaluation(recommendation_type: str, executed_at, now: datetime =
 def compute_prediction_errors(predicted: dict, observed: dict) -> dict:
     """
     Compares predicted vs observed outcome metrics and computes a
-    normalised learning signal. See module docstring point 3 for the
+    normalized learning signal. See module docstring point 3 for the
     formula rationale.
  
     Args:

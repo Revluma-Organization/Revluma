@@ -1,115 +1,58 @@
-# M4 — Churn Risk Scorer
+# M4 — Churn risk scorer
 
-## What this model does
+M4 scores customers with a four-class gradient-boosting model:
+`HEALTHY`, `AT_RISK`, `HIGH_RISK`, and `CRITICAL`. A separate early-warning
+layer can promote an otherwise healthy result to `EARLY_WARNING` when
+engagement decay is high.
 
-M4 scores customer churn risk using a four-class Gradient Boosting model and a
-separate early-warning layer. The main classes are `HEALTHY`, `AT_RISK`,
-`HIGH_RISK`, and `CRITICAL`. A customer whose main tier is `HEALTHY` can be
-promoted to `EARLY_WARNING` when engagement decay is high.
-
-The inference result contains:
-
-- `churn_probability`
-- `churn_tier`
-- `win_back_urgency`
-- `primary_churn_signal`
-- `engagement_decay_score`
-- `recommended_channel`
-- `offer_required`
-- `escalate_to_human`
-- `fallback`
-- `model_version`
+The response includes churn probability and tier, win-back urgency, primary
+signal, engagement-decay score, recommended channel, offer requirement,
+human-escalation flag, model version, and fallback status.
 
 ## Canonical 21-feature contract
 
-The S3 heading mentions 24 features, but the assignment names exactly 21. The
-named signals are authoritative; no undocumented model inputs are invented.
+The source requirement names 21 signals even though its heading says 24. The
+named signals are authoritative; no undocumented inputs are invented.
 
-### Purchase History (8)
+| Group | Features |
+| --- | --- |
+| Purchase history | `past_orders_total`, `days_since_last_purchase`, `avg_order_value`, `purchase_frequency_trend`, `rfm_recency_score`, `rfm_frequency_score`, `rfm_monetary_score`, `historical_aov_trend` |
+| Engagement drift | `email_open_rate_30d`, `email_open_rate_90d`, `email_open_rate_delta`, `sms_click_rate_30d`, `site_visit_frequency_30d`, `site_visit_frequency_90d`, `site_visit_delta`, `browse_to_cart_conversion_trend` |
+| Sentiment | `coupon_dependency_score`, `return_rate`, `support_contact_frequency_90d` |
+| Competitive exposure | `discount_seeking_escalation`, `unsubscribe_risk_score` |
 
-| Feature | Unit | Real-data source |
-|---|---:|---|
-| `past_orders_total` | count | Order history through `calculate_rfm_scores` |
-| `days_since_last_purchase` | days | Order history through `calculate_rfm_scores` |
-| `avg_order_value` | currency | Order history through `calculate_rfm_scores` |
-| `purchase_frequency_trend` | -1, 0, or 1 | `calculate_purchase_frequency_trend` |
-| `rfm_recency_score` | 1–5 | `calculate_rfm_scores` |
-| `rfm_frequency_score` | 1–5 | `calculate_rfm_scores` |
-| `rfm_monetary_score` | 1–5 | `calculate_rfm_scores` |
-| `historical_aov_trend` | -1, 0, or 1 | Recent 90-day AOV compared with the preceding 90 days |
+Rates and ratios use 0–1 units. In particular, `coupon_dependency_score` uses
+the 0–1 result of `calculate_coupon_usage_pct` directly; it is not divided by
+100. Optional sequence, return, or support sources default to neutral zero only
+when the relevant backend table is unavailable.
 
-### Engagement Drift (8)
+Input boundaries retain three same-unit aliases: `sms_click_rate` maps to
+`sms_click_rate_30d`, `site_visit_frequency_delta` maps to `site_visit_delta`,
+and `browse_to_cart_trend` maps to `browse_to_cart_conversion_trend`. Canonical
+values win.
 
-| Feature | Unit | Real-data source |
-|---|---:|---|
-| `email_open_rate_30d` | 0–1 rate | Optional `sequence_sends` and `sequence_events` tables |
-| `email_open_rate_90d` | 0–1 rate | Optional `sequence_sends` and `sequence_events` tables |
-| `email_open_rate_delta` | rate difference | 30-day rate minus 90-day rate |
-| `sms_click_rate_30d` | 0–1 rate | Optional `sequence_sends` and `sequence_events` tables |
-| `site_visit_frequency_30d` | session count | Distinct event sessions in 30 days |
-| `site_visit_frequency_90d` | session count | Distinct event sessions in 90 days |
-| `site_visit_delta` | count difference | 30-day count minus one-third of the 90-day count |
-| `browse_to_cart_conversion_trend` | -1, 0, or 1 | Current and prior 30-day add-to-cart/view conversion |
+## Training and label safety
 
-### Sentiment Signals (3)
+- Without a database connection, training uses 4,000 deterministic synthetic
+  records for development.
+- With a database connection, Python reads complete immutable 21-feature
+  snapshots and finalized tiers from `churn_training_observations`; it never
+  silently substitutes synthetic rows or reconstructs features using later data.
+- Incomplete snapshots and unfinalized outcomes are excluded. Zero usable rows
+  stops training.
+- Production registration requires at least 500 observed customers, AUC-ROC ≥
+  0.78, and HIGH_RISK precision ≥ 0.72.
 
-| Feature | Unit | Real-data source |
-|---|---:|---|
-| `coupon_dependency_score` | 0–1 ratio | Coupon usage percentage divided by 100 and clamped |
-| `return_rate` | 0–1 rate | Neutral `0` until a reviewed return source exists |
-| `support_contact_frequency_90d` | count | Neutral `0` until a reviewed support source exists |
+The final fit gives the actionable `AT_RISK` class a logged sample weight of
+1.5. That value improves class balance without changing labels or decision
+thresholds. Synthetic metrics remain development evidence only.
 
-### Competitive Exposure (2)
+Eligible future artifacts register as `churn_risk` and, when trainable,
+`churn_early_warning`. Serving loads only their `Production` stages and uses the
+documented deterministic fallback when unavailable.
 
-| Feature | Unit | Real-data source |
-|---|---:|---|
-| `discount_seeking_escalation` | 0 or 1 | Recent discount/coupon search events compared with the prior monthly rate |
-| `unsubscribe_risk_score` | 0–1 rate | Optional 90-day unsubscribe events per email sent |
+Observed-outcome storage, completed observation windows, optional engagement
+tables, webhooks, indexes, and backfill requirements are in
+[`docs/BACKEND_IMPLEMENTATION_GUIDE.md`](../../../../docs/BACKEND_IMPLEMENTATION_GUIDE.md).
 
-Unavailable optional sources use neutral zero values. This preserves the model
-contract without generating a false production signal.
-
-## Accepted legacy names
-
-Input boundaries accept these equivalent names for backward compatibility:
-
-| Legacy name | Canonical name |
-|---|---|
-| `sms_click_rate` | `sms_click_rate_30d` |
-| `site_visit_frequency_delta` | `site_visit_delta` |
-| `browse_to_cart_trend` | `browse_to_cart_conversion_trend` |
-
-When both forms are supplied, the canonical value wins. Signals with different
-units or meanings are not aliased.
-
-## Training-data policy
-
-- Without `db_connection`, training uses 4,000 synthetic records for local
-  development and testing.
-- With `db_connection`, training uses qualifying real customers only. Query
-  failure or zero qualifying customers stops training; there is no silent
-  synthetic fallback.
-- Fewer than 500 real customers is allowed but explicitly tagged as below the
-  recommended minimum, so resulting metrics remain provisional.
-- The main model must be evaluated against AUC-ROC ≥ 0.78 and HIGH_RISK
-  precision ≥ 0.72 on each run. No fixed score is claimed in this document.
-- The final classifier fit applies a 1.5 sample weight only to the actionable
-  `AT_RISK` label. It preserves the canonical feature set, labels, and
-  inference thresholds, and the configured weight is logged with each run.
-- The early-warning model uses `engagement_decay_score`. If its training cohort
-  does not contain both labels, inference uses the documented decay threshold.
-
-## Backend and database integration
-
-Python owns feature calculation, training, and inference. Backend-owned work,
-including optional sequence tables, persistence, scheduling, indexes,
-idempotency, and rollout steps, is specified in
-[`BACKEND_IMPLEMENTATION_GUIDE.md`](../../../../docs/BACKEND_IMPLEMENTATION_GUIDE.md).
-No Python training path applies migrations or writes Backend schema files.
-
-## MLflow
-
-An eligible real-data run is registered as `churn_risk`; its optional
-early-warning model is registered as `churn_early_warning`. Synthetic and
-provisional runs are logged but not registered. Inference uses those exact
-names when they are available.
+Tests are in `python/tests/test_churn_model.py` and `python/tests/test_api.py`.

@@ -96,7 +96,7 @@ def generate_briefing(
     that acknowledges the data gap without crashing.
 
     Args:
-        organization_id: The merchant's organisation UUID.
+        organization_id: The merchant's organization UUID.
         db: SQLAlchemy session.
         user_id: Authorized organization member receiving the briefing.
 
@@ -217,7 +217,7 @@ def run_briefings_for_all_merchants(db) -> dict:
 
 
 def _run_briefing_orchestration(organization_id: str, user_id: str, db):
-    """Run the full D5 pipeline for the scheduled proactive briefing."""
+    """Run the full pipeline for the scheduled proactive briefing."""
     try:
         from ..agents.orchestrator import orchestrate
 

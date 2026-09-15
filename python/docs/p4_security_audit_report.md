@@ -1,5 +1,9 @@
 # P4.2 — Production Security Audit Report
 
+> Historical point-in-time evidence only. Package versions, findings, and test
+> counts below are not a current release attestation. Rerun Bandit and
+> dependency auditing against the release candidate and deployment image.
+
 **Date**: 2 August 2026  
 **Scope**: `Revluma-AI-ML-Engine` (`src/` codebase and Python dependencies)  
 **Tools Used**:  
@@ -86,4 +90,5 @@ The remaining 6 packages (`mlflow`, `protobuf`, `pyarrow`, `scikit-learn`, `setu
 2. **Dependency Risk Minimized**: All non-breaking dependencies have been patched to their latest stable CVE-free versions.
 3. **Defense in Depth**: The 5 residual framework/ML-runtime CVEs are effectively neutralized by architectural isolation (Pydantic validation, authenticated private model registries, internal API keys, and reverse-proxy WAF limits).
 
-**P4.2 Security Audit is marked COMPLETE.**
+**Historical result only:** the recorded scan completed, but current production
+security sign-off remains pending a fresh scan and review of residual findings.

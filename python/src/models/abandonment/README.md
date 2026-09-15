@@ -1,54 +1,51 @@
-# M1 — Abandonment Probability Predictor
+# M1 — Abandonment probability predictor
 
-## What this model does
-Scores every active checkout session every **60 seconds** to predict whether the shopper is about to abandon before it happens. When the score crosses the intervention threshold (0.65), it triggers an exit-intent action via the Recovery Queue.
+M1 estimates whether an active checkout session will be abandoned. The serving
+API returns a probability, applies an intervention threshold of `0.65`, and
+falls back to a neutral `0.50` result when the production model is unavailable.
+The dedicated prediction module also applies session-context risk modifiers and
+maps the result to `abandoned`, `yellow`, `monitor`, or `none`.
 
-## Model type
-Logistic Regression (binary classifier)
+## Eight-feature contract
 
-## What it predicts
-- **Output:** `abandonment_probability` — float between 0.0 and 1.0
-- **Label:** 1 = abandoned, 0 = converted
-- **Intervention trigger:** `should_intervene = True` when score > 0.65
+The trainer, API, and predictor use these columns in this exact order:
 
-## Features consumed (7)
+| Feature | Unit | Source |
+| --- | --- | --- |
+| `scroll_depth_pct` | 0–100 percentage | Scroll events |
+| `tab_switch_count` | Count | Tab-switch events |
+| `time_on_page_ms` | Milliseconds | Event timestamps |
+| `cursor_hesitation` | 0–10 normalized count | Matched field-focus/blur duration |
+| `checkout_step_reached` | Integer 0–5 | Normalized checkout-step events |
+| `failed_payment_attempt` | Boolean | Failed-payment events/webhooks |
+| `cart_item_add_count` | Count | Add-to-cart events |
+| `cart_item_remove_count` | Count | Remove-from-cart events |
 
-| Feature | Type | Source | Signal meaning |
-|---|---|---|---|
-| `scroll_depth_pct` | float | Tracking pixel | Low scroll = disengaged |
-| `tab_switch_count` | int | Tracking pixel | High switches = comparison shopping |
-| `time_on_page_ms` | int | Tracking pixel + checkout table | Very long = hesitation |
-| `checkout_step_reached` | int | Pixel + checkout table | Step 3–4 = near-miss abandonment |
-| `failed_payment_attempt` | bool | Platform webhooks | True = intent was there, friction blocked |
-| `cart_item_add_count` | int | Tracking pixel | High adds with low step = window-shopping |
-| `cart_item_remove_count` | int | Tracking pixel | Repeated removals = price hesitation |
+`cursor_hesitation_count` remains a same-unit input alias only. New callers and
+all stored feature vectors use `cursor_hesitation`.
 
-> **Note:** All 7 features are implemented in `pipeline.py` and must be
-> provided in exactly this shape by the `/predict/abandonment-probability`
-> endpoint. `train.py` is trained on all 7.
+## Training and registration
 
-## Pipeline functions
-- `calculate_scroll_depth(events)` → `scroll_depth_pct`
-- `calculate_tab_switch_count(events)` → `tab_switch_count`
-- `calculate_time_on_page_ms(events)` → `time_on_page_ms`
-- `calculate_checkout_step_reached(events)` → `checkout_step_reached`
-- `calculate_failed_payment_attempt(events)` → `failed_payment_attempt`
-- `calculate_cart_item_add_count(events)` → `cart_item_add_count`
-- `calculate_cart_item_remove_count(events)` → `cart_item_remove_count`
+Training uses logistic regression with balanced classes. A fitted
+`StandardScaler` and classifier are registered together as one sklearn pipeline,
+so serving applies the same preprocessing used during training.
 
-## Data sources
-- `customer_events` table (S4) — pixel events
-- `checkout` table (S5) — session status and step data
-- Platform webhooks (S3) — payment failure signals
-- Redis Feature Store (S8) — cached feature reads at inference time
+- Without a database connection, training uses 5,000 deterministic synthetic
+  sessions for development evidence.
+- With a database connection, training reads labels from `abandoned_carts` and
+  builds features from `events`; there is no silent synthetic fallback.
+- Real cohorts below 1,000 labeled sessions may be evaluated but cannot be
+  registered.
+- Production registration as `abandonment` requires real data, at least 1,000
+  sessions, AUC-ROC ≥ 0.75, precision ≥ 0.70, and recall ≥ 0.65.
+- Serving loads only `models:/abandonment/Production`.
 
-## Schema gaps (Backend Engineer 1 action needed)
-- `checkout.last_step_reached` (SMALLINT) — column needs adding (P0)
-- `payment_failed` event type — needs extracting from Shopify/WooCommerce webhook processors (P0)
-- `add_to_cart` and `remove_from_cart` event types — pixel must emit these for real-data training
+Synthetic metrics are not evidence of production performance or fairness.
 
-## Training data
-Sessions from `checkout` table with status `ABANDONED` or `RECOVERED`. Minimum viable training set: 1,000 labelled sessions per merchant.
+Backend must persist canonical event envelopes and terminal cart outcomes before
+real training can run. Webhook, table, index, and outcome-finalization details
+are in
+[`docs/BACKEND_IMPLEMENTATION_GUIDE.md`](../../../../docs/BACKEND_IMPLEMENTATION_GUIDE.md).
 
-## Where output goes
-`abandonment_probability` → Recovery Queue → Channel Dispatcher (SendGrid / Twilio)
+Tests are in `python/tests/test_abandonment_model.py` and
+`python/tests/test_api.py`.

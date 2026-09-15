@@ -16,12 +16,10 @@ returns {"final_risk_score": 0.50, "intervention_window": 60, "fallback": True}.
 Never raises. Never returns a 500 from the serving endpoint.
 """
 
-import os
 import logging
-import pickle
 import typing
 
-import mlflow.pyfunc
+import mlflow.sklearn
 
 logger = logging.getLogger("rev.m1.predict")
 
@@ -54,38 +52,25 @@ def _cursor_hesitation_score(session_context: dict) -> float:
 
 def load_model(merchant_id: str) -> typing.Any:
     """
-    Loads the trained M1 model for a specific merchant from MLflow
-    model registry or local artifact store.
-
-    Tries the MLflow model registry first (production path). Falls back
-    to the local mlruns artifact store if the registry is unavailable.
-    Returns None if neither path succeeds — the caller must handle None
-    gracefully and activate the failsafe path.
+    Loads the production M1 sklearn pipeline from the MLflow registry.
+    Returns None on failure so the caller can activate the failsafe path.
 
     Args:
         merchant_id (str): UUID of the merchant (models are per-merchant in Phase 3;
                            in Phase 1 a shared model is used for all merchants).
 
     Returns:
-        Loaded sklearn pipeline (scaler + logistic regression), or None on failure.
+        Loaded sklearn pipeline (scaler + logistic regression), or None.
     """
     try:
-        model = mlflow.pyfunc.load_model(f"models:/abandonment/Production")
+        model = mlflow.sklearn.load_model("models:/abandonment/Production")
         logger.info("m1_model_loaded", extra={"source": "registry", "merchant_id": merchant_id})
         return model
     except Exception as registry_err:
-        logger.warning("m1_registry_unavailable", extra={"error": str(registry_err)})
-
-    # Fallback: local mlruns artifact (dev / pre-registry path)
-    try:
-        local_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../../../../mlruns")
+        logger.warning(
+            "m1_model_load_failed",
+            extra={"error_type": type(registry_err).__name__},
         )
-        model = mlflow.pyfunc.load_model(f"file://{local_path}/0/latest/artifacts/model")
-        logger.info("m1_model_loaded", extra={"source": "local", "merchant_id": merchant_id})
-        return model
-    except Exception as local_err:
-        logger.error("m1_model_load_failed", extra={"error": str(local_err)})
         return None
 
 
@@ -200,7 +185,7 @@ def predict(
     """
     Scores a single live session for abandonment probability.
 
-    Implements the full 3-phase scoring system from the D3 spec:
+    Implements the full three-phase scoring system:
       Phase 1 — real-time base_risk + 6 boost modifiers → final_risk_score
       Phase 2 — intervention decision (abandoned / yellow zone)
       Phase 3 — pre-abandonment monitoring

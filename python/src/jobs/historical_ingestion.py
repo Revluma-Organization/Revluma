@@ -442,7 +442,7 @@ def _get_organization_id(store_id: str, db) -> str:
         {"store_id": store_id},
     ).scalar()
     if not organization_id:
-        raise ValueError("Store does not exist or has no organisation.")
+        raise ValueError("Store does not exist or has no organization.")
     return str(organization_id)
 
 

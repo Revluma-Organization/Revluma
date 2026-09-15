@@ -10,11 +10,11 @@ from __future__ import annotations
 import os
 import sys
 import typing
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 try:
@@ -31,39 +31,31 @@ except ImportError:  # pragma: no cover
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from src.config.mlflow_config import get_or_create_experiment  # noqa: E402
 from src.features.pipeline import (  # noqa: E402
+    calculate_scroll_depth,
+    calculate_tab_switch_count,
     calculate_time_on_page_ms,
     calculate_checkout_step_reached,
     calculate_failed_payment_attempt,
-    calculate_failed_payment_count,
-    calculate_coupon_usage_pct,
     calculate_cursor_hesitation,
-    calculate_abandoned_at_shipping_reveal,
-    calculate_visited_coupon_page,
-    calculate_searched_discount_terms,
     calculate_cart_item_remove_count,
-    calculate_coupon_field_visited,
-    calculate_past_orders_total,
-    calculate_days_since_last_purchase,
-    calculate_avg_order_value,
-    calculate_purchase_frequency_trend,
-    calculate_rfm_scores,
+    calculate_cart_item_add_count,
 )
 from src.features.event_processor import group_events_by_session  # noqa: E402
 
 MONITORING_EXPERIMENT_NAME = "Revluma-Monitoring"
 
-# Thresholds — exact values from the Phase 3 task.
+# Monitoring thresholds.
 M1_AUC_ROC_FLOOR = 0.70
 M2_CLASS_F1_FLOOR = 0.63
 M4_ACCURACY_FLOOR = 0.70
-M3_CTR_IMPROVEMENT_FLOOR = 0.05
+M3_POLICY_CTR_IMPROVEMENT_FLOOR = 0.05
 M5_DISCOUNT_RMSE_CEILING = 5.0
 M1_RETRAIN_MIN_SAMPLES = 1000
 M2_RETRAIN_MIN_SAMPLES = 500
 M3_RETRAIN_MIN_SAMPLES = 500
 M5_RETRAIN_MIN_SAMPLES = 200
 
-# Trailing windows used to pull "fresh" labelled data for each check.
+# Trailing windows used to pull fresh labeled data for each check.
 M1_WINDOW_DAYS = 7
 M2_WINDOW_DAYS = 7
 M4_WINDOW_DAYS = 30
@@ -135,9 +127,7 @@ def _format_alert(result: DriftCheckResult) -> str:
 # ---------------------------------------------------------------------------
 
 def _get_or_create_monitoring_experiment() -> None:
-    """Ensures runs from this module land in Revluma-Monitoring, not the
-    Revluma-MVP training experiment — the Phase 3 task explicitly requires
-    a separate experiment for monitoring runs."""
+    """Keep monitoring runs separate from the Revluma-MVP training history."""
     if mlflow is None:
         return
     get_or_create_experiment()  # ensures tracking URI / auth are configured
@@ -176,7 +166,7 @@ def _load_registered_model(model_name: str) -> typing.Any:
     if mlflow is None:
         return None
     try:
-        return mlflow.sklearn.load_model(f"models:/{model_name}/latest")
+        return mlflow.sklearn.load_model(f"models:/{model_name}/Production")
     except Exception as e:
         print(f"[drift_detector] Could not load model '{model_name}': {e}")
         return None
@@ -187,18 +177,25 @@ def _load_registered_model(model_name: str) -> typing.Any:
 # ---------------------------------------------------------------------------
 
 def _load_recent_m1_eval_set(db_connection, days: int = M1_WINDOW_DAYS) -> pd.DataFrame | None:
-    """Pulls checkout sessions resolved (ABANDONED/RECOVERED/COMPLETED) in
-    the trailing `days` window and computes the 5 M1 features with the
-    exact pipeline.py functions, mirroring
-    abandonment/train.py::_load_real_session_rows so the eval set uses
-    identical feature logic to what the model was trained on."""
+    """Build a recent observed M1 evaluation set with the training contract."""
     with db_connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT session_id, status
-            FROM checkout
-            WHERE status IN ('ABANDONED', 'RECOVERED', 'COMPLETED')
-              AND updated_at >= NOW() - INTERVAL '%s days'
+            SELECT
+                session_id,
+                CASE
+                    WHEN recovered_at IS NOT NULL
+                      OR UPPER(COALESCE(status, '')) = 'RECOVERED'
+                    THEN 'RECOVERED'
+                    ELSE 'ABANDONED'
+                END AS outcome
+            FROM abandoned_carts
+            WHERE session_id IS NOT NULL
+              AND (
+                  recovered_at IS NOT NULL
+                  OR UPPER(COALESCE(status, '')) IN ('ABANDONED', 'RECOVERED')
+              )
+              AND updated_at >= NOW() - (%s * INTERVAL '1 day')
             """,
             (days,)
         )
@@ -238,15 +235,18 @@ def _load_recent_m1_eval_set(db_connection, days: int = M1_WINDOW_DAYS) -> pd.Da
             "scroll_depth_pct": calculate_scroll_depth(events),
             "tab_switch_count": calculate_tab_switch_count(events),
             "time_on_page_ms": calculate_time_on_page_ms(events),
+            "cursor_hesitation": calculate_cursor_hesitation(events),
             "checkout_step_reached": calculate_checkout_step_reached(events),
             "failed_payment_attempt": int(calculate_failed_payment_attempt(events)),
+            "cart_item_add_count": calculate_cart_item_add_count(events),
+            "cart_item_remove_count": calculate_cart_item_remove_count(events),
             "abandoned": labels[session_id],
         })
     return pd.DataFrame.from_records(records)
 
 
 def check_m1_drift(db_connection, auto_retrain: bool = True) -> DriftCheckResult:
-    """Weekly M1 AUC-ROC check. Below M1_AUC_ROC_FLOOR (0.65) triggers
+    """Weekly M1 AUC-ROC check. Below M1_AUC_ROC_FLOOR (0.70) triggers
     automatic retraining via abandonment.train.train()."""
     result = DriftCheckResult(
         model_name="abandonment", check_type="weekly", metric_name="auc_roc",
@@ -260,12 +260,12 @@ def check_m1_drift(db_connection, auto_retrain: bool = True) -> DriftCheckResult
 
         eval_df = _load_recent_m1_eval_set(db_connection)
         if eval_df is None or eval_df["abandoned"].nunique() < 2:
-            result.error = "insufficient labelled data in trailing window"
+            result.error = "insufficient labeled data in trailing window"
             return result
 
         from sklearn.metrics import roc_auc_score
-        feature_cols = ["scroll_depth_pct", "tab_switch_count", "time_on_page_ms",
-                         "checkout_step_reached", "failed_payment_attempt"]
+        from src.models.abandonment.train import FEATURE_COLUMNS
+        feature_cols = FEATURE_COLUMNS
         X = eval_df[feature_cols]
         y = eval_df["abandoned"]
         y_prob = model.predict_proba(X)[:, 1]
@@ -307,96 +307,53 @@ def _trigger_m1_retraining(db_connection) -> bool:
 # ---------------------------------------------------------------------------
 
 def _load_recent_m2_eval_set(db_connection, days: int = M2_WINDOW_DAYS) -> pd.DataFrame | None:
-    """Mirrors sensitivity/train.py::_load_real_sensitivity_rows but scoped
-    to the trailing `days` window, for use as a fresh evaluation set
-    rather than a training set."""
-    with db_connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT c.session_id, c.customer_id
-            FROM checkout c
-            WHERE c.status IN ('ABANDONED', 'RECOVERED')
-              AND c.customer_id IS NOT NULL
-              AND c.updated_at >= NOW() - INTERVAL '%s days'
-            """,
-            (days,)
-        )
-        session_rows = cursor.fetchall()
-
-    if not session_rows:
-        return None
-
-    session_ids = [r[0] for r in session_rows]
-    customer_by_session = {r[0]: r[1] for r in session_rows}
+    """Load recent immutable M2 snapshots with finalized observed labels."""
+    from src.models.sensitivity.predict import FEATURE_COLUMNS
 
     with db_connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT session_id, event_type, created_at as timestamp, payload
-            FROM events WHERE session_id = ANY(%s)
+            SELECT feature_snapshot, pss_label, css_label, tss_label
+            FROM sensitivity_training_observations
+            WHERE finalized_at IS NOT NULL
+              AND finalized_at >= NOW() - (%s * INTERVAL '1 day')
+              AND pss_label IS NOT NULL
+              AND css_label IS NOT NULL
+              AND tss_label IS NOT NULL
+            ORDER BY decision_at
             """,
-            (session_ids,)
+            (days,),
         )
-        event_rows = cursor.fetchall()
-
-    raw_events = [
-        {
-            "session_id": row[0], "event_type": row[1],
-            "timestamp": row[2].isoformat() if hasattr(row[2], "isoformat") else row[2],
-            "payload": row[3] if isinstance(row[3], dict) else {},
-        }
-        for row in event_rows
-    ]
-    events_by_session = group_events_by_session(raw_events)
-
-    with db_connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT session_id, recovery_action FROM orders
-            WHERE session_id = ANY(%s) AND recovery_status = 'CONVERTED'
-            ORDER BY ordered_at DESC
-            """,
-            (session_ids,)
-        )
-        recovery_rows = cursor.fetchall()
-
-    converted_action = {}
-    for session_id, action in recovery_rows:
-        converted_action.setdefault(session_id, action)
-
-    price_actions = {"DISCOUNT", "HYBRID_BUNDLE", "TRUST_PLUS_DEAL", "FULL_PERSONALISE"}
-    convenience_actions = {"FRICTION_FIX", "HYBRID_BUNDLE", "FRICTION_PLUS_TRUST", "FULL_PERSONALISE"}
-    trust_actions = {"TRUST_REASSURE", "TRUST_PLUS_DEAL", "FRICTION_PLUS_TRUST", "FULL_PERSONALISE"}
+        rows = cursor.fetchall()
 
     records = []
-    for session_id in session_ids:
-        customer_id = customer_by_session[session_id]
-        events = events_by_session.get(session_id, [])
-        action = converted_action.get(session_id)
+    for raw_snapshot, pss_label, css_label, tss_label in rows:
+        try:
+            snapshot = (
+                json.loads(raw_snapshot)
+                if isinstance(raw_snapshot, str)
+                else raw_snapshot
+            )
+            if not isinstance(snapshot, dict):
+                continue
+            if any(name not in snapshot for name in FEATURE_COLUMNS):
+                continue
+            record = {name: float(snapshot[name]) for name in FEATURE_COLUMNS}
+            record.update({
+                "PSS_label": int(bool(pss_label)),
+                "CSS_label": int(bool(css_label)),
+                "TSS_label": int(bool(tss_label)),
+            })
+            records.append(record)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
 
-        records.append({
-            # This record must use the exact 13-field contract in
-            # sensitivity/train.py and sensitivity/predict.py.  Monitoring a
-            # retired feature vector can produce a plausible, but invalid,
-            # F1 score.
-            "past_orders_with_coupon_pct": calculate_coupon_usage_pct(customer_id, db_connection),
-            "visited_coupon_page": int(calculate_visited_coupon_page(events)),
-            "searched_discount_terms": int(calculate_searched_discount_terms(events)),
-            "cart_item_remove_count": calculate_cart_item_remove_count(events),
-            "coupon_field_visited": int(calculate_coupon_field_visited(events)),
-            "abandoned_at_shipping_reveal": int(calculate_abandoned_at_shipping_reveal(events)),
-            "checkout_step_reached": calculate_checkout_step_reached(events),
-            "cursor_hesitation_score": calculate_cursor_hesitation(events),
-            "time_on_page_ms": calculate_time_on_page_ms(events),
-            "failed_payment_attempt": int(calculate_failed_payment_attempt(events)),
-            "failed_payment_count": calculate_failed_payment_count(events),
-            "is_return_visitor": int(calculate_past_orders_total(customer_id, db_connection) > 0),
-            "avg_order_value": calculate_avg_order_value(customer_id, db_connection),
-            "PSS_label": int(action in price_actions) if action else 0,
-            "CSS_label": int(action in convenience_actions) if action else 0,
-            "TSS_label": int(action in trust_actions) if action else 0,
-        })
-    return pd.DataFrame.from_records(records)
+    if not records:
+        return None
+    return pd.DataFrame.from_records(
+        records,
+        columns=FEATURE_COLUMNS + ["PSS_label", "CSS_label", "TSS_label"],
+    )
 
 
 def check_m2_drift(db_connection) -> list[DriftCheckResult]:
@@ -417,7 +374,7 @@ def check_m2_drift(db_connection) -> list[DriftCheckResult]:
             skipped = DriftCheckResult(
                 model_name="sensitivity", check_type="weekly", metric_name="f1",
                 metric_value=None, threshold=M2_CLASS_F1_FLOOR, breached=False,
-                sample_size=0, error="insufficient labelled data in trailing window",
+                sample_size=0, error="insufficient labeled data in trailing window",
             )
             _log_result_to_mlflow(skipped)
             return [skipped]
@@ -472,69 +429,18 @@ def check_m2_drift(db_connection) -> list[DriftCheckResult]:
 # ---------------------------------------------------------------------------
 
 def _load_recent_m4_eval_set(db_connection, days: int = M4_WINDOW_DAYS) -> pd.DataFrame | None:
-    """Builds a fresh M4 evaluation set the same way churn/train.py's real
-    path does, scoped to customers active within the trailing window."""
-    with db_connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT DISTINCT c.id
-            FROM customers c
-            JOIN orders o ON o.customer_id = c.id
-            WHERE o.ordered_at >= NOW() - INTERVAL '%s days'
-            """,
-            (days,)
-        )
-        rows = cursor.fetchall()
+    """Load recent immutable snapshots with finalized observed churn tiers."""
+    from src.models.churn.train import _load_real_customer_rows
 
-    customer_ids = [r[0] for r in rows]
-    if not customer_ids:
-        return None
-
-    records = []
-    for customer_id in customer_ids:
-        rfm = calculate_rfm_scores(customer_id, db_connection)
-        trend = calculate_purchase_frequency_trend(customer_id, db_connection)
-        days_since = rfm["days_since_last_purchase"]
-
-        if days_since == -1:
-            risk_score = 0.5
-        else:
-            risk_score = min(days_since / 180.0, 1.0)
-            if trend == -1:
-                risk_score += 0.3
-            elif trend == 1:
-                risk_score -= 0.3
-            if rfm["rfm_recency_score"] <= 2:
-                risk_score += 0.2
-            if rfm["rfm_frequency_score"] >= 4:
-                risk_score -= 0.2
-        risk_score = float(np.clip(risk_score, 0.0, 1.0))
-
-        if risk_score <= 0.30:
-            tier = "HEALTHY"
-        elif risk_score <= 0.60:
-            tier = "AT_RISK"
-        elif risk_score <= 0.80:
-            tier = "HIGH_RISK"
-        else:
-            tier = "CRITICAL"
-
-        records.append({
-            "past_orders_total": rfm["past_orders_total"],
-            "days_since_last_purchase": days_since,
-            "avg_order_value": rfm["avg_order_value"],
-            "purchase_frequency_trend": trend,
-            "rfm_recency_score": rfm["rfm_recency_score"],
-            "rfm_frequency_score": rfm["rfm_frequency_score"],
-            "rfm_monetary_score": rfm["rfm_monetary_score"],
-            "churn_tier": tier,
-        })
-    return pd.DataFrame.from_records(records)
+    frame = _load_real_customer_rows(
+        db_connection,
+        finalized_within_days=days,
+    )
+    return None if frame.empty else frame
 
 
 def check_m4_drift(db_connection) -> DriftCheckResult:
-    """Monthly M4 overall accuracy check. Alert-only per the Phase 3 task
-    (no auto-retraining rule was specified for M4, unlike M1)."""
+    """Monthly M4 overall accuracy check; alert without auto-retraining."""
     result = DriftCheckResult(
         model_name="churn_risk", check_type="monthly", metric_name="accuracy",
         metric_value=None, threshold=M4_ACCURACY_FLOOR, breached=False, sample_size=0,
@@ -547,13 +453,12 @@ def check_m4_drift(db_connection) -> DriftCheckResult:
 
         eval_df = _load_recent_m4_eval_set(db_connection)
         if eval_df is None or len(eval_df) == 0:
-            result.error = "insufficient labelled data in trailing window"
+            result.error = "insufficient labeled data in trailing window"
             return result
 
         from sklearn.metrics import accuracy_score
-        feature_cols = ["past_orders_total", "days_since_last_purchase", "avg_order_value",
-                         "purchase_frequency_trend", "rfm_recency_score",
-                         "rfm_frequency_score", "rfm_monetary_score"]
+        from src.models.churn.train import FEATURE_COLUMNS
+        feature_cols = FEATURE_COLUMNS
         X = eval_df[feature_cols]
         y_true = eval_df["churn_tier"]
         y_pred = model.predict(X)
@@ -618,10 +523,13 @@ def _check_aggregate_metric(db_connection, *, model_name: str, metric_name: str,
 
 
 def check_m3_drift(db_connection) -> DriftCheckResult:
-    """Check monthly send-time CTR lift against its global baseline."""
+    """Check monthly randomized-control send-time CTR lift."""
     return _check_aggregate_metric(
-        db_connection, model_name="send_time", metric_name="ctr_improvement",
-        threshold=M3_CTR_IMPROVEMENT_FLOOR, breach_when_below=True,
+        db_connection,
+        model_name="send_time",
+        metric_name="randomized_policy_ctr_improvement",
+        threshold=M3_POLICY_CTR_IMPROVEMENT_FLOOR,
+        breach_when_below=True,
         minimum_samples=M3_RETRAIN_MIN_SAMPLES,
     )
 

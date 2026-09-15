@@ -2,7 +2,7 @@
 Revluma RFM Sync Job
 ======================
 Scheduled batch job that runs after Shopify sync (2.BE1.5). Computes RFM
-scores for all customers in a store, segments them into behavioural
+scores for all customers in a store, segments them into behavioral
 groups, and persists results back into PostgreSQL.
 
 Usage:
@@ -34,7 +34,7 @@ from src.features.pipeline import calculate_rfm_scores
 
 def get_rfm_segment(r: int, f: int, m: int) -> str:
     """
-    Determines a customer's behavioural segment from their RFM scores.
+    Determines a customer's behavioral segment from their RFM scores.
 
     Rules are evaluated in priority order - first match wins. No overlapping
     ambiguity. Always returns a valid segment string, never raises.

@@ -1,7 +1,7 @@
 """
 M5 — Offer Value Optimizer: Training Script
 ============================================
-Model type  : GradientBoostingRegressor
+Model type  : HistGradientBoostingRegressor
 Purpose     : Learns the "Base Discount Calculation" (Step 2 of the 5-Step
               offer-value decision logic — i.e. the discount percentage a price-sensitive shopper
               needs, BEFORE customer-history modifiers (Step 3) or hard
@@ -52,14 +52,14 @@ import logging
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import mlflow
 import mlflow.sklearn
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
-from src.config.mlflow_config import get_or_create_experiment
+from src.config.mlflow_config import get_or_create_experiment, get_run_url
 from src.features.pipeline import (
     calculate_coupon_usage_pct,
     calculate_failed_coupon_count,
@@ -75,6 +75,8 @@ PSS_NUDGE_FLOOR = 35
 CSS_NUDGE_FLOOR = 35
 MAX_DISCOUNT_PCT = 25.0
 MIN_REAL_RECOVERED_ORDERS = 200
+MAX_MAE = 5.0
+MIN_R2 = 0.70
 
 # Model feature contract — exactly the 5 inputs Step 2's formula uses.
 # css_score / tss_score are used ONLY to decide which synthetic rows are
@@ -132,10 +134,9 @@ def _generate_synthetic_training_data(n: int = 6000, seed: int = 42):
 
     pss_score = rng.uniform(0, 100, n)
     css_score = rng.uniform(0, 100, n)
-    # tss_score: still no real backing data anywhere in pipeline.py or M2's
-    # README (flagged first in the pre-I3 version of this file) — same
-    # synthetic placeholder distribution as before, skewed low with a tail
-    # so the TSS gate is meaningfully exercised.
+    # TSS is used by the pre-model rule gate rather than as a learned feature.
+    # The development distribution is skewed low with a tail so that gate is
+    # still exercised.
     tss_score = rng.beta(2, 5, n) * 100
 
     past_orders_with_coupon_pct = rng.uniform(0, 1, n)
@@ -228,13 +229,30 @@ def load_training_data(n: int = 6000, seed: int = 42, db_connection=None):
     return train_test_split(X, y, test_size=0.2, random_state=42)
 
 
-def build_model() -> GradientBoostingRegressor:
-    """Gradient Boosting regressor predicting the Step 2 base discount %."""
-    return GradientBoostingRegressor(
-        n_estimators=150,
+def build_model() -> HistGradientBoostingRegressor:
+    """Histogram boosting regressor predicting the Step 2 base discount %."""
+    return HistGradientBoostingRegressor(
+        max_iter=200,
         learning_rate=0.05,
-        max_depth=3,
+        max_leaf_nodes=15,
+        min_samples_leaf=20,
+        l2_regularization=1.0,
         random_state=42,
+    )
+
+
+def _is_production_eligible(
+    used_real_data: bool,
+    below_minimum: bool,
+    mae: float,
+    r2: float,
+) -> bool:
+    """Require enough real outcomes and both regression quality gates."""
+    return (
+        used_real_data
+        and not below_minimum
+        and mae <= MAX_MAE
+        and r2 >= MIN_R2
     )
 
 
@@ -242,18 +260,19 @@ def train(run_name: str = "m5-offervalue-training", db_connection=None) -> dict:
     """Full training loop with MLflow tracking."""
     get_or_create_experiment()
 
-    print("Loading synthetic training data (ungated Step-2 regime)...")
+    source = "real recovered-order" if db_connection is not None else "synthetic"
+    print(f"Loading {source} training data (ungated Step-2 regime)...")
     X_train, X_test, y_train, y_test = load_training_data(n=6000, db_connection=db_connection)
     used_real_data = db_connection is not None
+    sample_count = len(X_train) + len(X_test)
+    below_minimum = used_real_data and sample_count < MIN_REAL_RECOVERED_ORDERS
 
-    print("Building GradientBoostingRegressor...")
+    print("Building HistGradientBoostingRegressor...")
     model = build_model()
 
     with mlflow.start_run(run_name=run_name) as run:
         mlflow.set_tag("model", "offer_value")
         mlflow.set_tag("data_source", "real" if used_real_data else "synthetic")
-        mlflow.set_tag("production_eligible", str(used_real_data and len(X_train) + len(X_test) >= MIN_REAL_RECOVERED_ORDERS).lower())
-
         print("Training model...")
         model.fit(X_train, y_train)
 
@@ -265,36 +284,59 @@ def train(run_name: str = "m5-offervalue-training", db_connection=None) -> dict:
         rmse = float(np.sqrt(mean_squared_error(y_test, pred)))
         mae = float(mean_absolute_error(y_test, pred))
         r2 = float(r2_score(y_test, pred))
+        quality_gates_passed = mae <= MAX_MAE and r2 >= MIN_R2
+        production_eligible = _is_production_eligible(
+            used_real_data,
+            below_minimum,
+            mae,
+            r2,
+        )
+        mlflow.set_tag("below_minimum_real_rows", str(below_minimum).lower())
+        mlflow.set_tag("quality_gates_passed", str(quality_gates_passed).lower())
+        mlflow.set_tag("production_eligible", str(production_eligible).lower())
 
         mlflow.log_params({
-            "n_estimators": 150,
+            "max_iter": 200,
             "learning_rate": 0.05,
-            "max_depth": 3,
+            "max_leaf_nodes": 15,
+            "min_samples_leaf": 20,
+            "l2_regularization": 1.0,
             "random_state": 42,
             "max_discount_pct": MAX_DISCOUNT_PCT,
             "tss_threshold": TSS_THRESHOLD,
             "pss_nudge_floor": PSS_NUDGE_FLOOR,
             "css_nudge_floor": CSS_NUDGE_FLOOR,
+            "minimum_real_recovered_orders": MIN_REAL_RECOVERED_ORDERS,
+            "maximum_mae": MAX_MAE,
+            "minimum_r2": MIN_R2,
             "feature_columns": FEATURE_COLUMNS,
         })
 
         mlflow.log_metrics({"rmse": rmse, "mae": mae, "r2": r2})
 
-        registration = {"registered_model_name": "offer_value"} if (
-            used_real_data and len(X_train) + len(X_test) >= MIN_REAL_RECOVERED_ORDERS
-        ) else {}
+        registration = (
+            {"registered_model_name": "offer_value"}
+            if production_eligible
+            else {}
+        )
         mlflow.sklearn.log_model(model, "model", **registration)
 
         print("\n--- M5 OFFER VALUE MODEL METRICS (Step 2 base discount) ---")
         print(f"RMSE: {rmse:.4f}")
         print(f"MAE:  {mae:.4f}")
         print(f"R2:   {r2:.4f}")
+        print(f"Quality gates passed: {quality_gates_passed}")
+        print(f"Production eligible: {production_eligible}")
         print(f"\n[OK] MLflow Run ID: {run.info.run_id}")
         print(f"MLflow Run Name: {run.info.run_name}")
 
         return {"model": model, "metrics": {"rmse": rmse, "mae": mae, "r2": r2},
-                "run_id": run.info.run_id, "used_real_data": used_real_data,
-                "production_eligible": bool(registration)}
+                "run_id": run.info.run_id,
+                "run_url": get_run_url(run.info.run_id, run.info.experiment_id),
+                "used_real_data": used_real_data,
+                "below_minimum_threshold": below_minimum,
+                "quality_gates_passed": quality_gates_passed,
+                "production_eligible": production_eligible}
 
 
 if __name__ == "__main__":

@@ -92,15 +92,15 @@ class TestBuildGreeting(unittest.TestCase):
             revenue_anomaly=True,
             revenue_delta_pct=55.0,
         )
-        greeting = _build_greeting("David", state)
+        greeting = _build_greeting("Merchant", state)
         self.assertIn("up", greeting)
 
     def test_greeting_uses_first_name_only(self):
         """Greeting must address only the first name, not the full name."""
         state = _make_state(revenue_anomaly=False, revenue_delta_pct=3.0)
-        greeting = _build_greeting("Sarah Jones", state)
-        self.assertIn("Sarah", greeting)
-        self.assertNotIn("Jones", greeting)
+        greeting = _build_greeting("Store Owner", state)
+        self.assertIn("Store", greeting)
+        self.assertNotIn("Owner", greeting)
 
     def test_greeting_cart_anomaly_when_no_revenue_anomaly(self):
         """When no revenue anomaly but cart_anomaly is true, greeting mentions carts."""

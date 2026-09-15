@@ -29,6 +29,6 @@ def test_intelligence_agent_detects_revenue_and_cart_correlation():
     assert result.recommendations[0]["action"] == "investigate_cross_domain_anomaly"
 
 
-def test_orchestrator_uses_implemented_i_specialists():
+def test_orchestrator_uses_implemented_specialists():
     assert isinstance(_AGENTS["finance"], FinanceAgent)
     assert isinstance(_AGENTS["intelligence"], IntelligenceAgent)

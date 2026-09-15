@@ -1,5 +1,8 @@
 # P4.1 — Load Test Report
 
+> Historical point-in-time evidence only. The recorded run missed the required
+> p99 target and is not a current performance or production-readiness sign-off.
+
 **Date**: 2 August 2026  
 **Tool**: Locust 2.46.3  
 **Server**: uvicorn 4 workers, `src.serving.api:app`, `127.0.0.1:8000`  
@@ -7,7 +10,7 @@
 
 ---
 
-## Final Results (Optimised Run)
+## Final Results (Optimized Run)
 
 ### Per-Endpoint Latency Percentiles (ms)
 
@@ -32,7 +35,7 @@ Two production-grade optimisations were applied to `api.py` during this phase:
 
 ### 1. Async Thread Pool Inference (`_run_inference`)
 
-scikit-learn's `predict_proba` and `predict` are synchronous, blocking calls. Inside FastAPI's async endpoints, a blocking call blocks the entire asyncio event loop — meaning no other request can be processed until the current inference completes. This was the primary cause of high latency and connection-refused errors in the initial unoptimised run.
+scikit-learn's `predict_proba` and `predict` are synchronous, blocking calls. Inside FastAPI's async endpoints, a blocking call blocks the entire asyncio event loop — meaning no other request can be processed until the current inference completes. This was the primary cause of high latency and connection-refused errors in the initial unoptimized run.
 
 **Fix applied**: A `_run_inference()` helper was added that offloads each model call to Python's default thread pool executor using `asyncio.get_event_loop().run_in_executor()`. This frees the event loop to handle other incoming requests whilst inference runs in a background thread.
 
@@ -49,7 +52,7 @@ The server was run with `--workers 4`, distributing incoming connections across 
 
 ---
 
-## Unoptimised vs Optimised Comparison
+## Unoptimized vs Optimized Comparison
 
 | Metric | Before (1 worker, blocking) | After (4 workers, thread pool) |
 | :--- | ---: | ---: |
@@ -115,7 +118,7 @@ The local test measured p99 at **1,300 ms** — exceeding the target by 4×.
 
 As documented in the analysis section above, the gap is entirely attributable to
 the test environment (Locust and uvicorn sharing the same laptop CPU) and is not
-representative of production behaviour. Isolated per-request inference time is
+representative of production behavior. Isolated per-request inference time is
 **2–9 ms**, which is well within the 300 ms budget.
 
 ### Required Action Before P4.3 Sign-Off

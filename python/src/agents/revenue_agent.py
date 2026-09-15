@@ -29,7 +29,7 @@ class RevenueAgent(BaseAgent):
             return AgentResult.error("revenue", type(exc).__name__)
 
     def structured_output(self, business_state, memories: list[dict], question: str) -> dict:
-        """Return the exact six-field D5 specialist boundary."""
+        """Return the exact six-field specialist boundary."""
         result = self.analyze(business_state, memories, question)
         findings = {
             "status": result.status,

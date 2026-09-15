@@ -26,7 +26,7 @@ accepts that storage alias but always emits the canonical `timestamp` field.
   timestamp: string;             // ISO 8601 UTC — REQUIRED. Backend must forward this field
                                  // as 'timestamp' to the Python service even if the DB
                                  // stores it as 'created_at'.
-  session_id: string;            // REQUIRED for behavioural grouping
+  session_id: string;            // REQUIRED for behavioral grouping
   customer_id?: string | null;   // optional — use 'customer_id' (not 'user_id')
   anonymous_id?: string | null;  // optional — cookie/localstorage fallback
   store_id: string;              // REQUIRED
@@ -197,66 +197,72 @@ accepts that storage alias but always emits the canonical `timestamp` field.
 ## 3. Shopper Feature Vector (ML Contract)
 
 ### 3.1 Vector Size & Constraint
-- **Fixed Size:** 30 features.
-- **Critical Constraint:** Feature names MUST exactly match `pipeline.py`. No aliases, renaming, or deviations are allowed.
+- **Fixed Size:** 34 features.
+- **Critical Constraint:** Emitted feature names MUST exactly match `pipeline.py`. Compatibility aliases are accepted only at documented Python API boundaries and are never emitted by the pipeline.
 
-### 3.2 Feature Definitions (30 Features)
+### 3.2 Feature Definitions (34 Features)
 
-**Behavioural Features:**
+**Behavioral Features:**
 1. `scroll_depth_pct`
 2. `tab_switch_count`
 3. `time_on_checkout_step_sec`
 4. `cursor_hesitation`
 5. `checkout_step_reached`
+6. `cart_item_add_count`
+7. `cart_item_remove_count`
 
 **Transactional Features:**
-6. `past_orders_total`
-7. `past_orders_with_coupon_pct`
-8. `days_since_last_purchase`
-9. `avg_order_value`
-10. `purchase_frequency_trend`
-11. `visited_coupon_page`
-12. `searched_discount_terms`
+8. `past_orders_total`
+9. `past_orders_with_coupon_pct`
+10. `days_since_last_purchase`
+11. `avg_order_value`
+12. `purchase_frequency_trend`
+13. `visited_coupon_page`
+14. `searched_discount_terms`
+15. `coupon_field_visited`
 
 **Temporal / Contextual Features:**
-13. `abandoned_at_shipping_reveal`
-14. `failed_payment_attempt`
-15. `local_hour_of_session`
-16. `day_of_week_session`
-17. `time_on_page_ms`
+16. `abandoned_at_shipping_reveal`
+17. `failed_payment_attempt`
+18. `failed_payment_count`
+19. `local_hour_of_session`
+20. `day_of_week_session`
+21. `time_on_page_ms`
 
 **Extended M2 Sensitivity Signals:**
-18. `google_shopping_referrer`
-19. `time_first_view_to_cart_add_hrs`
-20. `sale_period_purchase_only`
-21. `failed_coupon_attempt`
-22. `merchant_avg_order_value`
-23. `account_creation_abandonment`
-24. `repeat_checkout_attempts`
-25. `device_type_mobile`
-26. `shipping_eta_dwell_sec`
-27. `trust_page_visited`
+22. `google_shopping_referrer`
+23. `time_first_view_to_cart_add_hrs`
+24. `sale_period_purchase_only`
+25. `failed_coupon_attempt`
+26. `merchant_avg_order_value`
+27. `account_creation_abandonment`
+28. `repeat_checkout_attempts`
+29. `device_type_mobile`
+30. `shipping_eta_dwell_sec`
+31. `trust_page_visited`
 
 **New Smart Features:**
-28. `failed_coupon_count`
-29. `copied_product_title`
-30. `cart_value_vs_avg_order_value_ratio`
+32. `failed_coupon_count`
+33. `copied_product_title`
+34. `cart_value_vs_avg_order_value_ratio`
 
-`cursor_hesitation` is the canonical 0-10 score used by M1, M2, and M5. It is
+`cursor_hesitation` is the canonical 0-10 score used by M1 and M2. It is
 calculated from the longest matched `FIELD_FOCUS` to `FIELD_BLUR` duration:
 
 ```text
 min(floor(max_focus_blur_duration_ms / 1000), 10)
 ```
 
-Missing or invalid focus/blur pairs produce `0`. The M1 prediction boundary
-temporarily accepts `cursor_hesitation_count` as a same-unit legacy alias, but
-the pipeline, model trainers, new APIs, and database integrations must emit
-`cursor_hesitation` only. The canonical value wins if both are supplied.
+Missing or invalid focus/blur pairs produce `0`. Prediction boundaries accept
+`cursor_hesitation_count` and `cursor_hesitation_score` as same-unit legacy
+aliases. M2 also accepts `cursor_hesitation_ms` as raw milliseconds and converts
+it exactly once. The pipeline, model trainers, new APIs, and database
+integrations use `cursor_hesitation`; the canonical value wins when both forms
+are supplied.
 
 ### 3.3 M4 Churn Feature Contract
 
-M4 does not consume the 30-feature shopper vector above. Its assignment
+M4 does not consume the 34-feature shopper vector above. Its source requirement
 heading says 24 features but names exactly 21. The named 21 are authoritative;
 three undocumented inputs must not be invented. The canonical ordered list is
 defined by `FEATURE_COLUMNS` in `python/src/models/churn/train.py` and repeated
@@ -275,12 +281,12 @@ forms are present.
 
 ---
 
-## 4. Checkout Step Normalisation
+## 4. Checkout Step Normalization
 
 ### 4.1 Purpose & Rules
-Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown step MUST safely fall back to `0` (not reached/unknown) without breaking the pipeline.
+Normalize platform-specific checkout flows into a unified 0-5 scale. Any unknown step MUST safely fall back to `0` (not reached/unknown) without breaking the pipeline.
 
-### 4.2 Normalised Scale
+### 4.2 Normalized Scale
 | Step Index | Meaning |
 | :--- | :--- |
 | 0 | Landing / Entry |
@@ -291,7 +297,7 @@ Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown
 | 5 | Purchase Complete |
 
 ### 4.3 Shopify Mapping
-| Shopify Event | Normalised Step |
+| Shopify Event | Normalized Step |
 | :--- | :--- |
 | `product page` | 0 |
 | `cart` | 1 |
@@ -301,7 +307,7 @@ Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown
 | `thank_you` | 5 |
 
 ### 4.4 WooCommerce Mapping
-| WooCommerce Hook | Normalised Step |
+| WooCommerce Hook | Normalized Step |
 | :--- | :--- |
 | `product_view` | 0 |
 | `cart` | 1 |
@@ -316,7 +322,7 @@ Normalise platform-specific checkout flows into a unified 0-5 scale. Any unknown
 
 - **Pixel (Future JS SDK):** Only emits events. No transformation logic beyond the envelope.
 - **Backend (2.BE1.6):** Validates and stores events. Normalizes checkout steps. Forwards clean events to the ML pipeline.
-- **ML Pipeline (`pipeline.py`):** Consumes normalized events only. Computes the 30-feature vector strictly as defined.
+- **ML Pipeline (`pipeline.py`):** Consumes normalized events only. Computes the 34-feature vector strictly as defined.
 
 ## 6. Status
 

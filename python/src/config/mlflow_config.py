@@ -12,7 +12,7 @@ import mlflow
 
 logger = logging.getLogger("rev.config.mlflow")
 
-# Load .env from backend/ root (one level above python/)
+# Load the untracked python/.env file without printing any of its values.
 try:
     from dotenv import load_dotenv
     _env_path = os.path.abspath(

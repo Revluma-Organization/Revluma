@@ -1,128 +1,57 @@
-# Offer Value Model — Training & System Spec
+# M5 — Offer value optimizer
 
-## 1. Problem Statement
-This model determines the optimal discount percentage required to recover an abandoning or hesitant customer, given that M2 has already classified their price/convenience/trust sensitivity.
-It predicts:
-"What discount % (0–25%) would have converted this user?"
-This is a revenue optimization regression problem, gated by hard business rules evaluated before the model ever runs.
+M5 recommends the smallest useful recovery incentive while protecting margin.
+It combines a five-feature histogram-gradient-boosting regressor with
+deterministic gates, customer modifiers, merchant caps, and an exact-formula
+fallback.
 
-## 2. Target Variable Definition
-**Target:** `discount_pct`
-**Continuous regression target:**
-- Range: 0 → 25
+## Decision flow
 
-**Definition:**
-The discount percentage that historically:
-- led to conversion OR recovery
-- prevented abandonment
+1. A trust score of at least 60 returns `TRUST_SIGNAL` with no discount.
+2. PSS and CSS both below 35 return `NUDGE` with no discount.
+3. Otherwise, the model estimates a base discount from five inputs:
+   `pss_score`, `past_orders_with_coupon_pct`, `visited_coupon_page`,
+   `searched_discount_terms`, and `failed_coupon_count`.
+4. Rules adjust the result using `ltv`, `past_orders_total`, `cart_value`,
+   `churn_tier`, `is_first_purchase`, and `failed_payment_count`.
+5. The result is clipped to 0–25% and to the merchant's lower configured
+   `store_config.discount_cap`, when available.
+6. The final category may be `TRUST_SIGNAL`, `NUDGE`, `PAYMENT_FIX`,
+   `VIP_ACCESS`, `FREE_SHIPPING`, `DISCOUNT_PLUS_FREE_SHIPPING`,
+   `PERCENTAGE_DISCOUNT`, or `CART_REMINDER`.
 
-**Important:**
-- 0 means: no discount needed (or a hard gate forced it to 0 — see Section 5)
-- >0 means: discount required to influence conversion
+The rule context also includes `css_score`, `tss_score`, and
+`recovery_action`. These are not learned regressor inputs. The formula fallback
+uses the same five-input relationship as synthetic training and is identified by
+`fallback=true` and model version `1.0.0-formula-fallback`.
 
-## 3. Feature Inputs
+## Training and registration
 
-**3.1 M2 Sensitivity Outputs**
-- `pss_score` (int, 0–100) — Price Sensitivity Score
-- `css_score` (int, 0–100) — Convenience Sensitivity Score
-- `tss_score` (int, 0–100) — Trust Sensitivity Score — **flagged: no backing function or data source exists anywhere in `pipeline.py` or M2's own README yet.** Accepted as an input with a safe default of 0 until M2's owner (Engineer 3) implements real output.
+The regressor uses 200 boosting iterations, `learning_rate=0.05`, 15 maximum
+leaf nodes, 20 minimum samples per leaf, L2 regularization of 1.0, and
+`random_state=42`. This configuration beat the prior gradient boosting model
+on both validation and untouched test RMSE, MAE, and R². Local development
+training starts from 6,000 deterministic synthetic sessions, removes rows
+blocked by the pre-model gates, and logs the remaining split. Metrics are
+calculated after clipping predictions to 0–25%.
 
-**3.2 Behavioral Features**
-- `calculate_cursor_hesitation(events)` — 0–10 focus/blur duration score; HIGH price signal
-- `calculate_visited_coupon_page(events)`
-- `calculate_searched_discount_terms(events)`
+Real training reads converted recovery orders, their recorded `discount_pct`,
+the abandoned-cart PSS value, and the corresponding session events. A caller
+requesting real data receives an error rather than a silent synthetic fallback
+when usable rows are unavailable.
 
-**3.3 Purchase History Features**
-- `calculate_avg_order_value(customer_id, db)`
-- `calculate_past_orders_total(customer_id, db)`
-- `calculate_coupon_usage_pct(customer_id, db)` — returned as `past_orders_with_coupon_pct`, a 0.0–1.0 ratio (not a 0–100 percentage — this was a real scale bug caught in `api.py`'s earlier draft)
+A run is registered as `offer_value` only when it uses at least 200 real
+recovered orders, has MAE ≤ 5.0, and has R² ≥ 0.70. Synthetic and below-gate
+runs are logged but not registered. Serving loads only
+`models:/offer_value/Production`. Per-run metrics must be read from MLflow;
+synthetic metrics do not establish real-world performance or fairness.
 
-**3.4 Risk Features**
-- `calculate_days_since_last_purchase(customer_id, db)`
+## Backend dependencies
 
-**3.5 Note on RFM**
-Unlike M4, this model does not consume RFM sub-scores directly — price/convenience/trust sensitivity (PSS/CSS/TSS) already captures the relevant risk signal for discount sizing.
+Real training requires finalized recovered-order outcomes, `orders.discount_pct`,
+session linkage, persisted PSS values, and merchant discount constraints. The
+backend migration, webhook, validation, and backfill steps are in
+[`docs/BACKEND_IMPLEMENTATION_GUIDE.md`](../../../../docs/BACKEND_IMPLEMENTATION_GUIDE.md).
 
-## 4. Model Type
-**Algorithm:** GradientBoostingRegressor
-
-**Hyperparameters (as built):**
-- `n_estimators = 150`
-- `max_depth = 3`
-- `learning_rate = 0.05`
-- `random_state = 42`
-
-## 5. Hard Business Constraints
-MUST enforce — **two separate gates**, not one combined rule:
-
-**5.1 Trust Gate**
-If: `tss_score >= 60`
-Then: return `offer_type = TRUST_SIGNAL`, `discount_pct = 0.0` immediately — a discount doesn't address a trust/friction blocker.
-
-**5.2 Nudge Gate**
-If: `pss_score < 35 AND css_score < 35`
-Then: return `offer_type = NUDGE`, `discount_pct = 0.0` — low sensitivity on both axes means a soft reminder is more appropriate than a discount.
-
-**5.3 Upper Bound (all other cases)**
-- Never recommend discount > 25%
-- `clip(predicted_discount, 0, 25)`
-
-## 6. Schema Dependency Warning
-A new DB field is required (unchanged from original spec — still outstanding):
-```sql
-ALTER TABLE orders ADD COLUMN discount_pct FLOAT;
-```
-**Purpose:** store historical discount effectiveness and train the regression
-target. The exact additive migration is assigned to the Backend team in
-`docs/BACKEND_IMPLEMENTATION_GUIDE.md`.
-
-## 7. Output Schema
-
-```json
-{
-  "discount_pct": 0.0 - 25.0,
-  "offer_type": "DISCOUNT | TRUST_SIGNAL | NUDGE",
-  "offer_expires_hours": 24,
-  "minimum_order_value": 0.0,
-  "expected_recovery_probability": 0.0 - 1.0,
-  "margin_cost_estimate_pct": 0.0 - 25.0,
-  "reasoning": "string explanation",
-  "fallback": false
-}
-```
-
-## 8. Business Logic Constraints
-- Must not recommend unnecessary discounting (Section 5 gates run before the model)
-- Must prioritize margin preservation (25% hard cap enforced twice — in training labels and again at prediction time as a safety net)
-- Must align with behavioral signals (hesitation, coupon history, sensitivity scores)
-
-## 9. Training Requirements
-- 3000 synthetic records (per spec) — real labeled recovery-offer data doesn't exist yet, same MVP-stage caveat as M3/M4
-- Must eventually include, once real data exists: discount offered, conversion outcome, behavioral state at decision time
-- Latest synthetic-v2 holdout: **RMSE 2.06, MAE 1.41, R² 0.92**
-- Synthetic metrics are development evidence only and do not establish
-  production performance or fairness.
-- Production registration requires at least 200 real recovered orders,
-  `MAE <= 5.0`, and `R² >= 0.70`.
-
-## 10. Validation Checklist
-- [x] Uses correct pipeline functions (with corrected names/scales)
-- [x] Uses GradientBoostingRegressor
-- [x] Enforces 0–25 clipping (corrected from 0–30)
-- [x] Implements both hard gates (TRUST_SIGNAL + NUDGE, corrected from single PSS guardrail)
-- [ ] Requires `orders.discount_pct` field — still outstanding and assigned to the backend team
-- [x] Produces valid regression output
-- [ ] `tss_score` is real M2 output — currently synthetic placeholder, flagged blocker
-
-## 11. Business Objective
-**Maximize:** recovered revenue, conversion rate
-**Minimize:** unnecessary discount leakage, margin loss
-
-## MLflow
-
-Every run logs an artifact with tag `model=offer_value`. Synthetic or
-below-minimum runs are tagged `production_eligible=false` and are not
-registered. A run is registered under `offer_value` only when it uses at least
-200 real recovered orders and passes both regression quality gates; this exact
-registry name is required for
-`api.py`'s `_load_model("offer_value")` lookup.
+Tests are in `python/tests/test_synthetic_model_quality.py`,
+`python/tests/test_model_registration_guards.py`, and `python/tests/test_api.py`.

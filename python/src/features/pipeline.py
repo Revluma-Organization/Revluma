@@ -1,8 +1,8 @@
 """
 Revluma Feature Engineering Pipeline
 
-Computes the 30-feature Shopper Feature Vector fed into all five ML models.
-All 30 features fully implemented.
+Computes the canonical 34-feature Shopper Feature Vector used across the five
+model workflows. Each model consumes its documented subset.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ logger = logging.getLogger("rev.features.pipeline")
 
 
 # ---------------------------------------------------------------------------
-# BEHAVIOURAL FEATURES — from tracking pixel events (real-time, per session)
+# BEHAVIORAL FEATURES — from tracking pixel events (real-time, per session)
 # ---------------------------------------------------------------------------
 from datetime import datetime
 
@@ -195,7 +195,7 @@ def calculate_cart_item_add_count(events: list) -> int:
 
     Counts the number of add_to_cart events fired during the session.
     A high count with low checkout_step_reached signals window-shopping
-    or gift-list building behaviour — not genuine purchase intent.
+    or gift-list building behavior — not genuine purchase intent.
     Formula: COUNT(events WHERE event_type='add_to_cart').
 
     Models: M1 (Abandonment Probability Predictor)
@@ -239,8 +239,8 @@ def calculate_checkout_step_reached(events: list) -> int:
     """
     Feature: checkout_step_reached
 
-    The highest normalised checkout step number reached before abandonment.
-    Step scale (normalised across Shopify, WooCommerce, BigCommerce):
+    The highest normalized checkout step number reached before abandonment.
+    Step scale (normalized across Shopify, WooCommerce, BigCommerce):
         0 = Never reached checkout
         1 = Cart Review
         2 = Shipping Information
@@ -251,7 +251,7 @@ def calculate_checkout_step_reached(events: list) -> int:
     Formula: MAX(step_number) from checkout_step_completed events WHERE status=ABANDONED.
 
     Models: M1 (Abandonment), M2 (Price/Convenience Classifier)
-    Source: events + checkout table (S5) + platform webhooks (S3)
+    Source: events, checkout records, and platform webhooks
 
     Returns:
         int: 0–5. Default 0.
@@ -670,7 +670,7 @@ def calculate_failed_payment_attempt(events: list) -> bool:
     WooCommerce order.failed) or pixel payment_failed events.
 
     Models: M1 (Abandonment Probability Predictor)
-    Source: platform webhooks (S3) + events payment_failed event type
+    Source: platform webhooks and failed_payment events
 
     Returns:
         bool: True = payment was attempted but failed (shopper had full intent,
@@ -1344,7 +1344,7 @@ def calculate_pss_score(feature_dict: dict) -> int:
 
     score = 0.0
 
-    # HIGH: cursor hesitation (0-30 pts) — normalised over 10 events
+    # HIGH: cursor hesitation (0-30 pts) — normalized over 10 events
     hesitation = feature_dict.get("cursor_hesitation", 0) or 0
     score += min(30.0, (hesitation / 10.0) * 30.0)
 
@@ -1360,7 +1360,7 @@ def calculate_pss_score(feature_dict: dict) -> int:
     if feature_dict.get("searched_discount_terms"):
         score += 15.0
 
-    # LOW: tab switch count (0-10 pts) — normalised over 5 switches
+    # LOW: tab switch count (0-10 pts) — normalized over 5 switches
     tab_switches = feature_dict.get("tab_switch_count", 0) or 0
     score += min(10.0, (tab_switches / 5.0) * 10.0)
 
@@ -1392,7 +1392,7 @@ def calculate_css_score(feature_dict: dict) -> int:
     if feature_dict.get("abandoned_at_shipping_reveal"):
         score += 40.0
 
-    # HIGH: checkout step reached (0-35 pts) — normalised over 5 steps
+    # HIGH: checkout step reached (0-35 pts) — normalized over 5 steps
     step = feature_dict.get("checkout_step_reached", 0) or 0
     score += min(35.0, (step / 5.0) * 35.0)
 
@@ -1404,7 +1404,7 @@ def calculate_css_score(feature_dict: dict) -> int:
     return min(100, int(round(score)))
 def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
     """
-    Assembles the complete 30-feature Shopper Feature Vector for a session.
+    Assembles the complete 34-feature Shopper Feature Vector for a session.
     Calls all individual feature functions and returns the unified dict
     passed to any model at inference time.
 
@@ -1445,6 +1445,8 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
         "time_on_checkout_step_sec":           calculate_time_on_checkout_step(session_events),
         "cursor_hesitation":                   calculate_cursor_hesitation(session_events),
         "checkout_step_reached":               calculate_checkout_step_reached(session_events),
+        "cart_item_add_count":                 calculate_cart_item_add_count(session_events),
+        "cart_item_remove_count":              calculate_cart_item_remove_count(session_events),
         "past_orders_total":                   calculate_past_orders_total(customer_id, db),
         "past_orders_with_coupon_pct":         calculate_coupon_usage_pct(customer_id, db),
         "days_since_last_purchase":            calculate_days_since_last_purchase(customer_id, db),
@@ -1456,7 +1458,6 @@ def compute_feature_vector(customer_id: str, session_events: list, db) -> dict:
         "abandoned_at_shipping_reveal":        calculate_abandoned_at_shipping_reveal(session_events),
         "failed_payment_attempt":              calculate_failed_payment_attempt(session_events),
         "failed_payment_count":                calculate_failed_payment_count(session_events),
-        "cursor_hesitation_score":             calculate_cursor_hesitation(session_events),
         "local_hour_of_session":               calculate_local_hour_of_session(session_events),
         "day_of_week_session":                 calculate_day_of_week_session(session_events),
         "time_on_page_ms":                     calculate_time_on_page_ms(session_events),

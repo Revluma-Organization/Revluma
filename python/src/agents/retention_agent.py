@@ -1,6 +1,6 @@
 """
 Rev Intelligence — Retention Agent
-Responsible for: churn risk, cart recovery, repeat purchase behaviour, LTV.
+Responsible for: churn risk, cart recovery, repeat purchase behavior, LTV.
 Reads from BusinessState. Respects merchant memory constraints.
 
 No database access. Every number this agent states comes from the context
@@ -110,7 +110,7 @@ class RetentionAgent(BaseAgent):
             return AgentResult.error("retention", error_type)
 
     def structured_output(self, business_state, memories: list[dict], question: str) -> dict:
-        """The S5 agent output schema — six fields, no free-form text.
+        """The agent output schema — six fields, no free-form text.
 
         Same guarantee as analyze(): this never raises. A caller serialising
         agent output cannot be left holding an exception instead of a schema,
@@ -135,7 +135,7 @@ class RetentionAgent(BaseAgent):
             }
 
     def _structured_output(self, business_state, memories: list[dict], question: str) -> dict:
-        """The S5 agent output schema — six fields, no free-form text.
+        """The agent output schema — six fields, no free-form text.
 
         analyze() still returns an AgentResult because BaseAgent and the
         Orchestrator both require it and neither file is in scope to change.
@@ -433,9 +433,9 @@ class RetentionAgent(BaseAgent):
         if bs.churn_risk_count and bs.churn_risk_count > 0:
             recommendations.append({
                 "action": "launch_winback_sequence",
-                "description": f"Send personalised win-back sequence to {bs.churn_risk_count} at-risk customers "
+                "description": f"Send personalized win-back sequence to {bs.churn_risk_count} at-risk customers "
                                f"via {preferred_channel}. Lead with product value, not discount.",
-                "predicted_impact": "Estimated 18-28% win-back rate based on segment behaviour",
+                "predicted_impact": "Estimated 18-28% win-back rate based on segment behavior",
                 "confidence": 0.70,
                 "category": "churn_prevention",
                 "params": {
@@ -449,7 +449,7 @@ class RetentionAgent(BaseAgent):
             recommendations.append({
                 "action": "vip_reengagement",
                 "description": f"Re-engage {bs.vip_inactive_count} VIP customers inactive 45+ days. "
-                               f"Use personalised recommendation, no discount — they buy on value.",
+                               f"Use personalized recommendation, no discount — they buy on value.",
                 "predicted_impact": "VIPs have 3-4x higher conversion rate on re-engagement vs standard customers",
                 "confidence": 0.78,
                 "category": "retention",

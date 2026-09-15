@@ -18,7 +18,7 @@ Design rules:
     not a data-driven specialist. It receives creative assets, not BusinessState.
 
 Audience targeting dimension is computed heuristically from visual signals
-(colour palette, imagery type, product category) and is explicitly marked
+(color palette, imagery type, product category) and is explicitly marked
 as inferred, not ground-truth.
 """
 
@@ -219,7 +219,7 @@ Scoring rules:
 - 0.75+ = Strong. 0.45–0.74 = Moderate. Below 0.45 = Weak.
 - Hook score: 0.75+ means it stops scroll in under 3 seconds.
 - Copy score: 0.75+ means no friction between benefit and CTA.
-- Visuals score: 0.75+ means imagery, colour, and product are cohesive.
+- Visuals score: 0.75+ means imagery, color, and product are cohesive.
 - Offer score: 0.75+ means the discount/value is immediately understood.
 - Be honest. A mediocre ad should score 0.4–0.55, not 0.7.
 """
