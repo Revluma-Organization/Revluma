@@ -22,6 +22,7 @@ const workspaceRoutes = require("./route/workspaceRoute");
 const subscriptionRoutes = require("./route/subscriptionRoute");
 const revRoutes           = require("./route/revRoute");
 const memoryRoutes        = require("./route/memoryRoute");
+const internalRoutes      = require('./route/internalRoute');
 
 
 
@@ -91,6 +92,7 @@ app.use("/api/v1/workspace", workspaceRoutes);
 app.use("/api/v1/subscriptions", subscriptionRoutes);
 app.use("/api/v1/rev",           revRoutes);
 app.use("/api/v1/memory",        memoryRoutes);
+app.use('/internal', internalRoutes);
 
 
 // ── Health check
