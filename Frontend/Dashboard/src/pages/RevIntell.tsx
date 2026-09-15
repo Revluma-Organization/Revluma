@@ -37,32 +37,32 @@ type ResponseType =
   | "clarification" | "knowledge" | "action_plan" | "error";
 
 interface RevResponse {
-  response_type: ResponseType;
-  text?: string;
-  situation?: string;
-  insight?: string;
-  implication?: string;
+  response_type:   ResponseType;
+  text?:           string;
+  situation?:      string;
+  insight?:        string;
+  implication?:    string;
   recommendation?: string;
-  confidence?: { score: number; basis: string };
-  actions?: Array<{ label: string; tool: string | null; params: Record<string, unknown> }>;
-  agents_used?: string[];
-  warnings?: string[];
+  confidence?:     { score: number; basis: string };
+  actions?:        Array<{ label: string; tool: string | null; params: Record<string, unknown> }>;
+  agents_used?:    string[];
+  warnings?:       string[];
 }
 
 interface Message {
-  id: string;
-  role: "user" | "rev";
-  content: string | RevResponse;
-  timestamp: Date;
+  id:          string;
+  role:        "user" | "rev";
+  content:     string | RevResponse;
+  timestamp:   Date;
   isStreaming?: boolean;
-  hasError?: boolean;
-  errorCode?: string;
+  hasError?:   boolean;
+  errorCode?:  string;
 }
 
 interface Conversation {
-  id: string;
-  title: string;
-  message_count: number;
+  id:               string;
+  title:            string;
+  message_count:    number;
   last_activity_at: string;
 }
 
@@ -70,26 +70,26 @@ interface Conversation {
 
 function cleanError(code?: string, _raw?: string): string {
   switch (code) {
-    case "INTELLIGENCE_TIMEOUT": return "Rev is taking longer than usual. Try again.";
-    case "INTELLIGENCE_UNAVAILABLE": return "Rev is momentarily unavailable. Try again in a moment.";
+    case "INTELLIGENCE_TIMEOUT":      return "Rev is taking longer than usual. Try again.";
+    case "INTELLIGENCE_UNAVAILABLE":  return "Rev is momentarily unavailable. Try again in a moment.";
     case "INTELLIGENCE_INVALID_RESPONSE": return "Rev had an issue preparing a response. Try again.";
-    case "INTELLIGENCE_AUTH_FAILED": return "Rev intelligence is temporarily offline.";
+    case "INTELLIGENCE_AUTH_FAILED":  return "Rev intelligence is temporarily offline.";
     case "INTELLIGENCE_NOT_CONFIGURED": return "Rev Intelligence is being set up. Check back shortly.";
-    case "RATE_LIMITED": return "You're sending messages too quickly. Wait a moment.";
-    case "VALIDATION_ERROR": return "Your message couldn't be sent. Please check and try again.";
-    default: return "Rev couldn't process this right now. Try again in a moment.";
+    case "RATE_LIMITED":              return "You're sending messages too quickly. Wait a moment.";
+    case "VALIDATION_ERROR":          return "Your message couldn't be sent. Please check and try again.";
+    default:                          return "Rev couldn't process this right now. Try again in a moment.";
   }
 }
 
 // ── Starters ──────────────────────────────────────────────────────────────────
 
 const STARTERS = [
-  { icon: TrendingUp, label: "Revenue", sub: "What happened to my revenue this week?", color: "#5865f2" },
-  { icon: ShoppingCart, label: "Cart Recovery", sub: "Which carts should I prioritise recovering?", color: "#059669" },
-  { icon: Users, label: "Churn Risk", sub: "Which customers are about to leave?", color: "#d97706" },
-  { icon: BarChart2, label: "Briefing", sub: "What do I need to know today?", color: "#7c3aed" },
-  { icon: Zap, label: "Trends", sub: "What's moving in my category right now?", color: "#db2777" },
-  { icon: RefreshCw, label: "Win-back", sub: "Draft a sequence for inactive customers.", color: "#0891b2" },
+  { icon: TrendingUp,   label: "Revenue",      sub: "What happened to my revenue this week?",       color: "#5865f2" },
+  { icon: ShoppingCart, label: "Cart Recovery", sub: "Which carts should I prioritise recovering?",  color: "#059669" },
+  { icon: Users,        label: "Churn Risk",   sub: "Which customers are about to leave?",          color: "#d97706" },
+  { icon: BarChart2,    label: "Briefing",     sub: "What do I need to know today?",                color: "#7c3aed" },
+  { icon: Zap,          label: "Trends",       sub: "What's moving in my category right now?",      color: "#db2777" },
+  { icon: RefreshCw,    label: "Win-back",     sub: "Draft a sequence for inactive customers.",     color: "#0891b2" },
 ];
 
 // ── Orb components ────────────────────────────────────────────────────────────
@@ -98,21 +98,15 @@ function OrbHero({ size = 90 }: { size?: number }) {
   return (
     <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       <motion.img src={revIntellLogo} alt="Rev"
-        style={{
-          width: "100%", height: "100%", objectFit: "contain", position: "relative", zIndex: 2,
-          filter: "drop-shadow(0 0 10px rgba(100,160,255,0.9)) drop-shadow(0 0 20px rgba(88,101,242,0.6))"
-        }}
+        style={{ width: "100%", height: "100%", objectFit: "contain", position: "relative", zIndex: 2,
+          filter: "drop-shadow(0 0 10px rgba(100,160,255,0.9)) drop-shadow(0 0 20px rgba(88,101,242,0.6))" }}
         animate={{ scale: [1, 1.06, 1] }}
         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} />
-      <motion.div style={{
-        position: "absolute", inset: -size * 0.3, borderRadius: "50%",
-        border: "1.5px solid rgba(100,160,255,0.5)", zIndex: 1
-      }}
+      <motion.div style={{ position: "absolute", inset: -size * 0.3, borderRadius: "50%",
+        border: "1.5px solid rgba(100,160,255,0.5)", zIndex: 1 }}
         animate={{ rotate: 360 }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }}>
-        <div style={{
-          position: "absolute", top: "50%", right: -3, width: 6, height: 6, borderRadius: "50%",
-          background: "#7eb8ff", transform: "translateY(-50%)", boxShadow: "0 0 8px rgba(100,160,255,0.9)"
-        }} />
+        <div style={{ position: "absolute", top: "50%", right: -3, width: 6, height: 6, borderRadius: "50%",
+          background: "#7eb8ff", transform: "translateY(-50%)", boxShadow: "0 0 8px rgba(100,160,255,0.9)" }} />
       </motion.div>
     </div>
   );
@@ -121,25 +115,17 @@ function OrbHero({ size = 90 }: { size?: number }) {
 function OrbAvatar() {
   return (
     <div style={{ position: "relative", width: 32, height: 32, flexShrink: 0, marginTop: 2 }}>
-      <div style={{
-        position: "absolute", inset: -4, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(88,101,242,0.15) 0%, transparent 70%)"
-      }} />
-      <motion.div style={{
-        position: "absolute", inset: -6, borderRadius: "50%",
-        border: "1px solid rgba(100,160,255,0.35)"
-      }}
+      <div style={{ position: "absolute", inset: -4, borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(88,101,242,0.15) 0%, transparent 70%)" }} />
+      <motion.div style={{ position: "absolute", inset: -6, borderRadius: "50%",
+        border: "1px solid rgba(100,160,255,0.35)" }}
         animate={{ rotate: 360 }} transition={{ duration: 4, repeat: Infinity, ease: "linear" }}>
-        <div style={{
-          position: "absolute", top: "50%", right: -2.5, width: 4, height: 4, borderRadius: "50%",
-          background: "#7eb8ff", transform: "translateY(-50%)", boxShadow: "0 0 5px rgba(100,160,255,0.9)"
-        }} />
+        <div style={{ position: "absolute", top: "50%", right: -2.5, width: 4, height: 4, borderRadius: "50%",
+          background: "#7eb8ff", transform: "translateY(-50%)", boxShadow: "0 0 5px rgba(100,160,255,0.9)" }} />
       </motion.div>
       <motion.img src={revIntellLogo} alt="Rev"
-        style={{
-          width: 32, height: 32, objectFit: "contain", position: "relative", zIndex: 2,
-          filter: "drop-shadow(0 0 6px rgba(100,160,255,0.8))"
-        }}
+        style={{ width: 32, height: 32, objectFit: "contain", position: "relative", zIndex: 2,
+          filter: "drop-shadow(0 0 6px rgba(100,160,255,0.8))" }}
         animate={{ scale: [1, 1.06, 1] }}
         transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }} />
     </div>
@@ -153,16 +139,12 @@ function LoadingBar({ isDark }: { isDark: boolean }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4, paddingBottom: 4 }}>
       {[0.85, 0.65, 0.45].map((w, i) => (
         <motion.div key={i}
-          style={{
-            height: 10, borderRadius: 999,
+          style={{ height: 10, borderRadius: 999,
             background: isDark ? "#1f2937" : "#e5e7eb",
-            width: `${w * 100}%`, overflow: "hidden", position: "relative"
-          }}>
+            width: `${w * 100}%`, overflow: "hidden", position: "relative" }}>
           <motion.div
-            style={{
-              position: "absolute", inset: 0, borderRadius: 999,
-              background: `linear-gradient(90deg, transparent 0%, ${isDark ? "rgba(88,101,242,0.5)" : "rgba(88,101,242,0.3)"} 50%, transparent 100%)`
-            }}
+            style={{ position: "absolute", inset: 0, borderRadius: 999,
+              background: `linear-gradient(90deg, transparent 0%, ${isDark ? "rgba(88,101,242,0.5)" : "rgba(88,101,242,0.3)"} 50%, transparent 100%)` }}
             animate={{ x: ["-100%", "200%"] }}
             transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut", delay: i * 0.18 }} />
         </motion.div>
@@ -223,11 +205,9 @@ function renderBasicInline(text: string) {
     if (p.startsWith("**") && p.endsWith("**"))
       return <strong key={i} style={{ fontWeight: 650 }}>{p.slice(2, -2)}</strong>;
     if (p.startsWith("`") && p.endsWith("`"))
-      return <code key={i} style={{
-        fontFamily: "ui-monospace, monospace",
+      return <code key={i} style={{ fontFamily: "ui-monospace, monospace",
         background: "rgba(88,101,242,0.12)", padding: "1px 5px",
-        borderRadius: 4, fontSize: "0.86em"
-      }}>{p.slice(1, -1)}</code>;
+        borderRadius: 4, fontSize: "0.86em" }}>{p.slice(1, -1)}</code>;
     return <span key={i}>{p}</span>;
   })}</>;
 }
@@ -368,9 +348,9 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
 
   // Analysis: 6-part structured response
   const sections = [
-    { label: "Situation", text: response.situation },
-    { label: "Insight", text: response.insight },
-    { label: "Implication", text: response.implication },
+    { label: "Situation",      text: response.situation },
+    { label: "Insight",        text: response.insight },
+    { label: "Implication",    text: response.implication },
     { label: "Recommendation", text: response.recommendation },
   ].filter(s => s.text);
 
@@ -384,10 +364,8 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {sections.map(({ label, text }) => (
         <div key={label}>
-          <p style={{
-            fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "0.08em", color: "#5865f2", marginBottom: 5, margin: "0 0 5px"
-          }}>
+          <p style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase",
+            letterSpacing: "0.08em", color: "#5865f2", marginBottom: 5, margin: "0 0 5px" }}>
             {label}
           </p>
           <RichText text={text!} t1={t1} isDark={isDark} />
@@ -396,11 +374,9 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
 
       {confPct !== null && conf && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
             padding: "4px 10px", borderRadius: 999,
-            background: `${confColor}15`, border: `1px solid ${confColor}30`
-          }}>
+            background: `${confColor}15`, border: `1px solid ${confColor}30` }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: confColor }} />
             <span style={{ fontSize: "0.72rem", fontWeight: 700, color: confColor }}>
               {confPct}% confidence
@@ -417,14 +393,14 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
           {response.actions.map((action, i) => {
             // Map tool names to real dashboard routes
             const toolRoutes: Record<string, string> = {
-              view_carts: "/dashboard/cart-recovery",
-              view_customers: "/dashboard/customers",
-              view_revenue: "/dashboard/analytics",
-              view_analytics: "/dashboard/analytics",
-              view_products: "/dashboard/analytics",
-              view_checkout: "/dashboard/checkout",
-              create_campaign: "/dashboard/campaign",
-              view_retention: "/dashboard/customers",
+              view_carts:       "/dashboard/cart-recovery",
+              view_customers:   "/dashboard/customers",
+              view_revenue:     "/dashboard/analytics",
+              view_analytics:   "/dashboard/analytics",
+              view_products:    "/dashboard/analytics",
+              view_checkout:    "/dashboard/checkout",
+              create_campaign:  "/dashboard/campaign",
+              view_retention:   "/dashboard/customers",
             };
             const route = action.tool ? toolRoutes[action.tool] : null;
             return (
@@ -468,11 +444,9 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
       )}
 
       {response.warnings && response.warnings.length > 0 && (
-        <div style={{
-          display: "flex", alignItems: "flex-start", gap: 6,
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 6,
           padding: "8px 12px", borderRadius: 8,
-          background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)"
-        }}>
+          background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)" }}>
           <AlertCircle size={13} color="#d97706" style={{ flexShrink: 0, marginTop: 2 }} />
           <p style={{ fontSize: "0.72rem", color: "#d97706", margin: 0, lineHeight: 1.5 }}>
             {response.warnings.join(" · ")}
@@ -485,10 +459,9 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function Bubble({ msg, onCopy, onRetry, isDark, t1, t2, onSend }: {
+function Bubble({ msg, onCopy, onRetry, onSend, isDark, t1, t2 }: {
   msg: Message; onCopy: (t: string) => void;
-  onRetry: () => void; isDark: boolean; t1: string; t2: string;
-  onSend?: (text: string) => void;
+  onRetry: () => void; onSend?: (text: string) => void; isDark: boolean; t1: string; t2: string;
 }) {
   const isRev = msg.role === "rev";
 
@@ -517,23 +490,19 @@ function Bubble({ msg, onCopy, onRetry, isDark, t1, t2, onSend }: {
         {msg.isStreaming && <LoadingBar isDark={isDark} />}
 
         {msg.hasError && !msg.isStreaming && (
-          <div style={{
-            display: "flex", alignItems: "flex-start", gap: 10,
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10,
             padding: "12px 14px", borderRadius: 12,
-            background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.18)"
-          }}>
+            background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.18)" }}>
             <AlertCircle size={15} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: "0.86rem", color: "#dc2626", margin: "0 0 8px", fontWeight: 600 }}>
                 {typeof msg.content === "string" ? msg.content : "Rev encountered an issue."}
               </p>
               <button onClick={onRetry}
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 5,
+                style={{ display: "inline-flex", alignItems: "center", gap: 5,
                   padding: "5px 12px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 600,
                   background: "rgba(220,38,38,0.1)", color: "#dc2626",
-                  border: "1px solid rgba(220,38,38,0.25)", cursor: "pointer", fontFamily: "inherit"
-                }}>
+                  border: "1px solid rgba(220,38,38,0.25)", cursor: "pointer", fontFamily: "inherit" }}>
                 <RefreshCcw size={12} />Try again
               </button>
             </div>
@@ -544,17 +513,17 @@ function Bubble({ msg, onCopy, onRetry, isDark, t1, t2, onSend }: {
           typeof msg.content === "object" && "response_type" in (msg.content as object)
             ? <ResponseCard response={msg.content as RevResponse} isDark={isDark} t1={t1} t2={t2} onSend={onSend} />
             : <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: t1, margin: 0 }}>
-              {String(msg.content)}
-            </p>
+                {String(msg.content)}
+              </p>
         )}
 
         {!msg.isStreaming && !msg.hasError && (
           <div className="flex items-center gap-0.5 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
             {[
-              { icon: Copy, label: "Copy", fn: () => onCopy(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)) },
-              { icon: ThumbsUp, label: "Good", fn: () => { } },
-              { icon: ThumbsDown, label: "Bad", fn: () => { } },
-              { icon: RotateCcw, label: "Retry", fn: onRetry },
+              { icon: Copy,       label: "Copy",  fn: () => onCopy(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)) },
+              { icon: ThumbsUp,   label: "Good",  fn: () => {} },
+              { icon: ThumbsDown, label: "Bad",   fn: () => {} },
+              { icon: RotateCcw,  label: "Retry", fn: onRetry },
             ].map(({ icon: Icon, label, fn }) => (
               <button key={label} onClick={fn}
                 className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors"
@@ -582,17 +551,17 @@ function AttachMenu({ onFile, onMedia, card, border, t1, t2 }: {
   // Keep file inputs OUTSIDE the animated menu so they are never unmounted
   // when the dropdown closes. Unmounting the <input> before onChange fires
   // silently drops the file selection on Chrome/Safari.
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef  = useRef<HTMLInputElement>(null);
   const mediaRef = useRef<HTMLInputElement>(null);
 
-  const triggerFile = () => { setOpen(false); setTimeout(() => fileRef.current?.click(), 50); };
+  const triggerFile  = () => { setOpen(false); setTimeout(() => fileRef.current?.click(),  50); };
   const triggerMedia = () => { setOpen(false); setTimeout(() => mediaRef.current?.click(), 50); };
 
   return (
     <div style={{ position: "relative" }}>
       {/* Persistent file inputs — never unmounted */}
-      <input ref={fileRef} type="file" accept="*/*" className="hidden" onChange={onFile} />
-      <input ref={mediaRef} type="file" accept="image/*,video/*" className="hidden" onChange={onMedia} />
+      <input ref={fileRef}  type="file" accept="*/*"               className="hidden" onChange={onFile} />
+      <input ref={mediaRef} type="file" accept="image/*,video/*"   className="hidden" onChange={onMedia} />
 
       <button onClick={() => setOpen(v => !v)} title="Attach"
         className="p-1.5 rounded-lg transition-colors opacity-60 hover:opacity-100" style={{ color: t2 }}>
@@ -604,11 +573,9 @@ function AttachMenu({ onFile, onMedia, card, border, t1, t2 }: {
             <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
             <motion.div initial={{ opacity: 0, y: 6, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.95 }} transition={{ duration: 0.15 }}
-              style={{
-                position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 20,
+              style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 20,
                 background: card, border: `1px solid ${border}`, borderRadius: 14,
-                boxShadow: "0 8px 32px rgba(0,0,0,0.15)", padding: "6px", minWidth: 180
-              }}>
+                boxShadow: "0 8px 32px rgba(0,0,0,0.15)", padding: "6px", minWidth: 180 }}>
               <button onClick={triggerFile}
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[0.8rem] font-medium cursor-pointer transition-colors hover:bg-black/5 w-full text-left"
                 style={{ color: t1, background: "transparent", border: "none", fontFamily: "inherit" }}>
@@ -633,15 +600,15 @@ function AttachMenu({ onFile, onMedia, card, border, t1, t2 }: {
 
 function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disabled,
   onSend, onFile, onMedia, onVoice, onCall, thinking, card, border, t1, t2, isDark }: {
-    inputRef: React.RefObject<HTMLTextAreaElement>;
-    value: string; onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
-    onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
-    placeholder: string; disabled?: boolean;
-    onSend: () => void; onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onMedia: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onVoice: () => void; onCall: () => void; thinking: boolean;
-    card: string; border: string; t1: string; t2: string; isDark: boolean;
-  }) {
+  inputRef: React.RefObject<HTMLTextAreaElement>;
+  value: string; onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
+  onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
+  placeholder: string; disabled?: boolean;
+  onSend: () => void; onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onMedia: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onVoice: () => void; onCall: () => void; thinking: boolean;
+  card: string; border: string; t1: string; t2: string; isDark: boolean;
+}) {
   return (
     <div className="rounded-2xl shadow-sm overflow-visible" style={{ background: card, border: `1px solid ${border}` }}>
       <textarea ref={inputRef} value={value} onChange={onChange} onKeyDown={onKeyDown}
@@ -662,10 +629,8 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
           <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
             onClick={onSend} disabled={!value.trim() || thinking}
             className="w-8 h-8 rounded-xl flex items-center justify-center transition-all ml-1"
-            style={{
-              background: value.trim() && !thinking ? "#5865f2" : (isDark ? "#1f1f1f" : "#e5e7eb"),
-              color: value.trim() && !thinking ? "white" : t2
-            }}>
+            style={{ background: value.trim() && !thinking ? "#5865f2" : (isDark ? "#1f1f1f" : "#e5e7eb"),
+              color: value.trim() && !thinking ? "white" : t2 }}>
             {thinking ? (
               <motion.div style={{ display: "flex", gap: 2.5, alignItems: "center" }}>
                 {[0, 1, 2].map(i => (
@@ -713,13 +678,11 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
             <div className="fixed inset-0 z-[60]" onClick={() => setMenuOpen(false)} />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.12 }}
-              style={{
-                position: "absolute", right: 4, top: "calc(100% + 4px)", zIndex: 70,
+              style={{ position: "absolute", right: 4, top: "calc(100% + 4px)", zIndex: 70,
                 background: isDark ? "#1a1a1a" : "#fff",
                 border: `1px solid ${isDark ? "#2a2a2a" : "#e5e7eb"}`,
                 borderRadius: 10, padding: 4, minWidth: 140,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.15)"
-              }}>
+                boxShadow: "0 8px 24px rgba(0,0,0,0.15)" }}>
               <button onClick={() => { onRename(); setMenuOpen(false); }}
                 className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[0.78rem] font-medium transition-colors hover:bg-black/5 text-left"
                 style={{ color: isDark ? "#e5e7eb" : "#1a1a2e", fontFamily: "inherit" }}>
@@ -752,26 +715,26 @@ export default function RevIntell() {
   const { conversationId: urlConvId } = useParams<{ conversationId?: string }>();
   const navigate = useNavigate();
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(urlConvId || null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [thinking, setThinking] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [conversations,  setConversations]  = useState<Conversation[]>([]);
+  const [activeId,       setActiveId]       = useState<string | null>(urlConvId || null);
+  const [messages,       setMessages]       = useState<Message[]>([]);
+  const [input,          setInput]          = useState("");
+  const [thinking,       setThinking]       = useState(false);
+  const [menuOpen,       setMenuOpen]       = useState(false);
+  const [copied,         setCopied]         = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [convLoading, setConvLoading] = useState(false);
-  const [lastUserMsg, setLastUserMsg] = useState<string>("");
-  const [convNotFound, setConvNotFound] = useState(false);
+  const [convLoading,    setConvLoading]    = useState(false);
+  const [lastUserMsg,    setLastUserMsg]    = useState<string>("");
+  const [convNotFound,   setConvNotFound]   = useState(false);
   const [imageAttachment, setImageAttachment] = useState<{
     base64: string; mediaType: string; preview: string; name: string;
   } | null>(null);
-  const [renameModalId, setRenameModalId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState("");
+  const [renameModalId,  setRenameModalId]  = useState<string | null>(null);
+  const [renameValue,    setRenameValue]    = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef  = useRef<HTMLTextAreaElement>(null);
 
   // Scroll to bottom when messages change
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, thinking]);
@@ -807,8 +770,8 @@ export default function RevIntell() {
       }>(`/rev/conversation/${convId}`);
 
       const msgs = (res as any)?.data?.data?.messages
-        ?? (res as any)?.data?.messages
-        ?? [];
+                ?? (res as any)?.data?.messages
+                ?? [];
 
       const parsed: Message[] = msgs.map((m: any) => {
         let content: string | RevResponse = "";
@@ -832,11 +795,11 @@ export default function RevIntell() {
           } catch { content = raw; }
         }
         return {
-          id: m.id,
-          role: m.role as "user" | "rev",
+          id:        m.id,
+          role:      m.role as "user" | "rev",
           content,
           timestamp: new Date(m.created_at),
-          hasError: m.has_error || false,
+          hasError:  m.has_error || false,
         };
       });
 
@@ -919,7 +882,7 @@ export default function RevIntell() {
       const body: Record<string, unknown> = { message: trimmed };
       if (activeId) body.conversation_id = activeId;
       if (capturedImage) {
-        body.image_base64 = capturedImage.base64;
+        body.image_base64     = capturedImage.base64;
         body.image_media_type = capturedImage.mediaType;
       }
 
@@ -956,18 +919,18 @@ export default function RevIntell() {
         const revResponse: RevResponse = {
           response_type: rType,
           text: data.text ?? data.response?.text,
-          situation: data.response?.situation,
-          insight: data.response?.insight,
-          implication: data.response?.implication,
+          situation:      data.response?.situation,
+          insight:        data.response?.insight,
+          implication:    data.response?.implication,
           recommendation: data.response?.recommendation,
-          confidence: data.response?.confidence ?? (
+          confidence:     data.response?.confidence ?? (
             data.confidence_score !== undefined
               ? { score: data.confidence_score, basis: data.confidence_basis || "" }
               : undefined
           ),
-          actions: data.response?.actions || data.actions || [],
-          agents_used: data.meta?.agents_used || data.agents_used || [],
-          warnings: data.response?.warnings || data.warnings || [],
+          actions:     data.response?.actions     || data.actions    || [],
+          agents_used: data.meta?.agents_used     || data.agents_used || [],
+          warnings:    data.response?.warnings    || data.warnings   || [],
         };
 
         setMessages(prev => prev.map(m => m.id === sid ? {
@@ -1039,16 +1002,16 @@ export default function RevIntell() {
   };
   const removeAttachment = () => setImageAttachment(null);
   const handleVoice = () => alert("Voice messages coming soon.");
-  const handleCall = () => alert("Audio call booking coming soon.");
+  const handleCall  = () => alert("Audio call booking coming soon.");
 
   const deleteConv = async (id: string) => {
     try {
       await api.delete?.(`/rev/conversation/${id}`) ||
-        await (api as any).del?.(`/rev/conversation/${id}`) ||
-        await fetch(
-          `${(api as any).baseUrl || ""}/api/v1/rev/conversation/${id}`,
-          { method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("rv-auth") ? JSON.parse(localStorage.getItem("rv-auth")!).state?.csrfToken : ""}` } }
-        );
+            await (api as any).del?.(`/rev/conversation/${id}`) ||
+            await fetch(
+              `${(api as any).baseUrl || ""}/api/v1/rev/conversation/${id}`,
+              { method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("rv-auth") ? JSON.parse(localStorage.getItem("rv-auth")!).state?.csrfToken : ""}` } }
+            );
     } catch { /* optimistic — remove from UI regardless */ }
     setConversations(prev => prev.filter(c => c.id !== id));
     setDeleteConfirmId(null);
@@ -1065,19 +1028,19 @@ export default function RevIntell() {
     const title = renameValue.trim().slice(0, 100);
     try {
       await api.patch?.(`/rev/conversation/${id}/title`, { title }) ||
-        await (api as any).put?.(`/rev/conversation/${id}/title`, { title });
+            await (api as any).put?.(`/rev/conversation/${id}/title`, { title });
     } catch { /* optimistic */ }
     setConversations(prev => prev.map(c => c.id === id ? { ...c, title } : c));
     setRenameModalId(null);
   };
 
   // Theme
-  const bg = isDark ? "#111" : "#f7f8fc";
+  const bg   = isDark ? "#111"    : "#f7f8fc";
   const card = isDark ? "#171717" : "#ffffff";
-  const bdr = isDark ? "#222" : "#e8eaf0";
-  const t1 = isDark ? "#f1f5f9" : "#1a1a2e";
-  const t2 = isDark ? "#94a3b8" : "#64748b";
-  const t4 = isDark ? "#374151" : "#d1d5db";
+  const bdr  = isDark ? "#222"    : "#e8eaf0";
+  const t1   = isDark ? "#f1f5f9" : "#1a1a2e";
+  const t2   = isDark ? "#94a3b8" : "#64748b";
+  const t4   = isDark ? "#374151" : "#d1d5db";
 
   const inputProps = {
     inputRef, value: input, onChange: resize, onKeyDown: handleKey,
@@ -1087,8 +1050,6 @@ export default function RevIntell() {
   };
 
   const hasMessages = messages.length > 0;
-  const isActiveConversation = Boolean(activeId || urlConvId);
-  const showComposer = !convLoading && !convNotFound && (hasMessages || isActiveConversation);
 
   return (
     <div className="relative flex flex-col overflow-hidden"
@@ -1116,13 +1077,11 @@ export default function RevIntell() {
               exit={{ x: "100%", opacity: 0 }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
               className="absolute top-0 right-0 bottom-0 z-50 flex flex-col"
-              style={{
-                width: 300,
+              style={{ width: 300,
                 background: isDark ? "rgba(10,10,10,0.88)" : "rgba(255,255,255,0.9)",
                 backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
                 borderLeft: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)"}`,
-                boxShadow: "-16px 0 60px rgba(0,0,0,0.2)"
-              }}>
+                boxShadow: "-16px 0 60px rgba(0,0,0,0.2)" }}>
 
               <div className="flex items-center justify-between px-5 pt-5 pb-4"
                 style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
@@ -1257,22 +1216,12 @@ export default function RevIntell() {
           </div>
         )}
 
-        {!hasMessages && !convLoading && !convNotFound && activeId && (
-          <div className="flex flex-col items-center justify-center min-h-full px-6 py-10 max-w-xl mx-auto w-full text-center">
-            <OrbHero size={72} />
-            <h3 className="text-[1.3rem] font-bold mt-6 mb-2" style={{ color: t1 }}>New conversation</h3>
-            <p className="text-[0.86rem] leading-relaxed" style={{ color: t2 }}>
-              This conversation is ready. Ask Rev anything about your revenue, customers, or growth.
-            </p>
-          </div>
-        )}
-
         {/* Message thread */}
         {hasMessages && !convLoading && (
           <div className="max-w-2xl mx-auto px-5 pt-14 pb-4">
             {messages.map(msg => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
-                onRetry={handleRetry} isDark={isDark} t1={t1} t2={t2} onSend={send} />
+                onRetry={handleRetry} onSend={send} isDark={isDark} t1={t1} t2={t2} />
             ))}
             <div ref={bottomRef} />
           </div>
@@ -1280,7 +1229,7 @@ export default function RevIntell() {
       </div>
 
       {/* Sticky input — active conversation */}
-      {showComposer && (
+      {hasMessages && !convLoading && (
         <div className="shrink-0 px-4 pb-4 pt-2 border-t" style={{ borderColor: bdr, background: bg }}>
           <div className="max-w-2xl mx-auto">
             {/* Image attachment preview */}
