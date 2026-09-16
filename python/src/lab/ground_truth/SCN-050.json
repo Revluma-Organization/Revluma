@@ -16,6 +16,13 @@
       "overall revenue decline 18%"
     ]
   },
+  "signals_available_to_rev": [
+    "Paid traffic increased while revenue declined",
+    "Hero product traffic increased while conversion collapsed",
+    "Mobile checkout completion deteriorated",
+    "Cart abandonment increased",
+    "Average order value declined"
+  ],
   "expected_diagnosis": "Revenue decline is primarily driven by product conversion collapse and mobile checkout friction, not acquisition volume",
   "expected_evidence": [
     "Traffic increased so acquisition is not the primary problem",

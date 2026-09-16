@@ -896,7 +896,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                 db.execute(
                     text("""
                         INSERT INTO alert_queue (
-                            id, organization_id, source_state_id, alert_type,
+                            id, organization_id, business_state_id, alert_type,
                             severity, message, action_url, payload, status,
                             dedupe_key, available_at, created_at, updated_at
                         ) VALUES (

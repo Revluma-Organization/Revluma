@@ -1,5 +1,5 @@
 {
-  "lab_version": "0.1",
+  "lab_version": "0.2",
   "store": "Lumé Skincare Lab",
   "canonical_seed": 20260925,
   "scenarios": [
@@ -7,7 +7,9 @@
       "id": "SCN-001",
       "name": "Mobile Checkout Failure",
       "category": "Revenue & Conversion",
-      "status": "ready",
+      "status": "ground_truth_ready",
+      "pipeline_ready": false,
+      "blocker": "Business State does not yet expose device-level checkout completion metrics.",
       "difficulty": "medium",
       "priority_for_pitch": true
     },
@@ -15,7 +17,9 @@
       "id": "SCN-009",
       "name": "Cart Abandonment Spike",
       "category": "Cart & Checkout",
-      "status": "ready",
+      "status": "planned",
+      "pipeline_ready": false,
+      "blocker": "Reviewed ground truth has not been added.",
       "difficulty": "medium",
       "priority_for_pitch": true
     },
@@ -23,7 +27,9 @@
       "id": "SCN-017",
       "name": "CPM Spike With Healthy Economics",
       "category": "Acquisition",
-      "status": "ready",
+      "status": "ground_truth_ready",
+      "pipeline_ready": false,
+      "blocker": "Business State does not yet expose CPM, CTR, CVR, CAC, or ROAS aggregates.",
       "difficulty": "hard",
       "priority_for_pitch": true,
       "trap": true
@@ -32,7 +38,9 @@
       "id": "SCN-027",
       "name": "Hero Product Collapse",
       "category": "Product Intelligence",
-      "status": "ready",
+      "status": "planned",
+      "pipeline_ready": false,
+      "blocker": "Product-level conversion aggregates and reviewed ground truth are not available.",
       "difficulty": "medium",
       "priority_for_pitch": true
     },
@@ -40,7 +48,9 @@
       "id": "SCN-035",
       "name": "VIP Churn Signal",
       "category": "Customer & Retention",
-      "status": "ready",
+      "status": "planned",
+      "pipeline_ready": false,
+      "blocker": "Reviewed ground truth has not been added.",
       "difficulty": "hard",
       "priority_for_pitch": true
     },
@@ -48,7 +58,9 @@
       "id": "SCN-042",
       "name": "Discount Dependency",
       "category": "Pricing & Margins",
-      "status": "ready",
+      "status": "planned",
+      "pipeline_ready": false,
+      "blocker": "Margin aggregates and reviewed ground truth are not available.",
       "difficulty": "medium",
       "priority_for_pitch": false
     },
@@ -56,7 +68,9 @@
       "id": "SCN-050",
       "name": "Multi-Signal Business Incident",
       "category": "Multi-Signal",
-      "status": "ready",
+      "status": "ground_truth_ready",
+      "pipeline_ready": false,
+      "blocker": "The combined device, acquisition, product, and margin signals are not all present in Business State.",
       "difficulty": "very_hard",
       "priority_for_pitch": true
     }

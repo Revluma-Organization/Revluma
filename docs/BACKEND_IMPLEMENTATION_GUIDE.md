@@ -302,7 +302,9 @@ order first, then its items, in the same store-scoped transaction.
    - Index `next_rebuild_at`.
 
 2. `alert_queue`
-   - Organization FK; nullable Business State FK with set-null delete.
+   - Organization FK; nullable Business State FK named `business_state_id`
+     with set-null delete. Do not use `source_state_id`; that field belongs to
+     the separate recommendation-to-Business-State relationship.
    - `alert_type`, `severity`, `message`, nullable `action_url`, JSONB
      `payload`, `status`, `dedupe_key`, `available_at`, nullable
      `delivered_at`/`failed_at`, `attempt_count`, nullable `last_error`, and
@@ -417,6 +419,39 @@ Add reverse Prisma relations to `organizations`, `users`, `stores`, `orders`,
    this shared aggregate only; it must not query `sequence_events` during a
    conversation. This is required before it can identify a best-performing
    channel or flag discount dependency from measured results.
+
+### Lab seed and derived-state workflow
+
+Use `python/src/lab/lume_seed.py` only with a disposable lab database, an
+existing organization UUID, and a dedicated store UUID for the scenario. The
+generated transaction seeds only these source records:
+
+- `stores`
+- `customers`
+- `orders`
+- `abandoned_carts`
+- `events`
+- `business_state_baselines`
+
+Do not manually insert `business_states` or `alert_queue` rows. After the seed
+transaction commits, the backend must call the authenticated Python routes in
+this order:
+
+1. `POST /internal/rfm-sync` with
+   `{ "store_id": "<scenario-store-uuid>" }`.
+2. `POST /internal/business-state/rebuild` with
+   `{ "organization_id": "<organization-uuid>" }`.
+
+Python then calculates the RFM values, builds the current Business State, and
+creates any qualifying alerts through the same code paths used outside the
+lab. The backend must drain `alert_queue` through its normal transactional
+worker; there is no separate Python alert-drain endpoint.
+
+Use a fixed `--seed` and `--as-of` value when a repeatable comparison is
+required. The generated SQL is synthetic test data, not a production backup or
+approved training dataset. A scenario must not be reported as end-to-end ready
+until `python/src/lab/scenarios/registry.json` has `pipeline_ready: true` and
+the required Business State signals are actually available.
 
 ## 2. `mlService.js` wrappers
 

@@ -405,6 +405,48 @@ sigmoid calibration for smaller calibration cohorts. Final production tuning
 must use representative real training data with a held-out chronological test
 set; synthetic holdout results must not be used to choose a production winner.
 
+## Intelligence Lab audit and repository consistency review
+
+**Location:** `python/src/lab/`, `python/src/agents/responder.py`,
+`python/src/agents/understanding.py`,
+`python/src/intelligence/business_state.py`, and
+`python/tests/test_lab_tools.py`
+
+The Intelligence Lab additions were reviewed against the current Python
+contracts and Prisma schema. The review preserved the useful scenario and
+response-evaluation work while correcting behavior that could produce invalid
+scores, inconsistent lab data, unsafe logs, or runtime database failures.
+
+| Area | Finding | Correction and reason |
+|---|---|---|
+| Alert persistence | The Business State insert used `alert_queue.source_state_id`, but the current `alert_queue` schema defines `business_state_id`. | The insert now uses `business_state_id`. The old name belongs to a different relationship and would fail when Python attempted to create an alert. |
+| Responder failures | Several exception handlers emitted the complete exception through raw `print()` calls. | They now emit structured error events containing only the exception type and safe context such as the retry number. This preserves observability without exposing credentials, database details, prompts, or merchant data from exception messages. |
+| Fallback routing | Broad verbs such as `identify`, `improve`, and `fix` could route an unrelated question to ecommerce strategy. | Broad diagnostic language now requires an identified ecommerce domain. General strategy phrases remain supported, while unrelated requests no longer receive an incorrect ecommerce classification. |
+| Evaluator matching | Substring matching could treat `low` as present in `below`; prioritization could receive a point even when it was absent; short domain terms such as CPM, CAC, and ROAS were not handled reliably. | Scoring now uses complete normalized tokens, conservative inflection handling, explicit acronym support, and zero credit when expected prioritization is not demonstrated. This prevents inflated or misleading evaluation scores. |
+| Evaluator input handling | Ground-truth paths and scenario documents were not fully validated. | The evaluator now uses a file-relative UTF-8 ground-truth directory, requires `SCN-000` identifiers and required fields, verifies that the file's scenario ID matches the request, rejects invalid traversal-style input, and rejects empty responses. |
+| Synthetic seed | The seed directly inserted `business_states` and could bypass the production derivation path. Some customer aggregates could also disagree with their generated orders. | The seed now writes only source commerce data and baselines. Customer `orders_count` and `ltv` are recalculated from generated orders; cart outcomes, RFM labels, churn tiers, timestamps, and identifiers follow the current contracts. Python must derive `business_states` and `alert_queue` records through the normal internal endpoints. |
+| Scenario readiness | Registry entries claimed that scenarios were ready even when required device, acquisition, product, or margin signals were absent from Business State. | Readiness is now split between reviewed ground truth and end-to-end pipeline readiness. Unsupported scenarios remain `pipeline_ready: false` with an explicit blocker rather than claiming functionality the pipeline cannot observe. |
+| Ground truth | The multi-signal scenario lacked the observable-signal list required by detection scoring. | Its reviewed signals are now explicit, allowing detection, diagnosis, evidence, prioritization, and recommendation scores to be assessed consistently. Ground-truth content remains evaluation-only and is never supplied to Rev as prompt context. |
+
+The corrected lab workflow is:
+
+1. Generate deterministic SQL with `python/src/lab/lume_seed.py` for an
+   existing organization and a dedicated scenario store.
+2. Apply the SQL to a disposable lab database. It seeds `stores`, `customers`,
+   `orders`, `abandoned_carts`, `events`, and
+   `business_state_baselines`; it does not seed derived output tables.
+3. Call `POST /internal/rfm-sync` with the store UUID.
+4. Call `POST /internal/business-state/rebuild` with the organization UUID.
+5. Capture Rev's response and score it with
+   `python/src/lab/evaluator/evaluate.py` only when the scenario registry shows
+   that the required pipeline signals are available.
+
+The default full-size generation was verified without writing to a database.
+It produced deterministic SQL of approximately 9.8 MB for 10,200 synthetic
+customers and six months of activity. This validates the generator and data
+contract only; it is not evidence that a database import or an end-to-end lab
+scenario has run successfully.
+
 ## Other completed audit corrections
 
 - Training-data loaders use real data exclusively when a database connection is
@@ -421,9 +463,16 @@ set; synthetic holdout results must not be used to choose a production winner.
 
 ## Validation
 
-- The complete offline Python suite passed after final cleanup with **464
+- The complete offline Python suite passed after final cleanup with **478
   passed and 1 skipped**. The skipped test is the paid, network-dependent LLM
   judge, which now requires explicit opt-in.
+- The focused lab and contract checks passed, including regression coverage for
+  deterministic source-only seeding, exact-token evaluation, scenario
+  readiness, safe responder logging, fallback routing, and the current
+  `alert_queue.business_state_id` schema column.
+- The default lab seed generated approximately 9.8 MB of deterministic SQL for
+  10,200 synthetic customers and 180 days of commerce activity. The SQL was
+  generated for validation only and was not applied to a database.
 - The M1 convergence regression test confirms the corrected logistic-regression
   configuration fits the synthetic contract without a `ConvergenceWarning`.
 - `git diff --check` completed without whitespace errors.
