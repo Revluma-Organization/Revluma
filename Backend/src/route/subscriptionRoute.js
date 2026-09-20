@@ -48,6 +48,7 @@ router.post(
 router.post('/initialize', authenticateToken, checkoutLimiter, subscriptionController.initialize);
 router.get('/verify/:reference', authenticateToken, verifyLimiter, subscriptionController.verify);
 router.get('/current', authenticateToken, subscriptionController.getCurrent);
+router.post('/start-trial', authenticateToken, subscriptionController.startTrial);
 router.post('/cancel', authenticateToken, subscriptionController.cancel);
 
 module.exports = router;

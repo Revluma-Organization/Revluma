@@ -86,6 +86,27 @@ function generatePasswordResetToken({ userId, email }) {
   );
 }
 
+function generateTwoFactorChallengeToken({ userId, email }) {
+  const now = Math.floor(Date.now() / 1000);
+  return jwt.sign(
+    {
+      iss: JWT_ISSUER,
+      aud: JWT_AUDIENCE,
+      sub: userId,
+      email,
+      type: 'two_factor_challenge',
+      jti: uuidv4(),
+      iat: now,
+      nbf: now,
+    },
+    process.env.JWT_SECRET,
+    {
+      algorithm: ALLOWED_ALGORITHMS[0],
+      expiresIn: '5m',
+    }
+  );
+}
+
 /**
  * Verify a password-reset JWT. Returns payload or null.
  */
@@ -140,6 +161,7 @@ module.exports = {
   generateAccessToken,
   generateRefreshToken,
   generatePasswordResetToken,
+  generateTwoFactorChallengeToken,
   verifyPasswordResetToken,
   hashRefreshToken,
   generateInviteToken,

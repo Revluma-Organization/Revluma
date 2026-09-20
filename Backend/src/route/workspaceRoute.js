@@ -15,5 +15,7 @@ router.post("/logo",authenticateToken,attachOrgMembership,requireRole("owner", "
 
 // Update organization details
 router.patch("/current",authenticateToken,attachOrgMembership,requireRole("owner", "admin"),workspaceController.updateCurrentWorkspace);
+router.post("/transfer", authenticateToken, attachOrgMembership, requireRole("owner"), workspaceController.transferWorkspace);
+router.delete("/", authenticateToken, attachOrgMembership, requireRole("owner"), workspaceController.archiveWorkspace);
 
 module.exports = router;

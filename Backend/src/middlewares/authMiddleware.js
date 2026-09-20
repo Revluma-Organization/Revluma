@@ -92,4 +92,23 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-module.exports = { authenticateToken, JWT_ISSUER, JWT_AUDIENCE, ALLOWED_ALGORITHMS };
+const authenticateTwoFactorChallenge = (req, res, next) => {
+  const authorization = req.headers.authorization || '';
+  const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : null;
+  if (!token) return res.status(401).json({ success: false, error: '2FA challenge token required.' });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ALLOWED_ALGORITHMS,
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+    });
+    if (!['two_factor_challenge', 'access'].includes(decoded.type)) throw new Error('Invalid challenge type');
+    req.user = { id: decoded.sub, email: decoded.email, challenge: decoded.type === 'two_factor_challenge', jti: decoded.jti };
+    next();
+  } catch {
+    return res.status(401).json({ success: false, error: 'Invalid or expired 2FA challenge.' });
+  }
+};
+
+module.exports = { authenticateToken, authenticateTwoFactorChallenge, JWT_ISSUER, JWT_AUDIENCE, ALLOWED_ALGORITHMS };

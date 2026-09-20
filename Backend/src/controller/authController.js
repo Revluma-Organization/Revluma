@@ -19,6 +19,7 @@ const {
   generateAccessToken,
   generateRefreshToken,
   generatePasswordResetToken,
+  generateTwoFactorChallengeToken,
   verifyPasswordResetToken,
   hashRefreshToken,
 } = require('../utils/tokens');
@@ -50,6 +51,9 @@ const REGISTER_GENERIC_MESSAGE =
   'If an account can be registered for this email, a verification code has been sent.';
 const FORGOT_PASSWORD_GENERIC_MESSAGE =
   'If an account exists for this email, password reset instructions have been sent.';
+
+const TRUSTED_DEVICE_COOKIE = 'trusted_2fa_device';
+const TRUSTED_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const PASSWORD_COMPLEXITY =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
@@ -115,6 +119,57 @@ function getClientIp(req) {
 function getDeviceHint(req) {
   const ua = req.headers['user-agent'] || '';
   return ua.slice(0, 200); // Cap to prevent large strings
+}
+
+function hasTrustedDevice(req, userId) {
+  const value = req.signedCookies?.[TRUSTED_DEVICE_COOKIE];
+  if (!value) return false;
+  const [cookieUserId, expiresAt] = value.split(':');
+  return cookieUserId === userId && Number(expiresAt) > Date.now();
+}
+
+function setTrustedDevice(req, res, userId) {
+  const value = `${userId}:${Date.now() + TRUSTED_DEVICE_TTL_MS}`;
+  res.cookie(TRUSTED_DEVICE_COOKIE, value, {
+    ...buildCookieOptions(req),
+    signed: true,
+    maxAge: TRUSTED_DEVICE_TTL_MS,
+  });
+}
+
+async function issuePasswordSession(req, res, user) {
+  const membership = await prisma.organization_members.findFirst({
+    where: { user_id: user.id, status: 'active' },
+    select: { organization_id: true },
+    orderBy: { created_at: 'asc' },
+  });
+  const ip = getClientIp(req);
+  const { raw: rawRefresh, hash: refreshHash, expiresAt } = generateRefreshToken();
+  const refreshSession = await prisma.refresh_tokens.create({
+    data: {
+      user_id: user.id,
+      token_hash: refreshHash,
+      family_id: uuidv4(),
+      device_hint: getDeviceHint(req),
+      ip_address: ip,
+      expires_at: expiresAt,
+      last_used_at: new Date(),
+    },
+  });
+  const accessToken = generateAccessToken({
+    userId: user.id,
+    email: user.email,
+    tenantId: membership?.organization_id || null,
+    sessionId: refreshSession.id,
+  });
+  res.cookie('refresh_token', rawRefresh, {
+    ...buildCookieOptions(req),
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+  return {
+    access_token: accessToken,
+    user: { id: user.id, email: user.email, full_name: user.full_name },
+  };
 }
 
 async function revokeAllRefreshTokens(userId) {
@@ -436,60 +491,22 @@ exports.login = async (req, res, next) => {
       return res.status(403).json({ success: false, error: 'Account not found.' });
     }
 
-    // ── Get organization via membership ─────────────────────────────────────
-    const membership = await prisma.organization_members.findFirst({
-      where: { user_id: user.id, status: 'active' },
-      select: { organization_id: true },
-      orderBy: { created_at: 'asc' },
-    });
-
-// ── Generate refresh token first ──────────────────────────────────────────
-const { raw: rawRefresh, hash: refreshHash, expiresAt } = generateRefreshToken();
-
-const familyId = uuidv4();
-
-const refreshSession = await prisma.refresh_tokens.create({
-  data: {
-    user_id: user.id,
-    token_hash: refreshHash,
-    family_id: familyId,
-    device_hint: getDeviceHint(req),
-    ip_address: ip,
-    expires_at: expiresAt,
-    last_used_at: new Date(),
-  },
-});
-
-// Generate access token using the database session ID
-const accessToken = generateAccessToken({
-  userId: user.id,
-  email: user.email,
-  tenantId: membership?.organization_id || null,
-  sessionId: refreshSession.id,
-});
-
+    if (user.two_factor_enabled && !hasTrustedDevice(req, user.id)) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          requires_2fa: true,
+          temp_token: generateTwoFactorChallengeToken({ userId: user.id, email: user.email }),
+        },
+      });
+    }
 
     // Record successful login
     await recordLoginAttempt(email, true, ip);
-
-    // Store Refresh Token as HttpOnly Cookie (raw value — never the hash)
-    const cookieOptions = {
-      ...buildCookieOptions(req),
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    };
-    res.cookie("refresh_token", rawRefresh, cookieOptions);
-
-    // Refresh token is HttpOnly-cookie only — never in the JSON body (XSS-safe).
+    const session = await issuePasswordSession(req, res, user);
     return res.status(200).json({
       success: true,
-      data: {
-        access_token: accessToken,
-        user: {
-          id: user.id,
-          full_name: user.full_name,
-          email: user.email,
-        },
-      },
+      data: session,
     });
 
   } catch (error) {
@@ -1404,7 +1421,7 @@ exports.setupTwoFactor = async (req, res, next) => {
 exports.verifyTwoFactor = async (req, res, next) => {
   try {
 
-    const { code } = req.body;
+    const { code, trust_device: trustDevice } = req.body;
     const normalizedCode = normalizeTotpCode(code);
 
     const userId = req.user.id;
@@ -1440,6 +1457,20 @@ exports.verifyTwoFactor = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         error: 'Invalid verification code',
+      });
+    }
+
+    if (req.user.challenge) {
+      await prisma.users.update({
+        where: { id: user.id },
+        data: { two_factor_last_used_step: matchedStep },
+      });
+      const session = await issuePasswordSession(req, res, user);
+      if (trustDevice === true) setTrustedDevice(req, res, user.id);
+      await recordLoginAttempt(user.email, true, getClientIp(req));
+      return res.status(200).json({
+        success: true,
+        data: session,
       });
     }
 
