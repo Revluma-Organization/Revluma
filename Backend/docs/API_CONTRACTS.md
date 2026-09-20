@@ -1,3 +1,101 @@
+# Authentication API Contract
+
+Base path: `/api/v1/auth`.
+
+All JSON responses use `{ success, data?, error?, code? }`. The frontend must send
+`credentials: 'include'` on every request so the HttpOnly refresh cookie is stored
+and sent. Access tokens are returned in `data.access_token` and must be sent as
+`Authorization: Bearer <access_token>`.
+
+## Google signup and login
+
+`POST /google`
+
+Request:
+
+```json
+{
+    "credential": "<Google Identity Services ID token>",
+    "terms_agreed": true,
+    "organization": {
+        "brand_name": "Acme",
+        "storeUrl": "https://acme.example",
+        "storeCategory": "Apparel",
+        "country": "NG",
+        "state": "Lagos"
+    },
+    "preferences": { "monthlyRevenue": "0-10k" }
+}
+```
+
+`credential` is always required. `terms_agreed: true` is required only when
+creating a new Google account. `organization` is optional; omitted fields use
+the Google name and `Unspecified` defaults so the user can finish onboarding.
+
+Success (`200`): creates a session and returns the same shape as password login:
+
+```json
+{
+    "success": true,
+    "data": {
+        "access_token": "<JWT>",
+        "user": {
+            "id": "<uuid>",
+            "full_name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "onboarding_completed": false
+        }
+    }
+}
+```
+
+The server also sets `refresh_token` as an HttpOnly, Secure, `SameSite=None`
+cookie in HTTPS environments. In local HTTP development it uses `Secure=false`
+and `SameSite=Lax`. The raw refresh token is never returned in JSON.
+
+Existing password account (`409`):
+
+```json
+{
+    "success": false,
+    "code": "GOOGLE_ACCOUNT_LINK_REQUIRED",
+    "error": "An account already exists for this email. Log in with your password, then link Google from your account settings."
+}
+```
+
+Other Google errors: `400` for a missing credential, `401` for an invalid or
+unverified credential, `403` for a suspended/deleted account, and `503` when
+`GOOGLE_CLIENT_ID` is not configured.
+
+## Link a Google account
+
+`POST /google/link` requires a valid access-token header and the same email as
+the authenticated Revluma account:
+
+```json
+{ "credential": "<Google Identity Services ID token>" }
+```
+
+Success (`200`): `{ "success": true, "data": { "google_linked": true } }`.
+The endpoint returns `409` with `GOOGLE_EMAIL_MISMATCH` when the emails differ,
+or `GOOGLE_ACCOUNT_CONFLICT` when the Google identity is already linked.
+
+## Refresh, logout, and required environment
+
+`POST /refresh` rotates the HttpOnly refresh cookie and returns
+`{ "success": true, "data": { "access_token": "<JWT>" } }`. The frontend must
+call it with credentials included and retry the original request once after a
+`401` access-token response. Refresh-token reuse invalidates the token family.
+
+`POST /logout` revokes the current refresh token and clears the cookie.
+`POST /logout-all` requires an access token and revokes every session.
+
+Required auth-related environment variables are `JWT_SECRET`,
+`JWT_REFRESH_SECRET`, `JWT_EXPIRES_IN`, `REFRESH_TOKEN_EXPIRES_IN`,
+`FRONTEND_URL`, `NODE_ENV`, and `GOOGLE_CLIENT_ID`, in addition to the database
+variables listed in the backend setup documentation. Configure the Google
+OAuth client with the frontend origin and use its client ID as
+`GOOGLE_CLIENT_ID`.
 # Revluma Backend
 ## [2026-06-17] 
 Revluma Backend Architecture & Engineering Documentation

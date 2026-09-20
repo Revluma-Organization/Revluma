@@ -13,7 +13,8 @@ const REQUIRED_ENV_VARS = [
   'REFRESH_TOKEN_EXPIRES_IN',
   'PORT',
   'NODE_ENV',
-  'FRONTEND_URL'
+  'FRONTEND_URL',
+  'GOOGLE_CLIENT_ID'
 ];
 
 // Payment vars — warn if missing but do not crash
@@ -53,6 +54,7 @@ const env = Object.freeze({
   port: parseInt(process.env.PORT ),
   nodeEnv: process.env.NODE_ENV ,
   frontendUrl: process.env.FRONTEND_URL,
+  googleClientId: process.env.GOOGLE_CLIENT_ID,
 });
 
 // Export using CommonJS syntax so database.js can safely require() it
