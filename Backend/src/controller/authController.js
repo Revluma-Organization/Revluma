@@ -499,34 +499,94 @@ const accessToken = generateAccessToken({
 
 // ─── GOOGLE LOGIN ────────────────────────────────────────────────────────────
 
+async function verifyGoogleCredential(credential) {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    const error = new Error('Google login is not configured.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  if (!credential || typeof credential !== 'string') {
+    const error = new Error('Google credential is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const ticket = await googleClient.verifyIdToken({
+    idToken: credential,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
+
+  if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+    const error = new Error('Google account email is not verified.');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  return {
+    ...payload,
+    email: payload.email.trim().toLowerCase(),
+  };
+}
+
+async function issueGoogleSession(req, res, user) {
+  const membership = await prisma.organization_members.findFirst({
+    where: { user_id: user.id, status: 'active' },
+    select: { organization_id: true },
+    orderBy: { created_at: 'asc' },
+  });
+  const ip = getClientIp(req);
+  const { raw: rawRefresh, hash: refreshHash, expiresAt } = generateRefreshToken();
+  const refreshSession = await prisma.refresh_tokens.create({
+    data: {
+      user_id: user.id,
+      token_hash: refreshHash,
+      family_id: uuidv4(),
+      device_hint: getDeviceHint(req),
+      ip_address: ip,
+      expires_at: expiresAt,
+      last_used_at: new Date(),
+    },
+  });
+  const accessToken = generateAccessToken({
+    userId: user.id,
+    email: user.email,
+    tenantId: membership?.organization_id || null,
+    sessionId: refreshSession.id,
+  });
+
+  res.cookie('refresh_token', rawRefresh, {
+    ...buildCookieOptions(req),
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  return {
+    access_token: accessToken,
+    user: {
+      id: user.id,
+      full_name: user.full_name,
+      email: user.email,
+      onboarding_completed: user.onboarding_completed,
+    },
+  };
+}
+
 exports.googleLogin = async (req, res, next) => {
   try {
     const { credential, terms_agreed: termsAgreed } = req.body || {};
-
-    if (!process.env.GOOGLE_CLIENT_ID) {
-      return res.status(503).json({ success: false, error: 'Google login is not configured.' });
-    }
-    if (!credential || typeof credential !== 'string') {
-      return res.status(400).json({ success: false, error: 'Google credential is required.' });
-    }
-
     let payload;
     try {
-      const ticket = await googleClient.verifyIdToken({
-        idToken: credential,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
-      payload = ticket.getPayload();
+      payload = await verifyGoogleCredential(credential);
     } catch (error) {
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({ success: false, error: error.message });
+      }
       logger.warn('google_login_invalid_credential', { error: error.message });
       return res.status(401).json({ success: false, error: 'Invalid Google credential.' });
     }
 
-    if (!payload?.sub || !payload.email || payload.email_verified !== true) {
-      return res.status(401).json({ success: false, error: 'Google account email is not verified.' });
-    }
-
-    const email = payload.email.trim().toLowerCase();
+    const email = payload.email;
     let user = await prisma.users.findUnique({ where: { google_id: payload.sub } });
 
     if (!user) {
@@ -536,12 +596,22 @@ exports.googleLogin = async (req, res, next) => {
           return res.status(403).json({ success: false, error: 'Account unavailable.' });
         }
 
-        user = await prisma.users.update({
+        if (user.google_id && user.google_id !== payload.sub) {
+          return res.status(409).json({
+            success: false,
+            code: 'GOOGLE_ACCOUNT_CONFLICT',
+            error: 'This email is linked to a different Google account.',
+          });
+        }
+        if (!user.google_id) {
+          return res.status(409).json({
+            success: false,
+            code: 'GOOGLE_ACCOUNT_LINK_REQUIRED',
+            error: 'An account already exists for this email. Log in with your password, then link Google from your account settings.',
+          });
+        }
+        user = await prisma.users.findUnique({
           where: { id: user.id },
-          data: {
-            google_id: payload.sub,
-            email_verified: true,
-          },
         });
       } else {
         if (termsAgreed !== true) {
@@ -551,66 +621,110 @@ exports.googleLogin = async (req, res, next) => {
           });
         }
 
-        user = await prisma.users.create({
-          data: {
-            full_name: payload.name || email.split('@')[0],
-            email,
-            password_hash: null,
-            google_id: payload.sub,
-            email_verified: true,
-            accepted_terms: true,
-            accepted_privacy_policy: true,
-            onboarding_completed: false,
-          },
+        const organization = req.body.organization || req.body.storeSetup || {};
+        const companyName = organization.brand_name || organization.company_name || payload.name || email.split('@')[0];
+        const country = organization.country || 'Unspecified';
+        const industry = organization.storeCategory || organization.industry || 'Unspecified';
+
+        const result = await prisma.$transaction(async (tx) => {
+          const createdUser = await tx.users.create({
+            data: {
+              full_name: payload.name || email.split('@')[0],
+              email,
+              password_hash: null,
+              google_id: payload.sub,
+              email_verified: true,
+              accepted_terms: true,
+              accepted_privacy_policy: true,
+              onboarding_completed: false,
+            },
+          });
+          const createdOrganization = await tx.organizations.create({
+            data: {
+              owner_id: createdUser.id,
+              company_name: companyName,
+              website_url: organization.storeUrl || null,
+              store_url: organization.storeUrl || null,
+              industry,
+              country,
+              state_region: organization.state || null,
+              monthly_revenue_range: req.body.preferences?.monthlyRevenue || null,
+              slug: createOrganizationSlug(companyName, createdUser.id),
+            },
+          });
+          await tx.organization_members.create({
+            data: {
+              organization_id: createdOrganization.id,
+              user_id: createdUser.id,
+              role: 'owner',
+              status: 'active',
+              joined_at: new Date(),
+            },
+          });
+          return createdUser;
         });
+        user = result;
       }
+    }
+
+    if (user.email.toLowerCase() !== email) {
+      return res.status(401).json({ success: false, error: 'Invalid Google credential.' });
     }
 
     if (user.status === 'suspended' || user.status === 'deleted') {
       return res.status(403).json({ success: false, error: 'Account unavailable.' });
     }
 
-    const membership = await prisma.organization_members.findFirst({
-      where: { user_id: user.id, status: 'active' },
-      select: { organization_id: true },
-      orderBy: { created_at: 'asc' },
+    return res.status(200).json({
+      success: true,
+      data: await issueGoogleSession(req, res, user),
     });
-    const ip = getClientIp(req);
-    const { raw: rawRefresh, hash: refreshHash, expiresAt } = generateRefreshToken();
-    const refreshSession = await prisma.refresh_tokens.create({
-      data: {
-        user_id: user.id,
-        token_hash: refreshHash,
-        family_id: uuidv4(),
-        device_hint: getDeviceHint(req),
-        ip_address: ip,
-        expires_at: expiresAt,
-        last_used_at: new Date(),
-      },
-    });
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      tenantId: membership?.organization_id || null,
-      sessionId: refreshSession.id,
-    });
+  } catch (error) {
+    next(error);
+  }
+};
 
-    res.cookie('refresh_token', rawRefresh, {
-      ...buildCookieOptions(req),
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+exports.linkGoogleAccount = async (req, res, next) => {
+  try {
+    let payload;
+    try {
+      payload = await verifyGoogleCredential(req.body?.credential);
+    } catch (error) {
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({ success: false, error: error.message });
+      }
+      return res.status(401).json({ success: false, error: 'Invalid Google credential.' });
+    }
+
+    const user = await prisma.users.findUnique({ where: { id: req.user.id } });
+    if (!user || user.status !== 'active') {
+      return res.status(401).json({ success: false, error: 'Account unavailable.' });
+    }
+    if (user.email.toLowerCase() !== payload.email) {
+      return res.status(409).json({
+        success: false,
+        code: 'GOOGLE_EMAIL_MISMATCH',
+        error: 'The Google email must match your Revluma account email.',
+      });
+    }
+
+    const linkedUser = await prisma.users.findUnique({ where: { google_id: payload.sub } });
+    if (linkedUser && linkedUser.id !== user.id) {
+      return res.status(409).json({
+        success: false,
+        code: 'GOOGLE_ACCOUNT_CONFLICT',
+        error: 'This Google account is already linked to another Revluma account.',
+      });
+    }
+
+    await prisma.users.update({
+      where: { id: user.id },
+      data: { google_id: payload.sub, email_verified: true },
     });
 
     return res.status(200).json({
       success: true,
-      data: {
-        access_token: accessToken,
-        user: {
-          id: user.id,
-          full_name: user.full_name,
-          email: user.email,
-          onboarding_completed: user.onboarding_completed,
-        },
-      },
+      data: { google_linked: true },
     });
   } catch (error) {
     next(error);
