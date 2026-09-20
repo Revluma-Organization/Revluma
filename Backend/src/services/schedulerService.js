@@ -28,6 +28,7 @@ const {
     generateMorningBriefings,
     orchestrate,
 } = require('./mlService');
+const { syncShopifyStore } = require('./shopifySync');
 
 // -----------------------------------------------------------------------------
 // Configuration
@@ -53,6 +54,11 @@ const MORNING_BRIEFINGS_INTERVAL_MS = parseInt(
     10
 );
 
+const STORE_SYNC_INTERVAL_MS = parseInt(
+    process.env.STORE_SYNC_INTERVAL_MS || String(15 * 60 * 1000),
+    10
+);
+
 const LOCK_TTL_SECONDS = parseInt(
     process.env.SCHEDULER_LOCK_TTL_SECONDS || '300',
     10
@@ -74,11 +80,13 @@ let businessStateTimer = null;
 let recommendationOutcomesTimer = null;
 let alertQueueTimer = null;
 let morningBriefingsTimer = null;
+let storeSyncTimer = null;
 
 let businessStateRunning = false;
 let recommendationOutcomesRunning = false;
 let alertQueueRunning = false;
 let morningBriefingsRunning = false;
+let storeSyncRunning = false;
 
 let started = false;
 
@@ -554,6 +562,48 @@ async function runAlertQueue() {
     }
 }
 
+async function runStoreSync() {
+    if (storeSyncRunning) return;
+    const lock = await acquireLock('store-sync');
+    if (!lock) return;
+    storeSyncRunning = true;
+    const startedAt = Date.now();
+
+    try {
+        const cutoff = new Date(Date.now() - STORE_SYNC_INTERVAL_MS);
+        const stores = await prisma.stores.findMany({
+            where: {
+                platform: 'shopify',
+                status: { in: ['active', 'error'] },
+                OR: [{ last_synced_at: null }, { last_synced_at: { lte: cutoff } }],
+            },
+            take: 10,
+        });
+        let succeeded = 0;
+        for (const store of stores) {
+            try {
+                await syncShopifyStore(store);
+                succeeded++;
+            } catch (error) {
+                logger.warn('scheduler_store_sync_failed', {
+                    store_id: store.id,
+                    error_type: error.code || 'sync_error',
+                });
+            }
+        }
+        logger.info('scheduler_store_sync_completed', {
+            stores: stores.length,
+            succeeded,
+            latency_ms: Date.now() - startedAt,
+        });
+    } catch (error) {
+        logger.error('scheduler_store_sync_failed', { error_type: error.code || 'scheduler_error' });
+    } finally {
+        storeSyncRunning = false;
+        await releaseLock(lock);
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Start
 // -----------------------------------------------------------------------------
@@ -587,6 +637,7 @@ function startScheduler() {
     void runBusinessStateRebuild();
     void runRecommendationOutcomeEvaluation();
     void runAlertQueue();
+    void runStoreSync();
 
     businessStateTimer = setInterval(
         runBusinessStateRebuild,
@@ -601,6 +652,11 @@ function startScheduler() {
     alertQueueTimer = setInterval(
         runAlertQueue,
         ALERT_QUEUE_INTERVAL_MS
+    );
+
+    storeSyncTimer = setInterval(
+        runStoreSync,
+        STORE_SYNC_INTERVAL_MS
     );
 
     /*
@@ -637,6 +693,11 @@ function stopScheduler() {
     if (alertQueueTimer) {
         clearInterval(alertQueueTimer);
         alertQueueTimer = null;
+    }
+
+    if (storeSyncTimer) {
+        clearInterval(storeSyncTimer);
+        storeSyncTimer = null;
     }
 
     if (morningBriefingsTimer) {

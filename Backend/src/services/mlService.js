@@ -1084,6 +1084,24 @@ async function generateMorningBriefings({
   });
 }
 
+async function checkAlerts({ organizationId, userIds = [], correlationId }) {
+  if (!organizationId || !Array.isArray(userIds)) {
+    return {
+      success: false,
+      error: {
+        code: ML_ERRORS.INVALID_REQUEST,
+        message: 'organizationId and userIds are required.',
+      },
+    };
+  }
+
+  return pythonRequest({
+    path: '/api/alerts/check',
+    body: { organization_id: organizationId, user_ids: userIds },
+    correlationId,
+  });
+}
+
 /* -------------------------------------------------------------------------- */
 /* BUSINESS STATE                                                              */
 /* -------------------------------------------------------------------------- */
@@ -1197,6 +1215,7 @@ module.exports = {
     predictChurnRisk,
     predictSendTime,
     generateMorningBriefings,
+    checkAlerts,
     rebuildBusinessState,
     evaluateRecommendationOutcomes,
     checkPythonHealth,

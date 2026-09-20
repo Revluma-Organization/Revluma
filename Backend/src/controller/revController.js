@@ -552,28 +552,18 @@ exports.getMorningBriefing = async (req, res, next) => {
   try {
     const org = await getAuthenticatedOrg(req.user.id);
 
-    const pythonUrl = process.env.PYTHON_SERVICE_URL || 'https://revluma-python.onrender.com';
-    const response  = await require('axios').post(
-      `${pythonUrl}/briefing/generate?organization_id=${org.id}`,
-      {},
-      {
-        headers: {
-          'Content-Type':   'application/json',
-          'X-Internal-Key': process.env.ML_INTERNAL_KEY || '',
-        },
-        timeout: 12000,
-      }
-    );
-
-    const data = response.data;
-    if (!data?.success) {
+    const result = await mlService.generateMorningBriefings({
+      organizationId: org.id,
+      correlationId,
+    });
+    if (!result.success) {
       return res.status(500).json({
         success: false,
         error: { code: 'BRIEFING_UNAVAILABLE', message: 'Morning briefing could not be generated.' },
       });
     }
 
-    return res.status(200).json({ success: true, data: data.briefing });
+    return res.status(200).json({ success: true, data: result.data });
   } catch (error) {
     logger.error('get_morning_briefing_failed', {
       correlationId,
@@ -599,17 +589,16 @@ exports.checkAndCreateAlerts = async (req, res, next) => {
     });
     const userIds = members.map(m => m.user_id);
 
-    const pythonUrl = process.env.PYTHON_SERVICE_URL || 'https://revluma-python.onrender.com';
-    const response = await require('axios').post(
-      `${pythonUrl}/api/alerts/check`,
-      { organization_id: org.id, user_ids: userIds },
-      {
-        headers: { 'Content-Type': 'application/json', 'X-Internal-Key': process.env.ML_INTERNAL_KEY || '' },
-        timeout: 8000,
-      }
-    );
+    const result = await mlService.checkAlerts({
+      organizationId: org.id,
+      userIds,
+      correlationId: `alerts-${org.id}-${Date.now()}`,
+    });
+    if (!result.success) {
+      return res.status(502).json({ success: false, error: { code: 'ALERTS_UNAVAILABLE', message: 'Alerts could not be checked.' } });
+    }
 
-    const { alerts = [] } = response.data;
+    const { alerts = [] } = result.data || {};
     if (!alerts.length) {
       return res.status(200).json({ success: true, data: { alerts_created: 0 } });
     }

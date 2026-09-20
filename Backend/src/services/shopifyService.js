@@ -1,10 +1,18 @@
 const axios = require("axios");
+const crypto = require('crypto');
 
 const dbConfig = require("../configs/database");
 const prisma = dbConfig.prisma;
 
 const { encrypt, decrypt } = require("../utils/encryption");
 const logger = require('../utils/logger');
+
+function createStoreTrackingKey(storeId) {
+  const secret = process.env.EVENT_TRACKING_SECRET || process.env.JWT_SECRET;
+  if (!secret) throw new Error('EVENT_TRACKING_SECRET or JWT_SECRET is required.');
+  const signature = crypto.createHmac('sha256', secret).update(storeId).digest('hex');
+  return `${storeId}.${signature}`;
+}
 
 /**Exchange Shopify authorization code for a permanent access token.*/
 const exchangeAccessToken = async (shop, code) => {
@@ -51,7 +59,7 @@ const upsertStore = async ({
   shop,
   accessToken,
 }) => {
-  return prisma.stores.upsert({
+  const store = await prisma.stores.upsert({
     where: {
       organization_id_shop_domain: {
         organization_id: organizationId,
@@ -76,6 +84,14 @@ const upsertStore = async ({
       installed_at: new Date(),
     },
   });
+
+  if (!store.public_tracking_key) {
+    return prisma.stores.update({
+      where: { id: store.id },
+      data: { public_tracking_key: createStoreTrackingKey(store.id) },
+    });
+  }
+  return store;
 };
 
 /**Retrieve decrypted Shopify access token. Use this whenever making Shopify API requests.*/
@@ -91,18 +107,11 @@ const getStoreAccessToken = (store) => {
 const syncShopifyStore = async (store) => {
   try {
     logger.info('shopify_sync_started', { shop_domain: store.shop_domain });
-
-    /**
-     * Future implementation:
-     * await syncCustomers(store);
-     * await syncOrders(store);
-     * await syncProducts(store);
-     * await syncAbandonedCarts(store);
-     */
-
-    logger.info('shopify_sync_queued', { shop_domain: store.shop_domain });
+    const { syncShopifyStore: runSync } = require('./shopifySync');
+    return await runSync(store);
   } catch (error) {
     logger.error('shopify_sync_failed', { shop_domain: store.shop_domain, message: error.message });
+    throw error;
   }
 };
 
