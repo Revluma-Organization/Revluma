@@ -128,7 +128,8 @@ model users {
   id                        String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   full_name                 String
   email                     String                  @unique
-  password_hash             String
+  password_hash             String?
+  google_id                 String?                 @unique
   email_verified            Boolean?                @default(false)
   accepted_terms            Boolean                 @default(false)
   accepted_privacy_policy   Boolean                 @default(false)

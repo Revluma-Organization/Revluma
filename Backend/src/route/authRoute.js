@@ -20,6 +20,7 @@ router.post('/verify-email', authController.verifyEmail);
 router.post('/resend-verification', resendLimiter, authController.resendVerification);
 router.post('/login', validateLogin, loginLimiter, authController.login);
 router.post('/refresh', refreshLimiter, authController.refresh);
+router.post('/google', loginLimiter, authController.googleLogin);
 
 // Password reset flow (public, unauthenticated)
 router.post('/forgot-password', validateForgotPassword, passwordResetLimiter, authController.forgotPassword);

@@ -25,6 +25,7 @@ const {
 const { isPasswordPwned } = require('../utils/passwordBreach');
 const bcrypt = require('bcrypt');
 const { v4: uuidv4 } = require('uuid');
+const { OAuth2Client } = require('google-auth-library');
 
 const speakeasy = require('speakeasy');
 const QRCode = require('qrcode');
@@ -39,6 +40,7 @@ const { buildCookieOptions } = require('../utils/cookieOptions');
 const SALT_ROUNDS = 12;
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Precomputed dummy bcrypt hash so login always pays the same compare cost
 // whether or not the email exists (timing equalization / F-05).
@@ -490,6 +492,126 @@ const accessToken = generateAccessToken({
       },
     });
 
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── GOOGLE LOGIN ────────────────────────────────────────────────────────────
+
+exports.googleLogin = async (req, res, next) => {
+  try {
+    const { credential, terms_agreed: termsAgreed } = req.body || {};
+
+    if (!process.env.GOOGLE_CLIENT_ID) {
+      return res.status(503).json({ success: false, error: 'Google login is not configured.' });
+    }
+    if (!credential || typeof credential !== 'string') {
+      return res.status(400).json({ success: false, error: 'Google credential is required.' });
+    }
+
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (error) {
+      logger.warn('google_login_invalid_credential', { error: error.message });
+      return res.status(401).json({ success: false, error: 'Invalid Google credential.' });
+    }
+
+    if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+      return res.status(401).json({ success: false, error: 'Google account email is not verified.' });
+    }
+
+    const email = payload.email.trim().toLowerCase();
+    let user = await prisma.users.findUnique({ where: { google_id: payload.sub } });
+
+    if (!user) {
+      user = await prisma.users.findUnique({ where: { email } });
+      if (user) {
+        if (user.status === 'suspended' || user.status === 'deleted') {
+          return res.status(403).json({ success: false, error: 'Account unavailable.' });
+        }
+
+        user = await prisma.users.update({
+          where: { id: user.id },
+          data: {
+            google_id: payload.sub,
+            email_verified: true,
+          },
+        });
+      } else {
+        if (termsAgreed !== true) {
+          return res.status(400).json({
+            success: false,
+            error: 'terms_agreed must be true when creating a Google account.',
+          });
+        }
+
+        user = await prisma.users.create({
+          data: {
+            full_name: payload.name || email.split('@')[0],
+            email,
+            password_hash: null,
+            google_id: payload.sub,
+            email_verified: true,
+            accepted_terms: true,
+            accepted_privacy_policy: true,
+            onboarding_completed: false,
+          },
+        });
+      }
+    }
+
+    if (user.status === 'suspended' || user.status === 'deleted') {
+      return res.status(403).json({ success: false, error: 'Account unavailable.' });
+    }
+
+    const membership = await prisma.organization_members.findFirst({
+      where: { user_id: user.id, status: 'active' },
+      select: { organization_id: true },
+      orderBy: { created_at: 'asc' },
+    });
+    const ip = getClientIp(req);
+    const { raw: rawRefresh, hash: refreshHash, expiresAt } = generateRefreshToken();
+    const refreshSession = await prisma.refresh_tokens.create({
+      data: {
+        user_id: user.id,
+        token_hash: refreshHash,
+        family_id: uuidv4(),
+        device_hint: getDeviceHint(req),
+        ip_address: ip,
+        expires_at: expiresAt,
+        last_used_at: new Date(),
+      },
+    });
+    const accessToken = generateAccessToken({
+      userId: user.id,
+      email: user.email,
+      tenantId: membership?.organization_id || null,
+      sessionId: refreshSession.id,
+    });
+
+    res.cookie('refresh_token', rawRefresh, {
+      ...buildCookieOptions(req),
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        access_token: accessToken,
+        user: {
+          id: user.id,
+          full_name: user.full_name,
+          email: user.email,
+          onboarding_completed: user.onboarding_completed,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }
