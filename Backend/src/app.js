@@ -23,6 +23,9 @@ const subscriptionRoutes = require("./route/subscriptionRoute");
 const revRoutes           = require("./route/revRoute");
 const memoryRoutes        = require("./route/memoryRoute");
 const internalRoutes      = require('./route/internalRoute');
+const commerceWebhookRoute = require('./route/commerceWebhookRoute');
+const messageWebhookRoute = require('./route/messageWebhookRoute');
+const subscriptionController = require('./controller/subscriptionController');
 
 
 
@@ -65,6 +68,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+// Provider signatures cover the exact bytes, so webhook bodies must be raw.
+app.use('/api/v1/webhooks', express.raw({ type: 'application/json', limit: '2mb' }), commerceWebhookRoute);
+app.use('/api/v1/message-webhooks', express.raw({ type: 'application/json', limit: '2mb' }), messageWebhookRoute);
+app.post('/api/v1/subscriptions/webhook', express.raw({ type: 'application/json', limit: '1mb' }), subscriptionController.webhook);
 
 // ── Body parsing
 app.use(express.json({ limit: '1mb' })); // Prevent oversized JSON bodies

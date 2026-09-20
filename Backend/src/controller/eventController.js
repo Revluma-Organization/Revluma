@@ -1,346 +1,197 @@
-/**
- * Revluma Event Ingestion Controller
- *
- * Receives raw Shopify pixel events, validates them, persists to DB,
- * then triggers the Python feature pipeline for ML inference.
- *
- * Security:
- *   - Public endpoint (Shopify webhooks are not authenticated users)
- *   - store_id validated against DB before processing
- *   - Rate limited at the router level (ingestLimiter)
- *   - platform/page/device bundled into payload per Python pipeline spec
- *
- * Pipeline:
- *   Shopify pixel → POST /api/v1/events/ingest → save to events table
- *   → POST /api/features/compute → Python ML pipeline → prediction
- *   → return prediction to pixel for real-time offer display
- */
+const crypto = require('crypto');
+const { prisma } = require('../configs/database');
+const logger = require('../utils/logger');
 
-const { prisma }  = require('../configs/database');
-const axios        = require('axios');
-const logger       = require('../utils/logger');
+const ALLOWED_EVENT_TYPES = new Set([
+  'PAGE_VIEW', 'PRODUCT_VIEW', 'ADD_TO_CART', 'REMOVE_FROM_CART',
+  'CHECKOUT_STARTED', 'CHECKOUT_STEP', 'PAYMENT_ATTEMPT', 'PURCHASE',
+  'COUPON_FIELD_VISITED', 'COUPON_ATTEMPT', 'SEARCH', 'SESSION_START',
+]);
 
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'https://revluma-python.onrender.com';
-const ML_INTERNAL_KEY    = process.env.ML_INTERNAL_KEY    || '';
+function getTrackingSecret() {
+  return process.env.EVENT_TRACKING_SECRET || process.env.JWT_SECRET;
+}
 
-// ── POST /api/v1/events/ingest ────────────────────────────────────────────────
+function createStoreTrackingKey(storeId) {
+  const secret = getTrackingSecret();
+  if (!secret) throw new Error('EVENT_TRACKING_SECRET or JWT_SECRET is required.');
+  const signature = crypto.createHmac('sha256', secret).update(storeId).digest('hex');
+  return `${storeId}.${signature}`;
+}
+
+function resolveStoreId(trackingKey) {
+  const secret = getTrackingSecret();
+  if (typeof trackingKey !== 'string' || !secret) return null;
+  const separator = trackingKey.lastIndexOf('.');
+  if (separator <= 0) return null;
+  const storeId = trackingKey.slice(0, separator);
+  const signature = trackingKey.slice(separator + 1);
+  const expected = crypto.createHmac('sha256', secret).update(storeId).digest('hex');
+  if (signature.length !== expected.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  return storeId;
+}
+
+function enrichPayload(event) {
+  return {
+    ...(event.payload || {}),
+    ...(event.platform ? { platform: event.platform } : {}),
+    ...(event.page?.url ? { page_url: event.page.url } : {}),
+    ...(event.page?.referrer ? { referrer: event.page.referrer } : {}),
+    ...(event.device?.type ? { device_type: event.device.type } : {}),
+    ...(event.device?.user_agent ? { user_agent: event.device.user_agent } : {}),
+    timestamp: event.timestamp,
+  };
+}
+
+function validateEvent(event) {
+  if (!event || typeof event !== 'object') return 'Event must be an object.';
+  if (typeof event.id !== 'string' || !event.id.trim()) return 'Event id is required.';
+  if (typeof event.session_id !== 'string' || !event.session_id.trim()) return 'session_id is required.';
+  if (!ALLOWED_EVENT_TYPES.has(event.event_type)) return `Unsupported event type: ${event.event_type}`;
+  if (typeof event.timestamp !== 'string' || Number.isNaN(Date.parse(event.timestamp))) {
+    return 'Valid ISO 8601 timestamp is required.';
+  }
+  return null;
+}
+
+async function resolveStoreAndCustomer(storeTrackingKey, customerId, res) {
+  const storeId = resolveStoreId(storeTrackingKey);
+  const store = storeId
+    ? await prisma.stores.findUnique({ where: { id: storeId }, select: { id: true } })
+    : null;
+
+  if (!store) {
+    res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invalid store tracking key.' } });
+    return null;
+  }
+
+  if (customerId) {
+    const customer = await prisma.customers.findFirst({
+      where: { id: customerId, store_id: store.id },
+      select: { id: true },
+    });
+    if (!customer) {
+      res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'customer_id does not belong to the receiving store.' },
+      });
+      return null;
+    }
+  }
+  return store;
+}
+
+async function findExistingEvent(storeId, sourceEventId) {
+  return prisma.events.findFirst({
+    where: { store_id: storeId, source: 'pixel', source_event_id: sourceEventId },
+    select: { id: true },
+  });
+}
+
+async function createEvent(storeId, event) {
+  return prisma.events.create({
+    data: {
+      store_id: storeId,
+      session_id: event.session_id,
+      event_type: event.event_type,
+      customer_id: event.customer_id || null,
+      anonymous_id: event.anonymous_id || null,
+      payload: enrichPayload(event),
+      created_at: new Date(event.timestamp),
+      source: 'pixel',
+      source_event_id: event.id,
+      received_at: new Date(),
+    },
+  });
+}
+
 exports.ingest = async (req, res, next) => {
   try {
-    const {
-      store_id,
-      session_id,
-      event_type,
-      customer_id,
-      anonymous_id,
-      merchant_id,
-      timestamp,
-      payload = {},
-      // These come from the pixel root — must be bundled into payload
-      platform,
-      page,
-      device,
-    } = req.body;
+    const event = req.body || {};
+    const missing = ['store_tracking_key', 'id', 'session_id', 'event_type']
+      .filter((field) => !event[field]);
 
-    // ── Validate required fields ──────────────────────────────────────────────
-    const missing = [];
-    if (!store_id)   missing.push('store_id');
-    if (!session_id) missing.push('session_id');
-    if (!event_type) missing.push('event_type');
-
-    if (missing.length > 0) {
+    if (missing.length) {
       return res.status(400).json({
         success: false,
         error: { code: 'VALIDATION_ERROR', message: `Missing required fields: ${missing.join(', ')}` },
       });
     }
 
-    if (!ALLOWED_EVENT_TYPES.includes(event_type)) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: `Unsupported event type: ${event_type}`,
-        },
-      });
+    const validationError = validateEvent(event);
+    if (validationError) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: validationError } });
     }
 
-    if (
-      !timestamp ||
-      typeof timestamp !== 'string' ||
-      Number.isNaN(Date.parse(timestamp))
-    ) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Valid ISO 8601 timestamp is required.',
-        },
-      });
-    }
+    const store = await resolveStoreAndCustomer(event.store_tracking_key, event.customer_id, res);
+    if (!store) return;
 
-    const eventTimestamp = new Date(timestamp);
+    const existing = await findExistingEvent(store.id, event.id);
+    if (existing) return res.status(200).json({ success: true, event_id: existing.id, duplicate: true });
 
-    // ── Validate store exists ─────────────────────────────────────────────────
-    const store = await prisma.stores.findUnique({ where: { id: store_id } });
-    if (!store) {
-      return res.status(404).json({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Store not found.' },
-      });
-    }
-
-    // ── Bundle platform/page/device into payload per David's spec ────────────
-    // The events table has no columns for these — they live in payload JSONB.
-    // The Python pipeline reads them from payload.referrer and payload.device_type.
-    // ── Normalize page data ────────────────────────────────────────────────────
-
-const pageUrl = page?.url || null;
-const pageReferrer = page?.referrer || null;
-
-// ── Normalize device data ──────────────────────────────────────────────────
-const deviceType = device?.type || null;
-const userAgent = device?.user_agent || null;
-
-// ── Build ML-compatible payload ────────────────────────────────────────────
-const enrichedPayload = {
-  ...payload,
-
-  ...(platform && { platform }),
-
-  ...(pageUrl && { page_url: pageUrl }),
-  ...(pageReferrer && { referrer: pageReferrer }),
-
-  ...(deviceType && { device_type: deviceType }),
-  ...(userAgent && { user_agent: userAgent }),
-
-  // Preserve the original event timestamp
-  timestamp,
-};
-
-    // ── Persist raw event ─────────────────────────────────────────────────────
-    const event = await prisma.events.create({
+    const created = await createEvent(store.id, event);
+    await prisma.feature_jobs.create({
       data: {
-        store_id,
-        session_id,
-        event_type,
-        customer_id:  customer_id  || null,
-        anonymous_id: anonymous_id || null,
-        payload:      enrichedPayload,
-        // timestamp accepted as-is; Python pipeline accepts both timestamp and created_at
-        created_at: eventTimestamp,
+        store_id: store.id,
+        event_id: created.id,
+        idempotency_key: `pixel:${store.id}:${event.id}`,
       },
+    }).catch((error) => {
+      logger.warn('feature_job_enqueue_failed', {
+        event_id: created.id,
+        error_type: error.code || 'queue_error',
+      });
     });
-
-    logger.info('event_ingested', {
-      event_id:   event.id,
-      store_id,
-      session_id,
-      event_type,
-      customer_id: customer_id || null,
-    });
-
-    // ── Trigger Python feature pipeline (non-blocking) ────────────────────────
-    // Fire-and-forget — we respond to Shopify immediately.
-    // The feature computation runs async and stores its output for ML training.
-    // Only trigger when we have enough context for a meaningful prediction.
-    let prediction = null;
-
-    if (customer_id || anonymous_id) {
-      try {
-        const featureResponse = await axios.post(
-          `${PYTHON_SERVICE_URL}/api/features/compute`,
-          {
-            customer_id:  customer_id  || null,
-            anonymous_id: anonymous_id || null,
-            session_id,
-            store_id,
-            merchant_id:  merchant_id || store.organization_id,
-            timestamp,
-
-          },
-          {
-            headers: {
-              'Content-Type':  'application/json',
-              'X-Internal-Key': ML_INTERNAL_KEY,
-            },
-            timeout: 4000, // 4s — fast enough for real-time pixel response
-          }
-        );
-
-        if (featureResponse.data?.success) {
-          prediction = featureResponse.data.prediction || null;
-          logger.info('feature_pipeline_triggered', {
-            session_id,
-            store_id,
-            show_offer:  prediction?.show_offer,
-            offer_type:  prediction?.offer_type,
-          });
-        }
-      } catch (pipelineErr) {
-        // Never fail the ingestion because the pipeline errored.
-        // Events are saved. The pipeline can be triggered retroactively.
-        logger.warn('feature_pipeline_error', {
-          session_id,
-          error: pipelineErr.message,
-        });
-      }
-    }
-
-    // ── Respond to pixel ──────────────────────────────────────────────────────
-    return res.status(201).json({
-      success:    true,
-      event_id:   event.id,
-      prediction: prediction || null,
-    });
-
+    logger.info('event_ingested', { event_id: created.id, store_id: store.id, event_type: event.event_type });
+    return res.status(201).json({ success: true, event_id: created.id });
   } catch (error) {
+    if (error.code === 'P2002') {
+      const storeId = resolveStoreId(req.body?.store_tracking_key);
+      const existing = await findExistingEvent(storeId, req.body?.id);
+      return res.status(200).json({ success: true, event_id: existing?.id || null, duplicate: true });
+    }
     next(error);
   }
 };
 
-// ── POST /api/v1/events/ingest/batch ─────────────────────────────────────────
-// For bulk historical imports (CSV export from Shopify Admin)
 exports.ingestBatch = async (req, res, next) => {
   try {
-    const { store_id, events } = req.body;
-
-    if (!store_id || !Array.isArray(events) || events.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'store_id and events[] required.' },
-      });
+    const { store_tracking_key: trackingKey, events } = req.body || {};
+    if (!trackingKey || !Array.isArray(events) || events.length === 0) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'store_tracking_key and events[] required.' } });
     }
-
     if (events.length > 1000) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Maximum 1000 events per batch.' },
-      });
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Maximum 1000 events per batch.' } });
     }
 
-    const store = await prisma.stores.findUnique({ where: { id: store_id } });
-    if (!store) {
-      return res.status(404).json({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Store not found.' },
-      });
+    const store = await resolveStoreAndCustomer(trackingKey, null, res);
+    if (!store) return;
+
+    const invalidIndex = events.findIndex((event) => validateEvent(event));
+    if (invalidIndex !== -1) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Invalid event at index ${invalidIndex}.` } });
     }
 
-    // Build records
-    const invalidEventIndex = events.findIndex(e =>
-      !e ||
-      !e.session_id ||
-      !ALLOWED_EVENT_TYPES.includes(e.event_type) ||
-      typeof e.timestamp !== 'string' ||
-      Number.isNaN(Date.parse(e.timestamp))
-    );
-
-    if (invalidEventIndex !== -1) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: `Invalid event at index ${invalidEventIndex}. Each event requires a valid session_id, event_type, and timestamp.`,
-        },
-      });
-    }
-
-    const records = events.map(e => ({
-      store_id,
-      session_id:   e.session_id   || `batch-${Date.now()}-${Math.random()}`,
-      event_type:   e.event_type   || 'unknown',
-      customer_id:  e.customer_id  || null,
-      anonymous_id: e.anonymous_id || null,
-      payload: {
-        ...(e.payload || {}),
-        ...(e.platform && { platform: e.platform }),
-        ...(e.page?.url && { page_url: e.page.url }),
-        ...(e.page?.referrer && { referrer: e.page.referrer }),
-        ...(e.device?.type && { device_type: e.device.type }),
-        ...(e.device?.user_agent && { user_agent: e.device.user_agent }),
-        ...(e.timestamp && { timestamp: e.timestamp }),
-        _batch_import: true,
-      },
-      created_at: new Date(e.timestamp),
+    const records = events.map((event) => ({
+      store_id: store.id,
+      session_id: event.session_id,
+      event_type: event.event_type,
+      customer_id: event.customer_id || null,
+      anonymous_id: event.anonymous_id || null,
+      payload: enrichPayload(event),
+      created_at: new Date(event.timestamp),
+      source: 'pixel',
+      source_event_id: event.id,
+      received_at: new Date(),
     }));
 
-    const result = await prisma.events.createMany({
-      data: records,
-      skipDuplicates: true,
-    });
-
-    logger.info('batch_ingested', { store_id, count: result.count });
-
-    return res.status(201).json({
-      success:    true,
-      event_id:   event.id,
-      prediction: prediction || null,
-    });
-
+    const result = await prisma.events.createMany({ data: records, skipDuplicates: true });
+    logger.info('batch_ingested', { store_id: store.id, count: result.count });
+    return res.status(201).json({ success: true, ingested: result.count, skipped: events.length - result.count });
   } catch (error) {
     next(error);
   }
 };
 
-// ── POST /api/v1/events/ingest/batch ─────────────────────────────────────────
-// For bulk historical imports (CSV export from Shopify Admin)
-exports.ingestBatch = async (req, res, next) => {
-  try {
-    const { store_id, events } = req.body;
-
-    if (!store_id || !Array.isArray(events) || events.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'store_id and events[] required.' },
-      });
-    }
-
-    if (events.length > 1000) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Maximum 1000 events per batch.' },
-      });
-    }
-
-    const store = await prisma.stores.findUnique({ where: { id: store_id } });
-    if (!store) {
-      return res.status(404).json({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Store not found.' },
-      });
-    }
-
-    // Build records
-    const records = events.map(e => ({
-      store_id,
-      session_id:   e.session_id   || `batch-${Date.now()}-${Math.random()}`,
-      event_type:   e.event_type   || 'unknown',
-      customer_id:  e.customer_id  || null,
-      anonymous_id: e.anonymous_id || null,
-      payload: {
-        ...((e.payload) || {}),
-        ...(e.platform && { platform: e.platform }),
-        ...(e.page     && { referrer: e.page }),
-        ...(e.device   && { device_type: e.device }),
-        _batch_import: true,
-      },
-      ...(e.timestamp && { created_at: new Date(e.timestamp) }),
-    }));
-
-    const result = await prisma.events.createMany({
-      data: records,
-      skipDuplicates: true,
-    });
-
-    logger.info('batch_ingested', { store_id, count: result.count });
-
-    return res.status(201).json({
-      success: true,
-      ingested: result.count,
-      skipped:  events.length - result.count,
-    });
-
-  } catch (error) {
-    next(error);
-  }
-};
+exports.createStoreTrackingKey = createStoreTrackingKey;

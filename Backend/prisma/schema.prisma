@@ -111,6 +111,8 @@ model organizations {
   model_evaluation_metrics model_evaluation_metrics[]
   model_feedback_queue     model_feedback_queue[]
   morning_briefings        morning_briefings[]
+    churn_training_observations       churn_training_observations[]
+    sensitivity_training_observations sensitivity_training_observations[]
   members                  organization_members[]
   users                    users                      @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   payment_transactions     payment_transactions[]
@@ -240,6 +242,7 @@ model stores {
   last_synced_at         DateTime?                @db.Timestamptz(6)
   created_at             DateTime?                @default(now()) @db.Timestamptz(6)
   updated_at             DateTime?                @default(now()) @db.Timestamptz(6)
+  public_tracking_key    String?                  @unique
   abandoned_carts        abandoned_carts[]
   coupons                coupons[]
   customers              customers[]
@@ -259,6 +262,10 @@ model stores {
   store_settings         store_settings[]
   organizations          organizations            @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   webhook_registrations  webhook_registrations[]
+  webhook_deliveries      webhook_deliveries[]
+  feature_jobs            feature_jobs[]
+  churn_training_observations       churn_training_observations[]
+  sensitivity_training_observations sensitivity_training_observations[]
 
   @@unique([organization_id, shop_domain], map: "uq_stores_org_domain")
 }
@@ -304,6 +311,8 @@ model customers {
   mlSessionFeatures       ml_session_features[]
   orders                  orders[]
   sequence_sends          sequence_sends[]
+  churn_training_observations       churn_training_observations[]
+  sensitivity_training_observations sensitivity_training_observations[]
 
   @@unique([store_id, external_id], map: "uq_customers_store_external")
   @@index([store_id], map: "idx_customers_store")
@@ -334,11 +343,18 @@ model abandoned_carts {
   recovery_sequence_id String?                @db.Uuid
   created_at           DateTime?              @default(now()) @db.Timestamptz(6)
   updated_at           DateTime?              @default(now()) @db.Timestamptz(6)
+  pss_score            Int?
+  css_score            Int?
+  tss_score            Int?
+  recovery_action      String?
+  sensitivity_model_version String?
+  sensitivity_scored_at DateTime?             @db.Timestamptz(6)
   items                abandoned_cart_items[]
   customers            customers?             @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
   sequences            sequences?             @relation(fields: [recovery_sequence_id], references: [id], onUpdate: NoAction)
   stores               stores                 @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   orders               orders[]
+  sensitivity_training_observations sensitivity_training_observations[]
 }
 
 /// Individual line items within an abandoned cart.
@@ -436,10 +452,12 @@ model events {
   event_type      String
   payload         Json?
   created_at      DateTime?  @default(now()) @db.Timestamptz(6)
-  source          String?
+  source          String    @default("pixel")
   source_event_id String?
+  received_at     DateTime  @default(now()) @db.Timestamptz(6)
   customers       customers? @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
   stores          stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  feature_jobs    feature_jobs[]
 
   @@unique([store_id, source, source_event_id])
   @@index([customer_id, created_at(sort: Desc)])
@@ -480,6 +498,10 @@ model ml_session_features {
   shipping_eta_dwell_sec              Float?
   trust_page_visited                  Boolean?
   failed_coupon_count                 Int?
+  cart_item_add_count                 Int?
+  cart_item_remove_count              Int?
+  coupon_field_visited                Boolean?
+  failed_payment_count                Int?
   copied_product_title                Boolean?
   cart_value_vs_avg_order_value_ratio Float?
   created_at                          DateTime?  @default(now()) @db.Timestamptz(6)
@@ -491,6 +513,24 @@ model ml_session_features {
   @@index([customer_id], map: "idx_ml_features_customer")
   @@index([session_id], map: "idx_ml_features_session")
   @@index([anonymous_id], map: "idx_ml_features_anonymous")
+}
+
+model feature_jobs {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id       String    @db.Uuid
+  event_id       String    @db.Uuid
+  idempotency_key String   @unique
+  status         String    @default("pending")
+  attempt_count  Int       @default(0)
+  available_at   DateTime  @default(now()) @db.Timestamptz(6)
+  last_error     String?
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
+  stores         stores    @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  events         events    @relation(fields: [event_id], references: [id], onDelete: Cascade)
+
+  @@index([status, available_at])
+  @@index([store_id, created_at])
 }
 
 /// Persisted refresh tokens — enables real logout and token rotation.
@@ -1246,4 +1286,66 @@ model webhook_registrations {
   stores       stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([store_id, external_id])
+}
+
+model webhook_deliveries {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  provider     String
+  delivery_id  String
+  store_id     String    @db.Uuid
+  topic        String
+  status       String    @default("received")
+  received_at  DateTime  @default(now()) @db.Timestamptz(6)
+  processed_at DateTime? @db.Timestamptz(6)
+  last_error   String?
+  stores       stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([provider, delivery_id])
+  @@index([store_id, received_at])
+  @@index([status, received_at])
+}
+
+model churn_training_observations {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id       String    @db.Uuid
+  store_id              String    @db.Uuid
+  customer_id           String    @db.Uuid
+  prediction_at         DateTime  @db.Timestamptz(6)
+  observation_due_at    DateTime  @db.Timestamptz(6)
+  finalized_at          DateTime? @db.Timestamptz(6)
+  next_completed_order_at DateTime? @db.Timestamptz(6)
+  observed_churn_tier   String?
+  feature_snapshot      Json
+  label_policy_version  String
+  organizations         organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  stores                stores @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  customers             customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+
+  @@unique([customer_id, prediction_at])
+  @@index([finalized_at, observed_churn_tier])
+  @@index([store_id, observation_due_at])
+}
+
+model sensitivity_training_observations {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id       String    @db.Uuid
+  store_id              String    @db.Uuid
+  customer_id           String    @db.Uuid
+  abandoned_cart_id     String?   @db.Uuid
+  decision_at           DateTime  @db.Timestamptz(6)
+  observation_due_at    DateTime  @db.Timestamptz(6)
+  finalized_at          DateTime? @db.Timestamptz(6)
+  pss_label             Boolean?
+  css_label             Boolean?
+  tss_label             Boolean?
+  label_policy_version  String
+  feature_snapshot      Json
+  organizations         organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  stores                stores @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  customers             customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  abandoned_carts       abandoned_carts? @relation(fields: [abandoned_cart_id], references: [id], onDelete: SetNull)
+
+  @@unique([customer_id, decision_at])
+  @@index([store_id, observation_due_at])
+  @@index([finalized_at])
 }
