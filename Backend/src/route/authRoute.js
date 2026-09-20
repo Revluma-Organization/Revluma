@@ -10,7 +10,7 @@ const {
   passwordResetLimiter,
 } = require('../middlewares/rateLimiter');
 const { validateRegister, validateLogin, validateForgotPassword, validateVerifyForgotPasswordOtp, validateResetPassword, validateChangePassword } = require('../middlewares/validateAuth');
-const { authenticateToken } = require('../middlewares/authMiddleware');
+const { authenticateToken, authenticateTwoFactorChallenge } = require('../middlewares/authMiddleware');
 const { optionalAuthenticate } = require('../middlewares/optionalAuth');
 const uploadProfilePicture = require("../middlewares/uploadProfilePicture");
 
@@ -41,7 +41,7 @@ router.put("/profile/picture",authenticateToken,uploadProfilePicture.single("ima
 
 // Two-Factor Authentication
 router.post('/2fa/setup', authenticateToken, authController.setupTwoFactor);
-router.post('/2fa/verify', authenticateToken, authController.verifyTwoFactor);
+router.post('/2fa/verify', authenticateTwoFactorChallenge, authController.verifyTwoFactor);
 router.post('/2fa/disable', authenticateToken, authController.disableTwoFactor);
 
 

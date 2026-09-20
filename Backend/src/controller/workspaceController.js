@@ -220,3 +220,49 @@ exports.uploadWorkspaceLogo = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.transferWorkspace = async (req, res, next) => {
+  try {
+    const { organizationId, role } = req.orgMembership || {};
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (role !== 'owner') return res.status(403).json({ success: false, error: 'Only the workspace owner can transfer ownership.' });
+    if (!email) return res.status(400).json({ success: false, error: 'Email is required.' });
+
+    const target = await prisma.users.findUnique({ where: { email }, select: { id: true, email: true, full_name: true } });
+    if (!target) return res.status(404).json({ success: false, error: 'The target user must have a Revluma account.' });
+    const targetMembership = await prisma.organization_members.findUnique({
+      where: { organization_id_user_id: { organization_id: organizationId, user_id: target.id } },
+    });
+    if (!targetMembership || targetMembership.status !== 'active') {
+      return res.status(400).json({ success: false, error: 'The target user must be an active workspace member.' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.organizations.update({ where: { id: organizationId }, data: { owner_id: target.id, updated_at: new Date() } });
+      await tx.organization_members.update({ where: { id: req.orgMembership.membershipId }, data: { role: 'admin', updated_at: new Date() } });
+      await tx.organization_members.update({ where: { id: targetMembership.id }, data: { role: 'owner', updated_at: new Date() } });
+    });
+    return res.status(200).json({ success: true, message: 'Workspace ownership transferred.', data: { owner: target } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.archiveWorkspace = async (req, res, next) => {
+  try {
+    const { organizationId, role } = req.orgMembership || {};
+    if (role !== 'owner') return res.status(403).json({ success: false, error: 'Only the workspace owner can archive the workspace.' });
+    if (req.body?.confirmation !== 'DELETE') return res.status(400).json({ success: false, error: 'Type DELETE to confirm workspace archival.' });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.organizations.update({ where: { id: organizationId }, data: { status: 'archived', archived_at: new Date(), updated_at: new Date() } });
+      await tx.organization_members.updateMany({ where: { organization_id: organizationId, status: 'active' }, data: { status: 'archived', updated_at: new Date() } });
+      await tx.stores.updateMany({ where: { organization_id: organizationId }, data: { status: 'inactive', updated_at: new Date() } });
+      const members = await tx.organization_members.findMany({ where: { organization_id: organizationId }, select: { user_id: true } });
+      await tx.refresh_tokens.deleteMany({ where: { user_id: { in: members.map((member) => member.user_id) } } });
+    });
+    return res.status(200).json({ success: true, message: 'Workspace archived successfully.' });
+  } catch (error) {
+    next(error);
+  }
+};

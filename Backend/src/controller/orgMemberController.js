@@ -314,7 +314,16 @@ exports.removeMember = async (req, res, next) => {
       where: { id: memberId },
     });
 
-    if (!targetMember || targetMember.organization_id !== organizationId) {
+    if (!targetMember) {
+      const invite = await prisma.invite_tokens.findUnique({ where: { id: memberId } });
+      if (!invite || invite.organization_id !== organizationId || invite.accepted_at) {
+        return res.status(404).json({ success: false, error: 'Member or invitation not found.' });
+      }
+      await prisma.invite_tokens.update({ where: { id: memberId }, data: { accepted_at: new Date() } });
+      return res.status(200).json({ success: true, message: 'Pending invitation revoked.' });
+    }
+
+    if (targetMember.organization_id !== organizationId) {
       return res.status(404).json({ success: false, error: 'Member not found.' });
     }
 

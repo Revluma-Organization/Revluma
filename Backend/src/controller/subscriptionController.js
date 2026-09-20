@@ -90,6 +90,32 @@ async function getAuthenticatedOrg(userId) {
   return org;
 }
 
+exports.startTrial = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+    const existing = await prisma.subscriptions.findUnique({
+      where: { organization_id: org.id },
+      select: { status: true, trial_ends_at: true },
+    });
+    if (existing?.status === 'active') {
+      return res.status(409).json({ success: false, error: 'Workspace already has an active subscription.' });
+    }
+    if (existing?.status === 'trialing' && existing.trial_ends_at > new Date()) {
+      return res.status(200).json({ success: true, data: { status: 'in_trial', trial_ends_at: existing.trial_ends_at } });
+    }
+    const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    const subscription = await prisma.subscriptions.upsert({
+      where: { organization_id: org.id },
+      create: { organization_id: org.id, plan: 'free', billing_cycle: 'monthly', status: 'trialing', trial_ends_at: trialEndsAt },
+      update: { status: 'trialing', trial_ends_at: trialEndsAt, cancelled_at: null, updated_at: new Date() },
+      select: { plan: true, status: true, trial_ends_at: true },
+    });
+    return res.status(200).json({ success: true, data: { ...subscription, status: 'in_trial' } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v1/subscriptions/initialize
 // Requires: authenticateToken
