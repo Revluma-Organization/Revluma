@@ -1079,10 +1079,17 @@
 
       try {
         // Add this to auth-client.js 
-        await window.revlumaAuth.googleLogin(idToken);
-        
-        showGlassmorphismCard('success', 'Welcome back!', 'Taking you to your dashboard…', () => window.location.href = '/dashboard/overview', 'Continue');
-        setTimeout(() => { window.location.href = '/dashboard/overview'; }, 1200);
+        const result = await window.revlumaAuth.googleLogin(idToken);
+        const user = result.data?.user || result.user;
+
+        showGlassmorphismCard('success', 'Welcome back!', 'Redirecting...');
+        setTimeout(() => {
+          if (user && user.onboarding_completed === false) {
+            window.location.href = '/auth/onboarding.html';
+          } else {
+            window.location.href = '/dashboard/overview';
+          }
+        }, 1000);
       } catch (err) {
         hideGlassmorphismCard();
         // Handle 409 Conflict logic!
