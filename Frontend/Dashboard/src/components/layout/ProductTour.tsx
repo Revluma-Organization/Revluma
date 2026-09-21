@@ -60,6 +60,18 @@ function placeCard(target: Rect, placement: "auto" | "top" | "bottom" | "left" |
 
 export function ProductTour() {
   const { tourOpen, tourStep, setTourStep, endTour } = useUI();
+  // Dismiss handler with localStorage persistence
+  const handleEndTour = useCallback(() => {
+    localStorage.setItem("revluma_tour_completed", "true");
+    endTour();
+  }, [endTour]);
+
+  // If already completed in this browser, close immediately on mount
+  useEffect(() => {
+    if (tourOpen && localStorage.getItem("revluma_tour_completed") === "true") {
+      endTour();
+    }
+  }, [tourOpen, endTour]);
   const [rect, setRect] = useState<Rect | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number; arrow: string } | null>(null);
   const [missing, setMissing] = useState(false);
@@ -112,7 +124,7 @@ export function ProductTour() {
   useEffect(() => {
     if (!tourOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") endTour();
+      if (e.key === "Escape") handleEndTour();
       else if (e.key === "ArrowRight") next();
       else if (e.key === "ArrowLeft") prev();
     };
@@ -122,14 +134,14 @@ export function ProductTour() {
   }, [tourOpen, tourStep]);
 
   const next = () => {
-    if (tourStep >= total - 1) endTour();
-    else setTourStep(tourStep + 1);
-  };
+  if (tourStep >= total - 1) handleEndTour();
+  else setTourStep(tourStep + 1);
+};
   const prev = () => {
     if (tourStep > 0) setTourStep(tourStep - 1);
   };
 
-  if (!tourOpen || !step || !pos) return null;
+  if (!tourOpen || !step || !pos || localStorage.getItem("revluma_tour_completed") === "true") return null;
 
   const isLast = tourStep === total - 1;
 
@@ -171,7 +183,7 @@ export function ProductTour() {
       {/* Click-outside to skip (clicks on the dim layer) */}
       <button
         aria-label="Skip tour"
-        onClick={endTour}
+        onClick={handleEndTour}
         className="absolute inset-0 cursor-default"
         tabIndex={-1}
       />
@@ -210,7 +222,7 @@ export function ProductTour() {
                     Step {tourStep + 1} / {total}
                   </span>
                   <button
-                    onClick={endTour}
+                    onClick={handleEndTour}
                     className="rounded p-1 text-t3 transition-colors hover:bg-glass/[0.06] hover:text-t1"
                     aria-label="Close tour"
                   >
@@ -240,7 +252,7 @@ export function ProductTour() {
 
             <div className="flex items-center justify-between gap-2 px-4 py-3">
               <button
-                onClick={endTour}
+                onClick={handleEndTour}
                 className="text-[0.74rem] font-medium text-t3 transition-colors hover:text-t1"
               >
                 Skip tour
