@@ -7,6 +7,7 @@
   <link rel="icon" href="../assets/images/Revluma-icon.png" />
   <title>Revluma — Sign In</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -937,8 +938,8 @@
           </div>
         </div>
         
-        <!-- Sign in with Google -->
-        <button type="button" id="googleSignInBtn" class="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 hover:opacity-90 mb-5" style="background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: 'DM Sans', system-ui, sans-serif;">
+        <!-- Sign in with Google (Rendered by GIS) -->
+        <div id="googleSignInDiv" class="w-full flex justify-center mb-5" style="min-height: 44px; border-radius: 10px; overflow: hidden;"></div>
           <svg class="w-5 h-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
             <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -1064,50 +1065,46 @@
     <span id="infoMessage"></span>
   </div>
 
-  <script>
-  
-    document.addEventListener('DOMContentLoaded', () => {
-      const googleBtn = document.getElementById('googleSignInBtn');
-      if (googleBtn) {
-        googleBtn.addEventListener('click', () => {
-          const isMobile = window.innerWidth <= 768;
-          const googleHTML = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#fff;color:#202124;">
-            <div style="text-align:center;">
-              <svg viewBox="0 0 24 24" width="48" height="48" style="margin-bottom:16px;">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              <h2 style="font-size:18px;font-weight:600;margin-bottom:8px;">Sign in with Google</h2>
-              <p style="color:#5f6368;font-size:14px;">Authenticating...</p>
-              <div style="margin-top:24px;width:36px;height:36px;border:3px solid #e0e0e0;border-top-color:#4285F4;border-radius:50%;animation:spin 0.8s linear infinite;margin-left:auto;margin-right:auto;"></div>
-              <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
-            </div>
-          </body></html>`;
-
-          if (isMobile) {
-            document.open();
-            document.write(googleHTML);
-            document.close();
-            setTimeout(() => {
-              window.location.href = '/dashboard/overview';
-            }, 2000);
-          } else {
-            const width = 500;
-            const height = 600;
-            const left = (screen.width / 2) - (width / 2);
-            const top = (screen.height / 2) - (height / 2);
-            const popup = window.open('about:blank', 'GoogleAuth', `width=${width},height=${height},top=${top},left=${left}`);
-            popup.document.write(googleHTML);
-            setTimeout(() => {
-              popup.close();
-              window.location.href = '/dashboard/overview';
-            }, 2000);
-          }
-        });
-      }
+<script>
+  window.onload = function () {
+  if (typeof google !== 'undefined') {
+    google.accounts.id.initialize({
+      client_id: '137716714187-75iq86blnhp09hcg7spvhspgath32eol.apps.googleusercontent.com',
+      callback: handleGoogleLogin
     });
+    google.accounts.id.renderButton(
+      document.getElementById('googleSignInDiv'),
+      { theme: 'outline', size: 'large', width: 520, shape: 'rectangular', text: 'signin_with' }
+    );
+  }
+};
+
+    async function handleGoogleLogin(response) {
+      const idToken = response.credential;
+      setLoading(true);
+      await window.glassCardReady;
+      showGlassmorphismCard('loading', 'Signing in with Google…', 'Verifying your credentials.');
+
+      try {
+        // Add this to auth-client.js 
+        await window.revlumaAuth.googleLogin(idToken);
+        
+        showGlassmorphismCard('success', 'Welcome back!', 'Taking you to your dashboard…', () => window.location.href = '/dashboard/overview', 'Continue');
+        setTimeout(() => { window.location.href = '/dashboard/overview'; }, 1200);
+      } catch (err) {
+        hideGlassmorphismCard();
+        // Handle 409 Conflict logic!
+        if (err.code === 'GOOGLE_ACCOUNT_LINK_REQUIRED') {
+          state.pendingGoogleCredential = idToken; // Save it to link after password login
+          showInfoBanner('Link your account', 'An account with this email already exists. Please enter your password below to link Google to your account.');
+          el.email.focus();
+        } else {
+          showError(err.message || 'Google sign-in failed. Please try again.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
   </script>
 
   <script>
@@ -1604,6 +1601,7 @@ storage.setItem('rv-auth', JSON.stringify(authData));
 
     el.verify2FaBtn.addEventListener('click', async () => {
       const code = el.twoFactorCode.value.trim();
+      const trustDevice = el.trustDevice.checked;
       el.twoFactorError.classList.remove('visible');
 
       if (!code || code.length !== 6) {
@@ -1618,6 +1616,12 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       try {
         await window.revlumaAuth.verify2FA(code, state.temp2FAToken, trustDevice);
         
+        // --- GOOGLE LINKING CHECK ---
+        if (state.pendingGoogleCredential) {
+          try { await window.revlumaAuth.linkGoogle(state.pendingGoogleCredential); } 
+          catch(e) { console.warn('Silently failed to link Google account', e); }
+        }
+
         // Success!
         showGlassmorphismCard('success',
           'Verification successful!',
@@ -1674,6 +1678,13 @@ storage.setItem('rv-auth', JSON.stringify(authData));
         }
 
         // --- STANDARD FLOW (If 2FA is OFF) ---
+
+        // --- GOOGLE LINKING CHECK ---
+        if (state.pendingGoogleCredential) {
+          try { await window.revlumaAuth.linkGoogle(state.pendingGoogleCredential); } 
+          catch(e) { console.warn('Silently failed to link Google account', e); }
+        }
+
         showGlassmorphismCard('success',
           'Welcome back!',
           "You're signed in. Taking you to your dashboard…",

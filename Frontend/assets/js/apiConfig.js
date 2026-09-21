@@ -6,6 +6,8 @@
     : 'https://revluma-backend.onrender.com/api/v1';
 })();
 
+window.REVLUMA_GOOGLE_CLIENT_ID = '137716714187-75iq86blnhp09hcg7spvhspgath32eol.apps.googleusercontent.com';
+
 // Waitlist API Functions
 async function submitWaitlistForm(formData) {
   try {

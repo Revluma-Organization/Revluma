@@ -85,31 +85,26 @@ function updateStoredAccessToken(accessToken: string): void {
 }
 
 async function refreshAccessToken(): Promise<string | null> {
-  const refreshToken = getRefreshToken();
   try {
     const response = await fetch(`${BASE_URL}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ refresh_token: refreshToken }),
+      credentials: "include", // Sends the HttpOnly cookie automatically
     });
 
     if (!response.ok) return null;
 
     const payload = (await response.json()) as {
-      data?: { access_token?: string; refresh_token?: string };
+      data?: { access_token?: string };
       accessToken?: string;
     };
 
     const accessToken =
       payload?.data?.access_token ?? payload?.accessToken ?? null;
-    const newRefresh = payload?.data?.refresh_token;
 
     if (!accessToken) return null;
 
     updateStoredAccessToken(accessToken);
-    if (newRefresh) storeRefreshToken(newRefresh);
-
     return accessToken;
   } catch {
     return null;

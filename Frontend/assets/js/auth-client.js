@@ -31,7 +31,6 @@ class RevlumaAuth {
         const tokenData = result.data || result;
         this._storeTokens(
             tokenData.access_token || tokenData.accessToken || tokenData.token,
-            tokenData.refresh_token || tokenData.refreshToken,
             tokenData.user
         );
         return result;
@@ -68,7 +67,7 @@ class RevlumaAuth {
 
         const tokenData = result.data || result;
 
-        // --- 2FA INTERCEPTION ---
+        // --- PHASE 1: 2FA INTERCEPTION ---
         if (tokenData.requires_2fa) {
             return {
                 requires2FA: true,
@@ -79,13 +78,12 @@ class RevlumaAuth {
         // --- STANDARD FLOW (No 2FA) ---
         this._storeTokens(
             tokenData.access_token || tokenData.accessToken || tokenData.token,
-            tokenData.refresh_token || tokenData.refreshToken,
             tokenData.user
         );
         return result;
-                    }
+    }
 
-    async verify2FA(code, tempToken, trustDevice) {
+    async verify2FA(code, tempToken, trustDevice = true) {
         const response = await fetch(`${this.apiBase}/auth/2fa/verify`, {
             method: 'POST',
             headers: {
@@ -113,19 +111,115 @@ class RevlumaAuth {
             throw simulatedAxiosError;
         }
 
-        // --- FINAL LOGIN (Tokens received!) ---
+        // --- FINAL LOGIN (Tokens received) ---
         const tokenData = result.data || result;
         this._storeTokens(
             tokenData.access_token || tokenData.accessToken || tokenData.token,
-            tokenData.refresh_token || tokenData.refreshToken,
             tokenData.user
         );
         return result;
     }
 
+    // --- GOOGLE IDENTITY SERVICES FLOW ---
+    async googleLogin(credential, options = {}) {
+        const payload = {
+            credential: credential,
+            terms_agreed: options.terms_agreed ?? true,
+            organization: options.organization || {
+                brand_name: "Store",
+                storeUrl: "",
+                storeCategory: "General",
+                country: "NG",
+                state: "Lagos"
+            },
+            preferences: options.preferences || {
+                monthlyRevenue: "0-10k"
+            }
+        };
+
+        const response = await fetch(`${this.apiBase}/auth/google`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            if (response.status === 409 && result.code === 'GOOGLE_ACCOUNT_LINK_REQUIRED') {
+                const linkError = new Error('This Google account is already registered with email/password. Please log in with your password first to link Google.');
+                linkError.code = 'GOOGLE_ACCOUNT_LINK_REQUIRED';
+                throw linkError;
+            }
+
+            const errorMsg = result.error || result.message || 'Google authentication failed';
+            const error = new Error(errorMsg);
+            error.response = { data: result };
+            throw error;
+        }
+
+        const tokenData = result.data || result;
+        this._storeTokens(
+            tokenData.access_token || tokenData.accessToken || tokenData.token,
+            tokenData.user
+        );
+        return result;
+    }
+
+    async linkGoogleAccount(credential) {
+        const token = this.getStoredToken();
+        const response = await fetch(`${this.apiBase}/auth/google/link`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            credentials: 'include',
+            body: JSON.stringify({ credential })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || result.message || 'Failed to link Google account');
+        }
+        return result;
+    }
+
+    async linkGoogle(credential) {
+        return this.linkGoogleAccount(credential);
+    }
+
+    // --- SILENT TOKEN REFRESH ---
+    async refreshToken() {
+        try {
+            const response = await fetch(`${this.apiBase}/auth/refresh`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                this.clearStoredToken();
+                return null;
+            }
+
+            const tokenData = result.data || result;
+            const newAccessToken = tokenData.access_token || tokenData.accessToken;
+            if (newAccessToken) {
+                this._storeTokens(newAccessToken, tokenData.user || this.getUser());
+                return newAccessToken;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
     async logout() {
         const token = this.getStoredToken();
-        const refreshToken = this.getStoredRefreshToken();
         try {
             await fetch(`${this.apiBase}/auth/logout`, {
                 method: 'POST',
@@ -133,8 +227,7 @@ class RevlumaAuth {
                     'Content-Type': 'application/json',
                     ...(token ? { Authorization: `Bearer ${token}` } : {}),
                 },
-                credentials: 'include',
-                body: JSON.stringify({ refresh_token: refreshToken }),
+                credentials: 'include'
             });
         } catch (e) {
             console.warn('Backend logout failed or was unreachable', e);
@@ -145,7 +238,7 @@ class RevlumaAuth {
         }
     }
 
-    _storeTokens(accessToken, refreshToken, user) {
+    _storeTokens(accessToken, user) {
         if (accessToken) {
             const authState = {
                 state: {
@@ -156,9 +249,6 @@ class RevlumaAuth {
                 version: 0
             };
             localStorage.setItem('rv-auth', JSON.stringify(authState));
-        }
-        if (refreshToken) {
-            localStorage.setItem('revluma_refresh_token', refreshToken);
         }
     }
 
@@ -171,21 +261,10 @@ class RevlumaAuth {
                 const token = parsed?.state?.accessToken || parsed?.state?.csrfToken || null;
                 if (token) return token;
             }
-        } catch (e) {
+        } catch {
             return null;
         }
         return null;
-    }
-
-    getStoredRefreshToken() {
-        try {
-            return (
-                localStorage.getItem('revluma_refresh_token') ||
-                sessionStorage.getItem('revluma_refresh_token')
-            );
-        } catch (e) {
-            return null;
-        }
     }
 
     getUser() {
@@ -196,7 +275,7 @@ class RevlumaAuth {
                 const parsed = JSON.parse(authStr);
                 if (parsed?.state?.user) return parsed.state.user;
             }
-        } catch (e) {
+        } catch {
             return null;
         }
         return null;
@@ -214,7 +293,7 @@ class RevlumaAuth {
             try {
                 localStorage.removeItem(key);
                 sessionStorage.removeItem(key);
-            } catch (e) {
+            } catch {
                 // ignore
             }
         });
@@ -227,7 +306,7 @@ class RevlumaAuth {
                 channel.postMessage({ type: 'logout', at: Date.now() });
                 channel.close();
             }
-        } catch (e) {
+        } catch {
             // ignore
         }
         try {
@@ -236,7 +315,7 @@ class RevlumaAuth {
                 JSON.stringify({ type: 'logout', at: Date.now() })
             );
             localStorage.removeItem('revluma_auth_event');
-        } catch (e) {
+        } catch {
             // ignore
         }
     }
