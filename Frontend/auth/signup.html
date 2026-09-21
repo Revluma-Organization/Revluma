@@ -7,6 +7,7 @@
   <link rel="icon" href="../assets/images/Revluma-icon.png">
   <title>Revluma - Account Creation</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
@@ -899,7 +900,8 @@
 
           
           <div class="card">
-          <button type="button" id="googleAuthBtn" class="w-full flex items-center justify-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium transition-all duration-300 hover:opacity-90" style="background: var(--surface); border: 1px solid var(--border); color: var(--text);">
+          <!-- Google Sign Up Container -->
+<div id="googleSignUpDiv" class="w-full flex justify-center mb-5" style="min-height: 44px; border-radius: 10px; overflow: hidden;"></div>
             <svg class="w-5 h-5" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
               <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -1547,6 +1549,64 @@
 
 
   <script src="../assets/js/pageLoader.js"></script>
-</body>
 
+  <script>
+    window.onload = function () {
+      if (typeof google !== 'undefined') {
+        google.accounts.id.initialize({
+          client_id: window.REVLUMA_GOOGLE_CLIENT_ID || '137716714187-75iq86blnhp09hcg7spvhspgath32eol.apps.googleusercontent.com',
+          callback: handleGoogleSignUp
+        });
+
+        google.accounts.id.renderButton(
+          document.getElementById('googleSignUpDiv'),
+          { 
+            theme: 'outline', 
+            size: 'large', 
+            width: 520, 
+            shape: 'rectangular', 
+            text: 'signup_with' 
+          }
+        );
+      }
+    };
+
+    async function handleGoogleSignUp(response) {
+      const idToken = response.credential;
+      
+      if (window.showGlassmorphismCard) {
+        showGlassmorphismCard('loading', 'Creating your account…', 'Setting up your Revluma workspace.');
+      }
+
+      try {
+        await window.revlumaAuth.googleLogin(idToken, { terms_agreed: true });
+
+        if (window.showGlassmorphismCard) {
+          showGlassmorphismCard(
+            'success',
+            'Account created!',
+            'Welcome to Revluma. Taking you to your dashboard…',
+            () => window.location.href = '/dashboard/overview',
+            'Continue'
+          );
+        }
+
+        setTimeout(() => {
+          window.location.href = '/dashboard/overview';
+        }, 1200);
+
+      } catch (err) {
+        if (window.hideGlassmorphismCard) hideGlassmorphismCard();
+
+        if (err.code === 'GOOGLE_ACCOUNT_LINK_REQUIRED') {
+          alert('An account with this email already exists. Please head to the Sign In page to log in and link Google.');
+          window.location.href = 'login.html';
+        } else {
+          alert(err.message || 'Google sign-up failed. Please try again.');
+        }
+      }
+    }
+  </script>
+</body>
+    
 </html>
