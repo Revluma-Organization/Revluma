@@ -781,7 +781,7 @@
       }
 
       // ================================================================
-      //  GOOGLE AUTH — Bypasses OTP, routes to Dashboard
+      //  GOOGLE AUTH — Bypasses OTP, routes to Onboarding
       // ================================================================
       const googleBtn = document.getElementById('googleAuthBtn');
       if (googleBtn) {
@@ -1577,14 +1577,14 @@
           showGlassmorphismCard(
             'success',
             'Account created!',
-            'Welcome to Revluma. Taking you to your dashboard…',
-            () => window.location.href = '/dashboard/overview',
+            'Welcome to Revluma. Taking you to setup…',
+            () => window.location.href = '/auth/onboarding.html',
             'Continue'
           );
         }
 
         setTimeout(() => {
-          window.location.href = '/dashboard/overview';
+          window.location.href = '/auth/onboarding.html';
         }, 1200);
 
       } catch (err) {
