@@ -21,6 +21,8 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 
+from src.config.model_registry import load_registered_model
+
 # ---------------------------------------------------------------------------
 # Step 1 gate thresholds and Step 4 hard cap — identical to train.py.
 # ---------------------------------------------------------------------------
@@ -57,11 +59,14 @@ def load_model(merchant_id: str):
     if "offer_value" in _model_cache:
         return _model_cache["offer_value"]
     try:
-        import mlflow.sklearn
-        model = mlflow.sklearn.load_model("models:/offer_value/Production")
+        model = load_registered_model("offer_value")
+        if model is None:
+            _model_cache["offer_value"] = None
+            return None
         _model_cache["offer_value"] = model
         return model
     except Exception:
+        _model_cache["offer_value"] = None
         return None
 
 
@@ -459,7 +464,7 @@ def predict(feature_vector: dict, merchant_id: str, db=None) -> dict:
             "margin_cost_estimate_pct": margin_cost_estimate_pct,
             "reasoning": reasoning,
             "model_version": "1.0.0" if used_model else "1.0.0-formula-fallback",
-            "fallback": False,
+            "fallback": not used_model,
         }
 
     except Exception:

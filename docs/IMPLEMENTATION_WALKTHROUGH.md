@@ -3,14 +3,18 @@
 ## Result
 
 The Python implementation is internally consistent and its complete offline
-test suite passes. Backend/database work remains a separate team handoff. All
-new model runs use synthetic data, are tagged non-production, and cannot update
-the deployable model registry.
+test suite passes. Backend/database work remains a separate team handoff. The
+eight audited synthetic artifacts are active through explicit MLflow `beta`
+aliases, so controlled beta inference uses the trained models instead of the
+neutral fallbacks. They remain tagged `production_eligible=false` and are not
+represented as real-data Production models.
 
 Synthetic results prove that code paths, constraints, and metrics execute; they
 do not prove real-world performance, production readiness, or demographic
-fairness. Production promotion still requires sufficient representative real
-data, assigned quality gates, subgroup review, drift monitoring, and a canary.
+fairness. Promotion of a `beta` version to the `production` alias still requires
+sufficient representative real data, assigned quality gates, subgroup review,
+drift monitoring, and canary evidence. Promotion is evidence-based rather than
+time-based.
 
 ## How to read this walkthrough
 
@@ -221,7 +225,7 @@ conflicts with the implemented model contract.
 | I1 Sensitivity features | Complete | `python/src/features/pipeline.py` implements coupon, discount-search, shipping-reveal, and failed-payment features; `python/tests/test_pipeline.py` covers them. |
 | I2 M2 sensitivity | Complete for synthetic training and inference | `python/src/models/sensitivity/train.py` and `predict.py` use one 13-field PSS/CSS/TSS contract. `python/src/monitoring/drift_detector.py` evaluates that same contract. Real-data M2 retraining is still required before production promotion. |
 | I3 M5 offer value | Complete for inference; real-data training guarded | `python/src/models/offer_value/predict.py` applies offer gates and caps. `train.py` requires real recovered-order data for a production-eligible run. |
-| I4 FastAPI serving | Complete for the verified API surface | `python/src/serving/api.py` contains the five prediction endpoints, validation, fallbacks, health, and retained orchestration/internal routes. |
+| I4 FastAPI serving | Complete for the verified Python API surface | `python/src/serving/api.py` contains the five prediction endpoints, authenticated feature computation, validation, fallbacks, model-channel health, and retained orchestration/internal routes. |
 | I5 Learning loop | Partially complete | `python/src/learning/feedback_loop.py` produces outcome, reflection, and feedback-queue records. The real M2 labeled-data loader is implemented; backend scheduling and a retraining worker remain. |
 | I6 Specialist agents | Partially complete | Finance and Intelligence are implemented in `python/src/agents/`; Marketing still requires aggregate M2/M3 and sequence-performance signals to rank channels and identify discount dependency. |
 
@@ -332,8 +336,9 @@ aggregate payload required from the backend is listed in
 
 The latest finalized runs were logged to DagsHub from the audited code. Every
 run uses synthetic development data, passes its code-defined quality gates,
-remains `production_eligible=false`, and cannot replace a Production-stage
-model.
+and remains `production_eligible=false`. The exact audited artifacts were
+assigned to the controlled `beta` aliases below; none was assigned to the
+`production` alias.
 
 ### Latest runs
 
@@ -346,6 +351,33 @@ model.
 | M3 Send time | [`badbb805c36f4f2991245de97a3aa095`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/badbb805c36f4f2991245de97a3aa095) | AUC 0.6665 (95% CI 0.6316–0.7002); average precision 0.4801; score-selection lift 0.1604; Brier 0.2047; log loss 0.5953; calibration error 0.0172 |
 | M4 Churn risk | [`17d6476028eb46b3862dd28937e08978`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/17d6476028eb46b3862dd28937e08978) | AUC 0.9233; macro-F1 0.8549; HIGH_RISK precision 0.9600; AT_RISK F1 0.6313 |
 | M5 Offer value | [`c625c9cafd9c46a2a8ba9318e07d9e52`](https://dagshub.com/srdataml/revluma_ml/experiments/#/experiments/0/runs/c625c9cafd9c46a2a8ba9318e07d9e52) | RMSE 0.8091; MAE 0.6398; R² 0.9736 |
+
+### Active beta registry versions
+
+Before alias assignment, each artifact was downloaded from its exact run and
+loaded successfully with its required prediction interface. With
+`MODEL_RELEASE_CHANNEL=beta` explicitly set, local API startup then loaded all
+eight aliases, reported `model_status=beta_ready`, and exposed their provenance
+through `/health.model_channels`.
+
+| Registry model | Active alias | Version | Audited run |
+|---|---|---:|---|
+| `abandonment` | `beta` | 17 | `3d6c8733f5af4f22bd25110ec242aa6e` |
+| `sensitivity_pss` | `beta` | 11 | `e97be66b180449f292ea070745a03085` |
+| `sensitivity_css` | `beta` | 11 | `7b1178fa9e864461b151593142f7979f` |
+| `sensitivity_tss` | `beta` | 5 | `4172d678a9ec4e47afe95cc85fd36306` |
+| `send_time` | `beta` | 12 | `badbb805c36f4f2991245de97a3aa095` |
+| `churn_risk` | `beta` | 13 | `17d6476028eb46b3862dd28937e08978` |
+| `churn_early_warning` | `beta` | 10 | `17d6476028eb46b3862dd28937e08978` |
+| `offer_value` | `beta` | 5 | `c625c9cafd9c46a2a8ba9318e07d9e52` |
+
+`python/src/config/model_registry.py` always tries the `production` alias first.
+It uses `beta` only when `MODEL_RELEASE_CHANNEL=beta`; invalid configuration
+fails closed to production-only resolution. The API preloads every model,
+reports missing models and release channels in `/health`, and retains the
+existing deterministic fallbacks for registry or inference failure. A corrected
+M3 cache handoff now passes the preloaded `send_time` model into the scheduling
+path rather than reading an unrelated API cache.
 
 ### Metric assessment and decisions
 
@@ -456,6 +488,9 @@ scenario has run successfully.
   variables and secrets are not logged.
 - Internal API routes enforce internal authentication, request limits, and
   safe image validation.
+- `POST /internal/features/compute` validates and normalizes a bounded session
+  event batch, computes the canonical Python-owned feature envelope, and keeps
+  database credentials and feature formulas out of Backend code.
 - Orchestrator persistence, context limits, trigger modes, action allowlists,
   and tenant ownership checks are covered by tests.
 - Feedback writes are atomic and idempotent; zero-send windows fail safely.
@@ -463,9 +498,19 @@ scenario has run successfully.
 
 ## Validation
 
-- The complete offline Python suite passed after final cleanup with **478
+- The complete offline Python suite passed after final cleanup with **486
   passed and 1 skipped**. The skipped test is the paid, network-dependent LLM
   judge, which now requires explicit opt-in.
+- A registry-backed local API probe loaded all eight `beta` aliases and returned
+  `fallback=false` from the M1, M2, M3, M4, and M5 representative requests.
+  `/health` reported `beta_ready`, `models_ready=true`, eight loaded models, and
+  only the `beta` channel.
+- A read-only configured-database probe exercised the new internal feature path
+  and returned the canonical 34-feature envelope for a normalized session.
+- The Backend Prisma schema validated. All six existing focused Backend test
+  files passed; the Shopify install test required test-only JWT and encryption
+  environment values. `npm test` still runs only one file and must be corrected
+  by the Backend team.
 - The focused lab and contract checks passed, including regression coverage for
   deterministic source-only seeding, exact-token evaluation, scenario
   readiness, safe responder logging, fallback routing, and the current
@@ -479,9 +524,28 @@ scenario has run successfully.
 - DagsHub accepted the finalized synthetic runs listed above. Their exact run
   IDs, links, and returned metrics are recorded in the latest-runs table;
   synthetic registration guards reported `production_eligible=false` for every
-  newly trained model.
+  newly trained model. The eight audited artifacts are assigned only to the
+  `beta` alias.
 - The live LLM judge was intentionally excluded from offline validation because
   it consumes an external paid service and requires explicit opt-in.
+
+## Connected beta readiness
+
+The Python service is ready to serve the controlled beta aliases after the code
+is deployed. The current Backend is not yet an end-to-end action executor. The
+audit found missing M1/M2/M5 and feature-computation gateway wrappers, no
+`feature_jobs` consumer, no daily churn worker, a stubbed abandoned-checkout
+sync, no Shopify webhook-subscription registration, an incompatible generic
+SendGrid webhook verifier, non-atomic alert claims, and no discount/message
+execution service. It also found Backend pixel event names that differ from the
+canonical pixel specification.
+
+`docs/BACKEND_IMPLEMENTATION_GUIDE.md` now gives the exact files, call order,
+webhook behavior, provider requirements, controlled beta opt-in, action caps,
+consent checks, idempotency, retry behavior, audit evidence, and acceptance
+tests. Until that work is implemented and deployed, a connected test user can
+reach existing Backend features but will not receive the complete automated
+M1-to-M5 recovery flow.
 
 ## Remaining work
 

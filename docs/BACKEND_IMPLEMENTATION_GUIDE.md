@@ -12,18 +12,48 @@ changed by the Python implementation.
 - Test on a disposable PostgreSQL database before any production migration.
 - Keep MLflow/DagsHub credentials in Python only.
 
+## Current audited state
+
+The Prisma schema validates and the focused Backend contract tests pass when
+their required test-only environment values are supplied. Raw commerce and
+message webhook routes are mounted before JSON parsing, commerce signatures are
+checked, webhook deliveries are deduplicated, the pixel endpoint uses a signed
+store key, and the scheduler calls Business State, outcome, briefing, and store
+sync jobs. These are foundations, not an end-to-end beta action flow.
+
+The following gaps were verified in the current Backend code and must be fixed
+before a connected test store can exercise every model and execute recovery
+actions:
+
+| Priority | Exact location | Verified gap and required result |
+|---:|---|---|
+| 1 | `Backend/src/controller/eventController.js` and a Backend feature worker | Single-event insertion and `feature_jobs` insertion are not atomic, batch ingestion creates no feature jobs, and no worker consumes `feature_jobs`. Commit each event with its idempotent job, claim jobs atomically, load the complete store-scoped session, call `POST /internal/features/compute`, persist the returned canonical snapshot, and continue the prediction chain. |
+| 2 | `Backend/src/controller/eventController.js` | `ALLOWED_EVENT_TYPES` does not match `docs/PIXEL_EVENT_SPEC.md`. Replace it with all 16 specified names, including `SCROLL`, `PURCHASE_COMPLETED`, `CUSTOMER_CREATED`, `TEXT_COPIED`, `COUPON_REJECTED`, `TAB_SWITCH`, `EXIT_INTENT`, `FAILED_PAYMENT`, `FIELD_FOCUS`, and `FIELD_BLUR`; remove undocumented substitutes such as `PAYMENT_ATTEMPT`, `PURCHASE`, `COUPON_ATTEMPT`, `SEARCH`, and `SESSION_START` unless they are added as explicit compatibility aliases and normalized before storage. |
+| 3 | `Backend/src/services/mlService.js` | Add wrappers for `/internal/features/compute`, `/predict/abandonment-probability`, `/predict/shopper-sensitivity`, and `/predict/offer-value`. Update `predictSendTime` to forward `X-Customer-ID` and `X-Merchant-ID`. Keep every Python call in this gateway. |
+| 4 | Python deployment settings, `Backend/src/services/mlService.js`, and Backend health controller | Set `MODEL_RELEASE_CHANNEL=beta` only on the controlled beta Python deployment and restart it; absence or invalid configuration intentionally permits production aliases only. `checkPythonHealth` currently treats any HTTP 200 as ready. Require `status=ok`, `models_ready=true`, no `models_missing`, and an allowed `model_status` (`beta_ready` for the beta deployment or `ready` for production). Surface loaded model channels without exposing credentials. |
+| 5 | `Backend/src/services/shopifySync.js` | `syncAbandonedCheckouts()` is a stub that always returns zero. Implement paginated GraphQL `abandonedCheckouts`, store carts and line items idempotently, reconcile recovered carts when orders arrive, and use a currently supported Shopify API version. |
+| 6 | Shopify installation/configuration and `Backend/src/services/commerceWebhookService.js` | No code registers the webhook subscriptions and `webhook_registrations` is unused. Register the required app-specific subscriptions, or create shop-specific subscriptions after OAuth with GraphQL, persist their IDs, and reconcile them after reinstall or API-version changes. Handle order cancellation/deletion separately instead of treating every order topic as an upsert. |
+| 7 | `Backend/src/services/commerceWebhookService.js` | Order updates increment `customers.orders_count` and `ltv` every time a distinct update delivery arrives. Recalculate aggregates from authoritative non-cancelled orders, or apply delta-safe updates in the same transaction. Enqueue RFM, feature, and outcome work after a committed order/customer/cart webhook. |
+| 8 | `Backend/src/services/messageWebhookService.js` and `messageWebhookController.js` | SendGrid Event Webhooks use an ECDSA public key, signature header, timestamp header, raw bytes, and a JSON event array; the current generic HMAC/object handler does not implement that contract. Add provider-specific verification and mapping, delivery-level idempotency, bounce/failure handling, consent updates for unsubscribe events, and recommendation/order attribution. |
+| 9 | `Backend/src/services/schedulerService.js` | No daily churn scoring job or feature-job worker exists. Alert rows can be marked `delivered` without creating a notification or sending anything, and queue rows are selected without an atomic claim. Add bounded workers with database-safe claims, retries, idempotency, actual delivery, and terminal evidence. |
+| 10 | New Backend recovery/action service plus existing sequence tables | No service creates provider discounts, queues recovery messages, or writes `sequence_sends`; the current email utility handles account email only. Implement the controlled beta action flow described below and record every decision, provider ID, send, result, and failure. |
+| 11 | `Backend/package.json` and Backend tests | `npm test` runs only the logout test. Make it execute every Backend test and add behavioral tests for webhook signatures, arrays, retries, queue claims, all five prediction wrappers, model readiness, consent, discount caps, provider failures, and tenant isolation. Align `@prisma/adapter-pg` with the Prisma 6.19.3 client/CLI or remove it if unused. |
+| 12 | `Backend/server.js` | `connectDB()` is asynchronous, but startup does not await it before starting immediate scheduler jobs or accepting traffic. Use one async startup sequence: await the required database connection, initialize optional Redis with its documented fallback, start the HTTP listener, then start workers. On shutdown, stop workers, close the server, disconnect Prisma and Redis, and retain a bounded forced-exit timeout. |
+| 13 | Backend dependency maintenance | The current lockfile audit reports seven known dependency findings (five high, one moderate, and one low). Review each dependency path, apply compatible targeted upgrades, rerun the full Backend suite, and document any finding that cannot yet be removed. Do not use an unreviewed forced audit fix. |
+
 ## Work order
 
 | Order | Exact location | Required work |
 |---:|---|---|
-| 1 | `Backend/prisma/schema.prisma` | Add the columns, models, relations, constraints, and indexes below. |
-| 2 | `Backend/prisma/migrations/<timestamp>_add_intelligence_contract/migration.sql` | Generate a forward migration. Do not edit `0_baseline`. |
-| 3 | `Backend/src/services/mlService.js` | Add Node-to-Python wrappers. No controller may create a separate Axios client. |
-| 4 | `Backend/src/services/shopifySync.js` | Persist order items and call RFM after a successful commerce-sync commit. |
-| 5 | `Backend/src/services/schedulerService.js` | Add bounded, locked jobs for state, alerts, outcomes, churn, and briefings. |
-| 6 | `Backend/server.js` | Start schedulers after startup and stop them during graceful shutdown. |
-| 7 | `Backend/src/controller/revController.js` | Keep calls through `mlService`; add only authenticated result/action handlers. |
-| 8 | Tests beside each changed module | Add migration, tenancy, gateway, idempotency, and scheduler tests below. |
+| 1 | `Backend/src/controller/eventController.js` and feature worker | Repair event-name consistency and make the source-event-to-feature-job path durable. |
+| 2 | `Backend/src/services/mlService.js` | Add the missing feature/M1/M2/M5 wrappers and readiness validation. No controller may create a separate Axios client. |
+| 3 | `Backend/src/services/shopifySync.js` and Shopify subscription setup | Implement abandoned-checkout ingestion, current GraphQL usage, and subscription reconciliation. |
+| 4 | `Backend/src/services/commerceWebhookService.js` | Make order/customer/cart processing aggregate-safe and enqueue post-commit intelligence work. |
+| 5 | `Backend/src/services/messageWebhookService.js` | Implement provider-specific signature and payload contracts, beginning with SendGrid ECDSA batches. |
+| 6 | `Backend/src/services/schedulerService.js` | Add atomic feature, churn, alert, and action workers while retaining the existing state/outcome/briefing/store jobs. |
+| 7 | New recovery/action service and authenticated controllers | Execute controlled beta discounts and messages with consent, limits, idempotency, audit, and a kill switch. |
+| 8 | `Backend/server.js` | Make database readiness precede traffic and immediate jobs; close application resources during graceful shutdown. |
+| 9 | `Backend/package.json`, dependency lockfile, and tests beside each changed module | Run the complete Backend suite, resolve compatible audit findings, and add integration, tenancy, gateway, idempotency, provider, and scheduler tests. |
 
 ## 0. Storefront events, commerce webhooks, and Python execution
 
@@ -82,24 +112,24 @@ Add a unique partial index for non-null event IDs:
 UNIQUE (store_id, source, source_event_id) WHERE source_event_id IS NOT NULL
 ```
 
-The existing controller currently posts to `/api/features/compute`. That route
-does not exist in `python/src/serving/api.py`. Remove that synchronous call;
-it is a dead integration path. Instead, enqueue an idempotent feature job after
-the event commit. The Python-side feature worker must read the committed
-normalized events and calculate `pipeline.compute_feature_vector`; the backend
-must not recreate feature formulas in JavaScript.
+The existing controller no longer calls the former dead
+`/api/features/compute` route, but its queue is incomplete. Make the event and
+its `feature_jobs` row atomic, enqueue equivalent jobs for batch ingestion, and
+consume them after commit. The worker must call the authenticated Python route
+`POST /internal/features/compute`; the backend must not recreate feature
+formulas in JavaScript.
 
 ### B. Shopify and WooCommerce server-to-server webhooks
 
-**Add backend locations:**
+**Existing backend locations requiring completion:**
 
 - `Backend/src/route/commerceWebhookRoute.js`
 - `Backend/src/controller/commerceWebhookController.js`
 - `Backend/src/services/commerceWebhookService.js`
-- Mount the route in `Backend/src/app.js` before the global JSON parser for
-  webhook paths, using `express.raw({ type: 'application/json' })`.
+- The routes are already mounted in `Backend/src/app.js` before the global JSON
+  parser with `express.raw({ type: 'application/json' })`; retain that order.
 
-**Add routes:**
+**Existing route shape:**
 
 ```text
 POST /api/v1/webhooks/shopify/:topic
@@ -124,6 +154,15 @@ Register and process these topics:
 | WooCommerce `order.created`, `order.updated`, `order.deleted` | Perform the same store-scoped order, line-item, outcome, RFM, and feature/outcome workflow. |
 | WooCommerce `customer.created`, `customer.updated` | Upsert the allowed customer identity/profile fields. |
 
+Use Shopify's current webhook-subscription process and a supported API version:
+app-specific subscriptions are preferred when every shop uses the same topics;
+shop-specific subscriptions must use `webhookSubscriptionCreate` after OAuth.
+See [Shopify webhook subscriptions](https://shopify.dev/docs/apps/build/webhooks/subscribe).
+New public-app Admin integrations must use GraphQL rather than extending the
+legacy REST Admin implementation. See the
+[Shopify REST Admin status](https://shopify.dev/docs/api/admin-rest) and
+[GraphQL abandoned-checkout query](https://shopify.dev/docs/api/admin-graphql/latest/queries/abandonedCheckouts).
+
 Use the storefront pixel, not provider order webhooks, for `PAGE_VIEW`, cart,
 checkout-step, coupon-field, focus/blur, payment-attempt, and similar shopper
 behavior. Provider webhooks are authoritative for completed, changed, or
@@ -133,7 +172,7 @@ order webhook.
 
 ### C. Messaging delivery webhooks and learning outcomes
 
-**Add backend locations:**
+**Existing backend locations requiring provider-specific completion:**
 
 - `Backend/src/route/messageWebhookRoute.js`
 - `Backend/src/controller/messageWebhookController.js`
@@ -146,6 +185,13 @@ only the canonical `delivered`, `opened`, `clicked`, `converted`, or
 provider retries from double-counting outcomes. After a `converted` event or a
 matching completed order, update the relevant recommendation outcome and leave
 the due-outcome worker to create the learning signal.
+
+For SendGrid, verify the ECDSA signature over the timestamp plus raw payload
+using the configured public verification key and the
+`X-Twilio-Email-Event-Webhook-Signature` and
+`X-Twilio-Email-Event-Webhook-Timestamp` headers. Process the delivered JSON
+array event by event. Do not reuse the generic HMAC-secret verifier. See
+[SendGrid signed Event Webhooks](https://www.twilio.com/docs/sendgrid/for-developers/tracking-events/getting-started-event-webhook-security-features).
 
 ### D. Feature and prediction call order
 
@@ -160,7 +206,7 @@ has produced a complete feature snapshot.
 | Recovery action needs an offer | M2 output plus M5 feature vector | `POST /predict/offer-value` | Offer type, discount, expiry, expected probability, margin estimate, model version, and fallback flag. |
 | A message is about to be queued | The exact send-time contract in section 2 | `POST /predict/send-time` | `send_at_utc`, local send time, confidence, reasoning layer, model version, and fallback flag in `sequence_sends.metadata`. |
 | Daily or explicit customer review | The 21 churn features in section 2 | `POST /predict/churn-risk` | The mapped churn fields listed below. |
-| Merchant conversation, alert, or scheduled insight | Authorized organization/user context only | `POST /orchestrate` | Sanitized response/audit record; execute actions only after backend authorization and confirmation. |
+| Merchant conversation, alert, or scheduled insight | Authorized organization/user context only | `POST /orchestrate` | Sanitized response/audit record; execute only through the controlled beta policy below. |
 
 Do not call Python from the public pixel request, from inside a database
 transaction, or before the source event/order commit succeeds. Enqueue durable
@@ -168,11 +214,68 @@ work with an idempotency key instead. If Python is unavailable, preserve the
 event and retry the job; never discard the shopper event or invent a model
 decision.
 
-## 1. Prisma changes
+### E. Controlled beta action execution
+
+The beta must perform real actions for explicitly enrolled test stores; it must
+not silently enable autonomous discounts or messages for every connected store.
+Set `MODEL_RELEASE_CHANNEL=beta` on that Python deployment; do not put this
+setting on an unrestricted production deployment. Confirm after restart that
+`GET /health` reports `model_status=beta_ready`, `models_ready=true`, an empty
+`models_missing` array, and `beta` for all eight expected model channels.
+Use `store_settings` with `settings_group = "beta_automation"` for the merchant
+opt-in and policy. Require these settings:
+
+```json
+{
+  "enabled": true,
+  "allowed_actions": ["cart_recovery_message", "percentage_discount"],
+  "allowed_channels": ["email"],
+  "max_discount_pct": 10,
+  "max_messages_per_customer_24h": 1,
+  "max_actions_per_store_24h": 100,
+  "kill_switch": false
+}
+```
+
+Implement a durable, store-scoped action job or equivalent transactional queue.
+The flow is:
+
+1. Persist the source event, feature snapshot, M1/M2/M5/M3 decisions, model
+   versions, release channels, and fallback flags before enqueueing an action.
+2. Execute only when the store is active, beta automation is enabled, the
+   action is allowlisted, the global and store kill switches are off, the cart
+   is still abandoned, and the customer has the required channel consent.
+3. Apply the lowest of the M5 result, merchant cap, beta cap, and model hard cap.
+   Never create a discount when the M5 decision or fallback says zero.
+4. Create the Shopify discount with a stable idempotency key, one-customer use
+   limit where supported, minimum order value, and M5 expiry. Persist the
+   provider discount ID/code without logging it in ordinary application logs.
+5. Generate the approved recovery copy, call M3 immediately before queueing,
+   insert `sequence_sends` with immutable decision metadata, and send through
+   the configured provider. Store the provider message ID and final status.
+6. Process provider callbacks into `sequence_events`; reconcile a matching
+   completed order to the cart, recommendation, sequence, and outcome.
+7. Retry transport failures with bounded exponential backoff. Idempotency must
+   prevent a retry from creating a second discount or message.
+8. Stop new actions immediately when a kill switch, unsubscribe, consent
+   removal, store disconnect, provider-auth failure, or rate limit is detected.
+
+Merchant opt-in is the standing authorization for in-policy beta actions; a
+separate confirmation is still required for anything outside the configured
+action, channel, discount, frequency, or volume limits. Model promotion is
+separate: do not move a synthetic version to the `production` alias merely
+because it has been active for a period of time.
+
+## 1. Prisma contracts
+
+The current `Backend/prisma/schema.prisma` contains the fields and models in
+this section and passes `prisma validate`. Keep these contracts intact, verify
+that every forward migration has been applied to the target database, and add
+only the action-queue fields or model chosen for the controlled beta flow.
 
 ### Existing `customers` model
 
-Add nullable fields so rollout does not invent historical scores:
+The current nullable fields allow rollout without inventing historical scores:
 
 | Field | Prisma/PostgreSQL type | Rule |
 |---|---|---|
@@ -189,7 +292,7 @@ Add nullable fields so rollout does not invent historical scores:
 | `churn_score_fallback` | `Boolean?` | Copy `fallback`. |
 | `churn_scored_at` | `DateTime? @db.Timestamptz(6)` | Latest accepted score completion. |
 
-Add indexes:
+Retain these indexes:
 
 - `(store_id, rfm_updated_at)`
 - `(store_id, churn_tier, churn_scored_at)`
@@ -205,16 +308,15 @@ Keep `orders.total`, `orders.coupon_used`, `orders.ordered_at`,
 
 ### Existing `orders`, `abandoned_carts`, and `ml_session_features` models
 
-- Add `orders.session_id String?`, `orders.discount_pct Float?`, and an index on
+- Keep `orders.session_id String?`, `orders.discount_pct Float?`, and an index on
   `orders.session_id`. Validate `discount_pct` in the service layer as 0–25.
-- Add nullable `pss_score`, `css_score`, and `tss_score` integer fields to
+- Keep nullable `pss_score`, `css_score`, and `tss_score` integer fields on
   `abandoned_carts`, each validated as 0–100, plus nullable
   `recovery_action`, `sensitivity_model_version`, and
   `sensitivity_scored_at DateTime? @db.Timestamptz(6)`.
-- Add `cart_item_add_count Int?`, `cart_item_remove_count Int?`,
+- Keep `cart_item_add_count Int?`, `cart_item_remove_count Int?`,
   `coupon_field_visited Boolean?`, and `failed_payment_count Int?` to
-  `ml_session_features`. These fields are absent from the current Prisma model
-  and complete the canonical 34-field shopper vector in
+  `ml_session_features`. These fields complete the canonical 34-field shopper vector in
   `docs/PIXEL_EVENT_SPEC.md`; do not add `cursor_hesitation_score` as a second
   stored feature.
 - Write the complete feature snapshot and the M2 response in one transaction
@@ -222,13 +324,13 @@ Keep `orders.total`, `orders.coupon_used`, `orders.ordered_at`,
 
 ### Existing `recommendations` model
 
-Add `channel String?`, `paused_at DateTime? @db.Timestamptz(6)`,
+Keep `channel String?`, `paused_at DateTime? @db.Timestamptz(6)`,
 `pause_reason String?`, `outcome_checked_at DateTime? @db.Timestamptz(6)`, and
 index `(status, evaluate_after)`. Keep `evaluation_window_hrs`,
 `evaluate_after`, `status`, `action_params`, and `metadata`. Reuse
 `recommendations` and `recommendation_outcomes`; do not add duplicate tables.
 
-### New `sequence_sends` model
+### Existing `sequence_sends` model
 
 ```text
 id UUID PK
@@ -250,7 +352,7 @@ Allow `queued`, `sent`, `delivered`, `failed`, and `cancelled`. Add unique
 `(sequence_id, external_message_id)` and indexes `(recommendation_id, sent_at)`,
 `(store_id, sent_at)`, `(customer_id, channel, sent_at)`, and `status`.
 
-### New `sequence_events` model
+### Existing `sequence_events` model
 
 ```text
 id UUID PK
@@ -267,7 +369,7 @@ Canonical events include `delivered`, `opened`, `clicked`, `converted`, and
 `(sequence_send_id, event_type, occurred_at)`. When a provider has no event ID,
 derive a deterministic key from provider, message ID, type, and event time.
 
-### New `order_items` model
+### Existing `order_items` model
 
 ```text
 id UUID PK
@@ -289,7 +391,7 @@ Add unique `(store_id, external_line_item_id)` and indexes `order_id`,
 `(store_id, ordered_at)`, and `(store_id, product_type, ordered_at)`. Upsert the
 order first, then its items, in the same store-scoped transaction.
 
-### New state and queue models
+### Existing state and queue models
 
 1. `business_state_baselines`
    - UUID `id`; unique organization FK with cascade delete.
@@ -389,7 +491,7 @@ order first, then its items, in the same store-scoped transaction.
      copy predicted scores or the selected recovery action into labels. Leave a
      label null when the outcome cannot support it; Python excludes such rows.
 
-Add reverse Prisma relations to `organizations`, `users`, `stores`, `orders`,
+Retain the reverse Prisma relations on `organizations`, `users`, `stores`, `orders`,
 `customers`, `sequences`, `business_states`, `recommendations`, and
 `recommendation_outcomes` as required by the foreign keys.
 
@@ -462,11 +564,15 @@ only safe identifiers, latency, status, and sanitized error type.
 
 | Python call | Backend trigger |
 |---|---|
+| `POST /internal/features/compute` `{ customer_id?, session_events }` | A claimed `feature_jobs` row after the complete store-scoped session has been loaded. Persist the returned `features` map before predictions. |
+| `POST /predict/abandonment-probability` | After feature computation for an active checkout session. |
+| `POST /predict/shopper-sensitivity` | After an M1 intervention decision, using the complete M2 feature contract. |
+| `POST /predict/offer-value` | After M2 selects a recovery action that may use an offer. |
 | `POST /internal/rfm-sync` `{ store_id }` | After successful store-sync commit. |
 | `POST /internal/business-state/rebuild` `{ organization_id }` | Every minute for each due organization; Python writes the next 15/5/1-minute cadence. |
 | Backend-owned alert queue drain; no Python endpoint | After rebuild and every minute for recovery. Call `POST /orchestrate` only when an alert needs agent-generated output. |
 | `POST /internal/morning-briefings` | 05:00 UTC daily. |
-| `POST /internal/recommendation-outcomes/evaluate` `{ limit }` | Configured interval; Python claims rows where `evaluate_after <= now`. `limit` defaults to 100 and must be 1-1,000. |
+| `POST /internal/recommendation-outcomes/evaluate` `{ limit }` | Configured interval; Python claims rows where `evaluate_after <= now`. Keep Backend batches between 1 and 100 and repeat while the returned count equals the batch size. |
 | `POST /predict/churn-risk` | Daily and explicit customer re-score. |
 | `POST /predict/send-time` | Before each recovery message is queued. |
 | `POST /orchestrate` | Conversation, alert, or scheduler trigger. |
@@ -596,7 +702,9 @@ conversation ownership. Use a stable trigger occurrence key for retries.
 Python returns proposals only. Backend may execute only these tools through
 tenant- and role-checked handlers: `view_carts`, `view_customers`,
 `view_revenue`, `create_campaign`, `view_analytics`, `view_products`, and
-`view_checkout`. Mutating actions require confirmation and idempotency.
+`view_checkout`. Mutating actions require idempotency and either explicit
+per-action confirmation or a verified `beta_automation` opt-in whose limits
+cover that exact action.
 
 ### Image review contract
 
@@ -702,6 +810,13 @@ Minimum acceptance tests:
 - Migration applies to a current-schema clone and has a reviewed rollback.
 - Cross-tenant reads/writes fail for every new model.
 - Store sync calls RFM once only after commit; retry is idempotent.
+- A committed pixel event always has exactly one durable feature job, including
+  batch ingestion, and the worker persists the Python feature result once.
+- Backend health fails readiness when any Python model is missing or the
+  release channel is not allowed for that deployment.
+- One opted-in test store completes M1 -> M2 -> M5 -> M3, creates at most one
+  provider discount and message, and records the decision, send, callbacks,
+  conversion, and outcome under retries.
 - Churn sends all 21 features; stale responses cannot overwrite newer scores.
 - Send-time builds exactly 24 ordered local-hour rates and prevents SMS sends
   less than 24 hours apart.
@@ -719,7 +834,11 @@ Minimum acceptance tests:
 - `champion` is VIP; `loyal` is not.
 - Conversation writes remain atomic under concurrency.
 - Oversized, PII/credential-bearing, and cross-tenant orchestrator inputs fail.
-- Unknown tools fail; mutating tools require authorization and confirmation.
+- Unknown tools fail; mutating tools require authorization plus either verified
+  beta opt-in or explicit confirmation.
+- In-policy beta automation requires verified merchant opt-in; out-of-policy
+  mutations still require explicit confirmation. Consent removal and either
+  kill switch stop new sends immediately.
 - Logs and public responses contain no internal key, DagsHub credential, PII,
   or customer context payload.
 

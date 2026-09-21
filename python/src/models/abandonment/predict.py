@@ -19,7 +19,7 @@ Never raises. Never returns a 500 from the serving endpoint.
 import logging
 import typing
 
-import mlflow.sklearn
+from src.config.model_registry import load_registered_model
 
 logger = logging.getLogger("rev.m1.predict")
 
@@ -63,7 +63,9 @@ def load_model(merchant_id: str) -> typing.Any:
         Loaded sklearn pipeline (scaler + logistic regression), or None.
     """
     try:
-        model = mlflow.sklearn.load_model("models:/abandonment/Production")
+        model = load_registered_model("abandonment")
+        if model is None:
+            return None
         logger.info("m1_model_loaded", extra={"source": "registry", "merchant_id": merchant_id})
         return model
     except Exception as registry_err:

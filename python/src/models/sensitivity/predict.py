@@ -18,6 +18,8 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../.."))
 
+from src.config.model_registry import load_registered_model
+
 # This ordered 13-column contract is shared with train.py.
 FEATURE_COLUMNS = [
     "past_orders_with_coupon_pct",
@@ -150,11 +152,14 @@ def _load_model(target: str):
     if target in _model_cache:
         return _model_cache[target]
     try:
-        import mlflow.sklearn
-        model = mlflow.sklearn.load_model(f"models:/sensitivity_{target}/Production")
+        model = load_registered_model(f"sensitivity_{target}")
+        if model is None:
+            _model_cache[target] = None
+            return None
         _model_cache[target] = model
         return model
     except Exception:
+        _model_cache[target] = None
         return None
 
 

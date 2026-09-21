@@ -24,7 +24,6 @@ import pandas as pd
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.concurrency import run_in_threadpool
-import mlflow.sklearn
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -36,10 +35,17 @@ logging.basicConfig(level=logging.INFO)
 
 from src.models.sensitivity import predict as sensitivity_predict
 from src.models.offer_value import predict as offer_value_predict
-from src.models.churn.predict import predict as _predict_churn
-from src.models.timing.predict import predict as _predict_timing
+from src.models.churn import predict as churn_predict
+from src.models.timing import predict as timing_predict
 from src.jobs import rfm_sync
+from src.features.event_processor import parse_raw_event
+from src.features.pipeline import compute_feature_vector
 from src.agents.orchestrator import orchestrate as _orchestrate
+from src.config.mlflow_config import IS_REMOTE as _MLFLOW_IS_REMOTE
+from src.config.model_registry import (
+    get_loaded_model_channel as _get_loaded_model_channel,
+    load_registered_model as _load_registered_model,
+)
 from src.intelligence.business_state import build_business_state as _build_business_state
 from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
 from src.learning.feedback_loop import run_due_outcome_checks as _run_due_outcome_checks
@@ -47,6 +53,8 @@ from src.config.database import engine
 from sqlalchemy.orm import sessionmaker
 
 _Session = sessionmaker(bind=engine)
+_predict_churn = churn_predict.predict
+_predict_timing = timing_predict.predict
 
 
 @asynccontextmanager
@@ -124,7 +132,16 @@ async def verify_internal_network(request: Request):
 # ---------------------------------------------------------------------------
 _model_cache: dict = {}
 
-MODEL_NAMES = ["abandonment", "churn_risk", "send_time"]
+EXPECTED_MODEL_NAMES = (
+    "abandonment",
+    "churn_risk",
+    "churn_early_warning",
+    "send_time",
+    "sensitivity_pss",
+    "sensitivity_css",
+    "sensitivity_tss",
+    "offer_value",
+)
 
 
 def _load_model(model_name: str):
@@ -132,13 +149,12 @@ def _load_model(model_name: str):
     ANY failure to prevent crashes."""
     if model_name in _model_cache:
         return _model_cache[model_name]
-    try:
-        model = mlflow.sklearn.load_model(f"models:/{model_name}/Production")
+    model = _load_registered_model(model_name)
+    if model is not None:
         _model_cache[model_name] = model
         return model
-    except Exception as e:
-        logger.warning(f"Could not load model '{model_name}': {e}")
-        return None
+    _model_cache[model_name] = None
+    return None
 
 
 async def _preload_models():
@@ -149,8 +165,13 @@ async def _preload_models():
     during request handling. Never crashes startup on a missing model —
     that's exactly what each endpoint's fallback logic is for.
     """
-    for name in MODEL_NAMES:
-        model = _load_model(name)
+    primary_models = {
+        "abandonment": _load_model("abandonment"),
+        "churn_risk": churn_predict.load_model(""),
+        "churn_early_warning": churn_predict.load_early_warning_model(""),
+        "send_time": timing_predict.load_model(""),
+    }
+    for name, model in primary_models.items():
         status = "loaded" if model is not None else "FALLBACK (not found)"
         logger.info(f"[startup] model '{name}': {status}")
 
@@ -164,11 +185,30 @@ async def _preload_models():
 
 
 def _all_loaded_model_names() -> list:
-    names = list(_model_cache.keys())
+    names = [name for name, model in _model_cache.items() if model is not None]
+    names += [
+        name for name, model in churn_predict._model_cache.items() if model is not None
+    ]
+    names += [
+        name for name, model in timing_predict._model_cache.items() if model is not None
+    ]
     names += [f"sensitivity_{t}" for t, m in sensitivity_predict._model_cache.items() if m is not None]
     if offer_value_predict._model_cache.get("offer_value") is not None:
         names.append("offer_value")
     return names
+
+
+def _model_readiness() -> tuple[list[str], list[str], str]:
+    """Return loaded/missing production models without exposing registry errors."""
+    loaded = sorted(set(_all_loaded_model_names()))
+    missing = [name for name in EXPECTED_MODEL_NAMES if name not in loaded]
+    if not missing:
+        status = "ready"
+    elif loaded:
+        status = "partial_fallback"
+    else:
+        status = "fallback_only"
+    return loaded, missing, status
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +433,11 @@ class RecommendationOutcomeEvaluationResponse(BaseModel):
     processed: int = Field(..., ge=0)
 
 
+class FeatureComputeRequest(BaseModel):
+    customer_id: str | None = None
+    session_events: list[dict] = Field(..., min_length=1, max_length=1000)
+
+
 _ALLOWED_IMAGE_MEDIA_TYPES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
 _MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
@@ -548,17 +593,74 @@ async def internal_recommendation_outcome_evaluation(
     return RecommendationOutcomeEvaluationResponse(processed=processed)
 
 
+def _compute_session_features(customer_id: str | None, session_events: list[dict]) -> dict:
+    normalized_events = [parse_raw_event(event) for event in session_events]
+    if any(not event.get("_valid") for event in normalized_events):
+        raise ValueError("session_events contains an invalid event")
+
+    resolved_customer_id = customer_id or normalized_events[0].get("customer_id")
+    connection = engine.raw_connection()
+    try:
+        return compute_feature_vector(
+            resolved_customer_id or "",
+            normalized_events,
+            connection,
+        )
+    finally:
+        connection.close()
+
+
+@app.post(
+    "/internal/features/compute",
+    dependencies=[Depends(verify_internal_caller)],
+)
+async def internal_feature_compute(req: FeatureComputeRequest) -> dict:
+    try:
+        return await run_in_threadpool(
+            _compute_session_features,
+            req.customer_id,
+            req.session_events,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error(
+            "feature_compute_failed",
+            extra={"error_type": type(exc).__name__},
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Feature computation is temporarily unavailable.",
+        ) from exc
+
+
 # ---------------------------------------------------------------------------
 # Prediction endpoints
 # ---------------------------------------------------------------------------
 @app.get("/health")
 async def health_check():
+    loaded_models, missing_models, model_status = _model_readiness()
+    model_channels = {
+        name: _get_loaded_model_channel(name) or "unknown"
+        for name in loaded_models
+    }
+    production_models_ready = bool(loaded_models) and not missing_models and all(
+        channel == "production" for channel in model_channels.values()
+    )
+    if not missing_models and not production_models_ready:
+        model_status = "beta_ready"
     return {
         "status": "ok",
         "service": "revluma-ml-serving",
         "version": app.version,
-        "models_loaded": _all_loaded_model_names(),
+        "model_status": model_status,
+        "models_ready": not missing_models,
+        "production_models_ready": production_models_ready,
+        "models_loaded": loaded_models,
+        "models_missing": missing_models,
+        "model_channels": model_channels,
         "database_url_set": bool(os.getenv("DATABASE_URL")),
+        "mlflow_remote_configured": _MLFLOW_IS_REMOTE,
         "uptime_seconds": time.time() - _START_TIME,
     }
 
@@ -637,7 +739,7 @@ async def predict_send_time(
         result = await run_in_threadpool(
             lambda: _predict_timing(
                 x_customer_id, features.model_dump(), x_merchant_id,
-                model=_model_cache.get("send_time"),
+                model=timing_predict._model_cache.get("send_time"),
             )
         )
         return SendTimeResponse(**result)

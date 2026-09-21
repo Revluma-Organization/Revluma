@@ -2,7 +2,8 @@
 
 M1 estimates whether an active checkout session will be abandoned. The serving
 API returns a probability, applies an intervention threshold of `0.65`, and
-falls back to a neutral `0.50` result when the production model is unavailable.
+falls back to a neutral `0.50` result when no permitted registry model is
+available.
 The dedicated prediction module also applies session-context risk modifiers and
 maps the result to `abandoned`, `yellow`, `monitor`, or `none`.
 
@@ -38,7 +39,9 @@ so serving applies the same preprocessing used during training.
   registered.
 - Production registration as `abandonment` requires real data, at least 1,000
   sessions, AUC-ROC ≥ 0.75, precision ≥ 0.70, and recall ≥ 0.65.
-- Serving loads only `models:/abandonment/Production`.
+- Serving checks `models:/abandonment@production` first. When
+  `MODEL_RELEASE_CHANNEL=beta`, it may use the explicitly assigned
+  `models:/abandonment@beta` version for controlled beta traffic.
 
 Synthetic metrics are not evidence of production performance or fairness.
 

@@ -48,8 +48,10 @@ The final fit gives the actionable `AT_RISK` class a logged sample weight of
 thresholds. Synthetic metrics remain development evidence only.
 
 Eligible future artifacts register as `churn_risk` and, when trainable,
-`churn_early_warning`. Serving loads only their `Production` stages and uses the
-documented deterministic fallback when unavailable.
+`churn_early_warning`. Serving checks their `production` aliases first and,
+when `MODEL_RELEASE_CHANNEL=beta`, may use explicitly reviewed `beta` aliases.
+The documented deterministic fallback remains available when neither permitted
+alias can be loaded.
 
 Observed-outcome storage, completed observation windows, optional engagement
 tables, webhooks, indexes, and backfill requirements are in

@@ -28,7 +28,7 @@ itself, so it needs no model at all. This function never raises.
 import logging
 import typing
 
-import mlflow.sklearn
+from src.config.model_registry import load_registered_model
 
 from .train import (
     EARLY_WARNING_FEATURES,
@@ -111,12 +111,19 @@ def _load_registry_model(name: str, merchant_id: str) -> typing.Any:
     if name in _model_cache:
         return _model_cache[name]
     try:
-        model = mlflow.sklearn.load_model(f"models:/{name}/Production")
+        model = load_registered_model(name)
+        if model is None:
+            _model_cache[name] = None
+            return None
         _model_cache[name] = model
         logger.info("m4_model_loaded", extra={"model": name, "merchant_id": merchant_id})
         return model
-    except Exception as err:
-        logger.warning("m4_model_unavailable", extra={"model": name, "error": str(err)})
+    except Exception as exc:
+        logger.warning(
+            "m4_model_unavailable",
+            extra={"model": name, "error_type": type(exc).__name__},
+        )
+        _model_cache[name] = None
         return None
 
 
@@ -132,6 +139,11 @@ def load_model(merchant_id: str) -> typing.Any:
         The fitted sklearn pipeline, or None if it could not be loaded.
     """
     return _load_registry_model(MODEL_NAME, merchant_id)
+
+
+def load_early_warning_model(merchant_id: str) -> typing.Any:
+    """Load and cache the binary early-warning model for service startup."""
+    return _load_registry_model(EARLY_WARNING_MODEL_NAME, merchant_id)
 
 
 def _early_warning_probability(feature_vector: dict, decay_score: float, merchant_id: str):
@@ -326,10 +338,14 @@ def predict(customer_id: str, feature_vector: dict, merchant_id: str) -> dict:
         return _build_result(tier, churn_probability, decay_score, ltv,
                              fallback=False, feature_vector=features)
 
-    except Exception as err:
+    except Exception as exc:
         logger.warning(
             "m4_inference_fallback",
-            extra={"customer_id": customer_id, "merchant_id": merchant_id, "error": str(err)},
+            extra={
+                "customer_id": customer_id,
+                "merchant_id": merchant_id,
+                "error_type": type(exc).__name__,
+            },
         )
         base_tier, churn_probability = _fallback_tier(features.get("days_since_last_purchase", -1))
         # No model here, so resolve_churn_tier falls through to the decay

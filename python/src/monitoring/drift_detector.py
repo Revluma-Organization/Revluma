@@ -165,11 +165,9 @@ def _load_registered_model(model_name: str) -> typing.Any:
     rather than crash the whole monitoring run."""
     if mlflow is None:
         return None
-    try:
-        return mlflow.sklearn.load_model(f"models:/{model_name}/Production")
-    except Exception as e:
-        print(f"[drift_detector] Could not load model '{model_name}': {e}")
-        return None
+    from src.config.model_registry import load_registered_model
+
+    return load_registered_model(model_name)
 
 
 # ---------------------------------------------------------------------------

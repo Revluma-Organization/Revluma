@@ -43,12 +43,22 @@ def disable_external_model_loading(monkeypatch):
         },
     )
 
-def test_health_check():
+def test_health_check(monkeypatch):
+    monkeypatch.setattr(
+        serving_api,
+        "_all_loaded_model_names",
+        lambda: ["abandonment"],
+    )
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
-    assert "models_loaded" in data
-    assert "status" in data
+    assert data["status"] == "ok"
+    assert data["model_status"] == "partial_fallback"
+    assert data["models_ready"] is False
+    assert data["production_models_ready"] is False
+    assert data["models_loaded"] == ["abandonment"]
+    assert "churn_risk" in data["models_missing"]
+    assert "mlflow_remote_configured" in data
 
 
 def test_orchestrate_forwards_scheduler_trigger_context(monkeypatch):
@@ -238,6 +248,71 @@ def test_internal_recommendation_outcomes_rejects_excessive_limit():
 
     assert response.status_code == 422
 
+
+def test_internal_feature_compute_returns_canonical_envelope(monkeypatch):
+    expected = {
+        "session_id": "session-1",
+        "customer_id": "customer-1",
+        "features": {"scroll_depth_pct": 75.0},
+    }
+    captured = {}
+
+    def fake_compute(customer_id, events):
+        captured["customer_id"] = customer_id
+        captured["events"] = events
+        return expected
+
+    monkeypatch.setattr(serving_api, "_compute_session_features", fake_compute)
+    response = client.post(
+        "/internal/features/compute",
+        json={
+            "customer_id": "customer-1",
+            "session_events": [
+                {
+                    "id": "event-1",
+                    "event_type": "PAGE_VIEW",
+                    "session_id": "session-1",
+                    "timestamp": "2026-09-21T10:00:00Z",
+                    "payload": {},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == expected
+    assert captured["customer_id"] == "customer-1"
+    assert captured["events"][0]["event_type"] == "PAGE_VIEW"
+
+
+def test_internal_feature_compute_rejects_empty_event_batches():
+    response = client.post(
+        "/internal/features/compute",
+        json={"session_events": []},
+    )
+
+    assert response.status_code == 422
+
+
+def test_compute_session_features_rejects_invalid_events_before_database(monkeypatch):
+    def unexpected_connection():
+        raise AssertionError("database must not be opened for invalid events")
+
+    monkeypatch.setattr(serving_api.engine, "raw_connection", unexpected_connection)
+
+    with pytest.raises(ValueError, match="invalid event"):
+        serving_api._compute_session_features(
+            "customer-1",
+            [
+                {
+                    "event_type": "NOT_A_CANONICAL_EVENT",
+                    "session_id": "session-1",
+                    "timestamp": "2026-09-21T10:00:00Z",
+                    "payload": {},
+                }
+            ],
+        )
+
 def test_abandonment_valid():
     response = client.post("/predict/abandonment-probability", json={
         "scroll_depth_pct": 50.0,
@@ -370,6 +445,7 @@ def test_send_time_valid():
 
 def test_send_time_delegates_full_contract_and_internal_context(monkeypatch):
     captured = {}
+    preloaded_model = object()
 
     def fake_predict(customer_id, features, merchant_id, *, model):
         captured.update(
@@ -388,6 +464,11 @@ def test_send_time_delegates_full_contract_and_internal_context(monkeypatch):
         }
 
     monkeypatch.setattr(serving_api, "_predict_timing", fake_predict)
+    monkeypatch.setitem(
+        serving_api.timing_predict._model_cache,
+        "send_time",
+        preloaded_model,
+    )
     response = client.post(
         "/predict/send-time",
         json={
@@ -406,6 +487,7 @@ def test_send_time_delegates_full_contract_and_internal_context(monkeypatch):
     assert captured["merchant_id"] == "merchant-1"
     assert captured["features"]["recovery_action"] == "TRUST_REASSURE"
     assert captured["features"]["cart_value_tier"] == "premium"
+    assert captured["model"] is preloaded_model
 
 
 def test_send_time_rejects_partial_open_probability_array():
@@ -431,6 +513,9 @@ def test_offer_value_valid():
         "searched_discount_terms": False
     }, headers=headers)
     assert response.status_code == 200
+    data = response.json()
+    assert data["fallback"] is True
+    assert data["model_version"] == "1.0.0-formula-fallback"
 
 def test_all_null_input():
     response = client.post("/predict/abandonment-probability", json=None, headers=headers)
