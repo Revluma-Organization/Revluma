@@ -27,11 +27,13 @@ const {
     evaluateRecommendationOutcomes,
     generateMorningBriefings,
     orchestrate,
+    runIntelligenceAutomation,
 } = require('./mlService');
 const { syncShopifyStore } = require('./shopifySync');
 const { runFeatureJobs } = require('./featureWorkerService');
 const { runRecoveryActions } = require('./recoveryActionService');
 const { runDailyChurnScoring } = require('./churnWorkerService');
+const { runTrainingObservationFinalization } = require('./trainingObservationService');
 
 // -----------------------------------------------------------------------------
 // Configuration
@@ -77,6 +79,11 @@ const CHURN_SCORING_INTERVAL_MS = parseInt(
     10
 );
 
+const INTELLIGENCE_AUTOMATION_INTERVAL_MS = parseInt(
+    process.env.INTELLIGENCE_AUTOMATION_INTERVAL_MS || String(5 * 60 * 1000),
+    10
+);
+
 const LOCK_TTL_SECONDS = parseInt(
     process.env.SCHEDULER_LOCK_TTL_SECONDS || '300',
     10
@@ -102,6 +109,8 @@ let storeSyncTimer = null;
 let featureJobTimer = null;
 let recoveryActionTimer = null;
 let churnScoringTimer = null;
+let intelligenceAutomationTimer = null;
+let trainingObservationTimer = null;
 
 let businessStateRunning = false;
 let recommendationOutcomesRunning = false;
@@ -111,6 +120,8 @@ let storeSyncRunning = false;
 let featureJobRunning = false;
 let recoveryActionRunning = false;
 let churnScoringRunning = false;
+let intelligenceAutomationRunning = false;
+let trainingObservationRunning = false;
 
 let started = false;
 
@@ -658,6 +669,52 @@ async function runChurnQueue() {
     }
 }
 
+async function runAutomationQueue() {
+    if (intelligenceAutomationRunning) return;
+    const lock = await acquireLock('intelligence-automation');
+    if (!lock) return;
+    intelligenceAutomationRunning = true;
+    try {
+        const result = await runIntelligenceAutomation({
+            correlationId: `scheduler-automation-${Date.now()}`,
+        });
+        if (!result.success) {
+            logger.warn('scheduler_intelligence_automation_failed', {
+                error_type: result.error?.code || 'worker_error',
+            });
+        } else {
+            logger.info('scheduler_intelligence_automation_accepted', {
+                status: result.data?.status || 'accepted',
+            });
+        }
+    } catch (error) {
+        logger.error('scheduler_intelligence_automation_failed', {
+            error_type: error.code || error.name || 'worker_error',
+        });
+    } finally {
+        intelligenceAutomationRunning = false;
+        await releaseLock(lock);
+    }
+}
+
+async function runTrainingObservationQueue() {
+    if (trainingObservationRunning) return;
+    const lock = await acquireLock('training-observations');
+    if (!lock) return;
+    trainingObservationRunning = true;
+    try {
+        const result = await runTrainingObservationFinalization({ limit: 100 });
+        logger.info('scheduler_training_observations_completed', result);
+    } catch (error) {
+        logger.error('scheduler_training_observations_failed', {
+            error_type: error.code || error.name || 'worker_error',
+        });
+    } finally {
+        trainingObservationRunning = false;
+        await releaseLock(lock);
+    }
+}
+
 async function runStoreSync() {
     if (storeSyncRunning) return;
     const lock = await acquireLock('store-sync');
@@ -737,6 +794,8 @@ function startScheduler() {
     void runFeatureQueue();
     void runRecoveryQueue();
     void runChurnQueue();
+    void runAutomationQueue();
+    void runTrainingObservationQueue();
 
     businessStateTimer = setInterval(
         runBusinessStateRebuild,
@@ -761,6 +820,14 @@ function startScheduler() {
     featureJobTimer = setInterval(runFeatureQueue, FEATURE_JOB_INTERVAL_MS);
     recoveryActionTimer = setInterval(runRecoveryQueue, RECOVERY_ACTION_INTERVAL_MS);
     churnScoringTimer = setInterval(runChurnQueue, CHURN_SCORING_INTERVAL_MS);
+    intelligenceAutomationTimer = setInterval(
+        runAutomationQueue,
+        INTELLIGENCE_AUTOMATION_INTERVAL_MS
+    );
+    trainingObservationTimer = setInterval(
+        runTrainingObservationQueue,
+        CHURN_SCORING_INTERVAL_MS
+    );
 
     /*
      * This checks every minute, but runMorningBriefings() only executes
@@ -823,6 +890,16 @@ function stopScheduler() {
         churnScoringTimer = null;
     }
 
+    if (intelligenceAutomationTimer) {
+        clearInterval(intelligenceAutomationTimer);
+        intelligenceAutomationTimer = null;
+    }
+
+    if (trainingObservationTimer) {
+        clearInterval(trainingObservationTimer);
+        trainingObservationTimer = null;
+    }
+
     started = false;
 
     logger.info('scheduler_stopped');
@@ -839,4 +916,6 @@ module.exports = {
     runChurnQueue,
     runFeatureQueue,
     runRecoveryQueue,
+    runAutomationQueue,
+    runTrainingObservationQueue,
 };

@@ -43,6 +43,7 @@ const INTERNAL_ENDPOINTS = {
   RECOMMENDATION_OUTCOMES:
     '/internal/recommendation-outcomes/evaluate',
   FEATURES: '/internal/features/compute',
+  AUTOMATION: '/internal/automation/run',
 };
 
 if (!PYTHON_SERVICE_URL) {
@@ -1251,6 +1252,14 @@ async function evaluateRecommendationOutcomes({
   });
 }
 
+async function runIntelligenceAutomation({ correlationId }) {
+  return pythonRequest({
+    path: INTERNAL_ENDPOINTS.AUTOMATION,
+    body: {},
+    correlationId,
+  });
+}
+
 /* -------------------------------------------------------------------------- */
 /* PYTHON HEALTH                                                              */
 /* -------------------------------------------------------------------------- */
@@ -1278,7 +1287,7 @@ async function checkPythonHealth() {
 
     const data = response.data;
     const allowedStatuses = new Set(
-      String(process.env.PYTHON_ALLOWED_MODEL_STATUSES || 'ready')
+      String(process.env.PYTHON_ALLOWED_MODEL_STATUSES || 'ready,beta_ready')
         .split(',')
         .map((value) => value.trim())
         .filter(Boolean)
@@ -1333,6 +1342,7 @@ module.exports = {
     checkAlerts,
     rebuildBusinessState,
     evaluateRecommendationOutcomes,
+    runIntelligenceAutomation,
     checkPythonHealth,
     ML_ERRORS,
     CHURN_FEATURES,

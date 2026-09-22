@@ -76,7 +76,11 @@ function stableActionKey(storeId, cartId) {
   return crypto.createHash('sha256').update(`${storeId}:${cartId}:cart-recovery:v1`).digest('hex');
 }
 
-function sendTimePayload(features, sensitivity, cart) {
+function timingPolicyGroup(actionKey) {
+  return parseInt(actionKey.slice(0, 8), 16) % 5 === 0 ? 'control' : 'candidate';
+}
+
+function sendTimePayload(features, sensitivity, cart, openHistory = { probabilities: null, count: 0 }) {
   const value = Number(cart.cart_value || 0);
   const cartValueTier = value >= 500 ? 'premium' : value >= 200 ? 'high' : value >= 75 ? 'medium' : 'low';
   return {
@@ -86,8 +90,8 @@ function sendTimePayload(features, sensitivity, cart) {
     recovery_action: sensitivity.recovery_action || 'SOFT_NUDGE',
     cart_value_tier: cartValueTier,
     customer_timezone_offset: 0,
-    historical_open_probabilities: null,
-    history_data_points: 0,
+    historical_open_probabilities: openHistory.probabilities,
+    history_data_points: openHistory.count,
     days_since_last_purchase: Math.max(0, Number(features.days_since_last_purchase || 0)),
     failed_payment_attempt: Boolean(features.failed_payment_attempt),
     risk_score: 0,
@@ -97,6 +101,34 @@ function sendTimePayload(features, sensitivity, cart) {
     previous_message_clicked: false,
     last_sms_sent_at: null,
     secondary_channel: null,
+  };
+}
+
+async function loadOpenHistory(customerId) {
+  const sends = await prisma.sequence_sends.findMany({
+    where: {
+      customer_id: customerId,
+      sent_at: { not: null, gte: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000) },
+    },
+    select: {
+      sent_at: true,
+      sequence_events: { where: { event_type: 'opened' }, select: { id: true } },
+    },
+    take: 500,
+  });
+  if (!sends.length) return { probabilities: null, count: 0, overallRate: 0 };
+  const totals = Array(24).fill(0);
+  const opened = Array(24).fill(0);
+  for (const send of sends) {
+    const hour = send.sent_at.getUTCHours();
+    totals[hour] += 1;
+    if (send.sequence_events.length > 0) opened[hour] += 1;
+  }
+  const overallRate = opened.reduce((sum, value) => sum + value, 0) / sends.length;
+  return {
+    probabilities: totals.map((total, hour) => total ? opened[hour] / total : overallRate),
+    count: sends.length,
+    overallRate,
   };
 }
 
@@ -123,32 +155,47 @@ async function enqueueRecoveryAction({
   if (!automationPermitted(policy, customer, discountPct)) return { queued: false, reason: 'policy_denied' };
   if (!(await withinActionLimits(store.id, customer.id, policy))) return { queued: false, reason: 'rate_limit' };
 
-  const timing = await predictSendTime({
-    payload: sendTimePayload(features, sensitivity, cart),
-    customerId: customer.id,
-    merchantId: store.id,
-    correlationId,
-  });
-  if (!timing.success) return { queued: false, reason: timing.error?.code || 'timing_failed' };
+  const actionKey = stableActionKey(store.id, cart.id);
+  const policyGroup = timingPolicyGroup(actionKey);
+  const openHistory = await loadOpenHistory(customer.id);
+  const timingPayload = sendTimePayload(features, sensitivity, cart, openHistory);
+  let timing = { data: { fallback: true, reasoning_layer: 'randomized_control' } };
+  let availableAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  if (policyGroup === 'candidate') {
+    timing = await predictSendTime({
+      payload: timingPayload,
+      customerId: customer.id,
+      merchantId: store.id,
+      correlationId,
+    });
+    if (!timing.success) return { queued: false, reason: timing.error?.code || 'timing_failed' };
+    availableAt = timing.data.send_at_utc || timing.data.send_at;
+  }
 
   const sequence = await findOrCreateEmailSequence(store.id);
-  const actionKey = stableActionKey(store.id, cart.id);
   const queuedMessageId = `queued:${actionKey}`;
   const metadata = {
     action_key: actionKey,
-    available_at: timing.data.send_at_utc || timing.data.send_at,
+    available_at: availableAt,
     abandoned_cart_id: cart.id,
     feature_snapshot_id: snapshot.id,
     discount_pct: discountPct,
     offer_expires_hours: Number(offer.offer_expires_hours || 24),
     minimum_order_value: Number(offer.minimum_order_value || 0),
     recovery_action: sensitivity.recovery_action,
+    cart_value_tier: timingPayload.cart_value_tier,
+    historical_open_rate: openHistory.overallRate,
+    days_since_last_purchase: timingPayload.days_since_last_purchase,
+    timing_policy_group: policyGroup,
     model_evidence: {
       abandonment: { model_version: abandonment.model_version, fallback: abandonment.fallback },
       sensitivity: { model_version: sensitivity.model_version, fallback: sensitivity.fallback },
       offer: { model_version: offer.model_version, fallback: offer.fallback },
       timing: { fallback: timing.data.fallback, reasoning_layer: timing.data.reasoning_layer },
     },
+    timing_model_version: policyGroup === 'candidate'
+      ? (timing.data.model_version || 'fallback')
+      : 'control',
   };
   try {
     const send = await prisma.sequence_sends.create({
@@ -379,4 +426,5 @@ module.exports = {
   processRecoverySend,
   runRecoveryActions,
   safeRecoveryUrl,
+  timingPolicyGroup,
 };

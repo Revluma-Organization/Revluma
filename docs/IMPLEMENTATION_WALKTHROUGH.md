@@ -358,8 +358,8 @@ assigned to the controlled `beta` aliases below; none was assigned to the
 ### Active beta registry versions
 
 Before alias assignment, each artifact was downloaded from its exact run and
-loaded successfully with its required prediction interface. With
-`MODEL_RELEASE_CHANNEL=beta` explicitly set, local API startup then loaded all
+loaded successfully with its required prediction interface. With the
+controlled-beta channel selected, local API startup then loaded all
 eight aliases, reported `model_status=beta_ready`, and exposed their provenance
 through `/health.model_channels`.
 
@@ -374,9 +374,10 @@ through `/health.model_channels`.
 | `churn_early_warning` | `beta` | 10 | `17d6476028eb46b3862dd28937e08978` |
 | `offer_value` | `beta` | 5 | `c625c9cafd9c46a2a8ba9318e07d9e52` |
 
-`python/src/config/model_registry.py` always tries the `production` alias first.
-It uses `beta` only when `MODEL_RELEASE_CHANNEL=beta`; invalid configuration
-fails closed to production-only resolution. The API preloads every model,
+`python/src/config/model_registry.py` defaults to controlled beta, tries the
+`beta` alias first, and falls back to `production`. An explicitly configured
+production deployment resolves production only; invalid configuration fails
+closed to production-only resolution. The API preloads every model,
 reports missing models and release channels in `/health`, and retains the
 existing deterministic fallbacks for registry or inference failure. A corrected
 M3 cache handoff now passes the preloaded `send_time` model into the scheduling
@@ -499,9 +500,37 @@ scenario has run successfully.
 - Feedback writes are atomic and idempotent; zero-send windows fail safely.
 - RFM updates are transaction-safe and return sanitized summaries.
 
+## Zero-touch real-data lifecycle and vector memory
+
+The final automation pass closed the gap between collecting real outcomes and
+using them safely without another development cycle.
+
+| Area | What was missing | Implemented behavior and location |
+|---|---|---|
+| M2 observed labels | Sensitivity training could read finalized observations, but the live path did not create or finalize them. | `Backend/src/services/featureWorkerService.js` now records the exact 13-feature snapshot through `trainingObservationService.js`. Seven days later, the scheduler labels price, convenience, and trust outcomes from completed orders and immutable decision-time evidence; it never copies M2 scores into the labels. |
+| M3 causal evidence | Send-time training had real send outcomes, but there was no stable control allocation or version attribution. | `Backend/src/services/recoveryActionService.js` assigns carts deterministically to 80% candidate and 20% 30-minute control, persists the seven real training features, records the served model version, and lets verified message events supply the outcome. |
+| M4 observed labels | Daily churn scoring created pending snapshots but nothing matured them. | `Backend/src/services/trainingObservationService.js` finalizes each 30-day window from authoritative completed orders and observed inactivity, including the next purchase timestamp and one of the four canonical tiers. |
+| M5 recovered outcomes | Backend stored completed/recovered orders using lowercase repository statuses, while the M5 loader expected only `CONVERTED`; webhook orders also lacked the computed percentage and cart session needed by training. | `commerceWebhookService.js` now computes and persists `discount_pct`, retains coupon codes, attributes recovery through checkout IDs or Revluma discount codes, and copies the cart session to the recovered order. M5 readiness/training accepts the repository's completed, recovered, and legacy converted statuses only when a cart is attributed. |
+| Automatic training | Training scripts, quality gates, drift checks, and DagsHub logging existed only as callable foundations. | `python/src/training/lifecycle.py` checks model-specific sample/class thresholds, trains one eligible real-data pipeline per bounded cycle, retains chronological validation and existing quality gates, resolves registered versions, and assigns candidate/beta aliases. It prevents repeated training more often than weekly for an active pipeline. |
+| Canary promotion and rollback | A human would have needed to assign aliases and restart services. | Version-specific monitoring evidence is stored in `model_lifecycle_metrics`. Passing candidates promote automatically after the minimum canary period; failed candidates restore the previous alias. M4 requires separate live evidence for both `churn_risk` and `churn_early_warning`, and cannot register the pair when the early-warning layer is not trainable. `python/src/serving/api.py` then clears all model caches and reloads the aliases safely. |
+| Merchant-memory vectors | Memory storage and bounded lexical retrieval existed, but persisted vector ranking did not. | The new Prisma migration enables pgvector, creates tenant-scoped embedding and queue tables, installs an enqueue trigger, and backfills active memories. `python/src/memory/vector_store.py` uses a pinned local 384-dimensional word/ngram hashing model, bounded top-K retrieval, visibility/expiry filters, retry limits, and lexical fallback. This is deterministic vector relevance, not a claim of deep semantic understanding; no external embedding secret or network dependency was added. |
+| Automatic scheduling | The model and memory jobs still needed a caller. | `Backend/src/services/schedulerService.js` invokes `POST /internal/automation/run` at startup and every five minutes through the authenticated gateway. Durable `automation_job_state` rows enforce the actual weekly, monthly, six-hour, and benchmark cadences across restarts and multiple instances. |
+| Scale evidence | The 100,000-order check required a manual command. | The Python automation remains dormant below 100,000 real orders. Once that threshold exists, it runs a bounded PostgreSQL execution-plan probe weekly and records sanitized latency and row-count evidence in automation state without generating or modifying production commerce data. |
+
+The M2 outcomes are real behavioral proxy labels, not shopper-declared survey
+truth. They are not derived from the model score, do not use protected
+attributes, and remain subject to chronological validation and live canary
+quality gates before automatic promotion.
+
+The controlled-beta release channel is now the default: it prefers `beta` and
+falls back to `production`. A production-only deployment must explicitly set
+`MODEL_RELEASE_CHANNEL=production`. Synthetic artifacts remain beta evidence;
+automatic production promotion requires mature real outcomes and passing live
+quality gates.
+
 ## Validation
 
-- The complete offline Python suite passed after final cleanup with **487
+- The complete offline Python suite passed after final cleanup with **495
   passed and 1 skipped**. The skipped test is the paid, network-dependent LLM
   judge, which now requires explicit opt-in.
 - A registry-backed local API probe loaded all eight `beta` aliases and returned
@@ -511,7 +540,7 @@ scenario has run successfully.
 - A read-only configured-database probe exercised the new internal feature path
   and returned the canonical 34-feature envelope for a normalized session.
 - The Backend Prisma schema validated and its client generated successfully.
-  `npm test` now discovers and runs every Backend test file; all seven current
+  `npm test` now discovers and runs every Backend test file; all eight current
   files pass with isolated test-only secrets.
 - Syntax checks passed for all 37 changed or newly added Backend JavaScript
   files. The Backend dependency audit reduced the open production audit output
@@ -561,8 +590,9 @@ Provider exception payloads, recipient addresses, connection details, and
 stacks are excluded from production logs; stable error types and record IDs are
 retained for diagnosis.
 
-The additive Prisma migration adds only nullable
-`abandoned_carts.recovery_url` and a non-unique store/cart lookup index. The
+The additive Prisma migrations preserve existing data. One adds nullable
+`abandoned_carts.recovery_url` and a non-unique store/cart lookup index; the
+next adds pgvector-backed memory retrieval and durable lifecycle state. The
 Backend `prestart` hook applies committed migrations before accepting traffic.
 Live readiness still requires observing that migration, setting the documented
 Backend environment values, reinstalling beta Shopify stores when new scopes
@@ -578,10 +608,10 @@ a compatible upgrade or separately tested mitigation is available.
 
 1. The deployment operator follows the environment, migration, Shopify scope,
    and canary sequence in `docs/BACKEND_IMPLEMENTATION_GUIDE.md`.
-2. The team provisions representative real labels and validates subgroup error,
-   calibration, drift, and operational impact before model promotion.
-3. The team runs the 100,000-order Business State benchmark on
-   production-shaped infrastructure and records the under-90-second evidence.
+2. Real labels, drift evidence, retraining, canary aliases, promotion, rollback,
+   cache reload, and the 100,000-order probe now activate automatically when
+   their data thresholds mature. The team should monitor the recorded evidence;
+   no recurring manual command is required.
 4. The team explicitly enables and runs the 20-scenario Anthropic benchmark
    when paid external evaluation is intended.
 5. The team reviews the broader evaluation datasets before treating them as

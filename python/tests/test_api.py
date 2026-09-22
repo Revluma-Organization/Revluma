@@ -601,6 +601,38 @@ def test_send_time_empty():
     """Empty body should succeed: all Pydantic fields have defaults."""
     response = client.post("/predict/send-time", json={}, headers=headers)
     assert response.status_code == 200
+    assert response.json()["model_version"] == "fallback"
+
+
+def test_automation_endpoint_accepts_background_work(monkeypatch):
+    calls = []
+    monkeypatch.setattr(serving_api, "_run_background_automation", lambda: calls.append(True))
+    serving_api._automation_status["running"] = False
+
+    response = client.post("/internal/automation/run", json={}, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    assert calls == [True]
+
+
+def test_automation_releases_process_lock_when_database_open_fails(monkeypatch):
+    class FakeSession:
+        def close(self):
+            pass
+
+    def fail_to_connect():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(serving_api, "_Session", FakeSession)
+    monkeypatch.setattr(serving_api.engine, "raw_connection", fail_to_connect)
+
+    serving_api._run_background_automation()
+
+    assert serving_api._automation_status["running"] is False
+    assert serving_api._automation_status["last_error"] == "RuntimeError"
+    assert serving_api._automation_lock.acquire(blocking=False)
+    serving_api._automation_lock.release()
 
 
 def test_send_time_invalid_channel():

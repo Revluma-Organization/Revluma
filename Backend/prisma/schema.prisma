@@ -81,86 +81,89 @@ model onboarding_tools {
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model organizations {
-  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  owner_id                 String                     @db.Uuid
-  company_name             String
-  website_url              String?
-  store_url                String?
-  industry                 String
-  custom_industry          String?
-  country                  String
-  state_region             String?
-  team_size                String?
-  monthly_revenue_range    String?
-  monthly_order_volume     String?
-  status                   String                     @default("active")
-  created_at               DateTime?                  @default(now()) @db.Timestamptz(6)
-  updated_at               DateTime?                  @default(now()) @db.Timestamptz(6)
-  primary_color            String?
-  accent_color             String?
-  logo_url                 String?
-  favicon_url              String?
-  slug                     String                     @unique
-  ai_preferences           ai_preferences?
-  alert_queue              alert_queue[]
-  audit_logs               audit_logs[]
-  business_state_baselines business_state_baselines?
-  business_states          business_states[]
-  conversation_messages    conversation_messages[]
-  conversations            conversations[]
-  merchant_memories        merchant_memories[]
-  model_evaluation_metrics model_evaluation_metrics[]
-  model_feedback_queue     model_feedback_queue[]
-  morning_briefings        morning_briefings[]
-    churn_training_observations       churn_training_observations[]
-    sensitivity_training_observations sensitivity_training_observations[]
-  members                  organization_members[]
-  users                    users                      @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  payment_transactions     payment_transactions[]
-  recommendation_outcomes  recommendation_outcomes[]
-  recommendations          recommendations[]
-  stores                   stores[]
-  strategic_memory         strategic_memory[]
-  subscriptions            subscriptions?
+  id                                String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id                          String                              @db.Uuid
+  company_name                      String
+  website_url                       String?
+  store_url                         String?
+  industry                          String
+  custom_industry                   String?
+  country                           String
+  state_region                      String?
+  team_size                         String?
+  monthly_revenue_range             String?
+  monthly_order_volume              String?
+  status                            String                              @default("active")
+  created_at                        DateTime?                           @default(now()) @db.Timestamptz(6)
+  updated_at                        DateTime?                           @default(now()) @db.Timestamptz(6)
+  primary_color                     String?
+  accent_color                      String?
+  logo_url                          String?
+  favicon_url                       String?
+  slug                              String                              @unique
+  ai_preferences                    ai_preferences?
+  alert_queue                       alert_queue[]
+  audit_logs                        audit_logs[]
+  business_state_baselines          business_state_baselines?
+  business_states                   business_states[]
+  conversation_messages             conversation_messages[]
+  conversations                     conversations[]
+  merchant_memories                 merchant_memories[]
+  merchant_memory_embeddings        merchant_memory_embeddings[]
+  merchant_memory_embedding_jobs    merchant_memory_embedding_jobs[]
+  model_evaluation_metrics          model_evaluation_metrics[]
+  model_feedback_queue              model_feedback_queue[]
+  morning_briefings                 morning_briefings[]
+  churn_training_observations       churn_training_observations[]
+  sensitivity_training_observations sensitivity_training_observations[]
+  members                           organization_members[]
+  users                             users                               @relation(fields: [owner_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  payment_transactions              payment_transactions[]
+  recommendation_outcomes           recommendation_outcomes[]
+  recommendations                   recommendations[]
+  stores                            stores[]
+  strategic_memory                  strategic_memory[]
+  subscriptions                     subscriptions?
 
   @@index([owner_id], map: "idx_organizations_owner")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model users {
-  id                        String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  full_name                 String
-  email                     String                  @unique
-  password_hash             String?
-  google_id                 String?                 @unique
-  email_verified            Boolean?                @default(false)
-  accepted_terms            Boolean                 @default(false)
-  accepted_privacy_policy   Boolean                 @default(false)
-  onboarding_completed      Boolean?                @default(false)
-  onboarding_step           Int?                    @default(1)
-  status                    String?                 @default("active")
-  archived_at               DateTime?               @db.Timestamptz(6)
-  created_at                DateTime?               @default(now()) @db.Timestamptz(6)
-  updated_at                DateTime?               @default(now()) @db.Timestamptz(6)
-  verification_code         String?
-  verification_expires_at   DateTime?               @db.Timestamptz(6)
-  two_factor_enabled        Boolean                 @default(false)
-  two_factor_secret         String?
-  two_factor_temp_secret    String?
-  two_factor_last_used_step Int?
-  profile_picture_url       String?
-  notification_preferences  Json?
-  audit_logs                audit_logs[]
-  conversation_messages     conversation_messages[]
-  conversations             conversations[]
-  merchant_memories         merchant_memories[]
-  notifications             notifications[]
-  onboarding_profiles       onboarding_profiles?
-  organization_members      organization_members[]
-  organizations             organizations[]
-  recommendations           recommendations[]
-  refresh_tokens            refresh_tokens[]
-  preferences               UserPreference?
+  id                         String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  full_name                  String
+  email                      String                       @unique
+  password_hash              String?
+  google_id                  String?                      @unique
+  email_verified             Boolean?                     @default(false)
+  accepted_terms             Boolean                      @default(false)
+  accepted_privacy_policy    Boolean                      @default(false)
+  onboarding_completed       Boolean?                     @default(false)
+  onboarding_step            Int?                         @default(1)
+  status                     String?                      @default("active")
+  archived_at                DateTime?                    @db.Timestamptz(6)
+  created_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime?                    @default(now()) @db.Timestamptz(6)
+  verification_code          String?
+  verification_expires_at    DateTime?                    @db.Timestamptz(6)
+  two_factor_enabled         Boolean                      @default(false)
+  two_factor_secret          String?
+  two_factor_temp_secret     String?
+  two_factor_last_used_step  Int?
+  profile_picture_url        String?
+  notification_preferences   Json?
+  audit_logs                 audit_logs[]
+  conversation_messages      conversation_messages[]
+  conversations              conversations[]
+  merchant_memories          merchant_memories[]
+  merchant_memory_embeddings merchant_memory_embeddings[]
+  notifications              notifications[]
+  onboarding_profiles        onboarding_profiles?
+  organization_members       organization_members[]
+  organizations              organizations[]
+  recommendations            recommendations[]
+  refresh_tokens             refresh_tokens[]
+  preferences                UserPreference?
 
   @@index([email], map: "idx_users_email")
 }
@@ -234,38 +237,38 @@ model waitlist_users {
 /// Connected Shopify or WooCommerce store for a merchant organization.
 /// One organization can have multiple stores across platforms.
 model stores {
-  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id        String                   @db.Uuid
-  platform               String
-  shop_domain            String
-  access_token           String?
-  status                 String                   @default("not_connected")
-  installed_at           DateTime?                @db.Timestamptz(6)
-  last_synced_at         DateTime?                @db.Timestamptz(6)
-  created_at             DateTime?                @default(now()) @db.Timestamptz(6)
-  updated_at             DateTime?                @default(now()) @db.Timestamptz(6)
-  public_tracking_key    String?                  @unique
-  abandoned_carts        abandoned_carts[]
-  coupons                coupons[]
-  customers              customers[]
-  events                 events[]
-  mlSessionFeatures      ml_session_features[]
-  order_items            order_items[]
-  orders                 orders[]
-  product_attributes     product_attributes[]
-  product_categories     product_categories[]
-  product_category_links product_category_links[]
-  product_images         product_images[]
-  product_tag_links      product_tag_links[]
-  product_tags           product_tags[]
-  products               products[]
-  sequence_sends         sequence_sends[]
-  sequences              sequences[]
-  store_settings         store_settings[]
-  organizations          organizations            @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  webhook_registrations  webhook_registrations[]
-  webhook_deliveries      webhook_deliveries[]
-  feature_jobs            feature_jobs[]
+  id                                String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id                   String                              @db.Uuid
+  platform                          String
+  shop_domain                       String
+  access_token                      String?
+  status                            String                              @default("not_connected")
+  installed_at                      DateTime?                           @db.Timestamptz(6)
+  last_synced_at                    DateTime?                           @db.Timestamptz(6)
+  created_at                        DateTime?                           @default(now()) @db.Timestamptz(6)
+  updated_at                        DateTime?                           @default(now()) @db.Timestamptz(6)
+  public_tracking_key               String?                             @unique
+  abandoned_carts                   abandoned_carts[]
+  coupons                           coupons[]
+  customers                         customers[]
+  events                            events[]
+  mlSessionFeatures                 ml_session_features[]
+  order_items                       order_items[]
+  orders                            orders[]
+  product_attributes                product_attributes[]
+  product_categories                product_categories[]
+  product_category_links            product_category_links[]
+  product_images                    product_images[]
+  product_tag_links                 product_tag_links[]
+  product_tags                      product_tags[]
+  products                          products[]
+  sequence_sends                    sequence_sends[]
+  sequences                         sequences[]
+  store_settings                    store_settings[]
+  organizations                     organizations                       @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  webhook_registrations             webhook_registrations[]
+  webhook_deliveries                webhook_deliveries[]
+  feature_jobs                      feature_jobs[]
   churn_training_observations       churn_training_observations[]
   sensitivity_training_observations sensitivity_training_observations[]
 
@@ -276,43 +279,43 @@ model stores {
 /// Stores consent flags for email/SMS marketing (legal compliance).
 /// RFM fields are written by the Python rfm_sync job.
 model customers {
-  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id                String                @db.Uuid
-  external_id             String
-  email                   String
-  full_name               String?
-  phone                   String?
-  anonymous_id            String?
-  consent_email           Boolean?              @default(false)
-  consent_sms             Boolean?              @default(false)
-  consent_updated_at      DateTime?             @db.Timestamptz(6)
-  ltv                     Decimal?              @default(0) @db.Decimal(10, 2)
-  orders_count            Int?                  @default(0)
-  rfm_recency             Int?
-  rfm_frequency           Int?
-  rfm_monetary            Int?
-  rfm_segment             String?
-  status                  String?               @default("active")
-  created_at              DateTime?             @default(now()) @db.Timestamptz(6)
-  updated_at              DateTime?             @default(now()) @db.Timestamptz(6)
-  churn_escalate_to_human Boolean?
-  churn_model_version     String?
-  churn_offer_required    Boolean?
-  churn_probability       Float?
-  churn_score_fallback    Boolean?
-  churn_scored_at         DateTime?             @db.Timestamptz(6)
-  churn_tier              String?
-  engagement_decay_score  Float?
-  primary_churn_signal    String?
-  recommended_channel     String?
-  rfm_updated_at          DateTime?             @db.Timestamptz(6)
-  win_back_urgency        String?
-  abandoned_carts         abandoned_carts[]
-  stores                  stores                @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  events                  events[]
-  mlSessionFeatures       ml_session_features[]
-  orders                  orders[]
-  sequence_sends          sequence_sends[]
+  id                                String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id                          String                              @db.Uuid
+  external_id                       String
+  email                             String
+  full_name                         String?
+  phone                             String?
+  anonymous_id                      String?
+  consent_email                     Boolean?                            @default(false)
+  consent_sms                       Boolean?                            @default(false)
+  consent_updated_at                DateTime?                           @db.Timestamptz(6)
+  ltv                               Decimal?                            @default(0) @db.Decimal(10, 2)
+  orders_count                      Int?                                @default(0)
+  rfm_recency                       Int?
+  rfm_frequency                     Int?
+  rfm_monetary                      Int?
+  rfm_segment                       String?
+  status                            String?                             @default("active")
+  created_at                        DateTime?                           @default(now()) @db.Timestamptz(6)
+  updated_at                        DateTime?                           @default(now()) @db.Timestamptz(6)
+  churn_escalate_to_human           Boolean?
+  churn_model_version               String?
+  churn_offer_required              Boolean?
+  churn_probability                 Float?
+  churn_score_fallback              Boolean?
+  churn_scored_at                   DateTime?                           @db.Timestamptz(6)
+  churn_tier                        String?
+  engagement_decay_score            Float?
+  primary_churn_signal              String?
+  recommended_channel               String?
+  rfm_updated_at                    DateTime?                           @db.Timestamptz(6)
+  win_back_urgency                  String?
+  abandoned_carts                   abandoned_carts[]
+  stores                            stores                              @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  events                            events[]
+  mlSessionFeatures                 ml_session_features[]
+  orders                            orders[]
+  sequence_sends                    sequence_sends[]
   churn_training_observations       churn_training_observations[]
   sensitivity_training_observations sensitivity_training_observations[]
 
@@ -332,31 +335,31 @@ model customers {
 /// An abandoned checkout / cart detected on a merchant's store.
 /// customer_id is nullable to support anonymous cart abandonment.
 model abandoned_carts {
-  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id             String                 @db.Uuid
-  customer_id          String?                @db.Uuid
-  external_cart_id     String?
-  recovery_url         String?
-  session_id           String?
-  cart_value           Decimal                @db.Decimal(10, 2)
-  currency             String?                @default("USD")
-  status               String?                @default("abandoned")
-  abandoned_at         DateTime               @db.Timestamptz(6)
-  recovered_at         DateTime?              @db.Timestamptz(6)
-  recovery_sequence_id String?                @db.Uuid
-  created_at           DateTime?              @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime?              @default(now()) @db.Timestamptz(6)
-  pss_score            Int?
-  css_score            Int?
-  tss_score            Int?
-  recovery_action      String?
-  sensitivity_model_version String?
-  sensitivity_scored_at DateTime?             @db.Timestamptz(6)
-  items                abandoned_cart_items[]
-  customers            customers?             @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
-  sequences            sequences?             @relation(fields: [recovery_sequence_id], references: [id], onUpdate: NoAction)
-  stores               stores                 @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  orders               orders[]
+  id                                String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id                          String                              @db.Uuid
+  customer_id                       String?                             @db.Uuid
+  external_cart_id                  String?
+  recovery_url                      String?
+  session_id                        String?
+  cart_value                        Decimal                             @db.Decimal(10, 2)
+  currency                          String?                             @default("USD")
+  status                            String?                             @default("abandoned")
+  abandoned_at                      DateTime                            @db.Timestamptz(6)
+  recovered_at                      DateTime?                           @db.Timestamptz(6)
+  recovery_sequence_id              String?                             @db.Uuid
+  created_at                        DateTime?                           @default(now()) @db.Timestamptz(6)
+  updated_at                        DateTime?                           @default(now()) @db.Timestamptz(6)
+  pss_score                         Int?
+  css_score                         Int?
+  tss_score                         Int?
+  recovery_action                   String?
+  sensitivity_model_version         String?
+  sensitivity_scored_at             DateTime?                           @db.Timestamptz(6)
+  items                             abandoned_cart_items[]
+  customers                         customers?                          @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  sequences                         sequences?                          @relation(fields: [recovery_sequence_id], references: [id], onUpdate: NoAction)
+  stores                            stores                              @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orders                            orders[]
   sensitivity_training_observations sensitivity_training_observations[]
 
   @@index([store_id, external_cart_id], map: "idx_abandoned_carts_store_external")
@@ -449,19 +452,19 @@ model notifications {
 /// Source for Live Activity feed, ML feature pipeline, and identity resolution.
 /// event_type values defined in docs/PIXEL_EVENT_SPEC.md.
 model events {
-  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id        String     @db.Uuid
-  customer_id     String?    @db.Uuid
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id        String         @db.Uuid
+  customer_id     String?        @db.Uuid
   session_id      String?
   anonymous_id    String?
   event_type      String
   payload         Json?
-  created_at      DateTime?  @default(now()) @db.Timestamptz(6)
-  source          String    @default("pixel")
+  created_at      DateTime?      @default(now()) @db.Timestamptz(6)
+  source          String         @default("pixel")
   source_event_id String?
-  received_at     DateTime  @default(now()) @db.Timestamptz(6)
-  customers       customers? @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
-  stores          stores     @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  received_at     DateTime       @default(now()) @db.Timestamptz(6)
+  customers       customers?     @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
+  stores          stores         @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   feature_jobs    feature_jobs[]
 
   @@unique([store_id, source, source_event_id])
@@ -521,18 +524,18 @@ model ml_session_features {
 }
 
 model feature_jobs {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id       String    @db.Uuid
-  event_id       String    @db.Uuid
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id        String   @db.Uuid
+  event_id        String   @db.Uuid
   idempotency_key String   @unique
-  status         String    @default("pending")
-  attempt_count  Int       @default(0)
-  available_at   DateTime  @default(now()) @db.Timestamptz(6)
-  last_error     String?
-  created_at     DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
-  stores         stores    @relation(fields: [store_id], references: [id], onDelete: Cascade)
-  events         events    @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  status          String   @default("pending")
+  attempt_count   Int      @default(0)
+  available_at    DateTime @default(now()) @db.Timestamptz(6)
+  last_error      String?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @db.Timestamptz(6)
+  stores          stores   @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  events          events   @relation(fields: [event_id], references: [id], onDelete: Cascade)
 
   @@index([status, available_at])
   @@index([store_id, created_at])
@@ -798,30 +801,72 @@ model coupons {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model merchant_memories {
-  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id String         @db.Uuid
-  user_id         String?        @db.Uuid
+  id              String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String                          @db.Uuid
+  user_id         String?                         @db.Uuid
   memory_type     String
   memory_key      String
   memory_value    Json
-  memory_source   String         @default("explicit")
-  authority_level Int            @default(3)
-  confidence      Float?         @default(1.0)
-  importance      Int            @default(3)
-  is_active       Boolean        @default(true)
-  expires_at      DateTime?      @db.Timestamptz(6)
-  last_used_at    DateTime?      @db.Timestamptz(6)
-  use_count       Int            @default(0)
-  source_conv_id  String?        @db.Uuid
+  memory_source   String                          @default("explicit")
+  authority_level Int                             @default(3)
+  confidence      Float?                          @default(1.0)
+  importance      Int                             @default(3)
+  is_active       Boolean                         @default(true)
+  expires_at      DateTime?                       @db.Timestamptz(6)
+  last_used_at    DateTime?                       @db.Timestamptz(6)
+  use_count       Int                             @default(0)
+  source_conv_id  String?                         @db.Uuid
   metadata        Json?
-  created_at      DateTime       @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime       @default(now()) @db.Timestamptz(6)
-  organizations   organizations  @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  conversations   conversations? @relation(fields: [source_conv_id], references: [id], onUpdate: NoAction)
-  users           users?         @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+  created_at      DateTime                        @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime                        @default(now()) @db.Timestamptz(6)
+  organizations   organizations                   @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  conversations   conversations?                  @relation(fields: [source_conv_id], references: [id], onUpdate: NoAction)
+  users           users?                          @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+  embedding       merchant_memory_embeddings?
+  embedding_job   merchant_memory_embedding_jobs?
 
   @@unique([organization_id, memory_key], map: "uq_memory_org_key")
   @@index([organization_id, memory_source], map: "idx_memory_source")
+}
+
+/// Tenant-scoped vector representation of one merchant memory. Python owns
+/// embedding generation and retrieval through parameterized SQL because
+/// Prisma does not natively read pgvector values.
+model merchant_memory_embeddings {
+  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  memory_id       String                     @unique @db.Uuid
+  organization_id String                     @db.Uuid
+  user_id         String?                    @db.Uuid
+  embedding       Unsupported("vector(384)")
+  embedding_model String
+  source_hash     String
+  created_at      DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime                   @default(now()) @db.Timestamptz(6)
+  memory          merchant_memories          @relation(fields: [memory_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  organizations   organizations              @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users           users?                     @relation(fields: [user_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([organization_id, user_id])
+  @@index([embedding_model])
+}
+
+/// Durable queue populated by a database trigger whenever merchant memory
+/// changes. The Python automation worker claims and embeds rows idempotently.
+model merchant_memory_embedding_jobs {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  memory_id       String            @unique @db.Uuid
+  organization_id String            @db.Uuid
+  status          String            @default("pending")
+  attempt_count   Int               @default(0)
+  available_at    DateTime          @default(now()) @db.Timestamptz(6)
+  last_error      String?
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime          @default(now()) @db.Timestamptz(6)
+  memory          merchant_memories @relation(fields: [memory_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  organizations   organizations     @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status, available_at])
+  @@index([organization_id, created_at])
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -1278,6 +1323,63 @@ model model_evaluation_metrics {
   @@index([model_name, metric_name, observed_at(sort: Desc)])
 }
 
+/// One idempotent real-data training attempt for a model pipeline. This table
+/// is global because registry aliases are shared deployment artifacts rather
+/// than tenant-owned application data.
+model model_lifecycle_runs {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pipeline_name       String
+  data_fingerprint    String
+  status              String    @default("running")
+  run_ids             Json?
+  registered_versions Json?
+  previous_versions   Json?
+  metrics             Json?
+  production_eligible Boolean   @default(false)
+  started_at          DateTime  @default(now()) @db.Timestamptz(6)
+  candidate_at        DateTime? @db.Timestamptz(6)
+  promoted_at         DateTime? @db.Timestamptz(6)
+  completed_at        DateTime? @db.Timestamptz(6)
+  last_error          String?
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([pipeline_name, data_fingerprint])
+  @@index([status, candidate_at])
+  @@index([pipeline_name, created_at(sort: Desc)])
+}
+
+/// Version-specific canary evidence used by the automatic promotion and
+/// rollback gates. Rows contain metrics only, never customer-level data.
+model model_lifecycle_metrics {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  model_name    String
+  model_version String
+  metric_name   String
+  metric_value  Float?
+  threshold     Float
+  passed        Boolean  @default(false)
+  sample_size   Int      @default(0)
+  observed_at   DateTime @default(now()) @db.Timestamptz(6)
+  metadata      Json?
+
+  @@index([model_name, model_version, observed_at(sort: Desc)])
+  @@index([model_name, metric_name, observed_at(sort: Desc)])
+}
+
+/// Cross-process schedule state for zero-touch automation. Advisory locks
+/// still protect execution; this row records cadence and observable outcomes.
+model automation_job_state {
+  job_name          String    @id
+  status            String    @default("idle")
+  last_started_at   DateTime? @db.Timestamptz(6)
+  last_completed_at DateTime? @db.Timestamptz(6)
+  next_run_at       DateTime? @db.Timestamptz(6)
+  last_result       Json?
+  last_error        String?
+  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+}
+
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model webhook_registrations {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -1311,20 +1413,20 @@ model webhook_deliveries {
 }
 
 model churn_training_observations {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id       String    @db.Uuid
-  store_id              String    @db.Uuid
-  customer_id           String    @db.Uuid
-  prediction_at         DateTime  @db.Timestamptz(6)
-  observation_due_at    DateTime  @db.Timestamptz(6)
-  finalized_at          DateTime? @db.Timestamptz(6)
-  next_completed_order_at DateTime? @db.Timestamptz(6)
-  observed_churn_tier   String?
-  feature_snapshot      Json
-  label_policy_version  String
-  organizations         organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  stores                stores @relation(fields: [store_id], references: [id], onDelete: Cascade)
-  customers             customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id         String        @db.Uuid
+  store_id                String        @db.Uuid
+  customer_id             String        @db.Uuid
+  prediction_at           DateTime      @db.Timestamptz(6)
+  observation_due_at      DateTime      @db.Timestamptz(6)
+  finalized_at            DateTime?     @db.Timestamptz(6)
+  next_completed_order_at DateTime?     @db.Timestamptz(6)
+  observed_churn_tier     String?
+  feature_snapshot        Json
+  label_policy_version    String
+  organizations           organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  stores                  stores        @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  customers               customers     @relation(fields: [customer_id], references: [id], onDelete: Cascade)
 
   @@unique([customer_id, prediction_at])
   @@index([finalized_at, observed_churn_tier])
@@ -1332,23 +1434,23 @@ model churn_training_observations {
 }
 
 model sensitivity_training_observations {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organization_id       String    @db.Uuid
-  store_id              String    @db.Uuid
-  customer_id           String    @db.Uuid
-  abandoned_cart_id     String?   @db.Uuid
-  decision_at           DateTime  @db.Timestamptz(6)
-  observation_due_at    DateTime  @db.Timestamptz(6)
-  finalized_at          DateTime? @db.Timestamptz(6)
-  pss_label             Boolean?
-  css_label             Boolean?
-  tss_label             Boolean?
-  label_policy_version  String
-  feature_snapshot      Json
-  organizations         organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  stores                stores @relation(fields: [store_id], references: [id], onDelete: Cascade)
-  customers             customers @relation(fields: [customer_id], references: [id], onDelete: Cascade)
-  abandoned_carts       abandoned_carts? @relation(fields: [abandoned_cart_id], references: [id], onDelete: SetNull)
+  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id      String           @db.Uuid
+  store_id             String           @db.Uuid
+  customer_id          String           @db.Uuid
+  abandoned_cart_id    String?          @db.Uuid
+  decision_at          DateTime         @db.Timestamptz(6)
+  observation_due_at   DateTime         @db.Timestamptz(6)
+  finalized_at         DateTime?        @db.Timestamptz(6)
+  pss_label            Boolean?
+  css_label            Boolean?
+  tss_label            Boolean?
+  label_policy_version String
+  feature_snapshot     Json
+  organizations        organizations    @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  stores               stores           @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  customers            customers        @relation(fields: [customer_id], references: [id], onDelete: Cascade)
+  abandoned_carts      abandoned_carts? @relation(fields: [abandoned_cart_id], references: [id], onDelete: SetNull)
 
   @@unique([customer_id, decision_at])
   @@index([store_id, observation_due_at])

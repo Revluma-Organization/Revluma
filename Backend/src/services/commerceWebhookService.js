@@ -85,6 +85,10 @@ async function upsertOrder(store, provider, payload) {
   const orderExternalId = String(payload.id || payload.order_id);
   const orderDate = new Date(payload.created_at || payload.date_created || Date.now());
   const total = Number(payload.total_price ?? payload.total ?? 0);
+  const subtotal = Number(payload.subtotal_price ?? payload.subtotal ?? total);
+  const discountAmount = Math.max(0, Number(payload.total_discounts ?? payload.discount_total ?? 0));
+  const discountPct = subtotal > 0 ? Math.min(100, (discountAmount / subtotal) * 100) : 0;
+  const couponCode = payload.discount_codes?.[0]?.code || payload.coupon_lines?.[0]?.code || null;
   const currency = payload.currency || 'USD';
   const lineItems = payload.line_items || payload.products || [];
 
@@ -118,10 +122,12 @@ async function upsertOrder(store, provider, payload) {
         customer_id: dbCustomer.id,
         external_order_id: orderExternalId,
         total,
-        subtotal: Number(payload.subtotal_price ?? payload.subtotal ?? total),
-        discount_amount: Number(payload.total_discounts ?? payload.discount_total ?? 0),
+        subtotal,
+        discount_amount: discountAmount,
+        discount_pct: discountPct,
         currency,
         coupon_used: Boolean(payload.discount_codes?.length || payload.coupon_lines?.length),
+        coupon_code: couponCode,
         ordered_at: orderDate,
         recovery_status: 'completed',
       },
@@ -131,10 +137,11 @@ async function upsertOrder(store, provider, payload) {
         currency,
         ordered_at: orderDate,
         recovery_status: 'completed',
-        subtotal: Number(payload.subtotal_price ?? payload.subtotal ?? total),
-        discount_amount: Number(payload.total_discounts ?? payload.discount_total ?? 0),
+        subtotal,
+        discount_amount: discountAmount,
+        discount_pct: discountPct,
         coupon_used: Boolean(payload.discount_codes?.length || payload.coupon_lines?.length),
-        coupon_code: payload.discount_codes?.[0]?.code || payload.coupon_lines?.[0]?.code || null,
+        coupon_code: couponCode,
       },
     });
 
@@ -161,18 +168,43 @@ async function upsertOrder(store, provider, payload) {
     }
 
     const externalCartId = payload.checkout_id || payload.cart_token || payload.checkout_token;
+    let cart = null;
     if (externalCartId) {
-      const cart = await tx.abandoned_carts.findFirst({
+      cart = await tx.abandoned_carts.findFirst({
         where: { store_id: store.id, external_cart_id: String(externalCartId) },
-        select: { id: true },
+        select: { id: true, session_id: true },
       });
-      if (cart) {
-        await tx.abandoned_carts.update({
-          where: { id: cart.id },
-          data: { status: 'recovered', recovered_at: orderDate, updated_at: new Date() },
+    }
+    if (!cart && couponCode) {
+      const recoverySend = await tx.sequence_sends.findFirst({
+        where: {
+          store_id: store.id,
+          metadata: { path: ['discount_code'], equals: couponCode },
+        },
+        orderBy: { sent_at: 'desc' },
+        select: { metadata: true },
+      });
+      const cartId = recoverySend?.metadata?.abandoned_cart_id;
+      if (cartId) {
+        cart = await tx.abandoned_carts.findFirst({
+          where: { id: cartId, store_id: store.id },
+          select: { id: true, session_id: true },
         });
-        await tx.orders.update({ where: { id: order.id }, data: { abandoned_cart_id: cart.id } });
       }
+    }
+    if (cart) {
+      await tx.abandoned_carts.update({
+        where: { id: cart.id },
+        data: { status: 'recovered', recovered_at: orderDate, updated_at: new Date() },
+      });
+      await tx.orders.update({
+        where: { id: order.id },
+        data: {
+          abandoned_cart_id: cart.id,
+          session_id: cart.session_id,
+          recovery_status: 'recovered',
+        },
+      });
     }
     await recalculateCustomerTotals(tx, dbCustomer.id);
     return order;

@@ -7,6 +7,7 @@ const {
   predictOfferValue,
 } = require('./mlService');
 const { enqueueRecoveryAction } = require('./recoveryActionService');
+const { createSensitivityObservation } = require('./trainingObservationService');
 
 const MAX_ATTEMPTS = 5;
 const FEATURE_FIELDS = [
@@ -181,6 +182,10 @@ async function runPredictionChain({ envelope, store, snapshot, cartOverride = nu
         sensitivity_scored_at: new Date(),
       },
     });
+  }
+
+  if (customer) {
+    await createSensitivityObservation({ store, customer, cart, features });
   }
 
   const offer = await predictOfferValue({

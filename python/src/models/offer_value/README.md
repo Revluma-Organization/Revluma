@@ -42,10 +42,10 @@ when usable rows are unavailable.
 
 A run is registered as `offer_value` only when it uses at least 200 real
 recovered orders, has MAE ≤ 5.0, and has R² ≥ 0.70. Synthetic and below-gate
-runs are logged but are not production eligible. Serving checks
-`models:/offer_value@production` first and, when
-`MODEL_RELEASE_CHANNEL=beta`, may use an explicitly reviewed
-`models:/offer_value@beta` version. Per-run metrics must be read from MLflow;
+runs are logged but are not production eligible. Controlled-beta serving checks
+`models:/offer_value@beta` first and falls back to
+`models:/offer_value@production`; production-only serving checks only the
+production alias. Per-run metrics must be read from MLflow;
 synthetic metrics do not establish real-world performance or fairness.
 
 ## Backend dependencies

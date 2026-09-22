@@ -19,7 +19,9 @@ are committed atomically with idempotent feature jobs; bounded workers compute
 and persist Python-owned features, run M1/M2/M5/M3, score churn, and execute
 policy-approved recovery actions. Shopify GraphQL synchronization, subscription
 reconciliation, signed SendGrid event handling, aggregate-safe commerce writes,
-readiness checks, startup ordering, and graceful resource shutdown are in place.
+readiness checks, startup ordering, graceful resource shutdown, real-outcome
+label collection, automatic model lifecycle management, and tenant-scoped
+vector memory retrieval are in place.
 
 The remaining work is deployment configuration and live-provider verification,
 not missing application code. The production database migration and provider
@@ -40,6 +42,18 @@ calls must still be observed on the target environment.
 | 11 | `Backend/package.json` and Backend tests | `npm test` runs every Backend test file; the unused incompatible Prisma adapter was removed. |
 | 12 | `Backend/server.js` | Startup awaits the database and Redis initialization before loading traffic and rate-limit handlers; shutdown closes workers, HTTP, Prisma, and Redis. |
 | 13 | `Backend/prisma/migrations/202609220001_add_cart_recovery_contract/migration.sql` | The additive migration adds only nullable `recovery_url` and its non-unique lookup index. `prestart` runs `prisma migrate deploy` before serving traffic. |
+| 14 | `Backend/prisma/migrations/202609220002_add_zero_touch_automation/migration.sql` | The additive migration enables pgvector, adds tenant-scoped memory embeddings and their durable queue, and adds model-lifecycle and automation-state tables. It backfills embedding jobs without modifying source memories. |
+| 15 | `Backend/src/services/trainingObservationService.js` | M2 and M4 feature snapshots are labeled only after real seven-day and 30-day outcomes mature; the labels are not copied from model predictions. |
+| 16 | `Backend/src/services/recoveryActionService.js` | M3 uses a deterministic 80/20 candidate/control allocation and persists the exact seven training features plus the immutable model version. |
+| 17 | `python/src/automation/runner.py`, `python/src/training/lifecycle.py` | The scheduled worker detects sufficient real data, trains at most one eligible pipeline per cycle, logs through MLflow/DagsHub, assigns candidate/beta aliases, evaluates live evidence, promotes passing versions, rolls back failing versions, and requests a safe model reload. |
+| 18 | `python/src/memory/vector_store.py` | Merchant-memory changes are embedded automatically with a pinned local 384-dimensional hashing model and retrieved through tenant-filtered pgvector search; lexical retrieval remains the fail-safe. |
+| 19 | `Backend/src/services/commerceWebhookService.js`, `python/src/models/offer_value/train.py` | Recovered orders persist discount percentage, coupon, cart, and session attribution. M5 accepts current lowercase statuses plus the legacy converted status, but only for an attributed abandoned cart. |
+
+M2 outcomes are behavioral proxy labels because the storefront does not
+directly ask a shopper to declare price, convenience, or trust sensitivity.
+They are suitable for controlled-beta learning and are explicitly protected by
+chronological validation and live canary gates; they must not be described as
+survey ground truth or used to infer protected traits.
 
 ## Implemented work order
 
@@ -217,8 +231,9 @@ decision.
 
 The beta must perform real actions for explicitly enrolled test stores; it must
 not silently enable autonomous discounts or messages for every connected store.
-Set `MODEL_RELEASE_CHANNEL=beta` on that Python deployment; do not put this
-setting on an unrestricted production deployment. Confirm after restart that
+The Python service defaults to the controlled `beta` release channel, which
+prefers a beta alias and falls back to production. A production-only deployment
+must explicitly set `MODEL_RELEASE_CHANNEL=production`. Confirm after restart that
 `GET /health` reports `model_status=beta_ready`, `models_ready=true`, an empty
 `models_missing` array, and `beta` for all eight expected model channels.
 Use `store_settings` with `settings_group = "beta_automation"` for the merchant
@@ -779,27 +794,40 @@ within 15% below. Never use `customers.updated_at` as purchase inactivity.
 - Never log internal keys, DagsHub credentials, feature vectors, PII, or raw
   webhook bodies.
 
-## 6. Later integrations
+## 6. Automatic memory retrieval and model lifecycle
 
-Before claiming vector/RAG work is production-complete:
+The following work activates automatically after the
+`202609220002_add_zero_touch_automation` migration is applied:
 
-- Add tenant-filtered `merchant_memory_embeddings` after pinning an embedding
-  model. Filter tenant, user visibility, active, and expiry before ranking.
-- Provision a separate reviewed ecommerce-knowledge index containing source,
-  publisher, publication/review dates, version, region, expiry, and hash.
-- Expose bounded top-K retrieval (1-8) with timeout, similarity threshold,
-  reviewed excerpts, and prompt-injection tests.
+- A database trigger enqueues every active merchant-memory insert or relevant
+  update and backfills existing active memories.
+- Python claims jobs with retry limits, creates deterministic local embeddings,
+  and upserts one vector per memory. No external embedding key, network call,
+  or per-request embedding charge is required.
+- Retrieval is bounded, organization-scoped, user-visibility-scoped, active,
+  expiry-aware, and similarity-thresholded. A pgvector or queue failure returns
+  to lexical retrieval instead of failing an answer.
+- Backend starts the Python automation cycle immediately and every five
+  minutes. Durable database schedules reduce model lifecycle work to every six
+  hours, monitoring to weekly/monthly, and the real 100,000-order performance
+  probe to weekly once an organization reaches that scale.
+- Real-data training remains dormant below the model-specific sample and class
+  thresholds. Eligible training uses chronological validation and existing
+  quality gates, logs to the configured DagsHub MLflow project, assigns
+  candidate/beta aliases, collects version-specific canary evidence, promotes
+  only passing versions, rolls back failures, and hot-reloads serving caches.
 
-Until then, Python's bounded lexical merchant-memory fallback is authoritative
-and must not be described as general-knowledge RAG.
+A separate general-ecommerce document corpus is not fabricated automatically.
+Any future corpus still requires approved sources, versioning, expiry, and
+review rules; merchant-memory vector retrieval does not claim to be that corpus.
 
 ## 7. Validation and deployment
 
 1. Keep the Supabase direct PostgreSQL connection in `DIRECT_URL` and the
    runtime connection in `DATABASE_URL` on the Backend host. Never commit them.
-2. Set `PYTHON_ALLOWED_MODEL_STATUSES=beta_ready` on the controlled-beta
-   Backend. Use `ready` only when the Python deployment uses production model
-   aliases.
+2. The Backend accepts `ready` and `beta_ready` by default. Override
+   `PYTHON_ALLOWED_MODEL_STATUSES` only when a deployment intentionally needs a
+   narrower policy.
 3. Set `SENDGRID_WEBHOOK_VERIFICATION_KEY`, `SENDGRID_API_KEY`,
    `SENDGRID_FROM_EMAIL`, `BACKEND_URL`, the existing Shopify credentials, and
    a shared `REDIS_URL` (or `REDIS_HOST` configuration).
@@ -822,6 +850,12 @@ and must not be described as general-knowledge RAG.
    permit only the opted-in store's bounded actions.
 10. Monitor queue depth, duplicates, provider failures, model fallbacks,
     Business State freshness, unsubscribe handling, and audit records.
+
+All application-owned work after deployment is scheduled automatically.
+External trust decisions remain intentionally explicit: restoring host billing,
+provisioning secrets, granting updated Shopify OAuth scopes, opting a merchant
+into real actions, and opening the global action gate cannot safely be inferred
+by application code.
 
 The global action gate fails closed: an absent, misspelled, or non-`false`
 `BETA_AUTOMATION_KILL_SWITCH` value keeps provider actions disabled. Setting it

@@ -104,9 +104,9 @@ metric `ctr_improvement` carries the same non-causal value for old dashboards.
 Only `randomized_policy_ctr_improvement`, produced from an approved control
 design, satisfies the live policy gate.
 
-Serving checks `models:/send_time@production` first. When
-`MODEL_RELEASE_CHANNEL=beta`, it may use the explicitly reviewed
-`models:/send_time@beta` version. If neither permitted alias is available, the
+Controlled-beta serving checks `models:/send_time@beta` first and falls back
+to `models:/send_time@production`. Production-only serving checks only the
+production alias. If neither permitted alias is available, the
 scheduling rules return a safe baseline.
 
 MLflow logs data source, production eligibility, exact feature order, sample

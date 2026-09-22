@@ -102,6 +102,7 @@ const { toPythonEvent, FEATURE_FIELDS } = require('../featureWorkerService');
     '/predict/offer-value',
     '/predict/send-time',
     '/predict/churn-risk',
+    '/internal/automation/run',
   ]) {
     assert.ok(mlSource.includes(endpoint), `ML gateway must include ${endpoint}`);
   }

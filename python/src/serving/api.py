@@ -16,6 +16,7 @@ import logging
 import os
 import secrets
 import sys
+import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -44,9 +45,13 @@ from src.features.pipeline import compute_feature_vector
 from src.agents.orchestrator import orchestrate as _orchestrate
 from src.config.mlflow_config import IS_REMOTE as _MLFLOW_IS_REMOTE
 from src.config.model_registry import (
+    clear_loaded_model_channels as _clear_loaded_model_channels,
     get_loaded_model_channel as _get_loaded_model_channel,
+    get_loaded_model_version as _get_loaded_model_version,
     load_registered_model as _load_registered_model,
+    refresh_loaded_model_versions as _refresh_loaded_model_versions,
 )
+from src.automation.runner import run_automation_cycle as _run_automation_cycle
 from src.intelligence.business_state import build_business_state as _build_business_state
 from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
 from src.learning.feedback_loop import run_due_outcome_checks as _run_due_outcome_checks
@@ -56,6 +61,8 @@ from sqlalchemy.orm import sessionmaker
 _Session = sessionmaker(bind=engine)
 _predict_churn = churn_predict.predict
 _predict_timing = timing_predict.predict
+_automation_lock = threading.Lock()
+_automation_status = {"running": False, "last_result": None, "last_error": None}
 
 
 @asynccontextmanager
@@ -183,6 +190,7 @@ async def _preload_models():
 
     offer_model = offer_value_predict.load_model(None)
     logger.info(f"[startup] model 'offer_value': {'loaded' if offer_model is not None else 'FALLBACK (not found)'}")
+    await run_in_threadpool(_refresh_loaded_model_versions)
 
 
 def _all_loaded_model_names() -> list:
@@ -300,6 +308,7 @@ class SendTimeResponse(BaseModel):
     reasoning_layer: str
     channel: str
     fallback: bool = False
+    model_version: str = "fallback"
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +441,10 @@ class RecommendationOutcomeEvaluationRequest(BaseModel):
 
 class RecommendationOutcomeEvaluationResponse(BaseModel):
     processed: int = Field(..., ge=0)
+
+
+class AutomationRunResponse(BaseModel):
+    status: str
 
 
 class FeatureComputeRequest(BaseModel):
@@ -662,6 +675,9 @@ async def health_check():
         "model_channels": model_channels,
         "database_url_set": bool(os.getenv("DATABASE_URL")),
         "mlflow_remote_configured": _MLFLOW_IS_REMOTE,
+        "automation_running": bool(_automation_status["running"]),
+        "automation_last_result": _automation_status["last_result"],
+        "automation_last_error": _automation_status["last_error"],
         "uptime_seconds": time.time() - _START_TIME,
     }
 
@@ -743,6 +759,7 @@ async def predict_send_time(
                 model=timing_predict._model_cache.get("send_time"),
             )
         )
+        result["model_version"] = _get_loaded_model_version("send_time") or "fallback"
         return SendTimeResponse(**result)
     except Exception:
         local_dt, utc_dt = _next_occurrence_utc(10, 1, 0)
@@ -750,6 +767,7 @@ async def predict_send_time(
             send_at=local_dt.isoformat(), send_at_utc=utc_dt.isoformat(),
             confidence=0.0, reasoning_layer="global_baseline",
             channel=features.channel if features else "email", fallback=True,
+            model_version="fallback",
         )
 
 
@@ -774,6 +792,72 @@ async def predict_offer_value(features: OfferFeatures, request: Request = None):
 # ---------------------------------------------------------------------------
 # Internal endpoints
 # ---------------------------------------------------------------------------
+def _reload_models() -> None:
+    _model_cache.clear()
+    churn_predict._model_cache.clear()
+    timing_predict._model_cache.clear()
+    sensitivity_predict._model_cache.clear()
+    offer_value_predict._model_cache.clear()
+    _clear_loaded_model_channels()
+    primary = {
+        "abandonment": _load_model("abandonment"),
+        "churn_risk": churn_predict.load_model(""),
+        "churn_early_warning": churn_predict.load_early_warning_model(""),
+        "send_time": timing_predict.load_model(""),
+    }
+    sensitivity_predict.load_model(None)
+    offer_value_predict.load_model(None)
+    _refresh_loaded_model_versions()
+    logger.info(
+        "model_alias_reload_completed",
+        extra={"primary_models_loaded": sum(model is not None for model in primary.values())},
+    )
+
+
+def _run_background_automation() -> None:
+    if not _automation_lock.acquire(blocking=False):
+        return
+    _automation_status.update(running=True, last_error=None)
+    db = None
+    connection = None
+    try:
+        db = _Session()
+        connection = engine.raw_connection()
+        result = _run_automation_cycle(db, connection)
+        if result.get("reload_required"):
+            _reload_models()
+        _automation_status.update(last_result=result, last_error=None)
+    except Exception as exc:
+        logger.error(
+            "automation_cycle_failed",
+            extra={"error_type": type(exc).__name__},
+        )
+        _automation_status.update(last_error=type(exc).__name__)
+    finally:
+        _automation_status["running"] = False
+        try:
+            if connection is not None:
+                connection.close()
+        finally:
+            try:
+                if db is not None:
+                    db.close()
+            finally:
+                _automation_lock.release()
+
+
+@app.post(
+    "/internal/automation/run",
+    response_model=AutomationRunResponse,
+    dependencies=[Depends(verify_internal_caller)],
+)
+async def internal_automation_run(background_tasks: BackgroundTasks) -> AutomationRunResponse:
+    if _automation_status["running"]:
+        return AutomationRunResponse(status="already_running")
+    background_tasks.add_task(_run_background_automation)
+    return AutomationRunResponse(status="accepted")
+
+
 def _trigger_platform_sync(store_id: str, platform: str):
     """Delegate a validated platform sync to the Backend-owned integration."""
     backend_url = os.environ.get("BACKEND_URL", "").rstrip("/")

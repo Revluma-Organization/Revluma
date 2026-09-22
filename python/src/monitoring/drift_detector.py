@@ -11,11 +11,14 @@ import os
 import sys
 import typing
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import pandas as pd
+
+logger = logging.getLogger("revluma.monitoring.drift")
 
 try:
     import mlflow
@@ -48,11 +51,13 @@ MONITORING_EXPERIMENT_NAME = "Revluma-Monitoring"
 M1_AUC_ROC_FLOOR = 0.70
 M2_CLASS_F1_FLOOR = 0.63
 M4_ACCURACY_FLOOR = 0.70
+M4_EARLY_WARNING_F1_FLOOR = 0.65
 M3_POLICY_CTR_IMPROVEMENT_FLOOR = 0.05
 M5_DISCOUNT_RMSE_CEILING = 5.0
 M1_RETRAIN_MIN_SAMPLES = 1000
 M2_RETRAIN_MIN_SAMPLES = 500
 M3_RETRAIN_MIN_SAMPLES = 500
+M4_EARLY_WARNING_MIN_SAMPLES = 100
 M5_RETRAIN_MIN_SAMPLES = 200
 
 # Trailing windows used to pull fresh labeled data for each check.
@@ -90,17 +95,17 @@ def _send_slack_alert(message: str) -> bool:
     standard (never hardcoded, never committed)."""
     webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
     if not webhook_url:
-        print(f"[drift_detector] SLACK_WEBHOOK_URL not set — alert not sent: {message}")
+        logger.info("drift_alert_skipped", extra={"reason": "webhook_not_configured"})
         return False
     if requests is None:
-        print(f"[drift_detector] `requests` not installed — alert not sent: {message}")
+        logger.info("drift_alert_skipped", extra={"reason": "requests_unavailable"})
         return False
 
     try:
         response = requests.post(webhook_url, json={"text": message}, timeout=5.0)
         return response.status_code == 200
     except Exception as e:
-        print(f"[drift_detector] Slack alert failed (non-fatal): {e}")
+        logger.warning("drift_alert_failed", extra={"error_type": type(e).__name__})
         return False
 
 
@@ -156,7 +161,7 @@ def _log_result_to_mlflow(result: DriftCheckResult) -> None:
             if result.error:
                 mlflow.set_tag("error", result.error[:250])
     except Exception as e:  # pragma: no cover
-        print(f"[drift_detector] MLflow logging failed (non-fatal): {e}")
+        logger.warning("drift_mlflow_log_failed", extra={"error_type": type(e).__name__})
 
 
 def _load_registered_model(model_name: str) -> typing.Any:
@@ -277,7 +282,7 @@ def check_m1_drift(db_connection, auto_retrain: bool = True) -> DriftCheckResult
             result.retraining_triggered = _trigger_m1_retraining(db_connection)
 
     except Exception as e:
-        result.error = str(e)
+        result.error = type(e).__name__
 
     _log_result_to_mlflow(result)
     if result.breached:
@@ -292,11 +297,11 @@ def _trigger_m1_retraining(db_connection) -> bool:
     complete and alert."""
     try:
         from src.models.abandonment.train import train as train_m1
-        print("[drift_detector] M1 AUC-ROC below floor — triggering retraining.")
+        logger.info("m1_drift_retraining_started")
         train_m1(run_name="m1-auto-retrain-drift", db_connection=db_connection)
         return True
     except Exception as e:
-        print(f"[drift_detector] M1 auto-retraining failed: {e}")
+        logger.warning("m1_drift_retraining_failed", extra={"error_type": type(e).__name__})
         return False
 
 
@@ -414,7 +419,7 @@ def check_m2_drift(db_connection) -> list[DriftCheckResult]:
         error_result = DriftCheckResult(
             model_name="sensitivity", check_type="weekly", metric_name="f1",
             metric_value=None, threshold=M2_CLASS_F1_FLOOR, breached=False,
-            sample_size=0, error=str(e),
+            sample_size=0, error=type(e).__name__,
         )
         _log_result_to_mlflow(error_result)
         results.append(error_result)
@@ -467,53 +472,8 @@ def check_m4_drift(db_connection) -> DriftCheckResult:
         result.breached = acc < M4_ACCURACY_FLOOR
 
     except Exception as e:
-        result.error = str(e)
+        result.error = type(e).__name__
 
-    _log_result_to_mlflow(result)
-    if result.breached:
-        _send_slack_alert(_format_alert(result))
-    return result
-
-
-def _load_aggregate_evaluation_metric(db_connection, model_name: str, metric_name: str, days: int):
-    """Load a persisted, tenant-safe monitoring aggregate.
-
-    The backend handoff defines ``model_evaluation_metrics`` as the durable
-    source for metrics that cannot be reconstructed faithfully from a single
-    model artifact, such as timing lift and discount RMSE.
-    """
-    with db_connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT AVG(metric_value), COUNT(*)
-            FROM model_evaluation_metrics
-            WHERE model_name = %s AND metric_name = %s
-              AND observed_at >= NOW() - INTERVAL '%s days'
-            """,
-            (model_name, metric_name, days),
-        )
-        value, sample_size = cursor.fetchone() or (None, 0)
-    return (float(value) if value is not None else None), int(sample_size or 0)
-
-
-def _check_aggregate_metric(db_connection, *, model_name: str, metric_name: str,
-                            threshold: float, breach_when_below: bool,
-                            minimum_samples: int) -> DriftCheckResult:
-    result = DriftCheckResult(
-        model_name=model_name, check_type="monthly", metric_name=metric_name,
-        metric_value=None, threshold=threshold, breached=False, sample_size=0,
-    )
-    try:
-        value, sample_size = _load_aggregate_evaluation_metric(
-            db_connection, model_name, metric_name, 30
-        )
-        result.metric_value, result.sample_size = value, sample_size
-        if value is None or sample_size < minimum_samples:
-            result.error = f"insufficient evaluation records (requires {minimum_samples})"
-        else:
-            result.breached = value < threshold if breach_when_below else value > threshold
-    except Exception as exc:
-        result.error = str(exc)
     _log_result_to_mlflow(result)
     if result.breached:
         _send_slack_alert(_format_alert(result))
@@ -522,23 +482,140 @@ def _check_aggregate_metric(db_connection, *, model_name: str, metric_name: str,
 
 def check_m3_drift(db_connection) -> DriftCheckResult:
     """Check monthly randomized-control send-time CTR lift."""
-    return _check_aggregate_metric(
-        db_connection,
-        model_name="send_time",
+    result = DriftCheckResult(
+        model_name="send_time", check_type="monthly",
         metric_name="randomized_policy_ctr_improvement",
-        threshold=M3_POLICY_CTR_IMPROVEMENT_FLOOR,
-        breach_when_below=True,
-        minimum_samples=M3_RETRAIN_MIN_SAMPLES,
+        metric_value=None, threshold=M3_POLICY_CTR_IMPROVEMENT_FLOOR,
+        breached=False, sample_size=0,
     )
+    try:
+        from mlflow.tracking import MlflowClient
+
+        candidate_version = str(
+            MlflowClient().get_model_version_by_alias("send_time", "beta").version
+        )
+        with db_connection.cursor() as cursor:
+            cursor.execute("""
+                WITH mature AS (
+                    SELECT send.id,
+                           send.metadata->>'timing_policy_group' AS policy_group,
+                           CASE WHEN BOOL_OR(event.event_type = 'opened')
+                                  AND BOOL_OR(event.event_type = 'clicked')
+                                THEN 1.0 ELSE 0.0 END AS engaged
+                    FROM sequence_sends AS send
+                    LEFT JOIN sequence_events AS event
+                      ON event.sequence_send_id = send.id
+                     AND event.occurred_at BETWEEN send.sent_at
+                                               AND send.sent_at + INTERVAL '120 minutes'
+                    WHERE send.sent_at >= NOW() - INTERVAL '30 days'
+                      AND send.sent_at <= NOW() - INTERVAL '120 minutes'
+                      AND send.status IN ('sent', 'delivered')
+                      AND send.metadata->>'timing_policy_group' IN ('candidate', 'control')
+                      AND (
+                        send.metadata->>'timing_policy_group' = 'control'
+                        OR send.metadata->>'timing_model_version' = %s
+                      )
+                    GROUP BY send.id, send.metadata->>'timing_policy_group'
+                ), rates AS (
+                    SELECT policy_group, AVG(engaged) AS ctr, COUNT(*) AS samples
+                    FROM mature GROUP BY policy_group
+                )
+                SELECT candidate.ctr - control.ctr,
+                       candidate.samples + control.samples,
+                       LEAST(candidate.samples, control.samples)
+                FROM rates AS candidate CROSS JOIN rates AS control
+                WHERE candidate.policy_group = 'candidate'
+                  AND control.policy_group = 'control'
+            """, (candidate_version,))
+            row = cursor.fetchone()
+        if row:
+            result.metric_value = float(row[0])
+            result.sample_size = int(row[1])
+            if int(row[2]) < 100 or result.sample_size < M3_RETRAIN_MIN_SAMPLES:
+                result.error = "insufficient randomized-control samples"
+            else:
+                result.breached = result.metric_value < result.threshold
+        else:
+            result.error = "insufficient randomized-control samples"
+    except Exception as exc:
+        result.error = type(exc).__name__
+    _log_result_to_mlflow(result)
+    if result.breached:
+        _send_slack_alert(_format_alert(result))
+    return result
+
+
+def check_m4_early_warning_drift(db_connection) -> DriftCheckResult:
+    """Validate the M4 early-warning layer on mature, observed outcomes."""
+    result = DriftCheckResult(
+        model_name="churn_early_warning",
+        check_type="monthly",
+        metric_name="f1_positive_class",
+        metric_value=None,
+        threshold=M4_EARLY_WARNING_F1_FLOOR,
+        breached=False,
+        sample_size=0,
+    )
+    try:
+        from sklearn.metrics import f1_score
+        from src.models.churn.train import EARLY_WARNING_FEATURES
+
+        model = _load_registered_model("churn_early_warning")
+        eval_df = _load_recent_m4_eval_set(db_connection)
+        if eval_df is None:
+            result.error = "insufficient labeled data in trailing window"
+            return result
+        healthy = eval_df[eval_df["churn_tier"] == "HEALTHY"]
+        result.sample_size = len(healthy)
+        if (
+            model is None
+            or len(healthy) < M4_EARLY_WARNING_MIN_SAMPLES
+            or healthy["early_warning"].nunique() < 2
+        ):
+            result.error = "model unavailable or insufficient two-class observations"
+            return result
+
+        predicted = model.predict(healthy[EARLY_WARNING_FEATURES])
+        result.metric_value = float(
+            f1_score(healthy["early_warning"], predicted, zero_division=0)
+        )
+        result.breached = result.metric_value < result.threshold
+    except Exception as exc:
+        result.error = type(exc).__name__
+
+    _log_result_to_mlflow(result)
+    if result.breached:
+        _send_slack_alert(_format_alert(result))
+    return result
 
 
 def check_m5_drift(db_connection) -> DriftCheckResult:
     """Check monthly offer-value discount RMSE against the hard ceiling."""
-    return _check_aggregate_metric(
-        db_connection, model_name="offer_value", metric_name="discount_rmse",
-        threshold=M5_DISCOUNT_RMSE_CEILING, breach_when_below=False,
-        minimum_samples=M5_RETRAIN_MIN_SAMPLES,
+    result = DriftCheckResult(
+        model_name="offer_value", check_type="monthly", metric_name="discount_rmse",
+        metric_value=None, threshold=M5_DISCOUNT_RMSE_CEILING,
+        breached=False, sample_size=0,
     )
+    try:
+        from sklearn.metrics import root_mean_squared_error
+        from src.models.offer_value.train import FEATURE_COLUMNS, _load_real_training_rows
+
+        model = _load_registered_model("offer_value")
+        frame = _load_real_training_rows(db_connection)
+        result.sample_size = len(frame)
+        if model is None or len(frame) < M5_RETRAIN_MIN_SAMPLES:
+            result.error = f"model unavailable or fewer than {M5_RETRAIN_MIN_SAMPLES} real rows"
+        else:
+            result.metric_value = float(root_mean_squared_error(
+                frame["discount_pct"], model.predict(frame[FEATURE_COLUMNS])
+            ))
+            result.breached = result.metric_value > result.threshold
+    except Exception as exc:
+        result.error = type(exc).__name__
+    _log_result_to_mlflow(result)
+    if result.breached:
+        _send_slack_alert(_format_alert(result))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +625,7 @@ def check_m5_drift(db_connection) -> DriftCheckResult:
 def run_weekly_checks(db_connection, auto_retrain: bool = True) -> dict:
     """Runs the two weekly checks (M1 AUC-ROC, M2 per-class F1). Intended
     to be invoked by a weekly cron/scheduler entry."""
-    print(f"[drift_detector] Running weekly checks at {datetime.now(timezone.utc).isoformat()}")
+    logger.info("weekly_model_checks_started")
     m1_result = check_m1_drift(db_connection, auto_retrain=auto_retrain)
     m2_results = check_m2_drift(db_connection)
     return {"m1": m1_result, "m2": m2_results}
@@ -556,11 +633,14 @@ def run_weekly_checks(db_connection, auto_retrain: bool = True) -> dict:
 
 def run_monthly_checks(db_connection) -> dict:
     """Run the monthly M3, M4, and M5 monitoring checks."""
-    print(f"[drift_detector] Running monthly checks at {datetime.now(timezone.utc).isoformat()}")
-    m4_result = check_m4_drift(db_connection)
+    logger.info("monthly_model_checks_started")
+    m4_results = [
+        check_m4_drift(db_connection),
+        check_m4_early_warning_drift(db_connection),
+    ]
     m3_result = check_m3_drift(db_connection)
     m5_result = check_m5_drift(db_connection)
-    return {"m3": m3_result, "m4": m4_result, "m5": m5_result}
+    return {"m3": m3_result, "m4": m4_results, "m5": m5_result}
 
 
 def run_all_checks(db_connection, auto_retrain: bool = True) -> dict:

@@ -41,15 +41,18 @@ values win.
 - Incomplete snapshots and unfinalized outcomes are excluded. Zero usable rows
   stops training.
 - Production registration requires at least 500 observed customers, AUC-ROC ≥
-  0.78, and HIGH_RISK precision ≥ 0.72.
+  0.78, HIGH_RISK precision ≥ 0.72, and a trainable early-warning layer.
+  Automatic promotion also requires separate live evidence for the main churn
+  model and the early-warning model.
 
 The final fit gives the actionable `AT_RISK` class a logged sample weight of
 1.5. That value improves class balance without changing labels or decision
 thresholds. Synthetic metrics remain development evidence only.
 
 Eligible future artifacts register as `churn_risk` and, when trainable,
-`churn_early_warning`. Serving checks their `production` aliases first and,
-when `MODEL_RELEASE_CHANNEL=beta`, may use explicitly reviewed `beta` aliases.
+`churn_early_warning`. Controlled-beta serving checks their `beta` aliases
+first and falls back to `production`; production-only serving checks only
+`production`.
 The documented deterministic fallback remains available when neither permitted
 alias can be loaded.
 

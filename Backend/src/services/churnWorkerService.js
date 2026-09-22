@@ -122,7 +122,7 @@ async function scoreCustomer(customer, store) {
         prediction_at: scoreStartedAt,
         observation_due_at: new Date(scoreStartedAt.getTime() + 30 * 24 * 60 * 60 * 1000),
         feature_snapshot: features,
-        label_policy_version: '30-day-v1',
+        label_policy_version: 'observed-order-window-30d-v1',
       },
     });
   }

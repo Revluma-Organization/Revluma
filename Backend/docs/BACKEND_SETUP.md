@@ -30,8 +30,8 @@ Core runtime:
 Python integration:
 
 - `PYTHON_SERVICE_URL` and `ML_INTERNAL_KEY`.
-- `PYTHON_ALLOWED_MODEL_STATUSES=beta_ready` for controlled beta. Production
-  model deployments should use `ready`.
+- `PYTHON_ALLOWED_MODEL_STATUSES` is optional; the default accepts both
+  `ready` and `beta_ready`. Narrow it only for a production-only deployment.
 
 Shopify and messaging:
 
@@ -62,10 +62,16 @@ records applied migrations in `_prisma_migrations`, so a successful migration
 is not replayed on later starts. A migration failure stops the Backend before it
 accepts traffic.
 
-The current cart-recovery migration adds nullable
+The cart-recovery migration adds nullable
 `abandoned_carts.recovery_url` and the non-unique
 `idx_abandoned_carts_store_external` lookup index. It does not delete or rename
 existing data.
+
+The zero-touch automation migration enables pgvector and adds merchant-memory
+embeddings, a durable embedding queue, model lifecycle runs, version-specific
+live metrics, and durable automation job state. Its trigger backfills active
+memories and keeps later changes synchronized. Backend startup applies both
+migrations before workers start.
 
 For local schema inspection after configuration:
 

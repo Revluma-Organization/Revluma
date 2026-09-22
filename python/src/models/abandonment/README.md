@@ -39,9 +39,9 @@ so serving applies the same preprocessing used during training.
   registered.
 - Production registration as `abandonment` requires real data, at least 1,000
   sessions, AUC-ROC ≥ 0.75, precision ≥ 0.70, and recall ≥ 0.65.
-- Serving checks `models:/abandonment@production` first. When
-  `MODEL_RELEASE_CHANNEL=beta`, it may use the explicitly assigned
-  `models:/abandonment@beta` version for controlled beta traffic.
+- Controlled-beta serving checks `models:/abandonment@beta` first and falls
+  back to `models:/abandonment@production`. Production-only serving checks
+  only the production alias.
 
 Synthetic metrics are not evidence of production performance or fairness.
 
