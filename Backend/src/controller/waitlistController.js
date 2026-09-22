@@ -259,7 +259,9 @@ exports.joinWaitlist = async (req, res, next) => {
         data: { welcome_email_sent: true },
       });
     } catch (emailError) {
-      logger.error('waitlist_welcome_email_failed', { message: emailError?.message });
+      logger.error('waitlist_welcome_email_failed', {
+        error_type: emailError?.code || emailError?.name || 'email_provider_error',
+      });
       // Don't fail the request if email fails, but log it
     }
 
@@ -313,7 +315,9 @@ exports.checkReferralCode = async (req, res) => {
 
     return res.status(200).json({ success: true, exists });
   } catch (error) {
-    logger.error('referral_check_error', { message: error?.message });
+    logger.error('referral_check_error', {
+      error_type: error?.code || error?.name || 'referral_query_error',
+    });
     return res.status(500).json({
       success: false,
       error: 'Failed to check referral code',

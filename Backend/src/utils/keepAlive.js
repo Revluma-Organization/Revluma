@@ -9,6 +9,8 @@ const logger = require('./logger');
 const BACKEND_URL    = process.env.BACKEND_URL    || 'https://revluma-backend.onrender.com';
 const PYTHON_URL     = process.env.PYTHON_SERVICE_URL;
 const PING_INTERVAL  = 10 * 60 * 1000; // 10 minutes
+let intervalHandle = null;
+const retryHandles = new Set();
 
 const ping = async (url, name) => {
   try {
@@ -16,9 +18,16 @@ const ping = async (url, name) => {
     logger.debug('keepalive_ok', { service: name, status: response.status });
     return true;
   } catch (error) {
-    logger.warn('keepalive_failed', { service: name, message: error.message });
+    logger.warn('keepalive_failed', {
+      service: name,
+      error_type: error.code || error.name || 'request_error',
+    });
     // Retry in 1 minute on failure
-    setTimeout(() => ping(url, name), 60 * 1000);
+    const handle = setTimeout(() => {
+      retryHandles.delete(handle);
+      void ping(url, name);
+    }, 60 * 1000);
+    retryHandles.add(handle);
     return false;
   }
 };
@@ -31,6 +40,7 @@ const pingAll = () => {
 };
 
 const startKeepAlive = () => {
+  if (intervalHandle) return;
   logger.info('keepalive_started', {
     backend: BACKEND_URL,
     python:  PYTHON_URL || 'not configured',
@@ -41,10 +51,17 @@ const startKeepAlive = () => {
   pingAll();
 
   // Then every 10 minutes
-  setInterval(pingAll, PING_INTERVAL);
+  intervalHandle = setInterval(pingAll, PING_INTERVAL);
 };
 
-module.exports = { startKeepAlive, keepAliveBackend: pingAll };
+const stopKeepAlive = () => {
+  if (intervalHandle) clearInterval(intervalHandle);
+  intervalHandle = null;
+  for (const handle of retryHandles) clearTimeout(handle);
+  retryHandles.clear();
+};
+
+module.exports = { startKeepAlive, stopKeepAlive, keepAliveBackend: pingAll };
 
 if (require.main === module) {
   startKeepAlive();

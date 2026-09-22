@@ -494,7 +494,9 @@ exports.webhook = async (req, res) => {
     // Always return 200 to Paystack so it does not retry indefinitely
     return res.status(200).send('OK');
   } catch (error) {
-    logger.error('webhook_processing_error', { message: error.message });
+    logger.error('webhook_processing_error', {
+      error_type: error.code || error.name || 'paystack_webhook_error',
+    });
     // Return 200 even on internal errors so Paystack does not flood with retries
     // Log internally for reconciliation
     return res.status(200).send('OK');

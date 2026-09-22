@@ -17,13 +17,19 @@ const connectDB = async () => {
     await prisma.$connect();
     logger.info('database_connected', { adapter: 'prisma' });
   } catch (error) {
-    logger.error('database_connection_failed', { message: error.message });
-    process.exit(1);
+    logger.error('database_connection_failed', { error_type: error.code || error.name || 'connection_error' });
+    throw error;
   }
+};
+
+const disconnectDB = async () => {
+  await prisma.$disconnect();
+  logger.info('database_disconnected');
 };
 
 // Export using a live getter so controllers always pull the current instance
 module.exports = {
   get prisma() { return prisma; },
   connectDB,
+  disconnectDB,
 };

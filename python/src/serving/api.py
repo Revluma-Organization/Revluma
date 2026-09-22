@@ -21,6 +21,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.concurrency import run_in_threadpool
@@ -774,9 +775,27 @@ async def predict_offer_value(features: OfferFeatures, request: Request = None):
 # Internal endpoints
 # ---------------------------------------------------------------------------
 def _trigger_platform_sync(store_id: str, platform: str):
-    """Record a platform-sync request until the backend worker is connected."""
-    logger.info(f"[sync-trigger] platform={platform} store_id={store_id} "
-                f"— no real sync module wired yet (flagged gap, see docstring).")
+    """Delegate a validated platform sync to the Backend-owned integration."""
+    backend_url = os.environ.get("BACKEND_URL", "").rstrip("/")
+    if not backend_url or not ML_INTERNAL_KEY:
+        logger.error("platform_sync_not_configured")
+        return False
+    try:
+        response = httpx.post(
+            f"{backend_url}/internal/store-sync",
+            json={"store_id": store_id, "platform": platform},
+            headers={"x-internal-key": ML_INTERNAL_KEY},
+            timeout=300.0,
+        )
+        response.raise_for_status()
+        logger.info("platform_sync_completed", extra={"platform": platform})
+        return True
+    except httpx.HTTPError as error:
+        logger.error(
+            "platform_sync_failed",
+            extra={"error_type": type(error).__name__, "platform": platform},
+        )
+        return False
 
 
 @app.post("/internal/sync/trigger",
@@ -784,8 +803,9 @@ def _trigger_platform_sync(store_id: str, platform: str):
 async def trigger_sync(payload: SyncTriggerRequest, background_tasks: BackgroundTasks):
     """
     Runs a Shopify/WooCommerce sync in the background and returns
-    immediately. Restricted to internal-network callers (IP allowlist) AND
-    the shared internal key.
+    immediately. The background task delegates to the Backend-owned store sync.
+    The route is restricted to internal-network callers (IP allowlist) and the
+    shared internal key.
     """
     background_tasks.add_task(_trigger_platform_sync, payload.store_id, payload.platform)
     return {"status": "accepted", "store_id": payload.store_id, "platform": payload.platform}

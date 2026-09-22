@@ -73,7 +73,9 @@ async function requireAdminKey(req, res, next) {
     }
   } catch (err) {
     // DB lookup failed — fall through to env var check
-    logger.warn('admin_key_db_lookup_failed', { message: err?.message });
+    logger.warn('admin_key_db_lookup_failed', {
+      error_type: err?.code || err?.name || 'admin_key_lookup_error',
+    });
   }
 
   // 2. Fallback: static env var key (for bootstrapping / when DB isn't available)

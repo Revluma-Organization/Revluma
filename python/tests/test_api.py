@@ -61,6 +61,28 @@ def test_health_check(monkeypatch):
     assert "mlflow_remote_configured" in data
 
 
+def test_platform_sync_delegates_to_backend(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            captured["status_checked"] = True
+
+    def fake_post(url, **kwargs):
+        captured.update({"url": url, **kwargs})
+        return FakeResponse()
+
+    monkeypatch.setenv("BACKEND_URL", "https://backend.test/")
+    monkeypatch.setattr(serving_api, "ML_INTERNAL_KEY", "test-internal-key")
+    monkeypatch.setattr(serving_api.httpx, "post", fake_post)
+
+    assert serving_api._trigger_platform_sync("store-id", "shopify") is True
+    assert captured["url"] == "https://backend.test/internal/store-sync"
+    assert captured["json"] == {"store_id": "store-id", "platform": "shopify"}
+    assert captured["headers"] == {"x-internal-key": "test-internal-key"}
+    assert captured["status_checked"] is True
+
+
 def test_orchestrate_forwards_scheduler_trigger_context(monkeypatch):
     captured = {}
 

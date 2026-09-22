@@ -2,58 +2,58 @@
 
 ## Boundary
 
-This is the work order for the Backend team. No file under `Backend/` was
-changed by the Python implementation.
+This guide describes the implemented Backend-to-Python integration and the
+remaining deployment configuration required for the controlled beta.
 
 - Backend owns Prisma, migrations, Node gateway code, schedules, and live data.
 - Python owns feature computation, model/fallback decisions, Business State,
   agent reasoning, and briefing content.
 - Use additive migrations. Do not rename current tables, columns, or APIs.
-- Test on a disposable PostgreSQL database before any production migration.
+- Apply only reviewed additive migrations with `npm run migrate:deploy`.
 - Keep MLflow/DagsHub credentials in Python only.
 
-## Current audited state
+## Current implementation state
 
-The Prisma schema validates and the focused Backend contract tests pass when
-their required test-only environment values are supplied. Raw commerce and
-message webhook routes are mounted before JSON parsing, commerce signatures are
-checked, webhook deliveries are deduplicated, the pixel endpoint uses a signed
-store key, and the scheduler calls Business State, outcome, briefing, and store
-sync jobs. These are foundations, not an end-to-end beta action flow.
+The Backend now implements the controlled-beta execution path. Browser events
+are committed atomically with idempotent feature jobs; bounded workers compute
+and persist Python-owned features, run M1/M2/M5/M3, score churn, and execute
+policy-approved recovery actions. Shopify GraphQL synchronization, subscription
+reconciliation, signed SendGrid event handling, aggregate-safe commerce writes,
+readiness checks, startup ordering, and graceful resource shutdown are in place.
 
-The following gaps were verified in the current Backend code and must be fixed
-before a connected test store can exercise every model and execute recovery
-actions:
+The remaining work is deployment configuration and live-provider verification,
+not missing application code. The production database migration and provider
+calls must still be observed on the target environment.
 
-| Priority | Exact location | Verified gap and required result |
+| Priority | Exact location | Implemented result |
 |---:|---|---|
-| 1 | `Backend/src/controller/eventController.js` and a Backend feature worker | Single-event insertion and `feature_jobs` insertion are not atomic, batch ingestion creates no feature jobs, and no worker consumes `feature_jobs`. Commit each event with its idempotent job, claim jobs atomically, load the complete store-scoped session, call `POST /internal/features/compute`, persist the returned canonical snapshot, and continue the prediction chain. |
-| 2 | `Backend/src/controller/eventController.js` | `ALLOWED_EVENT_TYPES` does not match `docs/PIXEL_EVENT_SPEC.md`. Replace it with all 16 specified names, including `SCROLL`, `PURCHASE_COMPLETED`, `CUSTOMER_CREATED`, `TEXT_COPIED`, `COUPON_REJECTED`, `TAB_SWITCH`, `EXIT_INTENT`, `FAILED_PAYMENT`, `FIELD_FOCUS`, and `FIELD_BLUR`; remove undocumented substitutes such as `PAYMENT_ATTEMPT`, `PURCHASE`, `COUPON_ATTEMPT`, `SEARCH`, and `SESSION_START` unless they are added as explicit compatibility aliases and normalized before storage. |
-| 3 | `Backend/src/services/mlService.js` | Add wrappers for `/internal/features/compute`, `/predict/abandonment-probability`, `/predict/shopper-sensitivity`, and `/predict/offer-value`. Update `predictSendTime` to forward `X-Customer-ID` and `X-Merchant-ID`. Keep every Python call in this gateway. |
-| 4 | Python deployment settings, `Backend/src/services/mlService.js`, and Backend health controller | Set `MODEL_RELEASE_CHANNEL=beta` only on the controlled beta Python deployment and restart it; absence or invalid configuration intentionally permits production aliases only. `checkPythonHealth` currently treats any HTTP 200 as ready. Require `status=ok`, `models_ready=true`, no `models_missing`, and an allowed `model_status` (`beta_ready` for the beta deployment or `ready` for production). Surface loaded model channels without exposing credentials. |
-| 5 | `Backend/src/services/shopifySync.js` | `syncAbandonedCheckouts()` is a stub that always returns zero. Implement paginated GraphQL `abandonedCheckouts`, store carts and line items idempotently, reconcile recovered carts when orders arrive, and use a currently supported Shopify API version. |
-| 6 | Shopify installation/configuration and `Backend/src/services/commerceWebhookService.js` | No code registers the webhook subscriptions and `webhook_registrations` is unused. Register the required app-specific subscriptions, or create shop-specific subscriptions after OAuth with GraphQL, persist their IDs, and reconcile them after reinstall or API-version changes. Handle order cancellation/deletion separately instead of treating every order topic as an upsert. |
-| 7 | `Backend/src/services/commerceWebhookService.js` | Order updates increment `customers.orders_count` and `ltv` every time a distinct update delivery arrives. Recalculate aggregates from authoritative non-cancelled orders, or apply delta-safe updates in the same transaction. Enqueue RFM, feature, and outcome work after a committed order/customer/cart webhook. |
-| 8 | `Backend/src/services/messageWebhookService.js` and `messageWebhookController.js` | SendGrid Event Webhooks use an ECDSA public key, signature header, timestamp header, raw bytes, and a JSON event array; the current generic HMAC/object handler does not implement that contract. Add provider-specific verification and mapping, delivery-level idempotency, bounce/failure handling, consent updates for unsubscribe events, and recommendation/order attribution. |
-| 9 | `Backend/src/services/schedulerService.js` | No daily churn scoring job or feature-job worker exists. Alert rows can be marked `delivered` without creating a notification or sending anything, and queue rows are selected without an atomic claim. Add bounded workers with database-safe claims, retries, idempotency, actual delivery, and terminal evidence. |
-| 10 | New Backend recovery/action service plus existing sequence tables | No service creates provider discounts, queues recovery messages, or writes `sequence_sends`; the current email utility handles account email only. Implement the controlled beta action flow described below and record every decision, provider ID, send, result, and failure. |
-| 11 | `Backend/package.json` and Backend tests | `npm test` runs only the logout test. Make it execute every Backend test and add behavioral tests for webhook signatures, arrays, retries, queue claims, all five prediction wrappers, model readiness, consent, discount caps, provider failures, and tenant isolation. Align `@prisma/adapter-pg` with the Prisma 6.19.3 client/CLI or remove it if unused. |
-| 12 | `Backend/server.js` | `connectDB()` is asynchronous, but startup does not await it before starting immediate scheduler jobs or accepting traffic. Use one async startup sequence: await the required database connection, initialize optional Redis with its documented fallback, start the HTTP listener, then start workers. On shutdown, stop workers, close the server, disconnect Prisma and Redis, and retain a bounded forced-exit timeout. |
-| 13 | Backend dependency maintenance | The current lockfile audit reports seven known dependency findings (five high, one moderate, and one low). Review each dependency path, apply compatible targeted upgrades, rerun the full Backend suite, and document any finding that cannot yet be removed. Do not use an unreviewed forced audit fix. |
+| 1 | `Backend/src/controller/eventController.js`, `featureWorkerService.js` | Event and job writes are atomic for single and batch ingestion; jobs are claimed safely and feed the complete prediction chain. |
+| 2 | `Backend/src/controller/eventController.js` | The allowlist matches all 16 canonical pixel event names. |
+| 3 | `Backend/src/services/mlService.js` | All feature, M1, M2, M3, M4, and M5 calls use the shared authenticated gateway with tenant headers. |
+| 4 | `Backend/src/app.js`, `mlService.js` | `/ready` requires the database and an explicitly allowed fully loaded Python model state. When real beta actions are globally enabled, it also requires the provider configuration and shared Redis coordination. |
+| 5 | `Backend/src/services/shopifySync.js` | Current GraphQL pagination imports customers, orders, and abandoned checkouts, then evaluates eligible carts. |
+| 6 | `Backend/src/services/shopifyWebhookService.js` | Required subscriptions are registered after OAuth and reconciled during sync. |
+| 7 | `Backend/src/services/commerceWebhookService.js` | Orders and carts are idempotent; customer totals are recalculated from authoritative non-cancelled orders. |
+| 8 | `Backend/src/services/messageWebhookService.js` | SendGrid ECDSA batches are verified from raw bytes and mapped idempotently, including failures and unsubscribe consent. |
+| 9 | `Backend/src/services/schedulerService.js` | Feature, recovery, churn, alert, state, outcome, briefing, and store-sync jobs use bounded execution and distributed or local overlap guards. |
+| 10 | `Backend/src/services/recoveryActionService.js` | Opted-in stores can execute capped, consent-aware Shopify discounts and SendGrid recovery messages with kill switches, stable keys, and audit evidence. |
+| 11 | `Backend/package.json` and Backend tests | `npm test` runs every Backend test file; the unused incompatible Prisma adapter was removed. |
+| 12 | `Backend/server.js` | Startup awaits the database and Redis initialization before loading traffic and rate-limit handlers; shutdown closes workers, HTTP, Prisma, and Redis. |
+| 13 | `Backend/prisma/migrations/202609220001_add_cart_recovery_contract/migration.sql` | The additive migration adds only nullable `recovery_url` and its non-unique lookup index. `prestart` runs `prisma migrate deploy` before serving traffic. |
 
-## Work order
+## Implemented work order
 
-| Order | Exact location | Required work |
+| Order | Exact location | Completed work |
 |---:|---|---|
-| 1 | `Backend/src/controller/eventController.js` and feature worker | Repair event-name consistency and make the source-event-to-feature-job path durable. |
-| 2 | `Backend/src/services/mlService.js` | Add the missing feature/M1/M2/M5 wrappers and readiness validation. No controller may create a separate Axios client. |
-| 3 | `Backend/src/services/shopifySync.js` and Shopify subscription setup | Implement abandoned-checkout ingestion, current GraphQL usage, and subscription reconciliation. |
-| 4 | `Backend/src/services/commerceWebhookService.js` | Make order/customer/cart processing aggregate-safe and enqueue post-commit intelligence work. |
-| 5 | `Backend/src/services/messageWebhookService.js` | Implement provider-specific signature and payload contracts, beginning with SendGrid ECDSA batches. |
-| 6 | `Backend/src/services/schedulerService.js` | Add atomic feature, churn, alert, and action workers while retaining the existing state/outcome/briefing/store jobs. |
-| 7 | New recovery/action service and authenticated controllers | Execute controlled beta discounts and messages with consent, limits, idempotency, audit, and a kill switch. |
-| 8 | `Backend/server.js` | Make database readiness precede traffic and immediate jobs; close application resources during graceful shutdown. |
-| 9 | `Backend/package.json`, dependency lockfile, and tests beside each changed module | Run the complete Backend suite, resolve compatible audit findings, and add integration, tenancy, gateway, idempotency, provider, and scheduler tests. |
+| 1 | `Backend/src/controller/eventController.js` and feature worker | Event names were aligned and the source-event-to-feature-job path was made durable. |
+| 2 | `Backend/src/services/mlService.js` | Missing model wrappers and strict readiness validation were added to the shared gateway. |
+| 3 | `Backend/src/services/shopifySync.js` and Shopify subscription setup | Abandoned-checkout ingestion, GraphQL synchronization, and subscription reconciliation were implemented. |
+| 4 | `Backend/src/services/commerceWebhookService.js` | Commerce processing was made idempotent and aggregate-safe. |
+| 5 | `Backend/src/services/messageWebhookService.js` | SendGrid-specific signature, batch, failure, and consent handling were implemented. |
+| 6 | `Backend/src/services/schedulerService.js` | Feature, churn, alert, and action workers were added alongside the existing scheduled jobs. |
+| 7 | Recovery/action service and authenticated settings controller | Controlled beta actions now enforce consent, caps, idempotency, audit, and kill switches. |
+| 8 | `Backend/server.js` | Database readiness now precedes traffic and workers; graceful shutdown releases resources. |
+| 9 | `Backend/package.json`, lockfile, and tests | The complete Backend test runner and focused regression coverage were added. |
 
 ## 0. Storefront events, commerce webhooks, and Python execution
 
@@ -98,7 +98,7 @@ The controller must perform these steps in this order:
 5. Commit the event before scheduling feature computation. Return a small
    acknowledgement; do not wait for model inference in the storefront request.
 
-Add these fields to the existing `events` model through the migration:
+The existing additive event migration supplies these fields:
 
 ```text
 source TEXT NOT NULL DEFAULT 'pixel'
@@ -106,22 +106,21 @@ source_event_id TEXT nullable
 received_at TIMESTAMPTZ(6) NOT NULL DEFAULT now()
 ```
 
-Add a unique partial index for non-null event IDs:
+It also supplies the unique partial index for non-null event IDs:
 
 ```text
 UNIQUE (store_id, source, source_event_id) WHERE source_event_id IS NOT NULL
 ```
 
-The existing controller no longer calls the former dead
-`/api/features/compute` route, but its queue is incomplete. Make the event and
-its `feature_jobs` row atomic, enqueue equivalent jobs for batch ingestion, and
-consume them after commit. The worker must call the authenticated Python route
-`POST /internal/features/compute`; the backend must not recreate feature
-formulas in JavaScript.
+The controller no longer calls the former dead `/api/features/compute` route.
+Single and batch ingestion create each event and its idempotent `feature_jobs`
+row atomically. The bounded worker consumes committed jobs and calls the
+authenticated Python route `POST /internal/features/compute`; feature formulas
+remain owned by Python rather than being recreated in JavaScript.
 
 ### B. Shopify and WooCommerce server-to-server webhooks
 
-**Existing backend locations requiring completion:**
+**Implemented backend locations:**
 
 - `Backend/src/route/commerceWebhookRoute.js`
 - `Backend/src/controller/commerceWebhookController.js`
@@ -569,6 +568,7 @@ only safe identifiers, latency, status, and sanitized error type.
 | `POST /predict/shopper-sensitivity` | After an M1 intervention decision, using the complete M2 feature contract. |
 | `POST /predict/offer-value` | After M2 selects a recovery action that may use an offer. |
 | `POST /internal/rfm-sync` `{ store_id }` | After successful store-sync commit. |
+| `POST /internal/store-sync` `{ store_id, platform }` | Protected Backend-owned Shopify synchronization. Python's `/internal/sync/trigger` compatibility route delegates here instead of acknowledging a no-op. |
 | `POST /internal/business-state/rebuild` `{ organization_id }` | Every minute for each due organization; Python writes the next 15/5/1-minute cadence. |
 | Backend-owned alert queue drain; no Python endpoint | After rebuild and every minute for recovery. Call `POST /orchestrate` only when an alert needs agent-generated output. |
 | `POST /internal/morning-briefings` | 05:00 UTC daily. |
@@ -795,15 +795,46 @@ and must not be described as general-knowledge RAG.
 
 ## 7. Validation and deployment
 
-1. Back up the target database and verify restore steps.
-2. Apply the migration to a disposable clone.
-3. Run `prisma format`, `prisma validate`, migration tests, and client generation.
-4. Run gateway, scheduler, idempotency, and cross-tenant tests.
-5. Deploy Backend with schedulers disabled.
-6. Deploy Python and verify internal health/authentication.
-7. Run one canary store through sync, RFM, churn, and send-time persistence.
-8. Enable jobs gradually and monitor queues, duplicates, failures, latency,
-   fallback rate, and Business State freshness.
+1. Keep the Supabase direct PostgreSQL connection in `DIRECT_URL` and the
+   runtime connection in `DATABASE_URL` on the Backend host. Never commit them.
+2. Set `PYTHON_ALLOWED_MODEL_STATUSES=beta_ready` on the controlled-beta
+   Backend. Use `ready` only when the Python deployment uses production model
+   aliases.
+3. Set `SENDGRID_WEBHOOK_VERIFICATION_KEY`, `SENDGRID_API_KEY`,
+   `SENDGRID_FROM_EMAIL`, `BACKEND_URL`, the existing Shopify credentials, and
+   a shared `REDIS_URL` (or `REDIS_HOST` configuration).
+4. Keep `BETA_AUTOMATION_KILL_SWITCH=true` during the first deployment. The
+   per-store policy also defaults to disabled and killed.
+5. Deploy the Backend. The package `prestart` hook runs
+   `npm run migrate:deploy` before `node server.js`; Prisma records successful
+   migrations in `_prisma_migrations` and does not replay them.
+6. Verify `/health` for liveness and `/ready` for database and Python-model
+   readiness. `/ready` also reports the global beta-action state, missing
+   provider configuration names, and Redis readiness without returning secret
+   values. A failed migration or unavailable database prevents startup.
+7. Reinstall each beta Shopify store if its existing token lacks
+   `read_orders`, `read_customers`, or `write_discounts`; OAuth then reconciles
+   the required webhook subscriptions.
+8. Run one approved canary store through sync, RFM, churn, feature computation,
+   and recovery execution while the global kill switch remains enabled.
+9. Configure that store with `PUT /api/v1/settings/beta-automation/:storeId`,
+   verify consent and caps, then set `BETA_AUTOMATION_KILL_SWITCH=false` to
+   permit only the opted-in store's bounded actions.
+10. Monitor queue depth, duplicates, provider failures, model fallbacks,
+    Business State freshness, unsubscribe handling, and audit records.
+
+The global action gate fails closed: an absent, misspelled, or non-`false`
+`BETA_AUTOMATION_KILL_SWITCH` value keeps provider actions disabled. Setting it
+to `false` makes provider configuration and shared Redis part of `/ready`.
+
+`npm audit --omit=dev` currently reports three high findings in the Prisma CLI
+configuration dependency chain (`prisma` -> `@prisma/config` ->
+`deepmerge-ts`). The affected CLI runs only against repository-controlled
+configuration during install/migration, but the advisory remains open. npm's
+suggested automatic remediation is a breaking Prisma downgrade, so it must not
+be forced into deployment without a separate migration/client compatibility
+review. The application runtime packages addressed in this audit do not have a
+separate reported finding in the current audit output.
 
 Minimum acceptance tests:
 
@@ -842,5 +873,7 @@ Minimum acceptance tests:
 - Logs and public responses contain no internal key, DagsHub credential, PII,
   or customer context payload.
 
-Backend work is complete only when migration, generated client, wrappers,
-schedulers, tests, canary, monitoring, and rollback evidence all pass.
+The repository implementation is complete when schema validation, client
+generation, and all Backend tests pass. Live readiness additionally requires an
+observed migration, provider configuration, one opted-in canary, monitoring,
+and rollback evidence in the target environment.

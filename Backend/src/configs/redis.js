@@ -76,7 +76,7 @@ async function connectRedis() {
 
     redisClient.on('error', (err) => {
       redisReady = false;
-      logger.warn('redis_error', { message: err.message });
+      logger.warn('redis_error', { error_type: err.code || err.name || 'redis_error' });
     });
 
     redisClient.on('ready', () => {
@@ -91,11 +91,21 @@ async function connectRedis() {
   } catch (err) {
     redisReady = false;
     logger.warn('redis_connection_failed', {
-      message: err.message,
+      error_type: err.code || err.name || 'connection_error',
       note: 'Falling back to in-memory rate limiter',
     });
     // Don't crash — fail open to in-memory store
   }
 }
 
-module.exports = { connectRedis, getRedisClient, isRedisReady };
+async function disconnectRedis() {
+  if (!redisClient) return;
+  try {
+    await redisClient.quit();
+  } finally {
+    redisReady = false;
+    redisClient = null;
+  }
+}
+
+module.exports = { connectRedis, disconnectRedis, getRedisClient, isRedisReady };

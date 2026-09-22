@@ -4,15 +4,14 @@ module.exports = (err, req, res, next) => {
   const isProd = process.env.NODE_ENV === 'production';
   const exposeErrorDetails = process.env.EXPOSE_ERROR_DETAILS === 'true';
 
-  // Structured error log — always includes request context
+  // Keep provider payloads, connection strings, and other exception details out
+  // of production logs while retaining stable diagnostic context.
   logger.error('unhandled_error', {
-    message: err.message,
-    stack: err.stack,
-    code: err.code,
+    error_type: err.code || err.name || 'unhandled_error',
     method: req.method,
     path: req.originalUrl,
-    ip: req.ip,
     userId: req.user?.id || null,
+    ...(!isProd && exposeErrorDetails ? { message: err.message, stack: err.stack } : {}),
   });
 
   // JWT Errors

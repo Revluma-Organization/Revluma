@@ -4,17 +4,19 @@
   "description": "",
   "main": "app.js",
   "scripts": {
+    "postinstall": "npm run prisma -- generate",
+    "prestart": "npm run migrate:deploy",
     "start": "node server.js",
     "dev": "npx nodemon server.js",
-    "test": "node src/controller/__tests__/logout.logic.test.js",
-    "prisma": "node scripts/run-prisma.js"
+    "test": "node scripts/run-tests.js",
+    "prisma": "node scripts/run-prisma.js",
+    "migrate:deploy": "node scripts/run-prisma.js migrate deploy"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^6.19.3",
     "@sendgrid/mail": "^8.1.6",
     "axios": "^1.18.1",
@@ -30,19 +32,20 @@
     "google-auth-library": "^11.1.0",
     "helmet": "^8.2.0",
     "ioredis": "^5.11.1",
-    "joi": "^18.2.2",
+    "joi": "^18.2.5",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.2.0",
+    "multer": "^2.3.0",
     "node-cron": "^4.4.1",
     "pg": "^8.21.0",
+    "prisma": "^6.19.3",
     "qrcode": "^1.5.4",
+    "qs": "^6.16.0",
     "rate-limit-redis": "^6.0.0",
     "speakeasy": "^2.0.0",
     "uuid": "^14.0.0",
     "winston": "^3.19.0"
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
-    "prisma": "^6.19.3"
+    "@types/node": "^26.0.1"
   }
 }

@@ -3,8 +3,10 @@
 ## Result
 
 The Python implementation is internally consistent and its complete offline
-test suite passes. Backend/database work remains a separate team handoff. The
-eight audited synthetic artifacts are active through explicit MLflow `beta`
+test suite passes. The matching Backend execution path is implemented and
+locally validated; target-environment migration and provider canary evidence
+remain deployment steps. The eight audited synthetic artifacts are active
+through explicit MLflow `beta`
 aliases, so controlled beta inference uses the trained models instead of the
 neutral fallbacks. They remain tagged `production_eligible=false` and are not
 represented as real-data Production models.
@@ -20,8 +22,8 @@ time-based.
 
 Each task section follows the same order: **location** identifies the files,
 **implementation** explains what the code does, **data flow** explains how the
-component connects to adjacent Python or backend work, and **remaining work**
-states only what cannot be completed within the Python repository. I-task
+component connects to adjacent Python or Backend work, and **remaining work**
+states only what still depends on real data or target-environment evidence. I-task
 findings and corrections remain in this walkthrough rather than a separate
 document.
 
@@ -44,13 +46,13 @@ The shared pixel contract is in `docs/PIXEL_EVENT_SPEC.md`.
 
 | Task | Status | Exact implementation |
 |---|---|---|
-| D1 Pixel contract | Python complete; backend adoption pending | `docs/PIXEL_EVENT_SPEC.md` |
+| D1 Pixel contract | Complete; Backend adoption implemented | `docs/PIXEL_EVENT_SPEC.md`; `Backend/src/controller/eventController.js`; `Backend/src/services/featureWorkerService.js` |
 | D2 Session features | Complete | `python/src/features/pipeline.py`; `python/tests/test_pipeline.py` |
 | D3 M1 abandonment | Complete on synthetic data; real promotion pending | `python/src/models/abandonment/train.py`; `predict.py`; `python/tests/test_abandonment_model.py` |
-| D4 M3 send time | Complete on synthetic data; sequence persistence pending | `python/src/models/timing/train.py`; `predict.py`; `README.md`; `python/tests/test_timing_model.py` |
+| D4 M3 send time | Complete on synthetic data; Backend sequence scheduling and persistence implemented | `python/src/models/timing/train.py`; `predict.py`; `README.md`; `Backend/src/services/recoveryActionService.js`; `python/tests/test_timing_model.py` |
 | D5 Orchestrator | Complete | `python/src/agents/orchestrator.py`; `python/tests/test_orchestrator.py` |
 | D6 Business State | Complete locally; production-scale benchmark pending | `python/src/intelligence/business_state.py`; related Business State tests |
-| D7 Morning briefing | Python complete; 05:00 UTC backend schedule pending | `python/src/intelligence/morning_briefing.py`; `python/src/serving/api.py` |
+| D7 Morning briefing | Complete in code; 05:00 UTC Backend schedule implemented | `python/src/intelligence/morning_briefing.py`; `python/src/serving/api.py`; `Backend/src/services/schedulerService.js` |
 
 ### D1 — Pixel event contract
 
@@ -136,8 +138,8 @@ backend scheduling and persistence remain documented in the backend guide.
 The generator turns the latest Business State into a structured briefing with
 numbers, priorities, concerns, opportunities, and an overnight log. The API
 keeps the internal morning-briefing route and returns sanitized job totals. The
-backend team must schedule the internal route at the required daily time and
-persist the resulting briefing records.
+Backend scheduler calls the authenticated route at 05:00 UTC, and Python
+persists the generated briefing records through the existing job.
 
 ## Customer and retention components
 
@@ -146,7 +148,7 @@ persist the resulting briefing records.
 | S1 Customer history | Complete | `python/src/features/pipeline.py`; parameterized history/RFM queries and safe defaults |
 | S2 Event processor | Complete | `python/src/features/event_processor.py`; `python/tests/test_event_processor.py` |
 | S3 M4 churn | Complete on synthetic data; real promotion pending | `python/src/models/churn/train.py`; `predict.py`; `README.md`; `python/tests/test_churn_model.py` |
-| S4 RFM sync | Python complete; backend post-sync trigger pending | `python/src/jobs/rfm_sync.py`; `python/tests/test_rfm_sync_endpoint.py` |
+| S4 RFM sync | Complete in code; Backend post-sync trigger implemented | `python/src/jobs/rfm_sync.py`; `Backend/src/services/shopifySync.js`; `Backend/src/services/commerceWebhookService.js`; `python/tests/test_rfm_sync_endpoint.py` |
 | S5 Retention/customer agents | Complete | `python/src/agents/retention_agent.py`; `customer_agent.py`; related tests |
 
 ### S1 — Customer history and RFM features
@@ -300,10 +302,11 @@ results, calculates error signals, writes Strategic Memory reflections, and
 adds model-feedback records for later retraining. The monitoring service logs
 checks to the separate MLflow monitoring experiment and evaluates M1/M2 weekly
 and M3/M4/M5 monthly. It can alert configured engineering channels on a
-threshold breach. A production worker still needs to consume the feedback
-queue and invoke the guarded retraining workflow on a schedule. The backend
-must also populate finalized sensitivity observations before a real M2 run can
-be production eligible.
+threshold breach. The Backend scheduler now invokes the guarded due-outcome
+worker every minute; Python atomically records outcomes, pause decisions,
+memory entries, and model feedback. Automatic consumption of the retraining
+signal queue remains gated until sufficient finalized real observations exist.
+Synthetic results cannot make a real M2 run production eligible.
 
 ### I6 — Marketing, Finance, and Intelligence agents
 
@@ -327,10 +330,10 @@ aggregate payload required from the backend is listed in
 
 | Workstream | Status | Location or dependency |
 |---|---|---|
-| Dynamic Business State | Python complete | Adaptive 15/5/1-minute cadence and 30-day baselines in `python/src/intelligence/business_state.py`; backend scheduler/persistence pending. |
-| Historical ingestion | Python complete | `python/src/jobs/historical_ingestion.py`; backend initial-sync trigger and `order_items` persistence pending. |
+| Dynamic Business State | Complete in code | Adaptive 15/5/1-minute cadence and 30-day baselines in `python/src/intelligence/business_state.py`; `Backend/src/services/schedulerService.js` invokes the authenticated persisted rebuild path. |
+| Historical ingestion | Complete in code | `python/src/jobs/historical_ingestion.py`; `Backend/src/services/shopifySync.js` performs paginated initial import, persists orders and `order_items`, then triggers RFM. Python's legacy sync-trigger route now delegates to the protected Backend sync endpoint instead of acknowledging a no-op. |
 | LLM judge | Runner complete; live execution opt-in | `python/tests/benchmarks/test_benchmark_llm_judge.py`; ordinary tests skip paid network calls unless `RUN_LIVE_LLM_JUDGE=1` and a key are both present. No substitute scores are fabricated. |
-| Fast feedback | Python complete; production worker pending | `python/src/learning/feedback_loop.py`; backend outcome queue, pause integration, and scheduled worker pending. |
+| Fast feedback | Outcome worker complete; real-data retraining remains gated | `python/src/learning/feedback_loop.py`; `Backend/src/services/schedulerService.js` runs due evaluations, including outcome, pause, memory, and feedback persistence. |
 
 ## Model improvements and DagsHub evidence
 
@@ -498,7 +501,7 @@ scenario has run successfully.
 
 ## Validation
 
-- The complete offline Python suite passed after final cleanup with **486
+- The complete offline Python suite passed after final cleanup with **487
   passed and 1 skipped**. The skipped test is the paid, network-dependent LLM
   judge, which now requires explicit opt-in.
 - A registry-backed local API probe loaded all eight `beta` aliases and returned
@@ -507,10 +510,14 @@ scenario has run successfully.
   only the `beta` channel.
 - A read-only configured-database probe exercised the new internal feature path
   and returned the canonical 34-feature envelope for a normalized session.
-- The Backend Prisma schema validated. All six existing focused Backend test
-  files passed; the Shopify install test required test-only JWT and encryption
-  environment values. `npm test` still runs only one file and must be corrected
-  by the Backend team.
+- The Backend Prisma schema validated and its client generated successfully.
+  `npm test` now discovers and runs every Backend test file; all seven current
+  files pass with isolated test-only secrets.
+- Syntax checks passed for all 37 changed or newly added Backend JavaScript
+  files. The Backend dependency audit reduced the open production audit output
+  to three high findings in the Prisma migration CLI's configuration parser;
+  npm's proposed fix is a breaking Prisma downgrade, so no forced downgrade was
+  applied.
 - The focused lab and contract checks passed, including regression coverage for
   deterministic source-only seeding, exact-token evaluation, scenario
   readiness, safe responder logging, fallback routing, and the current
@@ -531,25 +538,46 @@ scenario has run successfully.
 
 ## Connected beta readiness
 
-The Python service is ready to serve the controlled beta aliases after the code
-is deployed. The current Backend is not yet an end-to-end action executor. The
-audit found missing M1/M2/M5 and feature-computation gateway wrappers, no
-`feature_jobs` consumer, no daily churn worker, a stubbed abandoned-checkout
-sync, no Shopify webhook-subscription registration, an incompatible generic
-SendGrid webhook verifier, non-atomic alert claims, and no discount/message
-execution service. It also found Backend pixel event names that differ from the
-canonical pixel specification.
+The Python deployment serves all eight controlled-beta aliases. The Backend now
+implements the complete application-side flow: atomic pixel event jobs,
+canonical feature persistence, M1/M2/M5/M3 execution, daily M4 scoring,
+Shopify GraphQL synchronization and webhook reconciliation, signed SendGrid
+outcomes, aggregate-safe commerce updates, alert delivery, and bounded recovery
+discount/message actions.
 
-`docs/BACKEND_IMPLEMENTATION_GUIDE.md` now gives the exact files, call order,
-webhook behavior, provider requirements, controlled beta opt-in, action caps,
-consent checks, idempotency, retry behavior, audit evidence, and acceptance
-tests. Until that work is implemented and deployed, a connected test user can
-reach existing Backend features but will not receive the complete automated
-M1-to-M5 recovery flow.
+Real actions remain fail-closed until deployment configuration is complete. The
+global kill switch and each store policy default to disabled. The global gate
+opens only when `BETA_AUTOMATION_KILL_SWITCH=false` is set exactly; an absent or
+invalid value remains disabled. A store must be
+active, explicitly opted in by an owner or administrator, within its action and
+message caps, and have customer email consent before a recovery action runs.
+Discounts use one-customer, one-use codes; sends and callbacks use stable
+idempotency keys and write audit evidence.
+
+When that global gate is open, `/ready` also requires the Shopify and SendGrid
+configuration used by the action flow and a connected shared Redis. This makes
+an incomplete provider setup visible before controlled-beta traffic is sent.
+Provider exception payloads, recipient addresses, connection details, and
+stacks are excluded from production logs; stable error types and record IDs are
+retained for diagnosis.
+
+The additive Prisma migration adds only nullable
+`abandoned_carts.recovery_url` and a non-unique store/cart lookup index. The
+Backend `prestart` hook applies committed migrations before accepting traffic.
+Live readiness still requires observing that migration, setting the documented
+Backend environment values, reinstalling beta Shopify stores when new scopes
+are required, and completing one monitored canary.
+
+The remaining dependency limitation is isolated to the Prisma deployment CLI:
+the current npm audit reports three high findings through
+`@prisma/config`/`deepmerge-ts`. The automatic npm remediation would force a
+breaking Prisma downgrade, so the current reviewed toolchain is retained until
+a compatible upgrade or separately tested mitigation is available.
 
 ## Remaining work
 
-1. The Backend team follows `docs/BACKEND_IMPLEMENTATION_GUIDE.md`.
+1. The deployment operator follows the environment, migration, Shopify scope,
+   and canary sequence in `docs/BACKEND_IMPLEMENTATION_GUIDE.md`.
 2. The team provisions representative real labels and validates subgroup error,
    calibration, drift, and operational impact before model promotion.
 3. The team runs the 100,000-order Business State benchmark on

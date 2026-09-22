@@ -32,7 +32,9 @@ function resolveStore() {
         prefix: 'rl:',
       });
     } catch (err) {
-      logger.warn('rate_limit_redis_store_fallback', { message: err.message });
+      logger.warn('rate_limit_redis_store_fallback', {
+        error_type: err.code || err.name || 'redis_store_error',
+      });
     }
   }
   return undefined; // default in-memory store

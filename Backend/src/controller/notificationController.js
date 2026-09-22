@@ -42,8 +42,7 @@ exports.getNotifications = async (req, res, next) => {
   } catch (error) {
     logger.error("get_notifications_failed", {
       userId: req.user?.id,
-      message: error.message,
-      stack: error.stack,
+      error_type: error.code || error.name || "notification_query_error",
     });
 
     next(error);
@@ -69,8 +68,7 @@ exports.getUnreadCount = async (req, res, next) => {
   } catch (error) {
     logger.error("get_unread_notification_count_failed", {
       userId: req.user?.id,
-      message: error.message,
-      stack: error.stack,
+      error_type: error.code || error.name || "notification_count_error",
     });
 
     next(error);
@@ -118,8 +116,7 @@ exports.markAsRead = async (req, res, next) => {
     logger.error("mark_notification_read_failed", {
       userId: req.user?.id,
       notificationId: req.params?.id,
-      message: error.message,
-      stack: error.stack,
+      error_type: error.code || error.name || "notification_update_error",
     });
 
     next(error);
@@ -141,6 +138,8 @@ exports.createAnomalyAlert = async ({ userId, orgId, type, message, actionUrl })
     });
   } catch (err) {
     // Never crash the business state pipeline over a notification failure
-    console.error("createAnomalyAlert failed:", err.message);
+    logger.error("create_anomaly_alert_failed", {
+      error_type: err.code || err.name || "notification_create_error",
+    });
   }
 };

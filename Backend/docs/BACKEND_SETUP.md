@@ -1,74 +1,98 @@
-1. ## Clone Repo
-Firstly Clone the repo in your local machine https://github.com/Revluma-Organization/Revluma.git
-git clone https://github.com/Revluma-Organization/Revluma.git
+# Backend Setup
 
-2. ## Install Dependencies
-Navigate directly into the folder containing your backend package.json file and install the node modules:
+## Install and validate
 
-Bash
-cd Backend
+From `Backend/`:
+
+```powershell
 npm install
+npm run prisma -- validate
+npm run prisma -- generate
+npm test
+```
 
-3. ## Set Up the Environment Variables (.env)
-Create a plaintext file named precisely .env at the root of your Backend/ folder directory:
+Use `.env` locally and the deployment host's secret environment settings in
+production. Never commit either file or print its values.
 
-Plaintext
-C:\\Users\\X1\\Revluma-Backend-Repo\\Backend\\.env
-Open the file and add the following configuration variables:
+## Required environment
 
-# Server Configuration
-PORT= process.env.PORT 
+Core runtime:
 
-# Prisma Direct Database Migration URL
-DATABASE_URL= process.env.DATABASE_URL
+- `DATABASE_URL`: Prisma runtime PostgreSQL connection.
+- `DIRECT_URL`: direct PostgreSQL connection used by Prisma migrations. If it
+  is omitted, the Prisma wrapper falls back to `DATABASE_URL`.
+- `DATABASE_USER`, `DATABASE_HOST`, `DATABASE_PASSWORD`, `DATABASE_PORT`, and
+  `DATABASE_NAME`: retained for existing application configuration checks.
+- `PORT`, `NODE_ENV`, `FRONTEND_URL`, and `BACKEND_URL`.
+- `JWT_SECRET`, `JWT_REFRESH_SECRET`, `JWT_EXPIRES_IN`,
+  `REFRESH_TOKEN_EXPIRES_IN`, `COOKIE_SECRET`, and `GOOGLE_CLIENT_ID`.
 
-# Explicit Connection Pool Parameters (Supabase Transaction Pooler -)
-  user: process.env.DATABASE_USER
-  host: process.env.DATABASE_HOST
-  database: 'postgres'
-  password: process.env.DATABASE_PASSWORD
-  port: process.env.DATABASE_PORT
+Python integration:
 
-Environment Variables BreakdownVariable NameRequired TypeDescriptionPORTIntegerThe local port that the Express server listens to.
-1. In the `Backend/` directory, copy the provided `.env` template to create your local active configuration file:
-   ```bash
-   cp .env
+- `PYTHON_SERVICE_URL` and `ML_INTERNAL_KEY`.
+- `PYTHON_ALLOWED_MODEL_STATUSES=beta_ready` for controlled beta. Production
+  model deployments should use `ready`.
 
-DATABASE_URL Connection StringUsed strictly by Prisma's migration engine to map schemas and run database alterations over port 5432.
-DB_USER StringThe database user identifier passed to the native pg Pool driver adapter.
-DB_HOST String DomainThe connection pooler proxy endpoint address provided by Supabase.
-DB_NAME StringThe database catalog instance name (usually postgres).
-DB_PASSWORD StringThe explicit database password credential. Stored separately to bypass string parsing errors.
-DB_PORT IntegerConnection pooler port (6543) optimized for transaction management without SSL enforcement bugs.
+Shopify and messaging:
 
-4. ## Run Database Migrations
-Synchronize your local Prisma relational schema layout with the active database tables:
+- `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_REDIRECT_URI`, and
+  `SHOPIFY_TOKEN_ENCRYPTION_KEY`.
+- `SHOPIFY_API_VERSION` is optional; the service has a reviewed default.
+- `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, and
+  `SENDGRID_WEBHOOK_VERIFICATION_KEY`.
+- `BETA_AUTOMATION_KILL_SWITCH=true` for the initial deployment.
+- `REDIS_URL`, or the existing `REDIS_HOST` configuration, is required before
+  the global beta action switch is deliberately set to `false`.
 
-Bash
-npx prisma migrate dev --name init
+Optional services retain their existing Paystack, Cloudinary, WooCommerce,
+logging, and scheduler interval variables. Redis remains optional only while
+real beta actions are globally disabled or for a single-process local setup.
 
-Note: If the remote database layout is already matching, you can run npx prisma generate to build your local client objects instead.
+## Database migrations
 
-5. ## Start the Server Locally
-Launch your development server with nodemon hot-reloading:
+Create migrations only during development after reviewing the generated SQL.
+Apply committed migrations in deployment with:
 
-Bash
+```powershell
+npm run migrate:deploy
+```
+
+`npm start` runs this command automatically through the `prestart` hook. Prisma
+records applied migrations in `_prisma_migrations`, so a successful migration
+is not replayed on later starts. A migration failure stops the Backend before it
+accepts traffic.
+
+The current cart-recovery migration adds nullable
+`abandoned_carts.recovery_url` and the non-unique
+`idx_abandoned_carts_store_external` lookup index. It does not delete or rename
+existing data.
+
+For local schema inspection after configuration:
+
+```powershell
+npm run prisma -- studio
+```
+
+## Start and verify
+
+```powershell
 npm run dev
-Expected Success Logs:
+```
 
-Server is running on port 8080
-PostgreSQL Database connected successfully via Driver Adapter to Supabase.
+- `GET /health` verifies process liveness.
+- `GET /ready` returns `200` only when PostgreSQL and the allowed Python model
+  release are ready. If the global beta action switch is open, it also requires
+  all Shopify/SendGrid action configuration and a connected shared Redis.
+- `/ready` reports only missing environment-variable names, never their values.
+- Before enabling real recovery actions, configure one approved store through
+  `PUT /api/v1/settings/beta-automation/:storeId`, verify consent and caps, and
+  deliberately set `BETA_AUTOMATION_KILL_SWITCH=false`. Any other value,
+  including an unset value, keeps provider actions disabled.
 
-6. ## Database Administration via Prisma Studio
-Prisma includes an integrated visual UI to view, filter, edit, or delete database rows (such as the records inside your waitlist_users table) from your browser.
+## Dependency audit status
 
-Open a separate terminal split window.
-Ensure you are in the Backend/ directory.
-
-Run the following command:
-Bash
-npx prisma studio
-
-7. ## System & Database Requirements
-Required Node.js Version: v24.13.0 (Verify using node -v)
-Required PostgreSQL Version: v15.0 or higher
+`npm audit --omit=dev` currently reports three high findings from the Prisma
+deployment CLI's `@prisma/config` dependency on `deepmerge-ts`. npm proposes a
+breaking Prisma downgrade as its automatic fix. Do not run `npm audit fix
+--force`; review a compatible Prisma release or a tested CLI-only mitigation
+before changing this pinned migration toolchain.

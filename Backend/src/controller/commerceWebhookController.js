@@ -54,7 +54,7 @@ exports.receive = async (req, res, next) => {
     logger.info('commerce_webhook_processed', { provider, store_id: store.id, topic: headers.topic, action: result.action });
     return res.status(200).json({ success: true, data: result });
   } catch (error) {
-    await markDelivery(delivery.id, 'failed', error.message).catch(() => {});
+    await markDelivery(delivery.id, 'failed', error.code || error.name || 'processing_error').catch(() => {});
     logger.error('commerce_webhook_failed', { provider, store_id: store.id, topic: headers.topic, error_type: error.code || 'processing_error' });
     return next(error);
   }

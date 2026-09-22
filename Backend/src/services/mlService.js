@@ -42,6 +42,7 @@ const INTERNAL_ENDPOINTS = {
   BUSINESS_STATE: '/internal/business-state/rebuild',
   RECOMMENDATION_OUTCOMES:
     '/internal/recommendation-outcomes/evaluate',
+  FEATURES: '/internal/features/compute',
 };
 
 if (!PYTHON_SERVICE_URL) {
@@ -785,6 +786,90 @@ async function rfmSync({
 }
 
 /* -------------------------------------------------------------------------- */
+/* FEATURE COMPUTATION AND CHECKOUT MODELS                                    */
+/* -------------------------------------------------------------------------- */
+
+async function computeFeatures({ customerId = null, sessionEvents, correlationId }) {
+  if (!Array.isArray(sessionEvents) || sessionEvents.length < 1 || sessionEvents.length > 1000) {
+    return {
+      success: false,
+      error: {
+        code: ML_ERRORS.INVALID_REQUEST,
+        message: 'sessionEvents must contain between 1 and 1000 events.',
+      },
+    };
+  }
+
+  const result = await pythonRequest({
+    path: INTERNAL_ENDPOINTS.FEATURES,
+    body: { customer_id: customerId, session_events: sessionEvents },
+    correlationId,
+  });
+  if (!result.success) return result;
+  if (!isPlainObject(result.data) || !isPlainObject(result.data.features)) {
+    return {
+      success: false,
+      error: { code: ML_ERRORS.INVALID_RESPONSE, message: 'Invalid feature response.' },
+    };
+  }
+  return result;
+}
+
+async function predictAbandonment({ features, customerId, merchantId, correlationId }) {
+  if (!isPlainObject(features)) {
+    return {
+      success: false,
+      error: { code: ML_ERRORS.INVALID_REQUEST, message: 'Abandonment features are required.' },
+    };
+  }
+  return pythonRequest({
+    path: '/predict/abandonment-probability',
+    body: features,
+    correlationId,
+    extraHeaders: {
+      ...(customerId ? { 'X-Customer-ID': customerId } : {}),
+      ...(merchantId ? { 'X-Merchant-ID': merchantId } : {}),
+    },
+  });
+}
+
+async function predictSensitivity({ features, customerId, merchantId, correlationId }) {
+  if (!isPlainObject(features)) {
+    return {
+      success: false,
+      error: { code: ML_ERRORS.INVALID_REQUEST, message: 'Sensitivity features are required.' },
+    };
+  }
+  return pythonRequest({
+    path: '/predict/shopper-sensitivity',
+    body: features,
+    correlationId,
+    extraHeaders: {
+      ...(customerId ? { 'X-Customer-ID': customerId } : {}),
+      ...(merchantId ? { 'X-Merchant-ID': merchantId } : {}),
+    },
+  });
+}
+
+async function predictOfferValue({ features, customerId, merchantId, correlationId }) {
+  if (!isPlainObject(features)) {
+    return {
+      success: false,
+      error: { code: ML_ERRORS.INVALID_REQUEST, message: 'Offer features are required.' },
+    };
+  }
+  return pythonRequest({
+    path: '/predict/offer-value',
+    body: features,
+    correlationId,
+    extraHeaders: {
+      ...(customerId ? { 'X-Customer-ID': customerId } : {}),
+      ...(merchantId ? { 'X-Merchant-ID': merchantId } : {}),
+    },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
 /* CHURN RISK                                                                 */
 /* -------------------------------------------------------------------------- */
 
@@ -1037,6 +1122,8 @@ function validateSendTimePayload(payload) {
 
 async function predictSendTime({
   payload,
+  customerId,
+  merchantId,
   correlationId,
 }) {
   const validation =
@@ -1058,6 +1145,10 @@ async function predictSendTime({
     path: '/predict/send-time',
     body: payload,
     correlationId,
+    extraHeaders: {
+      ...(customerId ? { 'X-Customer-ID': customerId } : {}),
+      ...(merchantId ? { 'X-Merchant-ID': merchantId } : {}),
+    },
   });
 }
 
@@ -1185,10 +1276,30 @@ async function checkPythonHealth() {
         }
       );
 
+    const data = response.data;
+    const allowedStatuses = new Set(
+      String(process.env.PYTHON_ALLOWED_MODEL_STATUSES || 'ready')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    );
+    const modelsMissing = Array.isArray(data?.models_missing)
+      ? data.models_missing
+      : null;
+    const healthy = response.status === 200 &&
+      data?.status === 'ok' &&
+      data?.models_ready === true &&
+      modelsMissing?.length === 0 &&
+      allowedStatuses.has(data?.model_status);
+
     return {
-      healthy:
-        response.status === 200,
+      healthy,
       status: response.status,
+      modelStatus: data?.model_status || null,
+      modelsReady: data?.models_ready === true,
+      modelsMissing: modelsMissing || [],
+      modelChannels: isPlainObject(data?.model_channels) ? data.model_channels : {},
+      reason: healthy ? null : 'models_not_ready',
       latencyMs:
         Date.now() - startTime,
     };
@@ -1212,6 +1323,10 @@ async function checkPythonHealth() {
 module.exports = {
     orchestrate,
     rfmSync,
+    computeFeatures,
+    predictAbandonment,
+    predictSensitivity,
+    predictOfferValue,
     predictChurnRisk,
     predictSendTime,
     generateMorningBriefings,

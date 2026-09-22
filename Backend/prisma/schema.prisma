@@ -336,6 +336,7 @@ model abandoned_carts {
   store_id             String                 @db.Uuid
   customer_id          String?                @db.Uuid
   external_cart_id     String?
+  recovery_url         String?
   session_id           String?
   cart_value           Decimal                @db.Decimal(10, 2)
   currency             String?                @default("USD")
@@ -357,6 +358,8 @@ model abandoned_carts {
   stores               stores                 @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   orders               orders[]
   sensitivity_training_observations sensitivity_training_observations[]
+
+  @@index([store_id, external_cart_id], map: "idx_abandoned_carts_store_external")
 }
 
 /// Individual line items within an abandoned cart.

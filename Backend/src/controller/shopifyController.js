@@ -3,16 +3,14 @@ const logger = require('../utils/logger');
 const { buildCookieOptions } = require('../utils/cookieOptions');
 
 const {exchangeAccessToken,getOrganizationByUser,upsertStore,syncShopifyStore,} = require("../services/shopifyService");
+const { reconcileShopifyWebhooks } = require('../services/shopifyWebhookService');
 
 /**GET /api/v1/shopify/install, Redirect authenticated merchant to Shopify OAuth.*/
 
 exports.installShopify = async (req, res, next) => {
   try {
     const { shop } = req.query;
-    console.log("INCOMING AUTH:", req.headers.authorization);
     logger.info("install_request", {
-      cookieHeader: req.headers.cookie,
-      signedCookies: req.signedCookies,
       hasUser: Boolean(req.user?.id),
     });
 
@@ -118,17 +116,14 @@ exports.shopifyCallback = async (req, res, next) => {
       });
     }
 
-     // DEBUG LOGS
     logger.debug('shopify_callback', {
-      hasCookies: !!req.headers.cookie,
-      signedCookies: Object.keys(req.signedCookies || {}),
       queryKeys: Object.keys(req.query || {}),
     });
 
     const stateContext = getStateContext(state, req.signedCookies, req.cookies);
-    const { decodedState, storedState, userId } = stateContext;
+    const { storedState, userId } = stateContext;
 
-    if (!storedState && !decodedState?.userId) {
+    if (!storedState) {
       return res.status(400).json({
         success: false,
         error: "OAuth session expired",
@@ -143,7 +138,7 @@ exports.shopifyCallback = async (req, res, next) => {
     }
 
     // Verify OAuth state
-    if (!isStateAccepted(storedState, state, decodedState)) {
+    if (!isStateAccepted(storedState, state)) {
       return res.status(400).json({
         success: false,
         error: "Invalid OAuth state",
@@ -170,9 +165,14 @@ exports.shopifyCallback = async (req, res, next) => {
       accessToken,
     });
 
+    await reconcileShopifyWebhooks(store);
+
     // Trigger background sync (do not await)
     syncShopifyStore(store).catch((error) => {
-      logger.error('shopify_sync_failed', { storeId: store?.id, message: error?.message });
+      logger.error('shopify_sync_failed', {
+        store_id: store?.id,
+        error_type: error?.code || error?.name || 'sync_error',
+      });
     });
 
     // Clear OAuth cookies

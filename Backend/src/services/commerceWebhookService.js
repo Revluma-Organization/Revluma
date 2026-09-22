@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { prisma } = require('../configs/database');
 const logger = require('../utils/logger');
+const { rfmSync } = require('./mlService');
 
 function safeCompareHex(actual, expected) {
   if (!actual || !expected || actual.length !== expected.length) return false;
@@ -48,7 +49,35 @@ function customerData(provider, payload) {
   const externalId = String(customer.id || payload.customer_id || `order:${payload.id}`);
   const email = customer.email || payload.email || `${externalId}@redacted.invalid`;
   const name = [customer.first_name, customer.last_name].filter(Boolean).join(' ') || null;
-  return { externalId, email, fullName: name, phone: customer.phone || null };
+  const emailConsent = customer.email_marketing_consent?.state || customer.emailMarketingConsent?.marketingState;
+  const smsConsent = customer.sms_marketing_consent?.state || customer.smsMarketingConsent?.marketingState;
+  return {
+    externalId,
+    email,
+    fullName: name,
+    phone: customer.phone || null,
+    consentEmail: emailConsent == null ? null : ['subscribed', 'SUBSCRIBED'].includes(emailConsent),
+    consentSms: smsConsent == null ? null : ['subscribed', 'SUBSCRIBED'].includes(smsConsent),
+  };
+}
+
+async function recalculateCustomerTotals(tx, customerId) {
+  const aggregate = await tx.orders.aggregate({
+    where: {
+      customer_id: customerId,
+      OR: [{ recovery_status: null }, { recovery_status: { not: 'cancelled' } }],
+    },
+    _count: { id: true },
+    _sum: { total: true },
+  });
+  await tx.customers.update({
+    where: { id: customerId },
+    data: {
+      orders_count: aggregate._count.id,
+      ltv: aggregate._sum.total || 0,
+      updated_at: new Date(),
+    },
+  });
 }
 
 async function upsertOrder(store, provider, payload) {
@@ -68,11 +97,17 @@ async function upsertOrder(store, provider, payload) {
         email: customer.email,
         full_name: customer.fullName,
         phone: customer.phone,
+        consent_email: customer.consentEmail ?? false,
+        consent_sms: customer.consentSms ?? false,
+        consent_updated_at: customer.consentEmail == null && customer.consentSms == null ? null : new Date(),
       },
       update: {
         email: customer.email,
         full_name: customer.fullName,
         phone: customer.phone,
+        ...(customer.consentEmail == null ? {} : { consent_email: customer.consentEmail }),
+        ...(customer.consentSms == null ? {} : { consent_sms: customer.consentSms }),
+        ...(customer.consentEmail == null && customer.consentSms == null ? {} : { consent_updated_at: new Date() }),
       },
     });
 
@@ -88,12 +123,18 @@ async function upsertOrder(store, provider, payload) {
         currency,
         coupon_used: Boolean(payload.discount_codes?.length || payload.coupon_lines?.length),
         ordered_at: orderDate,
+        recovery_status: 'completed',
       },
       update: {
         customer_id: dbCustomer.id,
         total,
         currency,
         ordered_at: orderDate,
+        recovery_status: 'completed',
+        subtotal: Number(payload.subtotal_price ?? payload.subtotal ?? total),
+        discount_amount: Number(payload.total_discounts ?? payload.discount_total ?? 0),
+        coupon_used: Boolean(payload.discount_codes?.length || payload.coupon_lines?.length),
+        coupon_code: payload.discount_codes?.[0]?.code || payload.coupon_lines?.[0]?.code || null,
       },
     });
 
@@ -119,34 +160,122 @@ async function upsertOrder(store, provider, payload) {
       });
     }
 
-    await tx.customers.update({
-      where: { id: dbCustomer.id },
-      data: { orders_count: { increment: 1 }, ltv: { increment: total } },
-    });
+    const externalCartId = payload.checkout_id || payload.cart_token || payload.checkout_token;
+    if (externalCartId) {
+      const cart = await tx.abandoned_carts.findFirst({
+        where: { store_id: store.id, external_cart_id: String(externalCartId) },
+        select: { id: true },
+      });
+      if (cart) {
+        await tx.abandoned_carts.update({
+          where: { id: cart.id },
+          data: { status: 'recovered', recovered_at: orderDate, updated_at: new Date() },
+        });
+        await tx.orders.update({ where: { id: order.id }, data: { abandoned_cart_id: cart.id } });
+      }
+    }
+    await recalculateCustomerTotals(tx, dbCustomer.id);
     return order;
   });
+}
+
+async function cancelOrder(store, payload) {
+  const externalOrderId = String(payload.id || payload.order_id || '');
+  if (!externalOrderId) return null;
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.orders.findUnique({
+      where: { store_id_external_order_id: { store_id: store.id, external_order_id: externalOrderId } },
+    });
+    if (!order) return null;
+    await tx.orders.update({ where: { id: order.id }, data: { recovery_status: 'cancelled' } });
+    await recalculateCustomerTotals(tx, order.customer_id);
+    return order;
+  });
+}
+
+async function upsertAbandonedCart(store, payload) {
+  const externalId = String(payload.id || payload.checkout_id || payload.cart_token || '');
+  if (!externalId) return null;
+  const customer = payload.customer ? customerData(store.platform, payload) : null;
+  const dbCustomer = customer
+    ? await prisma.customers.upsert({
+        where: { store_id_external_id: { store_id: store.id, external_id: customer.externalId } },
+        create: {
+          store_id: store.id, external_id: customer.externalId, email: customer.email,
+          full_name: customer.fullName, phone: customer.phone,
+          consent_email: customer.consentEmail ?? false, consent_sms: customer.consentSms ?? false,
+        },
+        update: {
+          email: customer.email, full_name: customer.fullName, phone: customer.phone,
+          ...(customer.consentEmail == null ? {} : { consent_email: customer.consentEmail }),
+          ...(customer.consentSms == null ? {} : { consent_sms: customer.consentSms }),
+        },
+      })
+    : null;
+  const existing = await prisma.abandoned_carts.findFirst({
+    where: { store_id: store.id, external_cart_id: externalId },
+  });
+  const data = {
+    store_id: store.id,
+    customer_id: dbCustomer?.id || null,
+    external_cart_id: externalId,
+    recovery_url: payload.abandoned_checkout_url || payload.recovery_url || null,
+    cart_value: Number(payload.total_price ?? payload.total ?? 0),
+    currency: payload.currency || 'USD',
+    status: payload.completed_at ? 'recovered' : 'abandoned',
+    abandoned_at: new Date(payload.created_at || Date.now()),
+    recovered_at: payload.completed_at ? new Date(payload.completed_at) : null,
+    updated_at: new Date(),
+  };
+  return existing
+    ? prisma.abandoned_carts.update({ where: { id: existing.id }, data })
+    : prisma.abandoned_carts.create({ data });
 }
 
 async function upsertCustomer(store, payload) {
   const customer = customerData('provider', payload);
   return prisma.customers.upsert({
     where: { store_id_external_id: { store_id: store.id, external_id: customer.externalId } },
-    create: { store_id: store.id, external_id: customer.externalId, email: customer.email, full_name: customer.fullName, phone: customer.phone },
-    update: { email: customer.email, full_name: customer.fullName, phone: customer.phone },
+    create: {
+      store_id: store.id, external_id: customer.externalId, email: customer.email,
+      full_name: customer.fullName, phone: customer.phone,
+      consent_email: customer.consentEmail ?? false, consent_sms: customer.consentSms ?? false,
+    },
+    update: {
+      email: customer.email, full_name: customer.fullName, phone: customer.phone,
+      ...(customer.consentEmail == null ? {} : { consent_email: customer.consentEmail }),
+      ...(customer.consentSms == null ? {} : { consent_sms: customer.consentSms }),
+      ...(customer.consentEmail == null && customer.consentSms == null ? {} : { consent_updated_at: new Date() }),
+    },
   });
 }
 
 async function processCommerceWebhook({ provider, store, topic, payload }) {
-  if (topic === 'app/uninstalled') {
+  const normalizedTopic = String(topic || '').toLowerCase();
+  if (normalizedTopic === 'app/uninstalled') {
     await prisma.stores.update({ where: { id: store.id }, data: { status: 'inactive', access_token: null } });
     return { action: 'store_deactivated' };
   }
-  if (topic.includes('customers/') || topic.includes('customer.')) {
+  if (normalizedTopic.includes('customers/') || normalizedTopic.includes('customer.')) {
     await upsertCustomer(store, payload);
     return { action: 'customer_upserted' };
   }
-  if (topic.includes('orders/') || topic.includes('order.')) {
+  if (normalizedTopic.includes('checkouts/') || normalizedTopic.includes('cart.')) {
+    const cart = await upsertAbandonedCart(store, payload);
+    return { action: 'cart_upserted', cartId: cart?.id || null };
+  }
+  if (normalizedTopic.includes('orders/cancelled') || normalizedTopic.includes('orders/delete') ||
+      normalizedTopic.includes('order.deleted') || payload.cancelled_at) {
+    const order = await cancelOrder(store, payload);
+    return { action: 'order_cancelled', orderId: order?.id || null };
+  }
+  if (normalizedTopic.includes('orders/') || normalizedTopic.includes('order.')) {
     const order = await upsertOrder(store, provider, payload);
+    const rfm = await rfmSync({
+      storeId: store.id,
+      correlationId: `commerce-webhook-${store.id}-${order.id}`,
+    });
+    if (!rfm.success) logger.warn('commerce_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
     return { action: 'order_upserted', orderId: order.id };
   }
   return { action: 'ignored_topic' };
@@ -164,6 +293,10 @@ module.exports = {
   claimDelivery,
   markDelivery,
   processCommerceWebhook,
+  cancelOrder,
+  recalculateCustomerTotals,
+  upsertAbandonedCart,
+  upsertOrder,
   verifyShopifySignature,
   verifyWooCommerceSignature,
 };
