@@ -946,7 +946,8 @@
           <span style="font-size: 12px; color: var(--muted);">or continue with email</span>
           <div style="height: 1px; flex: 1; background: var(--border);"></div>
         </div>
-
+        
+        <div id="mainLoginFields">
         <!-- Email field -->
         <div class="field">
           <label for="email">Email address</label>
@@ -1594,7 +1595,7 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       // User cancelled 2FA, return to standard login fields
       state.temp2FAToken = null;
       el.twoFactorSection.classList.remove('show');
-      el.mainLoginFields.style.display = 'block';
+      if (el.mainLoginFields) el.mainLoginFields.style.display = 'block';
       el.twoFactorCode.value = '';
     });
 
@@ -1668,10 +1669,9 @@ storage.setItem('rv-auth', JSON.stringify(authData));
           
           state.temp2FAToken = loginResult.tempToken;
           
-          // Swap UI: Hide email/password, show 2FA input
-          el.mainLoginFields.style.display = 'none';
-          el.twoFactorSection.classList.add('show');
-          el.twoFactorCode.focus();
+         if (el.mainLoginFields) el.mainLoginFields.style.display = 'none';
+         if (el.twoFactorSection) el.twoFactorSection.classList.add('show');
+         if (el.twoFactorCode) el.twoFactorCode.focus();
           
           return; // Stop execution here and wait for the user to verify!
         }
