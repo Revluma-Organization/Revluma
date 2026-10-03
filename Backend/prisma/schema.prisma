@@ -581,7 +581,7 @@ model organization_members {
   id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organization_id String        @db.Uuid
   user_id         String        @db.Uuid
-  role            String        @default("member")
+  role            String        @default("Owner")
   status          String        @default("active")
   invited_by      String?       @db.Uuid
   invited_at      DateTime?     @db.Timestamptz(6)
