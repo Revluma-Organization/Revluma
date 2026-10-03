@@ -4,5 +4,6 @@ const { authenticateToken } = require('../middlewares/authMiddleware');
 const subscriptionController = require('../controller/subscriptionController');
 
 router.post('/start-trial', authenticateToken, subscriptionController.startTrial);
+router.get('/subscription', authenticateToken, subscriptionController.getCurrent);
 
 module.exports = router;
