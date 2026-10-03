@@ -27,8 +27,13 @@ const {
     evaluateRecommendationOutcomes,
     generateMorningBriefings,
     orchestrate,
+    runIntelligenceAutomation,
 } = require('./mlService');
 const { syncShopifyStore } = require('./shopifySync');
+const { runFeatureJobs } = require('./featureWorkerService');
+const { runRecoveryActions } = require('./recoveryActionService');
+const { runDailyChurnScoring } = require('./churnWorkerService');
+const { runTrainingObservationFinalization } = require('./trainingObservationService');
 
 // -----------------------------------------------------------------------------
 // Configuration
@@ -59,6 +64,26 @@ const STORE_SYNC_INTERVAL_MS = parseInt(
     10
 );
 
+const FEATURE_JOB_INTERVAL_MS = parseInt(
+    process.env.FEATURE_JOB_INTERVAL_MS || '15000',
+    10
+);
+
+const RECOVERY_ACTION_INTERVAL_MS = parseInt(
+    process.env.RECOVERY_ACTION_INTERVAL_MS || '30000',
+    10
+);
+
+const CHURN_SCORING_INTERVAL_MS = parseInt(
+    process.env.CHURN_SCORING_INTERVAL_MS || String(60 * 60 * 1000),
+    10
+);
+
+const INTELLIGENCE_AUTOMATION_INTERVAL_MS = parseInt(
+    process.env.INTELLIGENCE_AUTOMATION_INTERVAL_MS || String(5 * 60 * 1000),
+    10
+);
+
 const LOCK_TTL_SECONDS = parseInt(
     process.env.SCHEDULER_LOCK_TTL_SECONDS || '300',
     10
@@ -81,12 +106,22 @@ let recommendationOutcomesTimer = null;
 let alertQueueTimer = null;
 let morningBriefingsTimer = null;
 let storeSyncTimer = null;
+let featureJobTimer = null;
+let recoveryActionTimer = null;
+let churnScoringTimer = null;
+let intelligenceAutomationTimer = null;
+let trainingObservationTimer = null;
 
 let businessStateRunning = false;
 let recommendationOutcomesRunning = false;
 let alertQueueRunning = false;
 let morningBriefingsRunning = false;
 let storeSyncRunning = false;
+let featureJobRunning = false;
+let recoveryActionRunning = false;
+let churnScoringRunning = false;
+let intelligenceAutomationRunning = false;
+let trainingObservationRunning = false;
 
 let started = false;
 
@@ -115,23 +150,17 @@ end
  */
 async function acquireLock(lockName) {
     if (!isRedisReady()) {
-        logger.warn('scheduler_lock_unavailable', {
+        logger.info('scheduler_local_lock_used', {
             lock: lockName,
             reason: 'redis_not_ready',
         });
-
-        return null;
+        return { local: true, key: lockName, token: null };
     }
 
     const redis = getRedisClient();
 
     if (!redis) {
-        logger.warn('scheduler_lock_unavailable', {
-            lock: lockName,
-            reason: 'redis_client_missing',
-        });
-
-        return null;
+        return { local: true, key: lockName, token: null };
     }
 
     const token = crypto.randomUUID();
@@ -157,7 +186,7 @@ async function acquireLock(lockName) {
     } catch (error) {
         logger.error('scheduler_lock_acquire_failed', {
             lock: lockName,
-            message: error.message,
+            error_type: error.code || error.name || 'lock_error',
         });
 
         return null;
@@ -168,7 +197,7 @@ async function acquireLock(lockName) {
  * Release a lock only if this scheduler instance owns it.
  */
 async function releaseLock(lock) {
-    if (!lock || !isRedisReady()) {
+    if (!lock || lock.local || !isRedisReady()) {
         return;
     }
 
@@ -188,7 +217,7 @@ async function releaseLock(lock) {
     } catch (error) {
         logger.error('scheduler_lock_release_failed', {
             lock: lock.key,
-            message: error.message,
+            error_type: error.code || error.name || 'lock_error',
         });
     }
 }
@@ -253,7 +282,7 @@ async function runBusinessStateRebuild() {
 
                 logger.error('scheduler_business_state_org_exception', {
                     organization_id: organization.id,
-                    message: error.message,
+                    error_type: error.code || error.name || 'processing_error',
                 });
             }
         }
@@ -266,7 +295,7 @@ async function runBusinessStateRebuild() {
         });
     } catch (error) {
         logger.error('scheduler_business_state_failed', {
-            message: error.message,
+            error_type: error.code || error.name || 'processing_error',
             latency_ms: Date.now() - startedAt,
         });
     } finally {
@@ -321,7 +350,7 @@ async function runRecommendationOutcomeEvaluation() {
         });
     } catch (error) {
         logger.error('scheduler_recommendation_outcomes_exception', {
-            message: error.message,
+            error_type: error.code || error.name || 'processing_error',
         });
     } finally {
         recommendationOutcomesRunning = false;
@@ -397,7 +426,7 @@ async function runMorningBriefings() {
         });
     } catch (error) {
         logger.error('scheduler_morning_briefings_exception', {
-            message: error.message,
+            error_type: error.code || error.name || 'processing_error',
         });
     } finally {
         morningBriefingsRunning = false;
@@ -428,6 +457,14 @@ async function runAlertQueue() {
 
     try {
         logger.info('scheduler_alert_queue_started');
+
+        await prisma.alert_queue.updateMany({
+            where: {
+                status: 'processing',
+                updated_at: { lt: new Date(Date.now() - 10 * 60 * 1000) },
+            },
+            data: { status: 'pending', updated_at: new Date() },
+        });
 
         const alerts = await prisma.alert_queue.findMany({
             where: {
@@ -460,7 +497,21 @@ async function runAlertQueue() {
         let failed = 0;
 
         for (const alert of alerts) {
+            const claim = await prisma.alert_queue.updateMany({
+                where: { id: alert.id, status: 'pending' },
+                data: {
+                    status: 'processing',
+                    attempt_count: { increment: 1 },
+                    updated_at: new Date(),
+                },
+            });
+            if (claim.count !== 1) continue;
             try {
+                const members = await prisma.organization_members.findMany({
+                    where: { organization_id: alert.organization_id, status: 'active' },
+                    select: { user_id: true },
+                });
+                if (members.length === 0) throw new Error('alert_has_no_recipients');
                 /*
                  * Alerts that need AI-generated output should go through
                  * mlService.orchestrate().
@@ -476,6 +527,7 @@ async function runAlertQueue() {
                 if (requiresAi) {
                     const result = await orchestrate({
                         organizationId: alert.organization_id,
+                        userId: members[0].user_id,
                         message: alert.message,
                         triggerType: 'alert',
                         triggerPriority:
@@ -498,6 +550,15 @@ async function runAlertQueue() {
                     }
                 }
 
+                await prisma.notifications.createMany({
+                    data: members.map((member) => ({
+                        user_id: member.user_id,
+                        type: alert.alert_type,
+                        message: alert.message,
+                        action_url: alert.action_url,
+                    })),
+                });
+
                 await prisma.alert_queue.update({
                     where: {
                         id: alert.id,
@@ -514,8 +575,7 @@ async function runAlertQueue() {
             } catch (error) {
                 failed++;
 
-                const nextAttemptCount =
-                    alert.attempt_count + 1;
+                const nextAttemptCount = alert.attempt_count + 1;
 
                 await prisma.alert_queue.update({
                     where: {
@@ -526,12 +586,11 @@ async function runAlertQueue() {
                             nextAttemptCount >= 5
                                 ? 'failed'
                                 : 'pending',
-                        attempt_count: nextAttemptCount,
                         failed_at:
                             nextAttemptCount >= 5
                                 ? new Date()
                                 : null,
-                        last_error: error.message.slice(0, 500),
+                        last_error: String(error.code || error.name || 'processing_error').slice(0, 500),
                         updated_at: new Date(),
                     },
                 });
@@ -540,7 +599,7 @@ async function runAlertQueue() {
                     alert_id: alert.id,
                     organization_id: alert.organization_id,
                     attempt_count: nextAttemptCount,
-                    message: error.message,
+                    error_type: error.code || error.name || 'processing_error',
                 });
             }
         }
@@ -553,11 +612,105 @@ async function runAlertQueue() {
         });
     } catch (error) {
         logger.error('scheduler_alert_queue_failed', {
-            message: error.message,
+            error_type: error.code || error.name || 'processing_error',
             latency_ms: Date.now() - startedAt,
         });
     } finally {
         alertQueueRunning = false;
+        await releaseLock(lock);
+    }
+}
+
+async function runFeatureQueue() {
+    if (featureJobRunning) return;
+    const lock = await acquireLock('feature-jobs');
+    if (!lock) return;
+    featureJobRunning = true;
+    try {
+        const result = await runFeatureJobs({ limit: 25 });
+        logger.info('scheduler_feature_jobs_completed', result);
+    } catch (error) {
+        logger.error('scheduler_feature_jobs_failed', { error_type: error.code || error.name || 'worker_error' });
+    } finally {
+        featureJobRunning = false;
+        await releaseLock(lock);
+    }
+}
+
+async function runRecoveryQueue() {
+    if (recoveryActionRunning) return;
+    const lock = await acquireLock('recovery-actions');
+    if (!lock) return;
+    recoveryActionRunning = true;
+    try {
+        const result = await runRecoveryActions({ limit: 25 });
+        logger.info('scheduler_recovery_actions_completed', result);
+    } catch (error) {
+        logger.error('scheduler_recovery_actions_failed', { error_type: error.code || error.name || 'worker_error' });
+    } finally {
+        recoveryActionRunning = false;
+        await releaseLock(lock);
+    }
+}
+
+async function runChurnQueue() {
+    if (churnScoringRunning) return;
+    const lock = await acquireLock('daily-churn');
+    if (!lock) return;
+    churnScoringRunning = true;
+    try {
+        const result = await runDailyChurnScoring({ limit: 100 });
+        logger.info('scheduler_churn_scoring_completed', result);
+    } catch (error) {
+        logger.error('scheduler_churn_scoring_failed', { error_type: error.code || error.name || 'worker_error' });
+    } finally {
+        churnScoringRunning = false;
+        await releaseLock(lock);
+    }
+}
+
+async function runAutomationQueue() {
+    if (intelligenceAutomationRunning) return;
+    const lock = await acquireLock('intelligence-automation');
+    if (!lock) return;
+    intelligenceAutomationRunning = true;
+    try {
+        const result = await runIntelligenceAutomation({
+            correlationId: `scheduler-automation-${Date.now()}`,
+        });
+        if (!result.success) {
+            logger.warn('scheduler_intelligence_automation_failed', {
+                error_type: result.error?.code || 'worker_error',
+            });
+        } else {
+            logger.info('scheduler_intelligence_automation_accepted', {
+                status: result.data?.status || 'accepted',
+            });
+        }
+    } catch (error) {
+        logger.error('scheduler_intelligence_automation_failed', {
+            error_type: error.code || error.name || 'worker_error',
+        });
+    } finally {
+        intelligenceAutomationRunning = false;
+        await releaseLock(lock);
+    }
+}
+
+async function runTrainingObservationQueue() {
+    if (trainingObservationRunning) return;
+    const lock = await acquireLock('training-observations');
+    if (!lock) return;
+    trainingObservationRunning = true;
+    try {
+        const result = await runTrainingObservationFinalization({ limit: 100 });
+        logger.info('scheduler_training_observations_completed', result);
+    } catch (error) {
+        logger.error('scheduler_training_observations_failed', {
+            error_type: error.code || error.name || 'worker_error',
+        });
+    } finally {
+        trainingObservationRunning = false;
         await releaseLock(lock);
     }
 }
@@ -638,6 +791,11 @@ function startScheduler() {
     void runRecommendationOutcomeEvaluation();
     void runAlertQueue();
     void runStoreSync();
+    void runFeatureQueue();
+    void runRecoveryQueue();
+    void runChurnQueue();
+    void runAutomationQueue();
+    void runTrainingObservationQueue();
 
     businessStateTimer = setInterval(
         runBusinessStateRebuild,
@@ -657,6 +815,18 @@ function startScheduler() {
     storeSyncTimer = setInterval(
         runStoreSync,
         STORE_SYNC_INTERVAL_MS
+    );
+
+    featureJobTimer = setInterval(runFeatureQueue, FEATURE_JOB_INTERVAL_MS);
+    recoveryActionTimer = setInterval(runRecoveryQueue, RECOVERY_ACTION_INTERVAL_MS);
+    churnScoringTimer = setInterval(runChurnQueue, CHURN_SCORING_INTERVAL_MS);
+    intelligenceAutomationTimer = setInterval(
+        runAutomationQueue,
+        INTELLIGENCE_AUTOMATION_INTERVAL_MS
+    );
+    trainingObservationTimer = setInterval(
+        runTrainingObservationQueue,
+        CHURN_SCORING_INTERVAL_MS
     );
 
     /*
@@ -705,6 +875,31 @@ function stopScheduler() {
         morningBriefingsTimer = null;
     }
 
+    if (featureJobTimer) {
+        clearInterval(featureJobTimer);
+        featureJobTimer = null;
+    }
+
+    if (recoveryActionTimer) {
+        clearInterval(recoveryActionTimer);
+        recoveryActionTimer = null;
+    }
+
+    if (churnScoringTimer) {
+        clearInterval(churnScoringTimer);
+        churnScoringTimer = null;
+    }
+
+    if (intelligenceAutomationTimer) {
+        clearInterval(intelligenceAutomationTimer);
+        intelligenceAutomationTimer = null;
+    }
+
+    if (trainingObservationTimer) {
+        clearInterval(trainingObservationTimer);
+        trainingObservationTimer = null;
+    }
+
     started = false;
 
     logger.info('scheduler_stopped');
@@ -717,4 +912,10 @@ function stopScheduler() {
 module.exports = {
     startScheduler,
     stopScheduler,
+    runAlertQueue,
+    runChurnQueue,
+    runFeatureQueue,
+    runRecoveryQueue,
+    runAutomationQueue,
+    runTrainingObservationQueue,
 };

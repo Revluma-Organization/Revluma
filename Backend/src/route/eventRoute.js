@@ -1,22 +1,19 @@
 /**
- * Revluma Event Ingestion Routes
+ * Storefront pixel ingestion routes.
  *
- * POST /api/v1/events/ingest        — single pixel event (Shopify webhook)
- * POST /api/v1/events/ingest/batch  — bulk historical import (CSV)
+ * POST /api/v1/events/ingest       - single real-time pixel event
+ * POST /api/v1/events/ingest/batch - bounded pixel event batch
  *
- * Both endpoints are public — no JWT required.
- * Protected by ingestLimiter (high-volume rate limiter).
+ * Both endpoints use a signed store tracking key and a dedicated rate limiter.
  */
 
-const express    = require('express');
-const router     = express.Router();
+const express = require('express');
 const controller = require('../controller/eventController');
 const { ingestLimiter } = require('../middlewares/rateLimiter');
 
-// Single event — Shopify pixel fires this in real time
-router.post('/ingest',       ingestLimiter, controller.ingest);
+const router = express.Router();
 
-// Batch import — CSV export from Shopify Admin for offline training
+router.post('/ingest', ingestLimiter, controller.ingest);
 router.post('/ingest/batch', ingestLimiter, controller.ingestBatch);
 
 module.exports = router;

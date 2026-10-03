@@ -3,9 +3,10 @@ const { prisma } = require('../configs/database');
 const logger = require('../utils/logger');
 
 const ALLOWED_EVENT_TYPES = new Set([
-  'PAGE_VIEW', 'PRODUCT_VIEW', 'ADD_TO_CART', 'REMOVE_FROM_CART',
-  'CHECKOUT_STARTED', 'CHECKOUT_STEP', 'PAYMENT_ATTEMPT', 'PURCHASE',
-  'COUPON_FIELD_VISITED', 'COUPON_ATTEMPT', 'SEARCH', 'SESSION_START',
+  'PAGE_VIEW', 'SCROLL', 'PRODUCT_VIEW', 'ADD_TO_CART', 'REMOVE_FROM_CART',
+  'CHECKOUT_STARTED', 'CHECKOUT_STEP', 'PURCHASE_COMPLETED', 'CUSTOMER_CREATED',
+  'TEXT_COPIED', 'COUPON_REJECTED', 'TAB_SWITCH', 'EXIT_INTENT',
+  'FAILED_PAYMENT', 'FIELD_FOCUS', 'FIELD_BLUR',
 ]);
 
 function getTrackingSecret() {
@@ -82,6 +83,15 @@ async function resolveStoreAndCustomer(storeTrackingKey, customerId, res) {
   return store;
 }
 
+async function batchCustomersBelongToStore(storeId, events) {
+  const customerIds = [...new Set(events.map((event) => event.customer_id).filter(Boolean))];
+  if (customerIds.length === 0) return true;
+  const count = await prisma.customers.count({
+    where: { store_id: storeId, id: { in: customerIds } },
+  });
+  return count === customerIds.length;
+}
+
 async function findExistingEvent(storeId, sourceEventId) {
   return prisma.events.findFirst({
     where: { store_id: storeId, source: 'pixel', source_event_id: sourceEventId },
@@ -89,8 +99,8 @@ async function findExistingEvent(storeId, sourceEventId) {
   });
 }
 
-async function createEvent(storeId, event) {
-  return prisma.events.create({
+async function createEvent(tx, storeId, event) {
+  return tx.events.create({
     data: {
       store_id: storeId,
       session_id: event.session_id,
@@ -130,18 +140,16 @@ exports.ingest = async (req, res, next) => {
     const existing = await findExistingEvent(store.id, event.id);
     if (existing) return res.status(200).json({ success: true, event_id: existing.id, duplicate: true });
 
-    const created = await createEvent(store.id, event);
-    await prisma.feature_jobs.create({
-      data: {
-        store_id: store.id,
-        event_id: created.id,
-        idempotency_key: `pixel:${store.id}:${event.id}`,
-      },
-    }).catch((error) => {
-      logger.warn('feature_job_enqueue_failed', {
-        event_id: created.id,
-        error_type: error.code || 'queue_error',
+    const created = await prisma.$transaction(async (tx) => {
+      const persisted = await createEvent(tx, store.id, event);
+      await tx.feature_jobs.create({
+        data: {
+          store_id: store.id,
+          event_id: persisted.id,
+          idempotency_key: `pixel:${store.id}:${event.id}`,
+        },
       });
+      return persisted;
     });
     logger.info('event_ingested', { event_id: created.id, store_id: store.id, event_type: event.event_type });
     return res.status(201).json({ success: true, event_id: created.id });
@@ -173,6 +181,16 @@ exports.ingestBatch = async (req, res, next) => {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Invalid event at index ${invalidIndex}.` } });
     }
 
+    if (!(await batchCustomersBelongToStore(store.id, events))) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'One or more customer_id values do not belong to the receiving store.',
+        },
+      });
+    }
+
     const records = events.map((event) => ({
       store_id: store.id,
       session_id: event.session_id,
@@ -186,7 +204,26 @@ exports.ingestBatch = async (req, res, next) => {
       received_at: new Date(),
     }));
 
-    const result = await prisma.events.createMany({ data: records, skipDuplicates: true });
+    const result = await prisma.$transaction(async (tx) => {
+      const inserted = await tx.events.createMany({ data: records, skipDuplicates: true });
+      const persistedEvents = await tx.events.findMany({
+        where: {
+          store_id: store.id,
+          source: 'pixel',
+          source_event_id: { in: events.map((event) => event.id) },
+        },
+        select: { id: true, source_event_id: true },
+      });
+      await tx.feature_jobs.createMany({
+        data: persistedEvents.map((persisted) => ({
+          store_id: store.id,
+          event_id: persisted.id,
+          idempotency_key: `pixel:${store.id}:${persisted.source_event_id}`,
+        })),
+        skipDuplicates: true,
+      });
+      return inserted;
+    });
     logger.info('batch_ingested', { store_id: store.id, count: result.count });
     return res.status(201).json({ success: true, ingested: result.count, skipped: events.length - result.count });
   } catch (error) {

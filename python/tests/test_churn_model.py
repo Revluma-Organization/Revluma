@@ -339,3 +339,14 @@ def test_production_registration_requires_real_data_and_every_quality_gate(
         meets_auc=meets_auc,
         meets_high_risk_precision=meets_precision,
     ) is expected
+
+
+def test_production_registration_requires_the_early_warning_model():
+    assert not _is_production_eligible(
+        used_real_data=True,
+        below_minimum=False,
+        labels_are_observed=True,
+        meets_auc=True,
+        meets_high_risk_precision=True,
+        early_warning_model_available=False,
+    )

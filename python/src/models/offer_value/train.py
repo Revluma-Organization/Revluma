@@ -183,7 +183,9 @@ def _load_real_training_rows(db_connection) -> pd.DataFrame:
                 SELECT o.customer_id, o.session_id, o.discount_pct, ac.pss_score
                 FROM orders o
                 JOIN abandoned_carts ac ON ac.session_id = o.session_id
-                WHERE o.recovery_status = 'CONVERTED'
+                WHERE LOWER(COALESCE(o.recovery_status, '')) IN
+                      ('converted', 'recovered', 'completed')
+                  AND o.abandoned_cart_id IS NOT NULL
                   AND o.discount_pct IS NOT NULL
                   AND o.session_id IS NOT NULL
                 """

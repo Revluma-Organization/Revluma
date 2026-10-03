@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
+from src.models.timing import predict as timing_predict
 from src.models.timing import train as timing_train
 from src.models.timing.predict import predict
 from src.models.timing.train import (
@@ -25,6 +26,22 @@ from src.models.timing.train import (
 
 
 NOW = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+
+
+def test_registry_model_is_loaded_once_and_cached(monkeypatch):
+    model = object()
+    calls = []
+
+    def fake_load_model(uri):
+        calls.append(uri)
+        return model
+
+    timing_predict._model_cache.clear()
+    monkeypatch.setattr(timing_predict, "load_registered_model", fake_load_model)
+
+    assert timing_predict.load_model() is model
+    assert timing_predict.load_model() is model
+    assert calls == ["send_time"]
 
 
 def test_training_uses_the_seven_canonical_features():

@@ -850,14 +850,16 @@ def _is_production_eligible(
     labels_are_observed: bool,
     meets_auc: bool,
     meets_high_risk_precision: bool,
+    early_warning_model_available: bool = True,
 ) -> bool:
-    """Allow registration only for valid observed outcomes and quality gates."""
+    """Allow registration only when both M4 layers and all gates are valid."""
     return (
         used_real_data
         and not below_minimum
         and labels_are_observed
         and meets_auc
         and meets_high_risk_precision
+        and early_warning_model_available
     )
 
 
@@ -961,6 +963,7 @@ def train(run_name: str = "m4-churn-training", db_connection=None) -> dict:
             labels_are_observed=labels_are_observed,
             meets_auc=meets_auc,
             meets_high_risk_precision=meets_high_risk_precision,
+            early_warning_model_available=early_model is not None,
         )
         mlflow.set_tag(
             "quality_gates_passed",

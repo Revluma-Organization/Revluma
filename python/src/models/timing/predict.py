@@ -7,8 +7,9 @@ import math
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
-import mlflow.sklearn
 import pandas as pd
+
+from src.config.model_registry import load_registered_model
 
 from .train import (
     CART_VALUE_TIER_MAP,
@@ -33,11 +34,19 @@ GLOBAL_BASELINES = {
     "whatsapp": (3, 18, 30),
 }
 
+_model_cache: dict[str, Any] = {}
+
 
 def load_model(merchant_id: str = "") -> Any:
     """Load the registered model without exposing registry error details."""
+    if "send_time" in _model_cache:
+        return _model_cache["send_time"]
     try:
-        model = mlflow.sklearn.load_model("models:/send_time/Production")
+        model = load_registered_model("send_time")
+        if model is None:
+            _model_cache["send_time"] = None
+            return None
+        _model_cache["send_time"] = model
         logger.info("m3_model_loaded", extra={"source": "registry"})
         return model
     except Exception as exc:
@@ -45,6 +54,7 @@ def load_model(merchant_id: str = "") -> Any:
             "m3_model_load_failed",
             extra={"error_type": type(exc).__name__},
         )
+        _model_cache["send_time"] = None
         return None
 
 

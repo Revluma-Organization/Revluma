@@ -27,6 +27,9 @@ const internalRoutes      = require('./route/internalRoute');
 const commerceWebhookRoute = require('./route/commerceWebhookRoute');
 const messageWebhookRoute = require('./route/messageWebhookRoute');
 const subscriptionController = require('./controller/subscriptionController');
+const { prisma } = require('./configs/database');
+const { isRedisReady } = require('./configs/redis');
+const { checkPythonHealth } = require('./services/mlService');
 
 
 
@@ -108,6 +111,48 @@ app.use('/internal', internalRoutes);
 // ── Health check
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/ready', async (req, res) => {
+  let databaseReady = false;
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    databaseReady = true;
+  } catch {
+    databaseReady = false;
+  }
+  const python = await checkPythonHealth();
+  const automationEnabled = process.env.BETA_AUTOMATION_KILL_SWITCH === 'false';
+  const requiredAutomationConfig = [
+    'BACKEND_URL',
+    'SHOPIFY_API_KEY',
+    'SHOPIFY_API_SECRET',
+    'SHOPIFY_REDIRECT_URI',
+    'SHOPIFY_TOKEN_ENCRYPTION_KEY',
+    'SENDGRID_API_KEY',
+    'SENDGRID_FROM_EMAIL',
+    'SENDGRID_WEBHOOK_VERIFICATION_KEY',
+  ];
+  const automationConfigMissing = requiredAutomationConfig.filter(
+    (name) => !String(process.env[name] || '').trim()
+  );
+  const redisConfigured = Boolean(process.env.REDIS_URL || process.env.REDIS_HOST);
+  const automationReady = automationEnabled &&
+    automationConfigMissing.length === 0 &&
+    redisConfigured &&
+    isRedisReady();
+  const ready = databaseReady && python.healthy && (!automationEnabled || automationReady);
+  return res.status(ready ? 200 : 503).json({
+    status: ready ? 'ready' : 'not_ready',
+    database_ready: databaseReady,
+    python_ready: python.healthy,
+    python_model_status: python.modelStatus || null,
+    python_models_missing: python.modelsMissing || [],
+    beta_automation_enabled: automationEnabled,
+    beta_automation_ready: automationReady,
+    beta_automation_config_missing: automationConfigMissing,
+    redis_ready: isRedisReady(),
+  });
 });
 
 // ── Catch-all for unknown routes

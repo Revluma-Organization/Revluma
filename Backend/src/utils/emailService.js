@@ -235,10 +235,12 @@ const emailService = {
       };
 
       const result = await sgMail.send(msg);
-      logger.info('welcome_email_sent', { to: recipientEmail });
+      logger.info('welcome_email_sent');
       return true;
     } catch (error) {
-      logger.error('welcome_email_failed', { to: recipientEmail, message: error?.message || error });
+      logger.error('welcome_email_failed', {
+        error_type: error?.code || error?.name || 'email_provider_error',
+      });
       throw error;
     }
   },
@@ -345,7 +347,9 @@ const emailService = {
       message: "Verification email sent successfully.",
     };
   } catch (error) {
-    logger.error('verification_email_failed', { to: recipientEmail, message: error?.message || error });
+    logger.error('verification_email_failed', {
+      error_type: error?.code || error?.name || 'email_provider_error',
+    });
     // Do NOT throw — user was created successfully. Email failure must not block registration.
     // The user can request a resend from the verify-email page.
     return { success: false, message: 'Verification email could not be sent.' };
@@ -427,7 +431,9 @@ const emailService = {
       await sgMail.send(msg);
       return true;
     } catch (error) {
-      logger.error('password_reset_email_failed', { message: error?.message || error });
+      logger.error('password_reset_email_failed', {
+        error_type: error?.code || error?.name || 'email_provider_error',
+      });
       throw new Error('Failed to send password reset email.');
     }
   },
@@ -493,7 +499,9 @@ const emailService = {
       await sgMail.send(msg);
       return true;
     } catch (error) {
-      logger.error('password_changed_email_failed', { message: error?.message || error });
+      logger.error('password_changed_email_failed', {
+        error_type: error?.code || error?.name || 'email_provider_error',
+      });
       // Non-critical — don't throw, just log
       return false;
     }
@@ -567,7 +575,9 @@ const emailService = {
       await sgMail.send(msg);
       return true;
     } catch (error) {
-      logger.error('team_invite_email_failed', { message: error?.message || error });
+      logger.error('team_invite_email_failed', {
+        error_type: error?.code || error?.name || 'email_provider_error',
+      });
       throw new Error('Failed to send team invite email.');
     }
   },
@@ -619,10 +629,12 @@ const emailService = {
       };
 
       await sgMail.send(msg);
-      logger.info('notification_email_sent', { to: recipientEmail });
+      logger.info('notification_email_sent');
       return true;
     } catch (error) {
-      logger.error('notification_email_failed', { to: recipientEmail, message: error?.message || error });
+      logger.error('notification_email_failed', {
+        error_type: error?.code || error?.name || 'email_provider_error',
+      });
       throw error;
     }
   },

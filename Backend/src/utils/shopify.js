@@ -19,7 +19,7 @@ function decodeState(state) {
 function getStateContext(state, signedCookies = {}, cookies = {}) {
   const decodedState = decodeState(state);
   const storedState = signedCookies?.shopify_state ?? cookies?.shopify_state;
-  const userId = signedCookies?.shopify_user ?? cookies?.shopify_user ?? signedCookies?.oauth_user ?? cookies?.oauth_user ?? decodedState?.userId;
+  const userId = signedCookies?.shopify_user ?? cookies?.shopify_user ?? signedCookies?.oauth_user ?? cookies?.oauth_user;
 
   return {
     decodedState,
@@ -28,11 +28,7 @@ function getStateContext(state, signedCookies = {}, cookies = {}) {
   };
 }
 
-function isStateAccepted(storedState, incomingState, decodedState) {
-  if (decodedState?.userId && incomingState) {
-    return true;
-  }
-
+function isStateAccepted(storedState, incomingState) {
   return Boolean(storedState && incomingState && storedState === incomingState);
 }
 
@@ -52,9 +48,19 @@ const generateState = (userId) => {
 
 /**Build Shopify OAuth URL*/
 const buildInstallUrl = ({ shop, state }) => {
+  const configuredScopes = String(process.env.SHOPIFY_SCOPES || '')
+    .split(',')
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+  const scope = [...new Set([
+    ...configuredScopes,
+    'read_orders',
+    'read_customers',
+    'write_discounts',
+  ])].join(',');
   const params = new URLSearchParams({
     client_id: process.env.SHOPIFY_API_KEY,
-    scope: process.env.SHOPIFY_SCOPES,
+    scope,
     redirect_uri: process.env.SHOPIFY_REDIRECT_URI,
     state,
   });

@@ -54,11 +54,12 @@ per-class F1, AUC-ROC, average precision, Brier score, and log loss in a
 separate MLflow run. A real-data run may register
 `sensitivity_pss`, `sensitivity_css`, and `sensitivity_tss` only when it has at
 least 500 labeled sessions and achieves AUC-ROC ≥ 0.75 and minimum per-class F1
-≥ 0.65. Synthetic runs are logged with `production_eligible=false`, are not
-registered, and do not establish production performance or fairness. Serving
-loads only the `Production` stage and returns the documented neutral fallback
-when any of the three models is unavailable.
+≥ 0.65. Synthetic runs are logged with `production_eligible=false` and do not
+establish production performance or fairness. Controlled-beta serving checks
+each model's `beta` alias first and falls back to `production`; a
+production-only deployment checks only `production`. It returns the documented neutral fallback
+when any required model is unavailable.
 
-The backend work needed to collect immutable sensitivity labels and persist
-scores is in
+The Backend captures immutable sensitivity snapshots and finalizes their
+seven-day observed labels automatically. The complete contract is in
 [`docs/BACKEND_IMPLEMENTATION_GUIDE.md`](../../../../docs/BACKEND_IMPLEMENTATION_GUIDE.md).

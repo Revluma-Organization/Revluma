@@ -44,7 +44,10 @@ async function isPasswordPwned(password) {
       return hashSuffix === suffix;
     });
   } catch (err) {
-    logger.warn('hibp_check_failed', { message: err?.message || err, note: 'fail-open' });
+    logger.warn('hibp_check_failed', {
+      error_type: err?.code || err?.name || 'hibp_error',
+      note: 'fail-open',
+    });
     return false;
   } finally {
     clearTimeout(timer);

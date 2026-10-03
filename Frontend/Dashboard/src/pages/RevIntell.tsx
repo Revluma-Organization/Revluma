@@ -334,8 +334,8 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
   );
 }
 
-const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2: string }> = ({
-  response, isDark, t1, t2,
+const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2: string; onSend?: (text: string) => void }> = ({
+  response, isDark, t1, t2, onSend,
 }) => {
   const type = response.response_type;
 
@@ -425,7 +425,7 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
                   } else if (action.tool === "ask_rev") {
                     // Send a follow-up message to Rev
                     const followUp = action.params?.message as string;
-                    if (followUp) send(followUp);
+                    if (followUp) onSend?.(followUp);
                   }
                   // Other tool types will be wired as capabilities are built
                 }}
@@ -459,9 +459,9 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function Bubble({ msg, onCopy, onRetry, isDark, t1, t2 }: {
+function Bubble({ msg, onCopy, onRetry, onSend, isDark, t1, t2 }: {
   msg: Message; onCopy: (t: string) => void;
-  onRetry: () => void; isDark: boolean; t1: string; t2: string;
+  onRetry: () => void; onSend?: (text: string) => void; isDark: boolean; t1: string; t2: string;
 }) {
   const isRev = msg.role === "rev";
 
@@ -511,7 +511,7 @@ function Bubble({ msg, onCopy, onRetry, isDark, t1, t2 }: {
 
         {!msg.isStreaming && !msg.hasError && msg.content && (
           typeof msg.content === "object" && "response_type" in (msg.content as object)
-            ? <ResponseCard response={msg.content as RevResponse} isDark={isDark} t1={t1} t2={t2} />
+            ? <ResponseCard response={msg.content as RevResponse} isDark={isDark} t1={t1} t2={t2} onSend={onSend} />
             : <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: t1, margin: 0 }}>
                 {String(msg.content)}
               </p>
@@ -735,6 +735,10 @@ export default function RevIntell() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
+  // Set right before we navigate() to a conversation we just created ourselves,
+  // so the URL-sync effect below doesn't redundantly re-fetch and clobber the
+  // (already correct) optimistic messages with a fresh server round trip.
+  const justCreatedIdRef = useRef<string | null>(null);
 
   // Scroll to bottom when messages change
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, thinking]);
@@ -819,6 +823,13 @@ export default function RevIntell() {
   useEffect(() => {
     if (urlConvId) {
       setActiveId(urlConvId);
+      // If this URL change is us navigating to a conversation we just created
+      // in send() below, our local messages are already the authoritative
+      // copy — skip the reload so it can't overwrite them with a duplicate.
+      if (justCreatedIdRef.current === urlConvId) {
+        justCreatedIdRef.current = null;
+        return;
+      }
       loadConversation(urlConvId);
     } else {
       setActiveId(null);
@@ -908,6 +919,7 @@ export default function RevIntell() {
         // Navigate to conversation URL if this is a new conversation
         const convId = data.conversation_id;
         if (convId && convId !== activeId) {
+          justCreatedIdRef.current = convId;
           setActiveId(convId);
           navigate(`/dashboard/rev-intell/${convId}`, { replace: true });
           loadConversations(); // refresh sidebar
@@ -1221,7 +1233,7 @@ export default function RevIntell() {
           <div className="max-w-2xl mx-auto px-5 pt-14 pb-4">
             {messages.map(msg => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
-                onRetry={handleRetry} isDark={isDark} t1={t1} t2={t2} />
+                onRetry={handleRetry} onSend={send} isDark={isDark} t1={t1} t2={t2} />
             ))}
             <div ref={bottomRef} />
           </div>

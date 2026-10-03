@@ -38,7 +38,10 @@ const exchangeAccessToken = async (shop, code) => {
 
     return response.data.access_token;
   } catch (error) {
-    logger.error('shopify_token_exchange_failed', { message: error.response?.data || error.message });
+    logger.error('shopify_token_exchange_failed', {
+      error_type: error.code || error.name || 'shopify_exchange_error',
+      provider_status: error.response?.status || null,
+    });
 
     throw new Error("Failed to exchange Shopify authorization code.");
   }
@@ -110,7 +113,10 @@ const syncShopifyStore = async (store) => {
     const { syncShopifyStore: runSync } = require('./shopifySync');
     return await runSync(store);
   } catch (error) {
-    logger.error('shopify_sync_failed', { shop_domain: store.shop_domain, message: error.message });
+    logger.error('shopify_sync_failed', {
+      store_id: store.id,
+      error_type: error.code || error.name || 'shopify_sync_error',
+    });
     throw error;
   }
 };

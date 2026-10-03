@@ -54,10 +54,19 @@ const createAccessToken = (userId) => jwt.sign({
   assert.ok(decoded, 'expected Shopify state to decode successfully');
   assert.strictEqual(decoded.userId, 'user-456');
 
-  const stateContext = getStateContext(state, {}, {});
+  const missingCookieContext = getStateContext(state, {}, {});
+  assert.strictEqual(missingCookieContext.userId, undefined);
+  assert.ok(missingCookieContext.decodedState, 'state payload may be decoded for diagnostics only');
+  assert.strictEqual(isStateAccepted(undefined, state), false, 'missing state cookies must fail closed');
+
+  const stateContext = getStateContext(
+    state,
+    { shopify_state: state, shopify_user: 'user-456' },
+    {}
+  );
   assert.strictEqual(stateContext.userId, 'user-456');
-  assert.ok(stateContext.decodedState, 'expected state context to recover the user id from the encoded payload');
-  assert.strictEqual(isStateAccepted(undefined, state, stateContext.decodedState), true, 'expected callback to accept a state recovered from the encoded payload when cookies are missing');
+  assert.strictEqual(isStateAccepted(stateContext.storedState, state), true);
+  assert.strictEqual(isStateAccepted(stateContext.storedState, `${state}-tampered`), false);
 
   let nextCalled = false;
   const authReq = {

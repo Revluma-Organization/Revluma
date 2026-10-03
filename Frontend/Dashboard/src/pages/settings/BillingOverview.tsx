@@ -72,24 +72,72 @@ export const BillingOverview: FC = () => {
   const fetchBillingOverview = useCallback(async () => {
     setIsLoadingOverview(true);
     try {
-      const res = await api.get<BillingOverviewData>(
-        "/billing/overview",
-        undefined,
-        { skipAuthRedirect: true }
-      );
-      if (res && res.data && res.data.planName) {
-        setOverviewData(res.data);
+      // Updated path
+      const res = await api.get<{
+        success: boolean;
+        data: {
+          status?: string;
+          plan?: string;
+          planName?: string;
+          trial_ends_at?: string;
+          renewalDate?: string;
+          priceFormatted?: string;
+          trackedVisitors?: { used: number; limit: number };
+          apiRequests?: { used: number; limit: number };
+          workflows?: { used: number; limit: number };
+          defaultCard?: BillingOverviewData["defaultCard"];
+          latestInvoice?: BillingOverviewData["latestInvoice"];
+        };
+      }>("/billing/subscription", undefined, { skipAuthRedirect: true });
+
+      // Read subscription data from response.data.data
+      const sub = res?.data?.data;
+
+      if (sub) {
+        setOverviewData({
+          planName: sub.planName || sub.plan || "Free Plan",
+          priceFormatted: sub.priceFormatted || (sub.status === "in_trial" ? "$0.00 (Trial)" : "$0.00 / month"),
+          renewalDate: sub.renewalDate || sub.trial_ends_at || "N/A",
+          status: sub.status === "in_trial" ? "In Trial" : (sub.status || "Active"),
+          trackedVisitors: sub.trackedVisitors || FALLBACK_BILLING_OVERVIEW.trackedVisitors,
+          apiRequests: sub.apiRequests || FALLBACK_BILLING_OVERVIEW.apiRequests,
+          workflows: sub.workflows || FALLBACK_BILLING_OVERVIEW.workflows,
+          defaultCard: sub.defaultCard,
+          latestInvoice: sub.latestInvoice,
+        });
       } else {
         setOverviewData(FALLBACK_BILLING_OVERVIEW);
       }
     } catch (err) {
-      console.warn("Failed to fetch billing overview from API:", err);
+      console.warn("Failed to fetch billing subscription from API:", err);
       setOverviewData(FALLBACK_BILLING_OVERVIEW);
     } finally {
       setIsLoadingOverview(false);
     }
   }, []);
 
+  const [isStartingTrial, setIsStartingTrial] = useState<boolean>(false);
+
+  const handleStartTrial = async () => {
+    setIsStartingTrial(true);
+    try {
+      const res = await api.post<{
+        success: boolean;
+        data: { status: string; trial_ends_at: string };
+      }>("/billing/start-trial");
+
+      if (res.data?.success) {
+        setToastMessage("Your 14-day free trial has been activated!");
+        await fetchBillingOverview(); // Refresh subscription data from backend
+      }
+    } catch (err) {
+      console.error("Failed to start trial:", err);
+      setToastMessage("Could not start trial. You may have already used it.");
+    } finally {
+      setIsStartingTrial(false);
+    }
+  };
+  
   useEffect(() => {
     fetchBillingOverview();
   }, [fetchBillingOverview]);
@@ -206,7 +254,9 @@ export const BillingOverview: FC = () => {
             <span>Loading billing overview details...</span>
           </div>
         ) : (
-          <div className="relative flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
+          
+      <div className="relative flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
+            {/* Left Column: Plan Details */}
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2.5">
                 <Badge className="border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-300">
@@ -241,15 +291,37 @@ export const BillingOverview: FC = () => {
               </div>
             </div>
 
+            {/* Right Column: Action Buttons */}
             <div className="flex flex-col gap-3 sm:flex-row lg:flex-col lg:items-end">
-              <Button
-                type="button"
-                onClick={() => navigate("/dashboard/settings/subscription")}
-                className="h-11 w-full bg-sky-600 px-6 font-semibold text-white shadow-lg shadow-sky-600/20 transition-all hover:bg-sky-500 sm:w-auto"
-              >
-                <Sparkles className="mr-2 h-4 w-4 text-sky-200" />
-                <span>Manage Subscription</span>
-              </Button>
+              {overviewData.status !== "In Trial" && overviewData.planName === "Free Plan" ? (
+                <Button
+                  type="button"
+                  onClick={handleStartTrial}
+                  disabled={isStartingTrial}
+                  className="h-11 w-full bg-gradient-to-r from-sky-500 to-indigo-600 px-6 font-semibold text-white shadow-lg shadow-sky-500/25 transition-all hover:opacity-95 sm:w-auto"
+                >
+                  {isStartingTrial ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin text-white" />
+                      <span>Activating Trial…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4 text-sky-200" />
+                      <span>Start 14-Day Free Trial</span>
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={() => navigate("/dashboard/settings/subscription")}
+                  className="h-11 w-full bg-sky-600 px-6 font-semibold text-white shadow-lg shadow-sky-600/20 transition-all hover:bg-sky-500 sm:w-auto"
+                >
+                  <Sparkles className="mr-2 h-4 w-4 text-sky-200" />
+                  <span>Manage Subscription</span>
+                </Button>
+              )}
 
               <Button
                 type="button"
@@ -257,7 +329,7 @@ export const BillingOverview: FC = () => {
                 onClick={() => navigate("/dashboard/settings/subscription")}
                 className="h-11 w-full border-slate-700 bg-slate-900/80 px-5 text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white sm:w-auto"
               >
-                <span>Upgrade Plan</span>
+                <span>View All Plans</span>
                 <ChevronRight className="ml-1.5 h-4 w-4 text-slate-400" />
               </Button>
             </div>

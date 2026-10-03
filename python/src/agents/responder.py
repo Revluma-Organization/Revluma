@@ -673,8 +673,8 @@ def compose_analysis(message: str, understanding, state_json: str, agent_json: s
         + "}\n\n"
         + "CRITICAL: Actions must map to real tools: view_carts, view_customers, view_revenue, "
         + "create_campaign, view_analytics, view_products, view_checkout. "
-        + "Return exactly two or three actions using only those real tools. "
-        + "Never invent fake actions."
+        + "If no real action applies, return empty actions array. Never invent fake actions. "
+        + "Two or three maximum."
     )
     for attempt in range(2):
         try:

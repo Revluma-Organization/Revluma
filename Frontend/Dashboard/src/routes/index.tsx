@@ -28,6 +28,7 @@ import PaymentMethods from "../pages/settings/PaymentMethods";
 import InvoiceHistory from "../pages/settings/InvoiceHistory";
 import BillingOverview from "../pages/settings/BillingOverview";
 import SettingsPlaceholder from "../pages/settings/SettingsPlaceholder";
+import Automation from "../pages/settings/Automation";
 
 export function DashboardRoutes() {
   return (
@@ -72,7 +73,7 @@ export function DashboardRoutes() {
           
           {/* Intelligence & Automation */}
           <Route path="ai" element={<SettingsPlaceholder title="AI Settings" />} />
-          <Route path="automation" element={<SettingsPlaceholder title="Automation" />} />
+          <Route path="automation" element={<Automation />} />
           <Route path="customer-data" element={<SettingsPlaceholder title="Customer Data" />} />
           {/* analytics is already defined above, but settings/analytics is separate */}
           <Route path="analytics" element={<SettingsPlaceholder title="Analytics Settings" />} />

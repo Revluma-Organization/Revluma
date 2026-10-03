@@ -20,10 +20,24 @@ export const OnboardingPaywallModal: FC<OnboardingPaywallModalProps> = ({
   const [processingPlanId, setProcessingPlanId] = useState<string | null>(null);
   const [isStartingTrial, setIsStartingTrial] = useState<boolean>(false);
 
-  // UX Logic: Only show if explicitly open AND they actually need to see it
-  const shouldShow =
-    isOpen && (userStatus === "free" || userStatus === "trial_expired");
+  // 1. Read session storage on load
+  const [isDismissed, setIsDismissed] = useState<boolean>(() => {
+    return sessionStorage.getItem("revluma_upgrade_dismissed") === "true";
+  });
 
+  // 2. Save to session storage and close
+  const handleDismiss = () => {
+    sessionStorage.setItem("revluma_upgrade_dismissed", "true");
+    setIsDismissed(true);
+    onClose();
+  };
+
+  // Only show if open, not dismissed this session, and on free/expired tier
+  const shouldShow =
+    isOpen &&
+    !isDismissed &&
+    (userStatus === "free" || userStatus === "trial_expired");
+  
   // Real Pricing Data Strategy based on Subscription Page
   const plans = [
     {
@@ -80,17 +94,13 @@ export const OnboardingPaywallModal: FC<OnboardingPaywallModalProps> = ({
   const handleStartTrial = async () => {
     setIsStartingTrial(true);
     try {
-      // BACKEND TODO: 
-      // Backend needs to ensure this endpoint updates the user's DB status 
-      // to "in_trial" and sets a trial_ends_at date in the database.
       await api.post("/billing/start-trial", undefined, { skipAuthRedirect: true });
-      
-      // Trial successfully started, close the modal to let them explore
-      onClose();
     } catch (err) {
-      console.error("Failed to start trial:", err);
+      console.warn("Trial endpoint not ready on backend yet:", err);
     } finally {
       setIsStartingTrial(false);
+      // Always dismiss so the user is never stuck in an overlay
+      handleDismiss();
     }
   };
 
@@ -118,7 +128,7 @@ export const OnboardingPaywallModal: FC<OnboardingPaywallModalProps> = ({
 
             {/* Always-Available Close Button */}
             <button
-              onClick={onClose}
+              onClick={handleDismiss}
               disabled={isStartingTrial || processingPlanId !== null}
               className="absolute right-6 top-6 z-50 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white disabled:opacity-50"
             >

@@ -43,12 +43,44 @@ def disable_external_model_loading(monkeypatch):
         },
     )
 
-def test_health_check():
+def test_health_check(monkeypatch):
+    monkeypatch.setattr(
+        serving_api,
+        "_all_loaded_model_names",
+        lambda: ["abandonment"],
+    )
     response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
-    assert "models_loaded" in data
-    assert "status" in data
+    assert data["status"] == "ok"
+    assert data["model_status"] == "partial_fallback"
+    assert data["models_ready"] is False
+    assert data["production_models_ready"] is False
+    assert data["models_loaded"] == ["abandonment"]
+    assert "churn_risk" in data["models_missing"]
+    assert "mlflow_remote_configured" in data
+
+
+def test_platform_sync_delegates_to_backend(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            captured["status_checked"] = True
+
+    def fake_post(url, **kwargs):
+        captured.update({"url": url, **kwargs})
+        return FakeResponse()
+
+    monkeypatch.setenv("BACKEND_URL", "https://backend.test/")
+    monkeypatch.setattr(serving_api, "ML_INTERNAL_KEY", "test-internal-key")
+    monkeypatch.setattr(serving_api.httpx, "post", fake_post)
+
+    assert serving_api._trigger_platform_sync("store-id", "shopify") is True
+    assert captured["url"] == "https://backend.test/internal/store-sync"
+    assert captured["json"] == {"store_id": "store-id", "platform": "shopify"}
+    assert captured["headers"] == {"x-internal-key": "test-internal-key"}
+    assert captured["status_checked"] is True
 
 
 def test_orchestrate_forwards_scheduler_trigger_context(monkeypatch):
@@ -180,6 +212,128 @@ def test_internal_morning_briefings_returns_sanitized_job_totals(monkeypatch):
         "failed": 1,
         "error": "partial_failure",
     }
+
+
+def test_internal_business_state_rebuild_returns_job_result(monkeypatch):
+    expected = {
+        "organization_id": "11111111-1111-1111-1111-111111111111",
+        "state_id": "22222222-2222-2222-2222-222222222222",
+        "computation_status": "complete",
+        "next_rebuild_at": "2026-09-13T12:15:00Z",
+        "warnings": [],
+    }
+    monkeypatch.setattr(
+        serving_api,
+        "_rebuild_business_state",
+        lambda _organization_id: serving_api.BusinessStateRebuildResponse(**expected),
+    )
+
+    response = client.post(
+        "/internal/business-state/rebuild",
+        json={"organization_id": expected["organization_id"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == expected
+
+
+def test_internal_business_state_rebuild_requires_organization_id():
+    response = client.post("/internal/business-state/rebuild", json={})
+
+    assert response.status_code == 422
+
+
+def test_internal_recommendation_outcomes_returns_processed_count(monkeypatch):
+    captured = {}
+
+    def fake_evaluate(limit):
+        captured["limit"] = limit
+        return 7
+
+    monkeypatch.setattr(serving_api, "_evaluate_due_recommendation_outcomes", fake_evaluate)
+
+    response = client.post(
+        "/internal/recommendation-outcomes/evaluate",
+        json={"limit": 25},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"processed": 7}
+    assert captured["limit"] == 25
+
+
+def test_internal_recommendation_outcomes_rejects_excessive_limit():
+    response = client.post(
+        "/internal/recommendation-outcomes/evaluate",
+        json={"limit": 1001},
+    )
+
+    assert response.status_code == 422
+
+
+def test_internal_feature_compute_returns_canonical_envelope(monkeypatch):
+    expected = {
+        "session_id": "session-1",
+        "customer_id": "customer-1",
+        "features": {"scroll_depth_pct": 75.0},
+    }
+    captured = {}
+
+    def fake_compute(customer_id, events):
+        captured["customer_id"] = customer_id
+        captured["events"] = events
+        return expected
+
+    monkeypatch.setattr(serving_api, "_compute_session_features", fake_compute)
+    response = client.post(
+        "/internal/features/compute",
+        json={
+            "customer_id": "customer-1",
+            "session_events": [
+                {
+                    "id": "event-1",
+                    "event_type": "PAGE_VIEW",
+                    "session_id": "session-1",
+                    "timestamp": "2026-09-21T10:00:00Z",
+                    "payload": {},
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == expected
+    assert captured["customer_id"] == "customer-1"
+    assert captured["events"][0]["event_type"] == "PAGE_VIEW"
+
+
+def test_internal_feature_compute_rejects_empty_event_batches():
+    response = client.post(
+        "/internal/features/compute",
+        json={"session_events": []},
+    )
+
+    assert response.status_code == 422
+
+
+def test_compute_session_features_rejects_invalid_events_before_database(monkeypatch):
+    def unexpected_connection():
+        raise AssertionError("database must not be opened for invalid events")
+
+    monkeypatch.setattr(serving_api.engine, "raw_connection", unexpected_connection)
+
+    with pytest.raises(ValueError, match="invalid event"):
+        serving_api._compute_session_features(
+            "customer-1",
+            [
+                {
+                    "event_type": "NOT_A_CANONICAL_EVENT",
+                    "session_id": "session-1",
+                    "timestamp": "2026-09-21T10:00:00Z",
+                    "payload": {},
+                }
+            ],
+        )
 
 def test_abandonment_valid():
     response = client.post("/predict/abandonment-probability", json={
@@ -313,6 +467,7 @@ def test_send_time_valid():
 
 def test_send_time_delegates_full_contract_and_internal_context(monkeypatch):
     captured = {}
+    preloaded_model = object()
 
     def fake_predict(customer_id, features, merchant_id, *, model):
         captured.update(
@@ -331,6 +486,11 @@ def test_send_time_delegates_full_contract_and_internal_context(monkeypatch):
         }
 
     monkeypatch.setattr(serving_api, "_predict_timing", fake_predict)
+    monkeypatch.setitem(
+        serving_api.timing_predict._model_cache,
+        "send_time",
+        preloaded_model,
+    )
     response = client.post(
         "/predict/send-time",
         json={
@@ -349,6 +509,7 @@ def test_send_time_delegates_full_contract_and_internal_context(monkeypatch):
     assert captured["merchant_id"] == "merchant-1"
     assert captured["features"]["recovery_action"] == "TRUST_REASSURE"
     assert captured["features"]["cart_value_tier"] == "premium"
+    assert captured["model"] is preloaded_model
 
 
 def test_send_time_rejects_partial_open_probability_array():
@@ -374,6 +535,9 @@ def test_offer_value_valid():
         "searched_discount_terms": False
     }, headers=headers)
     assert response.status_code == 200
+    data = response.json()
+    assert data["fallback"] is True
+    assert data["model_version"] == "1.0.0-formula-fallback"
 
 def test_all_null_input():
     response = client.post("/predict/abandonment-probability", json=None, headers=headers)
@@ -437,6 +601,38 @@ def test_send_time_empty():
     """Empty body should succeed: all Pydantic fields have defaults."""
     response = client.post("/predict/send-time", json={}, headers=headers)
     assert response.status_code == 200
+    assert response.json()["model_version"] == "fallback"
+
+
+def test_automation_endpoint_accepts_background_work(monkeypatch):
+    calls = []
+    monkeypatch.setattr(serving_api, "_run_background_automation", lambda: calls.append(True))
+    serving_api._automation_status["running"] = False
+
+    response = client.post("/internal/automation/run", json={}, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "accepted"}
+    assert calls == [True]
+
+
+def test_automation_releases_process_lock_when_database_open_fails(monkeypatch):
+    class FakeSession:
+        def close(self):
+            pass
+
+    def fail_to_connect():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(serving_api, "_Session", FakeSession)
+    monkeypatch.setattr(serving_api.engine, "raw_connection", fail_to_connect)
+
+    serving_api._run_background_automation()
+
+    assert serving_api._automation_status["running"] is False
+    assert serving_api._automation_status["last_error"] == "RuntimeError"
+    assert serving_api._automation_lock.acquire(blocking=False)
+    serving_api._automation_lock.release()
 
 
 def test_send_time_invalid_channel():

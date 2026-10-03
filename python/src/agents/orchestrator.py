@@ -40,6 +40,7 @@ from .understanding import (
 )
 from . import responder
 from ..intelligence.business_state import load_current_business_state, build_business_state
+from ..memory.vector_store import retrieve_memory_scores
 
 logger = logging.getLogger("rev.orchestrator")
 
@@ -217,14 +218,16 @@ def _select_relevant_memories(
     context_payload: dict,
     *,
     top_k: int = 8,
+    vector_scores: dict[str, float] | None = None,
 ) -> list[dict]:
-    """Keep applicable constraints and rank other memories by lexical relevance."""
+    """Keep constraints and rank other memories by vector/lexical relevance."""
     if top_k <= 0:
         return []
     query = f"{message} {json.dumps(context_payload, default=str)}".lower().replace("_", " ")
     query_terms = set(re.findall(r"[a-z0-9_]{3,}", query))
     mandatory: list[dict] = []
     ranked: list[tuple[float, dict]] = []
+    vector_scores = vector_scores or {}
 
     for memory in memories:
         if not memory.get("is_active", True):
@@ -243,8 +246,10 @@ def _select_relevant_memories(
             )
         ).lower().replace("_", " ")
         overlap = len(query_terms.intersection(re.findall(r"[a-z0-9_]{3,}", searchable)))
-        if overlap:
-            ranked.append((overlap * 10 + authority + importance, memory))
+        vector_score = float(vector_scores.get(str(memory.get("id")), 0.0))
+        relevance = max(overlap * 10.0, vector_score * 100.0)
+        if relevance > 0:
+            ranked.append((relevance + authority + importance, memory))
 
     mandatory.sort(
         key=lambda item: (
@@ -613,10 +618,20 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
     safe_context_payload = _normalize_context_payload(context_payload or {}) or {}
     history      = _load_history(conv_id, db, MAX_HISTORY_TURNS)
     history_text = _format_history(history)
+    memory_query = f"{message} {json.dumps(safe_context_payload, default=str)}"
+    all_memories = _load_memories(organization_id, user_id, db)
+    vector_scores = retrieve_memory_scores(
+        db,
+        organization_id,
+        user_id,
+        memory_query,
+        top_k=8,
+    )
     memories = _select_relevant_memories(
-        _load_memories(organization_id, user_id, db),
+        all_memories,
         message,
         safe_context_payload,
+        vector_scores=vector_scores,
     )
 
     # ── 2. UNDERSTAND (before anything else) ──────────────────────────────────
@@ -1132,7 +1147,7 @@ def _get_or_create_conversation(org_id, user_id, conv_id, db):
 def _load_memories(org_id, user_id, db) -> list[dict]:
     try:
         rows = db.execute(text("""
-            SELECT memory_key, memory_value, memory_source, authority_level,
+            SELECT id, memory_key, memory_value, memory_source, authority_level,
                    confidence, importance, is_active, memory_type
             FROM merchant_memories
             WHERE organization_id = :o AND is_active = TRUE
@@ -1143,7 +1158,7 @@ def _load_memories(org_id, user_id, db) -> list[dict]:
         """), {"o": org_id, "u": user_id}).fetchall()
         out = []
         for r in rows:
-            v = r[1]
+            v = r[2]
             if isinstance(v, str):
                 try:
                     v = json.loads(v)
@@ -1152,9 +1167,10 @@ def _load_memories(org_id, user_id, db) -> list[dict]:
             if isinstance(v, dict) and "value" in v:
                 v = v["value"]
             out.append({
-                "memory_key": r[0], "memory_value": v, "memory_source": r[2],
-                "authority_level": r[3], "confidence": float(r[4]) if r[4] else 1.0,
-                "importance": r[5], "is_active": r[6], "memory_type": r[7],
+                "id": str(r[0]), "memory_key": r[1], "memory_value": v,
+                "memory_source": r[3], "authority_level": r[4],
+                "confidence": float(r[5]) if r[5] is not None else 1.0,
+                "importance": r[6], "is_active": r[7], "memory_type": r[8],
             })
         return out
     except Exception as exc:

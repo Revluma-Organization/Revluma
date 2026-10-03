@@ -1,0 +1,69 @@
+{
+  "scenario_id": "SCN-017",
+  "name": "CPM Spike With Healthy Economics",
+  "hidden_cause": "Auction competition increased due to seasonal advertiser activity",
+  "intervention": {
+    "start_day_offset": 7,
+    "affected_metric": "cpm",
+    "magnitude_pct": 45,
+    "secondary_effects": [
+      "cpc_increase"
+    ],
+    "unaffected": [
+      "ctr",
+      "cvr",
+      "roas",
+      "cac",
+      "revenue"
+    ]
+  },
+  "signals_available_to_rev": [
+    "CPM increased significantly",
+    "CTR remained stable",
+    "CVR remained stable",
+    "CAC remained healthy",
+    "ROAS remained healthy",
+    "Revenue stable"
+  ],
+  "expected_diagnosis": "CPM increased due to auction pressure but overall acquisition economics remain healthy",
+  "expected_evidence": [
+    "CTR held stable despite CPM rise",
+    "Conversion rate unchanged",
+    "CAC within acceptable range",
+    "ROAS maintained"
+  ],
+  "expected_priority": "low",
+  "expected_recommendation": "Monitor CPM trend but do not optimize in isolation. Economics are healthy.",
+  "false_diagnoses": [
+    "Business is in serious trouble",
+    "Kill current campaigns immediately",
+    "Revenue is at immediate risk"
+  ],
+  "trap_answers": [
+    "Reduce CPM immediately",
+    "Pause all campaigns"
+  ],
+  "critical_behavior": "Rev must recognize healthy economics despite expensive CPM",
+  "scoring_rubric": {
+    "detection": {
+      "max": 2,
+      "criteria": "Rev notices CPM has risen"
+    },
+    "diagnosis": {
+      "max": 2,
+      "criteria": "Rev does NOT conclude the business is in trouble based on CPM alone"
+    },
+    "evidence": {
+      "max": 2,
+      "criteria": "Rev cites CTR, CVR, CAC and ROAS stability"
+    },
+    "prioritization": {
+      "max": 2,
+      "criteria": "Rev assigns low priority"
+    },
+    "recommendation": {
+      "max": 2,
+      "criteria": "Rev recommends monitoring not immediate action"
+    }
+  }
+}

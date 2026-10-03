@@ -1353,7 +1353,9 @@ exports.updateProfile = async (req, res) => {
       data: user,
     });
   } catch (error) {
-    console.error("updateProfile error:", error);
+    logger.error("update_profile_failed", {
+      error_type: error.code || error.name || "profile_update_error",
+    });
 
     return res.status(500).json({
       success: false,
