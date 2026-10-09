@@ -6,6 +6,7 @@ const prisma = dbConfig.prisma;
 
 const { encrypt, decrypt } = require("../utils/encryption");
 const logger = require('../utils/logger');
+const { isValidShopDomain } = require('../utils/shopify');
 
 function createStoreTrackingKey(storeId) {
   const secret = process.env.EVENT_TRACKING_SECRET || process.env.JWT_SECRET;
@@ -17,6 +18,20 @@ function createStoreTrackingKey(storeId) {
 /**Exchange Shopify authorization code for a permanent access token.*/
 const exchangeAccessToken = async (shop, code) => {
   try {
+    const missingConfig = ['SHOPIFY_API_KEY', 'SHOPIFY_API_SECRET']
+      .filter((name) => !String(process.env[name] || '').trim());
+    if (missingConfig.length) {
+      const error = new Error('Shopify OAuth credentials are not configured.');
+      error.code = 'SHOPIFY_OAUTH_CREDENTIALS_MISSING';
+      error.missingConfig = missingConfig;
+      throw error;
+    }
+    if (!isValidShopDomain(shop)) {
+      const error = new Error('Shopify shop domain is invalid.');
+      error.code = 'SHOPIFY_SHOP_DOMAIN_INVALID';
+      throw error;
+    }
+
     const response = await axios.post(
       `https://${shop}/admin/oauth/access_token`,
       {
@@ -32,18 +47,33 @@ const exchangeAccessToken = async (shop, code) => {
       }
     );
 
-    if (!response.data.access_token) {
-      throw new Error("Shopify did not return an access token.");
+    if (!response.data?.access_token) {
+      const error = new Error("Shopify did not return an access token.");
+      error.code = 'SHOPIFY_ACCESS_TOKEN_MISSING';
+      throw error;
     }
 
+    logger.info('shopify_token_exchange_succeeded', {
+      shop_domain: shop,
+      access_token_received: true,
+      granted_scopes_present: Boolean(response.data.scope),
+    });
     return response.data.access_token;
   } catch (error) {
     logger.error('shopify_token_exchange_failed', {
       error_type: error.code || error.name || 'shopify_exchange_error',
       provider_status: error.response?.status || null,
+      provider_error: typeof error.response?.data?.error === 'string'
+        ? error.response.data.error
+        : undefined,
+      missing_config: error.missingConfig || undefined,
     });
 
-    throw new Error("Failed to exchange Shopify authorization code.");
+    const exchangeError = new Error('Failed to exchange Shopify authorization code.');
+    exchangeError.code = error.code || 'SHOPIFY_TOKEN_EXCHANGE_FAILED';
+    exchangeError.providerStatus = error.response?.status || null;
+    exchangeError.missingConfig = error.missingConfig;
+    throw exchangeError;
   }
 };
 

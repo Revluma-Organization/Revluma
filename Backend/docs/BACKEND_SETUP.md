@@ -37,7 +37,25 @@ Shopify and messaging:
 
 - `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_REDIRECT_URI`, and
   `SHOPIFY_TOKEN_ENCRYPTION_KEY`.
-- `SHOPIFY_API_VERSION` is optional; the service has a reviewed default.
+- Register the exact `SHOPIFY_REDIRECT_URI` value in the Shopify app's allowed
+  redirection URLs. It must point to
+  `https://<backend-host>/api/v1/shopify/callback` in production.
+- `BACKEND_URL` must be the backend's HTTPS origin (no path) so webhook
+  subscriptions are created at the correct public URLs.
+- `SHOPIFY_API_VERSION` is optional; the service defaults to the current
+  quarterly version and rejects versions outside Shopify's supported window.
+- `SHOPIFY_SCOPES` is optional. The OAuth request always includes
+  `read_orders`, `read_customers`, and `write_discounts` in addition to any
+  configured comma-separated scopes.
+
+The Shopify connect endpoints require a current access JWT. If
+`POST /api/v1/shopify/start` logs `TokenExpiredError` / `jwt expired`, the
+request was rejected before OAuth began; refresh the user's session or sign in
+again before retrying. Callback failures now return a stage and reference ID.
+Use that reference to correlate `shopify_callback_stage`,
+`shopify_callback_failed`, and token-exchange events in the backend logs. These
+events intentionally omit the authorization code, HMAC, state cookie, and
+access token.
 - `SENDGRID_API_KEY`, `SENDGRID_FROM_EMAIL`, and
   `SENDGRID_WEBHOOK_VERIFICATION_KEY`.
 - `BETA_AUTOMATION_KILL_SWITCH=true` for the initial deployment.
