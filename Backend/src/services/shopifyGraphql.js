@@ -1,7 +1,8 @@
 const axios = require('axios');
 const { decrypt } = require('../utils/encryption');
+const { getShopifyApiVersion } = require('../utils/shopify');
 
-const API_VERSION = process.env.SHOPIFY_API_VERSION || '2026-07';
+const API_VERSION = process.env.SHOPIFY_API_VERSION || '2026-10';
 
 function accessToken(store) {
   if (!store?.access_token) throw new Error('shopify_access_token_missing');
@@ -9,8 +10,9 @@ function accessToken(store) {
 }
 
 async function shopifyGraphql(store, query, variables = {}) {
+  const apiVersion = getShopifyApiVersion();
   const response = await axios.post(
-    `https://${store.shop_domain}/admin/api/${API_VERSION}/graphql.json`,
+    `https://${store.shop_domain}/admin/api/${apiVersion}/graphql.json`,
     { query, variables },
     {
       headers: {
