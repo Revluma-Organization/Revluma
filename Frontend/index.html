@@ -5,7 +5,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="./assets/images/Revluma-icon.png">
-    </link>
     <title>Revluma</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -21,6 +20,22 @@
         } else {
             document.documentElement.classList.remove('dark');
         }
+    </script>
+    <script>
+        // Auto-redirect authenticated users straight to the dashboard
+        (function () {
+            try {
+                const rawAuth = localStorage.getItem('rv-auth');
+                if (rawAuth) {
+                    const parsed = JSON.parse(rawAuth);
+                    if (parsed && parsed.state && parsed.state.user && parsed.state.user.id) {
+                        window.location.replace('/dashboard/overview');
+                    }
+                }
+            } catch (e) {
+                // Ignore parse errors and stay on landing page
+            }
+        })();
     </script>
     <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,500,400&f[]=inter@400,700&display=swap"
         rel="stylesheet">
@@ -71,7 +86,7 @@
         /* Specific Elements & Forms */
         html.light-mode .glass { background: rgba(255,255,255,0.85) !important; border-color: rgba(0,0,0,0.1) !important; }
         html.light-mode .glass-btn { background: rgba(0,0,0,0.05) !important; color: #0f172a !important; border-color: rgba(0,0,0,0.1) !important; }
-        html.light-mode .premium-headline { background: linear-gradient(135deg, #0f172a, #334155 45%, #475569) !important; -webkit-background-clip: text !important; }
+        html.light-mode .premium-headline { background: linear-gradient(135deg, #0f172a, #334155 45%, #475569) !important; -webkit-background-clip: text !important; background-clip: text !important; }
         html.light-mode .premium-headline span { color: #0f172a !important; }
         html.light-mode .hero-video { filter: brightness(0.95) saturate(1.1) contrast(1.05) !important; opacity: 0.15 !important; }
         html.light-mode .hero-video-overlay { background: linear-gradient(180deg, rgba(248,250,252, 0.5), rgba(248,250,252, 1)) !important; }
@@ -3266,22 +3281,14 @@
     </footer>
 
     <script>
-        // Mock auth — show dashboard link
+       // Ensure Login & Get Started are always visible for logged-out visitors
         function updateNav() {
             const dashboardLink = document.getElementById('dashboard-link');
-            const loginLink = document.getElementById('login-link');
-            const signupLink = document.getElementById('signup-link');
             const mobileDashboardLink = document.getElementById('mobile-dashboard-link');
-            const mobileLoginLink = document.getElementById('mobile-login-link');
-            const mobileSignupLink = document.getElementById('mobile-signup-link');
-            if (dashboardLink) dashboardLink.classList.remove('hidden');
-            if (loginLink) loginLink.classList.add('hidden');
-            if (signupLink) signupLink.style.display = 'none';
-            if (mobileDashboardLink) mobileDashboardLink.classList.remove('hidden');
-            if (mobileLoginLink) mobileLoginLink.classList.add('hidden');
-            if (mobileSignupLink) mobileSignupLink.style.display = 'none';
+            if (dashboardLink) dashboardLink.remove();
+            if (mobileDashboardLink) mobileDashboardLink.remove();
         }
-        window.addEventListener('load', updateNav);
+        window.addEventListener('DOMContentLoaded', updateNav);
 
         // Laptop + promo items scatter animation on scroll
         const laptop = document.querySelector('.laptop-container');

@@ -1,13 +1,9 @@
 // src/pages/Overview.tsx
-// All MOCK references replaced with useState hooks initialised to null.
-// Loading state  → skeleton placeholders (visual match to current UI)
-// Error state    → neutral "--" via error flag
-// Visual output  → IDENTICAL to mock version
-// Week 3 wiring: uncomment fetchDashboard(), delete the setLoading(false) stub.
-
 import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "@/lib/api";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { CheckCircle2, Loader2, Sparkles, ArrowRight, ShieldCheck, X } from "lucide-react";
 import { ConnectBanner } from "@/components/dashboard/ConnectBanner";
 import { KpiCard } from "@/components/dashboard/KpiCard";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
@@ -34,8 +30,19 @@ import type {
   WinbackEntry,
 } from "@/data/mockOverview";
 
+interface ConnectedStoreInfo {
+  id?: string;
+  name?: string;
+  shop_domain?: string;
+  platform: string;
+  status: string;
+  sync_status?: string;
+}
+
 export default function Overview() {
-  //State hooks: one per data group from DASHBOARD_DATA_MAP.md
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [userName, setUserName] = useState<string | null>(null);
   const [kpi, setKpi] = useState<KPI[] | null>(null);
   const [chart, setChart] = useState<ChartData | null>(null);
@@ -51,42 +58,64 @@ export default function Overview() {
   const [winback, setWinback] = useState<WinbackEntry[] | null>(null);
   const [insights, setInsights] = useState<AIInsight[] | null>(null);
   const [storeConnected, setStoreConnected] = useState<boolean | null>(null);
+  const [activeStore, setActiveStore] = useState<ConnectedStoreInfo | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Onboarding & Sync UI states
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [hideSyncCard, setHideSyncCard] = useState(() => {
+    return sessionStorage.getItem("rv_hide_sync_card") === "true";
+  });
+
+  useEffect(() => {
+    // Trigger toast if redirected from Shopify OAuth callback
+    const isJustConnected =
+      searchParams.get("shopify") === "connected" ||
+      searchParams.get("connected") === "true" ||
+      searchParams.get("shop") !== null;
+
+    if (isJustConnected) {
+      setShowSuccessToast(true);
+      sessionStorage.removeItem("rv_hide_sync_card");
+      setHideSyncCard(false);
+      // Clean URL query parameters
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete("shopify");
+      nextParams.delete("connected");
+      setSearchParams(nextParams, { replace: true });
+
+      const timer = setTimeout(() => setShowSuccessToast(false), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams, setSearchParams]);
+
   useEffect(() => {
     async function fetchDashboard() {
-      // ── Step 1: Fetch user identity (most critical — drives welcome header) ────
-      // Backend has /auth/getProfile and /auth/me (alias added in 2.BE1.3)
-      // Try /auth/me first, fall back to /auth/getProfile if not yet deployed
       try {
         let meData: { full_name: string; organizations?: Array<{ id: string }> } | null = null;
         try {
           const meRes = await api.get<{ success: boolean; data: { full_name: string; organizations?: Array<{ id: string }> } }>("/auth/me");
           meData = meRes.data.data;
         } catch {
-          // /auth/me not yet deployed — try legacy route
           try {
             const meRes = await api.get<{ success: boolean; data: { full_name: string } }>("/auth/getProfile");
             meData = meRes.data.data;
           } catch {
-            // Both failed — user identity unavailable, dashboard continues without name
+            // Identity fallback
           }
         }
         if (meData?.full_name) setUserName(meData.full_name);
       } catch {
-        // Non-blocking — welcome header shows "--" but dashboard still loads
+        // Non-blocking
       }
 
-      // ── Step 2: Fetch dashboard data independently ─────────────────────────────
-      // Each endpoint is fetched independently so a missing endpoint (not yet built)
-      // does not kill the entire dashboard. Sections without data show skeletons.
       const settled = await Promise.allSettled([
         api.get<{ success: boolean; data: { kpi: KPI[] } }>("/dashboard/kpis"),
         api.get<{ success: boolean; data: { chart: ChartData } }>("/dashboard/chart"),
         api.get<{ success: boolean; data: { activity: ActivityItem[] } }>("/dashboard/activity", { limit: 20 }),
-        api.get<{ success: boolean; data: { stores: Array<{ status: string }> } }>("/stores"),
+        api.get<{ success: boolean; data: { stores: ConnectedStoreInfo[] } }>("/stores"),
       ]);
 
       const [kpiResult, chartResult, activityResult, storesResult] = settled;
@@ -101,22 +130,129 @@ export default function Overview() {
         setActivity(activityResult.value.data.data?.activity ?? null);
       }
       if (storesResult.status === "fulfilled") {
-        setStoreConnected(
-          storesResult.value.data.data?.stores?.some((s) => s.status === "active") ?? false
-        );
+        const stores = storesResult.value.data.data?.stores ?? [];
+        const connected = stores.find((s) => s.status === "active");
+        setStoreConnected(Boolean(connected));
+        setActiveStore(connected ?? null);
       }
 
       setLoading(false);
-      // Note: remaining sections (attribution, health, analytics, etc.) wire in Week 4
     }
     fetchDashboard();
   }, []);
 
   const firstName = userName ? userName.split(" ")[0] : null;
+  const hasDataArrived = Boolean((kpi && kpi.length > 0) || (activity && activity.length > 0));
+
+  function dismissSyncCard() {
+    sessionStorage.setItem("rv_hide_sync_card", "true");
+    setHideSyncCard(true);
+  }
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-5">
+      {/* Immediate Connection Success Toast */}
+      <AnimatePresence>
+        {showSuccessToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            className="fixed right-5 top-5 z-[999] flex items-center gap-3.5 rounded-2xl border border-emerald-500/30 bg-bg-2 px-5 py-4 shadow-2xl"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-[0.85rem] font-bold text-t1">Store Connected Successfully!</p>
+              <p className="text-[0.75rem] text-t2">
+                Revluma is now syncing your orders, customers, and abandoned checkouts.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowSuccessToast(false)}
+              className="ml-2 text-t3 hover:text-t1"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Shown when NO store is connected */}
       <ConnectBanner storeConnected={storeConnected} />
+
+      {/* Shown when a store IS connected: Live Sync Status + CTA */}
+      {storeConnected && !hideSyncCard && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-2xl border border-emerald-500/25 bg-bg-2 p-5 shadow-sm"
+        >
+          <button
+            onClick={dismissSyncCard}
+            title="Dismiss setup guide"
+            className="absolute right-4 top-4 rounded-lg p-1 text-t3 transition-colors hover:bg-bg-4 hover:text-t1"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider text-emerald-400">
+                <Sparkles className="h-3.5 w-3.5" />
+                {activeStore?.platform ? `${activeStore.platform} Active` : "Store Connected"}
+                {activeStore?.shop_domain ? ` • ${activeStore.shop_domain}` : ""}
+              </div>
+              <h2 className="text-[1.05rem] font-bold text-t1">
+                {hasDataArrived
+                  ? "Initial Store Synchronization Complete"
+                  : "Initial Store Synchronization in Progress…"}
+              </h2>
+              <p className="max-w-2xl text-[0.8rem] text-t2">
+                {hasDataArrived
+                  ? "Your historical customers, orders, and checkout events are synced. Configure your safety limits to activate automated cart recovery."
+                  : "We are indexing your customers, orders, and abandoned checkouts in the background. Your dashboard metrics will populate automatically over the next 1–2 minutes."}
+              </p>
+
+              {/* Sync Checklist Metrics */}
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <div className="flex items-center gap-1.5 rounded-lg border border-border bg-bg-3 px-3 py-1.5 text-[0.75rem] font-medium text-t1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  Storefront API Linked
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg border border-border bg-bg-3 px-3 py-1.5 text-[0.75rem] font-medium text-t1">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  Webhooks & Pixel Active
+                </div>
+                <div className="flex items-center gap-1.5 rounded-lg border border-border bg-bg-3 px-3 py-1.5 text-[0.75rem] font-medium text-t1">
+                  {hasDataArrived ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  ) : (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" />
+                  )}
+                  {hasDataArrived ? "Orders & Carts Synced" : "Syncing Orders & Abandoned Carts…"}
+                </div>
+              </div>
+            </div>
+
+            {/* Call To Action */}
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col lg:items-end">
+              <button
+                onClick={() => navigate("/dashboard/settings/automation")}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-[0.82rem] font-bold text-black shadow-md transition-all hover:bg-emerald-400"
+              >
+                Configure Automation
+                <ArrowRight className="h-4 w-4" />
+              </button>
+              <span className="flex items-center gap-1 text-[0.7rem] text-t3">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+                Safe mode: nothing sends until you save limits
+              </span>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Welcome */}
       <motion.div
@@ -185,7 +321,6 @@ export default function Overview() {
   );
 }
 
-// KPI skeleton (shown while kpi state is null) 
 function KpiCardSkeleton({ index }: { index: number }) {
   return (
     <motion.div

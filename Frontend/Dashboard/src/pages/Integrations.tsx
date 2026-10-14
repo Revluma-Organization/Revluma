@@ -1,10 +1,12 @@
+// src/pages/Integrations.tsx
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ExternalLink, Plug, WifiOff, X, Loader2, Info, CheckCircle2,
-  Clock, ShieldCheck, ArrowUpRight, Layers, Code2, LayoutTemplate,
+  ExternalLink, Plug, WifiOff, X, Info, CheckCircle2,
+  Clock, ShieldCheck, ArrowUpRight, Code2, Sparkles, Loader2
 } from "lucide-react";
 import { WooCommerceConnect } from "./WooCommerceConnect";
 import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { api, ApiError } from "@/lib/api";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -12,8 +14,7 @@ import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 import magentoLogo from "@/assets/magento-logo.png";
 import GlassmorphismCard from "@/components/GlassmorphismCard";
 
-//Types
-
+// Types
 type ConnectionStatus = "not_connected" | "connecting" | "connected" | "error";
 
 interface Platform {
@@ -38,14 +39,7 @@ interface ComingSoonPlatform {
   accentColor: string;
 }
 
-interface ShopifyInstallResponse {
-  install_url?: string | null;
-  message?: string;
-  error?: string;
-}
-
-//Platform config
-
+// Platform config
 const PLATFORMS: Platform[] = [
   {
     id: "shopify",
@@ -93,8 +87,7 @@ const COMING_SOON: ComingSoonPlatform[] = [
   { name: "Custom API", tagline: "Bring your own stack", icon: Code2, accentColor: "#4C8DFF" },
 ];
 
-//Status badge
-
+// Status badge
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
   not_connected: "Not Connected",
   connecting: "Connecting…",
@@ -104,9 +97,9 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
 
 const STATUS_STYLE: Record<ConnectionStatus, { color: string; bg: string }> = {
   not_connected: { color: "hsl(var(--t3))", bg: "hsl(var(--bg-4))" },
-  connecting: { color: "hsl(var(--amber))", bg: "hsl(var(--amber)  / 0.12)" },
-  connected: { color: "hsl(var(--accent))", bg: "hsl(var(--accent)  / 0.12)" },
-  error: { color: "hsl(var(--red))", bg: "hsl(var(--red)    / 0.12)" },
+  connecting: { color: "hsl(var(--amber))", bg: "hsl(var(--amber) / 0.12)" },
+  connected: { color: "hsl(var(--accent))", bg: "hsl(var(--accent) / 0.12)" },
+  error: { color: "hsl(var(--red))", bg: "hsl(var(--red) / 0.12)" },
 };
 
 function StatusBadge({ status }: { status: ConnectionStatus }) {
@@ -124,8 +117,6 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
     </span>
   );
 }
-
-// Info popover — explains where to find a credential
 
 function FieldInfo({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -155,8 +146,6 @@ function FieldInfo({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-// Logo badge — consistent white tile treatment for every brand mark
-
 function LogoTile({ src, alt, size = 14 }: { src: string; alt: string; size?: number }) {
   return (
     <div
@@ -170,9 +159,10 @@ function LogoTile({ src, alt, size = 14 }: { src: string; alt: string; size?: nu
   );
 }
 
-//Page
-
 export default function Integrations() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [statuses, setStatuses] = useState<Record<Platform["id"], ConnectionStatus>>({
     shopify: "not_connected",
     woocommerce: "not_connected",
@@ -186,7 +176,7 @@ export default function Integrations() {
   // WooCommerce Inline Form State
   const [wooFormOpen, setWooFormOpen] = useState(false);
 
-  // Connect success/failure feedback (Shopify redirect failures, WooCommerce connect result)
+  // Connect success/failure feedback
   const [statusCard, setStatusCard] = useState<{
     open: boolean;
     type: "success" | "error";
@@ -203,7 +193,6 @@ export default function Integrations() {
     setStatusCard((prev) => ({ ...prev, open: false }));
   }
 
-  /** Pulls the real backend-provided message out of an ApiError body when available. */
   function getErrorMessage(e: unknown, fallback: string): string {
     if (e instanceof ApiError) {
       const body = e.body as { error?: string; message?: string } | null;
@@ -216,11 +205,11 @@ export default function Integrations() {
   // Fetch initial statuses
   const fetchStatuses = async () => {
     try {
-      const res = await api.get<{ data: { stores: { platform: "shopify" | "woocommerce"; status: string }[] } }>('/stores');
+      const res = await api.get<{ data: { stores: { platform: "shopify" | "woocommerce"; status: string }[] } }>("/stores");
       const stores = res.data?.data?.stores || [];
       const newStatuses = { shopify: "not_connected", woocommerce: "not_connected" } as Record<Platform["id"], ConnectionStatus>;
 
-      stores.forEach(store => {
+      stores.forEach((store) => {
         if (store.status === "active") {
           newStatuses[store.platform] = "connected";
         }
@@ -235,6 +224,23 @@ export default function Integrations() {
 
   useEffect(() => {
     fetchStatuses();
+
+    if (
+      searchParams.get("shopify") === "connected" ||
+      searchParams.get("connected") === "true" ||
+      searchParams.get("shop") !== null
+    ) {
+      showStatusCard(
+        "success",
+        "Shopify Store Connected!",
+        "Your store is linked and initial synchronization has started. Next, configure your automation safety limits.",
+        "Got it"
+      );
+      const next = new URLSearchParams(searchParams);
+      next.delete("shopify");
+      next.delete("connected");
+      setSearchParams(next, { replace: true });
+    }
   }, []);
 
   function handleConnectClick(id: Platform["id"]) {
@@ -249,43 +255,32 @@ export default function Integrations() {
     e.preventDefault();
     if (!shopDomain.trim()) return;
 
-    // Clean the input, remove trailing dots, and append the Shopify suffix
     let cleanShop = shopDomain.trim();
-    if (cleanShop.endsWith('.')) {
+    if (cleanShop.endsWith(".")) {
       cleanShop = cleanShop.slice(0, -1);
     }
-    if (!cleanShop.endsWith('.myshopify.com')) {
+    if (!cleanShop.endsWith(".myshopify.com")) {
       cleanShop = `${cleanShop}.myshopify.com`;
     }
 
-        try {
-      // Step 1: Tell the backend to start the OAuth flow. 
-      // The Axios interceptor sends the Bearer token.
-      // withCredentials: true tells the browser to save the secure HttpOnly cookie Afolabi sends back.
-      await api.post('/shopify/start', 
-        { shop: cleanShop }, // Sending the shop here too just in case his backend wants to validate it early
-        { withCredentials: true }
-      );
+    try {
+      await api.post("/shopify/start", { shop: cleanShop });
 
-      // Pause for 300ms to ensure the browser has enough physical time to save the cookie to storage
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
-      // Step 2: Call the backend using your wrapper so the Bearer token is attached!
-    const res = await api.get('/shopify/install', { shop: cleanShop });
+      const res = await api.get("/shopify/install", { shop: cleanShop });
+      const targetUrl = (res.data as { redirectUrl?: string; install_url?: string })?.redirectUrl || (res.data as { install_url?: string })?.install_url;
 
-    // Step 3: Extract the URL and manually redirect the browser
-    const targetUrl = (res.data as any)?.redirectUrl || (res.data as any)?.install_url;
-
-    if (targetUrl) {
-      window.location.href = targetUrl;
-    } else {
-      throw new Error("No redirect URL returned from the backend");
-    }
-        } catch (e) {
-      console.error('Shopify connect failed', e);
+      if (targetUrl) {
+        window.location.href = targetUrl;
+      } else {
+        throw new Error("No redirect URL returned from the backend");
+      }
+    } catch (e) {
+      console.error("Shopify connect failed", e);
       showStatusCard(
-        'error',
-        'Shopify Connection Failed',
+        "error",
+        "Shopify Connection Failed",
         getErrorMessage(e, "We couldn't start the Shopify connection. Try Again"),
       );
     }
@@ -296,7 +291,6 @@ export default function Integrations() {
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
-
       {/* Page header */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -321,6 +315,46 @@ export default function Integrations() {
         </div>
       </motion.div>
 
+      {/* Active Store Sync & Onboarding Card */}
+      {!loading && anyConnected && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col justify-between gap-4 rounded-2xl border border-emerald-500/25 bg-bg-2 p-5 sm:flex-row sm:items-center"
+        >
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider text-emerald-400">
+              <Sparkles className="h-3.5 w-3.5" />
+              Store Connected & Synchronizing
+            </div>
+            <p className="text-[0.82rem] text-t2">
+              Your storefront is linked. Orders, customer profiles, and abandoned checkouts sync automatically in the background.
+            </p>
+            <div className="flex flex-wrap items-center gap-2.5 pt-1">
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-3 px-2.5 py-1 text-[0.72rem] font-medium text-t1">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                Storefront API Active
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-3 px-2.5 py-1 text-[0.72rem] font-medium text-t1">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                Pixel & Webhooks Verified
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-3 px-2.5 py-1 text-[0.72rem] font-medium text-t1">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" />
+                Continuous Sync Enabled
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate("/dashboard/settings/automation")}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-[0.82rem] font-bold text-black shadow-md transition-all hover:bg-emerald-400"
+          >
+            Configure Automation
+            <ArrowUpRight className="h-4 w-4" />
+          </button>
+        </motion.div>
+      )}
+
       {/* No-store warning -> Premium Empty State */}
       {!loading && !anyConnected && (
         <motion.div
@@ -336,8 +370,8 @@ export default function Integrations() {
             Connect your Shopify or WooCommerce store to activate recovery sequences and unlock your live dashboard.
           </p>
           <button
-            onClick={() => handleConnectClick('shopify')}
-            className={`mt-4 px-6 py-2 rounded-md font-semibold bg-[#007FFF] text-white transition-colors hover:bg-[#007FFF]/90 shadow-md`}
+            onClick={() => handleConnectClick("shopify")}
+            className="mt-4 rounded-md bg-[#007FFF] px-6 py-2 font-semibold text-white shadow-md transition-colors hover:bg-[#007FFF]/90"
           >
             Connect Store
           </button>
@@ -356,9 +390,8 @@ export default function Integrations() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-950 transition-all duration-300 hover:border-slate-400 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-900 shadow-sm"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gray-50 shadow-sm transition-all duration-300 hover:border-slate-400 hover:bg-white dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-600 dark:hover:bg-slate-900"
             >
-              {/* accent hairline */}
               <div
                 className="h-[3px] w-full shrink-0"
                 style={{ background: `linear-gradient(90deg, ${platform.accentColor}, transparent)` }}
@@ -402,32 +435,35 @@ export default function Integrations() {
                   </>
                 )}
 
-                                {/* WooCommerce Inline Form */}
+                {/* WooCommerce Inline Form */}
                 {platform.id === "woocommerce" && wooFormOpen && !isConnected && (
-                  <WooCommerceConnect 
-                    accentColor={platform.accentColor} 
+                  <WooCommerceConnect
+                    accentColor={platform.accentColor}
                     onCancel={() => setWooFormOpen(false)}
                     onSuccess={() => {
                       setWooFormOpen(false);
                       fetchStatuses();
                       showStatusCard(
-                        'success', 
-                        'WooCommerce Connected!', 
-                        'Your store is connected. Cart recovery sequences are ready to activate.', 
-                        'Got it'
+                        "success",
+                        "WooCommerce Connected!",
+                        "Your store is connected. Cart recovery sequences are ready to activate.",
+                        "Got it",
                       );
                     }}
-                    onError={(msg) => showStatusCard('error', 'WooCommerce Connection Failed', msg, 'Try Again')}
+                    onError={(msg) => showStatusCard("error", "WooCommerce Connection Failed", msg, "Try Again")}
                   />
                 )}
-                        
+
                 {/* Actions */}
                 {!(platform.id === "woocommerce" && wooFormOpen) && (
                   <div className="mt-auto flex items-center gap-2 pt-1">
                     {isConnected ? (
-                      <button className="flex flex-1 items-center justify-center gap-2 rounded-md border border-border bg-glass/[0.035] py-2 text-[0.82rem] font-semibold text-t1 transition-colors hover:border-border-md hover:bg-glass/[0.06]">
+                      <button
+                        onClick={() => navigate("/dashboard/settings/automation")}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-md border border-border bg-glass/[0.035] py-2 text-[0.82rem] font-semibold text-t1 transition-colors hover:border-border-md hover:bg-glass/[0.06]"
+                      >
                         <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "hsl(var(--accent))" }} />
-                        Manage Connection
+                        Configure Automation
                       </button>
                     ) : (
                       <button
@@ -474,7 +510,7 @@ export default function Integrations() {
             >
               <button
                 onClick={() => setShopifyModalOpen(false)}
-                className="absolute right-4 top-4 text-t3 hover:text-t1 transition-colors"
+                className="absolute right-4 top-4 text-t3 transition-colors hover:text-t1"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -504,9 +540,9 @@ export default function Integrations() {
                       required
                       className="w-full rounded-md border border-border bg-bg-3 py-2.5 pl-3 pr-[110px] text-sm text-t1 outline-none focus:border-[#5C8F4D]/50"
                       value={shopDomain}
-                      onChange={e => setShopDomain(e.target.value.replace('.myshopify.com', ''))}
+                      onChange={(e) => setShopDomain(e.target.value.replace(".myshopify.com", ""))}
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-t4 pointer-events-none">
+                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-t4">
                       .myshopify.com
                     </div>
                   </div>
@@ -546,7 +582,7 @@ export default function Integrations() {
           {COMING_SOON.map((p) => (
             <div
               key={p.name}
-              className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-950 px-4 py-3.5 transition-all hover:border-slate-400 dark:hover:border-slate-600 hover:bg-white dark:hover:bg-slate-900 shadow-sm"
+              className="group relative flex items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-gray-50 px-4 py-3.5 shadow-sm transition-all hover:border-slate-400 hover:bg-white dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-600 dark:hover:bg-slate-900"
             >
               {p.logo ? (
                 <LogoTile src={p.logo} alt={p.name} size={10} />
@@ -572,7 +608,7 @@ export default function Integrations() {
       </section>
 
       {/* Footer note */}
-      <div className="flex items-center justify-center gap-2 pt-2 pb-6 text-[0.72rem] text-t4">
+      <div className="flex items-center justify-center gap-2 pb-6 pt-2 text-[0.72rem] text-t4">
         <ShieldCheck className="h-3 w-3" />
         All store connections are encrypted in transit and at rest.
         <a
@@ -584,7 +620,6 @@ export default function Integrations() {
           Learn more <ArrowUpRight className="h-2.5 w-2.5" />
         </a>
       </div>
-
     </div>
   );
 }
