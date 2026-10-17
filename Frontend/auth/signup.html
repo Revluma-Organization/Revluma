@@ -715,7 +715,7 @@
             hideGlassmorphismCard();
 
             if (err.code === 'EMAIL_ALREADY_REGISTERED') {
-              globalError.innerHTML = 'An account with this email already exists. <a href="/auth/login.html" style="color:#a99cff;text-decoration:underline;font-weight:600;">Go to sign in</a>. If you cannot access the account, use the password recovery option on the sign-in page.';
+              globalError.innerHTML = 'This email already has an account. Please log in with your password. <a href="/auth/login.html" style="color:#a99cff;text-decoration:underline;font-weight:600;">Go to log in</a>.';
             } else {
               globalError.textContent = err.message || 'An error occurred during registration.';
             }
