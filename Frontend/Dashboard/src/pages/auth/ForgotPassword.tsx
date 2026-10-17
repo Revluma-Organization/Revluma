@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, KeyRound, Lock, ArrowRight, Loader2, CheckCircle2, ShieldCheck, ChevronLeft, RefreshCw, Clock3, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Mail, KeyRound, Lock, ArrowRight, Loader2, CheckCircle2, ShieldCheck, ChevronLeft, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 
 export default function ForgotPassword() {
@@ -435,9 +435,11 @@ export default function ForgotPassword() {
                           }}
                           disabled={loading}
                           placeholder="••••••••"
-                          className="w-full bg-slate-950/50 border border-slate-800 rounded-lg py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-600 outline-none transition-all focus:border-[#00D084]/50 focus:ring-1 focus:ring-[#00D084]/50 disabled:opacity-50"
+                          className="recovery-input w-full rounded-lg py-3 pl-10 pr-12 text-sm outline-none transition-all disabled:opacity-50"
                         />
+                        <button type="button" onClick={() => setShowConfirmPassword((value) => !value)} aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-900"><img src={showConfirmPassword ? "https://img.icons8.com/3d-fluency/32/closed-eye.png" : "https://img.icons8.com/3d-fluency/32/eye.png"} alt="" className="h-5 w-5" /></button>
                       </div>
+                      {confirmPassword && <p className={`text-xs ${newPassword === confirmPassword ? "text-emerald-700" : "text-amber-700"}`}>{newPassword === confirmPassword ? "Passwords match" : "Passwords do not match yet"}</p>}
                     </div>
 
                     <button
