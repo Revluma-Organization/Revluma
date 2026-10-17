@@ -200,7 +200,9 @@ export default function ForgotPassword() {
       <div className="w-full max-w-[440px]">
         {/* Brand Header */}
         <div className="flex flex-col items-center mb-8">
-          <img className="recovery-illustration" src={step === 1 ? "https://img.icons8.com/3d-fluency/94/new-post.png" : step === 2 ? "https://img.icons8.com/3d-fluency/94/secured-letter.png" : successMessage ? "https://img.icons8.com/3d-fluency/94/checked-shield.png" : "https://img.icons8.com/3d-fluency/94/password.png"} alt="" aria-hidden="true" />
+          <div className="recovery-illustration-wrap" aria-hidden="true">
+            {step === 1 ? <Mail className="recovery-hero-icon" strokeWidth={1.7} /> : step === 2 ? <ShieldCheck className="recovery-hero-icon" strokeWidth={1.7} /> : successMessage ? <CheckCircle2 className="recovery-hero-icon" strokeWidth={1.7} /> : <Lock className="recovery-hero-icon" strokeWidth={1.7} />}
+          </div>
           <h1 className="text-[28px] sm:text-3xl font-bold tracking-tight text-slate-950">{step === 1 ? "Forgot your password?" : step === 2 ? "Enter OTP code" : successMessage ? "Password updated" : "Create new password"}</h1>
           <p className="text-sm text-slate-600 mt-2 text-center max-w-[320px]">
             {step === 1 && "Enter the email associated with your account to receive a secure OTP."}
@@ -241,7 +243,7 @@ export default function ForgotPassword() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="flex flex-col items-center py-6 text-center"
               >
-                <img className="recovery-illustration recovery-illustration-large" src="https://img.icons8.com/3d-fluency/94/checked-shield.png" alt="" aria-hidden="true" />
+                <div className="recovery-illustration-wrap recovery-illustration-large" aria-hidden="true"><CheckCircle2 className="recovery-hero-icon" strokeWidth={1.7} /></div>
                 <h3 className="text-xl font-bold text-slate-950 mb-2">Password updated</h3>
                 <div role="status" aria-live="polite" className="recovery-alert recovery-alert-success mb-6 text-sm font-medium px-4 py-3 rounded-xl">{successMessage}</div>
                 <a
@@ -481,9 +483,9 @@ export default function ForgotPassword() {
         .recovery-page .recovery-destination { background:#f4f8ff; border-color:#dbeafe; }
         .recovery-page .recovery-alert-error { color:#991b1b; background:#fef2f2; border:1px solid #fecaca; }
         .recovery-page .recovery-alert-success { color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; }
-        .recovery-page .recovery-illustration { width:88px; height:88px; object-fit:contain; margin-bottom:18px; }
+        .recovery-page .recovery-illustration-wrap { width:88px; height:88px; border-radius:26px; display:flex; align-items:center; justify-content:center; margin-bottom:18px; color:#2563eb; background:linear-gradient(145deg,#eff6ff,#dbeafe); border:1px solid #dbeafe; box-shadow:0 12px 28px rgba(37,99,235,.10); } .recovery-page .recovery-hero-icon { width:46px; height:46px; }
         .recovery-page .recovery-illustration-large { width:96px; height:96px; margin:0 auto 18px; }
-        @media (max-width:640px) { .recovery-page .absolute.top-6.left-6 { top:12px; left:12px; } .recovery-page .recovery-card { padding:22px; } .recovery-page .recovery-illustration { width:76px; height:76px; } }
+        @media (max-width:640px) { .recovery-page .absolute.top-6.left-6 { top:12px; left:12px; } .recovery-page .recovery-card { padding:22px; } .recovery-page .recovery-illustration-wrap { width:76px; height:76px; border-radius:22px; } .recovery-page .recovery-hero-icon { width:40px; height:40px; } }
         @media (prefers-reduced-motion:reduce) { .recovery-page *, .recovery-page *::before, .recovery-page *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
       `}</style>
     </div>
