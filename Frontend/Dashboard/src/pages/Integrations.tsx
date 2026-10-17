@@ -349,6 +349,15 @@ export default function Integrations() {
     }
   }, [fetchStatuses, searchParams, setSearchParams, showStatusCard]);
 
+  const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && store.setup_status === "in_progress");
+  useEffect(() => {
+    if (!shopifySetupInProgress) return;
+    const intervalId = window.setInterval(() => {
+      void fetchStatuses();
+    }, 2000);
+    return () => window.clearInterval(intervalId);
+  }, [shopifySetupInProgress, fetchStatuses]);
+
   async function handleRetryStoreSetup(storeId: string) {
     if (retryingStoreIds.includes(storeId)) return;
     setRetryingStoreIds((current) => [...current, storeId]);
@@ -597,7 +606,7 @@ export default function Integrations() {
                 {platform.id === "shopify" && stores
                   .filter((store) => store.platform === "shopify")
                   .map((store) => {
-                    const isRetrying = retryingStoreIds.includes(store.id);
+                    const isRetrying = retryingStoreIds.includes(store.id) || store.setup_status === "in_progress";
                     const webhookCount = store.webhooks_registered ?? 0;
                     const webhookRequired = store.webhooks_required ?? 0;
                     const webhooksDone = webhookRequired > 0 && webhookCount >= webhookRequired;
@@ -644,7 +653,7 @@ export default function Integrations() {
                             {feedback.message}
                           </div>
                         )}
-                        {!setupDone && store.connection_status === "connected" && (
+                        {!setupDone && store.connection_status === "connected" && store.setup_status !== "in_progress" && (
                           <button
                             type="button"
                             onClick={() => void handleRetryStoreSetup(store.id)}
