@@ -945,7 +945,7 @@ def _state_usable(bs) -> bool:
 def _has_store(org_id: str, db) -> bool:
     try:
         row = db.execute(
-            text("SELECT 1 FROM stores WHERE organization_id = :o AND status = 'connected' LIMIT 1"),
+            text("SELECT 1 FROM stores WHERE organization_id = :o AND status IN ('active', 'syncing', 'error', 'connected') LIMIT 1"),
             {"o": org_id},
         ).fetchone()
         return row is not None
