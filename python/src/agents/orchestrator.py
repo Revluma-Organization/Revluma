@@ -687,8 +687,8 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
 
     # Answer explicit connection-status questions from persisted store state.
     if re.search(
-        r"\\b(am i|are we|is my store|is the store|did i)\\b.{0,60}\\b(connect(?:ed|ion)?|install(?:ed|ation)?)\\b|"
-        r"\\b(connect(?:ed|ion)? status|store status)\\b",
+        r"\b(am i|are we|is my store|is the store|did i)\b.{0,60}\b(connect(?:ed|ion)?|install(?:ed|ation)?)\b|"
+        r"\b(connect(?:ed|ion)? status|store status)\b",
         message,
         re.IGNORECASE,
     ):
