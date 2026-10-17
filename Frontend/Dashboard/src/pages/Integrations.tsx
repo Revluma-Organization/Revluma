@@ -65,6 +65,16 @@ function readCachedStores(): ConnectedStore[] {
   }
 }
 
+function isStoreSetupComplete(store: ConnectedStore): boolean {
+  const webhooksRegistered = store.webhooks_registered ?? 0;
+  const webhooksRequired = store.webhooks_required ?? 0;
+  return store.connection_status === "connected" &&
+    store.setup_status === "complete" &&
+    webhooksRequired > 0 &&
+    webhooksRegistered >= webhooksRequired &&
+    Boolean(store.last_synced_at);
+}
+
 function statusesFromStores(stores: ConnectedStore[]): Record<Platform["id"], ConnectionStatus> {
   const statuses: Record<Platform["id"], ConnectionStatus> = {
     shopify: "not_connected",
@@ -307,7 +317,7 @@ export default function Integrations() {
               ? `The connection could not be completed${failureStage ? ` during ${failureStage.replace(/_/g, " ")}` : ""}.${failureReference ? ` Reference: ${failureReference}.` : ""} Please try connecting again.`
               : "Shopify returned to Revluma, but no saved connection was found for this store in your account. Please try connecting again.",
           );
-        } else if (shopifyStore.setup_status !== "complete") {
+        } else if (!isStoreSetupComplete(shopifyStore)) {
           showStatusCard(
             "error",
             shopifyStore.setup_status === "failed"
@@ -430,6 +440,7 @@ export default function Integrations() {
 
   const connectedCount = Object.values(statuses).filter((s) => s === "connected").length;
   const anyConnected = connectedCount > 0;
+  const anyFullySetup = stores.some(isStoreSetupComplete);
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
@@ -456,12 +467,14 @@ export default function Integrations() {
       {!loading && anyConnected && (
         <div className="flex flex-col justify-between gap-4 rounded-2xl border border-emerald-500/25 bg-bg-2 p-5 sm:flex-row sm:items-center">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider text-emerald-400">
-              <Sparkles className="h-3.5 w-3.5" />
-              Store Connection Active
+            <div className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider", anyFullySetup ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-300")}>
+              {anyFullySetup ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+              {anyFullySetup ? "Store Connection Active" : "Store Connection Saved — Setup Incomplete"}
             </div>
             <p className="text-[0.82rem] text-t2">
-              Saved store connections are verified with Revluma. Webhook and synchronization progress is shown on the platform card.
+              {anyFullySetup
+                ? "Your store connection, required webhooks, and initial sync have been verified."
+                : "Your store credentials are saved, but setup is not fully verified yet. Follow the webhook and sync checklist below."}
             </p>
           </div>
           <button
@@ -589,7 +602,7 @@ export default function Integrations() {
                     const webhookRequired = store.webhooks_required ?? 0;
                     const webhooksDone = webhookRequired > 0 && webhookCount >= webhookRequired;
                     const syncDone = Boolean(store.last_synced_at);
-                    const setupDone = store.setup_status === "complete" && webhooksDone && syncDone;
+                    const setupDone = isStoreSetupComplete(store);
                     const feedback = retryFeedback?.storeId === store.id ? retryFeedback : null;
                     return (
                       <div key={store.id} className="space-y-3 rounded-xl border border-border bg-bg-3 p-4 text-[0.8rem] text-t2">
