@@ -1,7 +1,9 @@
 const sgMail = require('@sendgrid/mail');
 const logger = require('./logger');
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 
 function escapeHtml(str) {
   return String(str ?? '')
@@ -246,115 +248,61 @@ const emailService = {
   },
   
   async sendVerificationEmail(recipientEmail, userName, verificationCode) {
-  try {
-    const msg = {
-      to: recipientEmail,
-      from: process.env.SENDGRID_FROM_EMAIL,
-      subject: "Verify Your Email Address",
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8" />
-          <style>
-            body {
-              font-family: Arial, Helvetica, sans-serif;
-              background-color: #f4f4f4;
-              margin: 0;
-              padding: 40px 0;
-            }
+    if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM_EMAIL) {
+      logger.error('verification_email_not_configured', {
+        api_key_configured: Boolean(process.env.SENDGRID_API_KEY),
+        from_email_configured: Boolean(process.env.SENDGRID_FROM_EMAIL),
+      });
+      return { success: false, message: 'Verification email service is not configured.' };
+    }
 
-            .container {
-              max-width: 600px;
-              margin: auto;
-              background: #ffffff;
-              border-radius: 8px;
-              padding: 40px;
-              box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            }
-
-            h1 {
-              color: #111827;
-              text-align: center;
-            }
-
-            p {
-              color: #4b5563;
-              font-size: 16px;
-              line-height: 1.6;
-            }
-
-            .code {
-              margin: 30px auto;
-              width: fit-content;
-              background: #EEF2FF;
-              color: #4338CA;
-              font-size: 32px;
-              font-weight: bold;
-              letter-spacing: 8px;
-              padding: 18px 32px;
-              border-radius: 8px;
-            }
-
-            .footer {
-              margin-top: 35px;
-              font-size: 13px;
-              color: #6b7280;
-            }
-          </style>
-        </head>
-
-        <body>
-          <div class="container">
-
-            <h1>Verify Your Email</h1>
-
-            <p>Hello ${userName},</p>
-
-            <p>
-              Thank you for signing up for <strong>Revluma</strong>.
-              Please use the verification code below to complete your registration.
-            </p>
-
-            <div class="code">
-              ${verificationCode}
+    try {
+      const msg = {
+        to: recipientEmail,
+        from: process.env.SENDGRID_FROM_EMAIL,
+        subject: 'Verify Your Email Address',
+        html: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="UTF-8" />
+            <style>
+              body { font-family: Arial, Helvetica, sans-serif; background-color: #f4f4f4; margin: 0; padding: 40px 0; }
+              .container { max-width: 600px; margin: auto; background: #ffffff; border-radius: 8px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+              h1 { color: #111827; text-align: center; }
+              p { color: #4b5563; font-size: 16px; line-height: 1.6; }
+              .code { margin: 30px auto; width: fit-content; background: #EEF2FF; color: #4338CA; font-size: 32px; font-weight: bold; letter-spacing: 8px; padding: 18px 32px; border-radius: 8px; }
+              .footer { margin-top: 35px; font-size: 13px; color: #6b7280; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Verify Your Email</h1>
+              <p>Hello ${escapeHtml(userName)},</p>
+              <p>Thank you for signing up for <strong>Revluma</strong>. Please use the verification code below to complete your registration.</p>
+              <div class="code">${verificationCode}</div>
+              <p>This verification code will expire in <strong>10 minutes</strong>.</p>
+              <p>If you didn't create this account, you can safely ignore this email.</p>
+              <div class="footer"><p>Thanks,</p><p><strong>The Revluma Team</strong></p></div>
             </div>
+          </body>
+          </html>
+        `,
+      };
 
-            <p>
-              This verification code will expire in
-              <strong>10 minutes</strong>.
-            </p>
-
-            <p>
-              If you didn't create this account, you can safely ignore this email.
-            </p>
-
-            <div class="footer">
-              <p>Thanks,</p>
-              <p><strong>The Revluma Team</strong></p>
-            </div>
-
-          </div>
-        </body>
-        </html>
-      `,
-    };
-
-    await sgMail.send(msg);
-
-    return {
-      success: true,
-      message: "Verification email sent successfully.",
-    };
-  } catch (error) {
-    logger.error('verification_email_failed', {
-      error_type: error?.code || error?.name || 'email_provider_error',
-    });
-    // Do NOT throw — user was created successfully. Email failure must not block registration.
-    // The user can request a resend from the verify-email page.
-    return { success: false, message: 'Verification email could not be sent.' };
-  }
-},
+      const [providerResponse] = await sgMail.send(msg);
+      logger.info('verification_email_accepted_by_provider', {
+        provider_status: providerResponse?.statusCode || null,
+      });
+      return { success: true, message: 'Verification email accepted by provider.' };
+    } catch (error) {
+      logger.error('verification_email_failed', {
+        error_type: error?.code || error?.name || 'email_provider_error',
+        provider_status: error?.response?.statusCode || null,
+      });
+      return { success: false, message: 'Verification email could not be sent.' };
+    }
+  },
 
 
   async sendPasswordResetEmail(recipientEmail, userName, verificationCode) {
