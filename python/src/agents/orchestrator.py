@@ -984,7 +984,8 @@ def _state_usable(bs) -> bool:
 
 
 def _has_store(org_id: str, db) -> bool:
-    return _store_connection_summary(org_id, db) is not None
+    summary = _store_connection_summary(org_id, db)
+    return summary is not None and summary[1] not in {"inactive", "deleted"}
 
 
 def _store_connection_summary(org_id: str, db):
