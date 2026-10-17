@@ -176,9 +176,18 @@ async function request<T>(
     : (null as unknown as T);
 
   if (!response.ok) {
+    const errorBody = data as {
+      error?: string;
+      message?: string;
+      errors?: Array<string | { msg?: string; message?: string }>;
+    } | null;
+    const firstValidationError = Array.isArray(errorBody?.errors)
+      ? errorBody.errors.map((item) => typeof item === "string" ? item : item?.msg || item?.message).find(Boolean)
+      : undefined;
+    const safeMessage = errorBody?.error || errorBody?.message || firstValidationError;
     throw new ApiError(
       response.status,
-      `API error ${response.status}: ${response.statusText}`,
+      safeMessage || `Request failed (${response.status}). Please try again.`,
       data,
     );
   }
