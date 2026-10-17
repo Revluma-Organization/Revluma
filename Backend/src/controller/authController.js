@@ -52,6 +52,19 @@ const REGISTER_GENERIC_MESSAGE =
 const FORGOT_PASSWORD_GENERIC_MESSAGE =
   'If an account exists for this email, password reset instructions have been sent.';
 
+async function sendVerificationEmailOr503(res, recipientEmail, userName, code) {
+  const delivery = await emailService.sendVerificationEmail(recipientEmail, userName, code);
+  if (delivery?.success) return true;
+
+  logger.warn('verification_email_delivery_failed');
+  res.status(503).json({
+    success: false,
+    code: 'VERIFICATION_EMAIL_DELIVERY_FAILED',
+    error: 'We could not send your verification email right now. Please try again shortly.',
+  });
+  return false;
+}
+
 const TRUSTED_DEVICE_COOKIE = 'trusted_2fa_device';
 const TRUSTED_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -296,11 +309,12 @@ exports.register = async (req, res, next) => {
         },
       });
 
-      await emailService.sendVerificationEmail(
+      if (!(await sendVerificationEmailOr503(
+        res,
         existingUser.email,
         `${account.firstName} ${account.lastName}`.trim(),
         code
-      );
+      ))) return;
 
       return res.status(200).json({
         success: true,
@@ -356,11 +370,12 @@ exports.register = async (req, res, next) => {
       return { user, organization };
     });
 
-    await emailService.sendVerificationEmail(
+    if (!(await sendVerificationEmailOr503(
+      res,
       result.user.email,
       result.user.full_name,
       code
-    );
+    ))) return;
 
     return res.status(201).json({
       success: true,
@@ -1150,7 +1165,7 @@ exports.resendVerification = async (req, res, next) => {
       data: { verification_code: code, verification_expires_at: expiry },
     });
 
-    await emailService.sendVerificationEmail(user.email, user.full_name, code);
+    if (!(await sendVerificationEmailOr503(res, user.email, user.full_name, code))) return;
 
     return res.status(200).json({
       success: true,
