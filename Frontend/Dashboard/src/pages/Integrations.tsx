@@ -1,7 +1,7 @@
 // src/pages/Integrations.tsx
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ExternalLink, Plug, WifiOff, X, Info, CheckCircle2,
+  ExternalLink, Plug, WifiOff, X, Info, CheckCircle2, CircleX, Loader2,
   Clock, ShieldCheck, ArrowUpRight, Code2, Sparkles
 } from "lucide-react";
 import { WooCommerceConnect } from "./WooCommerceConnect";
@@ -183,6 +183,8 @@ export default function Integrations() {
   const [stores, setStores] = useState<ConnectedStore[]>([]);
   const [loading, setLoading] = useState(true);
   const [storeLoadError, setStoreLoadError] = useState(false);
+  const [retryingStoreIds, setRetryingStoreIds] = useState<string[]>([]);
+  const [retryFeedback, setRetryFeedback] = useState<{ storeId: string; state: "running" | "success" | "partial" | "failed"; message: string } | null>(null);
 
   // Shopify Modal State
   const [shopifyModalOpen, setShopifyModalOpen] = useState(false);
@@ -316,12 +318,52 @@ export default function Integrations() {
   }, [fetchStatuses, searchParams, setSearchParams, showStatusCard]);
 
   async function handleRetryStoreSetup(storeId: string) {
+    if (retryingStoreIds.includes(storeId)) return;
+    setRetryingStoreIds((current) => [...current, storeId]);
+    setRetryFeedback({ storeId, state: "running", message: "Starting the Shopify setup retry…" });
     try {
       await api.post("/shopify/retry-setup", { store_id: storeId });
-      await fetchStatuses();
-      showStatusCard("success", "Shopify Setup Retry Started", "Revluma is retrying webhook registration and the initial synchronization. The setup status will update here.");
+      setRetryFeedback({ storeId, state: "running", message: "Retry accepted. Checking webhook registration and initial sync status…" });
+
+      // The API starts the retry asynchronously. Poll the saved store status instead
+      // of claiming success just because the request was accepted.
+      const deadline = Date.now() + 60000;
+      let latest: ConnectedStore | undefined;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        const result = await fetchStatuses();
+        latest = result?.find((store) => store.id === storeId);
+        if (!latest) continue;
+
+        const webhookCount = latest.webhooks_registered ?? 0;
+        const requiredCount = latest.webhooks_required ?? 0;
+        if (latest.setup_status === "complete" && requiredCount > 0 && webhookCount >= requiredCount && latest.last_synced_at) {
+          setRetryFeedback({ storeId, state: "success", message: "All required webhooks are registered and the initial sync is complete." });
+          showStatusCard("success", "Shopify Store Connected", "All required setup checks passed. Your store is connected and its initial sync has completed.", "Got it");
+          return;
+        }
+        if (latest.setup_status === "failed") {
+          const detail = `Setup is still failing. ${webhookCount}/${requiredCount || "?"} webhooks are registered. Check the setup logs or try again after the underlying error is fixed.`;
+          setRetryFeedback({ storeId, state: "failed", message: detail });
+          showStatusCard("error", "Shopify Setup Needs Attention", detail);
+          return;
+        }
+      }
+
+      const webhookCount = latest?.webhooks_registered ?? 0;
+      const requiredCount = latest?.webhooks_required ?? 0;
+      const detail = latest
+        ? `The retry is still running or incomplete after 60 seconds. ${webhookCount}/${requiredCount || "?"} webhooks are registered. You can keep this page open and refresh the status.`
+        : "Revluma accepted the retry, but could not confirm the latest status. Refresh the page before retrying again.";
+      setRetryFeedback({ storeId, state: "partial", message: detail });
+      showStatusCard("error", "Shopify Setup Not Yet Complete", detail);
     } catch (e) {
-      showStatusCard("error", "Shopify Setup Retry Failed", getErrorMessage(e, "We couldn't restart Shopify setup. Try again shortly."));
+      const detail = getErrorMessage(e, "We couldn't restart Shopify setup. Please try again shortly.");
+      setRetryFeedback({ storeId, state: "failed", message: detail });
+      showStatusCard("error", "Shopify Setup Retry Failed", detail);
+    } finally {
+      setRetryingStoreIds((current) => current.filter((id) => id !== storeId));
+      await fetchStatuses();
     }
   }
 
@@ -370,12 +412,7 @@ export default function Integrations() {
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
       {/* Page header */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.28 }}
-        className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
-      >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="display text-[1.6rem] font-extrabold tracking-tight text-t1 sm:text-[1.85rem]">
             Connect Your Store
@@ -391,15 +428,11 @@ export default function Integrations() {
           />
           {connectedCount} of {PLATFORMS.length} platforms connected
         </div>
-      </motion.div>
+      </div>
 
       {/* Active Store Sync & Onboarding Card */}
       {!loading && anyConnected && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col justify-between gap-4 rounded-2xl border border-emerald-500/25 bg-bg-2 p-5 sm:flex-row sm:items-center"
-        >
+        <div className="flex flex-col justify-between gap-4 rounded-2xl border border-emerald-500/25 bg-bg-2 p-5 sm:flex-row sm:items-center">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider text-emerald-400">
               <Sparkles className="h-3.5 w-3.5" />
@@ -416,7 +449,7 @@ export default function Integrations() {
             Configure Automation
             <ArrowUpRight className="h-4 w-4" />
           </button>
-        </motion.div>
+        </div>
       )}
 
       {!loading && storeLoadError && (
@@ -434,11 +467,7 @@ export default function Integrations() {
 
       {/* No-store warning -> Premium Empty State */}
       {!loading && !storeLoadError && !anyConnected && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className={DESIGN_TOKENS.emptyState.container}
-        >
+        <div className={DESIGN_TOKENS.emptyState.container}>
           <div className={DESIGN_TOKENS.emptyState.iconWrapper}>
             <WifiOff className={DESIGN_TOKENS.emptyState.icon} strokeWidth={1.5} />
           </div>
@@ -452,7 +481,7 @@ export default function Integrations() {
           >
             Connect Store
           </button>
-        </motion.div>
+        </div>
       )}
 
       {/* Platform cards — side by side */}
@@ -460,14 +489,12 @@ export default function Integrations() {
         {PLATFORMS.map((platform) => {
           const status = statuses[platform.id];
           const isConnected = status === "connected";
+          const retrying = stores.some((store) => store.platform === platform.id && retryingStoreIds.includes(store.id));
 
           return (
-            <motion.div
+            <div
               key={platform.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gray-50 shadow-sm transition-all duration-300 hover:border-slate-400 hover:bg-white dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-600 dark:hover:bg-slate-900"
+              className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gray-50 shadow-sm transition-colors hover:border-slate-400 hover:bg-white dark:border-slate-800 dark:bg-slate-950 dark:hover:border-slate-600 dark:hover:bg-slate-900"
             >
               <div
                 className="h-[3px] w-full shrink-0"
@@ -494,7 +521,9 @@ export default function Integrations() {
                       <p className="mt-0.5 text-[0.74rem] text-t3">{platform.tagline}</p>
                     </div>
                   </div>
-                  <StatusBadge status={status} />
+                  {loading ? (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-border bg-bg-3 px-3 py-1.5 text-xs font-medium text-t2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking status</span>
+                  ) : <StatusBadge status={status} />}
                 </div>
 
                 {/* Description & Features */}
@@ -533,38 +562,75 @@ export default function Integrations() {
 
                 {platform.id === "shopify" && stores
                   .filter((store) => store.platform === "shopify")
-                  .map((store) => (
-                    <div key={store.id} className="rounded-xl border border-border bg-bg-3 p-3 text-[0.78rem] text-t2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-semibold text-t1">{store.shop_domain}</span>
-                        <span className="capitalize">
-                          {store.connection_status === "connected"
-                            ? store.setup_status.replace(/_/g, " ")
-                            : "disconnected — reconnect required"}
-                        </span>
+                  .map((store) => {
+                    const isRetrying = retryingStoreIds.includes(store.id);
+                    const webhookCount = store.webhooks_registered ?? 0;
+                    const webhookRequired = store.webhooks_required ?? 0;
+                    const webhooksDone = webhookRequired > 0 && webhookCount >= webhookRequired;
+                    const syncDone = Boolean(store.last_synced_at);
+                    const setupDone = store.setup_status === "complete" && webhooksDone && syncDone;
+                    const feedback = retryFeedback?.storeId === store.id ? retryFeedback : null;
+                    return (
+                      <div key={store.id} className="space-y-3 rounded-xl border border-border bg-bg-3 p-4 text-[0.8rem] text-t2">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="break-all font-semibold text-t1">{store.shop_domain}</p>
+                            <p className="mt-1 capitalize text-xs">{store.connection_status === "connected" ? store.setup_status.replace(/_/g, " ") : "Disconnected — reconnect required"}</p>
+                          </div>
+                          <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", setupDone ? "bg-emerald-500/10 text-emerald-400" : store.setup_status === "failed" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400")}>
+                            {setupDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : store.setup_status === "failed" ? <CircleX className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+                            {setupDone ? "Fully connected" : store.setup_status === "failed" ? "Needs attention" : "Setup incomplete"}
+                          </span>
+                        </div>
+                        <div className="space-y-2 rounded-lg border border-border bg-bg-2 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Webhook registration</span>
+                            <span className="inline-flex items-center gap-1.5 font-medium text-t1">
+                              {isRetrying && !webhooksDone ? <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" /> : webhooksDone ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : store.setup_status === "failed" ? <CircleX className="h-3.5 w-3.5 text-red-400" /> : <Clock className="h-3.5 w-3.5 text-amber-400" />}
+                              {webhookCount}/{webhookRequired || "—"} registered
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Initial store sync</span>
+                            <span className="inline-flex items-center gap-1.5 font-medium text-t1">
+                              {isRetrying && !syncDone ? <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" /> : syncDone ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : store.setup_status === "failed" ? <CircleX className="h-3.5 w-3.5 text-red-400" /> : <Clock className="h-3.5 w-3.5 text-amber-400" />}
+                              {syncDone ? "Sync complete" : "Not completed"}
+                            </span>
+                          </div>
+                          {store.setup_status === "complete" && !setupDone && (
+                            <p className="text-xs text-amber-300">The backend reports setup complete, but one or more verification checks are still missing.</p>
+                          )}
+                        </div>
+                        {feedback && (
+                          <div role={feedback.state === "failed" ? "alert" : "status"} className={cn("rounded-lg border p-3 text-xs leading-relaxed", feedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-300" : feedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-300" : "border-amber-500/25 bg-amber-500/5 text-amber-200")}>
+                            <div className="mb-1 flex items-center gap-2 font-semibold">
+                              {feedback.state === "success" ? <CheckCircle2 className="h-4 w-4" /> : feedback.state === "failed" ? <CircleX className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+                              {feedback.state === "success" ? "Setup completed" : feedback.state === "failed" ? "Setup failed" : feedback.state === "partial" ? "Still working" : "Retry in progress"}
+                            </div>
+                            {feedback.message}
+                          </div>
+                        )}
+                        {!setupDone && store.connection_status === "connected" && (
+                          <button
+                            type="button"
+                            onClick={() => void handleRetryStoreSetup(store.id)}
+                            disabled={isRetrying}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-2.5 font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+                            {isRetrying ? "Retrying Shopify setup…" : "Retry setup"}
+                          </button>
+                        )}
                       </div>
-                      {store.connection_status === "connected" && (
-                        <p className="mt-1">
-                          Webhooks: {store.webhooks_registered ?? 0}/{store.webhooks_required ?? 0}
-                          {store.last_synced_at ? " · Last successful sync recorded" : " · Initial sync not complete"}
-                        </p>
-                      )}
-                      {store.setup_status !== "complete" && store.setup_status !== "in_progress" && (
-                        <button
-                          type="button"
-                          onClick={() => handleRetryStoreSetup(store.id)}
-                          className="mt-2 font-semibold text-t1 underline underline-offset-2"
-                        >
-                          Retry setup
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
 
                 {/* Actions */}
                 {!(platform.id === "woocommerce" && wooFormOpen) && (
                   <div className="mt-auto flex items-center gap-2 pt-1">
-                    {isConnected ? (
+                    {loading ? (
+                      <div className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-bg-3 py-2.5 text-xs text-t2"><Loader2 className="h-4 w-4 animate-spin" /> Loading saved connection…</div>
+                    ) : isConnected ? (
                       <button
                         onClick={() => navigate("/dashboard/settings/automation")}
                         className="flex flex-1 items-center justify-center gap-2 rounded-md border border-border bg-glass/[0.035] py-2 text-[0.82rem] font-semibold text-t1 transition-colors hover:border-border-md hover:bg-glass/[0.06]"
@@ -593,7 +659,7 @@ export default function Integrations() {
                   </div>
                 )}
               </div>
-            </motion.div>
+            </div>
           );
         })}
       </section>
