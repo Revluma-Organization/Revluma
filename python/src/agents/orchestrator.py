@@ -685,6 +685,42 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             correlation_id=correlation_id,
         )
 
+    # Answer explicit connection-status questions from persisted store state.
+    if re.search(
+        r"\\b(am i|are we|is my store|is the store|did i)\\b.{0,60}\\b(connect(?:ed|ion)?|install(?:ed|ation)?)\\b|"
+        r"\\b(connect(?:ed|ion)? status|store status)\\b",
+        message,
+        re.IGNORECASE,
+    ):
+        store_status = _store_connection_summary(organization_id, db)
+        if store_status is None:
+            return finish(
+                "capability",
+                "I can't find a saved store connection for this Revluma workspace yet. "
+                "Open Integrations and connect the correct Shopify or WooCommerce store.",
+            )
+        platform, status, last_synced_at = store_status
+        if status in {"inactive", "deleted"}:
+            return finish(
+                "capability",
+                f"I found a {platform} store record, but its connection is inactive. "
+                "Reconnect it from Integrations before relying on store data.",
+            )
+        if last_synced_at is None or status in {"syncing", "error"}:
+            return finish(
+                "capability",
+                f"Revluma has a saved {platform} connection, but its store setup/data sync "
+                "is not complete yet. I can't reliably read your store metrics until setup "
+                "finishes. Open Integrations and use Retry setup; if it fails again, the "
+                "backend logs need to be checked.",
+            )
+        return finish(
+            "capability",
+            f"Yes, Revluma has a saved {platform} connection and a completed initial sync. "
+            "I can use the data that has been imported, although individual answers still "
+            "depend on which data has synced.",
+        )
+
     # ── 3. Preference statement: write memory, acknowledge ────────────────────
     if _is_ad_evaluation_request(
         u,
@@ -759,8 +795,13 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             )
             has_store = False
 
-    # No store: give real guidance, one closing line about connecting
+    # Distinguish a missing connection from a connected store whose data is not ready.
     if not has_store:
+        if _has_store(organization_id, db):
+            return finish(
+                "clarification",
+                responder.compose_store_sync_pending(message, u, history_text),
+            )
         return finish("clarification",
                       responder.compose_needs_store(message, u, history_text))
 
@@ -943,14 +984,28 @@ def _state_usable(bs) -> bool:
 
 
 def _has_store(org_id: str, db) -> bool:
+    return _store_connection_summary(org_id, db) is not None
+
+
+def _store_connection_summary(org_id: str, db):
+    """Return a minimal persisted store status without exposing shop credentials."""
     try:
         row = db.execute(
-            text("SELECT 1 FROM stores WHERE organization_id = :o AND status IN ('active', 'syncing', 'error', 'connected') LIMIT 1"),
+            text("""
+                SELECT platform, status, last_synced_at
+                FROM stores
+                WHERE organization_id = :o
+                ORDER BY installed_at DESC NULLS LAST, created_at DESC
+                LIMIT 1
+            """),
             {"o": org_id},
         ).fetchone()
-        return row is not None
+        if row is None:
+            return None
+        return str(row[0] or "store"), str(row[1] or "unknown"), row[2]
     except Exception:
-        return False
+        logger.exception("store_connection_status_lookup_failed")
+        return None
 
 
 def _select_agents(u, history, orchestrator_mode: str = "Analyst") -> list[str]:
