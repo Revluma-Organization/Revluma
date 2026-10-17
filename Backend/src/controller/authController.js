@@ -1026,6 +1026,16 @@ exports.resetPassword = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Invalid or expired reset token.' });
     }
 
+    // A password reset must not allow the account's current password to be reused.
+    // Compare against the stored hash; never compare plaintext or rely on the client.
+    if (user.password_hash && await bcrypt.compare(password, user.password_hash)) {
+      return res.status(400).json({
+        success: false,
+        code: 'PASSWORD_REUSE_NOT_ALLOWED',
+        error: 'Your new password must be different from your current password. Please choose a different password.',
+      });
+    }
+
     const passwordCheck = await assertPasswordAllowed(password);
     if (!passwordCheck.ok) {
       return res.status(400).json({ success: false, error: passwordCheck.error });
