@@ -230,7 +230,7 @@ export default function ForgotPassword() {
                 exit={{ opacity: 0, y: -10, height: 0 }}
                 className="mb-6 overflow-hidden"
               >
-                <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-[0.82rem] font-medium px-4 py-3 rounded-lg flex items-start gap-2.5">
+                <div role="alert" aria-live="polite" className="bg-red-500/10 border border-red-500/20 text-red-300 text-sm font-medium px-4 py-3 rounded-xl flex items-start gap-2.5">
                   <ShieldCheck className="w-4 h-4 mt-[1px] shrink-0" />
                   <p>{error}</p>
                 </div>
@@ -272,13 +272,15 @@ export default function ForgotPassword() {
                     className="space-y-4"
                   >
                     <div className="space-y-1.5">
-                      <label className="text-[0.78rem] font-medium text-slate-300">Email Address</label>
+                      <label htmlFor="recovery-email" className="text-sm font-medium text-slate-200">Email address</label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                           <Mail className="w-4 h-4" />
                         </div>
                         <input
+                          id="recovery-email"
                           type="email"
+                          autoComplete="email"
                           autoFocus
                           required
                           value={email}
@@ -322,7 +324,13 @@ export default function ForgotPassword() {
                     onSubmit={handleStep2}
                     className="space-y-6"
                   >
-                    <div className="space-y-2.5">
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
+                        <p className="text-sm font-semibold text-slate-100">Check your inbox</p>
+                        <p className="mt-1 text-sm text-slate-400">We requested a code for {maskedEmail(email)}.</p>
+                        <p className="mt-2 text-xs leading-5 text-slate-500">If it doesn’t arrive, check your spam folder. For security, we don’t reveal whether an account exists.</p>
+                      </div>
+                      <div className="space-y-2.5">
                       <div className="flex items-center justify-between">
                         <label className="text-[0.78rem] font-medium text-slate-300">6-Digit Code</label>
                         <button
@@ -352,6 +360,7 @@ export default function ForgotPassword() {
                           />
                         ))}
                       </div>
+                      </div>
                     </div>
                     <button
                       type="submit"
@@ -367,6 +376,12 @@ export default function ForgotPassword() {
                         "Verify Code"
                       )}
                     </button>
+                    <div className="flex flex-col gap-3 border-t border-slate-800 pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+                      <span className={expirySeconds > 0 ? "text-slate-400" : "text-amber-300"}>{expirySeconds > 0 ? "Code expires in " + formatTime(expirySeconds) : "This code may have expired. Request a new one."}</span>
+                      <button type="button" onClick={handleResend} disabled={loading || resendSeconds > 0} className="font-medium text-emerald-300 transition hover:text-emerald-200 disabled:cursor-not-allowed disabled:text-slate-600">
+                        {resendSeconds > 0 ? "Resend code in " + formatTime(resendSeconds) : "Resend code"}
+                      </button>
+                    </div>
                   </motion.form>
                 )}
 
