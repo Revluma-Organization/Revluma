@@ -204,9 +204,10 @@ export default function Integrations() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [stores, setStores] = useState<ConnectedStore[]>(readCachedStores);
-  const [statuses, setStatuses] = useState<Record<Platform["id"], ConnectionStatus>>(() => statusesFromStores(readCachedStores()));
-  const [loading, setLoading] = useState(true);
+  const initialCachedStores = readCachedStores();
+  const [stores, setStores] = useState<ConnectedStore[]>(initialCachedStores);
+  const [statuses, setStatuses] = useState<Record<Platform["id"], ConnectionStatus>>(() => statusesFromStores(initialCachedStores));
+  const [loading, setLoading] = useState(initialCachedStores.length === 0);
   const [storeLoadError, setStoreLoadError] = useState(false);
   const [retryingStoreIds, setRetryingStoreIds] = useState<string[]>([]);
   const [retryFeedback, setRetryFeedback] = useState<{ storeId: string; state: "running" | "success" | "partial" | "failed"; message: string } | null>(null);
@@ -510,7 +511,6 @@ export default function Integrations() {
         {PLATFORMS.map((platform) => {
           const status = statuses[platform.id];
           const isConnected = status === "connected";
-          const retrying = stores.some((store) => store.platform === platform.id && retryingStoreIds.includes(store.id));
 
           return (
             <div
