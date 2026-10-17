@@ -52,6 +52,34 @@ interface ConnectedStore {
   last_synced_at: string | null;
 }
 
+const STORE_STATUS_CACHE_KEY = "revluma:integration-store-status:v1";
+
+function readCachedStores(): ConnectedStore[] {
+  try {
+    const cached = sessionStorage.getItem(STORE_STATUS_CACHE_KEY);
+    if (!cached) return [];
+    const parsed: unknown = JSON.parse(cached);
+    return Array.isArray(parsed) ? parsed as ConnectedStore[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function statusesFromStores(stores: ConnectedStore[]): Record<Platform["id"], ConnectionStatus> {
+  const statuses: Record<Platform["id"], ConnectionStatus> = {
+    shopify: "not_connected",
+    woocommerce: "not_connected",
+  };
+  stores.forEach((store) => {
+    if (store.connection_status === "connected") {
+      statuses[store.platform] = "connected";
+    } else if (store.platform === "shopify" && store.installed_at && statuses.shopify !== "connected") {
+      statuses.shopify = "error";
+    }
+  });
+  return statuses;
+}
+
 // Platform config
 const PLATFORMS: Platform[] = [
   {
@@ -176,11 +204,8 @@ export default function Integrations() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [statuses, setStatuses] = useState<Record<Platform["id"], ConnectionStatus>>({
-    shopify: "not_connected",
-    woocommerce: "not_connected",
-  });
-  const [stores, setStores] = useState<ConnectedStore[]>([]);
+  const [stores, setStores] = useState<ConnectedStore[]>(readCachedStores);
+  const [statuses, setStatuses] = useState<Record<Platform["id"], ConnectionStatus>>(() => statusesFromStores(readCachedStores()));
   const [loading, setLoading] = useState(true);
   const [storeLoadError, setStoreLoadError] = useState(false);
   const [retryingStoreIds, setRetryingStoreIds] = useState<string[]>([]);
@@ -227,17 +252,13 @@ export default function Integrations() {
       if (!Array.isArray(stores)) {
         throw new Error("The store list response was invalid.");
       }
-      const newStatuses = { shopify: "not_connected", woocommerce: "not_connected" } as Record<Platform["id"], ConnectionStatus>;
-
-      stores.forEach((store) => {
-        if (store.connection_status === "connected") {
-          newStatuses[store.platform] = "connected";
-        } else if (store.platform === "shopify" && store.installed_at && newStatuses.shopify !== "connected") {
-          newStatuses.shopify = "error";
-        }
-      });
-      setStatuses(newStatuses);
+      setStatuses(statusesFromStores(stores));
       setStores(stores);
+      try {
+        sessionStorage.setItem(STORE_STATUS_CACHE_KEY, JSON.stringify(stores));
+      } catch {
+        // The page still works when browser storage is unavailable.
+      }
       setStoreLoadError(false);
       return stores;
     } catch (e) {
@@ -287,7 +308,7 @@ export default function Integrations() {
           );
         } else if (shopifyStore.setup_status !== "complete") {
           showStatusCard(
-            "success",
+            "error",
             shopifyStore.setup_status === "failed"
               ? "Shopify Connected — Setup Needs Attention"
               : "Shopify Connected — Setup Incomplete",
@@ -604,7 +625,7 @@ export default function Integrations() {
                         {feedback && (
                           <div role={feedback.state === "failed" ? "alert" : "status"} className={cn("rounded-lg border p-3 text-xs leading-relaxed", feedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-300" : feedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-300" : "border-amber-500/25 bg-amber-500/5 text-amber-200")}>
                             <div className="mb-1 flex items-center gap-2 font-semibold">
-                              {feedback.state === "success" ? <CheckCircle2 className="h-4 w-4" /> : feedback.state === "failed" ? <CircleX className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+                              {feedback.state === "success" ? <CheckCircle2 className="h-4 w-4" /> : feedback.state === "failed" ? <CircleX className="h-4 w-4" /> : feedback.state === "partial" ? <Clock className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
                               {feedback.state === "success" ? "Setup completed" : feedback.state === "failed" ? "Setup failed" : feedback.state === "partial" ? "Still working" : "Retry in progress"}
                             </div>
                             {feedback.message}
