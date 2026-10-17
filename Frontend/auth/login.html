@@ -1759,7 +1759,10 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       showInfoBanner('Email verified ✓', 'Your email is confirmed. Sign in to get started.');
     }
     if (params.get('reset') === '1') {
-      showInfoBanner('Password reset', 'Your password has been updated. Sign in with your new password.');
+      showSuccess('Password updated successfully. You can now sign in with your new password.');
+      params.delete('reset');
+      const cleanUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+      window.history.replaceState({}, document.title, cleanUrl);
     }
 
     // Check if redirected from onboarding with a context email
