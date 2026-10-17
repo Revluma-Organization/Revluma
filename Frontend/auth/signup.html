@@ -557,10 +557,120 @@
       color: var(--muted);
     }
 
+    /* Social sign-in: responsive, equal-width provider buttons */
+    .social-auth-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+      width: 100%;
+      min-width: 0;
+    }
+
+    .social-auth-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      min-width: 0;
+      min-height: 54px;
+      padding: 12px 10px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 12px;
+      background: #fff;
+      color: #171717;
+      font: 600 14px/1.2 'DM Sans', system-ui, sans-serif;
+      text-decoration: none;
+      white-space: nowrap;
+      overflow: hidden;
+      transition: background .18s ease, border-color .18s ease, transform .18s ease;
+    }
+
+    .social-auth-button:hover:not(:disabled) {
+      background: #f5f7fa;
+      border-color: rgba(255,255,255,.35);
+      transform: translateY(-1px);
+    }
+
+    .social-auth-button:focus-visible {
+      outline: 3px solid rgba(124,111,255,.55);
+      outline-offset: 3px;
+    }
+
+    .social-auth-button:disabled {
+      cursor: not-allowed;
+      opacity: .72;
+    }
+
+    .social-auth-icon {
+      width: 23px;
+      height: 23px;
+      flex: 0 0 23px;
+    }
+
+    #googleSignUpDiv {
+      width: 100%;
+      min-width: 0;
+      min-height: 54px;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    #googleSignUpDiv > div,
+    #googleSignUpDiv iframe {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+
+    #googleSignUpDiv > div {
+      min-height: 54px;
+    }
+
+    #googleSignUpDiv iframe {
+      height: 54px !important;
+    }
+
+    .social-auth-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+      text-align: center;
+    }
+
     /* Mobile */
     @media (max-width: 480px) {
       .form-container {
         padding: 1rem !important;
+      }
+
+      .card {
+        padding: 22px 16px;
+        border-radius: 16px;
+      }
+
+      .social-auth-grid {
+        gap: 8px;
+      }
+
+      .social-auth-button {
+        min-height: 50px;
+        padding: 10px 6px;
+        gap: 7px;
+        font-size: 12px;
+      }
+
+      .social-auth-icon {
+        width: 21px;
+        height: 21px;
+        flex-basis: 21px;
+      }
+
+      #googleSignUpDiv,
+      #googleSignUpDiv > div,
+      #googleSignUpDiv iframe {
+        min-height: 50px;
+        height: 50px !important;
       }
     }
 
@@ -900,8 +1010,17 @@
 
           
           <div class="card">
-          <!-- Google Sign Up Container -->
-<div id="googleSignUpDiv" class="w-full flex justify-center mb-5" style="min-height: 44px; border-radius: 10px; overflow: hidden;"></div>
+          <!-- Social sign-in -->
+          <div class="social-auth-grid mb-5" aria-label="Sign up with a provider">
+            <div id="googleSignUpDiv" aria-label="Continue with Google"></div>
+            <button type="button" class="social-auth-button" disabled aria-disabled="true" title="Apple sign-in is not configured yet">
+              <svg class="social-auth-icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                <path d="M16.37 1.43c0 1.14-.42 2.2-1.17 3.02-.8.95-2.1 1.68-3.35 1.59-.16-1.1.45-2.3 1.17-3.1.8-.91 2.18-1.6 3.35-1.51Zm4.34 16.18c-.6 1.39-.9 2.01-1.68 3.24-1.1 1.56-2.64 3.5-4.55 3.52-1.7.02-2.13-1.1-4.43-1.08-2.3.01-2.77 1.1-4.47 1.08-1.91-.02-3.37-1.78-4.47-3.34C-2 15.96.06 8.2 5.15 7.9c1.8-.1 3.44 1.21 4.54 1.21 1.08 0 3.1-1.5 5.22-1.28  .89.04 3.39.36 4.99 2.7-4.39 2.42-3.72 8.68.81 10.08Z" transform="translate(2 0) scale(.83)"/>
+              </svg>
+              <span>Apple <span style="font-weight:500;opacity:.65;">(soon)</span></span>
+            </button>
+          </div>
+          <p class="social-auth-note">Apple sign-in will be enabled once its secure authentication flow is configured.</p>
 
           <div class="flex items-center gap-4 my-6">
             <div class="h-px flex-1" style="background: var(--border);"></div>
@@ -1550,16 +1669,29 @@
           callback: handleGoogleSignUp
         });
 
-        google.accounts.id.renderButton(
-          document.getElementById('googleSignUpDiv'),
-          { 
-            theme: 'outline', 
-            size: 'large', 
-            width: 520, 
-            shape: 'rectangular', 
-            text: 'signup_with' 
-          }
-        );
+        const googleButtonContainer = document.getElementById('googleSignUpDiv');
+        const renderGoogleButton = () => {
+          if (!googleButtonContainer || !google.accounts?.id) return;
+          googleButtonContainer.replaceChildren();
+          google.accounts.id.renderButton(
+            googleButtonContainer,
+            {
+              theme: 'outline',
+              size: 'large',
+              width: Math.max(120, Math.floor(googleButtonContainer.getBoundingClientRect().width)),
+              shape: 'rectangular',
+              text: 'continue_with',
+              logo_alignment: 'center'
+            }
+          );
+        };
+        renderGoogleButton();
+        if (window.ResizeObserver && googleButtonContainer) {
+          const googleButtonObserver = new ResizeObserver(() => renderGoogleButton());
+          googleButtonObserver.observe(googleButtonContainer);
+        } else {
+          window.addEventListener('resize', renderGoogleButton);
+        }
       }
     };
 
