@@ -1,17 +1,6 @@
 class RevlumaAuth {
     constructor() {
-        const configuredApiBase = (
-            window.REVLUMA_API_BASE ||
-            window.__REVLUMA_CONFIG__?.apiBase ||
-            document.querySelector('meta[name="revluma-api-base"]')?.content ||
-            (['localhost', '127.0.0.1'].includes(window.location.hostname)
-                ? 'http://localhost:8000/api/v1'
-                : 'https://revluma-backend-vrsd.onrender.com/api/v1')
-        ).replace(/\/+$/, '');
-
-        this.apiBase = configuredApiBase.endsWith('/api/v1')
-            ? configuredApiBase
-            : `${configuredApiBase}/api/v1`;
+        this.apiBase = window.REVLUMA_API_BASE || 'https://revluma-backend-vrsd.onrender.com/api/v1';
         this.loginPath = '/auth/login.html';
     }
 
