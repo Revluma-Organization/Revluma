@@ -473,7 +473,7 @@
           // --- Backend Integration Point ---
 
           // 1 & 2: Call the exact endpoint and send both email and code
-          const res = await fetch('${API_BASE}/auth/verify-email', {
+          const res = await fetch(`${API_BASE}/auth/verify-email`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: email, code: code })
@@ -555,7 +555,7 @@
         }
 
         try {
-          const res = await fetch('${API_BASE}/auth/resend-verification', {
+          const res = await fetch(`${API_BASE}/auth/resend-verification`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: resendEmail })
