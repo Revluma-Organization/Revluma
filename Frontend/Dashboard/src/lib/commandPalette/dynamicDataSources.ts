@@ -6,6 +6,7 @@ import type { PaletteCommand, CommandContext } from "./types";
 interface StoreRecord {
   platform: "shopify" | "woocommerce";
   status: string;
+  connection_status?: "connected" | "disconnected";
 }
 
 /**
