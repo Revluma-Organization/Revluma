@@ -36,6 +36,9 @@ interface ConnectedStoreInfo {
   shop_domain?: string;
   platform: string;
   status: string;
+  connection_status?: "connected" | "disconnected";
+  setup_status?: string;
+  last_synced_at?: string | null;
   sync_status?: string;
 }
 
@@ -131,7 +134,7 @@ export default function Overview() {
       }
       if (storesResult.status === "fulfilled") {
         const stores = storesResult.value.data.data?.stores ?? [];
-        const connected = stores.find((s) => s.status === "active");
+        const connected = stores.find((s) => s.connection_status === "connected");
         setStoreConnected(Boolean(connected));
         setActiveStore(connected ?? null);
       }
