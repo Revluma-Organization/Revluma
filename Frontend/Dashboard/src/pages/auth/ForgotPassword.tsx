@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, KeyRound, Lock, ArrowRight, Loader2, CheckCircle2, ShieldCheck, ChevronLeft } from "lucide-react";
+import { Mail, KeyRound, Lock, ArrowRight, Loader2, CheckCircle2, ShieldCheck, ChevronLeft, RefreshCw, Clock3, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 
 export default function ForgotPassword() {
@@ -188,12 +188,12 @@ export default function ForgotPassword() {
   }, [step]);
 
   return (
-    <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 selection:bg-[#007FFF]/30 selection:text-white">
+    <div className="recovery-page min-h-screen w-full flex flex-col items-center justify-center p-4">
       {/* Absolute top-left back button */}
       <div className="absolute top-8 left-8">
         <a
           href="/auth/login.html"
-          className="flex items-center gap-2 text-sm font-medium text-slate-400 hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-4 py-2 rounded-full border border-white/10 backdrop-blur-sm"
+          className="recovery-back flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full border transition-colors"
         >
           <ChevronLeft className="w-4 h-4" />
           Back to Login
@@ -203,11 +203,9 @@ export default function ForgotPassword() {
       <div className="w-full max-w-md">
         {/* Brand Header */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center mb-4 shadow-xl">
-            <ShieldCheck className="w-6 h-6 text-[#00D084]" />
-          </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Account Recovery</h1>
-          <p className="text-sm text-slate-400 mt-2 text-center max-w-[280px]">
+          <img className="recovery-illustration" src={step === 1 ? "https://img.icons8.com/3d-fluency/94/new-post.png" : step === 2 ? "https://img.icons8.com/3d-fluency/94/secured-letter.png" : successMessage ? "https://img.icons8.com/3d-fluency/94/checked-shield.png" : "https://img.icons8.com/3d-fluency/94/password.png"} alt="" aria-hidden="true" />
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950">Account recovery</h1>
+          <p className="text-sm text-slate-600 mt-2 text-center max-w-[320px]">
             {step === 1 && "Enter the email associated with your account to receive a secure OTP."}
             {step === 2 && "We sent a 6-digit security code to your email. Enter it below."}
             {step === 3 && !successMessage && "Create a new, strong password for your account."}
@@ -216,10 +214,10 @@ export default function ForgotPassword() {
         </div>
 
         {/* Main Card */}
-        <div className="bg-slate-900/50 backdrop-blur-md border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+        <div className="recovery-card border rounded-2xl p-6 sm:p-8 relative overflow-hidden">
           
           {/* Decorative hairline */}
-          <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#00D084]/50 to-transparent" />
+          <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500" />
 
           {/* Global Error Banner */}
           <AnimatePresence mode="wait">
@@ -230,8 +228,8 @@ export default function ForgotPassword() {
                 exit={{ opacity: 0, y: -10, height: 0 }}
                 className="mb-6 overflow-hidden"
               >
-                <div role="alert" aria-live="polite" className="bg-red-500/10 border border-red-500/20 text-red-300 text-sm font-medium px-4 py-3 rounded-xl flex items-start gap-2.5">
-                  <ShieldCheck className="w-4 h-4 mt-[1px] shrink-0" />
+                <div role="alert" aria-live="polite" className="recovery-alert recovery-alert-error text-sm font-semibold px-4 py-3 rounded-xl flex items-start gap-2.5">
+                  <AlertCircle className="w-5 h-5 mt-[1px] shrink-0" aria-hidden="true" />
                   <p>{error}</p>
                 </div>
               </motion.div>
@@ -246,16 +244,14 @@ export default function ForgotPassword() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="flex flex-col items-center py-6 text-center"
               >
-                <div className="w-16 h-16 rounded-full bg-[#007FFF]/10 border border-[#00D084]/20 flex items-center justify-center mb-5">
-                  <CheckCircle2 className="w-8 h-8 text-[#00D084]" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">Password Reset!</h3>
-                <p className="text-sm text-slate-400 mb-8">{successMessage}</p>
+                <img className="recovery-illustration recovery-illustration-large" src="https://img.icons8.com/3d-fluency/94/checked-shield.png" alt="" aria-hidden="true" />
+                <h3 className="text-xl font-bold text-slate-950 mb-2">Password updated</h3>
+                <div role="status" aria-live="polite" className="recovery-alert recovery-alert-success mb-6 text-sm font-medium px-4 py-3 rounded-xl">{successMessage}</div>
                 <a
                   href="/auth/login.html"
-                  className="w-full py-2.5 rounded-lg font-semibold bg-[#007FFF] text-white transition-colors hover:bg-[#007FFF]/90 shadow-md flex items-center justify-center gap-2"
+                  className="recovery-primary w-full py-3 rounded-lg font-bold transition-colors flex items-center justify-center gap-2"
                 >
-                  Return to Login
+                  Return to login
                   <ArrowRight className="w-4 h-4" />
                 </a>
               </motion.div>
@@ -272,7 +268,7 @@ export default function ForgotPassword() {
                     className="space-y-4"
                   >
                     <div className="space-y-1.5">
-                      <label htmlFor="recovery-email" className="text-sm font-medium text-slate-200">Email address</label>
+                      <label htmlFor="recovery-email" className="text-sm font-bold text-slate-800">Email address</label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                           <Mail className="w-4 h-4" />
@@ -290,14 +286,14 @@ export default function ForgotPassword() {
                           }}
                           disabled={loading}
                           placeholder="admin@yourstore.com"
-                          className="w-full bg-slate-950/50 border border-slate-800 rounded-lg py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-600 outline-none transition-all focus:border-[#00D084]/50 focus:ring-1 focus:ring-[#00D084]/50 disabled:opacity-50"
+                          className="recovery-input w-full rounded-lg py-3 pl-10 pr-3 text-sm outline-none transition-all disabled:opacity-50"
                         />
                       </div>
                     </div>
                     <button
                       type="submit"
                       disabled={loading || !email}
-                      className="w-full mt-2 py-2.5 rounded-lg font-semibold bg-[#007FFF] text-white transition-colors hover:bg-[#007FFF]/90 shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="recovery-primary w-full mt-2 py-3 rounded-lg font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? (
                         <>
@@ -325,18 +321,18 @@ export default function ForgotPassword() {
                     className="space-y-6"
                   >
                     <div className="space-y-4">
-                      <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-                        <p className="text-sm font-semibold text-slate-100">Check your inbox</p>
-                        <p className="mt-1 text-sm text-slate-400">We requested a code for {maskedEmail(email)}.</p>
-                        <p className="mt-2 text-xs leading-5 text-slate-500">If it doesn’t arrive, check your spam folder. For security, we don’t reveal whether an account exists.</p>
+                      <div className="recovery-destination rounded-xl border p-4">
+                        <p className="text-sm font-bold text-slate-900">Check your inbox</p>
+                        <p className="mt-1 text-sm text-slate-700">We requested a code for {maskedEmail(email)}.</p>
+                        <p className="mt-2 text-xs leading-5 text-slate-600">If it doesn’t arrive, check your spam folder. For security, we don’t reveal whether an account exists.</p>
                       </div>
                       <div className="space-y-2.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-[0.78rem] font-medium text-slate-300">6-Digit Code</label>
+                        <label className="text-sm font-bold text-slate-800">6-digit verification code</label>
                         <button
                           type="button"
                           onClick={() => setStep(1)}
-                          className="text-[0.72rem] text-[#00D084] hover:text-[#00E591] font-medium"
+                          className="text-sm text-emerald-700 hover:text-emerald-900 font-bold"
                         >
                           Change Email
                         </button>
@@ -356,7 +352,7 @@ export default function ForgotPassword() {
                             onChange={(e) => handleOtpChange(index, e.target.value)}
                             onKeyDown={(e) => handleOtpKeyDown(index, e)}
                             disabled={loading}
-                            className="w-12 h-14 bg-slate-950/50 border border-slate-800 rounded-xl text-center text-xl font-bold text-white outline-none transition-all focus:border-[#00D084]/50 focus:ring-1 focus:ring-[#00D084]/50 disabled:opacity-50"
+                            className="recovery-otp w-12 h-14 rounded-xl text-center text-xl font-bold outline-none transition-all disabled:opacity-50"
                           />
                         ))}
                       </div>
@@ -365,7 +361,7 @@ export default function ForgotPassword() {
                     <button
                       type="submit"
                       disabled={loading || otp.join("").length !== 6}
-                      className="w-full py-2.5 rounded-lg font-semibold bg-[#007FFF] text-white transition-colors hover:bg-[#007FFF]/90 shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="recovery-primary w-full py-3 rounded-lg font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {loading ? (
                         <>
@@ -377,8 +373,8 @@ export default function ForgotPassword() {
                       )}
                     </button>
                     <div className="flex flex-col gap-3 border-t border-slate-800 pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-                      <span className={expirySeconds > 0 ? "text-slate-400" : "text-amber-300"}>{expirySeconds > 0 ? "Code expires in " + formatTime(expirySeconds) : "This code may have expired. Request a new one."}</span>
-                      <button type="button" onClick={handleResend} disabled={loading || resendSeconds > 0} className="font-medium text-emerald-300 transition hover:text-emerald-200 disabled:cursor-not-allowed disabled:text-slate-600">
+                      <span className={expirySeconds > 0 ? "text-slate-600" : "text-amber-700"}>{expirySeconds > 0 ? "Code expires in " + formatTime(expirySeconds) : "This code may have expired. Request a new one."}</span>
+                      <button type="button" onClick={handleResend} disabled={loading || resendSeconds > 0} className="inline-flex items-center gap-2 font-bold text-emerald-700 transition hover:text-emerald-900 disabled:cursor-not-allowed disabled:text-slate-400">
                         {resendSeconds > 0 ? "Resend code in " + formatTime(resendSeconds) : "Resend code"}
                       </button>
                     </div>
@@ -395,7 +391,7 @@ export default function ForgotPassword() {
                     className="space-y-4"
                   >
                     <div className="space-y-1.5">
-                      <label className="text-[0.78rem] font-medium text-slate-300">New Password</label>
+                      <label className="text-sm font-bold text-slate-800">New password</label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                           <KeyRound className="w-4 h-4" />
@@ -411,13 +407,13 @@ export default function ForgotPassword() {
                           }}
                           disabled={loading}
                           placeholder="••••••••"
-                          className="w-full bg-slate-950/50 border border-slate-800 rounded-lg py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-600 outline-none transition-all focus:border-[#00D084]/50 focus:ring-1 focus:ring-[#00D084]/50 disabled:opacity-50"
+                          className="recovery-input w-full rounded-lg py-3 pl-10 pr-3 text-sm outline-none transition-all disabled:opacity-50"
                         />
                       </div>
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[0.78rem] font-medium text-slate-300">Confirm Password</label>
+                      <label className="text-sm font-bold text-slate-800">Confirm password</label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                           <Lock className="w-4 h-4" />
@@ -465,6 +461,27 @@ export default function ForgotPassword() {
           </p>
         )}
       </div>
+      <style>{`
+        .recovery-page { background:#f8fafc; color:#111827; font-family:Arial,Helvetica,sans-serif; }
+        .recovery-page * { font-family:Arial,Helvetica,sans-serif; }
+        .recovery-page .recovery-back { color:#334155; background:#fff; border-color:#dbe2ea; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+        .recovery-page .recovery-back:hover { background:#f1f5f9; color:#0f172a; }
+        .recovery-page .recovery-card { background:#fff; border-color:#e2e8f0; box-shadow:0 20px 55px rgba(15,23,42,.08); }
+        .recovery-page .recovery-input { background:#fff; border:1px solid #cbd5e1; color:#0f172a; }
+        .recovery-page .recovery-input::placeholder { color:#94a3b8; }
+        .recovery-page .recovery-input:focus { border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,.14); }
+        .recovery-page .recovery-otp { background:#fff; border:1px solid #cbd5e1; color:#0f172a; }
+        .recovery-page .recovery-otp:focus { border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,.14); }
+        .recovery-page .recovery-primary { background:#047857; color:#fff; box-shadow:0 2px 4px rgba(4,120,87,.14); }
+        .recovery-page .recovery-primary:hover:not(:disabled) { background:#065f46; }
+        .recovery-page .recovery-destination { background:#f8fafc; border-color:#e2e8f0; }
+        .recovery-page .recovery-alert-error { color:#991b1b; background:#fef2f2; border:1px solid #fecaca; }
+        .recovery-page .recovery-alert-success { color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; }
+        .recovery-page .recovery-illustration { width:76px; height:76px; object-fit:contain; margin-bottom:18px; }
+        .recovery-page .recovery-illustration-large { width:96px; height:96px; margin:0 auto 18px; }
+        @media (max-width:640px) { .recovery-page .absolute.top-8.left-8 { top:16px; left:16px; } .recovery-page .recovery-card { padding:22px; } }
+        @media (prefers-reduced-motion:reduce) { .recovery-page *, .recovery-page *::before, .recovery-page *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
+      `}</style>
     </div>
   );
 }
