@@ -17,6 +17,16 @@
   <script src="../assets/js/auth-client.js"></script>
 
   <style>
+    /* Responsive social sign-in buttons */
+    .social-auth-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;width:100%;min-width:0;margin-bottom:22px}
+    .social-auth-google,.social-auth-button{display:flex;align-items:center;justify-content:center;width:100%;min-width:0;min-height:52px;overflow:hidden;border:1px solid rgba(255,255,255,.13);border-radius:12px;background:rgba(255,255,255,.045);color:#f5f5f7;font:600 14px/1 'DM Sans',system-ui,sans-serif;text-decoration:none;transition:background .18s ease,border-color .18s ease,transform .18s ease}
+    .social-auth-google>div,.social-auth-google iframe{max-width:100%!important}
+    .social-auth-button{gap:9px;padding:0 12px;cursor:pointer;white-space:nowrap}
+    .social-auth-button:hover{background:rgba(255,255,255,.085);border-color:rgba(255,255,255,.26);transform:translateY(-1px)}
+    .social-auth-button:focus-visible{outline:2px solid var(--accent,#7c6fff);outline-offset:3px}
+    .social-auth-icon{width:20px;height:20px;flex:0 0 20px}
+    @media(max-width:380px){.social-auth-grid{grid-template-columns:minmax(0,1fr);gap:10px}.social-auth-google,.social-auth-button{min-height:50px}}
+
     :root {
       --bg: #060608;
       --surface: rgba(255, 255, 255, 0.028);
@@ -939,7 +949,13 @@
         </div>
         
         <!-- Sign in with Google (Rendered by GIS) -->
-<div id="googleSignInDiv" class="w-full flex justify-center mb-5" style="min-height: 44px;"></div>
+<div class="social-auth-grid" aria-label="Continue with a social account">
+          <div id="googleSignInDiv" class="social-auth-google" aria-label="Continue with Google"></div>
+          <button type="button" id="appleSignInBtn" class="social-auth-button" aria-label="Continue with Apple">
+            <svg class="social-auth-icon apple-auth-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.7 12.8c0-2.1 1.7-3.1 1.8-3.2-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.7.8-3.4.8-.7 0-1.8-.8-3-.8-1.5 0-2.9.9-3.7 2.2-1.6 2.7-.4 6.7 1.1 8.9.7 1.1 1.6 2.3 2.7 2.3 1.1 0 1.5-.7 2.9-.7s1.8.7 3 .7c1.2 0 1.9-1.1 2.6-2.2.8-1.2 1.1-2.4 1.1-2.4s-2-.8-2-3.9ZM14.5 6.4c.6-.8 1-1.8.9-2.9-.9 0-2 .6-2.6 1.4-.6.7-1 1.8-.9 2.8 1 .1 2-.5 2.6-1.3Z"/></svg>
+            <span>Apple</span>
+          </button>
+        </div>
 
         <div class="flex items-center gap-3 mb-5" style="font-family: 'DM Sans', system-ui, sans-serif;">
           <div style="height: 1px; flex: 1; background: var(--border);"></div>
@@ -1060,17 +1076,32 @@
 
 <script>
   window.onload = function () {
-  if (typeof google !== 'undefined') {
-    google.accounts.id.initialize({
-      client_id: '137716714187-75iq86blnhp09hcg7spvhspgath32eol.apps.googleusercontent.com',
-      callback: handleGoogleLogin
+    if (typeof google !== 'undefined') {
+      google.accounts.id.initialize({
+        client_id: window.REVLUMA_GOOGLE_CLIENT_ID || '137716714187-75iq86blnhp09hcg7spvhspgath32eol.apps.googleusercontent.com',
+        callback: handleGoogleLogin
+      });
+      const googleContainer = document.getElementById('googleSignInDiv');
+      const renderGoogleSignInButton = () => {
+        if (!googleContainer || !googleContainer.isConnected) return;
+        googleContainer.innerHTML = '';
+        google.accounts.id.renderButton(googleContainer, {
+          theme: 'filled_black',
+          size: 'large',
+          width: Math.max(120, Math.floor(googleContainer.getBoundingClientRect().width)),
+          shape: 'rectangular',
+          text: 'signin_with',
+          logo_alignment: 'left'
+        });
+      };
+      renderGoogleSignInButton();
+      window.addEventListener('resize', renderGoogleSignInButton, { passive: true });
+    }
+  };
+
+    document.getElementById('appleSignInBtn')?.addEventListener('click', () => {
+      showError('Apple Sign In is not enabled for Revluma yet. Please use Google or email to sign in.');
     });
-    google.accounts.id.renderButton(
-      document.getElementById('googleSignInDiv'),
-      { theme: 'outline', size: 'large', width: 520, shape: 'rectangular', text: 'signin_with' }
-    );
-  }
-};
 
     async function handleGoogleLogin(response) {
       const idToken = response.credential;
