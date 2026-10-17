@@ -8,6 +8,7 @@ const shopifyController = require("../controller/shopifyController");
 router.post("/start",authenticateToken, shopifyController.startShopify);
 
 router.get("/install", authenticateToken, shopifyController.installShopify );
+router.post("/retry-setup", authenticateToken, shopifyController.retryShopifySetup);
 
 // OAuth Callback
 router.get("/callback", shopifyController.shopifyCallback );
