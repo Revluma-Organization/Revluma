@@ -271,7 +271,7 @@ exports.register = async (req, res, next) => {
     }
 
     const { account, storeSetup, preferences } = req.body;
-    const email = account.email.toLowerCase();
+    const email = String(account.email || '').trim().toLowerCase();
 
     const passwordCheck = await assertPasswordAllowed(account.password);
     if (!passwordCheck.ok) {
@@ -284,41 +284,43 @@ exports.register = async (req, res, next) => {
 
     if (existingUser) {
       if (existingUser.email_verified) {
-        // Do not reveal that the email is already registered (F-06).
-        logger.info('register_skipped_verified_email');
-        return res.status(200).json({
-          success: true,
-          message: REGISTER_GENERIC_MESSAGE,
-          data: { email },
+        // The product deliberately gives an actionable response here: registration
+        // is a user-initiated flow, and the UI directs the owner to sign in.
+        // Keep this endpoint rate-limited to reduce email/account enumeration abuse.
+        logger.info('register_rejected_existing_verified_email');
+        return res.status(409).json({
+          success: false,
+          code: 'EMAIL_ALREADY_REGISTERED',
+          error: 'An account with this email already exists. Please sign in instead.',
+          action: { label: 'Go to sign in', href: '/auth/login.html' },
         });
       }
 
-      // User exists but unverified — refresh verification silently
+      // Existing unverified account: only rotate its verification code.
+      // Never replace its password/profile/consent based on an unauthenticated
+      // registration attempt — that could let someone take over a pending account.
       const code = generateVerificationCode();
       const expiry = getVerificationExpiry();
 
       await prisma.users.update({
         where: { id: existingUser.id },
         data: {
-          full_name: `${account.firstName} ${account.lastName}`.trim(),
-          password_hash: await bcrypt.hash(account.password, SALT_ROUNDS),
           verification_code: code,
           verification_expires_at: expiry,
-          accepted_terms: account.termsAgreed,
-          accepted_privacy_policy: account.termsAgreed,
         },
       });
 
       if (!(await sendVerificationEmailOr503(
         res,
         existingUser.email,
-        `${account.firstName} ${account.lastName}`.trim(),
+        existingUser.full_name,
         code
       ))) return;
 
       return res.status(200).json({
         success: true,
-        message: REGISTER_GENERIC_MESSAGE,
+        code: 'EMAIL_VERIFICATION_REQUIRED',
+        message: 'This email has a pending registration. We sent a new verification code if delivery is available.',
         data: { email },
       });
     }
@@ -384,6 +386,22 @@ exports.register = async (req, res, next) => {
     });
 
   } catch (error) {
+    // A concurrent signup can pass the pre-check and lose the unique-email race.
+    // Normalize that database-level conflict to the same actionable response.
+    const target = error?.meta?.target;
+    const emailUniqueConflict =
+      error?.code === 'P2002' &&
+      (Array.isArray(target) ? target.includes('email') : String(target || '').includes('email'));
+
+    if (emailUniqueConflict) {
+      return res.status(409).json({
+        success: false,
+        code: 'EMAIL_ALREADY_REGISTERED',
+        error: 'An account with this email already exists. Please sign in instead.',
+        action: { label: 'Go to sign in', href: '/auth/login.html' },
+      });
+    }
+
     next(error);
   }
 };
