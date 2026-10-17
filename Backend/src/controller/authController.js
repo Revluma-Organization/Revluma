@@ -285,45 +285,14 @@ exports.register = async (req, res, next) => {
     });
 
     if (existingUser) {
-      if (existingUser.email_verified) {
-        // The product deliberately gives an actionable response here: registration
-        // is a user-initiated flow, and the UI directs the owner to sign in.
-        // Keep this endpoint rate-limited to reduce email/account enumeration abuse.
-        logger.info('register_rejected_existing_verified_email');
-        return res.status(409).json({
-          success: false,
-          code: 'EMAIL_ALREADY_REGISTERED',
-          error: 'An account with this email already exists. Please sign in instead.',
-          action: { label: 'Go to sign in', href: '/auth/login.html' },
-        });
-      }
-
-      // Existing unverified account: only rotate its verification code.
-      // Never replace its password/profile/consent based on an unauthenticated
-      // registration attempt — that could let someone take over a pending account.
-      const code = generateVerificationCode();
-      const expiry = getVerificationExpiry();
-
-      await prisma.users.update({
-        where: { id: existingUser.id },
-        data: {
-          verification_code: code,
-          verification_expires_at: expiry,
-        },
-      });
-
-      if (!(await sendVerificationEmailOr503(
-        res,
-        existingUser.email,
-        existingUser.full_name,
-        code
-      ))) return;
-
-      return res.status(200).json({
-        success: true,
-        code: 'EMAIL_VERIFICATION_REQUIRED',
-        message: 'This email has a pending registration. We sent a new verification code if delivery is available.',
-        data: { email },
+      // Any existing account, verified or not, must use the sign-in flow.
+      // Do not rotate verification codes or change credentials from signup.
+      logger.info('register_rejected_existing_email');
+      return res.status(409).json({
+        success: false,
+        code: 'EMAIL_ALREADY_REGISTERED',
+        error: 'An account with this email already exists. Please log in with your password.',
+        action: { label: 'Go to log in', href: '/auth/login.html' },
       });
     }
 
