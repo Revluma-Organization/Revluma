@@ -693,12 +693,16 @@
           showGlassmorphismCard('loading', 'Creating your account…', "This won't take long.");
 
           try {
-            await window.revlumaAuth.register(payload);
+            const registrationResult = await window.revlumaAuth.register(payload);
             localStorage.setItem('signup_email', document.querySelector('input[type="email"]').value);
 
-            showGlassmorphismCard('success',
-              'Account Created!',
-              "Check your email for a verification code to continue.",
+            const pendingVerification = registrationResult?.code === 'EMAIL_VERIFICATION_REQUIRED';
+            showGlassmorphismCard(
+              'success',
+              pendingVerification ? 'Verify your existing account' : 'Account Created!',
+              pendingVerification
+                ? 'An account with this email is awaiting verification. We have requested a new verification code; check your inbox and spam folder.'
+                : 'Check your email for a verification code to continue.',
               () => window.location.href = 'verifyemail.html',
               'Continue to Verification'
             );
