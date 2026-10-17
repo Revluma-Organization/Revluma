@@ -24,6 +24,8 @@ class RevlumaAuth {
             console.error('Backend validation error data:', result);
 
             const simulatedAxiosError = new Error(errorMsg);
+            simulatedAxiosError.code = result.code || undefined;
+            simulatedAxiosError.action = result.action || undefined;
             simulatedAxiosError.response = { data: result };
             throw simulatedAxiosError;
         }

@@ -693,12 +693,16 @@
           showGlassmorphismCard('loading', 'Creating your account…', "This won't take long.");
 
           try {
-            await window.revlumaAuth.register(payload);
+            const registrationResult = await window.revlumaAuth.register(payload);
             localStorage.setItem('signup_email', document.querySelector('input[type="email"]').value);
 
-            showGlassmorphismCard('success',
-              'Account Created!',
-              "Check your email for a verification code to continue.",
+            const pendingVerification = registrationResult?.code === 'EMAIL_VERIFICATION_REQUIRED';
+            showGlassmorphismCard(
+              'success',
+              pendingVerification ? 'Verify your existing account' : 'Account Created!',
+              pendingVerification
+                ? 'An account with this email is awaiting verification. We have requested a new verification code; check your inbox and spam folder.'
+                : 'Check your email for a verification code to continue.',
               () => window.location.href = 'verifyemail.html',
               'Continue to Verification'
             );
@@ -709,7 +713,13 @@
             }, 1200);
           } catch (err) {
             hideGlassmorphismCard();
-            globalError.textContent = err.message || 'An error occurred during registration.';
+
+            if (err.code === 'EMAIL_ALREADY_REGISTERED') {
+              globalError.innerHTML = 'An account with this email already exists. <a href="/auth/login.html" style="color:#a99cff;text-decoration:underline;font-weight:600;">Go to sign in</a>. If you cannot access the account, use the password recovery option on the sign-in page.';
+            } else {
+              globalError.textContent = err.message || 'An error occurred during registration.';
+            }
+
             globalError.classList.remove('hidden');
             btn.disabled = false;
             btn.innerHTML = originalText;
