@@ -37,6 +37,9 @@ Shopify and messaging:
 
 - `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_REDIRECT_URI`, and
   `SHOPIFY_TOKEN_ENCRYPTION_KEY`.
+- Use the same Shopify app API key/secret and 32-byte hex encryption key on
+  every backend instance. Changing the encryption key without re-encrypting
+  stored tokens makes existing Shopify connections unusable.
 - Register the exact `SHOPIFY_REDIRECT_URI` value in the Shopify app's allowed
   redirection URLs. It must point to
   `https://<backend-host>/api/v1/shopify/callback` in production.
@@ -47,6 +50,16 @@ Shopify and messaging:
 - `SHOPIFY_SCOPES` is optional. The OAuth request always includes
   `read_orders`, `read_customers`, and `write_discounts` in addition to any
   configured comma-separated scopes.
+- Configure those requested scopes and Shopify protected-customer-data access
+  in the Shopify app dashboard. Confirm the production app URL and callback
+  URL match the deployed Revluma backend; the current flow is standalone
+  browser OAuth (not Shopify embedded-app session-token authentication).
+- After OAuth, Revluma persists the encrypted token and redirects to
+  `/dashboard/integrations?shopify=connected`. The dashboard only confirms
+  success after `GET /api/v1/stores` verifies the persisted store. Webhook and
+  initial-sync status are reported separately. An authenticated merchant can
+  retry setup with `POST /api/v1/shopify/retry-setup` and a `{ "store_id": "..." }`
+  body; webhook registration and synchronization are safe to retry.
 
 The Shopify connect endpoints require a current access JWT. If
 `POST /api/v1/shopify/start` logs `TokenExpiredError` / `jwt expired`, the

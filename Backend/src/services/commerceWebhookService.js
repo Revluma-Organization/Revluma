@@ -39,7 +39,16 @@ async function claimDelivery(provider, deliveryId, storeId, topic) {
       data: { provider, delivery_id: deliveryId, store_id: storeId, topic },
     });
   } catch (error) {
-    if (error.code === 'P2002') return null;
+    if (error.code === 'P2002') {
+      const retry = await prisma.webhook_deliveries.updateMany({
+        where: { provider, delivery_id: deliveryId, status: 'failed' },
+        data: { status: 'received', last_error: null, received_at: new Date() },
+      });
+      if (!retry.count) return null;
+      return prisma.webhook_deliveries.findUnique({
+        where: { provider_delivery_id: { provider, delivery_id: deliveryId } },
+      });
+    }
     throw error;
   }
 }
@@ -285,7 +294,10 @@ async function upsertCustomer(store, payload) {
 async function processCommerceWebhook({ provider, store, topic, payload }) {
   const normalizedTopic = String(topic || '').toLowerCase();
   if (normalizedTopic === 'app/uninstalled') {
-    await prisma.stores.update({ where: { id: store.id }, data: { status: 'inactive', access_token: null } });
+    await prisma.stores.update({
+      where: { id: store.id },
+      data: { status: 'inactive', access_token: null, updated_at: new Date() },
+    });
     return { action: 'store_deactivated' };
   }
   if (normalizedTopic.includes('customers/') || normalizedTopic.includes('customer.')) {

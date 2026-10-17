@@ -1,4 +1,5 @@
 const prisma = require("../configs/database").prisma;
+const { REQUIRED_SUBSCRIPTIONS } = require('../services/shopifyWebhookService');
 
 exports.getStores = async (req, res, next) => {
   try {
@@ -8,23 +9,82 @@ exports.getStores = async (req, res, next) => {
       orderBy: { created_at: 'asc' },
     });
 
-    if (!membership) {
-      return res.status(200).json({ success: true, data: { stores: [] } });
-    }
+    const organization = membership
+      ? null
+      : await prisma.organizations.findFirst({
+        where: { owner_id: req.user.id },
+        select: { id: true },
+      });
+    const organizationId = membership?.organization_id || organization?.id;
+    if (!organizationId) return res.status(200).json({ success: true, data: { stores: [] } });
 
     const stores = await prisma.stores.findMany({
-      where: { organization_id: membership.organization_id },
+      where: { organization_id: organizationId },
       select: {
         id: true,
         platform: true,
         shop_domain: true,
         status: true,
+        access_token: true,
         installed_at: true,
         last_synced_at: true,
+        updated_at: true,
       },
     });
 
-    return res.status(200).json({ success: true, data: { stores } });
+    const shopifyStoreIds = stores
+      .filter((store) => store.platform === 'shopify')
+      .map((store) => store.id);
+    const registrations = shopifyStoreIds.length
+      ? await prisma.webhook_registrations.findMany({
+        where: { store_id: { in: shopifyStoreIds }, status: 'active' },
+        select: { store_id: true, topic: true },
+      })
+      : [];
+    const topicsByStore = new Map();
+    for (const registration of registrations) {
+      const topics = topicsByStore.get(registration.store_id) || new Set();
+      topics.add(registration.topic);
+      topicsByStore.set(registration.store_id, topics);
+    }
+    const requiredTopics = REQUIRED_SUBSCRIPTIONS.map(([topic]) => topic);
+
+    const responseStores = stores.map((store) => {
+      const connected = Boolean(store.access_token) && !['inactive', 'deleted'].includes(store.status);
+      const registeredTopics = topicsByStore.get(store.id) || new Set();
+      const webhooksReady = store.platform !== 'shopify' ||
+        requiredTopics.every((topic) => registeredTopics.has(topic));
+      const syncStatus = store.status === 'syncing'
+        ? store.updated_at && Date.now() - store.updated_at.getTime() >= 15 * 60 * 1000
+          ? 'failed'
+          : 'in_progress'
+        : store.status === 'active' && !store.last_synced_at && store.updated_at &&
+            Date.now() - store.updated_at.getTime() < 15 * 60 * 1000
+          ? 'in_progress'
+        : store.status === 'error'
+          ? 'failed'
+          : store.last_synced_at
+            ? 'complete'
+            : 'pending';
+      const safeStore = { ...store };
+      delete safeStore.access_token;
+
+      return {
+        ...safeStore,
+        connection_status: connected ? 'connected' : 'disconnected',
+        webhooks_registered: store.platform === 'shopify' ? registeredTopics.size : null,
+        webhooks_required: store.platform === 'shopify' ? requiredTopics.length : null,
+        setup_status: !connected
+          ? 'disconnected'
+          : syncStatus === 'in_progress' || syncStatus === 'failed'
+            ? syncStatus
+            : !webhooksReady
+              ? 'webhooks_pending'
+              : syncStatus,
+      };
+    });
+
+    return res.status(200).json({ success: true, data: { stores: responseStores } });
   } catch (error) {
     next(error);
   }

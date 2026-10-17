@@ -12,7 +12,7 @@ const logger = require('../utils/logger');
 const { buildCookieOptions } = require('../utils/cookieOptions');
 
 const {exchangeAccessToken,getOrganizationByUser,upsertStore,syncShopifyStore,} = require("../services/shopifyService");
-const { reconcileShopifyWebhooks } = require('../services/shopifyWebhookService');
+const { prisma } = require('../configs/database');
 
 /**GET /api/v1/shopify/install, Redirect authenticated merchant to Shopify OAuth.*/
 
@@ -23,8 +23,7 @@ exports.installShopify = async (req, res, next) => {
       hasUser: Boolean(req.user?.id),
     });
 
-    // Prefer the authenticated user from JWT, fall back to the legacy OAuth cookie.
-    const userId = req.user?.id || req.signedCookies?.oauth_user || req.signedCookies?.shopify_user;
+    const userId = req.user?.id;
 
     if (!userId) {
       return res.status(401).json({
@@ -46,6 +45,7 @@ exports.installShopify = async (req, res, next) => {
         error: "Invalid Shopify shop domain",
       });
     }
+    const normalizedShop = shop.toLowerCase();
 
     const state = generateState(userId);
     const cookieOptions = {
@@ -61,7 +61,7 @@ exports.installShopify = async (req, res, next) => {
     res.cookie("shopify_user", userId, cookieOptions);
     
     const installUrl = buildInstallUrl({
-      shop,
+      shop: normalizedShop,
       state,
     });
 
@@ -91,10 +91,58 @@ exports.startShopify = async (req, res, next) => {
   }
 };
 
+exports.retryShopifySetup = async (req, res, next) => {
+  try {
+    const requestedStoreId = req.body?.store_id;
+    if (requestedStoreId !== undefined &&
+      (typeof requestedStoreId !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedStoreId))) {
+      return res.status(400).json({ success: false, error: 'Invalid Shopify store ID' });
+    }
+
+    const organization = await getOrganizationByUser(req.user.id);
+    if (!organization) {
+      return res.status(404).json({ success: false, error: 'Organization not found' });
+    }
+
+    const store = await prisma.stores.findFirst({
+      where: {
+        ...(requestedStoreId ? { id: requestedStoreId } : {}),
+        organization_id: organization.id,
+        platform: 'shopify',
+        access_token: { not: null },
+        status: { notIn: ['inactive', 'deleted'] },
+      },
+      orderBy: { installed_at: 'desc' },
+    });
+    if (!store) {
+      return res.status(404).json({ success: false, error: 'Connected Shopify store not found' });
+    }
+    if (store.status === 'syncing' && store.updated_at &&
+      Date.now() - store.updated_at.getTime() < 15 * 60 * 1000) {
+      return res.status(409).json({ success: false, error: 'Shopify setup is already in progress' });
+    }
+
+    syncShopifyStore(store).catch((error) => {
+      logger.error('shopify_setup_retry_failed', {
+        store_id: store.id,
+        error_type: error.code || error.name || 'sync_error',
+      });
+    });
+    return res.status(202).json({
+      success: true,
+      data: { store_id: store.id, setup_status: 'in_progress' },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**GET /api/v1/shopify/callback, Handle Shopify OAuth callback.*/
 exports.shopifyCallback = async (req, res, next) => {
   const requestId = crypto.randomUUID();
   let stage = 'oauth_configuration';
+  let frontendOrigin = null;
   const logStage = (outcome, details = {}) => {
     logger.info('shopify_callback_stage', {
       request_id: requestId,
@@ -107,6 +155,7 @@ exports.shopifyCallback = async (req, res, next) => {
   try {
     logStage('started');
     const { redirectUri, apiVersion, backendHost, frontendUrl: configuredFrontendUrl } = getShopifyOAuthConfig();
+    frontendOrigin = configuredFrontendUrl;
     logStage('completed', {
       redirect_host: new URL(redirectUri).host,
       redirect_path: new URL(redirectUri).pathname,
@@ -120,7 +169,16 @@ exports.shopifyCallback = async (req, res, next) => {
       shop,
       state,
       hmac,
+      error: authorizationError,
     } = req.query;
+
+    if (authorizationError === 'access_denied') {
+      for (const name of ['shopify_state', 'shopify_user', 'oauth_user']) {
+        res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
+      }
+      const frontendUrl = new URL('/dashboard/integrations?shopify=cancelled', configuredFrontendUrl);
+      return res.redirect(frontendUrl.toString());
+    }
 
     // Validate required parameters
     stage = 'callback_parameters';
@@ -148,7 +206,8 @@ exports.shopifyCallback = async (req, res, next) => {
         reference: requestId,
       });
     }
-    logStage('completed', { shop_domain: shop });
+    const normalizedShop = shop.toLowerCase();
+    logStage('completed', { shop_domain: normalizedShop });
 
     // Verify Shopify HMAC
     stage = 'hmac_validation';
@@ -203,8 +262,8 @@ exports.shopifyCallback = async (req, res, next) => {
 
     // Exchange authorization code for access token
     stage = 'access_token_exchange';
-    logStage('started', { shop_domain: shop });
-    const accessToken = await exchangeAccessToken(shop, code);
+    logStage('started', { shop_domain: normalizedShop });
+    const accessToken = await exchangeAccessToken(normalizedShop, code);
     logStage('completed', { access_token_received: Boolean(accessToken) });
 
     // Retrieve merchant organization
@@ -228,17 +287,14 @@ exports.shopifyCallback = async (req, res, next) => {
     logStage('started', { shop_domain: shop });
     const store = await upsertStore({
       organizationId: organization.id,
-      shop,
+      shop: normalizedShop,
       accessToken,
     });
     logStage('completed', { store_id: store.id });
 
-    stage = 'webhook_registration';
+    stage = 'initial_setup';
     logStage('started', { store_id: store.id });
-    await reconcileShopifyWebhooks(store);
-    logStage('completed', { store_id: store.id });
-
-    // Trigger background sync (do not await)
+    logStage('deferred', { reason: 'setup_runs_after_oauth_response', store_id: store.id });
     syncShopifyStore(store).catch((error) => {
       logger.error('shopify_sync_failed', {
         store_id: store?.id,
@@ -268,7 +324,9 @@ exports.shopifyCallback = async (req, res, next) => {
     // Redirect merchant back to frontend
     stage = 'frontend_redirect';
     logStage('started', { frontend_url_configured: Boolean(process.env.FRONTEND_URL) });
-    const frontendUrl = new URL('/dashboard/integrations?connected=shopify', configuredFrontendUrl);
+    const frontendUrl = new URL('/dashboard/integrations', configuredFrontendUrl);
+    frontendUrl.searchParams.set('shopify', 'connected');
+    frontendUrl.searchParams.set('shop', normalizedShop);
     if (!['http:', 'https:'].includes(frontendUrl.protocol)) {
       const error = new Error('Frontend URL must use HTTP or HTTPS.');
       error.code = 'SHOPIFY_FRONTEND_URL_INVALID';
@@ -295,9 +353,22 @@ exports.shopifyCallback = async (req, res, next) => {
       missing_config: error.missingConfig || undefined,
       configured_api_version: error.configuredApiVersion || undefined,
     });
+    if (frontendOrigin) {
+      for (const name of ['shopify_state', 'shopify_user', 'oauth_user']) {
+        res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
+      }
+      const frontendUrl = new URL('/dashboard/integrations', frontendOrigin);
+      frontendUrl.searchParams.set('shopify', 'error');
+      frontendUrl.searchParams.set('stage', stage);
+      frontendUrl.searchParams.set('reference', requestId);
+      if (typeof req.query?.shop === 'string' && isValidShopDomain(req.query.shop)) {
+        frontendUrl.searchParams.set('shop', req.query.shop);
+      }
+      return res.redirect(frontendUrl.toString());
+    }
     return res.status(error.statusCode || 500).json({
       success: false,
-      error: `Shopify installation failed during ${stage}`,
+      error: 'Shopify installation could not be completed',
       stage,
       reference: requestId,
     });

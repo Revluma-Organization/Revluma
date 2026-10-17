@@ -2,10 +2,10 @@
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ExternalLink, Plug, WifiOff, X, Info, CheckCircle2,
-  Clock, ShieldCheck, ArrowUpRight, Code2, Sparkles, Loader2
+  Clock, ShieldCheck, ArrowUpRight, Code2, Sparkles
 } from "lucide-react";
 import { WooCommerceConnect } from "./WooCommerceConnect";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { api, ApiError } from "@/lib/api";
@@ -37,6 +37,19 @@ interface ComingSoonPlatform {
   logo?: string;
   icon?: React.ElementType;
   accentColor: string;
+}
+
+interface ConnectedStore {
+  id: string;
+  platform: Platform["id"];
+  shop_domain: string;
+  status: string;
+  installed_at: string | null;
+  connection_status: "connected" | "disconnected";
+  setup_status: "disconnected" | "webhooks_pending" | "in_progress" | "failed" | "pending" | "complete";
+  webhooks_registered: number | null;
+  webhooks_required: number | null;
+  last_synced_at: string | null;
 }
 
 // Platform config
@@ -167,7 +180,9 @@ export default function Integrations() {
     shopify: "not_connected",
     woocommerce: "not_connected",
   });
+  const [stores, setStores] = useState<ConnectedStore[]>([]);
   const [loading, setLoading] = useState(true);
+  const [storeLoadError, setStoreLoadError] = useState(false);
 
   // Shopify Modal State
   const [shopifyModalOpen, setShopifyModalOpen] = useState(false);
@@ -185,9 +200,9 @@ export default function Integrations() {
     buttonText?: string;
   }>({ open: false, type: "success", title: "", message: "" });
 
-  function showStatusCard(type: "success" | "error", title: string, message: string, buttonText?: string) {
+  const showStatusCard = useCallback((type: "success" | "error", title: string, message: string, buttonText?: string) => {
     setStatusCard({ open: true, type, title, message, buttonText });
-  }
+  }, []);
 
   function closeStatusCard() {
     setStatusCard((prev) => ({ ...prev, open: false }));
@@ -203,45 +218,112 @@ export default function Integrations() {
   }
 
   // Fetch initial statuses
-  const fetchStatuses = async () => {
+  const fetchStatuses = useCallback(async (): Promise<ConnectedStore[] | null> => {
     try {
-      const res = await api.get<{ data: { stores: { platform: "shopify" | "woocommerce"; status: string }[] } }>("/stores");
-      const stores = res.data?.data?.stores || [];
+      const res = await api.get<{ data: { stores: ConnectedStore[] } }>("/stores");
+      const stores = res.data?.data?.stores;
+      if (!Array.isArray(stores)) {
+        throw new Error("The store list response was invalid.");
+      }
       const newStatuses = { shopify: "not_connected", woocommerce: "not_connected" } as Record<Platform["id"], ConnectionStatus>;
 
       stores.forEach((store) => {
-        if (store.status === "active") {
+        if (store.connection_status === "connected") {
           newStatuses[store.platform] = "connected";
+        } else if (store.platform === "shopify" && store.installed_at && newStatuses.shopify !== "connected") {
+          newStatuses.shopify = "error";
         }
       });
       setStatuses(newStatuses);
+      setStores(stores);
+      setStoreLoadError(false);
+      return stores;
     } catch (e) {
       console.error("Failed to fetch store statuses", e);
+      setStoreLoadError(true);
+      return null;
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchStatuses();
-
-    if (
-      searchParams.get("shopify") === "connected" ||
-      searchParams.get("connected") === "true" ||
-      searchParams.get("shop") !== null
-    ) {
-      showStatusCard(
-        "success",
-        "Shopify Store Connected!",
-        "Your store is linked and initial synchronization has started. Next, configure your automation safety limits.",
-        "Got it"
-      );
+    const callbackStatus = searchParams.get("shopify");
+    if (callbackStatus === "cancelled") {
+      showStatusCard("error", "Shopify Authorization Cancelled", "No Shopify connection was saved. You can start the connection again whenever you're ready.");
+      const next = new URLSearchParams(searchParams);
+      next.delete("shopify");
+      next.delete("shop");
+      next.delete("stage");
+      next.delete("reference");
+      setSearchParams(next, { replace: true });
+      void fetchStatuses();
+      return;
+    }
+    const connectionAttempt = callbackStatus === "connected" ||
+      callbackStatus === "error" ||
+      searchParams.has("connected");
+    if (connectionAttempt) {
+      const callbackShop = searchParams.get("shop");
+      const failureStage = searchParams.get("stage");
+      const failureReference = searchParams.get("reference");
+      void fetchStatuses().then((result) => {
+        const shopifyStore = result?.find(
+          (store) => store.platform === "shopify" &&
+            store.connection_status === "connected" &&
+            (!callbackShop || store.shop_domain === callbackShop),
+        );
+        if (!result) {
+          showStatusCard("error", "Connection Could Not Be Verified", "Revluma could not confirm the saved Shopify connection. Refresh the page or try again.");
+        } else if (!shopifyStore) {
+          showStatusCard(
+            "error",
+            "Shopify Connection Not Found",
+            callbackStatus === "error"
+              ? `The connection could not be completed${failureStage ? ` during ${failureStage.replace(/_/g, " ")}` : ""}.${failureReference ? ` Reference: ${failureReference}.` : ""} Please try connecting again.`
+              : "Shopify returned to Revluma, but no saved connection was found for this store in your account. Please try connecting again.",
+          );
+        } else if (shopifyStore.setup_status !== "complete") {
+          showStatusCard(
+            "success",
+            shopifyStore.setup_status === "failed"
+              ? "Shopify Connected — Setup Needs Attention"
+              : "Shopify Connected — Setup Incomplete",
+            shopifyStore.setup_status === "failed"
+              ? "Your store credentials are saved, but webhook setup or synchronization failed. Use Retry setup on the store card."
+              : "Your store credentials are saved. Webhook registration or initial synchronization is still pending; the current setup status is shown below.",
+            "View setup status",
+          );
+        } else {
+          showStatusCard(
+            "success",
+            "Shopify Store Connected",
+            "Your saved Shopify connection and initial synchronization have been verified.",
+            "Got it",
+          );
+        }
+      });
       const next = new URLSearchParams(searchParams);
       next.delete("shopify");
       next.delete("connected");
+      next.delete("shop");
+      next.delete("stage");
+      next.delete("reference");
       setSearchParams(next, { replace: true });
+    } else {
+      void fetchStatuses();
     }
-  }, []);
+  }, [fetchStatuses, searchParams, setSearchParams, showStatusCard]);
+
+  async function handleRetryStoreSetup(storeId: string) {
+    try {
+      await api.post("/shopify/retry-setup", { store_id: storeId });
+      await fetchStatuses();
+      showStatusCard("success", "Shopify Setup Retry Started", "Revluma is retrying webhook registration and the initial synchronization. The setup status will update here.");
+    } catch (e) {
+      showStatusCard("error", "Shopify Setup Retry Failed", getErrorMessage(e, "We couldn't restart Shopify setup. Try again shortly."));
+    }
+  }
 
   function handleConnectClick(id: Platform["id"]) {
     if (id === "shopify") {
@@ -264,10 +346,6 @@ export default function Integrations() {
     }
 
     try {
-      await api.post("/shopify/start", { shop: cleanShop });
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
       const res = await api.get("/shopify/install", { shop: cleanShop });
       const targetUrl = (res.data as { redirectUrl?: string; install_url?: string })?.redirectUrl || (res.data as { install_url?: string })?.install_url;
 
@@ -325,25 +403,11 @@ export default function Integrations() {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider text-emerald-400">
               <Sparkles className="h-3.5 w-3.5" />
-              Store Connected & Synchronizing
+              Store Connection Active
             </div>
             <p className="text-[0.82rem] text-t2">
-              Your storefront is linked. Orders, customer profiles, and abandoned checkouts sync automatically in the background.
+              Saved store connections are verified with Revluma. Webhook and synchronization progress is shown on the platform card.
             </p>
-            <div className="flex flex-wrap items-center gap-2.5 pt-1">
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-3 px-2.5 py-1 text-[0.72rem] font-medium text-t1">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                Storefront API Active
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-3 px-2.5 py-1 text-[0.72rem] font-medium text-t1">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-                Pixel & Webhooks Verified
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-3 px-2.5 py-1 text-[0.72rem] font-medium text-t1">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" />
-                Continuous Sync Enabled
-              </span>
-            </div>
           </div>
           <button
             onClick={() => navigate("/dashboard/settings/automation")}
@@ -355,8 +419,21 @@ export default function Integrations() {
         </motion.div>
       )}
 
+      {!loading && storeLoadError && (
+        <div role="alert" className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 text-sm text-t2">
+          Could not load your saved store connections. Refresh the list before trying to connect a store again.
+          <button
+            type="button"
+            onClick={() => void fetchStatuses()}
+            className="ml-2 font-semibold text-t1 underline underline-offset-2"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* No-store warning -> Premium Empty State */}
-      {!loading && !anyConnected && (
+      {!loading && !storeLoadError && !anyConnected && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -453,6 +530,36 @@ export default function Integrations() {
                     onError={(msg) => showStatusCard("error", "WooCommerce Connection Failed", msg, "Try Again")}
                   />
                 )}
+
+                {platform.id === "shopify" && stores
+                  .filter((store) => store.platform === "shopify")
+                  .map((store) => (
+                    <div key={store.id} className="rounded-xl border border-border bg-bg-3 p-3 text-[0.78rem] text-t2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-t1">{store.shop_domain}</span>
+                        <span className="capitalize">
+                          {store.connection_status === "connected"
+                            ? store.setup_status.replace(/_/g, " ")
+                            : "disconnected — reconnect required"}
+                        </span>
+                      </div>
+                      {store.connection_status === "connected" && (
+                        <p className="mt-1">
+                          Webhooks: {store.webhooks_registered ?? 0}/{store.webhooks_required ?? 0}
+                          {store.last_synced_at ? " · Last successful sync recorded" : " · Initial sync not complete"}
+                        </p>
+                      )}
+                      {store.setup_status !== "complete" && store.setup_status !== "in_progress" && (
+                        <button
+                          type="button"
+                          onClick={() => handleRetryStoreSetup(store.id)}
+                          className="mt-2 font-semibold text-t1 underline underline-offset-2"
+                        >
+                          Retry setup
+                        </button>
+                      )}
+                    </div>
+                  ))}
 
                 {/* Actions */}
                 {!(platform.id === "woocommerce" && wooFormOpen) && (

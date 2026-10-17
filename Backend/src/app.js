@@ -34,6 +34,12 @@ const { checkPythonHealth } = require('./services/mlService');
 
 
 const app = express();
+const cookieSecret = String(process.env.COOKIE_SECRET || '').trim();
+if (!cookieSecret) {
+  const error = new Error('COOKIE_SECRET is required to sign authentication and Shopify OAuth cookies.');
+  error.code = 'COOKIE_SECRET_REQUIRED';
+  throw error;
+}
 
 // ── Trust proxy (required for Render, Railway, Vercel)
 app.set('trust proxy', 1);
@@ -81,7 +87,7 @@ app.post('/api/v1/subscriptions/webhook', express.raw({ type: 'application/json'
 // ── Body parsing
 app.use(express.json({ limit: '1mb' })); // Prevent oversized JSON bodies
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
-app.use(cookieParser(process.env.COOKIE_SECRET));
+app.use(cookieParser(cookieSecret));
 
 // ── Global API rate limiter
 // Applied before routes. Pixel ingestion has its own stricter limiter.

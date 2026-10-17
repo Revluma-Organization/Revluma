@@ -1,16 +1,14 @@
 const crypto = require("crypto");
 
 const ALGORITHM = "aes-256-cbc";
+const encryptionKey = String(process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY || '');
 
-const KEY = Buffer.from(
-  process.env.SHOPIFY_TOKEN_ENCRYPTION_KEY,
-  "hex"
-);
-if (KEY.length !== 32) {
+if (!/^[0-9a-fA-F]{64}$/.test(encryptionKey)) {
   throw new Error(
     "SHOPIFY_TOKEN_ENCRYPTION_KEY must be a 64-character hexadecimal string."
   );
 }
+const KEY = Buffer.from(encryptionKey, "hex");
 
 function encrypt(text) {
   const iv = crypto.randomBytes(16);

@@ -9,7 +9,7 @@ module.exports = (err, req, res, next) => {
   logger.error('unhandled_error', {
     error_type: err.code || err.name || 'unhandled_error',
     method: req.method,
-    path: req.originalUrl,
+    path: req.route?.path ? `${req.baseUrl}${req.route.path}` : req.path,
     userId: req.user?.id || null,
     ...(!isProd && exposeErrorDetails ? { message: err.message, stack: err.stack } : {}),
   });

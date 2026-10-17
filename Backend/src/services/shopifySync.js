@@ -241,7 +241,10 @@ async function syncAbandonedCheckouts(store) {
 }
 
 async function syncShopifyStore(store) {
-  await prisma.stores.update({ where: { id: store.id }, data: { status: 'syncing' } });
+  await prisma.stores.update({
+    where: { id: store.id },
+    data: { status: 'syncing', updated_at: new Date() },
+  });
   try {
     await reconcileShopifyWebhooks(store);
     const customers = await syncCustomers(store);
@@ -256,7 +259,20 @@ async function syncShopifyStore(store) {
     logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned });
     return { success: true, customers, orders, abandoned, rfm: rfm.success };
   } catch (error) {
-    await prisma.stores.update({ where: { id: store.id }, data: { status: 'error' } }).catch(() => {});
+    const revoked = error.response?.status === 401;
+    try {
+      await prisma.stores.update({
+        where: { id: store.id },
+        data: revoked
+          ? { status: 'inactive', access_token: null, updated_at: new Date() }
+          : { status: 'error', updated_at: new Date() },
+      });
+    } catch (stateError) {
+      logger.error('shopify_sync_failure_state_update_failed', {
+        store_id: store.id,
+        error_type: stateError.code || stateError.name || 'store_state_update_error',
+      });
+    }
     logger.error('shopify_sync_failed', { store_id: store.id, error_type: error.code || error.name || 'sync_error' });
     throw error;
   }

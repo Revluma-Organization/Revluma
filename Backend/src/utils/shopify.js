@@ -114,8 +114,8 @@ function decodeState(state) {
 
 function getStateContext(state, signedCookies = {}, cookies = {}) {
   const decodedState = decodeState(state);
-  const storedState = signedCookies?.shopify_state ?? cookies?.shopify_state;
-  const userId = signedCookies?.shopify_user ?? cookies?.shopify_user ?? signedCookies?.oauth_user ?? cookies?.oauth_user;
+  const storedState = signedCookies?.shopify_state;
+  const userId = signedCookies?.shopify_user ?? signedCookies?.oauth_user;
 
   return {
     decodedState,
