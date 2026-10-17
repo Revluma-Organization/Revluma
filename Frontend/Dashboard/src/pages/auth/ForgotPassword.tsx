@@ -198,6 +198,21 @@ export default function ForgotPassword() {
       </div>
 
       <div className="w-full max-w-[440px]">
+        {/* Revluma brand lockup — remains visible across all recovery steps */}
+        <a
+          href="/"
+          aria-label="Revluma home"
+          className="mb-7 inline-flex items-center justify-center gap-3 rounded-xl transition-opacity hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500"
+        >
+          <img
+            src="/assets/images/Revluma-icon.png"
+            alt=""
+            aria-hidden="true"
+            className="h-11 w-11 sm:h-12 sm:w-12 object-contain drop-shadow-lg"
+          />
+          <span className="text-2xl font-bold tracking-tight text-slate-950">Revluma</span>
+        </a>
+
         {/* Brand Header */}
         <div className="flex flex-col items-center mb-8">
           <div className="recovery-illustration-wrap" aria-hidden="true">
