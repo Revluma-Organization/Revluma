@@ -24,9 +24,11 @@ export default function ForgotPassword() {
 
   // Helpers
   const handleError = (err: unknown, fallback: string) => {
-    const apiError = err as { body?: { error?: string; message?: string; errors?: string[] }; status?: number; message?: string };
+    const apiError = err as { body?: { code?: string; error?: string; message?: string; errors?: string[] }; status?: number; message?: string };
     const body = apiError?.body;
-    const backendMessage = body?.error || body?.message || body?.errors?.[0];
+    const backendMessage = body?.code === "PASSWORD_REUSE_NOT_ALLOWED"
+      ? "Your new password must be different from your current password. Please choose a different password."
+      : body?.error || body?.message || body?.errors?.[0];
     if (apiError?.status === 400) setError(backendMessage || "We couldn’t verify those details. Check them and try again.");
     else if (apiError?.status === 429) setError("Too many attempts. Please wait before trying again.");
     else if (apiError?.status === 0) setError("We couldn’t connect. Check your connection and try again.");
