@@ -123,7 +123,9 @@ const validateVerifyForgotPasswordOtp = [
         .notEmpty()
         .withMessage('Verification code is required')
         .isLength({ min: 6, max: 6 })
-        .withMessage('Verification code must be 6 digits'),
+        .withMessage('Verification code must be 6 digits')
+        .matches(/^\\d{6}$/)
+        .withMessage('Verification code must contain exactly six digits'),
     validateRequest
 ];
 
