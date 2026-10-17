@@ -172,7 +172,8 @@ export default function ForgotPassword() {
         reset_token: resetToken,
         password: newPassword,
       });
-      setSuccessMessage("Your password has been successfully reset. You can now login with your new password.");
+      setSuccessMessage("Your password has been updated. Redirecting you to sign in…");
+      window.setTimeout(() => { window.location.assign("/auth/login.html?reset=1"); }, 1800);
     } catch (err) {
       handleError(err, "Failed to reset password. Please try again or request a new OTP.");
     } finally {
@@ -286,9 +287,11 @@ export default function ForgotPassword() {
                           }}
                           disabled={loading}
                           placeholder="admin@yourstore.com"
-                          className="recovery-input w-full rounded-lg py-3 pl-10 pr-3 text-sm outline-none transition-all disabled:opacity-50"
+                          className="recovery-input w-full rounded-lg py-3 pl-10 pr-12 text-sm outline-none transition-all disabled:opacity-50"
                         />
+                        <button type="button" onClick={() => setShowConfirmPassword((value) => !value)} aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-900"><img src={showConfirmPassword ? "https://img.icons8.com/3d-fluency/32/closed-eye.png" : "https://img.icons8.com/3d-fluency/32/eye.png"} alt="" className="h-5 w-5" /></button>
                       </div>
+                      {confirmPassword && <p className={`text-xs ${newPassword === confirmPassword ? "text-emerald-700" : "text-amber-700"}`}>{newPassword === confirmPassword ? "Passwords match" : "Passwords do not match yet"}</p>}
                     </div>
                     <button
                       type="submit"
@@ -397,7 +400,8 @@ export default function ForgotPassword() {
                           <KeyRound className="w-4 h-4" />
                         </div>
                         <input
-                          type="password"
+                          type={showPassword ? "text" : "password"}
+                          autoComplete="new-password"
                           autoFocus
                           required
                           value={newPassword}
@@ -407,9 +411,11 @@ export default function ForgotPassword() {
                           }}
                           disabled={loading}
                           placeholder="••••••••"
-                          className="recovery-input w-full rounded-lg py-3 pl-10 pr-3 text-sm outline-none transition-all disabled:opacity-50"
+                          className="recovery-input w-full rounded-lg py-3 pl-10 pr-12 text-sm outline-none transition-all disabled:opacity-50"
                         />
+                        <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-900"><img src={showPassword ? "https://img.icons8.com/3d-fluency/32/closed-eye.png" : "https://img.icons8.com/3d-fluency/32/eye.png"} alt="" className="h-5 w-5" /></button>
                       </div>
+                      <p className="text-xs leading-5 text-slate-600">Use at least 8 characters, including uppercase and lowercase letters, a number, and a supported special character.</p>
                     </div>
 
                     <div className="space-y-1.5">
@@ -419,7 +425,8 @@ export default function ForgotPassword() {
                           <Lock className="w-4 h-4" />
                         </div>
                         <input
-                          type="password"
+                          type={showConfirmPassword ? "text" : "password"}
+                          autoComplete="new-password"
                           required
                           value={confirmPassword}
                           onChange={(e) => {
@@ -466,6 +473,7 @@ export default function ForgotPassword() {
         .recovery-page * { font-family:Arial,Helvetica,sans-serif; }
         .recovery-page .recovery-back { color:#334155; background:#fff; border-color:#dbe2ea; box-shadow:0 1px 2px rgba(15,23,42,.04); }
         .recovery-page .recovery-back:hover { background:#f1f5f9; color:#0f172a; }
+        .recovery-page .text-white { color:#0f172a!important; } .recovery-page .text-slate-100 { color:#0f172a!important; } .recovery-page .text-slate-200 { color:#1e293b!important; } .recovery-page .text-slate-300 { color:#334155!important; } .recovery-page .text-slate-400 { color:#475569!important; } .recovery-page .text-slate-500 { color:#64748b!important; } .recovery-page .text-slate-600 { color:#475569!important; }
         .recovery-page .recovery-card { background:#fff; border-color:#e2e8f0; box-shadow:0 20px 55px rgba(15,23,42,.08); }
         .recovery-page .recovery-input { background:#fff; border:1px solid #cbd5e1; color:#0f172a; }
         .recovery-page .recovery-input::placeholder { color:#94a3b8; }
