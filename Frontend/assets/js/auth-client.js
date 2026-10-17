@@ -1,6 +1,17 @@
 class RevlumaAuth {
     constructor() {
-        this.apiBase = window.REVLUMA_API_BASE || 'https://revluma-backend.onrender.com/api/v1';
+        const configuredApiBase = (
+            window.REVLUMA_API_BASE ||
+            window.__REVLUMA_CONFIG__?.apiBase ||
+            document.querySelector('meta[name="revluma-api-base"]')?.content ||
+            (['localhost', '127.0.0.1'].includes(window.location.hostname)
+                ? 'http://localhost:8000/api/v1'
+                : 'https://revluma-backend-vrsd.onrender.com/api/v1')
+        ).replace(/\/+$/, '');
+
+        this.apiBase = configuredApiBase.endsWith('/api/v1')
+            ? configuredApiBase
+            : `${configuredApiBase}/api/v1`;
         this.loginPath = '/auth/login.html';
     }
 
@@ -91,9 +102,9 @@ class RevlumaAuth {
                 'Authorization': `Bearer ${tempToken}`
             },
             credentials: 'include',
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 code: code,
-                trust_device: trustDevice 
+                trust_device: trustDevice
             })
         });
 

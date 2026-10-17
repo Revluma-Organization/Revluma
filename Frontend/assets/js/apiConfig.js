@@ -1,9 +1,16 @@
-(function() {
-  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  // Local backend typically uses PORT=8000 so it does not collide with Vite (8080).
-  window.REVLUMA_API_BASE = isLocal
-    ? 'http://localhost:8000/api/v1'
-    : 'https://revluma-backend.onrender.com/api/v1';
+(function () {
+  const configuredBase = (
+    window.REVLUMA_API_BASE ||
+    window.__REVLUMA_CONFIG__?.apiBase ||
+    document.querySelector('meta[name="revluma-api-base"]')?.content ||
+    (['localhost', '127.0.0.1'].includes(window.location.hostname)
+      ? 'http://localhost:8000/api/v1'
+      : 'https://revluma-backend-vrsd.onrender.com/api/v1')
+  ).replace(/\/+$/, '');
+
+  window.REVLUMA_API_BASE = configuredBase.endsWith('/api/v1')
+    ? configuredBase
+    : `${configuredBase}/api/v1`;
 })();
 
 window.REVLUMA_GOOGLE_CLIENT_ID = '137716714187-75iq86blnhp09hcg7spvhspgath32eol.apps.googleusercontent.com';
