@@ -278,8 +278,10 @@ exports.register = async (req, res, next) => {
       return res.status(400).json({ success: false, error: passwordCheck.error });
     }
 
-    const existingUser = await prisma.users.findUnique({
-      where: { email },
+    // Compare case-insensitively so legacy mixed-case records cannot bypass
+    // the duplicate-account check (all new registrations are stored lowercase).
+    const existingUser = await prisma.users.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
     });
 
     if (existingUser) {
