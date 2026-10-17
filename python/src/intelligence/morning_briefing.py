@@ -176,7 +176,7 @@ def run_briefings_for_all_merchants(db) -> dict:
                 SELECT o.id, o.owner_id
                 FROM organizations o
                 JOIN stores s ON s.organization_id = o.id
-                WHERE s.status = 'connected'
+                WHERE s.status IN ('active', 'syncing', 'error', 'connected')
                   AND o.status = 'active'
                 GROUP BY o.id, o.owner_id
             """)

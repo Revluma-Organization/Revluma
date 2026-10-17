@@ -360,7 +360,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                 SELECT id, last_synced_at
                 FROM stores
                 WHERE organization_id = :org_id
-                  AND status = 'connected'
+                  AND (status IN ('active', 'syncing', 'error') OR status = 'connected')
                 ORDER BY last_synced_at DESC NULLS LAST
             """),
             {"org_id": organization_id},

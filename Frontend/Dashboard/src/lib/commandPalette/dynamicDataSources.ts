@@ -6,6 +6,7 @@ import type { PaletteCommand, CommandContext } from "./types";
 interface StoreRecord {
   platform: "shopify" | "woocommerce";
   status: string;
+  connection_status?: "connected" | "disconnected";
 }
 
 /**
@@ -22,7 +23,7 @@ export async function fetchStoreCommands(): Promise<PaletteCommand[]> {
     const res = await api.get<{ data: { stores: StoreRecord[] } }>("/api/v1/stores");
     const stores = res.data?.data?.stores ?? [];
     return stores.map((s) => {
-      const connected = s.status === "active";
+      const connected = s.connection_status === "connected" || (s.status === "active" && s.connection_status === undefined);
       const label = s.platform.charAt(0).toUpperCase() + s.platform.slice(1);
       return {
         id: `store-${s.platform}`,

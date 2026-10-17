@@ -322,7 +322,7 @@ def detect_platform(merchant_id: str, db) -> str:
                 SELECT platform
                 FROM stores
                 WHERE organization_id = %s
-                ORDER BY (status = 'connected') DESC, created_at DESC
+                ORDER BY (status IN ('active', 'syncing', 'error', 'connected')) DESC, created_at DESC
                 LIMIT 1
                 """,
                 (merchant_id,),
