@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mail, KeyRound, Lock, ArrowRight, Loader2, CheckCircle2, ShieldCheck, ChevronLeft, AlertCircle } from "lucide-react";
+import { Mail, KeyRound, Lock, ArrowRight, Loader2, CheckCircle2, ShieldCheck, ChevronLeft, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
 
 export default function ForgotPassword() {
@@ -189,23 +189,19 @@ export default function ForgotPassword() {
   }, [step]);
 
   return (
-    <div className="recovery-page min-h-screen w-full flex flex-col items-center justify-center p-4">
+    <div className="recovery-page min-h-screen w-full flex flex-col items-center justify-center px-4 py-16 sm:py-20">
       {/* Absolute top-left back button */}
-      <div className="absolute top-8 left-8">
-        <a
-          href="/auth/login.html"
-          className="recovery-back flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full border transition-colors"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Back to Login
+      <div className="absolute top-6 left-6 sm:top-8 sm:left-8">
+        <a href="/auth/login.html" className="recovery-back flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg transition-colors">
+          <ChevronLeft className="w-4 h-4" /> Back to sign in
         </a>
       </div>
 
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-[440px]">
         {/* Brand Header */}
         <div className="flex flex-col items-center mb-8">
           <img className="recovery-illustration" src={step === 1 ? "https://img.icons8.com/3d-fluency/94/new-post.png" : step === 2 ? "https://img.icons8.com/3d-fluency/94/secured-letter.png" : successMessage ? "https://img.icons8.com/3d-fluency/94/checked-shield.png" : "https://img.icons8.com/3d-fluency/94/password.png"} alt="" aria-hidden="true" />
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950">Account recovery</h1>
+          <h1 className="text-[28px] sm:text-3xl font-bold tracking-tight text-slate-950">{step === 1 ? "Forgot your password?" : step === 2 ? "Enter OTP code" : successMessage ? "Password updated" : "Create new password"}</h1>
           <p className="text-sm text-slate-600 mt-2 text-center max-w-[320px]">
             {step === 1 && "Enter the email associated with your account to receive a secure OTP."}
             {step === 2 && "We sent a 6-digit security code to your email. Enter it below."}
@@ -218,7 +214,7 @@ export default function ForgotPassword() {
         <div className="recovery-card border rounded-2xl p-6 sm:p-8 relative overflow-hidden">
           
           {/* Decorative hairline */}
-          <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500" />
+          <div className="absolute top-0 left-0 w-full h-1 bg-blue-600" />
 
           {/* Global Error Banner */}
           <AnimatePresence mode="wait">
@@ -271,8 +267,8 @@ export default function ForgotPassword() {
                     <div className="space-y-1.5">
                       <label htmlFor="recovery-email" className="text-sm font-bold text-slate-800">Email address</label>
                       <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                          <Mail className="w-4 h-4" />
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-blue-500">
+                          <Mail className="w-5 h-5" />
                         </div>
                         <input
                           id="recovery-email"
@@ -286,12 +282,10 @@ export default function ForgotPassword() {
                             setError("");
                           }}
                           disabled={loading}
-                          placeholder="admin@yourstore.com"
-                          className="recovery-input w-full rounded-lg py-3 pl-10 pr-12 text-sm outline-none transition-all disabled:opacity-50"
+                          placeholder="you@example.com"
+                          className="recovery-input w-full rounded-xl py-4 pl-12 pr-4 text-base outline-none transition-all disabled:opacity-50"
                         />
-                        <button type="button" onClick={() => setShowConfirmPassword((value) => !value)} aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-900"><img src={showConfirmPassword ? "https://img.icons8.com/3d-fluency/32/closed-eye.png" : "https://img.icons8.com/3d-fluency/32/eye.png"} alt="" className="h-5 w-5" /></button>
                       </div>
-                      {confirmPassword && <p className={`text-xs ${newPassword === confirmPassword ? "text-emerald-700" : "text-amber-700"}`}>{newPassword === confirmPassword ? "Passwords match" : "Passwords do not match yet"}</p>}
                     </div>
                     <button
                       type="submit"
@@ -335,13 +329,13 @@ export default function ForgotPassword() {
                         <button
                           type="button"
                           onClick={() => setStep(1)}
-                          className="text-sm text-emerald-700 hover:text-emerald-900 font-bold"
+                          className="text-sm text-blue-700 hover:text-blue-900 font-bold"
                         >
                           Change Email
                         </button>
                       </div>
                       
-                      <div className="flex justify-between gap-2">
+                      <div className="flex justify-between gap-2 sm:gap-3">
                         {otp.map((digit, index) => (
                           <input
                             key={index}
@@ -355,7 +349,7 @@ export default function ForgotPassword() {
                             onChange={(e) => handleOtpChange(index, e.target.value)}
                             onKeyDown={(e) => handleOtpKeyDown(index, e)}
                             disabled={loading}
-                            className="recovery-otp w-12 h-14 rounded-xl text-center text-xl font-bold outline-none transition-all disabled:opacity-50"
+                            className="recovery-otp min-w-0 flex-1 h-14 sm:h-16 rounded-xl text-center text-xl sm:text-2xl font-bold outline-none transition-all disabled:opacity-50"
                           />
                         ))}
                       </div>
@@ -377,7 +371,7 @@ export default function ForgotPassword() {
                     </button>
                     <div className="flex flex-col gap-3 border-t border-slate-800 pt-4 text-sm sm:flex-row sm:items-center sm:justify-between">
                       <span className={expirySeconds > 0 ? "text-slate-600" : "text-amber-700"}>{expirySeconds > 0 ? "Code expires in " + formatTime(expirySeconds) : "This code may have expired. Request a new one."}</span>
-                      <button type="button" onClick={handleResend} disabled={loading || resendSeconds > 0} className="inline-flex items-center gap-2 font-bold text-emerald-700 transition hover:text-emerald-900 disabled:cursor-not-allowed disabled:text-slate-400">
+                      <button type="button" onClick={handleResend} disabled={loading || resendSeconds > 0} className="inline-flex items-center gap-2 font-bold text-blue-700 transition hover:text-blue-900 disabled:cursor-not-allowed disabled:text-slate-400">
                         {resendSeconds > 0 ? "Resend code in " + formatTime(resendSeconds) : "Resend code"}
                       </button>
                     </div>
@@ -413,7 +407,7 @@ export default function ForgotPassword() {
                           placeholder="••••••••"
                           className="recovery-input w-full rounded-lg py-3 pl-10 pr-12 text-sm outline-none transition-all disabled:opacity-50"
                         />
-                        <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-900"><img src={showPassword ? "https://img.icons8.com/3d-fluency/32/closed-eye.png" : "https://img.icons8.com/3d-fluency/32/eye.png"} alt="" className="h-5 w-5" /></button>
+                        <button type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "Hide password" : "Show password"} className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-blue-700">{showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}</button>
                       </div>
                       <p className="text-xs leading-5 text-slate-600">Use at least 8 characters, including uppercase and lowercase letters, a number, and a supported special character.</p>
                     </div>
@@ -437,9 +431,9 @@ export default function ForgotPassword() {
                           placeholder="••••••••"
                           className="recovery-input w-full rounded-lg py-3 pl-10 pr-12 text-sm outline-none transition-all disabled:opacity-50"
                         />
-                        <button type="button" onClick={() => setShowConfirmPassword((value) => !value)} aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-900"><img src={showConfirmPassword ? "https://img.icons8.com/3d-fluency/32/closed-eye.png" : "https://img.icons8.com/3d-fluency/32/eye.png"} alt="" className="h-5 w-5" /></button>
+                        <button type="button" onClick={() => setShowConfirmPassword((value) => !value)} aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-blue-700">{showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}</button>
                       </div>
-                      {confirmPassword && <p className={`text-xs ${newPassword === confirmPassword ? "text-emerald-700" : "text-amber-700"}`}>{newPassword === confirmPassword ? "Passwords match" : "Passwords do not match yet"}</p>}
+                      {confirmPassword && <p className={`text-xs ${newPassword === confirmPassword ? "text-blue-700" : "text-amber-700"}`}>{newPassword === confirmPassword ? "Passwords match" : "Passwords do not match yet"}</p>}
                     </div>
 
                     <button
@@ -471,25 +465,25 @@ export default function ForgotPassword() {
         )}
       </div>
       <style>{`
-        .recovery-page { background:#f8fafc; color:#111827; font-family:Arial,Helvetica,sans-serif; }
+        .recovery-page { background:radial-gradient(ellipse at top, #eaf3ff 0%, #f5f8ff 45%, #f8fafc 100%); color:#111827; font-family:Arial,Helvetica,sans-serif; }
         .recovery-page * { font-family:Arial,Helvetica,sans-serif; }
-        .recovery-page .recovery-back { color:#334155; background:#fff; border-color:#dbe2ea; box-shadow:0 1px 2px rgba(15,23,42,.04); }
-        .recovery-page .recovery-back:hover { background:#f1f5f9; color:#0f172a; }
+        .recovery-page .recovery-back { color:#31527f; background:rgba(255,255,255,.82); border:1px solid #d8e5f8; box-shadow:0 2px 8px rgba(37,99,235,.04); }
+        .recovery-page .recovery-back:hover { background:#fff; color:#1d4ed8; }
         .recovery-page .text-white { color:#0f172a!important; } .recovery-page .text-slate-100 { color:#0f172a!important; } .recovery-page .text-slate-200 { color:#1e293b!important; } .recovery-page .text-slate-300 { color:#334155!important; } .recovery-page .text-slate-400 { color:#475569!important; } .recovery-page .text-slate-500 { color:#64748b!important; } .recovery-page .text-slate-600 { color:#475569!important; }
-        .recovery-page .recovery-card { background:#fff; border-color:#e2e8f0; box-shadow:0 20px 55px rgba(15,23,42,.08); }
-        .recovery-page .recovery-input { background:#fff; border:1px solid #cbd5e1; color:#0f172a; }
+        .recovery-page .recovery-card { background:rgba(255,255,255,.96); border-color:#e0eaf8; box-shadow:0 24px 70px rgba(37,99,235,.10); padding:30px; }
+        .recovery-page .recovery-input { background:#fff; border:1px solid #dbe5f2; color:#0f172a; }
         .recovery-page .recovery-input::placeholder { color:#94a3b8; }
-        .recovery-page .recovery-input:focus { border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,.14); }
+        .recovery-page .recovery-input:focus { border-color:#3b82f6; box-shadow:0 0 0 4px rgba(59,130,246,.12); }
         .recovery-page .recovery-otp { background:#fff; border:1px solid #cbd5e1; color:#0f172a; }
-        .recovery-page .recovery-otp:focus { border-color:#059669; box-shadow:0 0 0 3px rgba(5,150,105,.14); }
-        .recovery-page .recovery-primary { background:#047857; color:#fff; box-shadow:0 2px 4px rgba(4,120,87,.14); }
-        .recovery-page .recovery-primary:hover:not(:disabled) { background:#065f46; }
-        .recovery-page .recovery-destination { background:#f8fafc; border-color:#e2e8f0; }
+        .recovery-page .recovery-otp:focus { border-color:#2563eb; box-shadow:0 0 0 4px rgba(37,99,235,.12); }
+        .recovery-page .recovery-primary { background:linear-gradient(100deg,#2563eb,#1677ff); color:#fff; box-shadow:0 8px 18px rgba(37,99,235,.18); border-radius:12px; min-height:52px; }
+        .recovery-page .recovery-primary:hover:not(:disabled) { background:linear-gradient(100deg,#1d4ed8,#0965df); }
+        .recovery-page .recovery-destination { background:#f4f8ff; border-color:#dbeafe; }
         .recovery-page .recovery-alert-error { color:#991b1b; background:#fef2f2; border:1px solid #fecaca; }
         .recovery-page .recovery-alert-success { color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; }
-        .recovery-page .recovery-illustration { width:76px; height:76px; object-fit:contain; margin-bottom:18px; }
+        .recovery-page .recovery-illustration { width:88px; height:88px; object-fit:contain; margin-bottom:18px; }
         .recovery-page .recovery-illustration-large { width:96px; height:96px; margin:0 auto 18px; }
-        @media (max-width:640px) { .recovery-page .absolute.top-8.left-8 { top:16px; left:16px; } .recovery-page .recovery-card { padding:22px; } }
+        @media (max-width:640px) { .recovery-page .absolute.top-6.left-6 { top:12px; left:12px; } .recovery-page .recovery-card { padding:22px; } .recovery-page .recovery-illustration { width:76px; height:76px; } }
         @media (prefers-reduced-motion:reduce) { .recovery-page *, .recovery-page *::before, .recovery-page *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
       `}</style>
     </div>
