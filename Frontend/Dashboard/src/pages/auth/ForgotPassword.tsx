@@ -8,6 +8,10 @@ export default function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [resendSeconds, setResendSeconds] = useState(0);
+  const [expirySeconds, setExpirySeconds] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Form State
   const [email, setEmail] = useState("");
@@ -19,9 +23,31 @@ export default function ForgotPassword() {
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Helpers
-  const handleError = (err: any, fallback: string) => {
-    setError(err?.body?.message || err?.response?.data?.message || err?.message || fallback);
+  const handleError = (err: unknown, fallback: string) => {
+    const apiError = err as { body?: { error?: string; message?: string; errors?: string[] }; status?: number; message?: string };
+    const body = apiError?.body;
+    const backendMessage = body?.error || body?.message || body?.errors?.[0];
+    if (apiError?.status === 400) setError(backendMessage || "We couldn’t verify those details. Check them and try again.");
+    else if (apiError?.status === 429) setError("Too many attempts. Please wait before trying again.");
+    else if (apiError?.status === 0) setError("We couldn’t connect. Check your connection and try again.");
+    else setError(backendMessage || fallback);
   };
+
+  const formatTime = (seconds: number) => String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+  const maskedEmail = (value: string) => {
+    const parts = value.split("@");
+    if (parts.length !== 2) return value;
+    return parts[0].slice(0, 1) + "•••••@" + parts[1];
+  };
+
+  useEffect(() => {
+    if (step !== 2 || (resendSeconds <= 0 && expirySeconds <= 0)) return;
+    const interval = window.setInterval(() => {
+      setResendSeconds((value) => Math.max(0, value - 1));
+      setExpirySeconds((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [step, resendSeconds > 0, expirySeconds > 0]);
 
   const handleStep1 = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +60,9 @@ export default function ForgotPassword() {
 
     try {
       await api.post<any>("/auth/forgot-password", { email });
+      setOtp(["", "", "", "", "", ""]);
+      setResendSeconds(45);
+      setExpirySeconds(10 * 60);
       setStep(2);
     } catch (err) {
       handleError(err, "Failed to send OTP. Please try again.");
@@ -70,6 +99,23 @@ export default function ForgotPassword() {
   const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleResend = async () => {
+    if (loading || resendSeconds > 0) return;
+    setLoading(true);
+    setError("");
+    try {
+      await api.post<any>("/auth/forgot-password", { email });
+      setOtp(["", "", "", "", "", ""]);
+      setResendSeconds(45);
+      setExpirySeconds(10 * 60);
+      otpRefs.current[0]?.focus();
+    } catch (err) {
+      handleError(err, "We couldn’t request another code. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -124,7 +170,6 @@ export default function ForgotPassword() {
       await api.post<any>("/auth/forgot-password/reset", {
         email: email,
         reset_token: resetToken,
-        new_password: newPassword,
         password: newPassword,
       });
       setSuccessMessage("Your password has been successfully reset. You can now login with your new password.");
