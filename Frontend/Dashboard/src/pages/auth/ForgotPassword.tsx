@@ -202,7 +202,7 @@ export default function ForgotPassword() {
         <a
           href="/"
           aria-label="Revluma home"
-          className="mb-7 inline-flex items-center justify-center gap-3 rounded-xl transition-opacity hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500"
+          className="mx-auto mb-7 flex w-fit items-center justify-center gap-3 rounded-xl text-center transition-opacity hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500"
         >
           <img
             src="/assets/images/Revluma-icon.png"
