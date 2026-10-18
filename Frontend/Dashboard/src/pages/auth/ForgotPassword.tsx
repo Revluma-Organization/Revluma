@@ -208,7 +208,7 @@ export default function ForgotPassword() {
             src="/assets/images/Revluma-icon.png"
             alt=""
             aria-hidden="true"
-            className="h-[120px] w-[120px] sm:h-[180px] sm:w-[180px] object-contain drop-shadow-lg"
+            className="h-[64px] w-[64px] sm:h-[76px] sm:w-[76px] object-contain drop-shadow-lg"
           />
         </a>
 
