@@ -192,13 +192,13 @@ export default function ForgotPassword() {
 
   return (
     <div className="recovery-page w-full flex flex-col items-center justify-center px-4 py-3 sm:py-4">
+      {/* Match the account-creation Go Back header: anchored to the viewport, outside the centered content flow */}
+      <div className="recovery-back-header absolute top-0 left-0 z-50 w-full flex justify-start items-center py-5 px-6 sm:px-8" style={{ pointerEvents: "none" }}>
+        <a href="/auth/login.html" className="recovery-back flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full transition-colors w-fit" style={{ pointerEvents: "auto" }}>
+          <ChevronLeft className="w-4 h-4" /> Back to sign in
+        </a>
+      </div>
       <div className="w-full max-w-[440px]">
-        {/* Standalone back link in the page flow, above the brand and recovery card */}
-        <div className="recovery-back-header flex w-full items-center justify-start pb-3">
-          <a href="/auth/login.html" className="recovery-back flex w-fit items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full transition-colors">
-            <ChevronLeft className="w-4 h-4" /> Back to sign in
-          </a>
-        </div>
         <a
           href="/"
           aria-label="Revluma home"
