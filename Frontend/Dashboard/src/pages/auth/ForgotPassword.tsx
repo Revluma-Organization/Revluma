@@ -193,9 +193,9 @@ export default function ForgotPassword() {
   return (
     <div className="recovery-page w-full flex flex-col items-center justify-center px-4 py-3 sm:py-4">
       <div className="w-full max-w-[440px]">
-        {/* Match the Go Back button placement on the account creation screen */}
-        <div className="recovery-back-header fixed top-0 left-0 z-50 w-full flex justify-start items-center py-5 px-6 sm:px-8" style={{ position: "fixed", top: 0, left: 0, right: 0, width: "100vw", boxSizing: "border-box" }}>
-          <a href="/auth/login.html" className="recovery-back flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full transition-colors">
+        {/* Standalone back link in the page flow, above the brand and recovery card */}
+        <div className="recovery-back-header flex w-full items-center justify-start pb-3">
+          <a href="/auth/login.html" className="recovery-back flex w-fit items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full transition-colors">
             <ChevronLeft className="w-4 h-4" /> Back to sign in
           </a>
         </div>
@@ -541,7 +541,6 @@ export default function ForgotPassword() {
         .recovery-page .recovery-card .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
         @media (max-height: 760px) {
           .recovery-page { padding-top: 8px; padding-bottom: 8px; }
-          .recovery-page .fixed.top-0.left-0 { padding: 8px 8px; }
           .recovery-page .recovery-back { padding: 6px 9px; font-size: 12px; }
           .recovery-page .recovery-card { padding: 16px 20px; }
           .recovery-page .recovery-illustration-wrap { width: 50px; height: 50px; border-radius: 15px; margin-bottom: 8px; }
@@ -556,7 +555,6 @@ export default function ForgotPassword() {
           .recovery-page .mt-6 { margin-top: 10px; }
         }
         @media (max-width: 640px) {
-          .recovery-page .fixed.top-4.left-4 { top: 8px; left: 8px; }
           .recovery-page .recovery-card { padding: 16px; }
           .recovery-page .recovery-page-brand { margin-bottom: 8px; }
           .recovery-page .recovery-illustration-wrap { width: 52px; height: 52px; border-radius: 16px; }
