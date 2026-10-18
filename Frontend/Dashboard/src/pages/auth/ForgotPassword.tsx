@@ -191,7 +191,7 @@ export default function ForgotPassword() {
   }, [step]);
 
   return (
-    <div className="recovery-page min-h-screen w-full flex flex-col items-center justify-center px-4 py-16 sm:py-20">
+    <div className="recovery-page w-full flex flex-col items-center justify-center px-4 py-3 sm:py-4">
       {/* Absolute top-left back button */}
       <div className="absolute top-6 left-6 sm:top-8 sm:left-8">
         <a href="/auth/login.html" className="recovery-back flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg transition-colors">
@@ -204,19 +204,18 @@ export default function ForgotPassword() {
         <a
           href="/"
           aria-label="Revluma home"
-          className="mx-auto mb-7 flex w-fit items-center justify-center gap-3 rounded-xl text-center transition-opacity hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500"
+          className="mx-auto mb-3 flex w-fit items-center justify-center rounded-xl text-center transition-opacity hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500"
         >
           <img
             src="/assets/images/Revluma-icon.png"
             alt=""
             aria-hidden="true"
-            className="h-11 w-11 sm:h-12 sm:w-12 object-contain drop-shadow-lg"
+            className="h-16 w-16 sm:h-[76px] sm:w-[76px] object-contain drop-shadow-lg"
           />
-          <span className="text-2xl font-bold tracking-tight text-slate-950">Revluma</span>
         </a>
 
         {/* Brand Header */}
-        <div className="flex flex-col items-center mb-8">
+        <div className="flex flex-col items-center mb-4">
           <div className="recovery-illustration-wrap" aria-hidden="true">
             {step === 1 ? <Mail className="recovery-hero-icon" strokeWidth={1.7} /> : step === 2 ? <ShieldCheck className="recovery-hero-icon" strokeWidth={1.7} /> : successMessage ? <CheckCircle2 className="recovery-hero-icon" strokeWidth={1.7} /> : <Lock className="recovery-hero-icon" strokeWidth={1.7} />}
           </div>
@@ -484,26 +483,99 @@ export default function ForgotPassword() {
         )}
       </div>
       <style>{`
-        .recovery-page { background:radial-gradient(ellipse at top, #eaf3ff 0%, #f5f8ff 45%, #f8fafc 100%); color:#111827; font-family:Arial,Helvetica,sans-serif; }
-        .recovery-page * { font-family:Arial,Helvetica,sans-serif; }
-        .recovery-page .recovery-back { color:#31527f; background:rgba(255,255,255,.82); border:1px solid #d8e5f8; box-shadow:0 2px 8px rgba(37,99,235,.04); }
-        .recovery-page .recovery-back:hover { background:#fff; color:#1d4ed8; }
-        .recovery-page .text-white { color:#0f172a!important; } .recovery-page .text-slate-100 { color:#0f172a!important; } .recovery-page .text-slate-200 { color:#1e293b!important; } .recovery-page .text-slate-300 { color:#334155!important; } .recovery-page .text-slate-400 { color:#475569!important; } .recovery-page .text-slate-500 { color:#64748b!important; } .recovery-page .text-slate-600 { color:#475569!important; }
-        .recovery-page .recovery-card { background:rgba(255,255,255,.96); border-color:#e0eaf8; box-shadow:0 24px 70px rgba(37,99,235,.10); padding:30px; }
-        .recovery-page .recovery-input { background:#fff; border:1px solid #dbe5f2; color:#0f172a; }
-        .recovery-page .recovery-input::placeholder { color:#94a3b8; }
-        .recovery-page .recovery-input:focus { border-color:#3b82f6; box-shadow:0 0 0 4px rgba(59,130,246,.12); }
-        .recovery-page .recovery-otp { background:#fff; border:1px solid #cbd5e1; color:#0f172a; }
-        .recovery-page .recovery-otp:focus { border-color:#2563eb; box-shadow:0 0 0 4px rgba(37,99,235,.12); }
-        .recovery-page .recovery-primary { background:linear-gradient(100deg,#2563eb,#1677ff); color:#fff; box-shadow:0 8px 18px rgba(37,99,235,.18); border-radius:12px; min-height:52px; }
-        .recovery-page .recovery-primary:hover:not(:disabled) { background:linear-gradient(100deg,#1d4ed8,#0965df); }
-        .recovery-page .recovery-destination { background:#f4f8ff; border-color:#dbeafe; }
-        .recovery-page .recovery-alert-error { color:#991b1b; background:#fef2f2; border:1px solid #fecaca; }
-        .recovery-page .recovery-alert-success { color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; }
-        .recovery-page .recovery-illustration-wrap { width:88px; height:88px; border-radius:26px; display:flex; align-items:center; justify-content:center; margin-bottom:18px; color:#2563eb; background:linear-gradient(145deg,#eff6ff,#dbeafe); border:1px solid #dbeafe; box-shadow:0 12px 28px rgba(37,99,235,.10); } .recovery-page .recovery-hero-icon { width:46px; height:46px; }
-        .recovery-page .recovery-illustration-large { width:96px; height:96px; margin:0 auto 18px; }
-        @media (max-width:640px) { .recovery-page .absolute.top-6.left-6 { top:12px; left:12px; } .recovery-page .recovery-card { padding:22px; } .recovery-page .recovery-illustration-wrap { width:76px; height:76px; border-radius:22px; } .recovery-page .recovery-hero-icon { width:40px; height:40px; } }
-        @media (prefers-reduced-motion:reduce) { .recovery-page *, .recovery-page *::before, .recovery-page *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
+        .recovery-page {
+          height: 100vh;
+          height: 100svh;
+          min-height: 0;
+          overflow: hidden;
+          position: relative;
+          background: #060608;
+          color: #f0f0f5;
+          font-family: 'DM Sans', Arial, Helvetica, sans-serif;
+        }
+        .recovery-page * { font-family: 'DM Sans', Arial, Helvetica, sans-serif; }
+        .recovery-page .recovery-back {
+          color: #c5c5d4;
+          background: rgba(255,255,255,.035);
+          border: 1px solid rgba(255,255,255,.10);
+          box-shadow: none;
+        }
+        .recovery-page .recovery-back:hover { background: rgba(255,255,255,.08); color: #fff; }
+        .recovery-page h1, .recovery-page h3 { color: #f0f0f5 !important; }
+        .recovery-page .text-slate-950,
+        .recovery-page .text-slate-900,
+        .recovery-page .text-slate-800 { color: #f0f0f5 !important; }
+        .recovery-page .text-slate-700 { color: #c8c8d5 !important; }
+        .recovery-page .text-slate-600 { color: #a0a0b4 !important; }
+        .recovery-page .text-slate-500 { color: #8b8ba2 !important; }
+        .recovery-page .text-blue-700 { color: #aaa2ff !important; }
+        .recovery-page .text-blue-900 { color: #d0ccff !important; }
+        .recovery-page .recovery-card {
+          background: rgba(255,255,255,.035);
+          border-color: rgba(255,255,255,.10);
+          box-shadow: 0 24px 80px rgba(0,0,0,.30);
+          padding: 22px;
+        }
+        .recovery-page .recovery-input {
+          background: rgba(255,255,255,.045);
+          border: 1px solid rgba(255,255,255,.12);
+          color: #f0f0f5;
+        }
+        .recovery-page .recovery-input::placeholder { color: #6f6f84; }
+        .recovery-page .recovery-input:focus { border-color: #7c6fff; box-shadow: 0 0 0 3px rgba(124,111,255,.16); }
+        .recovery-page .recovery-otp { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.12); color: #f0f0f5; }
+        .recovery-page .recovery-otp:focus { border-color: #7c6fff; box-shadow: 0 0 0 3px rgba(124,111,255,.16); }
+        .recovery-page .recovery-primary { background: #7c6fff; color: #fff; box-shadow: 0 8px 22px rgba(124,111,255,.18); border-radius: 12px; min-height: 46px; }
+        .recovery-page .recovery-primary:hover:not(:disabled) { background: #6c5ce7; }
+        .recovery-page .recovery-destination { background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.10); }
+        .recovery-page .recovery-alert-error { color: #fca5a5; background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.24); }
+        .recovery-page .recovery-alert-success { color: #6ee7b7; background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.22); }
+        .recovery-page .recovery-illustration-wrap {
+          width: 64px; height: 64px; border-radius: 20px;
+          display: flex; align-items: center; justify-content: center;
+          margin-bottom: 12px; color: #aaa2ff;
+          background: rgba(124,111,255,.10);
+          border: 1px solid rgba(124,111,255,.22);
+          box-shadow: none;
+        }
+        .recovery-page .recovery-hero-icon { width: 32px; height: 32px; }
+        .recovery-page .recovery-illustration-large { width: 72px; height: 72px; margin: 0 auto 12px; }
+        .recovery-page .recovery-card .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
+        @media (max-height: 760px) {
+          .recovery-page { padding-top: 8px; padding-bottom: 8px; }
+          .recovery-page .absolute.top-6.left-6 { top: 8px; left: 8px; }
+          .recovery-page .recovery-back { padding: 6px 9px; font-size: 12px; }
+          .recovery-page .recovery-card { padding: 16px 20px; }
+          .recovery-page .recovery-illustration-wrap { width: 50px; height: 50px; border-radius: 15px; margin-bottom: 8px; }
+          .recovery-page .recovery-hero-icon { width: 27px; height: 27px; }
+          .recovery-page h1 { font-size: 24px; line-height: 1.15; }
+          .recovery-page .text-sm { line-height: 1.35; }
+          .recovery-page .recovery-input { padding-top: 10px; padding-bottom: 10px; }
+          .recovery-page .recovery-otp { height: 48px; }
+          .recovery-page .recovery-primary { min-height: 42px; padding-top: 9px; padding-bottom: 9px; }
+          .recovery-page .mb-4 { margin-bottom: 10px; }
+          .recovery-page .mb-3 { margin-bottom: 8px; }
+          .recovery-page .mt-6 { margin-top: 10px; }
+        }
+        @media (max-width: 640px) {
+          .recovery-page .absolute.top-6.left-6 { top: 8px; left: 8px; }
+          .recovery-page .recovery-card { padding: 16px; }
+          .recovery-page .recovery-page-brand { margin-bottom: 8px; }
+          .recovery-page .recovery-illustration-wrap { width: 52px; height: 52px; border-radius: 16px; }
+          .recovery-page .recovery-hero-icon { width: 28px; height: 28px; }
+          .recovery-page .recovery-card .space-y-6 { gap: 12px; }
+          .recovery-page .recovery-card .space-y-4 { gap: 10px; }
+          .recovery-page .recovery-card .p-4 { padding: 10px; }
+          .recovery-page .recovery-otp { height: 46px; font-size: 18px; }
+        }
+        @media (max-height: 620px) {
+          .recovery-page > div:last-of-type { transform: scale(.9); transform-origin: center; }
+          .recovery-page .mb-3 { margin-bottom: 4px; }
+          .recovery-page .mb-4 { margin-bottom: 6px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .recovery-page *, .recovery-page *::before, .recovery-page *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+        }
       `}</style>
     </div>
   );
