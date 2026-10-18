@@ -194,7 +194,7 @@ export default function ForgotPassword() {
     <div className="recovery-page w-full flex flex-col items-center justify-center px-4 py-3 sm:py-4">
       <div className="w-full max-w-[440px]">
         {/* Match the Go Back button placement on the account creation screen */}
-        <div className="fixed top-0 left-0 z-50 w-full flex justify-between items-center py-5 px-6 sm:px-8">
+        <div className="recovery-back-header fixed top-0 left-0 z-50 w-full flex justify-start items-center py-5 px-6 sm:px-8" style={{ position: "fixed", top: 0, left: 0, right: 0, width: "100vw", boxSizing: "border-box" }}>
           <a href="/auth/login.html" className="recovery-back flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full transition-colors">
             <ChevronLeft className="w-4 h-4" /> Back to sign in
           </a>
