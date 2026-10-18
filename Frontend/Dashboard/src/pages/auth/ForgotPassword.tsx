@@ -193,9 +193,9 @@ export default function ForgotPassword() {
   return (
     <div className="recovery-page w-full flex flex-col items-center justify-center px-4 py-3 sm:py-4">
       <div className="w-full max-w-[440px]">
-        {/* Absolute top-left back button */}
-        <div className="fixed top-4 left-4 sm:top-6 sm:left-6 z-50">
-          <a href="/auth/login.html" className="recovery-back flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg transition-colors">
+        {/* Match the Go Back button placement on the account creation screen */}
+        <div className="fixed top-0 left-0 z-50 w-full flex justify-between items-center py-5 px-6 sm:px-8">
+          <a href="/auth/login.html" className="recovery-back flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-full transition-colors">
             <ChevronLeft className="w-4 h-4" /> Back to sign in
           </a>
         </div>
@@ -520,9 +520,9 @@ export default function ForgotPassword() {
           color: #f0f0f5;
         }
         .recovery-page .recovery-input::placeholder { color: #6f6f84; }
-        .recovery-page .recovery-input:focus { border-color: #7c6fff; box-shadow: 0 0 0 3px rgba(124,111,255,.16); }
+        .recovery-page .recovery-input:focus { border-color: #1877F2; box-shadow: 0 0 0 3px rgba(24,119,242,.28); }
         .recovery-page .recovery-otp { background: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.12); color: #f0f0f5; }
-        .recovery-page .recovery-otp:focus { border-color: #7c6fff; box-shadow: 0 0 0 3px rgba(124,111,255,.16); }
+        .recovery-page .recovery-otp:focus { border-color: #1877F2; box-shadow: 0 0 0 3px rgba(24,119,242,.28); }
         .recovery-page .recovery-primary { background: #fff; color: #060608; box-shadow: 0 8px 22px rgba(0,0,0,.18); border-radius: 12px; min-height: 46px; }
         .recovery-page .recovery-primary:hover:not(:disabled) { background: #e8e8ed; color: #060608; }
         .recovery-page .recovery-destination { background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.10); }
@@ -541,7 +541,7 @@ export default function ForgotPassword() {
         .recovery-page .recovery-card .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
         @media (max-height: 760px) {
           .recovery-page { padding-top: 8px; padding-bottom: 8px; }
-          .recovery-page .fixed.top-4.left-4 { top: 8px; left: 8px; }
+          .recovery-page .fixed.top-0.left-0 { padding: 8px 8px; }
           .recovery-page .recovery-back { padding: 6px 9px; font-size: 12px; }
           .recovery-page .recovery-card { padding: 16px 20px; }
           .recovery-page .recovery-illustration-wrap { width: 50px; height: 50px; border-radius: 15px; margin-bottom: 8px; }
