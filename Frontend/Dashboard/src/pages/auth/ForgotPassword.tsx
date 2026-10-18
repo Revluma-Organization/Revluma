@@ -531,9 +531,9 @@ export default function ForgotPassword() {
         .recovery-page .recovery-illustration-wrap {
           width: 64px; height: 64px; border-radius: 20px;
           display: flex; align-items: center; justify-content: center;
-          margin-bottom: 12px; color: #aaa2ff;
-          background: rgba(124,111,255,.10);
-          border: 1px solid rgba(124,111,255,.22);
+          margin-bottom: 12px; color: #1877F2;
+          background: rgba(24,119,242,.10);
+          border: 1px solid rgba(24,119,242,.28);
           box-shadow: none;
         }
         .recovery-page .recovery-hero-icon { width: 32px; height: 32px; }
