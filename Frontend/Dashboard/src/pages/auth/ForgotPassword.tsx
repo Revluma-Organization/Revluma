@@ -192,15 +192,13 @@ export default function ForgotPassword() {
 
   return (
     <div className="recovery-page w-full flex flex-col items-center justify-center px-4 py-3 sm:py-4">
-      {/* Absolute top-left back button */}
-      <div className="absolute top-6 left-6 sm:top-8 sm:left-8">
-        <a href="/auth/login.html" className="recovery-back flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg transition-colors">
-          <ChevronLeft className="w-4 h-4" /> Back to sign in
-        </a>
-      </div>
-
       <div className="w-full max-w-[440px]">
-        {/* Revluma brand lockup — remains visible across all recovery steps */}
+        {/* Keep navigation and the oversized brand mark together, with the logo centered on every screen. */}
+        <div className="mb-1 flex justify-center">
+          <a href="/auth/login.html" className="recovery-back flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-lg transition-colors">
+            <ChevronLeft className="w-4 h-4" /> Back to sign in
+          </a>
+        </div>
         <a
           href="/"
           aria-label="Revluma home"
@@ -210,7 +208,7 @@ export default function ForgotPassword() {
             src="/assets/images/Revluma-icon.png"
             alt=""
             aria-hidden="true"
-            className="h-16 w-16 sm:h-[76px] sm:w-[76px] object-contain drop-shadow-lg"
+            className="h-[180px] w-[180px] sm:h-[220px] sm:w-[220px] object-contain drop-shadow-lg"
           />
         </a>
 
