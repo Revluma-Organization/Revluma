@@ -72,8 +72,11 @@ exports.getStores = async (req, res, next) => {
     const responseStores = stores.map((store) => {
       const connected = Boolean(store.access_token) && !['inactive', 'deleted'].includes(store.status);
       const registeredTopics = topicsByStore.get(store.id) || new Set();
+      const webhookDetails = webhookDetailsByStore.get(store.id) || new Map();
       const webhooksReady = store.platform !== 'shopify' ||
         requiredTopics.every((topic) => registeredTopics.has(topic));
+      const webhooksRunning = store.platform === 'shopify' && [...webhookDetails.values()].some((detail) => detail.status === 'running');
+      const webhooksFailed = store.platform === 'shopify' && [...webhookDetails.values()].some((detail) => detail.status === 'failed');
       const syncStatus = store.status === 'syncing'
         ? store.updated_at && Date.now() - store.updated_at.getTime() >= 15 * 60 * 1000
           ? 'failed'
@@ -100,11 +103,13 @@ exports.getStores = async (req, res, next) => {
         }) : null,
         setup_status: !connected
           ? 'disconnected'
-          : syncStatus === 'in_progress' || syncStatus === 'failed'
-            ? syncStatus
-            : !webhooksReady
-              ? 'webhooks_pending'
-              : syncStatus,
+          : webhooksRunning || syncStatus === 'in_progress'
+            ? 'in_progress'
+            : webhooksFailed || syncStatus === 'failed'
+              ? 'failed'
+              : !webhooksReady
+                ? 'webhooks_pending'
+                : syncStatus,
       };
     });
 
