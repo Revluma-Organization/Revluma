@@ -107,11 +107,21 @@ async function reconcileShopifyWebhooks(store) {
     const uri = `${baseUrl}/api/v1/webhooks/shopify/${path}`;
     const failureRecordId = `setup-failure:${topic}`;
     try {
-      await prisma.webhook_registrations.upsert({
-        where: { store_id_external_id: { store_id: store.id, external_id: `setup-state:${topic}` } },
-        create: { store_id: store.id, external_id: `setup-state:${topic}`, topic, delivery_url: uri, status: 'running', attempt_count: 1, started_at: new Date(), last_error: null },
-        update: { topic, delivery_url: uri, status: 'running', attempt_count: { increment: 1 }, started_at: new Date(), completed_at: null, last_error: null, updated_at: new Date() },
-      });
+      // Setup-state persistence is best-effort at the start of a topic attempt. A transient
+      // database write failure must not prevent us from asking Shopify to register the topic.
+      try {
+        await prisma.webhook_registrations.upsert({
+          where: { store_id_external_id: { store_id: store.id, external_id: `setup-state:${topic}` } },
+          create: { store_id: store.id, external_id: `setup-state:${topic}`, topic, delivery_url: uri, status: 'running', attempt_count: 1, started_at: new Date(), last_error: null },
+          update: { topic, delivery_url: uri, status: 'running', attempt_count: { increment: 1 }, started_at: new Date(), completed_at: null, last_error: null, updated_at: new Date() },
+        });
+      } catch (persistenceError) {
+        logger.error('shopify_webhook_setup_state_persistence_failed', {
+          store_id: store.id,
+          topic,
+          error_code: persistenceError.code || persistenceError.name || 'database_error',
+        });
+      }
 
       let subscription = existing.find((item) => item.topic === topic && item.uri === uri);
       if (!subscription) {
