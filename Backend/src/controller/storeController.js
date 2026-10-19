@@ -37,15 +37,28 @@ exports.getStores = async (req, res, next) => {
       .map((store) => store.id);
     const registrations = shopifyStoreIds.length
       ? await prisma.webhook_registrations.findMany({
-        where: { store_id: { in: shopifyStoreIds }, status: 'active' },
-        select: { store_id: true, topic: true },
+        where: { store_id: { in: shopifyStoreIds } },
+        select: { store_id: true, topic: true, status: true, external_id: true },
       })
       : [];
     const topicsByStore = new Map();
+    const webhookDetailsByStore = new Map();
     for (const registration of registrations) {
-      const topics = topicsByStore.get(registration.store_id) || new Set();
-      topics.add(registration.topic);
-      topicsByStore.set(registration.store_id, topics);
+      const details = webhookDetailsByStore.get(registration.store_id) || new Map();
+      // Prefer the persisted failure record when no active registration exists.
+      const current = details.get(registration.topic);
+      if (!current || registration.status === 'active' || registration.status === 'failed') {
+        details.set(registration.topic, {
+          topic: registration.topic,
+          status: registration.status === 'active' ? 'registered' : registration.status === 'failed' ? 'failed' : 'unknown',
+        });
+      }
+      webhookDetailsByStore.set(registration.store_id, details);
+      if (registration.status === 'active') {
+        const topics = topicsByStore.get(registration.store_id) || new Set();
+        topics.add(registration.topic);
+        topicsByStore.set(registration.store_id, topics);
+      }
     }
     const requiredTopics = REQUIRED_SUBSCRIPTIONS.map(([topic]) => topic);
 
@@ -74,6 +87,10 @@ exports.getStores = async (req, res, next) => {
         connection_status: connected ? 'connected' : 'disconnected',
         webhooks_registered: store.platform === 'shopify' ? registeredTopics.size : null,
         webhooks_required: store.platform === 'shopify' ? requiredTopics.length : null,
+        webhook_details: store.platform === 'shopify' ? requiredTopics.map((topic) => {
+          const detail = webhookDetailsByStore.get(store.id)?.get(topic);
+          return { topic, status: detail?.status || 'not_attempted' };
+        }) : null,
         setup_status: !connected
           ? 'disconnected'
           : syncStatus === 'in_progress' || syncStatus === 'failed'
