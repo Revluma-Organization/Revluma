@@ -42,7 +42,11 @@ interface ComingSoonPlatform {
 
 interface WebhookDetail {
   topic: string;
-  status: "registered" | "failed" | "not_attempted" | "unknown";
+  status: "registered" | "running" | "failed" | "not_attempted" | "unknown";
+  error?: string | null;
+  attempt_count?: number;
+  started_at?: string | null;
+  completed_at?: string | null;
 }
 
 interface ConnectedStore {
