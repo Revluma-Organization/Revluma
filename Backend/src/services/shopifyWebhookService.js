@@ -1,5 +1,6 @@
 const { prisma } = require('../configs/database');
 const { shopifyGraphql } = require('./shopifyGraphql');
+const logger = require('../utils/logger');
 
 const REQUIRED_SUBSCRIPTIONS = Object.freeze([
   ['APP_UNINSTALLED', 'app/uninstalled'],
@@ -40,7 +41,13 @@ async function createSubscription(store, topic, uri) {
   });
   const result = data.webhookSubscriptionCreate;
   if (result?.userErrors?.length || !result?.webhookSubscription) {
-    throw new Error('shopify_webhook_subscription_failed');
+    const error = new Error('shopify_webhook_subscription_failed');
+    error.code = 'SHOPIFY_WEBHOOK_USER_ERROR';
+    error.shopifyErrors = (result?.userErrors || []).slice(0, 5).map((item) => ({
+      field: Array.isArray(item.field) ? item.field.slice(0, 8) : [],
+      message: String(item.message || 'Unknown webhook user error').slice(0, 300),
+    }));
+    throw error;
   }
   return result.webhookSubscription;
 }
@@ -52,22 +59,36 @@ async function reconcileShopifyWebhooks(store) {
   let created = 0;
   for (const [topic, path] of REQUIRED_SUBSCRIPTIONS) {
     const uri = `${baseUrl}/api/v1/webhooks/shopify/${path}`;
-    let subscription = existing.find((item) => item.topic === topic && item.uri === uri);
-    if (!subscription) {
-      subscription = await createSubscription(store, topic, uri);
-      created += 1;
-    }
-    await prisma.webhook_registrations.upsert({
-      where: { store_id_external_id: { store_id: store.id, external_id: subscription.id } },
-      create: {
+    try {
+      let subscription = existing.find((item) => item.topic === topic && item.uri === uri);
+      if (!subscription) {
+        subscription = await createSubscription(store, topic, uri);
+        created += 1;
+      }
+      await prisma.webhook_registrations.upsert({
+        where: { store_id_external_id: { store_id: store.id, external_id: subscription.id } },
+        create: {
+          store_id: store.id,
+          external_id: subscription.id,
+          topic,
+          delivery_url: uri,
+          status: 'active',
+        },
+        update: { topic, delivery_url: uri, status: 'active', updated_at: new Date() },
+      });
+      logger.info('shopify_webhook_topic_setup', { store_id: store.id, topic, outcome: 'registered' });
+    } catch (error) {
+      logger.error('shopify_webhook_topic_setup', {
         store_id: store.id,
-        external_id: subscription.id,
         topic,
-        delivery_url: uri,
-        status: 'active',
-      },
-      update: { topic, delivery_url: uri, status: 'active', updated_at: new Date() },
-    });
+        outcome: 'failed',
+        error_code: error.code || error.name || 'webhook_setup_error',
+        http_status: error.status || null,
+        network_code: error.networkCode || null,
+        shopify_errors: error.shopifyErrors || [],
+      });
+      throw error;
+    }
   }
   return { required: REQUIRED_SUBSCRIPTIONS.length, created };
 }
