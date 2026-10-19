@@ -39,6 +39,11 @@ interface ComingSoonPlatform {
   accentColor: string;
 }
 
+interface WebhookDetail {
+  topic: string;
+  status: "registered" | "failed" | "not_attempted" | "unknown";
+}
+
 interface ConnectedStore {
   id: string;
   platform: Platform["id"];
@@ -49,6 +54,7 @@ interface ConnectedStore {
   setup_status: "disconnected" | "webhooks_pending" | "in_progress" | "failed" | "pending" | "complete";
   webhooks_registered: number | null;
   webhooks_required: number | null;
+  webhook_details?: WebhookDetail[] | null;
   last_synced_at: string | null;
 }
 
@@ -623,12 +629,13 @@ export default function Integrations() {
                       ["CHECKOUTS_CREATE", "Checkout Created"],
                       ["CHECKOUTS_UPDATE", "Checkout Updated"],
                     ] as const;
-                    const completedCount = Math.min(webhookCount, webhookSteps.length);
-                    const hasBlockingFailure = failed && completedCount < webhookSteps.length;
+                    const webhookDetails = store.webhook_details || [];
+                    const completedCount = webhookDetails.filter((item) => item.status === "registered").length;
+                    const hasBlockingFailure = webhookDetails.some((item) => item.status === "failed");
                     const progressTotal = webhookSteps.length + 1;
                     const progressCompleted = completedCount + (Boolean(store.last_synced_at) ? 1 : 0);
                     const progressPercent = setupDone ? 100 : Math.round((progressCompleted / progressTotal) * 100);
-                    const activeIndex = isRetrying ? completedCount : -1;
+                    const activeIndex = isRetrying ? webhookSteps.findIndex(([topic]) => !webhookDetails.some((item) => item.topic === topic && (item.status === "registered" || item.status === "failed"))) : -1;
                     return (
                       <div key={store.id} className="mt-2 rounded-2xl border border-border bg-bg-3 px-4 py-6 text-t2 sm:px-7 sm:py-8">
                         <div className="mx-auto max-w-xl">
@@ -650,8 +657,9 @@ export default function Integrations() {
                             <div className="absolute left-[26px] top-3 bottom-8 w-px bg-border sm:left-[34px]" />
                             <ol className="relative space-y-5">
                               {webhookSteps.map(([topic, label], index) => {
-                                const completed = index < completedCount;
-                                const isFailedStep = hasBlockingFailure && index === completedCount;
+                                const topicDetail = webhookDetails.find((item) => item.topic === topic);
+                                const completed = topicDetail?.status === "registered";
+                                const isFailedStep = topicDetail?.status === "failed";
                                 const isActive = !completed && !isFailedStep && activeIndex === index;
                                 const statusClass = completed
                                   ? "border-emerald-500 bg-emerald-500/10 text-emerald-500"
@@ -672,8 +680,8 @@ export default function Integrations() {
                                           Registration failed. Shopify returned an error for this topic; check the setup logs for the exact response.
                                         </p>
                                       )}
-                                      {!completed && !isFailedStep && !isActive && failed && (
-                                        <p className="mt-1 text-xs text-t3">Not attempted — setup stopped at an earlier error.</p>
+                                      {!completed && !isFailedStep && !isActive && (
+                                        <p className="mt-1 text-xs text-t3">{topicDetail?.status === "unknown" ? "Status not available yet." : failed ? "Not attempted — setup stopped at an earlier error." : "Waiting for registration."}</p>
                                       )}
                                       {isActive && <p className="mt-1 text-xs text-t3">Registration is being retried.</p>}
                                     </div>
@@ -693,7 +701,7 @@ export default function Integrations() {
                           </div>
 
                           <p className="mt-7 text-center text-xs leading-relaxed text-t3">
-                            {failed ? `${completedCount} of ${webhookSteps.length} webhooks registered; ${Math.max(0, webhookSteps.length - completedCount - (hasBlockingFailure ? 1 : 0))} not attempted.` : setupDone ? "All required setup operations are complete." : `${webhookCount} of ${webhookRequired} webhook registrations confirmed.`}
+                            {failed ? `${completedCount} of ${webhookSteps.length} webhooks registered; ${webhookDetails.filter((item) => item.status === "failed").length} failed; ${webhookDetails.filter((item) => item.status === "not_attempted").length} not attempted.` : setupDone ? "All required setup operations are complete." : `${webhookCount} of ${webhookRequired} webhook registrations confirmed.`}
                           </p>
 
                           {feedback && (
