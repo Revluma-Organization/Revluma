@@ -614,57 +614,94 @@ export default function Integrations() {
                     const setupDone = isStoreSetupComplete(store);
                     const feedback = retryFeedback?.storeId === store.id ? retryFeedback : null;
                     return (
-                      <div key={store.id} className="space-y-3 rounded-xl border border-border bg-bg-3 p-4 text-[0.8rem] text-t2">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="break-all font-semibold text-t1">{store.shop_domain}</p>
-                            <p className="mt-1 capitalize text-xs">{store.connection_status === "connected" ? store.setup_status.replace(/_/g, " ") : "Disconnected — reconnect required"}</p>
+                      <div key={store.id} className="overflow-hidden rounded-2xl border border-border bg-bg-3 text-[0.8rem] text-t2 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
+                          <div className="min-w-0 flex-1">
+                            <p className="break-all font-semibold leading-relaxed text-t1">{store.shop_domain}</p>
+                            <p className="mt-1 text-xs text-t3">Shopify store setup</p>
                           </div>
                           <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", setupDone ? "bg-emerald-500/10 text-emerald-400" : store.setup_status === "failed" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400")}>
                             {setupDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : store.setup_status === "failed" ? <CircleX className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
-                            {setupDone ? "Fully connected" : store.setup_status === "failed" ? "Needs attention" : "Setup incomplete"}
+                            {setupDone ? "Connected" : store.setup_status === "failed" ? "Failed" : "Needs attention"}
                           </span>
                         </div>
-                        <div className="space-y-2 rounded-lg border border-border bg-bg-2 p-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <span>Webhook registration</span>
-                            <span className="inline-flex items-center gap-1.5 font-medium text-t1">
-                              {isRetrying && !webhooksDone ? <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" /> : webhooksDone ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : store.setup_status === "failed" ? <CircleX className="h-3.5 w-3.5 text-red-400" /> : <Clock className="h-3.5 w-3.5 text-amber-400" />}
-                              {webhookCount}/{webhookRequired || "—"} registered
-                            </span>
+
+                        <div className="p-4 sm:p-5">
+                          <div className="mb-5">
+                            <p className="font-semibold text-t1">Setup progress</p>
+                            <p className="mt-1 text-xs leading-relaxed text-t3">Revluma is checking your store connection, registering webhooks, and preparing the initial sync.</p>
                           </div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span>Initial store sync</span>
-                            <span className="inline-flex items-center gap-1.5 font-medium text-t1">
-                              {isRetrying && !syncDone ? <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-400" /> : syncDone ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : store.setup_status === "failed" ? <CircleX className="h-3.5 w-3.5 text-red-400" /> : <Clock className="h-3.5 w-3.5 text-amber-400" />}
-                              {syncDone ? "Sync complete" : "Not completed"}
-                            </span>
+
+                          <div className="space-y-0">
+                            <div className="relative flex gap-3 pb-5">
+                              <div className="absolute left-[13px] top-7 h-[calc(100%-12px)] w-px bg-border" />
+                              <div className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2", store.connection_status === "connected" ? "border-emerald-500 bg-emerald-500/10 text-emerald-400" : "border-red-500 bg-red-500/10 text-red-400")}>
+                                {store.connection_status === "connected" ? <CheckCircle2 className="h-4 w-4" /> : <CircleX className="h-4 w-4" />}
+                              </div>
+                              <div className="min-w-0 flex-1 pt-0.5">
+                                <p className="font-semibold text-t1">Store connection</p>
+                                <p className="mt-1 text-xs leading-relaxed text-t3">{store.connection_status === "connected" ? "Shopify credentials saved and connection detected" : "Connection lost — reconnect required"}</p>
+                              </div>
+                            </div>
+
+                            <div className="relative flex gap-3 pb-5">
+                              <div className="absolute left-[13px] top-7 h-[calc(100%-12px)] w-px bg-border" />
+                              <div className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2", webhooksDone ? "border-emerald-500 bg-emerald-500/10 text-emerald-400" : isRetrying ? "border-blue-500 bg-blue-500/10 text-blue-400" : store.setup_status === "failed" ? "border-red-500 bg-red-500/10 text-red-400" : "border-amber-500 bg-amber-500/10 text-amber-400")}>
+                                {isRetrying && !webhooksDone ? <Loader2 className="h-4 w-4 animate-spin" /> : webhooksDone ? <CheckCircle2 className="h-4 w-4" /> : store.setup_status === "failed" ? <CircleX className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                              </div>
+                              <div className="min-w-0 flex-1 pt-0.5">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="font-semibold text-t1">Webhook registration</p>
+                                  <span className={cn("text-xs font-semibold tabular-nums", webhooksDone ? "text-emerald-400" : store.setup_status === "failed" ? "text-red-400" : "text-t2")}>{webhookCount}/{webhookRequired || "—"} registered</span>
+                                </div>
+                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-bg-2">
+                                  <div className={cn("h-full rounded-full transition-[width]", webhooksDone ? "bg-emerald-500" : store.setup_status === "failed" ? "bg-red-500" : "bg-blue-500")} style={{ width: `${webhookRequired > 0 ? Math.min(100, (webhookCount / webhookRequired) * 100) : 0}%` }} />
+                                </div>
+                                <p className="mt-1.5 text-xs leading-relaxed text-t3">{webhooksDone ? "All required webhooks are registered" : store.setup_status === "failed" ? "Webhook setup needs attention" : "Registering the events Revluma needs to keep your store data up to date"}</p>
+                              </div>
+                            </div>
+
+                            <div className="relative flex gap-3">
+                              <div className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2", syncDone ? "border-emerald-500 bg-emerald-500/10 text-emerald-400" : isRetrying ? "border-blue-500 bg-blue-500/10 text-blue-400" : store.setup_status === "failed" ? "border-red-500 bg-red-500/10 text-red-400" : "border-border-md bg-bg-2 text-t3")}>
+                                {isRetrying && !syncDone ? <Loader2 className="h-4 w-4 animate-spin" /> : syncDone ? <CheckCircle2 className="h-4 w-4" /> : store.setup_status === "failed" ? <CircleX className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                              </div>
+                              <div className="min-w-0 flex-1 pt-0.5">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <p className="font-semibold text-t1">Initial store sync</p>
+                                  <span className={cn("text-xs font-semibold", syncDone ? "text-emerald-400" : store.setup_status === "failed" ? "text-red-400" : "text-t3")}>{syncDone ? "Completed" : "Not completed"}</span>
+                                </div>
+                                <p className="mt-1 text-xs leading-relaxed text-t3">{syncDone ? "Your initial store data has been synchronized" : "The first sync has not finished yet"}</p>
+                              </div>
+                            </div>
                           </div>
+
                           {store.setup_status === "complete" && !setupDone && (
-                            <p className="text-xs text-amber-300">The backend reports setup complete, but one or more verification checks are still missing.</p>
+                            <p className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-300">The backend reports setup complete, but one or more verification checks are still missing.</p>
+                          )}
+
+                          {feedback && (
+                            <div role={feedback.state === "failed" ? "alert" : "status"} className={cn("mt-4 rounded-lg border p-3 text-xs leading-relaxed", feedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-300" : feedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-300" : "border-amber-500/25 bg-amber-500/5 text-amber-200")}>
+                              <div className="mb-1 flex items-center gap-2 font-semibold">
+                                {feedback.state === "success" ? <CheckCircle2 className="h-4 w-4" /> : feedback.state === "failed" ? <CircleX className="h-4 w-4" /> : feedback.state === "partial" ? <Clock className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+                                {feedback.state === "success" ? "Setup completed" : feedback.state === "failed" ? "Setup failed" : feedback.state === "partial" ? "Still working" : "Retry in progress"}
+                              </div>
+                              {feedback.message}
+                            </div>
+                          )}
+
+                          {!setupDone && store.connection_status === "connected" && store.setup_status !== "in_progress" && (
+                            <button
+                              type="button"
+                              onClick={() => void handleRetryStoreSetup(store.id)}
+                              disabled={isRetrying}
+                              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-3 font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+                              {isRetrying ? "Retrying Shopify setup…" : "Retry setup"}
+                            </button>
                           )}
                         </div>
-                        {feedback && (
-                          <div role={feedback.state === "failed" ? "alert" : "status"} className={cn("rounded-lg border p-3 text-xs leading-relaxed", feedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-300" : feedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-300" : "border-amber-500/25 bg-amber-500/5 text-amber-200")}>
-                            <div className="mb-1 flex items-center gap-2 font-semibold">
-                              {feedback.state === "success" ? <CheckCircle2 className="h-4 w-4" /> : feedback.state === "failed" ? <CircleX className="h-4 w-4" /> : feedback.state === "partial" ? <Clock className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
-                              {feedback.state === "success" ? "Setup completed" : feedback.state === "failed" ? "Setup failed" : feedback.state === "partial" ? "Still working" : "Retry in progress"}
-                            </div>
-                            {feedback.message}
-                          </div>
-                        )}
-                        {!setupDone && store.connection_status === "connected" && store.setup_status !== "in_progress" && (
-                          <button
-                            type="button"
-                            onClick={() => void handleRetryStoreSetup(store.id)}
-                            disabled={isRetrying}
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-2.5 font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
-                            {isRetrying ? "Retrying Shopify setup…" : "Retry setup"}
-                          </button>
-                        )}
-                      </div>
+                      </div>>
                     );
                   })}
 
