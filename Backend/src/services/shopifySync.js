@@ -241,15 +241,32 @@ async function syncAbandonedCheckouts(store) {
 }
 
 async function syncShopifyStore(store) {
+  let setupStage = 'marking_store_syncing';
+  logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
   await prisma.stores.update({
     where: { id: store.id },
     data: { status: 'syncing', updated_at: new Date() },
   });
   try {
-    await reconcileShopifyWebhooks(store);
+    setupStage = 'webhook_reconciliation';
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
+    const webhookResult = await reconcileShopifyWebhooks(store);
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', registered: webhookResult.required });
+
+    setupStage = 'customer_sync';
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     const customers = await syncCustomers(store);
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: customers });
+
+    setupStage = 'order_sync';
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     const orders = await syncOrders(store);
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: orders });
+
+    setupStage = 'abandoned_checkout_sync';
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     const abandoned = await syncAbandonedCheckouts(store);
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: abandoned });
     await prisma.stores.update({
       where: { id: store.id },
       data: { status: 'active', last_synced_at: new Date(), updated_at: new Date() },
@@ -273,7 +290,14 @@ async function syncShopifyStore(store) {
         error_type: stateError.code || stateError.name || 'store_state_update_error',
       });
     }
-    logger.error('shopify_sync_failed', { store_id: store.id, error_type: error.code || error.name || 'sync_error' });
+    logger.error('shopify_sync_failed', {
+      store_id: store.id,
+      stage: setupStage,
+      error_type: error.code || error.name || 'sync_error',
+      http_status: error.status || error.response?.status || null,
+      network_code: error.networkCode || error.code || null,
+      shopify_errors: error.shopifyErrors || [],
+    });
     throw error;
   }
 }
