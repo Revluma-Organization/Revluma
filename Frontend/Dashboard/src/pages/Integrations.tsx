@@ -655,7 +655,6 @@ export default function Integrations() {
                               const running = status === "running";
                               const detail = rowDetail(topic);
                               const notAttempted = status === "not_attempted";
-                              const unknown = status === "unknown";
                               const lineDone = registered;
                               return (
                                 <li key={topic} className="relative flex min-h-[66px] gap-3 sm:gap-4">
