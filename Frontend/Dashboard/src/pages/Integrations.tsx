@@ -228,7 +228,6 @@ export default function Integrations() {
   const [storeLoadError, setStoreLoadError] = useState(false);
   const [retryingStoreIds, setRetryingStoreIds] = useState<string[]>([]);
   const [retryFeedback, setRetryFeedback] = useState<{ storeId: string; state: "running" | "success" | "partial" | "failed"; message: string } | null>(null);
-  const [setupModalStoreId, setSetupModalStoreId] = useState<string | null>(null);
 
   // Shopify Modal State
   const [shopifyModalOpen, setShopifyModalOpen] = useState(false);
@@ -356,16 +355,6 @@ export default function Integrations() {
       void fetchStatuses();
     }
   }, [fetchStatuses, searchParams, setSearchParams, showStatusCard]);
-
-  // Poll persisted store/webhook status while the setup dialog is visible.
-  useEffect(() => {
-    if (!setupModalStoreId) return;
-    let active = true;
-    const poll = async () => { if (active) await fetchStatuses(); };
-    void poll();
-    const intervalId = window.setInterval(() => { void poll(); }, 1500);
-    return () => { active = false; window.clearInterval(intervalId); };
-  }, [setupModalStoreId, fetchStatuses]);
 
   const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && store.setup_status === "in_progress");
   useEffect(() => {
@@ -746,120 +735,6 @@ export default function Integrations() {
           );
         })}
       </section>
-
-      {/* Shopify setup details modal. Closing it never cancels backend setup. */}
-      <AnimatePresence>
-        {setupModalStoreId && (() => {
-          const store = stores.find((item) => item.id === setupModalStoreId && item.platform === "shopify");
-          if (!store) return null;
-          const topics = [
-            ["APP_UNINSTALLED", "App uninstalled"],
-            ["ORDERS_CREATE", "Order created"],
-            ["ORDERS_UPDATED", "Order updated"],
-            ["ORDERS_CANCELLED", "Order cancelled"],
-            ["ORDERS_DELETE", "Order deleted"],
-            ["CUSTOMERS_CREATE", "Customer created"],
-            ["CUSTOMERS_UPDATE", "Customer updated"],
-            ["CHECKOUTS_CREATE", "Checkout created"],
-            ["CHECKOUTS_UPDATE", "Checkout updated"],
-          ] as const;
-          const details = store.webhook_details ?? [];
-          const isRetrying = retryingStoreIds.includes(store.id) || store.setup_status === "in_progress";
-          const setupDone = isStoreSetupComplete(store);
-          const registeredCount = details.filter((item) => item.status === "registered").length;
-          const failedCount = details.filter((item) => item.status === "failed").length;
-          return createPortal(
-            <>
-              <motion.button
-                type="button"
-                aria-label="Close Shopify setup details"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[9998] cursor-default bg-black/60 backdrop-blur-md"
-                onClick={() => setSetupModalStoreId(null)}
-              />
-              <motion.section
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="shopify-setup-title"
-                initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 12, scale: 0.98 }}
-                className="fixed left-1/2 top-1/2 z-[9999] flex max-h-[min(84vh,760px)] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-[0_24px_100px_rgba(0,0,0,0.5)]"
-              >
-                <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-t3">Shopify setup</p>
-                    <h2 id="shopify-setup-title" className="mt-1 truncate text-lg font-bold text-t1">{store.shop_domain}</h2>
-                    <p className="mt-1 text-sm text-t3">
-                      {setupDone ? "All setup checks are complete." : isRetrying ? "Setup is running. Statuses update from the saved store record." : "Review the recorded webhook results and retry setup if needed."}
-                    </p>
-                  </div>
-                  <button type="button" aria-label="Close modal" onClick={() => setSetupModalStoreId(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-t3 transition-colors hover:bg-bg-2 hover:text-t1">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="overflow-y-auto px-5 py-5 sm:px-6">
-                  <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-2 px-3 py-2 text-xs">
-                    <span className="text-t3">Webhook registration</span>
-                    <span className="font-semibold text-t1">{registeredCount} of 9 registered{failedCount ? ` · ${failedCount} failed` : ""}</span>
-                    <span className="inline-flex items-center gap-1.5 text-t3"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live</span>
-                  </div>
-                  <ol className="space-y-2">
-                    {topics.map(([topic, label]) => {
-                      const detail = details.find((item) => item.topic === topic);
-                      const status = detail?.status ?? "unknown";
-                      const registered = status === "registered";
-                      const failed = status === "failed";
-                      const notAttempted = status === "not_attempted";
-                      return (
-                        <li key={topic} className="flex items-start gap-3 rounded-xl border border-border bg-bg-2/70 px-3.5 py-3">
-                          <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border", registered ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : failed ? "border-red-500/30 bg-red-500/10 text-red-400" : isRetrying && !notAttempted ? "border-amber-500/30 bg-amber-500/10 text-amber-300" : "border-border text-t3")}>
-                            {registered ? <CheckCircle2 className="h-4 w-4" /> : failed ? <CircleX className="h-4 w-4" /> : isRetrying && !notAttempted ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-t1">{label}</p>
-                            <p className="mt-0.5 break-words text-xs text-t3">{topic}</p>
-                            <p className={cn("mt-1 text-xs", registered ? "text-emerald-500" : failed ? "text-red-400" : "text-t3")}>
-                              {registered ? "Registered successfully" : failed ? "Registration failed — exact cause is not available in the current status response." : notAttempted ? "Not attempted" : status === "unknown" ? "No saved result available for this topic." : isRetrying ? "Waiting for the next saved status update." : "Pending"}
-                            </p>
-                          </div>
-                          <span className={cn("shrink-0 rounded-full px-2 py-1 text-[0.65rem] font-semibold", registered ? "bg-emerald-500/10 text-emerald-500" : failed ? "bg-red-500/10 text-red-400" : "bg-bg-3 text-t3")}>
-                            {registered ? "Success" : failed ? "Failed" : notAttempted ? "Not attempted" : status === "unknown" ? "Unknown" : "Pending"}
-                          </span>
-                        </li>
-                      );
-                    })}
-                    <li className="flex items-start gap-3 rounded-xl border border-border bg-bg-2/70 px-3.5 py-3">
-                      <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border", store.last_synced_at ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : "border-border text-t3")}>
-                        {store.last_synced_at ? <CheckCircle2 className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-t1">Initial store sync</p>
-                        <p className="mt-1 text-xs text-t3">{store.last_synced_at ? `Completed ${new Date(store.last_synced_at).toLocaleString()}` : "No completed sync timestamp is recorded yet."}</p>
-                      </div>
-                    </li>
-                  </ol>
-                  {retryFeedback?.storeId === store.id && (
-                    <p role={retryFeedback.state === "failed" ? "alert" : "status"} className={cn("mt-4 rounded-lg border p-3 text-xs leading-relaxed", retryFeedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-300" : retryFeedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-300" : "border-amber-500/25 bg-amber-500/5 text-amber-200")}>{retryFeedback.message}</p>
-                  )}
-                </div>
-                <div className="flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-                  <button type="button" onClick={() => setSetupModalStoreId(null)} className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-t2 transition-colors hover:bg-bg-2">Close</button>
-                  {!setupDone && store.connection_status === "connected" && !isRetrying && (
-                    <button type="button" onClick={() => void handleRetryStoreSetup(store.id)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-600">
-                      <ArrowUpRight className="h-4 w-4" /> Retry setup
-                    </button>
-                  )}
-                  {isRetrying && <span className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300"><Loader2 className="h-4 w-4 animate-spin" /> Setup running</span>}
-                </div>
-              </motion.section>
-            </>,
-            document.body,
-          );
-        })()}
-      </AnimatePresence>
 
       {/* Shopify Prompt Modal */}
       <AnimatePresence>
