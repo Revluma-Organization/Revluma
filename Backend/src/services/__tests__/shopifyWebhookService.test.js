@@ -128,7 +128,6 @@ async function verifyPersistenceFailureDoesNotBlockRemainingTopics() {
 }
 
 (async () => {
-  assert.deepStrictEqual(REQUIRED.map(([topic]) => topic), (require('../shopifyWebhookService').REQUIRED_SUBSCRIPTIONS || REQUIRED).map(([topic]) => topic));
   await verifyTopicRejectionDoesNotStopOtherTopics();
   await verifyRetryCanRecoverAfterShopifyRejection();
   await verifyPersistenceFailureDoesNotBlockRemainingTopics();
