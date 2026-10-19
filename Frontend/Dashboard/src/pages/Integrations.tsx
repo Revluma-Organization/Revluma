@@ -634,6 +634,8 @@ export default function Integrations() {
                     const registeredCount = details.filter((item) => item.status === "registered").length;
                     const failedCount = details.filter((item) => item.status === "failed").length;
                     const runningCount = details.filter((item) => item.status === "running").length;
+                    const syncRunning = store.status === "syncing";
+                    const syncFailed = store.status === "error";
                     const heading = setupDone ? "Your store is ready!" : failedCount > 0 || store.setup_status === "failed" ? "Setup needs attention" : isRetrying ? "Getting your store ready..." : "Shopify setup";
                     const rowDetail = (topic: string) => details.find((item) => item.topic === topic);
                     const rowState = (topic: string) => rowDetail(topic)?.status ?? "unknown";
@@ -678,12 +680,12 @@ export default function Integrations() {
                               );
                             })}
                             <li className="relative flex gap-3 sm:gap-4">
-                              <span aria-hidden="true" className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-slate-950", store.last_synced_at ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : "border-slate-300 text-slate-400 dark:border-slate-600")}>
-                                {store.last_synced_at ? <CheckCircle2 className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                              <span aria-hidden="true" className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-slate-950", store.last_synced_at ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : syncFailed ? "border-red-500 text-red-600 dark:text-red-400" : syncRunning ? "border-teal-600 text-teal-700 dark:text-teal-400" : "border-slate-300 text-slate-400 dark:border-slate-600")}>
+                                {store.last_synced_at ? <CheckCircle2 className="h-4 w-4" /> : syncFailed ? <X className="h-4 w-4" /> : syncRunning ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <Clock className="h-4 w-4" />}
                               </span>
                               <div className="min-w-0 flex-1 pb-2">
-                                <p className={cn("text-sm font-medium", store.last_synced_at ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400")}>Synchronizing store data</p>
-                                <p className="mt-0.5 break-words text-xs text-slate-400 dark:text-slate-500">{store.last_synced_at ? `Completed ${new Date(store.last_synced_at).toLocaleString()}` : "Initial sync pending"}</p>
+                                <p className={cn("text-sm font-medium", store.last_synced_at ? "text-emerald-700 dark:text-emerald-400" : syncFailed ? "text-red-700 dark:text-red-400" : syncRunning ? "font-semibold text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400")}>Synchronizing store data</p>
+                                <p className={cn("mt-0.5 break-words text-xs", syncFailed ? "text-red-600 dark:text-red-400" : "text-slate-400 dark:text-slate-500")}>{store.last_synced_at ? `Completed ${new Date(store.last_synced_at).toLocaleString()}` : syncFailed ? "Initial synchronization failed. Check server diagnostics." : syncRunning ? "Initial synchronization in progress" : "Initial sync pending"}</p>
                               </div>
                             </li>
                           </ol>
