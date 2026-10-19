@@ -123,10 +123,14 @@ exports.retryShopifySetup = async (req, res, next) => {
       return res.status(409).json({ success: false, error: 'Shopify setup is already in progress' });
     }
 
+    logger.info('shopify_setup_retry_accepted', { store_id: store.id });
     syncShopifyStore(store).catch((error) => {
       logger.error('shopify_setup_retry_failed', {
         store_id: store.id,
         error_type: error.code || error.name || 'sync_error',
+        http_status: error.status || error.response?.status || null,
+        network_code: error.networkCode || error.code || null,
+        shopify_errors: error.shopifyErrors || [],
       });
     });
     return res.status(202).json({
