@@ -644,8 +644,14 @@ export default function Integrations() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => setSetupModalStoreId(store.id)}
-                          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3.5 py-2 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15"
+                          onClick={() => {
+                            setSetupModalStoreId(store.id);
+                            if (!isRetrying && !setupDone && store.connection_status === "connected") {
+                              void handleRetryStoreSetup(store.id);
+                            }
+                          }}
+                          disabled={isRetrying}
+                          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3.5 py-2 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15 disabled:cursor-wait disabled:opacity-70"
                         >
                           {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Info className="h-4 w-4" />}
                           {isRetrying ? "View setup progress" : setupDone ? "View setup" : "Retry setup"}
