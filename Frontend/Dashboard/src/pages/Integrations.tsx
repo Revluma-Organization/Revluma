@@ -13,6 +13,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 import magentoLogo from "@/assets/magento-logo.png";
 import GlassmorphismCard from "@/components/GlassmorphismCard";
+import { createPortal } from "react-dom";
 
 // Types
 type ConnectionStatus = "not_connected" | "connecting" | "connected" | "error";
@@ -355,6 +356,16 @@ export default function Integrations() {
       void fetchStatuses();
     }
   }, [fetchStatuses, searchParams, setSearchParams, showStatusCard]);
+
+  // Poll persisted store/webhook status while the setup dialog is visible.
+  useEffect(() => {
+    if (!setupModalStoreId) return;
+    let active = true;
+    const poll = async () => { if (active) await fetchStatuses(); };
+    void poll();
+    const intervalId = window.setInterval(() => { void poll(); }, 1500);
+    return () => { active = false; window.clearInterval(intervalId); };
+  }, [setupModalStoreId, fetchStatuses]);
 
   const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && store.setup_status === "in_progress");
   useEffect(() => {
@@ -702,7 +713,7 @@ export default function Integrations() {
           const setupDone = isStoreSetupComplete(store);
           const registeredCount = details.filter((item) => item.status === "registered").length;
           const failedCount = details.filter((item) => item.status === "failed").length;
-          return (
+          return createPortal(
             <>
               <motion.button
                 type="button"
@@ -710,7 +721,7 @@ export default function Integrations() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[70] cursor-default bg-black/65 backdrop-blur-sm"
+                className="fixed inset-0 z-[9998] cursor-default bg-black/60 backdrop-blur-md"
                 onClick={() => setSetupModalStoreId(null)}
               />
               <motion.section
@@ -720,7 +731,7 @@ export default function Integrations() {
                 initial={{ opacity: 0, y: 12, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 12, scale: 0.98 }}
-                className="fixed left-1/2 top-1/2 z-[71] flex max-h-[88vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
+                className="fixed left-1/2 top-1/2 z-[9999] flex max-h-[min(84vh,760px)] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-[0_24px_100px_rgba(0,0,0,0.5)]"
               >
                 <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
                   <div className="min-w-0">
@@ -735,19 +746,10 @@ export default function Integrations() {
                   </button>
                 </div>
                 <div className="overflow-y-auto px-5 py-5 sm:px-6">
-                  <div className="mb-4 grid grid-cols-3 gap-2">
-                    <div className="rounded-xl border border-border bg-bg-2 p-3">
-                      <p className="text-[0.68rem] text-t3">Registered</p>
-                      <p className="mt-1 text-lg font-bold text-emerald-500">{registeredCount}<span className="text-xs font-medium text-t3"> / 9</span></p>
-                    </div>
-                    <div className="rounded-xl border border-border bg-bg-2 p-3">
-                      <p className="text-[0.68rem] text-t3">Failed</p>
-                      <p className={cn("mt-1 text-lg font-bold", failedCount ? "text-red-400" : "text-t1")}>{failedCount}</p>
-                    </div>
-                    <div className="rounded-xl border border-border bg-bg-2 p-3">
-                      <p className="text-[0.68rem] text-t3">Initial sync</p>
-                      <p className={cn("mt-1 text-sm font-bold", store.last_synced_at ? "text-emerald-500" : "text-amber-300")}>{store.last_synced_at ? "Complete" : "Pending"}</p>
-                    </div>
+                  <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-2 px-3 py-2 text-xs">
+                    <span className="text-t3">Webhook registration</span>
+                    <span className="font-semibold text-t1">{registeredCount} of 9 registered{failedCount ? ` · ${failedCount} failed` : ""}</span>
+                    <span className="inline-flex items-center gap-1.5 text-t3"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live</span>
                   </div>
                   <ol className="space-y-2">
                     {topics.map(([topic, label]) => {
@@ -798,7 +800,8 @@ export default function Integrations() {
                   {isRetrying && <span className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300"><Loader2 className="h-4 w-4 animate-spin" /> Setup running</span>}
                 </div>
               </motion.section>
-            </>
+            </>,
+            document.body,
           );
         })()}
       </AnimatePresence>
