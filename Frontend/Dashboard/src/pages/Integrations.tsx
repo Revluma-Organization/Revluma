@@ -227,6 +227,7 @@ export default function Integrations() {
   const [storeLoadError, setStoreLoadError] = useState(false);
   const [retryingStoreIds, setRetryingStoreIds] = useState<string[]>([]);
   const [retryFeedback, setRetryFeedback] = useState<{ storeId: string; state: "running" | "success" | "partial" | "failed"; message: string } | null>(null);
+  const [setupModalStoreId, setSetupModalStoreId] = useState<string | null>(null);
 
   // Shopify Modal State
   const [shopifyModalOpen, setShopifyModalOpen] = useState(false);
@@ -617,111 +618,27 @@ export default function Integrations() {
                     const webhookRequired = store.webhooks_required ?? 9;
                     const setupDone = isStoreSetupComplete(store);
                     const failed = store.setup_status === "failed";
-                    const feedback = retryFeedback?.storeId === store.id ? retryFeedback : null;
-                    const webhookSteps = [
-                      ["APP_UNINSTALLED", "App Uninstalled"],
-                      ["ORDERS_CREATE", "Order Created"],
-                      ["ORDERS_UPDATED", "Order Updated"],
-                      ["ORDERS_CANCELLED", "Order Cancelled"],
-                      ["ORDERS_DELETE", "Order Deleted"],
-                      ["CUSTOMERS_CREATE", "Customer Created"],
-                      ["CUSTOMERS_UPDATE", "Customer Updated"],
-                      ["CHECKOUTS_CREATE", "Checkout Created"],
-                      ["CHECKOUTS_UPDATE", "Checkout Updated"],
-                    ] as const;
-                    const webhookDetails = store.webhook_details || [];
-                    const completedCount = webhookDetails.filter((item) => item.status === "registered").length;
-                    const hasBlockingFailure = webhookDetails.some((item) => item.status === "failed");
-                    const progressTotal = webhookSteps.length + 1;
-                    const progressCompleted = completedCount + (Boolean(store.last_synced_at) ? 1 : 0);
-                    const progressPercent = setupDone ? 100 : Math.round((progressCompleted / progressTotal) * 100);
-                    const activeIndex = isRetrying ? webhookSteps.findIndex(([topic]) => !webhookDetails.some((item) => item.topic === topic && (item.status === "registered" || item.status === "failed"))) : -1;
                     return (
-                      <div key={store.id} className="mt-2 rounded-2xl border border-border bg-bg-3 px-4 py-6 text-t2 sm:px-7 sm:py-8">
-                        <div className="mx-auto max-w-xl">
-                          <div className="mb-8 text-center">
-                            <h3 className="text-2xl font-bold tracking-tight text-t1 sm:text-3xl">
-                              {setupDone ? "Your store is ready!" : isRetrying ? "Getting your store ready..." : failed ? "Setup needs attention" : "Getting your store ready..."}
-                            </h3>
-                            <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-t3">
-                              {setupDone ? "Your Shopify store is connected and its initial sync has completed." : failed ? "We stopped at the first setup error. Later webhook registrations have not been attempted yet." : "Connecting your Shopify store and configuring its webhooks."}
-                            </p>
+                      <div key={store.id} className="mt-2 flex flex-col gap-3 rounded-xl border border-border bg-bg-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-semibold text-t1">{store.shop_domain}</p>
+                            <span className={cn("rounded-full px-2 py-0.5 text-[0.68rem] font-semibold", setupDone ? "bg-emerald-500/10 text-emerald-500" : failed ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-300")}>
+                              {setupDone ? "Setup complete" : failed ? "Needs attention" : isRetrying ? "Setup in progress" : "Setup incomplete"}
+                            </span>
                           </div>
-
-                          <div className="relative pl-[76px] sm:pl-[92px]">
-                            <div className="absolute left-0 top-0 flex h-full w-[62px] items-start justify-end sm:w-[76px]">
-                              <span className="sticky top-8 rounded-xl border border-border bg-white px-3 py-2 text-sm font-bold tabular-nums text-slate-800 shadow-sm dark:bg-slate-900 dark:text-slate-100">
-                                {progressPercent}%
-                              </span>
-                            </div>
-                            <div className="absolute left-[26px] top-3 bottom-8 w-px bg-border sm:left-[34px]" />
-                            <ol className="relative space-y-5">
-                              {webhookSteps.map(([topic, label], index) => {
-                                const topicDetail = webhookDetails.find((item) => item.topic === topic);
-                                const completed = topicDetail?.status === "registered";
-                                const isFailedStep = topicDetail?.status === "failed";
-                                const isActive = !completed && !isFailedStep && activeIndex === index;
-                                const statusClass = completed
-                                  ? "border-emerald-500 bg-emerald-500/10 text-emerald-500"
-                                  : isFailedStep
-                                    ? "border-red-500 bg-red-500/10 text-red-500"
-                                    : isActive
-                                      ? "border-emerald-500 text-emerald-500"
-                                      : "border-slate-400 text-slate-400";
-                                return (
-                                  <li key={topic} className="relative flex min-h-8 items-start gap-3 sm:gap-4">
-                                    <span className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 bg-bg-3", statusClass)} aria-label={completed ? "Completed" : isFailedStep ? "Failed" : isActive ? "In progress" : "Not attempted"}>
-                                      {completed ? <CheckCircle2 className="h-4 w-4" /> : isFailedStep ? <X className="h-4 w-4" /> : isActive ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
-                                    </span>
-                                    <div className="min-w-0 flex-1 pt-1">
-                                      <p className={cn("text-sm font-medium", completed ? "text-emerald-500" : isFailedStep ? "text-red-400" : isActive ? "font-bold text-t1" : "text-t3")}>{label}</p>
-                                      {isFailedStep && (
-                                        <p className="mt-1 text-xs leading-relaxed text-red-400">
-                                          Registration failed. Shopify returned an error for this topic; check the setup logs for the exact response.
-                                        </p>
-                                      )}
-                                      {!completed && !isFailedStep && !isActive && (
-                                        <p className="mt-1 text-xs text-t3">{topicDetail?.status === "unknown" ? "Status not available yet." : failed ? "Not attempted — setup stopped at an earlier error." : "Waiting for registration."}</p>
-                                      )}
-                                      {isActive && <p className="mt-1 text-xs text-t3">Registration is being retried.</p>}
-                                    </div>
-                                  </li>
-                                );
-                              })}
-                              <li className="relative flex min-h-8 items-start gap-3 sm:gap-4">
-                                <span className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 bg-bg-3", store.last_synced_at ? "border-emerald-500 bg-emerald-500/10 text-emerald-500" : failed ? "border-slate-400 text-slate-400" : isRetrying ? "border-emerald-500 text-emerald-500" : "border-slate-400 text-slate-400")}>
-                                  {store.last_synced_at ? <CheckCircle2 className="h-4 w-4" /> : isRetrying ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
-                                </span>
-                                <div className="min-w-0 flex-1 pt-1">
-                                  <p className={cn("text-sm font-medium", store.last_synced_at ? "text-emerald-500" : "text-t3")}>Initial store sync</p>
-                                  <p className="mt-1 text-xs leading-relaxed text-t3">{store.last_synced_at ? "Customer, order, and abandoned-checkout sync completed." : "Blocked until webhook setup succeeds."}</p>
-                                </div>
-                              </li>
-                            </ol>
-                          </div>
-
-                          <p className="mt-7 text-center text-xs leading-relaxed text-t3">
-                            {failed ? `${completedCount} of ${webhookSteps.length} webhooks registered; ${webhookDetails.filter((item) => item.status === "failed").length} failed; ${webhookDetails.filter((item) => item.status === "not_attempted").length} not attempted.` : setupDone ? "All required setup operations are complete." : `${webhookCount} of ${webhookRequired} webhook registrations confirmed.`}
+                          <p className="mt-1 text-xs text-t3">
+                            {setupDone ? "All required webhooks and initial sync are complete." : `${webhookCount}/${webhookRequired} webhooks registered · ${store.last_synced_at ? "Initial sync complete" : "Initial sync pending"}`}
                           </p>
-
-                          {feedback && (
-                            <div role={feedback.state === "failed" ? "alert" : "status"} className={cn("mt-4 rounded-lg border p-3 text-xs leading-relaxed", feedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-300" : feedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-300" : "border-amber-500/25 bg-amber-500/5 text-amber-200")}>
-                              {feedback.message}
-                            </div>
-                          )}
-
-                          {!setupDone && store.connection_status === "connected" && store.setup_status !== "in_progress" && (
-                            <button
-                              type="button"
-                              onClick={() => void handleRetryStoreSetup(store.id)}
-                              disabled={isRetrying}
-                              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-3 font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
-                              {isRetrying ? "Retrying Shopify setup..." : "Retry setup"}
-                            </button>
-                          )}
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setSetupModalStoreId(store.id)}
+                          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3.5 py-2 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15"
+                        >
+                          {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Info className="h-4 w-4" />}
+                          {isRetrying ? "View setup progress" : setupDone ? "View setup" : "Retry setup"}
+                        </button>
                       </div>
                     );
                   })}
@@ -763,6 +680,128 @@ export default function Integrations() {
           );
         })}
       </section>
+
+      {/* Shopify setup details modal. Closing it never cancels backend setup. */}
+      <AnimatePresence>
+        {setupModalStoreId && (() => {
+          const store = stores.find((item) => item.id === setupModalStoreId && item.platform === "shopify");
+          if (!store) return null;
+          const topics = [
+            ["APP_UNINSTALLED", "App uninstalled"],
+            ["ORDERS_CREATE", "Order created"],
+            ["ORDERS_UPDATED", "Order updated"],
+            ["ORDERS_CANCELLED", "Order cancelled"],
+            ["ORDERS_DELETE", "Order deleted"],
+            ["CUSTOMERS_CREATE", "Customer created"],
+            ["CUSTOMERS_UPDATE", "Customer updated"],
+            ["CHECKOUTS_CREATE", "Checkout created"],
+            ["CHECKOUTS_UPDATE", "Checkout updated"],
+          ] as const;
+          const details = store.webhook_details ?? [];
+          const isRetrying = retryingStoreIds.includes(store.id) || store.setup_status === "in_progress";
+          const setupDone = isStoreSetupComplete(store);
+          const registeredCount = details.filter((item) => item.status === "registered").length;
+          const failedCount = details.filter((item) => item.status === "failed").length;
+          return (
+            <>
+              <motion.button
+                type="button"
+                aria-label="Close Shopify setup details"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[70] cursor-default bg-black/65 backdrop-blur-sm"
+                onClick={() => setSetupModalStoreId(null)}
+              />
+              <motion.section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="shopify-setup-title"
+                initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 12, scale: 0.98 }}
+                className="fixed left-1/2 top-1/2 z-[71] flex max-h-[88vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl"
+              >
+                <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-t3">Shopify setup</p>
+                    <h2 id="shopify-setup-title" className="mt-1 truncate text-lg font-bold text-t1">{store.shop_domain}</h2>
+                    <p className="mt-1 text-sm text-t3">
+                      {setupDone ? "All setup checks are complete." : isRetrying ? "Setup is running. Statuses update from the saved store record." : "Review the recorded webhook results and retry setup if needed."}
+                    </p>
+                  </div>
+                  <button type="button" aria-label="Close modal" onClick={() => setSetupModalStoreId(null)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-t3 transition-colors hover:bg-bg-2 hover:text-t1">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="overflow-y-auto px-5 py-5 sm:px-6">
+                  <div className="mb-4 grid grid-cols-3 gap-2">
+                    <div className="rounded-xl border border-border bg-bg-2 p-3">
+                      <p className="text-[0.68rem] text-t3">Registered</p>
+                      <p className="mt-1 text-lg font-bold text-emerald-500">{registeredCount}<span className="text-xs font-medium text-t3"> / 9</span></p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-bg-2 p-3">
+                      <p className="text-[0.68rem] text-t3">Failed</p>
+                      <p className={cn("mt-1 text-lg font-bold", failedCount ? "text-red-400" : "text-t1")}>{failedCount}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-bg-2 p-3">
+                      <p className="text-[0.68rem] text-t3">Initial sync</p>
+                      <p className={cn("mt-1 text-sm font-bold", store.last_synced_at ? "text-emerald-500" : "text-amber-300")}>{store.last_synced_at ? "Complete" : "Pending"}</p>
+                    </div>
+                  </div>
+                  <ol className="space-y-2">
+                    {topics.map(([topic, label]) => {
+                      const detail = details.find((item) => item.topic === topic);
+                      const status = detail?.status ?? "unknown";
+                      const registered = status === "registered";
+                      const failed = status === "failed";
+                      const notAttempted = status === "not_attempted";
+                      return (
+                        <li key={topic} className="flex items-start gap-3 rounded-xl border border-border bg-bg-2/70 px-3.5 py-3">
+                          <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border", registered ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : failed ? "border-red-500/30 bg-red-500/10 text-red-400" : isRetrying && !notAttempted ? "border-amber-500/30 bg-amber-500/10 text-amber-300" : "border-border text-t3")}>
+                            {registered ? <CheckCircle2 className="h-4 w-4" /> : failed ? <CircleX className="h-4 w-4" /> : isRetrying && !notAttempted ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-t1">{label}</p>
+                            <p className="mt-0.5 break-words text-xs text-t3">{topic}</p>
+                            <p className={cn("mt-1 text-xs", registered ? "text-emerald-500" : failed ? "text-red-400" : "text-t3")}>
+                              {registered ? "Registered successfully" : failed ? "Registration failed — exact cause is not available in the current status response." : notAttempted ? "Not attempted" : status === "unknown" ? "No saved result available for this topic." : isRetrying ? "Waiting for the next saved status update." : "Pending"}
+                            </p>
+                          </div>
+                          <span className={cn("shrink-0 rounded-full px-2 py-1 text-[0.65rem] font-semibold", registered ? "bg-emerald-500/10 text-emerald-500" : failed ? "bg-red-500/10 text-red-400" : "bg-bg-3 text-t3")}>
+                            {registered ? "Success" : failed ? "Failed" : notAttempted ? "Not attempted" : status === "unknown" ? "Unknown" : "Pending"}
+                          </span>
+                        </li>
+                      );
+                    })}
+                    <li className="flex items-start gap-3 rounded-xl border border-border bg-bg-2/70 px-3.5 py-3">
+                      <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border", store.last_synced_at ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : "border-border text-t3")}>
+                        {store.last_synced_at ? <CheckCircle2 className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-t1">Initial store sync</p>
+                        <p className="mt-1 text-xs text-t3">{store.last_synced_at ? `Completed ${new Date(store.last_synced_at).toLocaleString()}` : "No completed sync timestamp is recorded yet."}</p>
+                      </div>
+                    </li>
+                  </ol>
+                  {retryFeedback?.storeId === store.id && (
+                    <p role={retryFeedback.state === "failed" ? "alert" : "status"} className={cn("mt-4 rounded-lg border p-3 text-xs leading-relaxed", retryFeedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-300" : retryFeedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-300" : "border-amber-500/25 bg-amber-500/5 text-amber-200")}>{retryFeedback.message}</p>
+                  )}
+                </div>
+                <div className="flex flex-col-reverse gap-2 border-t border-border px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+                  <button type="button" onClick={() => setSetupModalStoreId(null)} className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-t2 transition-colors hover:bg-bg-2">Close</button>
+                  {!setupDone && store.connection_status === "connected" && !isRetrying && (
+                    <button type="button" onClick={() => void handleRetryStoreSetup(store.id)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-600">
+                      <ArrowUpRight className="h-4 w-4" /> Retry setup
+                    </button>
+                  )}
+                  {isRetrying && <span className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-500/10 px-4 py-2.5 text-sm font-semibold text-amber-300"><Loader2 className="h-4 w-4 animate-spin" /> Setup running</span>}
+                </div>
+              </motion.section>
+            </>
+          );
+        })()}
+      </AnimatePresence>
 
       {/* Shopify Prompt Modal */}
       <AnimatePresence>
