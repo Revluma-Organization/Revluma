@@ -62,6 +62,12 @@ async function reconcileShopifyWebhooks(store) {
     const uri = `${baseUrl}/api/v1/webhooks/shopify/${path}`;
     const failureRecordId = `setup-failure:${topic}`;
     try {
+      // Persist the real start of this topic before calling Shopify so clients can observe it.
+      await prisma.webhook_registrations.upsert({
+        where: { store_id_external_id: { store_id: store.id, external_id: `setup-state:${topic}` } },
+        create: { store_id: store.id, external_id: `setup-state:${topic}`, topic, delivery_url: uri, status: 'running', attempt_count: 1, started_at: new Date(), last_error: null },
+        update: { topic, delivery_url: uri, status: 'running', attempt_count: { increment: 1 }, started_at: new Date(), completed_at: null, last_error: null, updated_at: new Date() },
+      });
       let subscription = existing.find((item) => item.topic === topic && item.uri === uri);
       if (!subscription) {
         subscription = await createSubscription(store, topic, uri);
@@ -75,13 +81,16 @@ async function reconcileShopifyWebhooks(store) {
           topic,
           delivery_url: uri,
           status: 'active',
+          last_error: null,
+          completed_at: new Date(),
         },
-        update: { topic, delivery_url: uri, status: 'active', updated_at: new Date() },
+        update: { topic, delivery_url: uri, status: 'active', last_error: null, completed_at: new Date(), updated_at: new Date() },
       });
       // Clear any previous synthetic failure record after a successful retry.
       await prisma.webhook_registrations.deleteMany({
         where: { store_id: store.id, external_id: failureRecordId },
       });
+      await prisma.webhook_registrations.deleteMany({ where: { store_id: store.id, external_id: `setup-state:${topic}` } });
       logger.info('shopify_webhook_topic_setup', { store_id: store.id, topic, outcome: 'registered' });
     } catch (error) {
       const safeErrors = (error.shopifyErrors || []).slice(0, 5).map((item) => ({
@@ -89,6 +98,7 @@ async function reconcileShopifyWebhooks(store) {
         message: String(item.message || 'Webhook registration failed').slice(0, 300),
       }));
       failures.push({ topic, code: error.code || error.name || 'webhook_setup_error', errors: safeErrors });
+      const safeMessage = safeErrors.map((item) => item.message).filter(Boolean).join('; ') || (error.code === 'SHOPIFY_WEBHOOK_USER_ERROR' ? 'Shopify rejected the webhook subscription.' : 'Webhook registration failed. Check server diagnostics.');
       // Persist per-topic failure without storing credentials or raw provider payloads.
       await prisma.webhook_registrations.upsert({
         where: { store_id_external_id: { store_id: store.id, external_id: failureRecordId } },
@@ -98,8 +108,10 @@ async function reconcileShopifyWebhooks(store) {
           topic,
           delivery_url: uri,
           status: 'failed',
+          last_error: safeMessage.slice(0, 2000),
+          completed_at: new Date(),
         },
-        update: { topic, delivery_url: uri, status: 'failed', updated_at: new Date() },
+        update: { topic, delivery_url: uri, status: 'failed', last_error: safeMessage.slice(0, 2000), completed_at: new Date(), updated_at: new Date() },
       });
       logger.error('shopify_webhook_topic_setup', {
         store_id: store.id,
