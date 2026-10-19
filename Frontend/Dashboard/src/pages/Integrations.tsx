@@ -625,37 +625,86 @@ export default function Integrations() {
                   .filter((store) => store.platform === "shopify")
                   .map((store) => {
                     const isRetrying = retryingStoreIds.includes(store.id) || store.setup_status === "in_progress";
-                    const webhookCount = store.webhooks_registered ?? 0;
-                    const webhookRequired = store.webhooks_required ?? 9;
                     const setupDone = isStoreSetupComplete(store);
-                    const failed = store.setup_status === "failed";
+                    const details = store.webhook_details ?? [];
+                    const topics = [
+                      ["APP_UNINSTALLED", "App uninstalled"],
+                      ["ORDERS_CREATE", "Order created"],
+                      ["ORDERS_UPDATED", "Order updated"],
+                      ["ORDERS_CANCELLED", "Order cancelled"],
+                      ["ORDERS_DELETE", "Order deleted"],
+                      ["CUSTOMERS_CREATE", "Customer created"],
+                      ["CUSTOMERS_UPDATE", "Customer updated"],
+                      ["CHECKOUTS_CREATE", "Checkout created"],
+                      ["CHECKOUTS_UPDATE", "Checkout updated"],
+                    ] as const;
+                    const registeredCount = details.filter((item) => item.status === "registered").length;
+                    const failedCount = details.filter((item) => item.status === "failed").length;
+                    const heading = setupDone ? "Your store is ready!" : failedCount > 0 || store.setup_status === "failed" ? "Setup needs attention" : isRetrying ? "Getting your store ready..." : "Shopify setup";
+                    const rowState = (topic: string) => details.find((item) => item.topic === topic)?.status ?? "unknown";
                     return (
-                      <div key={store.id} className="mt-2 flex flex-col gap-3 rounded-xl border border-border bg-bg-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-semibold text-t1">{store.shop_domain}</p>
-                            <span className={cn("rounded-full px-2 py-0.5 text-[0.68rem] font-semibold", setupDone ? "bg-emerald-500/10 text-emerald-500" : failed ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-300")}>
-                              {setupDone ? "Setup complete" : failed ? "Needs attention" : isRetrying ? "Setup in progress" : "Setup incomplete"}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-xs text-t3">
-                            {setupDone ? "All required webhooks and initial sync are complete." : `${webhookCount}/${webhookRequired} webhooks registered · ${store.last_synced_at ? "Initial sync complete" : "Initial sync pending"}`}
+                      <div key={store.id} className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
+                        <div className="mx-auto w-full max-w-xl">
+                          <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{store.shop_domain}</p>
+                          <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{heading}</h3>
+                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                            {setupDone ? "Your Shopify store is connected and synchronized." : "Connecting your store and configuring its webhook subscriptions."}
                           </p>
+                          <div className="mt-5 mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                            <span>{registeredCount} of 9 webhooks registered</span>
+                            <span>{store.last_synced_at ? "Initial sync complete" : "Initial sync pending"}</span>
+                            {failedCount > 0 && <span className="font-medium text-red-600 dark:text-red-400">{failedCount} failed</span>}
+                          </div>
+                          <ol className="relative">
+                            {topics.map(([topic, label], index) => {
+                              const status = rowState(topic);
+                              const registered = status === "registered";
+                              const failed = status === "failed";
+                              const notAttempted = status === "not_attempted";
+                              const unknown = status === "unknown";
+                              const lineDone = registered;
+                              return (
+                                <li key={topic} className="relative flex min-h-[66px] gap-3 sm:gap-4">
+                                  {index < topics.length - 1 && (
+                                    <span aria-hidden="true" className={cn("absolute left-[13px] top-7 h-[calc(100%-7px)] w-px", lineDone ? "bg-emerald-500/60" : "bg-slate-200 dark:bg-slate-700")} />
+                                  )}
+                                  <span aria-label={registered ? "Successful" : failed ? "Failed" : notAttempted ? "Not attempted" : "Pending"} className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-slate-950", registered ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : failed ? "border-red-500 text-red-600 dark:text-red-400" : "border-slate-300 text-slate-400 dark:border-slate-600")}>
+                                    {registered ? <CheckCircle2 className="h-4 w-4" /> : failed ? <X className="h-4 w-4" /> : <span className="h-2 w-2 rounded-full bg-current opacity-50" />}
+                                  </span>
+                                  <div className="min-w-0 flex-1 pb-5">
+                                    <p className={cn("text-sm font-medium", registered ? "text-emerald-700 dark:text-emerald-400" : failed ? "text-red-700 dark:text-red-400" : unknown && isRetrying ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400")}>{label}</p>
+                                    <p className={cn("mt-0.5 break-words text-xs", registered ? "text-emerald-700/80 dark:text-emerald-400/80" : failed ? "text-red-600 dark:text-red-400" : "text-slate-400 dark:text-slate-500")}>
+                                      {registered ? "Registered successfully" : failed ? "Registration failed. Retry setup after checking the server logs." : notAttempted ? "Not attempted" : "No individual result recorded yet"}
+                                    </p>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                            <li className="relative flex gap-3 sm:gap-4">
+                              <span aria-hidden="true" className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-slate-950", store.last_synced_at ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : "border-slate-300 text-slate-400 dark:border-slate-600")}>
+                                {store.last_synced_at ? <CheckCircle2 className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                              </span>
+                              <div className="min-w-0 flex-1 pb-2">
+                                <p className={cn("text-sm font-medium", store.last_synced_at ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400")}>Synchronizing store data</p>
+                                <p className="mt-0.5 break-words text-xs text-slate-400 dark:text-slate-500">{store.last_synced_at ? `Completed ${new Date(store.last_synced_at).toLocaleString()}` : "Initial sync pending"}</p>
+                              </div>
+                            </li>
+                          </ol>
+                          {retryFeedback?.storeId === store.id && (
+                            <p role={retryFeedback.state === "failed" ? "alert" : "status"} className={cn("mt-4 rounded-lg border p-3 text-xs leading-relaxed", retryFeedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300" : retryFeedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-700 dark:text-red-300" : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300")}>{retryFeedback.message}</p>
+                          )}
+                          {!setupDone && store.connection_status === "connected" && (
+                            <button
+                              type="button"
+                              onClick={() => void handleRetryStoreSetup(store.id)}
+                              disabled={isRetrying}
+                              className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                            >
+                              {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+                              {isRetrying ? "Setup running" : "Retry setup"}
+                            </button>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSetupModalStoreId(store.id);
-                            if (!isRetrying && !setupDone && store.connection_status === "connected") {
-                              void handleRetryStoreSetup(store.id);
-                            }
-                          }}
-                          disabled={isRetrying}
-                          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-400/30 bg-blue-500/10 px-3.5 py-2 text-sm font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15 disabled:cursor-wait disabled:opacity-70"
-                        >
-                          {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Info className="h-4 w-4" />}
-                          {isRetrying ? "View setup progress" : setupDone ? "View setup" : "Retry setup"}
-                        </button>
                       </div>
                     );
                   })}
