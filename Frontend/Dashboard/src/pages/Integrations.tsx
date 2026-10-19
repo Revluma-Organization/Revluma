@@ -629,8 +629,10 @@ export default function Integrations() {
                     ] as const;
                     const registeredCount = details.filter((item) => item.status === "registered").length;
                     const failedCount = details.filter((item) => item.status === "failed").length;
+                    const runningCount = details.filter((item) => item.status === "running").length;
                     const heading = setupDone ? "Your store is ready!" : failedCount > 0 || store.setup_status === "failed" ? "Setup needs attention" : isRetrying ? "Getting your store ready..." : "Shopify setup";
-                    const rowState = (topic: string) => details.find((item) => item.topic === topic)?.status ?? "unknown";
+                    const rowDetail = (topic: string) => details.find((item) => item.topic === topic);
+                    const rowState = (topic: string) => rowDetail(topic)?.status ?? "unknown";
                     return (
                       <div key={store.id} className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
                         <div className="mx-auto w-full max-w-xl">
@@ -642,6 +644,7 @@ export default function Integrations() {
                           <div className="mt-5 mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                             <span>{registeredCount} of 9 webhooks registered</span>
                             <span>{store.last_synced_at ? "Initial sync complete" : "Initial sync pending"}</span>
+                            {runningCount > 0 && <span className="font-medium text-teal-700 dark:text-teal-400">{runningCount} in progress</span>}
                             {failedCount > 0 && <span className="font-medium text-red-600 dark:text-red-400">{failedCount} failed</span>}
                           </div>
                           <ol className="relative">
@@ -649,6 +652,8 @@ export default function Integrations() {
                               const status = rowState(topic);
                               const registered = status === "registered";
                               const failed = status === "failed";
+                              const running = status === "running";
+                              const detail = rowDetail(topic);
                               const notAttempted = status === "not_attempted";
                               const unknown = status === "unknown";
                               const lineDone = registered;
@@ -657,13 +662,13 @@ export default function Integrations() {
                                   {index < topics.length - 1 && (
                                     <span aria-hidden="true" className={cn("absolute left-[13px] top-7 h-[calc(100%-7px)] w-px", lineDone ? "bg-emerald-500/60" : "bg-slate-200 dark:bg-slate-700")} />
                                   )}
-                                  <span aria-label={registered ? "Successful" : failed ? "Failed" : notAttempted ? "Not attempted" : "Pending"} className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-slate-950", registered ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : failed ? "border-red-500 text-red-600 dark:text-red-400" : "border-slate-300 text-slate-400 dark:border-slate-600")}>
-                                    {registered ? <CheckCircle2 className="h-4 w-4" /> : failed ? <X className="h-4 w-4" /> : <span className="h-2 w-2 rounded-full bg-current opacity-50" />}
+                                  <span aria-label={registered ? "Successful" : failed ? "Failed" : running ? "Running" : notAttempted ? "Not attempted" : "Pending"} className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border bg-slate-50 dark:bg-slate-950", registered ? "border-emerald-600 bg-emerald-600 text-white dark:bg-emerald-600" : failed ? "border-red-500 text-red-600 dark:text-red-400" : running ? "border-teal-600 text-teal-700 dark:text-teal-400" : "border-slate-300 text-slate-400 dark:border-slate-600")}>
+                                    {registered ? <CheckCircle2 className="h-4 w-4" /> : failed ? <X className="h-4 w-4" /> : running ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <span className="h-2 w-2 rounded-full bg-current opacity-50" />}
                                   </span>
                                   <div className="min-w-0 flex-1 pb-5">
-                                    <p className={cn("text-sm font-medium", registered ? "text-emerald-700 dark:text-emerald-400" : failed ? "text-red-700 dark:text-red-400" : unknown && isRetrying ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400")}>{label}</p>
-                                    <p className={cn("mt-0.5 break-words text-xs", registered ? "text-emerald-700/80 dark:text-emerald-400/80" : failed ? "text-red-600 dark:text-red-400" : "text-slate-400 dark:text-slate-500")}>
-                                      {registered ? "Registered successfully" : failed ? "Registration failed. Retry setup after checking the server logs." : notAttempted ? "Not attempted" : "No individual result recorded yet"}
+                                    <p className={cn("text-sm font-medium", registered ? "text-emerald-700 dark:text-emerald-400" : failed ? "text-red-700 dark:text-red-400" : running ? "font-semibold text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400")}>{label}</p>
+                                    <p className={cn("mt-0.5 break-words text-xs", registered ? "text-emerald-700/80 dark:text-emerald-400/80" : failed ? "text-red-600 dark:text-red-400" : running ? "text-teal-700 dark:text-teal-400" : "text-slate-400 dark:text-slate-500")}>
+                                      {registered ? "Registered successfully" : failed ? (detail?.error || "Registration failed. Check server diagnostics and retry setup.") : running ? "Registration in progress" : notAttempted ? "Not attempted" : "No individual result recorded yet"}
                                     </p>
                                   </div>
                                 </li>
