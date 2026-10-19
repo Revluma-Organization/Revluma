@@ -608,83 +608,96 @@ export default function Integrations() {
                   .map((store) => {
                     const isRetrying = retryingStoreIds.includes(store.id) || store.setup_status === "in_progress";
                     const webhookCount = store.webhooks_registered ?? 0;
-                    const webhookRequired = store.webhooks_required ?? 0;
-                    const webhooksDone = webhookRequired > 0 && webhookCount >= webhookRequired;
-                    const syncDone = Boolean(store.last_synced_at);
+                    const webhookRequired = store.webhooks_required ?? 9;
                     const setupDone = isStoreSetupComplete(store);
+                    const failed = store.setup_status === "failed";
                     const feedback = retryFeedback?.storeId === store.id ? retryFeedback : null;
+                    const webhookSteps = [
+                      ["APP_UNINSTALLED", "App Uninstalled"],
+                      ["ORDERS_CREATE", "Order Created"],
+                      ["ORDERS_UPDATED", "Order Updated"],
+                      ["ORDERS_CANCELLED", "Order Cancelled"],
+                      ["ORDERS_DELETE", "Order Deleted"],
+                      ["CUSTOMERS_CREATE", "Customer Created"],
+                      ["CUSTOMERS_UPDATE", "Customer Updated"],
+                      ["CHECKOUTS_CREATE", "Checkout Created"],
+                      ["CHECKOUTS_UPDATE", "Checkout Updated"],
+                    ] as const;
+                    const completedCount = Math.min(webhookCount, webhookSteps.length);
+                    const hasBlockingFailure = failed && completedCount < webhookSteps.length;
+                    const progressTotal = webhookSteps.length + 1;
+                    const progressCompleted = completedCount + (Boolean(store.last_synced_at) ? 1 : 0);
+                    const progressPercent = setupDone ? 100 : Math.round((progressCompleted / progressTotal) * 100);
+                    const activeIndex = isRetrying ? completedCount : -1;
                     return (
-                      <div key={store.id} className="overflow-hidden rounded-2xl border border-border bg-bg-3 text-[0.8rem] text-t2 shadow-sm">
-                        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
-                          <div className="min-w-0 flex-1">
-                            <p className="break-all font-semibold leading-relaxed text-t1">{store.shop_domain}</p>
-                            <p className="mt-1 text-xs text-t3">Shopify store setup</p>
-                          </div>
-                          <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", setupDone ? "bg-emerald-500/10 text-emerald-400" : store.setup_status === "failed" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400")}>
-                            {setupDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : store.setup_status === "failed" ? <CircleX className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
-                            {setupDone ? "Connected" : store.setup_status === "failed" ? "Failed" : "Needs attention"}
-                          </span>
-                        </div>
-
-                        <div className="p-4 sm:p-5">
-                          <div className="mb-5">
-                            <p className="font-semibold text-t1">Setup progress</p>
-                            <p className="mt-1 text-xs leading-relaxed text-t3">Revluma is checking your store connection, registering webhooks, and preparing the initial sync.</p>
+                      <div key={store.id} className="mt-2 rounded-2xl border border-border bg-bg-3 px-4 py-6 text-t2 sm:px-7 sm:py-8">
+                        <div className="mx-auto max-w-xl">
+                          <div className="mb-8 text-center">
+                            <h3 className="text-2xl font-bold tracking-tight text-t1 sm:text-3xl">
+                              {setupDone ? "Your store is ready!" : isRetrying ? "Getting your store ready..." : failed ? "Setup needs attention" : "Getting your store ready..."}
+                            </h3>
+                            <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-t3">
+                              {setupDone ? "Your Shopify store is connected and its initial sync has completed." : failed ? "We stopped at the first setup error. Later webhook registrations have not been attempted yet." : "Connecting your Shopify store and configuring its webhooks."}
+                            </p>
                           </div>
 
-                          <div className="space-y-0">
-                            <div className="relative flex gap-3 pb-5">
-                              <div className="absolute left-[13px] top-7 h-[calc(100%-12px)] w-px bg-border" />
-                              <div className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2", store.connection_status === "connected" ? "border-emerald-500 bg-emerald-500/10 text-emerald-400" : "border-red-500 bg-red-500/10 text-red-400")}>
-                                {store.connection_status === "connected" ? <CheckCircle2 className="h-4 w-4" /> : <CircleX className="h-4 w-4" />}
-                              </div>
-                              <div className="min-w-0 flex-1 pt-0.5">
-                                <p className="font-semibold text-t1">Store connection</p>
-                                <p className="mt-1 text-xs leading-relaxed text-t3">{store.connection_status === "connected" ? "Shopify credentials saved and connection detected" : "Connection lost — reconnect required"}</p>
-                              </div>
+                          <div className="relative pl-[76px] sm:pl-[92px]">
+                            <div className="absolute left-0 top-0 flex h-full w-[62px] items-start justify-end sm:w-[76px]">
+                              <span className="sticky top-8 rounded-xl border border-border bg-white px-3 py-2 text-sm font-bold tabular-nums text-slate-800 shadow-sm dark:bg-slate-900 dark:text-slate-100">
+                                {progressPercent}%
+                              </span>
                             </div>
-
-                            <div className="relative flex gap-3 pb-5">
-                              <div className="absolute left-[13px] top-7 h-[calc(100%-12px)] w-px bg-border" />
-                              <div className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2", webhooksDone ? "border-emerald-500 bg-emerald-500/10 text-emerald-400" : isRetrying ? "border-blue-500 bg-blue-500/10 text-blue-400" : store.setup_status === "failed" ? "border-red-500 bg-red-500/10 text-red-400" : "border-amber-500 bg-amber-500/10 text-amber-400")}>
-                                {isRetrying && !webhooksDone ? <Loader2 className="h-4 w-4 animate-spin" /> : webhooksDone ? <CheckCircle2 className="h-4 w-4" /> : store.setup_status === "failed" ? <CircleX className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
-                              </div>
-                              <div className="min-w-0 flex-1 pt-0.5">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <p className="font-semibold text-t1">Webhook registration</p>
-                                  <span className={cn("text-xs font-semibold tabular-nums", webhooksDone ? "text-emerald-400" : store.setup_status === "failed" ? "text-red-400" : "text-t2")}>{webhookCount}/{webhookRequired || "—"} registered</span>
+                            <div className="absolute left-[26px] top-3 bottom-8 w-px bg-border sm:left-[34px]" />
+                            <ol className="relative space-y-5">
+                              {webhookSteps.map(([topic, label], index) => {
+                                const completed = index < completedCount;
+                                const isFailedStep = hasBlockingFailure && index === completedCount;
+                                const isActive = !completed && !isFailedStep && activeIndex === index;
+                                const statusClass = completed
+                                  ? "border-emerald-500 bg-emerald-500/10 text-emerald-500"
+                                  : isFailedStep
+                                    ? "border-red-500 bg-red-500/10 text-red-500"
+                                    : isActive
+                                      ? "border-emerald-500 text-emerald-500"
+                                      : "border-slate-400 text-slate-400";
+                                return (
+                                  <li key={topic} className="relative flex min-h-8 items-start gap-3 sm:gap-4">
+                                    <span className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 bg-bg-3", statusClass)} aria-label={completed ? "Completed" : isFailedStep ? "Failed" : isActive ? "In progress" : "Not attempted"}>
+                                      {completed ? <CheckCircle2 className="h-4 w-4" /> : isFailedStep ? <X className="h-4 w-4" /> : isActive ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
+                                    </span>
+                                    <div className="min-w-0 flex-1 pt-1">
+                                      <p className={cn("text-sm font-medium", completed ? "text-emerald-500" : isFailedStep ? "text-red-400" : isActive ? "font-bold text-t1" : "text-t3")}>{label}</p>
+                                      {isFailedStep && (
+                                        <p className="mt-1 text-xs leading-relaxed text-red-400">
+                                          Registration failed. Shopify returned an error for this topic; check the setup logs for the exact response.
+                                        </p>
+                                      )}
+                                      {!completed && !isFailedStep && !isActive && failed && (
+                                        <p className="mt-1 text-xs text-t3">Not attempted — setup stopped at an earlier error.</p>
+                                      )}
+                                      {isActive && <p className="mt-1 text-xs text-t3">Registration is being retried.</p>}
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                              <li className="relative flex min-h-8 items-start gap-3 sm:gap-4">
+                                <span className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 bg-bg-3", store.last_synced_at ? "border-emerald-500 bg-emerald-500/10 text-emerald-500" : failed ? "border-slate-400 text-slate-400" : isRetrying ? "border-emerald-500 text-emerald-500" : "border-slate-400 text-slate-400")}>
+                                  {store.last_synced_at ? <CheckCircle2 className="h-4 w-4" /> : isRetrying ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
+                                </span>
+                                <div className="min-w-0 flex-1 pt-1">
+                                  <p className={cn("text-sm font-medium", store.last_synced_at ? "text-emerald-500" : "text-t3")}>Initial store sync</p>
+                                  <p className="mt-1 text-xs leading-relaxed text-t3">{store.last_synced_at ? "Customer, order, and abandoned-checkout sync completed." : "Blocked until webhook setup succeeds."}</p>
                                 </div>
-                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-bg-2">
-                                  <div className={cn("h-full rounded-full transition-[width]", webhooksDone ? "bg-emerald-500" : store.setup_status === "failed" ? "bg-red-500" : "bg-blue-500")} style={{ width: `${webhookRequired > 0 ? Math.min(100, (webhookCount / webhookRequired) * 100) : 0}%` }} />
-                                </div>
-                                <p className="mt-1.5 text-xs leading-relaxed text-t3">{webhooksDone ? "All required webhooks are registered" : store.setup_status === "failed" ? "Webhook setup needs attention" : "Registering the events Revluma needs to keep your store data up to date"}</p>
-                              </div>
-                            </div>
-
-                            <div className="relative flex gap-3">
-                              <div className={cn("relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2", syncDone ? "border-emerald-500 bg-emerald-500/10 text-emerald-400" : isRetrying ? "border-blue-500 bg-blue-500/10 text-blue-400" : store.setup_status === "failed" ? "border-red-500 bg-red-500/10 text-red-400" : "border-border-md bg-bg-2 text-t3")}>
-                                {isRetrying && !syncDone ? <Loader2 className="h-4 w-4 animate-spin" /> : syncDone ? <CheckCircle2 className="h-4 w-4" /> : store.setup_status === "failed" ? <CircleX className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
-                              </div>
-                              <div className="min-w-0 flex-1 pt-0.5">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <p className="font-semibold text-t1">Initial store sync</p>
-                                  <span className={cn("text-xs font-semibold", syncDone ? "text-emerald-400" : store.setup_status === "failed" ? "text-red-400" : "text-t3")}>{syncDone ? "Completed" : "Not completed"}</span>
-                                </div>
-                                <p className="mt-1 text-xs leading-relaxed text-t3">{syncDone ? "Your initial store data has been synchronized" : "The first sync has not finished yet"}</p>
-                              </div>
-                            </div>
+                              </li>
+                            </ol>
                           </div>
 
-                          {store.setup_status === "complete" && !setupDone && (
-                            <p className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-300">The backend reports setup complete, but one or more verification checks are still missing.</p>
-                          )}
+                          <p className="mt-7 text-center text-xs leading-relaxed text-t3">
+                            {failed ? `${completedCount} of ${webhookSteps.length} webhooks registered; ${Math.max(0, webhookSteps.length - completedCount - (hasBlockingFailure ? 1 : 0))} not attempted.` : setupDone ? "All required setup operations are complete." : `${webhookCount} of ${webhookRequired} webhook registrations confirmed.`}
+                          </p>
 
                           {feedback && (
                             <div role={feedback.state === "failed" ? "alert" : "status"} className={cn("mt-4 rounded-lg border p-3 text-xs leading-relaxed", feedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-300" : feedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-300" : "border-amber-500/25 bg-amber-500/5 text-amber-200")}>
-                              <div className="mb-1 flex items-center gap-2 font-semibold">
-                                {feedback.state === "success" ? <CheckCircle2 className="h-4 w-4" /> : feedback.state === "failed" ? <CircleX className="h-4 w-4" /> : feedback.state === "partial" ? <Clock className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
-                                {feedback.state === "success" ? "Setup completed" : feedback.state === "failed" ? "Setup failed" : feedback.state === "partial" ? "Still working" : "Retry in progress"}
-                              </div>
                               {feedback.message}
                             </div>
                           )}
@@ -694,17 +707,16 @@ export default function Integrations() {
                               type="button"
                               onClick={() => void handleRetryStoreSetup(store.id)}
                               disabled={isRetrying}
-                              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-3 font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-400/30 bg-blue-500/10 px-4 py-3 font-semibold text-blue-300 transition-colors hover:border-blue-400/50 hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
-                              {isRetrying ? "Retrying Shopify setup…" : "Retry setup"}
+                              {isRetrying ? "Retrying Shopify setup..." : "Retry setup"}
                             </button>
                           )}
                         </div>
-                      </div>>
+                      </div>
                     );
                   })}
-
                 {/* Actions */}
                 {!(platform.id === "woocommerce" && wooFormOpen) && (
                   <div className="mt-auto flex items-center gap-2 pt-1">
