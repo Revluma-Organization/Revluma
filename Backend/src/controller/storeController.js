@@ -43,7 +43,7 @@ exports.getStores = async (req, res, next) => {
       : [];
     const topicsByStore = new Map();
     const webhookDetailsByStore = new Map();
-    const statusPriority = { active: 1, failed: 2, running: 3 };
+    const statusPriority = { active: 1, failed: 2, running: 3, succeeded: 4 };
     for (const registration of registrations) {
       const details = webhookDetailsByStore.get(registration.store_id) || new Map();
       const current = details.get(registration.topic);
@@ -52,7 +52,7 @@ exports.getStores = async (req, res, next) => {
       if (!current || priority >= currentPriority) {
         details.set(registration.topic, {
           topic: registration.topic,
-          status: registration.status === 'active' ? 'registered' : ['failed', 'running'].includes(registration.status) ? registration.status : 'unknown',
+          status: ['active', 'succeeded'].includes(registration.status) ? 'registered' : ['failed', 'running'].includes(registration.status) ? registration.status : 'unknown',
           error: registration.last_error || null,
           attempt_count: registration.attempt_count || 0,
           started_at: registration.started_at || null,
