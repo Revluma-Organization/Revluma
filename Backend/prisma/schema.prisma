@@ -1382,15 +1382,19 @@ model automation_job_state {
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model webhook_registrations {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  store_id     String    @db.Uuid
-  external_id  String    @db.VarChar(255)
-  topic        String    @db.VarChar(100)
-  delivery_url String    @db.VarChar(1000)
-  status       String?   @default("active") @db.VarChar(50)
-  created_at   DateTime? @default(now()) @db.Timestamp(6)
-  updated_at   DateTime? @default(now()) @db.Timestamp(6)
-  stores       stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id      String    @db.Uuid
+  external_id   String    @db.VarChar(255)
+  topic         String    @db.VarChar(100)
+  delivery_url  String    @db.VarChar(1000)
+  status        String?   @default("active") @db.VarChar(50)
+  last_error    String?   @db.VarChar(2000)
+  attempt_count Int       @default(0)
+  started_at    DateTime? @db.Timestamptz(6)
+  completed_at  DateTime? @db.Timestamptz(6)
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+  stores        stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([store_id, external_id])
 }

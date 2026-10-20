@@ -219,9 +219,12 @@ async function verifyAuthorizationDenialAndRetrySetup() {
 }
 
 async function verifyPersistedStoreIsReturnedWithoutCredentials() {
+  // These fixture rows represent webhook registrations confirmed active in Shopify.
   mockPrisma.webhook_registrations.findMany = async () => REQUIRED_SUBSCRIPTIONS.map(([topic]) => ({
     store_id: 'store-123',
     topic,
+    status: 'active',
+    external_id: `gid://shopify/WebhookSubscription/${topic}`,
   }));
 
   let response;
