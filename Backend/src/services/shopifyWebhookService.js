@@ -22,8 +22,24 @@ async function listSubscriptions(store) {
       }
     }
   `;
-  const data = await shopifyGraphql(store, query);
-  return data.webhookSubscriptions?.nodes || [];
+  try {
+    const data = await shopifyGraphql(store, query);
+    return data.webhookSubscriptions?.nodes || [];
+  } catch (error) {
+    // Listing subscriptions is a prerequisite for reconciliation. Preserve the original
+    // provider/network failure so the caller's final sync log records the actionable cause.
+    const safeErrors = safeShopifyErrors(error);
+    logger.error('shopify_webhook_subscription_list_failed', {
+      store_id: store.id,
+      stage: 'list_existing_subscriptions',
+      error_code: error.code || error.name || 'webhook_subscription_list_error',
+      http_status: error.status || error.response?.status || null,
+      network_code: error.networkCode || null,
+      shopify_errors: safeErrors,
+    });
+    error.setupStage = 'list_existing_subscriptions';
+    throw error;
+  }
 }
 
 async function createSubscription(store, topic, uri) {
