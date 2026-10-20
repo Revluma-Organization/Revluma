@@ -231,6 +231,7 @@ export default function Integrations() {
   const [loading, setLoading] = useState(initialCachedStores.length === 0);
   const [storeLoadError, setStoreLoadError] = useState(false);
   const [retryingStoreIds, setRetryingStoreIds] = useState<string[]>([]);
+  const [webhookDetailsStoreId, setWebhookDetailsStoreId] = useState<string | null>(null);
   const [retryFeedback, setRetryFeedback] = useState<{ storeId: string; state: "running" | "success" | "partial" | "failed"; message: string } | null>(null);
 
   // Shopify Modal State
@@ -640,7 +641,26 @@ export default function Integrations() {
                     const rowDetail = (topic: string) => details.find((item) => item.topic === topic);
                     const rowState = (topic: string) => rowDetail(topic)?.status ?? "unknown";
                     return (
-                      <div key={store.id} className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
+                      <>
+                        <div key={store.id} className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
+                          <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{store.shop_domain}</p>
+                          <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Setup needs attention</h3>
+                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Connecting your store and configuring its webhook subscriptions.</p>
+                          {!setupDone && store.connection_status === "connected" && (
+                            <button type="button" onClick={() => { setWebhookDetailsStoreId(store.id); void handleRetryStoreSetup(store.id); }} disabled={isRetrying}
+                              className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800">
+                              {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+                              {isRetrying ? "Setup running" : "Retry setup"}
+                            </button>
+                          )}
+                        </div>
+                        {webhookDetailsStoreId === store.id && createPortal(
+                          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Shopify setup details">
+                            <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto">
+                              <button type="button" onClick={() => setWebhookDetailsStoreId(null)} aria-label="Cancel and close setup details" className="mb-3 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+                                <X className="h-4 w-4" /> Cancel
+                              </button>
+                              <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
                         <div className="mx-auto w-full max-w-xl">
                           <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{store.shop_domain}</p>
                           <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{heading}</h3>
@@ -705,6 +725,9 @@ export default function Integrations() {
                           )}
                         </div>
                       </div>
+                            </div>
+                          </div>, document.body)}
+                      </>
                     );
                   })}
                 {/* Actions */}
