@@ -292,7 +292,7 @@ async function syncShopifyStore(store) {
     }
     logger.error('shopify_sync_failed', {
       store_id: store.id,
-      stage: setupStage,
+      stage: error.setupStage || setupStage,
       error_type: error.code || error.name || 'sync_error',
       http_status: error.status || error.response?.status || null,
       network_code: error.networkCode || error.code || null,
