@@ -14,9 +14,10 @@ const REQUIRED = [
   ['CHECKOUTS_UPDATE', 'checkouts/update'],
 ];
 
-function installMocks({ failTopic = null, failTopicOnce = false, failPersistenceTopic = null } = {}) {
+function installMocks({ failTopic = null, failTopicOnce = false, failPersistenceTopic = null, failList = null } = {}) {
   const attempts = [];
   const rows = new Map();
+  const logs = [];
   let topicFailureUsed = false;
   const prisma = {
     webhook_registrations: {
@@ -49,7 +50,10 @@ function installMocks({ failTopic = null, failTopicOnce = false, failPersistence
     },
   };
   const shopifyGraphql = async (_store, query, variables = {}) => {
-    if (query.includes('query WebhookSubscriptions')) return { webhookSubscriptions: { nodes: [] } };
+    if (query.includes('query WebhookSubscriptions')) {
+      if (failList) throw failList;
+      return { webhookSubscriptions: { nodes: [] } };
+    }
     const topic = variables.topic;
     attempts.push(topic);
     if (topic === failTopic && (!failTopicOnce || !topicFailureUsed)) {
@@ -58,7 +62,10 @@ function installMocks({ failTopic = null, failTopicOnce = false, failPersistence
     }
     return { webhookSubscriptionCreate: { webhookSubscription: { id: `gid://shopify/WebhookSubscription/${topic}`, topic, uri: variables.subscription?.uri }, userErrors: [] } };
   };
-  const logger = { info() {}, error() {} };
+  const logger = {
+    info(message, fields) { logs.push({ level: 'info', message, fields }); },
+    error(message, fields) { logs.push({ level: 'error', message, fields }); },
+  };
 
   for (const path of [
     require.resolve('../../configs/database'),
@@ -79,7 +86,7 @@ function installMocks({ failTopic = null, failTopicOnce = false, failPersistence
   };
   delete require.cache[require.resolve('../shopifyWebhookService')];
   const service = require('../shopifyWebhookService');
-  return { service, attempts, rows };
+  return { service, attempts, rows, logs };
 }
 
 const store = { id: 'store-test', shop_domain: 'example.myshopify.com', access_token: 'encrypted-token' };
@@ -100,6 +107,31 @@ async function verifyTopicRejectionDoesNotStopOtherTopics() {
   assert.match(failure.errors[0].message, /not available for this app/);
   assert.match(rows.get('setup-state:ORDERS_CREATE').last_error, /not available for this app/);
   assert.strictEqual(rows.get('setup-state:ORDERS_CREATE').status, 'failed');
+}
+
+async function verifyInitialSubscriptionListFailureIsLoggedAndPreserved() {
+  const providerError = new Error('shopify_graphql_http_request_failed');
+  providerError.code = 'SHOPIFY_GRAPHQL_HTTP_ERROR';
+  providerError.status = 403;
+  providerError.networkCode = 'ERR_BAD_REQUEST';
+  providerError.shopifyErrors = [{ message: 'Access denied for webhookSubscriptions', codes: ['ACCESS_DENIED'] }];
+  const { service, attempts, logs } = installMocks({ failList: providerError });
+
+  await assert.rejects(
+    service.reconcileShopifyWebhooks(store),
+    (error) => error === providerError
+      && error.code === 'SHOPIFY_GRAPHQL_HTTP_ERROR'
+      && error.status === 403
+      && error.networkCode === 'ERR_BAD_REQUEST'
+      && error.setupStage === 'list_existing_subscriptions'
+  );
+
+  assert.deepStrictEqual(attempts, [], 'topic creation must not begin when subscription listing fails');
+  const diagnostic = logs.find((entry) => entry.message === 'shopify_webhook_subscription_list_failed');
+  assert.ok(diagnostic, 'initial listing failure must emit a dedicated diagnostic');
+  assert.strictEqual(diagnostic.fields.http_status, 403);
+  assert.strictEqual(diagnostic.fields.network_code, 'ERR_BAD_REQUEST');
+  assert.match(diagnostic.fields.shopify_errors[0].message, /Access denied/);
 }
 
 async function verifyRetryCanRecoverAfterShopifyRejection() {
@@ -129,6 +161,7 @@ async function verifyPersistenceFailureDoesNotBlockRemainingTopics() {
 
 (async () => {
   await verifyTopicRejectionDoesNotStopOtherTopics();
+  await verifyInitialSubscriptionListFailureIsLoggedAndPreserved();
   await verifyRetryCanRecoverAfterShopifyRejection();
   await verifyPersistenceFailureDoesNotBlockRemainingTopics();
   console.log('shopifyWebhookService.test.js: all assertions passed');
