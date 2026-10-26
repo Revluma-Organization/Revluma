@@ -283,7 +283,8 @@ exports.shopifyCallback = async (req, res, next) => {
     // Exchange authorization code for access token
     stage = 'access_token_exchange';
     logStage('started', { shop_domain: normalizedShop });
-    const accessToken = await exchangeAccessToken(normalizedShop, code);
+    const { accessToken, grantedScopes } = await exchangeAccessToken(normalizedShop, code);
+    logger.info('shopify_oauth_scopes_granted', { shop_domain: normalizedShop, granted_scope_count: grantedScopes.split(',').filter(Boolean).length });
     logStage('completed', { access_token_received: Boolean(accessToken) });
 
 
