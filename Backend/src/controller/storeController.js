@@ -41,9 +41,9 @@ exports.getStores = async (req, res, next) => {
         select: { store_id: true, topic: true, status: true, external_id: true, last_error: true, attempt_count: true, started_at: true, completed_at: true },
       })
       : [];
-    const topicsByStore = new Map();
+    const topicsByStore = new Map();\n    const requiredTopics = REQUIRED_SUBSCRIPTIONS.map(([topic]) => topic);\n    const requiredTopicSet = new Set(requiredTopics);
     const webhookDetailsByStore = new Map();
-    const statusPriority = { active: 1, failed: 2, running: 3, succeeded: 4 };
+    // Active subscriptions are authoritative. Historical setup failures must never\n    // override a successfully registered subscription for the same topic.\n    const statusPriority = { failed: 1, running: 2, succeeded: 3, active: 4 };
     for (const registration of registrations) {
       const details = webhookDetailsByStore.get(registration.store_id) || new Map();
       const current = details.get(registration.topic);
@@ -61,7 +61,7 @@ exports.getStores = async (req, res, next) => {
         });
       }
       webhookDetailsByStore.set(registration.store_id, details);
-      if (registration.status === 'active') {
+      if (registration.status === 'active' && requiredTopicSet.has(registration.topic)) {
         const topics = topicsByStore.get(registration.store_id) || new Set();
         topics.add(registration.topic);
         topicsByStore.set(registration.store_id, topics);
@@ -75,8 +75,8 @@ exports.getStores = async (req, res, next) => {
       const webhookDetails = webhookDetailsByStore.get(store.id) || new Map();
       const webhooksReady = store.platform !== 'shopify' ||
         requiredTopics.every((topic) => registeredTopics.has(topic));
-      const webhooksRunning = store.platform === 'shopify' && [...webhookDetails.values()].some((detail) => detail.status === 'running');
-      const webhooksFailed = store.platform === 'shopify' && [...webhookDetails.values()].some((detail) => detail.status === 'failed');
+      const webhooksRunning = store.platform === 'shopify' && requiredTopics.some((topic) => !registeredTopics.has(topic) && webhookDetails.get(topic)?.status === 'running');
+      const webhooksFailed = store.platform === 'shopify' && requiredTopics.some((topic) => !registeredTopics.has(topic) && webhookDetails.get(topic)?.status === 'failed');
       const syncStatus = store.status === 'syncing'
         ? store.updated_at && Date.now() - store.updated_at.getTime() >= 15 * 60 * 1000
           ? 'failed'
@@ -99,7 +99,7 @@ exports.getStores = async (req, res, next) => {
         webhooks_required: store.platform === 'shopify' ? requiredTopics.length : null,
         webhook_details: store.platform === 'shopify' ? requiredTopics.map((topic) => {
           const detail = webhookDetailsByStore.get(store.id)?.get(topic);
-          return detail ? { topic, status: detail.status, error: detail.error, attempt_count: detail.attempt_count, started_at: detail.started_at, completed_at: detail.completed_at } : { topic, status: 'not_attempted', error: null, attempt_count: 0, started_at: null, completed_at: null };
+          return detail ? { topic, status: registeredTopics.has(topic) ? 'registered' : detail.status, error: registeredTopics.has(topic) ? null : detail.error, attempt_count: detail.attempt_count, started_at: detail.started_at, completed_at: detail.completed_at } : { topic, status: 'not_attempted', error: null, attempt_count: 0, started_at: null, completed_at: null };
         }) : null,
         setup_status: !connected
           ? 'disconnected'
