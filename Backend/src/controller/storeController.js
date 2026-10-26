@@ -41,9 +41,13 @@ exports.getStores = async (req, res, next) => {
         select: { store_id: true, topic: true, status: true, external_id: true, last_error: true, attempt_count: true, started_at: true, completed_at: true },
       })
       : [];
-    const topicsByStore = new Map();\n    const requiredTopics = REQUIRED_SUBSCRIPTIONS.map(([topic]) => topic);\n    const requiredTopicSet = new Set(requiredTopics);
+    const topicsByStore = new Map();
+    const requiredTopics = REQUIRED_SUBSCRIPTIONS.map(([topic]) => topic);
+    const requiredTopicSet = new Set(requiredTopics);
     const webhookDetailsByStore = new Map();
-    // Active subscriptions are authoritative. Historical setup failures must never\n    // override a successfully registered subscription for the same topic.\n    const statusPriority = { failed: 1, running: 2, succeeded: 3, active: 4 };
+    // Active subscriptions are authoritative. Historical setup failures must never
+    // override a successfully registered subscription for the same topic.
+    const statusPriority = { failed: 1, running: 2, succeeded: 3, active: 4 };
     for (const registration of registrations) {
       const details = webhookDetailsByStore.get(registration.store_id) || new Map();
       const current = details.get(registration.topic);
