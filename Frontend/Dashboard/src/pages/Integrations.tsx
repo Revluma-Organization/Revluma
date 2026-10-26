@@ -461,7 +461,9 @@ export default function Integrations() {
 
   const connectedCount = Object.values(statuses).filter((s) => s === "connected").length;
   const anyConnected = connectedCount > 0;
-  const fullySetupStores = stores.filter(isStoreSetupComplete);\n  const anyFullySetup = fullySetupStores.length > 0;\n  const allConnectedStoresReady = stores.filter((store) => store.connection_status === "connected").every(isStoreSetupComplete);
+  const fullySetupStores = stores.filter(isStoreSetupComplete);
+  const anyFullySetup = fullySetupStores.length > 0;
+  const allConnectedStoresReady = stores.filter((store) => store.connection_status === "connected").every(isStoreSetupComplete);
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
