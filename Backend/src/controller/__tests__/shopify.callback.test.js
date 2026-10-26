@@ -187,7 +187,7 @@ async function verifyPersistenceFailureReportsStageWithoutSecrets() {
   };
   query.hmac = callbackHmac(query);
 
-  const callback = callbackRequest(query, { shopify_state: state, shopify_user: 'merchant-123' });
+  const callback = callbackRequest(query, { shopify_state: state, shopify_user: 'merchant-123', shopify_shop: 'revluma-test-store.myshopify.com' });
   await callback.invoke();
   failPersistence = false;
 
