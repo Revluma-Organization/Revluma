@@ -295,6 +295,7 @@ exports.shopifyCallback = async (req, res, next) => {
       organizationId: organization.id,
       shop: normalizedShop,
       accessToken,
+      grantedScopes,
     });
     logStage('completed', { store_id: store.id });
 
