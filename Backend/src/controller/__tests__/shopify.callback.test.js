@@ -299,7 +299,8 @@ async function verifyFailedWebhookDeliveryCanRetryOnce() {
   await verifyInvalidHmacAndStateAreRejected();
   await verifyPersistenceFailureReportsStageWithoutSecrets();
   await verifyAuthorizationDenialAndRetrySetup();
-  await verifyPersistedStoreIsReturnedWithoutCredentials();\n  await verifyHistoricalFailuresDoNotOverrideActiveWebhooks();
+  await verifyPersistedStoreIsReturnedWithoutCredentials();
+  await verifyHistoricalFailuresDoNotOverrideActiveWebhooks();
   await verifyFailedWebhookDeliveryCanRetryOnce();
   console.log('shopify.callback.test.js: all assertions passed');
 })().catch((error) => {
