@@ -97,6 +97,7 @@ const upsertStore = async ({
   organizationId,
   shop,
   accessToken,
+  grantedScopes = '',
 }) => {
   const store = await prisma.stores.upsert({
     where: {
@@ -109,6 +110,7 @@ const upsertStore = async ({
     update: {
       platform: "shopify",
       access_token: encrypt(accessToken),
+      granted_scopes: grantedScopes,
       status: "active",
       installed_at: new Date(),
       updated_at: new Date(),
@@ -119,6 +121,7 @@ const upsertStore = async ({
       platform: "shopify",
       shop_domain: shop,
       access_token: encrypt(accessToken),
+      granted_scopes: grantedScopes,
       status: "active",
       installed_at: new Date(),
     },
