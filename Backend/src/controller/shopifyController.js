@@ -13,6 +13,7 @@ const { buildCookieOptions } = require('../utils/cookieOptions');
 
 const {exchangeAccessToken,getOrganizationByUser,upsertStore,syncShopifyStore,} = require("../services/shopifyService");
 const { prisma } = require('../configs/database');
+const { getRedisClient, isRedisReady } = require('../configs/redis');
 
 /**GET /api/v1/shopify/install, Redirect authenticated merchant to Shopify OAuth.*/
 
@@ -59,6 +60,7 @@ exports.installShopify = async (req, res, next) => {
     res.cookie("shopify_state", state, cookieOptions);
 
     res.cookie("shopify_user", userId, cookieOptions);
+    res.cookie("shopify_shop", normalizedShop, cookieOptions);
     
     const installUrl = buildInstallUrl({
       shop: normalizedShop,
@@ -177,7 +179,7 @@ exports.shopifyCallback = async (req, res, next) => {
     } = req.query;
 
     if (authorizationError === 'access_denied') {
-      for (const name of ['shopify_state', 'shopify_user', 'oauth_user']) {
+      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user']) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations?shopify=cancelled', configuredFrontendUrl);
@@ -231,6 +233,7 @@ exports.shopifyCallback = async (req, res, next) => {
     logStage('started');
     const stateContext = getStateContext(state, req.signedCookies, req.cookies);
     const { storedState, userId } = stateContext;
+    const decodedUserId = stateContext.decodedState?.userId;
 
     if (!storedState) {
       logStage('failed', { reason: 'stored_state_missing' });
@@ -242,14 +245,20 @@ exports.shopifyCallback = async (req, res, next) => {
       });
     }
 
-    if (!userId) {
-      logStage('failed', { reason: 'user_cookie_missing' });
+    if (!userId || !decodedUserId || decodedUserId !== userId) {
+      logStage('failed', { reason: 'user_cookie_missing_or_state_account_mismatch' });
       return res.status(400).json({
         success: false,
         error: "OAuth session expired",
         stage,
         reference: requestId,
       });
+    }
+
+    // Bind this authorization attempt to the exact shop that initiated it.
+    if (req.signedCookies?.shopify_shop !== normalizedShop) {
+      logStage('failed', { reason: 'shop_mismatch' });
+      return res.status(400).json({ success: false, error: 'Invalid OAuth shop', stage, reference: requestId });
     }
 
     // Verify OAuth state
@@ -264,27 +273,34 @@ exports.shopifyCallback = async (req, res, next) => {
     }
     logStage('completed', { user_id_present: true });
 
+    // Reject callbacks for accounts without an active organization before consuming the one-use code.
+    stage = 'organization_lookup';
+    const organization = await getOrganizationByUser(userId);
+    if (!organization) {
+      logStage('failed', { reason: 'organization_not_found' });
+      return res.status(404).json({ success: false, error: 'Organization not found', stage, reference: requestId });
+    }
+
+    // Atomically consume OAuth state across backend instances. Fail closed if Redis is unavailable.
+    stage = 'oauth_replay_guard';
+    if (!isRedisReady()) {
+      logStage('failed', { reason: 'replay_store_unavailable' });
+      return res.status(503).json({ success: false, error: 'OAuth verification temporarily unavailable', stage, reference: requestId });
+    }
+    const stateDigest = crypto.createHash('sha256').update(state).digest('hex');
+    const replayClaim = await getRedisClient().set('shopify:oauth:consumed:' + stateDigest, requestId, 'EX', 900, 'NX');
+    if (replayClaim !== 'OK') {
+      logStage('failed', { reason: 'oauth_state_replayed' });
+      return res.status(409).json({ success: false, error: 'OAuth authorization already processed', stage, reference: requestId });
+    }
+
     // Exchange authorization code for access token
     stage = 'access_token_exchange';
     logStage('started', { shop_domain: normalizedShop });
-    const accessToken = await exchangeAccessToken(normalizedShop, code);
+    const { accessToken, grantedScopes } = await exchangeAccessToken(normalizedShop, code);
+    logger.info('shopify_oauth_scopes_granted', { shop_domain: normalizedShop, granted_scope_count: grantedScopes.split(',').filter(Boolean).length });
     logStage('completed', { access_token_received: Boolean(accessToken) });
 
-    // Retrieve merchant organization
-    stage = 'organization_lookup';
-    logStage('started');
-    const organization = await getOrganizationByUser(userId);
-
-    if (!organization) {
-      logStage('failed', { reason: 'organization_not_found' });
-      return res.status(404).json({
-        success: false,
-        error: "Organization not found",
-        stage,
-        reference: requestId,
-      });
-    }
-    logStage('completed', { organization_found: true });
 
     // Create or update connected store
     stage = 'store_persistence';
@@ -293,6 +309,7 @@ exports.shopifyCallback = async (req, res, next) => {
       organizationId: organization.id,
       shop: normalizedShop,
       accessToken,
+      grantedScopes,
     });
     logStage('completed', { store_id: store.id });
 
@@ -313,6 +330,8 @@ exports.shopifyCallback = async (req, res, next) => {
       ...buildCookieOptions(req),
       path: "/",
     });
+
+    res.clearCookie("shopify_shop", { ...buildCookieOptions(req), path: "/" });
 
     res.clearCookie("shopify_user", {
       ...buildCookieOptions(req),
@@ -358,7 +377,7 @@ exports.shopifyCallback = async (req, res, next) => {
       configured_api_version: error.configuredApiVersion || undefined,
     });
     if (frontendOrigin) {
-      for (const name of ['shopify_state', 'shopify_user', 'oauth_user']) {
+      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user']) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations', frontendOrigin);

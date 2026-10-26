@@ -38,6 +38,11 @@ function mockModule(relativePath, exports) {
 const syncFailure = new Error('webhook setup failed');
 syncFailure.code = 'SHOPIFY_WEBHOOK_SETUP_FAILED';
 let syncStarted = false;
+const consumedStates = new Set();
+mockModule('../../configs/redis', {
+  isRedisReady: () => true,
+  getRedisClient: () => ({ set: async (key) => consumedStates.has(key) ? null : (consumedStates.add(key), 'OK') }),
+});
 let failPersistence = false;
 let tokenExchangeCalls = 0;
 let deliveryStatus = 'failed';
@@ -46,7 +51,7 @@ mockModule('../../services/mlService', { rfmSync: async () => ({ success: true }
 mockModule('../../services/shopifyService', {
   exchangeAccessToken: async () => {
     tokenExchangeCalls += 1;
-    return 'plain-test-token';
+    return { accessToken: 'plain-test-token', grantedScopes: 'read_orders,read_customers' };
   },
   getOrganizationByUser: async () => ({ id: 'org-123' }),
   upsertStore: async ({ organizationId, shop }) => {
@@ -132,7 +137,7 @@ async function verifyCallbackSurvivesDeferredSetupFailure() {
   };
   query.hmac = callbackHmac(query);
 
-  const callback = callbackRequest(query, { shopify_state: state, shopify_user: 'merchant-123' });
+  const callback = callbackRequest(query, { shopify_state: state, shopify_user: 'merchant-123', shopify_shop: 'revluma-test-store.myshopify.com' });
   await callback.invoke();
 
   assert.ok(syncStarted, 'initial setup should start after the token is persisted');
@@ -155,6 +160,7 @@ async function verifyInvalidHmacAndStateAreRejected() {
   const invalidHmac = callbackRequest({ ...query, hmac: 'not-a-real-hmac' }, {
     shopify_state: state,
     shopify_user: 'merchant-123',
+    shopify_shop: 'revluma-test-store.myshopify.com',
   });
   await invalidHmac.invoke();
   assert.strictEqual(invalidHmac.response.statusCode, 400);
@@ -163,6 +169,7 @@ async function verifyInvalidHmacAndStateAreRejected() {
   const invalidState = callbackRequest(query, {
     shopify_state: `${state}-tampered`,
     shopify_user: 'merchant-123',
+    shopify_shop: 'revluma-test-store.myshopify.com',
   });
   await invalidState.invoke();
   assert.strictEqual(invalidState.response.statusCode, 400);
@@ -180,7 +187,7 @@ async function verifyPersistenceFailureReportsStageWithoutSecrets() {
   };
   query.hmac = callbackHmac(query);
 
-  const callback = callbackRequest(query, { shopify_state: state, shopify_user: 'merchant-123' });
+  const callback = callbackRequest(query, { shopify_state: state, shopify_user: 'merchant-123', shopify_shop: 'revluma-test-store.myshopify.com' });
   await callback.invoke();
   failPersistence = false;
 
@@ -195,7 +202,7 @@ async function verifyAuthorizationDenialAndRetrySetup() {
   const denied = callbackRequest({ error: 'access_denied' }, {});
   await denied.invoke();
   assert.strictEqual(new URL(denied.response.redirectUrl).searchParams.get('shopify'), 'cancelled');
-  assert.deepStrictEqual(denied.response.clearedCookies.sort(), ['oauth_user', 'shopify_state', 'shopify_user']);
+  assert.deepStrictEqual(denied.response.clearedCookies.sort(), ['oauth_user', 'shopify_shop', 'shopify_state', 'shopify_user']);
 
   let retryResponse;
   const res = {

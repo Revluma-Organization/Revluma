@@ -4,6 +4,7 @@ const { shopifyGraphql } = require('./shopifyGraphql');
 const { cancelOrder, upsertOrder, upsertAbandonedCart } = require('./commerceWebhookService');
 const { reconcileShopifyWebhooks } = require('./shopifyWebhookService');
 const logger = require('../utils/logger');
+const { getRedisClient, isRedisReady } = require('../configs/redis');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
 
 const PAGE_SIZE = 100;
@@ -241,13 +242,25 @@ async function syncAbandonedCheckouts(store) {
 }
 
 async function syncShopifyStore(store) {
+  if (!isRedisReady()) {
+    const error = new Error('Shopify setup requires distributed lock service');
+    error.code = 'SHOPIFY_SETUP_LOCK_UNAVAILABLE';
+    throw error;
+  }
+  const redis = getRedisClient();
+  const lockKey = `shopify:setup:lock:${store.id}`;
+  const lockOwner = require('crypto').randomUUID();
+  const acquired = await redis.set(lockKey, lockOwner, 'EX', 900, 'NX');
+  if (acquired !== 'OK') {
+    return { success: false, alreadyRunning: true };
+  }
   let setupStage = 'marking_store_syncing';
   logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
-  await prisma.stores.update({
-    where: { id: store.id },
-    data: { status: 'syncing', updated_at: new Date() },
-  });
   try {
+    await prisma.stores.update({
+      where: { id: store.id },
+      data: { status: 'syncing', updated_at: new Date() },
+    });
     setupStage = 'webhook_reconciliation';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     const webhookResult = await reconcileShopifyWebhooks(store);
@@ -276,13 +289,12 @@ async function syncShopifyStore(store) {
     logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned });
     return { success: true, customers, orders, abandoned, rfm: rfm.success };
   } catch (error) {
-    const revoked = error.response?.status === 401;
     try {
       await prisma.stores.update({
         where: { id: store.id },
-        data: revoked
-          ? { status: 'inactive', access_token: null, updated_at: new Date() }
-          : { status: 'error', updated_at: new Date() },
+        // A setup failure must never revoke a successfully authorized OAuth connection.
+        // Token invalidation belongs to explicit uninstall / verified revocation handling.
+        data: { status: 'active', updated_at: new Date() },
       });
     } catch (stateError) {
       logger.error('shopify_sync_failure_state_update_failed', {
@@ -299,6 +311,12 @@ async function syncShopifyStore(store) {
       shopify_errors: error.shopifyErrors || [],
     });
     throw error;
+  } finally {
+    try {
+      await redis.eval("if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end", 1, lockKey, lockOwner);
+    } catch (lockError) {
+      logger.warn('shopify_setup_lock_release_failed', { store_id: store.id, error_type: lockError.code || lockError.name });
+    }
   }
 }
 

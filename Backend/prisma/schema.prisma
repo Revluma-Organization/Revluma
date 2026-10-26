@@ -242,6 +242,7 @@ model stores {
   platform                          String
   shop_domain                       String
   access_token                      String?
+  granted_scopes                    String?
   status                            String                              @default("not_connected")
   installed_at                      DateTime?                           @db.Timestamptz(6)
   last_synced_at                    DateTime?                           @db.Timestamptz(6)
