@@ -646,8 +646,8 @@ export default function Integrations() {
                       <>
                         <div key={store.id} className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
                           <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{store.shop_domain}</p>
-                          <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Setup needs attention</h3>
-                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Connecting your store and configuring its webhook subscriptions.</p>
+                          <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{heading}</h3>
+                          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{setupDone ? "Your store is connected, all required webhooks are registered, and initial synchronization is complete." : isRetrying ? "Connecting your store and configuring its webhook subscriptions." : store.setup_status === "failed" || failedCount > 0 ? "Webhook registration or initial synchronization needs attention." : "Store setup is in progress or awaiting verification."}</p>
                           {!setupDone && store.connection_status === "connected" && (
                             <button type="button" onClick={() => { setWebhookDetailsStoreId(store.id); void handleRetryStoreSetup(store.id); }} disabled={isRetrying}
                               className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800">
