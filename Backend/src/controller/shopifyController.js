@@ -13,6 +13,7 @@ const { buildCookieOptions } = require('../utils/cookieOptions');
 
 const {exchangeAccessToken,getOrganizationByUser,upsertStore,syncShopifyStore,} = require("../services/shopifyService");
 const { prisma } = require('../configs/database');
+const { getRedisClient, isRedisReady } = require('../configs/redis');
 
 /**GET /api/v1/shopify/install, Redirect authenticated merchant to Shopify OAuth.*/
 
@@ -278,6 +279,19 @@ exports.shopifyCallback = async (req, res, next) => {
     if (!organization) {
       logStage('failed', { reason: 'organization_not_found' });
       return res.status(404).json({ success: false, error: 'Organization not found', stage, reference: requestId });
+    }
+
+    // Atomically consume OAuth state across backend instances. Fail closed if Redis is unavailable.
+    stage = 'oauth_replay_guard';
+    if (!isRedisReady()) {
+      logStage('failed', { reason: 'replay_store_unavailable' });
+      return res.status(503).json({ success: false, error: 'OAuth verification temporarily unavailable', stage, reference: requestId });
+    }
+    const stateDigest = crypto.createHash('sha256').update(state).digest('hex');
+    const replayClaim = await getRedisClient().set('shopify:oauth:consumed:' + stateDigest, requestId, 'EX', 900, 'NX');
+    if (replayClaim !== 'OK') {
+      logStage('failed', { reason: 'oauth_state_replayed' });
+      return res.status(409).json({ success: false, error: 'OAuth authorization already processed', stage, reference: requestId });
     }
 
     // Exchange authorization code for access token
