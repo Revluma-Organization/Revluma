@@ -25,7 +25,7 @@ exports.installShopify = async (req, res, next) => {
 
     const userId = req.user?.id;
 
-    if (!userId || !decodedUserId || decodedUserId !== userId) {
+    if (!userId) {
       return res.status(401).json({
         success: false,
         error: "Authentication required",
@@ -244,8 +244,8 @@ exports.shopifyCallback = async (req, res, next) => {
       });
     }
 
-    if (!userId) {
-      logStage('failed', { reason: 'user_cookie_missing' });
+    if (!userId || !decodedUserId || decodedUserId !== userId) {
+      logStage('failed', { reason: 'user_cookie_missing_or_state_account_mismatch' });
       return res.status(400).json({
         success: false,
         error: "OAuth session expired",
@@ -361,7 +361,7 @@ exports.shopifyCallback = async (req, res, next) => {
       configured_api_version: error.configuredApiVersion || undefined,
     });
     if (frontendOrigin) {
-      for (const name of ['shopify_state', 'shopify_user', 'oauth_user']) {
+      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user']) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations', frontendOrigin);
