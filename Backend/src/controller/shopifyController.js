@@ -283,8 +283,7 @@ exports.shopifyCallback = async (req, res, next) => {
     // Exchange authorization code for access token
     stage = 'access_token_exchange';
     logStage('started', { shop_domain: normalizedShop });
-    const tokenResult = await exchangeAccessToken(normalizedShop, code);
-    const accessToken = tokenResult.accessToken;
+    const accessToken = await exchangeAccessToken(normalizedShop, code);
     logStage('completed', { access_token_received: Boolean(accessToken) });
 
 
@@ -295,7 +294,6 @@ exports.shopifyCallback = async (req, res, next) => {
       organizationId: organization.id,
       shop: normalizedShop,
       accessToken,
-      grantedScopes: tokenResult.grantedScopes,
     });
     logStage('completed', { store_id: store.id });
 
