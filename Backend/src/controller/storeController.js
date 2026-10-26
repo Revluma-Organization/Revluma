@@ -71,7 +71,7 @@ exports.getStores = async (req, res, next) => {
         topicsByStore.set(registration.store_id, topics);
       }
     }
-    const requiredTopics = REQUIRED_SUBSCRIPTIONS.map(([topic]) => topic);
+
 
     const responseStores = stores.map((store) => {
       const connected = Boolean(store.access_token) && !['inactive', 'deleted'].includes(store.status);
