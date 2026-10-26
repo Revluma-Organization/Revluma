@@ -107,7 +107,8 @@ const apiLimiter = rateLimit({
     success: false,
     error:   'Too many requests. Please slow down.',
   },
-  skip: () => process.env.NODE_ENV === 'test',
+  // Pixel ingestion has its own dedicated limiter; do not charge Redis twice.
+  skip: (req) => process.env.NODE_ENV === 'test' || /^\/v1\/events\/ingest(?:\/batch)?\/?(?:\?|$)/.test(req.originalUrl.replace(/^\/api/, '')),
 });
 
 // Pixel event ingestion limiter — high volume endpoint, public
