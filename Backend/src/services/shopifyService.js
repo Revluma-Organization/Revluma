@@ -58,7 +58,7 @@ const exchangeAccessToken = async (shop, code) => {
       access_token_received: true,
       granted_scopes_present: Boolean(response.data.scope),
     });
-    return response.data.access_token;
+    return { accessToken: response.data.access_token, grantedScopes: String(response.data.scope || '') };
   } catch (error) {
     logger.error('shopify_token_exchange_failed', {
       error_type: error.code || error.name || 'shopify_exchange_error',
