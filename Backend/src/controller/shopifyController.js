@@ -59,6 +59,7 @@ exports.installShopify = async (req, res, next) => {
     res.cookie("shopify_state", state, cookieOptions);
 
     res.cookie("shopify_user", userId, cookieOptions);
+    res.cookie("shopify_shop", normalizedShop, cookieOptions);
     
     const installUrl = buildInstallUrl({
       shop: normalizedShop,
@@ -177,7 +178,7 @@ exports.shopifyCallback = async (req, res, next) => {
     } = req.query;
 
     if (authorizationError === 'access_denied') {
-      for (const name of ['shopify_state', 'shopify_user', 'oauth_user']) {
+      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user']) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations?shopify=cancelled', configuredFrontendUrl);
@@ -252,6 +253,12 @@ exports.shopifyCallback = async (req, res, next) => {
       });
     }
 
+    // Bind this authorization attempt to the exact shop that initiated it.
+    if (req.signedCookies?.shopify_shop !== normalizedShop) {
+      logStage('failed', { reason: 'shop_mismatch' });
+      return res.status(400).json({ success: false, error: 'Invalid OAuth shop', stage, reference: requestId });
+    }
+
     // Verify OAuth state
     if (!isStateAccepted(storedState, state)) {
       logStage('failed', { reason: 'state_mismatch' });
@@ -264,27 +271,20 @@ exports.shopifyCallback = async (req, res, next) => {
     }
     logStage('completed', { user_id_present: true });
 
+    // Reject callbacks for accounts without an active organization before consuming the one-use code.
+    stage = 'organization_lookup';
+    const organization = await getOrganizationByUser(userId);
+    if (!organization) {
+      logStage('failed', { reason: 'organization_not_found' });
+      return res.status(404).json({ success: false, error: 'Organization not found', stage, reference: requestId });
+    }
+
     // Exchange authorization code for access token
     stage = 'access_token_exchange';
     logStage('started', { shop_domain: normalizedShop });
     const accessToken = await exchangeAccessToken(normalizedShop, code);
     logStage('completed', { access_token_received: Boolean(accessToken) });
 
-    // Retrieve merchant organization
-    stage = 'organization_lookup';
-    logStage('started');
-    const organization = await getOrganizationByUser(userId);
-
-    if (!organization) {
-      logStage('failed', { reason: 'organization_not_found' });
-      return res.status(404).json({
-        success: false,
-        error: "Organization not found",
-        stage,
-        reference: requestId,
-      });
-    }
-    logStage('completed', { organization_found: true });
 
     // Create or update connected store
     stage = 'store_persistence';
@@ -313,6 +313,8 @@ exports.shopifyCallback = async (req, res, next) => {
       ...buildCookieOptions(req),
       path: "/",
     });
+
+    res.clearCookie("shopify_shop", { ...buildCookieOptions(req), path: "/" });
 
     res.clearCookie("shopify_user", {
       ...buildCookieOptions(req),
