@@ -280,9 +280,9 @@ async function syncShopifyStore(store) {
     try {
       await prisma.stores.update({
         where: { id: store.id },
-        data: revoked
-          ? { status: 'inactive', access_token: null, updated_at: new Date() }
-          : { status: 'error', updated_at: new Date() },
+        // A setup failure must never revoke a successfully authorized OAuth connection.
+        // Token invalidation belongs to explicit uninstall / verified revocation handling.
+        data: { status: 'active', updated_at: new Date() },
       });
     } catch (stateError) {
       logger.error('shopify_sync_failure_state_update_failed', {
