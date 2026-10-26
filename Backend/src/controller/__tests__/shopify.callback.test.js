@@ -259,6 +259,33 @@ async function verifyPersistedStoreIsReturnedWithoutCredentials() {
   assert.strictEqual(Object.hasOwn(store, 'access_token'), false);
 }
 
+async function verifyHistoricalFailuresDoNotOverrideActiveWebhooks() {
+  mockPrisma.webhook_registrations.findMany = async () => [
+    ...REQUIRED_SUBSCRIPTIONS.map(([topic]) => ({
+      store_id: 'store-123',
+      topic,
+      status: 'active',
+      external_id: `gid://shopify/WebhookSubscription/${topic}`,
+    })),
+    ...REQUIRED_SUBSCRIPTIONS.map(([topic]) => ({
+      store_id: 'store-123',
+      topic,
+      status: 'failed',
+      external_id: `setup-failure:${topic}`,
+      last_error: 'Historical registration failure',
+    })),
+    { store_id: 'store-123', topic: 'UNRELATED_TOPIC', status: 'active', external_id: 'extra-topic' },
+  ];
+  let response;
+  const res = { status(code) { return { json(payload) { response = { code, payload }; } }; } };
+  await storeController.getStores({ user: { id: 'merchant-123' } }, res, (error) => { throw error; });
+  assert.strictEqual(response.code, 200);
+  const [store] = response.payload.data.stores;
+  assert.strictEqual(store.setup_status, 'complete');
+  assert.strictEqual(store.webhooks_registered, REQUIRED_SUBSCRIPTIONS.length);
+  assert.ok(store.webhook_details.every((item) => item.status === 'registered' && item.error === null));
+}
+
 async function verifyFailedWebhookDeliveryCanRetryOnce() {
   const { claimDelivery } = require('../../services/commerceWebhookService');
   const retry = await claimDelivery('shopify', 'delivery-123', 'store-123', 'orders/create');
@@ -273,6 +300,7 @@ async function verifyFailedWebhookDeliveryCanRetryOnce() {
   await verifyPersistenceFailureReportsStageWithoutSecrets();
   await verifyAuthorizationDenialAndRetrySetup();
   await verifyPersistedStoreIsReturnedWithoutCredentials();
+  await verifyHistoricalFailuresDoNotOverrideActiveWebhooks();
   await verifyFailedWebhookDeliveryCanRetryOnce();
   console.log('shopify.callback.test.js: all assertions passed');
 })().catch((error) => {

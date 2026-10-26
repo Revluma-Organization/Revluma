@@ -361,7 +361,7 @@ export default function Integrations() {
     }
   }, [fetchStatuses, searchParams, setSearchParams, showStatusCard]);
 
-  const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && store.setup_status === "in_progress");
+  const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && store.connection_status === "connected" && (store.setup_status === "in_progress" || store.setup_status === "webhooks_pending" || store.setup_status === "pending"));
   useEffect(() => {
     if (!shopifySetupInProgress) return;
     const intervalId = window.setInterval(() => {
@@ -461,7 +461,7 @@ export default function Integrations() {
 
   const connectedCount = Object.values(statuses).filter((s) => s === "connected").length;
   const anyConnected = connectedCount > 0;
-  const anyFullySetup = stores.some(isStoreSetupComplete);
+  const fullySetupStores = stores.filter(isStoreSetupComplete);\n  const anyFullySetup = fullySetupStores.length > 0;\n  const allConnectedStoresReady = stores.filter((store) => store.connection_status === "connected").every(isStoreSetupComplete);
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
@@ -488,9 +488,9 @@ export default function Integrations() {
       {!loading && anyConnected && (
         <div className="flex flex-col justify-between gap-4 rounded-2xl border border-emerald-500/25 bg-bg-2 p-5 sm:flex-row sm:items-center">
           <div className="space-y-2">
-            <div className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider", anyFullySetup ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-300")}>
-              {anyFullySetup ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
-              {anyFullySetup ? "Store Connection Active" : "Store Connection Saved — Setup Incomplete"}
+            <div className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider", allConnectedStoresReady ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-300")}>
+              {allConnectedStoresReady ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+              {allConnectedStoresReady ? "Store Connections Active" : anyFullySetup ? "Some Stores Ready — Others Need Setup" : "Store Connection Saved — Setup Incomplete"}
             </div>
             <p className="text-[0.82rem] text-t2">
               {anyFullySetup
