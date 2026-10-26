@@ -25,7 +25,7 @@ exports.installShopify = async (req, res, next) => {
 
     const userId = req.user?.id;
 
-    if (!userId) {
+    if (!userId || !decodedUserId || decodedUserId !== userId) {
       return res.status(401).json({
         success: false,
         error: "Authentication required",
@@ -232,6 +232,7 @@ exports.shopifyCallback = async (req, res, next) => {
     logStage('started');
     const stateContext = getStateContext(state, req.signedCookies, req.cookies);
     const { storedState, userId } = stateContext;
+    const decodedUserId = stateContext.decodedState?.userId;
 
     if (!storedState) {
       logStage('failed', { reason: 'stored_state_missing' });
@@ -282,7 +283,8 @@ exports.shopifyCallback = async (req, res, next) => {
     // Exchange authorization code for access token
     stage = 'access_token_exchange';
     logStage('started', { shop_domain: normalizedShop });
-    const accessToken = await exchangeAccessToken(normalizedShop, code);
+    const tokenResult = await exchangeAccessToken(normalizedShop, code);
+    const accessToken = tokenResult.accessToken;
     logStage('completed', { access_token_received: Boolean(accessToken) });
 
 
@@ -293,6 +295,7 @@ exports.shopifyCallback = async (req, res, next) => {
       organizationId: organization.id,
       shop: normalizedShop,
       accessToken,
+      grantedScopes: tokenResult.grantedScopes,
     });
     logStage('completed', { store_id: store.id });
 
