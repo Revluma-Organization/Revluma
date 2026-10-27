@@ -74,7 +74,7 @@ export function Sidebar() {
   transition={{ type: 'spring', stiffness: 220, damping: 28 }}
   className={cn(
   'relative z-50 flex shrink-0 flex-col border-r transition-[width,transform,background-color] duration-300 ease-out overflow-hidden',
-  'bg-[#071225] text-white border-[#172840]',
+  theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
   sidebarCollapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
   !mobileSidebarOpen && 'max-md:w-0 max-md:border-none max-md:-translate-x-full'
 )}
@@ -224,7 +224,7 @@ export function Sidebar() {
                          <motion.span
                      layoutId="sidebar-active-pill"
                       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                      className="absolute inset-0 rounded-lg bg-[#0868ed]"
+                      className="absolute inset-0 rounded-md bg-[#007FFF]"
                        >
                        <span className="nav-active-rail absolute inset-y-1.5 left-0 w-[3px] rounded-full" />
                           </motion.span>
@@ -244,7 +244,7 @@ export function Sidebar() {
                                 <RevIntellOrb size={sidebarCollapsed ? 34 : 28} isActive={isActive} />
                               ) : (
                                 <Icon
-                                  className={cn('h-4 w-4 transition-colors', isActive ? 'text-white' : 'text-[#90a4c3] group-hover:text-white')}
+                                  className={cn('h-4 w-4 transition-colors', isActive ? 'nav-blue-icon' : 'text-t3 group-hover:text-t1')}
                                   strokeWidth={1.8}
                                 />
                               )}
@@ -252,7 +252,7 @@ export function Sidebar() {
                           </span>
                           {!sidebarCollapsed && (
                             <>
-                              <span className={cn('relative z-[1] flex-1 truncate text-[0.82rem] transition-colors', isActive ? 'font-bold text-white' : 'font-medium text-[#b6c5db] group-hover:text-white')}>
+                              <span className={cn('relative z-[1] flex-1 truncate text-[0.82rem] transition-colors', isActive ? 'nav-blue-text font-semibold' : 'font-normal text-t2 group-hover:text-t1')}>
                                 {item.label}
                               </span>
                               {item.badge && <span className="relative z-[1]"><NavBadge tone={item.badge.tone} text={item.badge.text} isActive={isActive} /></span>}
