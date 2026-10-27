@@ -17,15 +17,26 @@ function money(value) {
   return Number(value?.shopMoney?.amount || 0);
 }
 
-async function fetchConnection(store, query, rootName) {
+function nextConnectionCursor(connection, previousCursor, rootName) {
+  if (!Array.isArray(connection?.nodes) || !connection.pageInfo || typeof connection.pageInfo.hasNextPage !== 'boolean') {
+    throw new Error(`shopify_${rootName}_pagination_invalid`);
+  }
+  if (connection.pageInfo.hasNextPage && (!connection.pageInfo.endCursor || connection.pageInfo.endCursor === previousCursor)) {
+    throw new Error(`shopify_${rootName}_pagination_stalled`);
+  }
+  return connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+}
+
+async function fetchConnection(store, query, rootName, fetchPage = shopifyGraphql) {
   const nodes = [];
   let cursor = null;
   do {
-    const data = await shopifyGraphql(store, query, { first: PAGE_SIZE, after: cursor });
+    const data = await fetchPage(store, query, { first: PAGE_SIZE, after: cursor });
     const connection = data[rootName];
     if (!connection) throw new Error(`shopify_${rootName}_response_missing`);
+    const nextCursor = nextConnectionCursor(connection, cursor, rootName);
     nodes.push(...connection.nodes);
-    cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    cursor = nextCursor;
   } while (cursor);
   return nodes;
 }
@@ -81,10 +92,13 @@ function orderPayload(order) {
     created_at: order.createdAt,
     cancelled_at: order.cancelledAt,
     financial_status: order.displayFinancialStatus,
-    total_price: money(order.totalPriceSet),
+    // Shopify GraphQL currentTotalPriceSet is already adjusted for refunds.
+    // The webhook refund reconciler must not subtract them a second time.
+    total_price: money(order.currentTotalPriceSet || order.totalPriceSet),
+    refunds: [],
     subtotal_price: money(order.subtotalPriceSet),
     total_discounts: money(order.totalDiscountsSet),
-    currency: order.totalPriceSet?.shopMoney?.currencyCode || 'USD',
+    currency: (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode || 'USD',
     customer: order.customer ? {
       id: externalId(order.customer.id),
       email: order.customer.email,
@@ -104,12 +118,31 @@ function orderPayload(order) {
   };
 }
 
+function grantedOrderScopes(data) {
+  const scopes = data?.currentAppInstallation?.accessScopes;
+  if (!Array.isArray(scopes)) throw Object.assign(new Error('Shopify did not return granted access scopes'), { code: 'SHOPIFY_SCOPES_UNVERIFIED' });
+  return new Set(scopes.map(item => item?.handle).filter(Boolean));
+}
+
+async function verifyOrderReadScope(store, graphql = shopifyGraphql) {
+  const data = await graphql(store, 'query RevlumaGrantedScopes { currentAppInstallation { accessScopes { handle } } }');
+  const scopes = grantedOrderScopes(data);
+  if (!scopes.has('read_orders')) {
+    throw Object.assign(new Error('Shopify has not granted read_orders; merchant reauthorization is required'), {
+      code: 'SHOPIFY_READ_ORDERS_NOT_GRANTED',
+    });
+  }
+  return { readOrders: true, readAllOrders: scopes.has('read_all_orders') };
+}
+
 async function syncOrders(store) {
+  await verifyOrderReadScope(store);
   const query = `
     query Orders($first: Int!, $after: String) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         nodes {
           id createdAt cancelledAt displayFinancialStatus discountCodes
+          currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
           subtotalPriceSet { shopMoney { amount currencyCode } }
           totalDiscountsSet { shopMoney { amount currencyCode } }
@@ -258,6 +291,10 @@ async function syncShopifyStore(store) {
   let setupStage = 'marking_store_syncing';
   logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
   try {
+    // A fresh ingestion attempt invalidates any historical completeness attestation.
+    // This generic Shopify sync cannot certify complete historical access, refunds,
+    // or customer lifetime history. Never mint coverage here merely from pagination.
+    await prisma.intelligence_order_coverage.deleteMany({ where: { store_id: store.id } });
     await prisma.stores.update({
       where: { id: store.id },
       data: { status: 'syncing', updated_at: new Date() },
@@ -322,6 +359,10 @@ async function syncShopifyStore(store) {
 }
 
 module.exports = {
+  grantedOrderScopes,
+  verifyOrderReadScope,
+  fetchConnection,
+  nextConnectionCursor,
   abandonedPayload,
   orderPayload,
   syncAbandonedCheckouts,

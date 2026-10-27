@@ -18,7 +18,7 @@ import {
   useMemo,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Send, Plus, Menu, X, Copy, ThumbsUp, ThumbsDown,
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
@@ -714,11 +714,27 @@ export default function RevIntell() {
   // URL is the source of truth for the active conversation
   const { conversationId: urlConvId } = useParams<{ conversationId?: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const findingId = searchParams.get("finding");
 
   const [conversations,  setConversations]  = useState<Conversation[]>([]);
   const [activeId,       setActiveId]       = useState<string | null>(urlConvId || null);
   const [messages,       setMessages]       = useState<Message[]>([]);
   const [input,          setInput]          = useState("");
+  useEffect(() => {
+    if (!findingId) return;
+    let active = true;
+    api.get<{ success: boolean; data: { finding: { title: string; description: string; evidence: Record<string, unknown> } } }>(
+      `/rev/findings/${encodeURIComponent(findingId)}`
+    ).then(response => {
+      if (!active) return;
+      const finding = response.data.data.finding;
+      const evidence = JSON.stringify(finding.evidence || {});
+      setInput(`Investigate this verified Revluma finding: ${finding.title}. ${finding.description}. Evidence: ${evidence.slice(0, 2500)}. Explain the observed change, limitations, and supported next steps. Do not invent causes.`);
+    }).catch(() => { /* Do not expose cross-tenant or unavailable evidence. */ });
+    return () => { active = false; };
+  }, [findingId]);
+
   const [thinking,       setThinking]       = useState(false);
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [copied,         setCopied]         = useState(false);
