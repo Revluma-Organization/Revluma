@@ -645,6 +645,22 @@ exports.refreshIntelligenceFindings = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+exports.getIntelligenceFinding = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_FINDING_ID' } });
+    }
+    const finding = await prisma.intelligence_findings.findFirst({
+      where: { id: req.params.id, organization_id: org.id },
+      select: { id: true, type: true, severity: true, status: true, title: true,
+        description: true, evidence: true, detected_at: true },
+    });
+    if (!finding) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
+    return res.status(200).json({ success: true, data: { finding } });
+  } catch (error) { next(error); }
+};
+
 exports.updateIntelligenceFinding = async (req, res, next) => {
   try {
     const org = await getAuthenticatedOrg(req.user.id);
