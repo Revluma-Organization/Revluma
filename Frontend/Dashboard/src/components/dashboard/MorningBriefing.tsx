@@ -258,15 +258,9 @@ export default function MorningBriefing() {
               )}
             </div>
             {briefing.todays_priority.action_label && (
-              <button style={{
-                padding: "7px 14px", borderRadius: 8, fontSize: "0.8rem",
-                fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
-                background: "#5865f2", color: "#fff", border: "none", flexShrink: 0,
-                display: "flex", alignItems: "center", gap: 5,
-              }}>
-                <Zap size={12} />{briefing.todays_priority.action_label}
-              </button>
-            )}
+              <span style={{ padding: "7px 12px", borderRadius: 8, fontSize: "0.75rem", fontWeight: 600, background: "#eef4ff", color: "#075bd3", flexShrink: 0 }}>
+                Suggested: {briefing.todays_priority.action_label}
+              </span>           )}
           </div>
         </div>
       )}
