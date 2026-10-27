@@ -261,6 +261,10 @@ async function upsertAbandonedCart(store, payload) {
   });
   // Checkout webhooks describe activity, not abandonment. Wait 15 minutes after the last event.
   // Completed checkouts remain recovered and must never be reopened by delayed events.
+  const lastActivity = payload.updated_at ? new Date(payload.updated_at) : new Date();
+  const activityAt = Number.isFinite(lastActivity.getTime()) ? lastActivity : new Date();
+  const isStaleEvent = existing?.updated_at && activityAt < existing.updated_at;
+  if (isStaleEvent && !payload.completed_at) return existing;
   const data = {
     store_id: store.id,
     customer_id: dbCustomer?.id || null,
@@ -271,7 +275,7 @@ async function upsertAbandonedCart(store, payload) {
     status: payload.completed_at || existing?.status === 'recovered' ? 'recovered' : 'pending',
     abandoned_at: existing?.abandoned_at || new Date(payload.created_at || Date.now()),
     recovered_at: payload.completed_at ? new Date(payload.completed_at) : (existing?.recovered_at || null),
-    updated_at: new Date(),
+    updated_at: activityAt,
   };
   return existing
     ? tx.abandoned_carts.update({ where: { id: existing.id }, data })
