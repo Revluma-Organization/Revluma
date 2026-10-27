@@ -24,7 +24,13 @@ async function fetchConnection(store, query, rootName) {
     const data = await shopifyGraphql(store, query, { first: PAGE_SIZE, after: cursor });
     const connection = data[rootName];
     if (!connection) throw new Error(`shopify_${rootName}_response_missing`);
+    if (!Array.isArray(connection.nodes) || !connection.pageInfo || typeof connection.pageInfo.hasNextPage !== 'boolean') {
+      throw new Error(`shopify_${rootName}_pagination_invalid`);
+    }
     nodes.push(...connection.nodes);
+    if (connection.pageInfo.hasNextPage && (!connection.pageInfo.endCursor || connection.pageInfo.endCursor === cursor)) {
+      throw new Error(`shopify_${rootName}_pagination_stalled`);
+    }
     cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
   } while (cursor);
   return nodes;
@@ -258,6 +264,10 @@ async function syncShopifyStore(store) {
   let setupStage = 'marking_store_syncing';
   logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
   try {
+    // A fresh ingestion attempt invalidates any historical completeness attestation.
+    // This generic Shopify sync cannot certify complete historical access, refunds,
+    // or customer lifetime history. Never mint coverage here merely from pagination.
+    await prisma.intelligence_order_coverage.deleteMany({ where: { store_id: store.id } });
     await prisma.stores.update({
       where: { id: store.id },
       data: { status: 'syncing', updated_at: new Date() },
