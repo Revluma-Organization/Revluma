@@ -44,7 +44,7 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
     }
     // Shopify API coverage may be partial even after sync success. Never
     // infer historical completeness from order counts or connection status.
-    if (!store.history_coverage_verified) { // Not present until durable ingestion attestation is implemented.
+    if (!store.history_coverage_verified) { // No durable attestation exists yet; suppress business findings.
       diagnostics.push({ storeId: store.id, status: 'order_history_completeness_unverified' });
       continue;
     }
