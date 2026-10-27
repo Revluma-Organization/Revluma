@@ -92,7 +92,10 @@ function orderPayload(order) {
     created_at: order.createdAt,
     cancelled_at: order.cancelledAt,
     financial_status: order.displayFinancialStatus,
+    // Shopify GraphQL currentTotalPriceSet is already adjusted for refunds.
+    // The webhook refund reconciler must not subtract them a second time.
     total_price: money(order.currentTotalPriceSet || order.totalPriceSet),
+    refunds: [],
     subtotal_price: money(order.subtotalPriceSet),
     total_discounts: money(order.totalDiscountsSet),
     currency: (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode || 'USD',
