@@ -39,7 +39,7 @@ test('certified period allows revenue detection but not returning-customer claim
   db.intelligence_order_coverage.findFirst = async args => {
     assert.equal(args.where.organization_id, 'org-1');
     assert.equal(args.where.store_id, 'store-1');
-    return { source: 'shopify_full_cursor_sync', source_run_id: 'run-1', customer_lifetime_verified: false };
+    return { source: 'shopify_verified_history_v1', source_run_id: 'run-1', customer_lifetime_verified: false };
   };
   db.orders.findMany = async () => {
     const rows = [];
