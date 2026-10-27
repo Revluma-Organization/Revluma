@@ -255,7 +255,7 @@ async function upsertAbandonedCart(store, payload) {
     : null;
   return prisma.$transaction(async (tx) => {
   // Serialize writes for the same store/checkout, even across parallel webhook workers.
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${store.id}), hashtext(${externalId}))`;
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${store.id}), hashtext(${externalId}))`;
   const existing = await tx.abandoned_carts.findFirst({
     where: { store_id: store.id, external_cart_id: externalId },
   });
