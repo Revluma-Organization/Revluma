@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { prisma } = require('../configs/database');
 const logger = require('../utils/logger');
 const { rfmSync } = require('./mlService');
+const { lastCheckoutActivity, nextCheckoutStatus } = require('./checkoutInactivity');
 
 function safeCompareHex(actual, expected) {
   if (!actual || !expected || actual.length !== expected.length) return false;
@@ -261,8 +262,7 @@ async function upsertAbandonedCart(store, payload) {
   });
   // Checkout webhooks describe activity, not abandonment. Wait 15 minutes after the last event.
   // Completed checkouts remain recovered and must never be reopened by delayed events.
-  const lastActivity = payload.updated_at ? new Date(payload.updated_at) : new Date();
-  const activityAt = Number.isFinite(lastActivity.getTime()) ? lastActivity : new Date();
+  const activityAt = lastCheckoutActivity(payload);
   const isStaleEvent = existing?.updated_at && activityAt < existing.updated_at;
   if (isStaleEvent && !payload.completed_at) return existing;
   const data = {
@@ -272,7 +272,7 @@ async function upsertAbandonedCart(store, payload) {
     recovery_url: payload.abandoned_checkout_url || payload.recovery_url || null,
     cart_value: Number(payload.total_price ?? payload.total ?? 0),
     currency: payload.currency || 'USD',
-    status: payload.completed_at || existing?.status === 'recovered' ? 'recovered' : 'pending',
+    status: nextCheckoutStatus({ completedAt: payload.completed_at, existingStatus: existing?.status, isStale: isStaleEvent }),
     abandoned_at: existing?.abandoned_at || new Date(payload.created_at || Date.now()),
     recovered_at: payload.completed_at ? new Date(payload.completed_at) : (existing?.recovered_at || null),
     updated_at: activityAt,
