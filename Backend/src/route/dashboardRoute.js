@@ -12,4 +12,6 @@ router.get('/chart', authenticateToken, dashboardController.getChart);
 // GET /api/v1/dashboard/activity
 router.get('/activity', authenticateToken, dashboardController.getActivity);
 
+router.get('/cart-recovery', authenticateToken, dashboardController.getCartRecovery);
+
 module.exports = router;
