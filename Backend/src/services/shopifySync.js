@@ -81,10 +81,10 @@ function orderPayload(order) {
     created_at: order.createdAt,
     cancelled_at: order.cancelledAt,
     financial_status: order.displayFinancialStatus,
-    total_price: money(order.totalPriceSet),
+    total_price: money(order.currentTotalPriceSet || order.totalPriceSet),
     subtotal_price: money(order.subtotalPriceSet),
     total_discounts: money(order.totalDiscountsSet),
-    currency: order.totalPriceSet?.shopMoney?.currencyCode || 'USD',
+    currency: (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode || 'USD',
     customer: order.customer ? {
       id: externalId(order.customer.id),
       email: order.customer.email,
@@ -110,6 +110,7 @@ async function syncOrders(store) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         nodes {
           id createdAt cancelledAt displayFinancialStatus discountCodes
+          currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
           subtotalPriceSet { shopMoney { amount currencyCode } }
           totalDiscountsSet { shopMoney { amount currencyCode } }
