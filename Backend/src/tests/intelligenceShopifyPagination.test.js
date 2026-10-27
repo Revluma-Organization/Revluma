@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { nextConnectionCursor, fetchConnection } = require('../services/shopifySync');
+const { nextConnectionCursor, fetchConnection, verifyOrderReadScope, orderPayload } = require('../services/shopifySync');
 
 test('pagination finishes only with an explicit terminal page', () => {
   assert.equal(nextConnectionCursor({ nodes: [], pageInfo: { hasNextPage: false, endCursor: null } }, null, 'orders'), null);
@@ -33,4 +33,29 @@ test('Shopify sync rejects cursor stall without silently truncating records', as
   const fetchPage = async () => ({ orders: { nodes: [{ id: 'a' }],
     pageInfo: { hasNextPage: true, endCursor: 'same' } } });
   await assert.rejects(fetchConnection({}, '', 'orders', fetchPage), /pagination_stalled/);
+});
+
+test('order permission gate rejects missing and unverified read_orders', async () => {
+  await assert.rejects(
+    verifyOrderReadScope({}, async () => ({ currentAppInstallation: { accessScopes: [{ handle: 'read_customers' }] } })),
+    { code: 'SHOPIFY_READ_ORDERS_NOT_GRANTED' },
+  );
+  await assert.rejects(
+    verifyOrderReadScope({}, async () => ({})),
+    { code: 'SHOPIFY_SCOPES_UNVERIFIED' },
+  );
+  const result = await verifyOrderReadScope({}, async () => ({
+    currentAppInstallation: { accessScopes: [{ handle: 'read_orders' }] },
+  }));
+  assert.deepEqual(result, { readOrders: true, readAllOrders: false });
+});
+test('order import prefers Shopify adjusted total over original total', () => {
+  const payload = orderPayload({
+    id: 'gid://shopify/Order/123', createdAt: '2026-10-01T00:00:00Z',
+    currentTotalPriceSet: { shopMoney: { amount: '70.00', currencyCode: 'NGN' } },
+    totalPriceSet: { shopMoney: { amount: '100.00', currencyCode: 'NGN' } },
+    lineItems: { nodes: [] },
+  });
+  assert.equal(payload.total_price, 70);
+  assert.equal(payload.currency, 'NGN');
 });
