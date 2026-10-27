@@ -27,11 +27,11 @@ function nextConnectionCursor(connection, previousCursor, rootName) {
   return connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
 }
 
-async function fetchConnection(store, query, rootName) {
+async function fetchConnection(store, query, rootName, fetchPage = shopifyGraphql) {
   const nodes = [];
   let cursor = null;
   do {
-    const data = await shopifyGraphql(store, query, { first: PAGE_SIZE, after: cursor });
+    const data = await fetchPage(store, query, { first: PAGE_SIZE, after: cursor });
     const connection = data[rootName];
     if (!connection) throw new Error(`shopify_${rootName}_response_missing`);
     const nextCursor = nextConnectionCursor(connection, cursor, rootName);
@@ -337,6 +337,7 @@ async function syncShopifyStore(store) {
 }
 
 module.exports = {
+  fetchConnection,
   nextConnectionCursor,
   abandonedPayload,
   orderPayload,
