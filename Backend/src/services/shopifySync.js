@@ -326,6 +326,18 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       where: { id: store.id },
       data: { status: 'active', last_synced_at: new Date(), updated_at: new Date() },
     });
+    // Certification is best-effort and strictly fail-closed. A failed proof
+    // must never block routine order reconciliation or fabricate findings.
+    try {
+      const { verifyShopifyOrderCoverage } = require('./intelligenceShopifyCoverageProducer');
+      await verifyShopifyOrderCoverage(prisma, store);
+      logger.info('shopify_order_coverage_certified', { store_id: store.id });
+    } catch (coverageError) {
+      logger.warn('shopify_order_coverage_unverified', {
+        store_id: store.id,
+        reason: coverageError.code || coverageError.name || 'verification_failed',
+      });
+    }
     const rfm = await rfmSync({ storeId: store.id, correlationId: `shopify-sync-${store.id}-${Date.now()}` });
     if (!rfm.success) logger.warn('shopify_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
     logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned });
