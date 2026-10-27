@@ -626,18 +626,23 @@ exports.checkAndCreateAlerts = async (req, res, next) => {
 exports.getIntelligenceFindings = async (req, res, next) => {
   try {
     const org = await getAuthenticatedOrg(req.user.id);
-    const { evaluateOrganizationFindings } = require('../services/intelligenceFindingsAggregator');
-    const { persistVerifiedFindings, listFindings } = require('../services/intelligenceFindingsRepository');
-    const evaluated = await evaluateOrganizationFindings(prisma, org.id);
-    await persistVerifiedFindings(prisma, org.id, evaluated.findings);
+    const { listFindings } = require('../services/intelligenceFindingsRepository');
     const findings = await listFindings(prisma, org.id, { status: req.query.status, limit: req.query.limit });
+    return res.status(200).json({ success: true, data: { findings } });
+  } catch (error) { next(error); }
+};
+
+exports.refreshIntelligenceFindings = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+    const { evaluateOrganizationFindings } = require('../services/intelligenceFindingsAggregator');
+    const { persistVerifiedFindings } = require('../services/intelligenceFindingsRepository');
+    const evaluated = await evaluateOrganizationFindings(prisma, org.id);
+    const persisted = await persistVerifiedFindings(prisma, org.id, evaluated.findings);
     return res.status(200).json({ success: true, data: {
-      findings, diagnostics: evaluated.diagnostics, evaluated_at: evaluated.evaluated_at,
+      persisted, diagnostics: evaluated.diagnostics, evaluated_at: evaluated.evaluated_at,
     } });
-  } catch (error) {
-    logger.error('intelligence_findings_read_failed', { userId: req.user?.id, error: error.message });
-    next(error);
-  }
+  } catch (error) { next(error); }
 };
 
 exports.updateIntelligenceFinding = async (req, res, next) => {
