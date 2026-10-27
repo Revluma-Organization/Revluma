@@ -1,6 +1,7 @@
 'use strict';
 const { detectIntegrationFailure, detectRevenueChange, detectReturningCustomerChange, prioritizeFindings } = require('./intelligenceFindingsEngine');
 
+const { TRUSTED_SOURCE } = require('./intelligenceOrderCoverage');
 const DAY = 86400000;
 const windowIso = ms => new Date(ms).toISOString();
 const sameCurrency = rows => [...new Set(rows.map(row => row.currency))];
@@ -51,7 +52,7 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
         coverage_end: { gte: new Date(currentEnd) } },
       select: { source: true, source_run_id: true, certified_at: true, customer_lifetime_verified: true },
     });
-    if (!coverage) {
+    if (!coverage || coverage.source !== TRUSTED_SOURCE || !coverage.source_run_id) {
       diagnostics.push({ storeId: store.id, status: 'order_history_completeness_unverified' });
       continue;
     }
