@@ -253,7 +253,10 @@ async function upsertAbandonedCart(store, payload) {
         },
       })
     : null;
-  const existing = await prisma.abandoned_carts.findFirst({
+  return prisma.$transaction(async (tx) => {
+  // Serialize writes for the same store/checkout, even across parallel webhook workers.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${store.id}), hashtext(${externalId}))`;
+  const existing = await tx.abandoned_carts.findFirst({
     where: { store_id: store.id, external_cart_id: externalId },
   });
   // Checkout webhooks describe activity, not abandonment. Wait 15 minutes after the last event.
@@ -271,8 +274,9 @@ async function upsertAbandonedCart(store, payload) {
     updated_at: new Date(),
   };
   return existing
-    ? prisma.abandoned_carts.update({ where: { id: existing.id }, data })
-    : prisma.abandoned_carts.create({ data });
+    ? tx.abandoned_carts.update({ where: { id: existing.id }, data })
+    : tx.abandoned_carts.create({ data });
+  });
 }
 
 async function upsertCustomer(store, payload) {
