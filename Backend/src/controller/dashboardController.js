@@ -47,7 +47,11 @@ exports.getKpis = async (req, res, next) => {
       prisma.abandoned_carts.count({
         where: {
           store_id: { in: storeIds },
-          status: { in: ["abandoned", "in_sequence", "recovered"] },
+          OR: [
+            { status: "abandoned", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: "pending", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: { in: ["in_sequence", "recovered"] } },
+          ],
         },
       }),
       prisma.customers.count({
@@ -56,7 +60,10 @@ exports.getKpis = async (req, res, next) => {
       prisma.abandoned_carts.aggregate({
         where: {
           store_id: { in: storeIds },
-          status: "abandoned",
+          OR: [
+            { status: "abandoned", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: "pending", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+          ],
         },
         _sum: { cart_value: true },
       }),
