@@ -45,7 +45,13 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
     }
     // Shopify API coverage may be partial even after sync success. Never
     // infer historical completeness from order counts or connection status.
-    if (!store.history_coverage_verified) { // No durable attestation exists yet; suppress business findings.
+    const coverage = await prisma.intelligence_order_coverage.findFirst({
+      where: { store_id: store.id, organization_id: organizationId,
+        coverage_start: { lte: new Date(previousStart) },
+        coverage_end: { gte: new Date(currentEnd) } },
+      select: { source: true, source_run_id: true, certified_at: true },
+    });
+    if (!coverage) {
       diagnostics.push({ storeId: store.id, status: 'order_history_completeness_unverified' });
       continue;
     }
@@ -62,6 +68,7 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
     const previous = orders.filter(o => o.ordered_at.getTime() < currentStart);
     const evidence = {
       verified: true, complete: true, currency: currencies[0],
+      coverage_source: coverage.source, coverage_run_id: coverage.source_run_id,
       currentStart: windowIso(currentStart), currentEnd: windowIso(currentEnd),
       previousStart: windowIso(previousStart), previousEnd: windowIso(currentStart),
       currentCount: current.length, previousCount: previous.length,
