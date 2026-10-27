@@ -16,6 +16,7 @@ export default function IntelligenceFindingsPanel() {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [diagnostics, setDiagnostics] = useState<Response["data"]["diagnostics"]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<Finding | null>(null);
   useEffect(() => {
@@ -28,6 +29,17 @@ export default function IntelligenceFindingsPanel() {
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, []);
+  async function refresh() {
+    setRefreshing(true);
+    setError(false);
+    try {
+      const evaluated = await api.post<{ success: boolean; data: { diagnostics: Response["data"]["diagnostics"] } }>("/rev/findings/refresh");
+      setDiagnostics(evaluated.data.data?.diagnostics || []);
+      const result = await api.get<Response>("/rev/findings");
+      setFindings(result.data.data?.findings || []);
+    } catch { setError(true); }
+    finally { setRefreshing(false); }
+  }
   async function transition(id: string, status: "acknowledged" | "resolved" | "dismissed") {
     try {
       await api.patch(`/rev/findings/${id}`, { status });
@@ -42,6 +54,7 @@ export default function IntelligenceFindingsPanel() {
           <p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#0868ed]">Evidence-backed intelligence</p>
           <h2 className="mt-1 text-base font-extrabold">Priority findings</h2>
         </div>
+        <button type="button" disabled={refreshing} onClick={refresh} className="rounded-lg border border-[#cddbf0] px-3 py-2 text-xs font-semibold text-[#0868ed] disabled:opacity-50 dark:border-[#444]">{refreshing ? "Checking…" : "Check now"}</button>
         <span className="rounded-full bg-[#f1f4f8] px-3 py-1 text-xs font-semibold text-[#69758b] dark:bg-[#242424] dark:text-[#b4b4b4]">
           {loading ? "Checking…" : `${findings.length} open`}
         </span>
