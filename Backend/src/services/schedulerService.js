@@ -730,12 +730,17 @@ async function runStoreSync() {
                 status: { in: ['active', 'error'] },
                 OR: [{ last_synced_at: null }, { last_synced_at: { lte: cutoff } }],
             },
+            orderBy: { last_synced_at: 'asc' },
             take: 10,
         });
         let succeeded = 0;
         for (const store of stores) {
             try {
-                await syncShopifyStore(store);
+                const result = await syncShopifyStore(store, { reconcileWebhooks: false });
+                if (!result.success) {
+                    logger.warn('scheduler_store_sync_skipped', { store_id: store.id, reason: result.alreadyRunning ? 'already_running' : 'not_completed' });
+                    continue;
+                }
                 succeeded++;
             } catch (error) {
                 logger.warn('scheduler_store_sync_failed', {

@@ -243,7 +243,7 @@ async function syncAbandonedCheckouts(store) {
   return checkouts.length;
 }
 
-async function syncShopifyStore(store) {
+async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
   if (!isRedisReady()) {
     const error = new Error('Shopify setup requires distributed lock service');
     error.code = 'SHOPIFY_SETUP_LOCK_UNAVAILABLE';
@@ -265,8 +265,12 @@ async function syncShopifyStore(store) {
     });
     setupStage = 'webhook_reconciliation';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
-    const webhookResult = await reconcileShopifyWebhooks(store);
-    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', registered: webhookResult.required });
+    if (reconcileWebhooks) {
+      const webhookResult = await reconcileShopifyWebhooks(store);
+      logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', registered: webhookResult.required });
+    } else {
+      logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'skipped_for_background_order_reconciliation' });
+    }
 
     setupStage = 'customer_sync';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
