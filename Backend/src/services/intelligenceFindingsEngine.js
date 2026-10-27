@@ -28,7 +28,7 @@ const evidenceReady = (evidence, minCount = 1) =>
 const finding = (type, scope, severity, title, description, evidence, action) => ({
   type, scope, severity, title, description, evidence,
   action, lifecycle: 'open', detected_at: new Date().toISOString(),
-  dedupe_key: [type, scope.storeId, scope.segment || 'all', evidence.currentStart, evidence.currentEnd].join(':'),
+  dedupe_key: [type, scope.storeId, scope.segment || 'all', evidence.currentStart || 'current', evidence.currentEnd || 'current'].join(':'),
 });
 function detectIntegrationFailure({ scope, store, now = new Date(), maxSyncAgeMinutes = 120 }) {
   if (!scope?.organizationId || !scope?.storeId || !store || store.id !== scope.storeId) return null;
