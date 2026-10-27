@@ -93,7 +93,7 @@ export default function IntelligenceFindingsPanel() {
     try {
       await api.patch(`/rev/findings/${id}`, { status });
       setFindings(previous => previous.filter(item => item.id !== id));
-      setSelected(null);
+      closeInvestigation();
     } catch { setError(true); }
   }
   return (
