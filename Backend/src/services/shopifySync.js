@@ -143,6 +143,7 @@ function abandonedPayload(checkout) {
   return {
     id: externalId(checkout.id),
     created_at: checkout.createdAt,
+    updated_at: checkout.updatedAt,
     completed_at: checkout.completedAt,
     abandoned_checkout_url: checkout.abandonedCheckoutUrl,
     total_price: money(checkout.totalPriceSet),
