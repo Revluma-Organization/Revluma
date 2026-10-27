@@ -111,25 +111,12 @@ export default function MorningBriefing() {
   const bdr = isDark ? "#1e1e2e" : "#e8eaf0";
 
   useEffect(() => {
-    // Only load once per day — check sessionStorage
-    const key = `rev_briefing_${new Date().toISOString().slice(0, 10)}`;
-    const cached = sessionStorage.getItem(key);
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached);
-        if (!parsed || typeof parsed.greeting !== "string" || !Array.isArray(parsed.yesterday_in_numbers)) throw new Error("Invalid briefing cache");
-        setBriefing(parsed);
-        setLoading(false);
-        return;
-      } catch { /* ignore */ }
-    }
-
     (api as any).get("/rev/briefing")
       .then((res: any) => {
         const b = res?.data?.data || res?.data;
         if (b && typeof b.greeting === "string" && Array.isArray(b.yesterday_in_numbers)) {
           setBriefing(b);
-          sessionStorage.setItem(key, JSON.stringify(b));
+
         } else {
           setError(true);
         }
