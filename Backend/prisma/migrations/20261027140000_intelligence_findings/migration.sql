@@ -24,3 +24,18 @@ CREATE INDEX IF NOT EXISTS idx_intelligence_findings_org_status
   ON intelligence_findings(organization_id, status, detected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_intelligence_findings_store
   ON intelligence_findings(store_id, detected_at DESC);
+
+-- Historical completeness must be attested by the ingestion pipeline.
+-- Do not infer completeness from a store being active or having order rows.
+CREATE TABLE IF NOT EXISTS intelligence_order_coverage (
+  store_id uuid PRIMARY KEY REFERENCES stores(id) ON DELETE CASCADE,
+  organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  coverage_start timestamptz NOT NULL,
+  coverage_end timestamptz NOT NULL,
+  certified_at timestamptz NOT NULL DEFAULT now(),
+  source varchar(60) NOT NULL,
+  source_run_id varchar(120) NOT NULL,
+  CHECK (coverage_end > coverage_start)
+);
+CREATE INDEX IF NOT EXISTS idx_intelligence_order_coverage_org
+  ON intelligence_order_coverage(organization_id, certified_at DESC);
