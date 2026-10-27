@@ -49,7 +49,7 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
       where: { store_id: store.id, organization_id: organizationId,
         coverage_start: { lte: new Date(previousStart) },
         coverage_end: { gte: new Date(currentEnd) } },
-      select: { source: true, source_run_id: true, certified_at: true },
+      select: { source: true, source_run_id: true, certified_at: true, customer_lifetime_verified: true },
     });
     if (!coverage) {
       diagnostics.push({ storeId: store.id, status: 'order_history_completeness_unverified' });
@@ -76,6 +76,10 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
       previousRevenue: previous.reduce((sum, o) => sum + safeNumber(o.total), 0),
     };
     candidates.push(detectRevenueChange({ scope, evidence }));
+    if (!coverage.customer_lifetime_verified) {
+      diagnostics.push({ storeId: store.id, status: 'customer_lifetime_history_unverified' });
+      continue;
+    }
     // Returning status is determined from actual prior purchases, not the
     // denormalized customers.orders_count or guessed RFM segment.
     const currentBuyers = [...new Set(current.map(o => o.customer_id))];
