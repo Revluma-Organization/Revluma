@@ -235,7 +235,7 @@ async function cancelOrder(store, payload) {
 }
 
 async function upsertAbandonedCart(store, payload) {
-  const externalId = String(payload.id || payload.checkout_id || payload.cart_token || '');
+  const externalId = String(payload.checkout_id || payload.id || payload.cart_token || payload.checkout_token || '');
   if (!externalId) return null;
   const customer = payload.customer ? customerData(store.platform, payload) : null;
   const dbCustomer = customer
@@ -256,6 +256,8 @@ async function upsertAbandonedCart(store, payload) {
   const existing = await prisma.abandoned_carts.findFirst({
     where: { store_id: store.id, external_cart_id: externalId },
   });
+  // Checkout webhooks describe activity, not abandonment. Wait 15 minutes after the last event.
+  // Completed checkouts remain recovered and must never be reopened by delayed events.
   const data = {
     store_id: store.id,
     customer_id: dbCustomer?.id || null,
@@ -263,9 +265,9 @@ async function upsertAbandonedCart(store, payload) {
     recovery_url: payload.abandoned_checkout_url || payload.recovery_url || null,
     cart_value: Number(payload.total_price ?? payload.total ?? 0),
     currency: payload.currency || 'USD',
-    status: payload.completed_at ? 'recovered' : 'abandoned',
-    abandoned_at: new Date(payload.created_at || Date.now()),
-    recovered_at: payload.completed_at ? new Date(payload.completed_at) : null,
+    status: payload.completed_at || existing?.status === 'recovered' ? 'recovered' : 'pending',
+    abandoned_at: existing?.abandoned_at || new Date(payload.created_at || Date.now()),
+    recovered_at: payload.completed_at ? new Date(payload.completed_at) : (existing?.recovered_at || null),
     updated_at: new Date(),
   };
   return existing
