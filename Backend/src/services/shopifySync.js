@@ -34,7 +34,9 @@ async function fetchConnection(store, query, rootName) {
     const data = await shopifyGraphql(store, query, { first: PAGE_SIZE, after: cursor });
     const connection = data[rootName];
     if (!connection) throw new Error(`shopify_${rootName}_response_missing`);
-    cursor = nextConnectionCursor(connection, cursor, rootName);
+    const nextCursor = nextConnectionCursor(connection, cursor, rootName);
+    nodes.push(...connection.nodes);
+    cursor = nextCursor;
   } while (cursor);
   return nodes;
 }
