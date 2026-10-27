@@ -159,7 +159,7 @@ exports.chat = async (req, res, next) => {
         'Detected at: ' + new Date(finding.detected_at).toISOString(),
         'Evidence: ' + evidence,
         'Explain only what the evidence supports; distinguish uncertainty and never invent causes or unsupported actions.',
-      ].join('\\n');
+      ].join('\n');
     }
 
     logger.info('rev_chat_request', {
