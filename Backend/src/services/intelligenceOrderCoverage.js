@@ -7,7 +7,7 @@
  */
 const isDate = value => value instanceof Date && Number.isFinite(value.getTime());
 const uuid = value => typeof value === 'string' &&
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const TRUSTED_SOURCE = 'shopify_verified_history_v1';
 
 function validateCoverageManifest(manifest) {
