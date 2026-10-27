@@ -85,7 +85,7 @@ export default function IntelligenceFindingsPanel() {
               <div key={key} className="flex justify-between gap-4 text-xs"><dt className="break-all text-[#667085] dark:text-[#aaa]">{key.replace(/_/g, " ")}</dt><dd className="max-w-[60%] break-words text-right font-semibold">{typeof value === "object" ? JSON.stringify(value) : String(value)}</dd></div>)}
           </dl>
           <div className="mt-8 flex flex-wrap gap-2">
-            {selected.action?.route && <button onClick={() => navigate(selected.action!.route!)} className="inline-flex items-center gap-2 rounded-lg bg-[#0868ed] px-4 py-2.5 text-xs font-bold text-white">{selected.action.label || "Investigate"} <ArrowRight className="h-3.5 w-3.5" /></button>}
+            {selected.id && <button onClick={() => navigate(`/dashboard/rev-intell?finding=${encodeURIComponent(selected.id)}`)} className="inline-flex items-center gap-2 rounded-lg bg-[#0868ed] px-4 py-2.5 text-xs font-bold text-white">{"Investigate with Rev Intell"} <ArrowRight className="h-3.5 w-3.5" /></button>}
             <button onClick={() => transition(selected.id, "acknowledged")} className="rounded-lg border border-[#aaa] px-4 py-2.5 text-xs font-semibold dark:border-[#555]">Acknowledge</button>
             <button onClick={() => transition(selected.id, "resolved")} className="inline-flex items-center gap-1 rounded-lg border border-[#aaa] px-4 py-2.5 text-xs font-semibold dark:border-[#555]"><Check className="h-3.5 w-3.5" /> Resolve</button>
             <button onClick={() => transition(selected.id, "dismissed")} className="rounded-lg border border-[#aaa] px-4 py-2.5 text-xs font-semibold dark:border-[#555]">Dismiss</button>
