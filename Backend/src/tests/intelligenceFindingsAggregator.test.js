@@ -14,6 +14,7 @@ function fakeDb(registrationFailures = 0) {
       assert.equal(args.where.store_id, 'store-1');
       return registrationFailures;
     } },
+    intelligence_order_coverage: { findFirst: async args => { assert.equal(args.where.organization_id, 'org-1'); return null; } },
     orders: { findMany: async () => { orderReads++; return []; }, groupBy: async () => [] },
     get orderReads() { return orderReads; },
   };
