@@ -618,3 +618,19 @@ exports.checkAndCreateAlerts = async (req, res, next) => {
     next(error);
   }
 };
+/**
+ * Read-only Phase 3 findings endpoint. All queries are scoped by the
+ * authenticated organization. Revenue/customer findings remain suppressed
+ * until historical data completeness is verified by the ingestion pipeline.
+ */
+exports.getIntelligenceFindings = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+    const { evaluateOrganizationFindings } = require('../services/intelligenceFindingsAggregator');
+    const result = await evaluateOrganizationFindings(prisma, org.id);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    logger.error('intelligence_findings_read_failed', { userId: req.user?.id, error: error.message });
+    next(error);
+  }
+};
