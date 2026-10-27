@@ -4,6 +4,7 @@ import { useUI } from "@/store/ui";
 import { api } from "@/lib/api";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import MorningBriefing from "@/components/dashboard/MorningBriefing";
+import IntelligenceFindingsPanel from "@/components/dashboard/IntelligenceFindingsPanel";
 import { LiveActivity } from "@/components/dashboard/LiveActivity";
 import type { KPI, ActivityItem, ChartData } from "@/data/mockOverview";
 import { Activity, ArrowRight, ArrowUpRight, BrainCircuit, CheckCircle2, ChevronRight, CircleAlert, Clock3, Mail, MessageCircle, Search, ShieldCheck, ShoppingCart, Sparkles, Store, TrendingUp, Users, Workflow, Zap } from "lucide-react";
@@ -82,6 +83,7 @@ export default function Overview() {
         </div>
         <button onClick={() => setCopilotOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#071225] px-4 py-3 text-xs font-semibold text-white transition hover:bg-[#17365d]"><BrainCircuit className="h-4 w-4 text-[#57a5ff]" /> Ask Rev Intell <ArrowUpRight className="h-3.5 w-3.5" /></button>
       </div>
+      <IntelligenceFindingsPanel />
       <div className="min-w-0" aria-label="Merchant intelligence briefing">
         <MorningBriefing />
       </div>
