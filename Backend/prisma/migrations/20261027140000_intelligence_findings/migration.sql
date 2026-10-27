@@ -40,3 +40,12 @@ CREATE TABLE IF NOT EXISTS intelligence_order_coverage (
 );
 CREATE INDEX IF NOT EXISTS idx_intelligence_order_coverage_org
   ON intelligence_order_coverage(organization_id, certified_at DESC);
+
+-- Server-side Prisma owns these tables. Supabase Data API roles receive no
+-- direct access; tenant isolation is enforced in authenticated backend routes.
+ALTER TABLE intelligence_findings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE intelligence_findings FORCE ROW LEVEL SECURITY;
+ALTER TABLE intelligence_order_coverage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE intelligence_order_coverage FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE intelligence_findings FROM anon, authenticated;
+REVOKE ALL ON TABLE intelligence_order_coverage FROM anon, authenticated;
