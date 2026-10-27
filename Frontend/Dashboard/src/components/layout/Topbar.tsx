@@ -88,8 +88,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
             />
           )}
         </button>
-
-
+      </div>
     </header>
   );
                 }
