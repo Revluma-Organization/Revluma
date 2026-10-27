@@ -47,7 +47,11 @@ exports.getKpis = async (req, res, next) => {
       prisma.abandoned_carts.count({
         where: {
           store_id: { in: storeIds },
-          status: { in: ["abandoned", "in_sequence", "recovered"] },
+          OR: [
+            { status: "abandoned", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: "pending", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: { in: ["in_sequence", "recovered"] } },
+          ],
         },
       }),
       prisma.customers.count({
@@ -56,7 +60,10 @@ exports.getKpis = async (req, res, next) => {
       prisma.abandoned_carts.aggregate({
         where: {
           store_id: { in: storeIds },
-          status: "abandoned",
+          OR: [
+            { status: "abandoned", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: "pending", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+          ],
         },
         _sum: { cart_value: true },
       }),
@@ -376,7 +383,14 @@ exports.getCartRecovery = async (req, res, next) => {
     const org = await getUserOrganization(req.user.id);
     const storeIds = org ? await getOrgStoreIds(org.id) : [];
     if (!storeIds.length) return res.status(200).json({ success: true, data: { carts: [], stats: { total_abandoned: 0, total_recovered: 0, recovery_rate: 0 } } });
-    const where = { store_id: { in: storeIds }, status: { in: ['abandoned', 'in_sequence', 'recovered', 'lost'] } };
+    // A checkout only qualifies after 15 minutes without activity. Legacy 'abandoned' rows
+    // are subject to the same gate, preventing premature display after rollout.
+    const inactivityCutoff = new Date(Date.now() - 15 * 60 * 1000);
+    const where = { store_id: { in: storeIds }, OR: [
+      { status: 'pending', updated_at: { lte: inactivityCutoff } },
+      { status: 'abandoned', updated_at: { lte: inactivityCutoff } },
+      { status: { in: ['in_sequence', 'recovered', 'lost'] } },
+    ] };
     const [carts, grouped] = await Promise.all([
       prisma.abandoned_carts.findMany({
         where, orderBy: { abandoned_at: 'desc' }, take: 200,
@@ -391,7 +405,7 @@ exports.getCartRecovery = async (req, res, next) => {
       stats: { total_abandoned: total, total_recovered: recovered, recovery_rate: total ? Number((recovered * 100 / total).toFixed(1)) : 0 },
       carts: carts.map(cart => ({ id: cart.id, customer_name: cart.customers?.full_name || cart.customers?.email || 'Guest checkout',
         cart_value: Number(cart.cart_value), currency: cart.currency || 'USD',
-        status: cart.status, abandoned_at: cart.abandoned_at })),
+        status: cart.status === 'pending' ? 'abandoned' : cart.status, abandoned_at: cart.abandoned_at })),
     } });
   } catch (error) { next(error); }
 };

@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { prisma } = require('../configs/database');
 const logger = require('../utils/logger');
 const { rfmSync } = require('./mlService');
+const { lastCheckoutActivity, nextCheckoutStatus } = require('./checkoutInactivity');
 
 function safeCompareHex(actual, expected) {
   if (!actual || !expected || actual.length !== expected.length) return false;
@@ -235,7 +236,7 @@ async function cancelOrder(store, payload) {
 }
 
 async function upsertAbandonedCart(store, payload) {
-  const externalId = String(payload.id || payload.checkout_id || payload.cart_token || '');
+  const externalId = String(payload.checkout_id || payload.id || payload.cart_token || payload.checkout_token || '');
   if (!externalId) return null;
   const customer = payload.customer ? customerData(store.platform, payload) : null;
   const dbCustomer = customer
@@ -253,9 +254,17 @@ async function upsertAbandonedCart(store, payload) {
         },
       })
     : null;
-  const existing = await prisma.abandoned_carts.findFirst({
+  return prisma.$transaction(async (tx) => {
+  // Serialize writes for the same store/checkout, even across parallel webhook workers.
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${store.id}), hashtext(${externalId}))::text AS locked`;
+  const existing = await tx.abandoned_carts.findFirst({
     where: { store_id: store.id, external_cart_id: externalId },
   });
+  // Checkout webhooks describe activity, not abandonment. Wait 15 minutes after the last event.
+  // Completed checkouts remain recovered and must never be reopened by delayed events.
+  const activityAt = lastCheckoutActivity(payload);
+  const isStaleEvent = existing?.updated_at && activityAt < existing.updated_at;
+  if (isStaleEvent && !payload.completed_at) return existing;
   const data = {
     store_id: store.id,
     customer_id: dbCustomer?.id || null,
@@ -263,14 +272,15 @@ async function upsertAbandonedCart(store, payload) {
     recovery_url: payload.abandoned_checkout_url || payload.recovery_url || null,
     cart_value: Number(payload.total_price ?? payload.total ?? 0),
     currency: payload.currency || 'USD',
-    status: payload.completed_at ? 'recovered' : 'abandoned',
-    abandoned_at: new Date(payload.created_at || Date.now()),
-    recovered_at: payload.completed_at ? new Date(payload.completed_at) : null,
-    updated_at: new Date(),
+    status: nextCheckoutStatus({ completedAt: payload.completed_at, existingStatus: existing?.status, isStale: isStaleEvent }),
+    abandoned_at: existing?.abandoned_at || new Date(payload.created_at || Date.now()),
+    recovered_at: payload.completed_at ? new Date(payload.completed_at) : (existing?.recovered_at || null),
+    updated_at: activityAt,
   };
   return existing
-    ? prisma.abandoned_carts.update({ where: { id: existing.id }, data })
-    : prisma.abandoned_carts.create({ data });
+    ? tx.abandoned_carts.update({ where: { id: existing.id }, data })
+    : tx.abandoned_carts.create({ data });
+  });
 }
 
 async function upsertCustomer(store, payload) {
