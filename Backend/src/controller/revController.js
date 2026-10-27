@@ -618,3 +618,56 @@ exports.checkAndCreateAlerts = async (req, res, next) => {
     next(error);
   }
 };
+/**
+ * Read-only Phase 3 findings endpoint. All queries are scoped by the
+ * authenticated organization. Revenue/customer findings remain suppressed
+ * until historical data completeness is verified by the ingestion pipeline.
+ */
+exports.getIntelligenceFindings = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+    const { listFindings } = require('../services/intelligenceFindingsRepository');
+    const findings = await listFindings(prisma, org.id, { status: req.query.status, limit: req.query.limit });
+    return res.status(200).json({ success: true, data: { findings } });
+  } catch (error) { next(error); }
+};
+
+exports.refreshIntelligenceFindings = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+    const { evaluateOrganizationFindings } = require('../services/intelligenceFindingsAggregator');
+    const { persistVerifiedFindings } = require('../services/intelligenceFindingsRepository');
+    const evaluated = await evaluateOrganizationFindings(prisma, org.id);
+    const persisted = await persistVerifiedFindings(prisma, org.id, evaluated.findings);
+    return res.status(200).json({ success: true, data: {
+      persisted, diagnostics: evaluated.diagnostics, evaluated_at: evaluated.evaluated_at,
+    } });
+  } catch (error) { next(error); }
+};
+
+exports.getIntelligenceFinding = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_FINDING_ID' } });
+    }
+    const finding = await prisma.intelligence_findings.findFirst({
+      where: { id: req.params.id, organization_id: org.id },
+      select: { id: true, type: true, severity: true, status: true, title: true,
+        description: true, evidence: true, detected_at: true },
+    });
+    if (!finding) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
+    return res.status(200).json({ success: true, data: { finding } });
+  } catch (error) { next(error); }
+};
+
+exports.updateIntelligenceFinding = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+    const { changeFindingStatus } = require('../services/intelligenceFindingsRepository');
+    const result = await changeFindingStatus(prisma, org.id, req.params.id, req.body?.status);
+    if (result.invalid) return res.status(400).json({ success: false, error: { code: 'INVALID_FINDING_STATUS' } });
+    if (!result.changed) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND_OR_CLOSED' } });
+    return res.status(200).json({ success: true, data: { status: req.body.status } });
+  } catch (error) { next(error); }
+};

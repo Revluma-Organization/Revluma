@@ -17,15 +17,26 @@ function money(value) {
   return Number(value?.shopMoney?.amount || 0);
 }
 
-async function fetchConnection(store, query, rootName) {
+function nextConnectionCursor(connection, previousCursor, rootName) {
+  if (!Array.isArray(connection?.nodes) || !connection.pageInfo || typeof connection.pageInfo.hasNextPage !== 'boolean') {
+    throw new Error(`shopify_${rootName}_pagination_invalid`);
+  }
+  if (connection.pageInfo.hasNextPage && (!connection.pageInfo.endCursor || connection.pageInfo.endCursor === previousCursor)) {
+    throw new Error(`shopify_${rootName}_pagination_stalled`);
+  }
+  return connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+}
+
+async function fetchConnection(store, query, rootName, fetchPage = shopifyGraphql) {
   const nodes = [];
   let cursor = null;
   do {
-    const data = await shopifyGraphql(store, query, { first: PAGE_SIZE, after: cursor });
+    const data = await fetchPage(store, query, { first: PAGE_SIZE, after: cursor });
     const connection = data[rootName];
     if (!connection) throw new Error(`shopify_${rootName}_response_missing`);
+    const nextCursor = nextConnectionCursor(connection, cursor, rootName);
     nodes.push(...connection.nodes);
-    cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    cursor = nextCursor;
   } while (cursor);
   return nodes;
 }
@@ -81,7 +92,10 @@ function orderPayload(order) {
     created_at: order.createdAt,
     cancelled_at: order.cancelledAt,
     financial_status: order.displayFinancialStatus,
+    // Shopify GraphQL currentTotalPriceSet is already adjusted for refunds.
+    // The webhook refund reconciler must not subtract them a second time.
     total_price: money(order.currentTotalPriceSet || order.totalPriceSet),
+    refunds: [],
     subtotal_price: money(order.subtotalPriceSet),
     total_discounts: money(order.totalDiscountsSet),
     currency: (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode || 'USD',
@@ -104,7 +118,25 @@ function orderPayload(order) {
   };
 }
 
+function grantedOrderScopes(data) {
+  const scopes = data?.currentAppInstallation?.accessScopes;
+  if (!Array.isArray(scopes)) throw Object.assign(new Error('Shopify did not return granted access scopes'), { code: 'SHOPIFY_SCOPES_UNVERIFIED' });
+  return new Set(scopes.map(item => item?.handle).filter(Boolean));
+}
+
+async function verifyOrderReadScope(store, graphql = shopifyGraphql) {
+  const data = await graphql(store, 'query RevlumaGrantedScopes { currentAppInstallation { accessScopes { handle } } }');
+  const scopes = grantedOrderScopes(data);
+  if (!scopes.has('read_orders')) {
+    throw Object.assign(new Error('Shopify has not granted read_orders; merchant reauthorization is required'), {
+      code: 'SHOPIFY_READ_ORDERS_NOT_GRANTED',
+    });
+  }
+  return { readOrders: true, readAllOrders: scopes.has('read_all_orders') };
+}
+
 async function syncOrders(store) {
+  await verifyOrderReadScope(store);
   const query = `
     query Orders($first: Int!, $after: String) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
@@ -259,6 +291,10 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
   let setupStage = 'marking_store_syncing';
   logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
   try {
+    // A fresh ingestion attempt invalidates any historical completeness attestation.
+    // This generic Shopify sync cannot certify complete historical access, refunds,
+    // or customer lifetime history. Never mint coverage here merely from pagination.
+    await prisma.intelligence_order_coverage.deleteMany({ where: { store_id: store.id } });
     await prisma.stores.update({
       where: { id: store.id },
       data: { status: 'syncing', updated_at: new Date() },
@@ -290,6 +326,18 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       where: { id: store.id },
       data: { status: 'active', last_synced_at: new Date(), updated_at: new Date() },
     });
+    // Certification is best-effort and strictly fail-closed. A failed proof
+    // must never block routine order reconciliation or fabricate findings.
+    try {
+      const { verifyShopifyOrderCoverage } = require('./intelligenceShopifyCoverageProducer');
+      await verifyShopifyOrderCoverage(prisma, store);
+      logger.info('shopify_order_coverage_certified', { store_id: store.id });
+    } catch (coverageError) {
+      logger.warn('shopify_order_coverage_unverified', {
+        store_id: store.id,
+        reason: coverageError.code || coverageError.name || 'verification_failed',
+      });
+    }
     const rfm = await rfmSync({ storeId: store.id, correlationId: `shopify-sync-${store.id}-${Date.now()}` });
     if (!rfm.success) logger.warn('shopify_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
     logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned });
@@ -327,6 +375,10 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
 }
 
 module.exports = {
+  grantedOrderScopes,
+  verifyOrderReadScope,
+  fetchConnection,
+  nextConnectionCursor,
   abandonedPayload,
   orderPayload,
   syncAbandonedCheckouts,
