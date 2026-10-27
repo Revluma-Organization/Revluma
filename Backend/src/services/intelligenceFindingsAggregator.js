@@ -33,7 +33,7 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
       scope,
       store: { ...store, status: store.status === 'active' ? 'connected' : store.status,
         setup_status: registrationFailures > 0 ? 'failed' : null },
-      now,
+      now, maxSyncAgeMinutes: Number.POSITIVE_INFINITY,
     });
     if (integration) {
       integration.evidence.failed_webhook_registrations = registrationFailures;
