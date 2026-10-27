@@ -134,6 +134,25 @@ exports.chat = async (req, res, next) => {
     // 2. Resolve org from JWT — never from body
     const org = await getAuthenticatedOrg(req.user.id);
 
+    // Finding context is always resolved server-side under the authenticated organization.
+    let intelligenceMessage = message;
+    if (req.body?.finding_id != null) {
+      const { validFindingId, buildFindingContext } = require('../services/findingChatContext');
+      const findingId = req.body.finding_id;
+      if (!validFindingId(findingId)) {
+        return res.status(400).json({ success: false, error: { code: 'INVALID_FINDING_ID' } });
+      }
+      const finding = await prisma.intelligence_findings.findFirst({
+        where: { id: findingId, organization_id: org.id },
+        select: { type: true, title: true, description: true, evidence: true, detected_at: true },
+      });
+      if (!finding) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
+      intelligenceMessage = buildFindingContext(message, finding);
+      if (!intelligenceMessage) return res.status(409).json({
+        success: false, error: { code: 'FINDING_EVIDENCE_UNVERIFIED' },
+      });
+    }
+
     logger.info('rev_chat_request', {
       correlationId,
       orgId:          org.id,
@@ -180,7 +199,7 @@ exports.chat = async (req, res, next) => {
     const mlResult = await mlService.orchestrate({
       organizationId: org.id,
       userId:         req.user.id,
-      message,
+      message: intelligenceMessage,
       conversationId: activeConvId,
       correlationId,
       imageBase64,
@@ -654,7 +673,7 @@ exports.getIntelligenceFinding = async (req, res, next) => {
     const finding = await prisma.intelligence_findings.findFirst({
       where: { id: req.params.id, organization_id: org.id },
       select: { id: true, type: true, severity: true, status: true, title: true,
-        description: true, evidence: true, detected_at: true },
+        description: true, evidence: true, action: true, detected_at: true },
     });
     if (!finding) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
     return res.status(200).json({ success: true, data: { finding } });
