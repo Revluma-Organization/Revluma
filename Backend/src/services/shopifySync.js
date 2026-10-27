@@ -92,10 +92,10 @@ function orderPayload(order) {
     created_at: order.createdAt,
     cancelled_at: order.cancelledAt,
     financial_status: order.displayFinancialStatus,
-    total_price: money(order.totalPriceSet),
+    total_price: money(order.currentTotalPriceSet || order.totalPriceSet),
     subtotal_price: money(order.subtotalPriceSet),
     total_discounts: money(order.totalDiscountsSet),
-    currency: order.totalPriceSet?.shopMoney?.currencyCode || 'USD',
+    currency: (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode || 'USD',
     customer: order.customer ? {
       id: externalId(order.customer.id),
       email: order.customer.email,
@@ -115,12 +115,31 @@ function orderPayload(order) {
   };
 }
 
+function grantedOrderScopes(data) {
+  const scopes = data?.currentAppInstallation?.accessScopes;
+  if (!Array.isArray(scopes)) throw Object.assign(new Error('Shopify did not return granted access scopes'), { code: 'SHOPIFY_SCOPES_UNVERIFIED' });
+  return new Set(scopes.map(item => item?.handle).filter(Boolean));
+}
+
+async function verifyOrderReadScope(store, graphql = shopifyGraphql) {
+  const data = await graphql(store, 'query RevlumaGrantedScopes { currentAppInstallation { accessScopes { handle } } }');
+  const scopes = grantedOrderScopes(data);
+  if (!scopes.has('read_orders')) {
+    throw Object.assign(new Error('Shopify has not granted read_orders; merchant reauthorization is required'), {
+      code: 'SHOPIFY_READ_ORDERS_NOT_GRANTED',
+    });
+  }
+  return { readOrders: true, readAllOrders: scopes.has('read_all_orders') };
+}
+
 async function syncOrders(store) {
+  await verifyOrderReadScope(store);
   const query = `
     query Orders($first: Int!, $after: String) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         nodes {
           id createdAt cancelledAt displayFinancialStatus discountCodes
+          currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
           subtotalPriceSet { shopMoney { amount currencyCode } }
           totalDiscountsSet { shopMoney { amount currencyCode } }
@@ -337,6 +356,8 @@ async function syncShopifyStore(store) {
 }
 
 module.exports = {
+  grantedOrderScopes,
+  verifyOrderReadScope,
   fetchConnection,
   nextConnectionCursor,
   abandonedPayload,
