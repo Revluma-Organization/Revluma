@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS intelligence_order_coverage (
   coverage_start timestamptz NOT NULL,
   coverage_end timestamptz NOT NULL,
   certified_at timestamptz NOT NULL DEFAULT now(),
+  customer_lifetime_verified boolean NOT NULL DEFAULT false,
   source varchar(60) NOT NULL,
   source_run_id varchar(120) NOT NULL,
   CHECK (coverage_end > coverage_start)
