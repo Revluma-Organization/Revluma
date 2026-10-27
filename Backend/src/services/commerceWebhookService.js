@@ -90,11 +90,41 @@ async function recalculateCustomerTotals(tx, customerId) {
   });
 }
 
+/**
+ * Shopify orders/update webhooks retain the original total_price after refunds.
+ * Refund transactions are authoritative for cash refunded; ignore pending or
+ * failed transactions and do not subtract the order's current_total_price twice.
+ * Return null for malformed refund evidence rather than inventing net revenue.
+ */
+function shopifyNetOrderTotal(payload) {
+  const gross = Number(payload.total_price);
+  if (!Number.isFinite(gross) || gross < 0) return null;
+  if (!Array.isArray(payload.refunds) || payload.refunds.length === 0) return gross;
+  let refunded = 0;
+  for (const refund of payload.refunds) {
+    if (!Array.isArray(refund.transactions)) return null;
+    for (const transaction of refund.transactions) {
+      if (String(transaction.kind || '').toLowerCase() !== 'refund') continue;
+      if (String(transaction.status || '').toLowerCase() !== 'success') continue;
+      const amount = Number(transaction.amount);
+      if (!Number.isFinite(amount) || amount < 0) return null;
+      refunded += amount;
+    }
+  }
+  return Math.max(0, Math.round((gross - refunded) * 100) / 100);
+}
+
 async function upsertOrder(store, provider, payload) {
   const customer = customerData(provider, payload);
   const orderExternalId = String(payload.id || payload.order_id);
   const orderDate = new Date(payload.created_at || payload.date_created || Date.now());
-  const total = Number(payload.total_price ?? payload.total ?? 0);
+  const calculated = provider === 'shopify' ? shopifyNetOrderTotal(payload) : Number(payload.total_price ?? payload.total ?? 0);
+  if (calculated === null || !Number.isFinite(calculated)) {
+    const error = new Error('Order financial totals cannot be verified');
+    error.code = 'ORDER_FINANCIAL_TOTAL_UNVERIFIED';
+    throw error;
+  }
+  const total = calculated;
   const subtotal = Number(payload.subtotal_price ?? payload.subtotal ?? total);
   const discountAmount = Math.max(0, Number(payload.total_discounts ?? payload.discount_total ?? 0));
   const discountPct = subtotal > 0 ? Math.min(100, (discountAmount / subtotal) * 100) : 0;
@@ -343,6 +373,7 @@ async function markDelivery(deliveryId, status, errorMessage = null) {
 }
 
 module.exports = {
+  shopifyNetOrderTotal,
   findStore,
   claimDelivery,
   markDelivery,
