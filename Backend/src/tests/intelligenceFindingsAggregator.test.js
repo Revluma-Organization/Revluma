@@ -23,7 +23,7 @@ test('findings never query order history without verified completeness', async (
   const result = await evaluateOrganizationFindings(db, 'org-1', { now: '2026-10-27T11:00:00Z' });
   assert.equal(db.orderReads, 0);
   assert.equal(result.findings.length, 0);
-  assert.equal(result.diagnostics[0].status, 'insufficient_sync_verification');
+  assert.equal(result.diagnostics[0].status, 'order_history_completeness_unverified');
 });
 test('failed webhook produces evidence-backed integration finding', async () => {
   const db = fakeDb(8);
