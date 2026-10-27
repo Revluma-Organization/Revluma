@@ -526,6 +526,18 @@ def compose_needs_store(message: str, understanding, history_text: str) -> str:
         return _static_needs_store(understanding)
 
 
+def compose_store_sync_pending(message: str, understanding, history_text: str) -> str:
+    """Be honest when a store is connected but its analytics state is not usable."""
+    return (
+        "I can see that Revluma has a store connection, but the initial sync or "
+        "business-data refresh has not completed successfully. I don't have reliable "
+        "store numbers to answer this from yet, so I won't guess. Open Integrations, "
+        "check the Shopify setup status, and use Retry setup. If it fails again, the "
+        "team needs to inspect the sync and webhook errors before Rev can give you "
+        "store-specific answers."
+    )
+
+
 def _static_needs_store(understanding) -> str:
     d = understanding.domains[0] if understanding.domains else "revenue"
     table = {
