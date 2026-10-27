@@ -654,7 +654,7 @@ exports.getIntelligenceFinding = async (req, res, next) => {
     const finding = await prisma.intelligence_findings.findFirst({
       where: { id: req.params.id, organization_id: org.id },
       select: { id: true, type: true, severity: true, status: true, title: true,
-        description: true, evidence: true, detected_at: true },
+        description: true, evidence: true, action: true, detected_at: true },
     });
     if (!finding) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
     return res.status(200).json({ success: true, data: { finding } });
