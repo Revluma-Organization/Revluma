@@ -127,6 +127,7 @@ model organizations {
 
   @@index([owner_id], map: "idx_organizations_owner")
   intelligence_findings intelligence_findings[]
+  intelligence_order_coverage intelligence_order_coverage?
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -276,6 +277,7 @@ model stores {
 
   @@unique([organization_id, shop_domain], map: "uq_stores_org_domain")
   intelligence_findings intelligence_findings[]
+  intelligence_order_coverage intelligence_order_coverage?
 }
 
 /// Shopper profile synced from Shopify or WooCommerce.
@@ -1487,4 +1489,18 @@ model intelligence_findings {
   @@unique([organization_id, dedupe_key])
   @@index([organization_id, status, detected_at(sort: Desc)], map: "idx_intelligence_findings_org_status")
   @@index([store_id, detected_at(sort: Desc)], map: "idx_intelligence_findings_store")
+}
+
+model intelligence_order_coverage {
+  store_id        String   @id @db.Uuid
+  organization_id String   @db.Uuid
+  coverage_start  DateTime @db.Timestamptz(6)
+  coverage_end    DateTime @db.Timestamptz(6)
+  certified_at    DateTime @default(now()) @db.Timestamptz(6)
+  source          String   @db.VarChar(60)
+  source_run_id   String   @db.VarChar(120)
+  stores          stores @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  organizations   organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  @@index([organization_id, certified_at(sort: Desc)], map: "idx_intelligence_order_coverage_org")
 }
