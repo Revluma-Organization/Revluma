@@ -3,11 +3,10 @@ const { detectIntegrationFailure, detectRevenueChange, detectReturningCustomerCh
 
 const DAY = 86400000;
 const windowIso = ms => new Date(ms).toISOString();
-const sameCurrency = rows => [...new Set(rows.map(row => row.currency || 'USD'))];
+const sameCurrency = rows => [...new Set(rows.map(row => row.currency))];
 const safeNumber = value => Number(value);
 const verifiedSync = store => store.status === 'connected' &&
-  store.last_synced_at && !['failed', 'pending', 'running'].includes(store.sync_status) &&
-  !['failed', 'pending', 'running'].includes(store.setup_status);
+  store.last_synced_at && store.sync_status === 'succeeded' && store.setup_status === 'succeeded';
 
 /**
  * Read-only candidate evaluation. Never assumes that a connected store has
@@ -46,7 +45,7 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
     }
     // Shopify API coverage may be partial even after sync success. Never
     // infer historical completeness from order counts or connection status.
-    if (options.historyVerified !== true) {
+    if (true) { // No durable source-of-truth historical coverage attestation exists yet.
       diagnostics.push({ storeId: store.id, status: 'order_history_completeness_unverified' });
       continue;
     }
