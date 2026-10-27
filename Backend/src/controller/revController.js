@@ -627,10 +627,26 @@ exports.getIntelligenceFindings = async (req, res, next) => {
   try {
     const org = await getAuthenticatedOrg(req.user.id);
     const { evaluateOrganizationFindings } = require('../services/intelligenceFindingsAggregator');
-    const result = await evaluateOrganizationFindings(prisma, org.id);
-    return res.status(200).json({ success: true, data: result });
+    const { persistVerifiedFindings, listFindings } = require('../services/intelligenceFindingsRepository');
+    const evaluated = await evaluateOrganizationFindings(prisma, org.id);
+    await persistVerifiedFindings(prisma, org.id, evaluated.findings);
+    const findings = await listFindings(prisma, org.id, { status: req.query.status, limit: req.query.limit });
+    return res.status(200).json({ success: true, data: {
+      findings, diagnostics: evaluated.diagnostics, evaluated_at: evaluated.evaluated_at,
+    } });
   } catch (error) {
     logger.error('intelligence_findings_read_failed', { userId: req.user?.id, error: error.message });
     next(error);
   }
+};
+
+exports.updateIntelligenceFinding = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id);
+    const { changeFindingStatus } = require('../services/intelligenceFindingsRepository');
+    const result = await changeFindingStatus(prisma, org.id, req.params.id, req.body?.status);
+    if (result.invalid) return res.status(400).json({ success: false, error: { code: 'INVALID_FINDING_STATUS' } });
+    if (!result.changed) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND_OR_CLOSED' } });
+    return res.status(200).json({ success: true, data: { status: req.body.status } });
+  } catch (error) { next(error); }
 };
