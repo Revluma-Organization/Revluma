@@ -371,3 +371,27 @@ function formatEventTag(eventType) {
   if (eventType === "email_capture") return "subscribe";
   return "campaign";
 }
+exports.getCartRecovery = async (req, res, next) => {
+  try {
+    const org = await getUserOrganization(req.user.id);
+    const storeIds = org ? await getOrgStoreIds(org.id) : [];
+    if (!storeIds.length) return res.status(200).json({ success: true, data: { carts: [], stats: { total_abandoned: 0, total_recovered: 0, recovery_rate: 0 } } });
+    const where = { store_id: { in: storeIds }, status: { in: ['abandoned', 'in_sequence', 'recovered', 'lost'] } };
+    const [carts, grouped] = await Promise.all([
+      prisma.abandoned_carts.findMany({
+        where, orderBy: { abandoned_at: 'desc' }, take: 200,
+        select: { id: true, cart_value: true, currency: true, status: true, abandoned_at: true,
+          customers: { select: { full_name: true, email: true } } },
+      }),
+      prisma.abandoned_carts.groupBy({ by: ['status'], where, _count: { _all: true } }),
+    ]);
+    const total = grouped.reduce((sum, row) => sum + row._count._all, 0);
+    const recovered = grouped.find(row => row.status === 'recovered')?._count._all || 0;
+    return res.status(200).json({ success: true, data: {
+      stats: { total_abandoned: total, total_recovered: recovered, recovery_rate: total ? Number((recovered * 100 / total).toFixed(1)) : 0 },
+      carts: carts.map(cart => ({ id: cart.id, customer_name: cart.customers?.full_name || cart.customers?.email || 'Guest checkout',
+        cart_value: Number(cart.cart_value), currency: cart.currency || 'USD',
+        status: cart.status, abandoned_at: cart.abandoned_at })),
+    } });
+  } catch (error) { next(error); }
+};
