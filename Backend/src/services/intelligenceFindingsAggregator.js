@@ -5,8 +5,7 @@ const DAY = 86400000;
 const windowIso = ms => new Date(ms).toISOString();
 const sameCurrency = rows => [...new Set(rows.map(row => row.currency))];
 const safeNumber = value => Number(value);
-const verifiedSync = store => store.status === 'connected' &&
-  store.last_synced_at && store.sync_status === 'succeeded' && store.setup_status === 'succeeded';
+const verifiedSync = store => store.status === 'connected' && Boolean(store.last_synced_at);
 
 /**
  * Read-only candidate evaluation. Never assumes that a connected store has
