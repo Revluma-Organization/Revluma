@@ -17,6 +17,16 @@ function money(value) {
   return Number(value?.shopMoney?.amount || 0);
 }
 
+function nextConnectionCursor(connection, previousCursor, rootName) {
+  if (!Array.isArray(connection?.nodes) || !connection.pageInfo || typeof connection.pageInfo.hasNextPage !== 'boolean') {
+    throw new Error(`shopify_${rootName}_pagination_invalid`);
+  }
+  if (connection.pageInfo.hasNextPage && (!connection.pageInfo.endCursor || connection.pageInfo.endCursor === previousCursor)) {
+    throw new Error(`shopify_${rootName}_pagination_stalled`);
+  }
+  return connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+}
+
 async function fetchConnection(store, query, rootName) {
   const nodes = [];
   let cursor = null;
@@ -24,14 +34,7 @@ async function fetchConnection(store, query, rootName) {
     const data = await shopifyGraphql(store, query, { first: PAGE_SIZE, after: cursor });
     const connection = data[rootName];
     if (!connection) throw new Error(`shopify_${rootName}_response_missing`);
-    if (!Array.isArray(connection.nodes) || !connection.pageInfo || typeof connection.pageInfo.hasNextPage !== 'boolean') {
-      throw new Error(`shopify_${rootName}_pagination_invalid`);
-    }
-    nodes.push(...connection.nodes);
-    if (connection.pageInfo.hasNextPage && (!connection.pageInfo.endCursor || connection.pageInfo.endCursor === cursor)) {
-      throw new Error(`shopify_${rootName}_pagination_stalled`);
-    }
-    cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+    cursor = nextConnectionCursor(connection, cursor, rootName);
   } while (cursor);
   return nodes;
 }
@@ -332,6 +335,7 @@ async function syncShopifyStore(store) {
 }
 
 module.exports = {
+  nextConnectionCursor,
   abandonedPayload,
   orderPayload,
   syncAbandonedCheckouts,
