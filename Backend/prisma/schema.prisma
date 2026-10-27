@@ -126,6 +126,7 @@ model organizations {
   subscriptions                     subscriptions?
 
   @@index([owner_id], map: "idx_organizations_owner")
+  intelligence_findings intelligence_findings[]
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -274,6 +275,7 @@ model stores {
   sensitivity_training_observations sensitivity_training_observations[]
 
   @@unique([organization_id, shop_domain], map: "uq_stores_org_domain")
+  intelligence_findings intelligence_findings[]
 }
 
 /// Shopper profile synced from Shopify or WooCommerce.
@@ -1460,4 +1462,29 @@ model sensitivity_training_observations {
   @@unique([customer_id, decision_at])
   @@index([store_id, observation_due_at])
   @@index([finalized_at])
+}
+
+model intelligence_findings {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  store_id        String    @db.Uuid
+  type            String    @db.VarChar(80)
+  severity        String    @db.VarChar(16)
+  status          String    @default("open") @db.VarChar(20)
+  title           String
+  description     String
+  evidence        Json
+  action          Json?
+  dedupe_key      String
+  detected_at     DateTime  @default(now()) @db.Timestamptz(6)
+  acknowledged_at DateTime? @db.Timestamptz(6)
+  resolved_at     DateTime? @db.Timestamptz(6)
+  dismissed_at    DateTime? @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
+  organizations   organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  stores          stores @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@unique([organization_id, dedupe_key])
+  @@index([organization_id, status, detected_at(sort: Desc)], map: "idx_intelligence_findings_org_status")
+  @@index([store_id, detected_at(sort: Desc)], map: "idx_intelligence_findings_store")
 }
