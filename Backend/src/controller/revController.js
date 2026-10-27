@@ -552,18 +552,11 @@ exports.getMorningBriefing = async (req, res, next) => {
   try {
     const org = await getAuthenticatedOrg(req.user.id);
 
-    const result = await mlService.generateMorningBriefings({
-      organizationId: org.id,
-      correlationId,
+    const briefing = await prisma.morning_briefings.findFirst({
+      where: { organization_id: org.id },
+      orderBy: { generated_at: 'desc' },
     });
-    if (!result.success) {
-      return res.status(500).json({
-        success: false,
-        error: { code: 'BRIEFING_UNAVAILABLE', message: 'Morning briefing could not be generated.' },
-      });
-    }
-
-    return res.status(200).json({ success: true, data: result.data });
+    return res.status(200).json({ success: true, data: briefing || null });
   } catch (error) {
     logger.error('get_morning_briefing_failed', {
       correlationId,
