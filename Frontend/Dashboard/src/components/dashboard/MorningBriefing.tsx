@@ -116,7 +116,9 @@ export default function MorningBriefing() {
     const cached = sessionStorage.getItem(key);
     if (cached) {
       try {
-        setBriefing(JSON.parse(cached));
+        const parsed = JSON.parse(cached);
+        if (!parsed || typeof parsed.greeting !== "string" || !Array.isArray(parsed.yesterday_in_numbers)) throw new Error("Invalid briefing cache");
+        setBriefing(parsed);
         setLoading(false);
         return;
       } catch { /* ignore */ }
@@ -125,7 +127,7 @@ export default function MorningBriefing() {
     (api as any).get("/rev/briefing")
       .then((res: any) => {
         const b = res?.data?.data || res?.data;
-        if (b) {
+        if (b && typeof b.greeting === "string" && Array.isArray(b.yesterday_in_numbers)) {
           setBriefing(b);
           sessionStorage.setItem(key, JSON.stringify(b));
         } else {
