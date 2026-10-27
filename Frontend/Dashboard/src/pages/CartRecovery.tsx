@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ShoppingCart, TrendingUp, RefreshCw, PackageOpen } from "lucide-react";
 import { DESIGN_TOKENS } from "@/lib/DesignConstants";
@@ -7,13 +7,15 @@ import { DESIGN_TOKENS } from "@/lib/DesignConstants";
 interface CartRow {
   id: string;
   customer_name: string;
-  cart_value: string;
-  status: "abandoned" | "recovered" | "lost";
+  cart_value: number;
+  currency: string;
+  status: "abandoned" | "in_sequence" | "recovered" | "lost";
   abandoned_at: string;
 }
 
 const STATUS_STYLE: Record<CartRow["status"], { label: string; color: string; bg: string }> = {
   abandoned: { label: "Abandoned",  color: "hsl(var(--amber))", bg: "hsl(var(--amber) / 0.10)" },
+  in_sequence: { label: "In sequence", color: "hsl(var(--amber))", bg: "hsl(var(--amber) / 0.10)" },
   recovered: { label: "Recovered",  color: "hsl(var(--accent))", bg: "hsl(var(--accent) / 0.10)" },
   lost:      { label: "Lost",       color: "hsl(var(--red))",   bg: "hsl(var(--red)   / 0.10)" },
 };
@@ -28,14 +30,29 @@ export default function CartRecovery() {
   const [stats, setStats] = useState<Record<string, string> | null>(null);
   const [carts, setCarts] = useState<CartRow[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setStats({ total_abandoned: "0", total_recovered: "0", recovery_rate: "0%" });
-      setCarts([]);
-      setLoading(false);
-    }, 1500);
-    return () => clearTimeout(timer);
+    let active = true;
+    const load = async () => {
+      try {
+        const response = await api.get<{ success: boolean; data: { stats: { total_abandoned: number; total_recovered: number; recovery_rate: number }; carts: CartRow[] } }>("/dashboard/cart-recovery");
+        if (!active) return;
+        const { stats: nextStats, carts: nextCarts } = response.data.data;
+        setStats({ total_abandoned: String(nextStats.total_abandoned), total_recovered: String(nextStats.total_recovered), recovery_rate: nextStats.recovery_rate + "%" });
+        setCarts(nextCarts);
+        setError(null);
+        setUpdatedAt(new Date());
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : "Unable to load cart recovery data");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void load();
+    const interval = window.setInterval(() => { void load(); }, 15000);
+    return () => { active = false; window.clearInterval(interval); };
   }, []);
 
   return (
@@ -45,6 +62,9 @@ export default function CartRecovery() {
         title="Cart Recovery"
         subtitle="Recover abandoned carts and win back lost revenue."
       />
+
+      {error && <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">Live data unavailable: {error}</div>}
+      {updatedAt && <p className="text-xs text-t3">Live data · updated {updatedAt.toLocaleTimeString()} · refreshes every 15 seconds</p>}
 
       {/* Stat tiles */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -118,11 +138,9 @@ export default function CartRecovery() {
                       </div>
                       <h4 className={DESIGN_TOKENS.emptyState.title}>No abandoned carts yet</h4>
                       <p className={DESIGN_TOKENS.emptyState.description}>
-                        Once you connect your store, Revluma will automatically start tracking and recovering abandoned carts.
+                        No abandoned checkouts have been recorded for your connected stores yet.
                       </p>
-                      <button className="bg-[#007FFF] text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-[#007FFF]/90 transition-colors mt-4 inline-flex">
-                        Connect your store
-                      </button>
+
                     </div>
                   </td>
                 </tr>
@@ -132,7 +150,7 @@ export default function CartRecovery() {
                 return (
                   <tr key={c.id} className="text-[0.78rem] text-t1">
                     <td className="py-3 pl-1 font-medium">{c.customer_name}</td>
-                    <td className="py-3 text-right tabular-nums font-semibold">{c.cart_value}</td>
+                    <td className="py-3 text-right tabular-nums font-semibold">{new Intl.NumberFormat("en-US", { style: "currency", currency: c.currency || "USD" }).format(c.cart_value)}</td>
                     <td className="py-3 text-center">
                       <span
                         className="inline-block rounded-full px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide"
@@ -141,13 +159,9 @@ export default function CartRecovery() {
                         {s.label}
                       </span>
                     </td>
-                    <td className="py-3 text-right text-t3">{c.abandoned_at}</td>
+                    <td className="py-3 text-right text-t3">{new Date(c.abandoned_at).toLocaleString()}</td>
                     <td className="py-3 pr-1 text-right">
-                      <button
-                        className="rounded-md border border-border bg-glass/[0.035] px-2.5 py-1 text-[0.72rem] font-medium text-t2 transition-colors hover:border-border-md hover:text-t1"
-                      >
-                        Recover
-                      </button>
+                      <span className="text-t3">—</span>
                     </td>
                   </tr>
                 );
