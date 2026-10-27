@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useUI } from "@/store/ui";
 import { api } from "@/lib/api";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import MorningBriefing from "@/components/dashboard/MorningBriefing";
@@ -19,7 +18,6 @@ const money = (value: number, currency = "USD") => { try { return new Intl.Numbe
 
 export default function Overview() {
   const navigate = useNavigate();
-  const { setCopilotOpen } = useUI();
   const [firstName, setFirstName] = useState("");
   const [kpis, setKpis] = useState<KPI[]>([]);
   const [chart, setChart] = useState<ChartData | null>(null);
@@ -81,7 +79,7 @@ export default function Overview() {
           <h1 className="text-[clamp(1.7rem,2.6vw,2.3rem)] font-extrabold tracking-[-0.045em] text-[#0b1426] dark:text-[#f3f7ff]">{greeting}{firstName ? `, ${firstName}` : ""}</h1>
           <p className="mt-1.5 max-w-3xl text-[13px] leading-6 text-[#69758b] dark:text-[#a6b8d4]">{!connected ? "Connect your store to begin monitoring business activity." : needsAttention ? "Your store connection needs attention. Review its setup before relying on new data." : "Here's your store's current operational picture. Explore the evidence behind each reported figure."}</p>
         </div>
-        <button onClick={() => setCopilotOpen(true)} className="inline-flex items-center gap-2 rounded-xl bg-[#071225] px-4 py-3 text-xs font-semibold text-white transition hover:bg-[#17365d]"><BrainCircuit className="h-4 w-4 text-[#57a5ff]" /> Ask Rev Intell <ArrowUpRight className="h-3.5 w-3.5" /></button>
+        <button onClick={() => navigate("/dashboard/rev-intell")} className="inline-flex items-center gap-2 rounded-xl bg-[#071225] px-4 py-3 text-xs font-semibold text-white transition hover:bg-[#17365d]"><BrainCircuit className="h-4 w-4 text-[#57a5ff]" /> Ask Rev Intell <ArrowUpRight className="h-3.5 w-3.5" /></button>
       </div>
       <IntelligenceFindingsPanel />
       <div className="min-w-0" aria-label="Merchant intelligence briefing">
@@ -155,7 +153,7 @@ export default function Overview() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#edf0f5] dark:border-[#303030] px-5 py-4"><div><h2 className="text-sm font-extrabold">Recent checkout activity</h2><p className="mt-1 text-[11px] text-[#8190a4] dark:text-[#a5b7d1]">Live records · classification may differ from Shopify</p></div><button onClick={() => navigate("/dashboard/cart-recovery")} className="inline-flex items-center gap-1 text-xs font-bold text-[#0868ed]">View all <ArrowRight className="h-3.5 w-3.5" /></button></div>
         <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-[#fafbfe] dark:bg-[#191919] text-[10px] uppercase tracking-wider text-[#8995a7] dark:text-[#a5b7d1]"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Cart value</th><th className="px-5 py-3">Classification</th><th className="px-5 py-3">Recorded at</th><th className="px-5 py-3">Action</th></tr></thead><tbody className="divide-y divide-[#edf0f5] dark:divide-[#303030]">{carts.slice(0, 5).map(row => <tr key={row.id} className="hover:bg-[#fafcff] dark:hover:bg-[#242424]"><td className="px-5 py-3 font-semibold text-[#26334b] dark:text-[#e7eefc]">{row.customer_name || "Guest checkout"}</td><td className="px-5 py-3 font-bold">{money(Number(row.cart_value), row.currency || "USD")}</td><td className="px-5 py-3"><span className="rounded-full bg-[#fff2df] dark:bg-[#29231b] px-2.5 py-1 text-[10px] font-bold capitalize text-[#9a5d0a] dark:text-[#f5c178]">{row.status.replace(/_/g, " ")}</span></td><td className="px-5 py-3 text-[#78869b] dark:text-[#a5b7d1]">{new Date(row.abandoned_at).toLocaleString()}</td><td className="px-5 py-3"><button onClick={() => navigate("/dashboard/cart-recovery")} className="rounded-lg border border-[#bfd7ff] px-3 py-1.5 font-semibold text-[#0868ed] hover:bg-[#eff6ff] dark:hover:bg-[#242424]">Review →</button></td></tr>)}{!loading && carts.length === 0 && <tr><td colSpan={5} className="px-5 py-10 text-center text-[#8190a4] dark:text-[#a5b7d1]">No checkout records available yet.</td></tr>}</tbody></table></div>
       </section>
-      <button onClick={() => setCopilotOpen(true)} className={`${card} flex w-full flex-wrap items-center justify-between gap-4 p-5 text-left transition hover:border-[#b7d2ff] dark:border-[#333333]`}><span className="flex items-center gap-3"><span className={iconBox}><BrainCircuit className="h-5 w-5" /></span><span><span className="block text-sm font-extrabold">Ask Rev Intell about your business</span><span className="mt-1 block text-xs text-[#8190a4] dark:text-[#a5b7d1]">Investigate the data available from your connected store.</span></span></span><span className="flex items-center gap-2 text-xs font-bold text-[#0868ed]">Start exploring <ArrowRight className="h-4 w-4" /></span></button>
+      <button onClick={() => navigate("/dashboard/rev-intell")} className={`${card} flex w-full flex-wrap items-center justify-between gap-4 p-5 text-left transition hover:border-[#b7d2ff] dark:border-[#333333]`}><span className="flex items-center gap-3"><span className={iconBox}><BrainCircuit className="h-5 w-5" /></span><span><span className="block text-sm font-extrabold">Ask Rev Intell about your business</span><span className="mt-1 block text-xs text-[#8190a4] dark:text-[#a5b7d1]">Investigate the data available from your connected store.</span></span></span><span className="flex items-center gap-2 text-xs font-bold text-[#0868ed]">Start exploring <ArrowRight className="h-4 w-4" /></span></button>
     </div>
   );
 }
