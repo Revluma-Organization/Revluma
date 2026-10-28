@@ -42,7 +42,7 @@ def test_provider_failure_does_not_return_misleading_small_talk(monkeypatch):
 
 def test_known_greeting_still_has_safe_fallback():
     u = SimpleNamespace(intent="greeting")
-    assert responder._static_conversational("hello", u).startswith("Hey.")
+    assert "temporarily unable" in responder._static_conversational("hello", u)
 
 
 def test_analysis_validator_accepts_zero_optional_actions():
