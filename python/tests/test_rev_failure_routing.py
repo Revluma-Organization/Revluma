@@ -58,3 +58,23 @@ def test_analysis_validator_accepts_zero_optional_actions():
     assert _validate_analysis_response(
         response, evidence_values=set(), known_entities=set()
     ) == []
+
+
+def test_web_research_does_not_forward_private_history_or_memories(monkeypatch):
+    captured = []
+    from src.agents import model_gateway
+    def fake_generate(prompt, **kwargs):
+        captured.append((prompt, kwargs))
+        return "Verified public research."
+    monkeypatch.setattr(model_gateway, "generate", fake_generate)
+    reply = responder.compose_web_research(
+        "What is the latest ecommerce trend?",
+        SimpleNamespace(intent="research"),
+        "PRIVATE ORDER 12345: customer@example.com",
+        [{"memory_key": "customer", "memory_value": "private-secret"}],
+    )
+    assert reply == "Verified public research."
+    assert "PRIVATE ORDER" not in captured[0][0]
+    assert "customer@example.com" not in captured[0][0]
+    assert "private-secret" not in captured[0][0]
+    assert captured[0][1]["web_search"] is True
