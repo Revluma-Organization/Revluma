@@ -503,3 +503,12 @@ def test_store_connection_fail_closed_on_missing_token_or_db_failure():
     assert "not verified" in orchestrator_module._verified_store_connection_answer("org-123", db)
     db.execute.side_effect = RuntimeError("database offline")
     assert "could not verify" in orchestrator_module._verified_store_connection_answer("org-123", db)
+
+
+def test_general_capability_question_never_requires_llm_routing():
+    detect = orchestrator_module._is_general_capability_question
+    assert detect("Hi Rev, can you introduce yourself and explain how you can help me manage my Shopify store?")
+    assert detect("explain how you can help me manage my Shopify store?")
+    assert detect("What can you do?")
+    assert not detect("Is my store connected to you?")
+    assert not detect("Why did my Shopify store revenue drop?")
