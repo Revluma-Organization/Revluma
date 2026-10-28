@@ -615,6 +615,30 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
 
     # ── 1. Conversation context ───────────────────────────────────────────────
     conv_id, is_new = _get_or_create_conversation(organization_id, user_id, conversation_id, db)
+    # Deterministic merchant questions must never wait on Gemini intent classification.
+    # A provider ReadTimeout previously exhausted the Node request budget before
+    # these routes could run, producing 503 for a simple connection-status lookup.
+    if str(trigger_type or "conversation").lower() == "conversation" and (
+        _is_store_connection_question(message) or _is_general_capability_question(message)
+    ):
+        is_connection = _is_store_connection_question(message)
+        answer = (_verified_store_connection_answer(organization_id, db) if is_connection
+                  else responder.compose_capability(_has_store(organization_id, db)))
+        response_type = "direct_answer" if is_connection else "capability"
+        _persist_messages(
+            conv_id, organization_id, user_id, message, answer, response_type,
+            None, db, title_hint=message if is_new else None,
+            orchestrator_mode="Operator" if is_connection else "Teacher",
+            correlation_id=correlation_id,
+        )
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type=response_type, text=answer,
+            intent="store_connection" if is_connection else "capability",
+            orchestrator_mode="Operator" if is_connection else "Teacher",
+            agents_used=[], correlation_id=correlation_id,
+        )
+
     safe_context_payload = _normalize_context_payload(context_payload or {}) or {}
     history      = _load_history(conv_id, db, MAX_HISTORY_TURNS)
     history_text = _format_history(history)
