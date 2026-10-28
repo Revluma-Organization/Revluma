@@ -699,6 +699,9 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             correlation_id=correlation_id,
         )
 
+    if str(trigger_type or "conversation").lower() == "conversation" and _is_store_connection_question(message):
+        return finish("direct_answer", _verified_store_connection_answer(organization_id, db))
+
     # ── 3. Preference statement: write memory, acknowledge ────────────────────
     if _is_ad_evaluation_request(
         u,
@@ -965,6 +968,41 @@ def _state_usable(bs) -> bool:
             and bs.computation_status != "failed"
             and bs.revenue_today is not None)
 
+
+def _is_store_connection_question(message: str) -> bool:
+    normalized = re.sub(r"\s+", " ", message.lower().strip())
+    return bool(re.search(r"\b(?:is|are|has|have|check|verify|confirm|tell me|show me)\b", normalized)
+        and re.search(r"\b(?:my|our)\s+(?:(?:shopify|woocommerce|online)\s+)?store\b", normalized)
+        and re.search(r"\b(?:connect(?:ed|ion)?|link(?:ed)?|integrat(?:ed|ion)|sync(?:ed|ing)?|installed)\b", normalized))
+
+
+def _verified_store_connection_answer(org_id: str, db) -> str:
+    """Use authenticated first-party records only; never guess connection state."""
+    try:
+        rows = db.execute(text(
+            "SELECT platform, shop_domain, status, last_synced_at, "
+            "CASE WHEN access_token IS NOT NULL AND access_token <> '' THEN TRUE ELSE FALSE END AS has_token "
+            "FROM stores WHERE organization_id = :o ORDER BY updated_at DESC LIMIT 10"
+        ), {"o": org_id}).mappings().all()
+    except Exception:
+        logger.error("rev_store_connection_lookup_failed")
+        return "I could not verify your store connection right now. Please check Stores and try again."
+    if not rows:
+        return "I cannot find a connected store for your organization. Open Stores to connect one."
+    details = []
+    for row in rows:
+        platform = str(row.get("platform") or "Store").capitalize()
+        domain = str(row.get("shop_domain") or "").strip()
+        status = str(row.get("status") or "unknown").lower()
+        connected = status in {"active", "connected", "syncing"} and bool(row.get("has_token"))
+        label = f"{platform} ({domain})" if domain else platform
+        if connected:
+            sync = (f"Last synced: {row['last_synced_at']}." if row.get("last_synced_at")
+                    else "Initial sync not yet confirmed.")
+            details.append(f"{label}: connected in Revluma. {sync}")
+        else:
+            details.append(f"{label}: connection not verified (status: {status}). Check Stores to complete setup.")
+    return "\n".join(details)
 
 def _has_store(org_id: str, db) -> bool:
     try:
