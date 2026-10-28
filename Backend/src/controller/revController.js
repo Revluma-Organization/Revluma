@@ -195,11 +195,14 @@ exports.chat = async (req, res, next) => {
       )
     `;
 
+    const merchantContext = await require('../services/revMerchantContext').buildMerchantContext(prisma, org.id);
+
     // 6. Call Python via mlService
     const mlResult = await mlService.orchestrate({
       organizationId: org.id,
       userId:         req.user.id,
       message: intelligenceMessage,
+      contextPayload: { merchant_context: merchantContext },
       conversationId: activeConvId,
       correlationId,
       imageBase64,
