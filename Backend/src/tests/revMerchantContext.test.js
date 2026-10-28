@@ -20,8 +20,9 @@ test('context filters unverified and out-of-scope findings', async () => {
   const context = await buildMerchantContext(db, 'org-a');
   assert.deepEqual(context.verified_findings.map(f => f.id), ['a']);
   assert.equal(context.stores.length, 1);
-  assert.equal(context.verified_findings[0].evidence.currentCount, 7);
-  assert.equal(context.verified_findings[0].evidence.customer_email, undefined);
+  const evidence = JSON.parse(context.verified_findings[0].evidence_summary);
+  assert.equal(evidence.currentCount, 7);
+  assert.equal(evidence.customer_email, undefined);
   assert.ok(Buffer.byteLength(JSON.stringify({ merchant_context: context })) < 16 * 1024);
 });
 
