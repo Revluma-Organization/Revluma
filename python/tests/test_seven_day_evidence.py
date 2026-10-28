@@ -91,3 +91,24 @@ def test_failed_order_query_does_not_fabricate_revenue():
     assert evidence["orders"]["status"] == "unavailable"
     assert evidence["abandoned_carts"]["status"] == "available"
     db.rollback.assert_called_once()
+
+
+def test_cart_query_deduplicates_per_store_and_external_id():
+    db = Mock()
+    db.execute.side_effect = [
+        Result([{"id": "store-1", "last_synced_at": None}]),
+        Result([]),
+        Result([{"currency": "USD", "item_count": 10, "amount": Decimal("12551.40")}]),
+        Result(scalar_value=0),
+    ]
+    evidence = retrieve_seven_day_evidence("org-1", db)
+    cart_sql = str(db.execute.call_args_list[2].args[0])
+    assert "ROW_NUMBER() OVER" in cart_sql
+    assert "PARTITION BY c.store_id" in cart_sql
+    assert "c.external_cart_id" in cart_sql
+    assert "c.status = 'abandoned'" in cart_sql
+    assert "c.recovered_at IS NULL" in cart_sql
+    assert "s.organization_id = :org_id" in cart_sql
+    assert evidence["abandoned_carts"]["by_currency"] == [
+        {"currency": "USD", "cart_count": 10, "cart_value": "12551.40"}
+    ]

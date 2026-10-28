@@ -88,14 +88,27 @@ def retrieve_seven_day_evidence(organization_id: str, db, *, now: datetime | Non
 
     try:
         rows = db.execute(text("""
-            SELECT c.currency, COUNT(*) AS item_count, COALESCE(SUM(c.cart_value), 0) AS amount
-            FROM abandoned_carts c JOIN stores s ON s.id = c.store_id
-            WHERE s.organization_id = :org_id
-              AND s.status IN ('active', 'connected', 'syncing')
-              AND c.abandoned_at >= :start AND c.abandoned_at < :end
-            GROUP BY c.currency ORDER BY c.currency
+            WITH ranked AS (
+                SELECT c.store_id, c.currency, c.cart_value,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY c.store_id,
+                             COALESCE(NULLIF(c.external_cart_id, ''), c.id::text)
+                           ORDER BY c.updated_at DESC NULLS LAST,
+                                    c.created_at DESC NULLS LAST, c.id DESC
+                       ) AS rn
+                FROM abandoned_carts c JOIN stores s ON s.id = c.store_id
+                WHERE s.organization_id = :org_id
+                  AND s.status IN ('active', 'connected', 'syncing')
+                  AND c.abandoned_at >= :start AND c.abandoned_at < :end
+                  AND c.status = 'abandoned' AND c.recovered_at IS NULL
+            )
+            SELECT currency, COUNT(*) AS item_count,
+                   COALESCE(SUM(cart_value), 0) AS amount
+            FROM ranked WHERE rn = 1
+            GROUP BY currency ORDER BY currency
         """), params).mappings().all()
-        evidence["abandoned_carts"] = {"status": "available", "by_currency": _rows_by_currency(rows, "cart_count", "cart_value")}
+        evidence["abandoned_carts"] = {"status": "available", "by_currency": _rows_by_currency(rows, "cart_count", "cart_value"), "definition": "Unique unrecovered abandoned carts per store and external cart ID; most recently updated record retained."}
+        evidence["warnings"].append("Cart totals are deduplicated recorded values, not verified recoverable revenue; reconcile with Shopify Admin.")
     except Exception:
         evidence["warnings"].append("Abandoned-cart data could not be retrieved.")
         db.rollback()
