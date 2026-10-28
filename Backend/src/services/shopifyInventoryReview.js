@@ -23,7 +23,7 @@ async function reviewInventoryChanges(prisma, organizationId, storeId) {
   const toObservation = run => {
     const byProduct = new Map();
     const runRows = rows.filter(row => row.observation_id === run.id);
-    if (runRows.length !== run.variant_count) return null;
+    if (runRows.length !== run.variant_count || (run.product_count > 0 && run.variant_count === 0)) return null;
     for (const row of runRows) {
       if (!byProduct.has(row.product_external_id)) {
         byProduct.set(row.product_external_id, {
