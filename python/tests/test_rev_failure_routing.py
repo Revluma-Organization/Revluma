@@ -78,3 +78,33 @@ def test_web_research_does_not_forward_private_history_or_memories(monkeypatch):
     assert "customer@example.com" not in captured[0][0]
     assert "private-secret" not in captured[0][0]
     assert captured[0][1]["web_search"] is True
+
+
+def test_knowledge_question_uses_configured_provider_not_hardcoded_anthropic(monkeypatch):
+    calls = []
+    def fake_call(model, prompt, max_tokens, timeout):
+        calls.append((model, prompt, max_tokens, timeout))
+        return "1. Compare checkout starts with purchases. 2. Segment abandoned carts. 3. Audit refunds and discounts."
+    monkeypatch.setattr(responder, "_call", fake_call)
+    reply = responder.compose_knowledge(
+        "Explain three ways to identify revenue leaks in my Shopify store",
+        SimpleNamespace(intent="strategy", response_mode="explanation", goal="identify revenue leaks"),
+        "Previous turn: I help diagnose store data.", [], True,
+    )
+    assert "checkout starts" in reply
+    assert len(calls) == 1
+    assert calls[0][0] == responder.DEEP_MODEL
+    assert "revenue leaks" in calls[0][1]
+
+
+def test_knowledge_provider_failure_never_returns_unrelated_shopify_definition(monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("provider unavailable")
+    monkeypatch.setattr(responder, "_call", unavailable)
+    reply = responder.compose_knowledge(
+        "Explain three ways to identify revenue leaks in my Shopify store",
+        SimpleNamespace(intent="strategy", response_mode="explanation", goal="identify revenue leaks"),
+        "", [], True,
+    )
+    assert "temporarily unable to generate" in reply
+    assert "Shopify is a cloud-based" not in reply
