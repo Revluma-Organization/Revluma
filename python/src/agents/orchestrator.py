@@ -1019,7 +1019,7 @@ def _is_store_connection_question(message: str) -> bool:
 
 
 def _verified_store_connection_answer(org_id: str, db) -> str:
-    """Use authenticated first-party records only; never guess connection state."""
+    """Friendly, deterministic response grounded only in authenticated store records."""
     try:
         rows = db.execute(text(
             "SELECT platform, shop_domain, status, last_synced_at, "
@@ -1028,24 +1028,38 @@ def _verified_store_connection_answer(org_id: str, db) -> str:
         ), {"o": org_id}).mappings().all()
     except Exception as exc:
         logger.error("rev_store_connection_lookup_failed error_type=%s", type(exc).__name__)
-        return "I could not verify your store connection right now. Please check Stores and try again."
+        return ("Sorry, I could not verify your store connection just now, Boss. "
+                "Your data hasn't been changed. Please check Stores and try again.")
     logger.info("rev_store_connection_lookup_complete store_count=%d", len(rows))
     if not rows:
-        return "I cannot find a connected store for your organization. Open Stores to connect one."
+        return ("I don't see a connected store in your Revluma workspace yet. "
+                "Head to Stores to link your Shopify store, and we'll take it from there.")
     details = []
     for row in rows:
         platform = str(row.get("platform") or "Store").capitalize()
         domain = str(row.get("shop_domain") or "").strip()
         status = str(row.get("status") or "unknown").lower()
         connected = status in {"active", "connected", "syncing"} and bool(row.get("has_token"))
-        label = f"{platform} ({domain})" if domain else platform
+        label = f"{platform} store **{domain}**" if domain else f"{platform} store"
         if connected:
-            sync = (f"Last synced: {row['last_synced_at']}." if row.get("last_synced_at")
-                    else "Initial sync not yet confirmed.")
-            details.append(f"{label}: connected in Revluma. {sync}")
+            sync_at = row.get("last_synced_at")
+            if sync_at:
+                sync_text = ("The last recorded sync was **"
+                             + sync_at.strftime("%d %B %Y at %H:%M UTC")
+                             + "**." if hasattr(sync_at, "strftime") else
+                             "A previous sync is recorded.")
+            else:
+                sync_text = "Initial sync not yet confirmed."
+            details.append(f"Good news, your {label} is connected in Revluma! {sync_text}")
         else:
-            details.append(f"{label}: connection not verified (status: {status}). Check Stores to complete setup.")
-    return "\n".join(details)
+            details.append(
+                f"Your {label} is listed, but the connection is not verified "
+                f"(current status: **{status}**). Open Stores to review the setup."
+            )
+    return ("\\n\\n".join(details)
+            + "\\n\\nA connected store is the starting point. Want me to help "
+              "check whether its latest orders and checkout activity are syncing correctly?")
+
 
 def _has_store(org_id: str, db) -> bool:
     try:
