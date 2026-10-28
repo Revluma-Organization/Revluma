@@ -535,3 +535,33 @@ def test_deterministic_routes_do_not_call_gemini_understanding(monkeypatch):
         "conv-1", db, "corr-2")
     assert result.response_type == "capability"
     assert result.text
+
+
+def test_node_owned_chat_does_not_duplicate_persisted_messages(monkeypatch):
+    monkeypatch.setattr(orchestrator_module, "_get_or_create_conversation",
+                        lambda *args: ("conv-1", False))
+    monkeypatch.setattr(orchestrator_module, "_verified_store_connection_answer",
+                        lambda org_id, db: "Connected and verified")
+    persist = MagicMock(side_effect=AssertionError("Python must not write Node-owned turns"))
+    monkeypatch.setattr(orchestrator_module, "_persist_messages", persist)
+    result = orchestrator_module._run(
+        "org-123", "user-123", "Is my store connected to you?",
+        "conv-1", MagicMock(), "corr-1",
+        context_payload={"_node_owns_chat_persistence": True},
+    )
+    assert result.text == "Connected and verified"
+    persist.assert_not_called()
+
+
+def test_standalone_python_chat_still_persists(monkeypatch):
+    monkeypatch.setattr(orchestrator_module, "_get_or_create_conversation",
+                        lambda *args: ("conv-1", False))
+    monkeypatch.setattr(orchestrator_module, "_verified_store_connection_answer",
+                        lambda org_id, db: "Connected and verified")
+    persist = MagicMock()
+    monkeypatch.setattr(orchestrator_module, "_persist_messages", persist)
+    orchestrator_module._run(
+        "org-123", "user-123", "Is my store connected to you?",
+        "conv-1", MagicMock(), "corr-1",
+    )
+    persist.assert_called_once()
