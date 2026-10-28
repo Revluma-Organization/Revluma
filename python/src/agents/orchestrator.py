@@ -1056,8 +1056,8 @@ def _verified_store_connection_answer(org_id: str, db) -> str:
                 f"Your {label} is listed, but the connection is not verified "
                 f"(current status: **{status}**). Open Stores to review the setup."
             )
-    return ("\\n\\n".join(details)
-            + "\\n\\nA connected store is the starting point. Want me to help "
+    return ("\n\n".join(details)
+            + "\n\nA connected store is the starting point. Want me to help "
               "check whether its latest orders and checkout activity are syncing correctly?")
 
 
