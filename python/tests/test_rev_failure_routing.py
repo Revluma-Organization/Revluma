@@ -43,3 +43,18 @@ def test_provider_failure_does_not_return_misleading_small_talk(monkeypatch):
 def test_known_greeting_still_has_safe_fallback():
     u = SimpleNamespace(intent="greeting")
     assert responder._static_conversational("hello", u).startswith("Hey.")
+
+
+def test_analysis_validator_accepts_zero_optional_actions():
+    from src.agents.orchestrator import _validate_analysis_response
+    response = {
+        "situation": "No verified finding is available in the supplied evidence.",
+        "insight": "The available context does not establish complete coverage.",
+        "implication": "Store performance cannot be confirmed from this evidence.",
+        "recommendation": "Check the latest sync status before relying on metrics.",
+        "confidence": {"score": 0.3, "basis": "Limited verified data"},
+        "actions": [],
+    }
+    assert _validate_analysis_response(
+        response, evidence_values=set(), known_entities=set()
+    ) == []
