@@ -84,7 +84,9 @@ function updateStoredAccessToken(accessToken: string): void {
   }
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function performTokenRefresh(): Promise<string | null> {
   try {
     const response = await fetch(`${BASE_URL}/auth/refresh`, {
       method: "POST",
@@ -109,6 +111,16 @@ async function refreshAccessToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** Share one refresh across simultaneous 401 responses. Refresh tokens rotate on use. */
+function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = performTokenRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
 }
 
 async function request<T>(
@@ -137,6 +149,10 @@ async function request<T>(
     headers["Content-Type"] = "application/json";
   }
 
+  // Wait for an already-running refresh rather than sending a known-stale token.
+  if (!isRetry && !options.skipAuthRedirect && refreshInFlight) {
+    await refreshInFlight;
+  }
   const token = getAccessToken();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
