@@ -53,5 +53,6 @@ test('certified period allows revenue detection but not returning-customer claim
   const result = await evaluateOrganizationFindings(db, 'org-1', { now: '2026-10-27T11:00:00Z' });
   assert.equal(result.findings[0]?.type, 'revenue_change');
   assert.equal(result.findings[0]?.evidence.delta_pct, -50);
-  assert.equal(result.diagnostics[0]?.status, 'customer_lifetime_history_unverified');
+  assert.ok(result.diagnostics.some(item => item.status === 'customer_lifetime_history_unverified'));
+  assert.ok(result.diagnostics.some(item => item.status === 'checkout_funnel_coverage_unverified'));
 });

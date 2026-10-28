@@ -56,6 +56,15 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
       diagnostics.push({ storeId: store.id, status: 'order_history_completeness_unverified' });
       continue;
     }
+    // Checkout rows do not establish the total number of checkout starts,
+    // unique visitors, or a complete abandonment denominator. Surface this
+    // explicitly so the advisor cannot infer a conversion rate from them.
+    diagnostics.push({
+      storeId: store.id,
+      status: 'checkout_funnel_coverage_unverified',
+      available_source: 'abandoned_carts',
+      missing_evidence: ['complete_checkout_starts', 'consistent_checkout_completions', 'checkout_event_coverage'],
+    });
     const orders = await prisma.orders.findMany({
       where: { store_id: store.id, ordered_at: { gte: new Date(previousStart), lt: new Date(currentEnd) } },
       select: { customer_id: true, total: true, currency: true, ordered_at: true },
