@@ -1,6 +1,21 @@
 'use strict';
 
 // Builds a bounded read-only context from organization-scoped, verified records.
+const EVIDENCE_KEYS = new Set([
+  'verified', 'complete', 'currency', 'currentCount', 'previousCount',
+  'currentRevenue', 'previousRevenue', 'currentStart', 'currentEnd',
+  'previousStart', 'previousEnd', 'failed_webhook_registrations',
+  'coverage_source', 'coverage_run_id',
+]);
+function boundedEvidence(evidence) {
+  return Object.fromEntries(Object.entries(evidence).filter(([key, value]) =>
+    EVIDENCE_KEYS.has(key) && (
+      typeof value === 'boolean' ||
+      (typeof value === 'number' && Number.isFinite(value)) ||
+      (typeof value === 'string' && value.length <= 100)
+    )
+  ));
+}
 async function buildMerchantContext(prisma, organizationId) {
   if (!organizationId) throw new TypeError('organizationId is required');
   const stores = await prisma.stores.findMany({
@@ -29,11 +44,11 @@ async function buildMerchantContext(prisma, organizationId) {
         title: String(f.title || '').slice(0, 180),
         description: String(f.description || '').slice(0, 400),
         detected_at: f.detected_at,
-        evidence_verified: true,
+        evidence: boundedEvidence(f.evidence),
       })),
     limitations: ['Connection does not prove complete order coverage.',
       'No verified checkout abandonment rate is available in this context.',
       'No findings does not prove the store has no issues.'],
   };
 }
-module.exports = { buildMerchantContext };
+module.exports = { buildMerchantContext, boundedEvidence };
