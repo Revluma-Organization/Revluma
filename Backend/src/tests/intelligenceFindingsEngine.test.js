@@ -31,6 +31,8 @@ test('returning-customer finding uses percentage points and sufficient unique bu
   const result = detectReturningCustomerChange({ scope, evidence });
   assert.equal(result.evidence.change_percentage_points, -30);
   assert.equal(result.severity, 'high');
+  assert.equal(result.action.route, '/dashboard');
+  assert.match(result.action.measurement, /returning-buyer purchase share/);
   assert.equal(detectReturningCustomerChange({ scope, evidence: { ...evidence, currentReturning: 41 } }), null);
   assert.equal(detectReturningCustomerChange({ scope, evidence: { ...evidence, currentReturning: 23 } }), null);
 });
