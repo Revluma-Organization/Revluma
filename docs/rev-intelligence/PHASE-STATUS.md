@@ -21,3 +21,9 @@ Updated: 2026-10-28
 - Production end-to-end smoke results.
 
 Do not mark VERIFIED without the above evidence. Continue fixing within Phase 01 until verified.
+
+## Execution update — 2026-10-28
+- Fixed grounded research forwarding private conversation history: commit e6f3c89.
+- Added test ensuring history and memories excluded from grounded prompt: commit d495565.
+- Validation remains unverified: no runnable GitHub Actions workflow results returned; local environment cannot clone the private repository; no full Python suite results obtained.
+- Phase 01 remains IN_PROGRESS. Do not mark VERIFIED.
