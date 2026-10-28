@@ -8,7 +8,7 @@ vi.mock("@/lib/auth/session", () => ({
   redirectToLogin: vi.fn(),
   getRefreshToken: vi.fn(() => null),
   storeRefreshToken: vi.fn(),
-  getAccessToken: vi.fn(() => localStorage.getItem("access_token")),
+  getAccessToken: vi.fn(() => JSON.parse(localStorage.getItem("rv-auth") || "{}").state?.accessToken ?? null),
 }));
 
 import { api } from "./api";
@@ -16,7 +16,6 @@ import { api } from "./api";
 describe("API token refresh concurrency", () => {
   beforeEach(() => {
     localStorage.clear();
-    localStorage.setItem("access_token", "expired");
     localStorage.setItem("rv-auth", JSON.stringify({ state: { accessToken: "expired" } }));
     vi.restoreAllMocks();
   });
