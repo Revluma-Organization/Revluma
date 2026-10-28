@@ -1050,10 +1050,10 @@ def _verified_store_connection_answer(org_id: str, db) -> str:
                              "A previous sync is recorded.")
             else:
                 sync_text = "I haven't confirmed an initial sync yet."
-            details.append(f"Good news, your {label} is connected to Revluma! {sync_text}")
+            details.append(f"Good news, your {label} is connected in Revluma! {sync_text}")
         else:
             details.append(
-                f"Your {label} is listed, but I can't confirm an active connection "
+                f"Your {label} is listed, but the connection is not verified "
                 f"(current status: **{status}**). Open Stores to review the setup."
             )
     return ("\\n\\n".join(details)
