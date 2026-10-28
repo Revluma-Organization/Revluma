@@ -3,8 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import MorningBriefing from "@/components/dashboard/MorningBriefing";
-import IntelligenceFindingsPanel from "@/components/dashboard/IntelligenceFindingsPanel";
-import OperationalExecutionPanel from "@/components/dashboard/OperationalExecutionPanel";
 import { LiveActivity } from "@/components/dashboard/LiveActivity";
 import type { KPI, ActivityItem, ChartData } from "@/data/mockOverview";
 import { Activity, ArrowRight, ArrowUpRight, BrainCircuit, CheckCircle2, ChevronRight, CircleAlert, Clock3, Mail, MessageCircle, Search, ShieldCheck, ShoppingCart, Sparkles, Store, TrendingUp, Users, Workflow, Zap } from "lucide-react";
@@ -81,14 +79,6 @@ export default function Overview() {
           <p className="mt-1.5 max-w-3xl text-[13px] leading-6 text-[#69758b] dark:text-[#a6b8d4]">{!connected ? "Connect your store to begin monitoring business activity." : needsAttention ? "Your store connection needs attention. Review its setup before relying on new data." : "Here's your store's current operational picture. Explore the evidence behind each reported figure."}</p>
         </div>
         <button onClick={() => navigate("/dashboard/rev-intell")} className="inline-flex items-center gap-2 rounded-xl bg-[#071225] px-4 py-3 text-xs font-semibold text-white transition hover:bg-[#17365d]"><BrainCircuit className="h-4 w-4 text-[#57a5ff]" /> Ask Rev Intell <ArrowUpRight className="h-3.5 w-3.5" /></button>
-      </div>
-      <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" aria-label="Intelligence and operations overview">
-        <div className="min-w-0 [&>section]:h-full">
-          <IntelligenceFindingsPanel />
-        </div>
-        <div className="min-w-0 [&>section]:h-full">
-          <OperationalExecutionPanel />
-        </div>
       </div>
       <div className="min-w-0" aria-label="Merchant intelligence briefing">
         <MorningBriefing />
