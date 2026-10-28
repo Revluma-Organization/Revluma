@@ -1,5 +1,5 @@
 'use strict';
-const { detectIntegrationFailure, detectRevenueChange, detectReturningCustomerChange, prioritizeFindings } = require('./intelligenceFindingsEngine');
+const { detectIntegrationFailure, detectRevenueChange, detectOrderVolumeChange, detectReturningCustomerChange, prioritizeFindings } = require('./intelligenceFindingsEngine');
 
 const { TRUSTED_SOURCE } = require('./intelligenceOrderCoverage');
 const DAY = 86400000;
@@ -77,6 +77,7 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
       previousRevenue: previous.reduce((sum, o) => sum + safeNumber(o.total), 0),
     };
     candidates.push(detectRevenueChange({ scope, evidence }));
+    candidates.push(detectOrderVolumeChange({ scope, evidence }));
     if (!coverage.customer_lifetime_verified) {
       diagnostics.push({ storeId: store.id, status: 'customer_lifetime_history_unverified' });
       continue;
