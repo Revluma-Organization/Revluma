@@ -1028,7 +1028,7 @@ def _verified_store_connection_answer(org_id: str, db) -> str:
         ), {"o": org_id}).mappings().all()
     except Exception as exc:
         logger.error("rev_store_connection_lookup_failed error_type=%s", type(exc).__name__)
-        return ("I could not verify your store connection just now, Boss. "
+        return ("Sorry, I could not verify your store connection just now, Boss. "
                 "Your data hasn't been changed. Please check Stores and try again.")
     logger.info("rev_store_connection_lookup_complete store_count=%d", len(rows))
     if not rows:
