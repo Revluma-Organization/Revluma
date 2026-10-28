@@ -484,7 +484,7 @@ def _validate_analysis_response(
             errors.append("invalid_confidence")
 
     actions = response.get("actions")
-    if not isinstance(actions, list) or not 2 <= len(actions) <= 3:
+    if not isinstance(actions, list) or len(actions) > 3:
         errors.append("invalid_action_count")
         actions = actions if isinstance(actions, list) else []
     for action in actions:
