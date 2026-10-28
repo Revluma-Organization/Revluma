@@ -1347,4 +1347,5 @@ module.exports = {
     checkPythonHealth,
     ML_ERRORS,
     CHURN_FEATURES,
+    _validateOrchestrateResponse: validateOrchestrateResponse,
 };
