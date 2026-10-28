@@ -323,8 +323,26 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
 
     setupStage = 'customer_sync';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
-    const customers = await syncCustomers(store);
-    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: customers });
+    let customers = 0;
+    let customerSyncLimited = false;
+    try {
+      customers = await syncCustomers(store);
+      logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: customers });
+    } catch (error) {
+      // Customer access is optional for the observation-first MVP. Only an
+      // explicit Shopify customers-field access denial can be downgraded;
+      // network failures, malformed data and database failures remain fatal.
+      const deniedCustomers = error.code === 'SHOPIFY_GRAPHQL_ERROR' &&
+        Array.isArray(error.shopifyErrors) &&
+        error.shopifyErrors.some(item =>
+          Array.isArray(item.codes) && item.codes.includes('ACCESS_DENIED') &&
+          /customers field/i.test(String(item.message || '')));
+      if (!deniedCustomers) throw error;
+      customerSyncLimited = true;
+      logger.warn('shopify_customer_sync_permission_limited', {
+        store_id: store.id, stage: setupStage, reason: 'SHOPIFY_CUSTOMERS_ACCESS_DENIED',
+      });
+    }
 
     setupStage = 'order_sync';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
