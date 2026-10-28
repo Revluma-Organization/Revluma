@@ -375,7 +375,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     const rfm = await rfmSync({ storeId: store.id, correlationId: `shopify-sync-${store.id}-${Date.now()}` });
     if (!rfm.success) logger.warn('shopify_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
     logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned, webhook_setup_complete: !webhookSetupError });
-    return { success: true, customers, orders, abandoned, rfm: rfm.success, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null };
+    return { success: true, customers, orders, abandoned, rfm: rfm.success, customerSyncLimited, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null };
   } catch (error) {
     try {
       await prisma.stores.update({
