@@ -1,5 +1,5 @@
 const { prisma } = require('../configs/database');
-const { summarizeExecutions } = require('../services/operationalExecutionSummary');
+const { buildOperationalOverview } = require('../services/operationalOverviewPresenter');
 
 // Read-only operational telemetry. All store-scoped records are constrained by
 // authenticated active organization membership. No execution controls are exposed.
@@ -39,19 +39,9 @@ exports.getOperationalOverview = async (req, res, next) => {
         _count: { _all: true },
       }),
     ]);
-    const executionSummary = summarizeExecutions(executions);
     return res.json({
       success: true,
-      data: {
-        observed_at: new Date().toISOString(),
-        scope: { stores: ids.length, execution_window: 'latest 60 records', workflows_window: 'latest 30 records' },
-        workflows: workflows.map(row => ({ ...row, controls: { pause: false, resume: false, investigate: false, review_settings: true } })),
-        executions: { recent: executions, ...executionSummary, counts_are_windowed: true },
-        recovery: recovery.map(row => ({ status: row.status, count: row._count._all })),
-        alerts,
-        campaigns: { available_actions: [], reason: 'No campaign execution actions have been verified for Command Center.' },
-        controls_verified: false,
-      },
+      data: buildOperationalOverview({ workflows, executions, alerts, recovery, storeCount: ids.length }),
     });
   } catch (error) { next(error); }
 };
