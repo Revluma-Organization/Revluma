@@ -221,44 +221,14 @@ def compose_knowledge(message: str, understanding, history_text: str,
         + "or invite them to go deeper. Keep it natural."
     )
 
-    # Use sonnet for knowledge — haiku is too shallow for deep ecom expertise
+    # Route through the configured provider; never bypass the model gateway.
     try:
-        import anthropic as _anth2, os as _os2
-        _client2 = _anth2.Anthropic(api_key=_os2.environ.get("ANTHROPIC_API_KEY"), timeout=18.0)
-        if image_base64 and image_media_type:
-            _content = [
-                {"type": "image", "source": {
-                    "type": "base64",
-                    "media_type": image_media_type,
-                    "data": image_base64,
-                }},
-                {"type": "text", "text": (
-                    prompt + "\n\nThe merchant has also shared an image. "
-                    "Analyse it carefully and incorporate your observations into your answer. "
-                    "If the image shows analytics, a store, a product, a chart, or anything "
-                    "ecommerce-related, reference what you see specifically."
-                )},
-            ]
-        else:
-            _content = prompt
-        _resp2 = _client2.messages.create(
-            model=DEEP_MODEL, max_tokens=1200,
-            messages=[{"role": "user", "content": _content}]
-        )
-        return sanitise("".join(b.text for b in _resp2.content if getattr(b, "type", "") == "text").strip())
+        return sanitise(_call(DEEP_MODEL, prompt, 1200, 25.0))
     except Exception as exc:
-        logger.error(
-            "responder_knowledge_primary_failed",
-            extra={"error_type": type(exc).__name__},
-        )
-        try:
-            return sanitise(_call(FAST_MODEL, prompt, 700, 12.0))
-        except Exception as fallback_exc:
-            logger.error(
-                "responder_knowledge_fallback_failed",
-                extra={"error_type": type(fallback_exc).__name__},
-            )
-            return _static_knowledge(message, understanding)
+        logger.error("responder_knowledge_primary_failed", extra={
+            "error_type": type(exc).__name__,
+        })
+        return "I'm temporarily unable to generate a response. Please try again shortly."
 
 
 # ── Capability ────────────────────────────────────────────────────────────────
