@@ -627,6 +627,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         _is_store_connection_question(message) or _is_general_capability_question(message)
     ):
         is_connection = _is_store_connection_question(message)
+        logger.info("rev_deterministic_route route=%s correlation_id=%s", "store_connection" if is_connection else "capability", correlation_id)
         answer = (_verified_store_connection_answer(organization_id, db) if is_connection
                   else responder.compose_capability(_has_store(organization_id, db)))
         response_type = "direct_answer" if is_connection else "capability"
@@ -1025,9 +1026,10 @@ def _verified_store_connection_answer(org_id: str, db) -> str:
             "CASE WHEN access_token IS NOT NULL AND access_token <> '' THEN TRUE ELSE FALSE END AS has_token "
             "FROM stores WHERE organization_id = :o ORDER BY updated_at DESC LIMIT 10"
         ), {"o": org_id}).mappings().all()
-    except Exception:
-        logger.error("rev_store_connection_lookup_failed")
+    except Exception as exc:
+        logger.error("rev_store_connection_lookup_failed error_type=%s", type(exc).__name__)
         return "I could not verify your store connection right now. Please check Stores and try again."
+    logger.info("rev_store_connection_lookup_complete store_count=%d", len(rows))
     if not rows:
         return "I cannot find a connected store for your organization. Open Stores to connect one."
     details = []
