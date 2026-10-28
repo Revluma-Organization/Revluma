@@ -503,11 +503,22 @@ def _validate_analysis_response(
     ):
         errors.append("pii_detected")
 
-    for match in re.finditer(r"(?<![\w])(?:[$£€]\s*)?(-?\d+(?:\.\d+)?)%?", narrative):
-        number = float(match.group(1))
+    # Verify monetary values, percentages and explicitly quantified merchant
+    # metrics. Do not mistake a numbered action list for invented store data.
+    metric_pattern = re.compile(
+        r"(?<![\w])(?:(?P<currency>[$£€])\s*(?P<money>\d[\d,]*(?:\.\d+)?)"
+        r"|(?P<percent>\d+(?:\.\d+)?)%"
+        r"|(?P<count>\d[\d,]*(?:\.\d+)?)\s+"
+        r"(?P<unit>orders?|carts?|checkouts?|customers?|sales|recoveries|"
+        r"abandonments?|purchases?|transactions?))",
+        re.IGNORECASE,
+    )
+    for match in metric_pattern.finditer(narrative):
+        raw = match.group("money") or match.group("percent") or match.group("count")
+        number = float(raw.replace(",", ""))
         if not any(
             abs(number - evidence) <= 0.01
-            or abs(number - evidence * 100) <= 0.01
+            or (match.group("percent") is not None and abs(number - evidence * 100) <= 0.01)
             for evidence in evidence_values
         ):
             errors.append("invented_number")
@@ -925,10 +936,31 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             extra={"attempt": attempt + 1, "error_codes": response_errors},
         )
     if resp is None:
-        resp = _safe_analysis_response(disclosures)
-        warnings.append(
-            "The generated analysis failed self-verification; a safe response was used."
-        )
+        # Recover with authenticated, read-only evidence, not an unverified
+        # generated claim. Do not infer causes of abandonment.
+        try:
+            from ..intelligence.seven_day_evidence import retrieve_seven_day_evidence
+            from ..intelligence.seven_day_briefing import compose_seven_day_briefing
+            verified = retrieve_seven_day_evidence(organization_id, db)
+            if verified.get("store_count") and (
+                verified["orders"]["status"] == "available"
+                or verified["abandoned_carts"]["status"] == "available"
+            ):
+                resp = {
+                    "situation": "I couldn't verify the generated investigation, so here's what your store records confirm.",
+                    "insight": compose_seven_day_briefing(verified),
+                    "implication": "Recorded abandoned-cart value is not guaranteed recoverable revenue. Reasons for abandonment remain unverified.",
+                    "recommendation": "Check high-value abandoned carts, recovery eligibility and checkout tracking before changing campaigns.",
+                    "confidence": {"score": 0.0, "basis": "AI analysis rejected; verified store evidence only"},
+                    "actions": [{"label": "View analytics", "tool": "view_analytics", "params": {}}],
+                }
+                warnings.append("Generated analysis rejected; verified store evidence shown.")
+        except Exception as exc:
+            logger.warning("orchestrator_verified_fallback_unavailable error_type=%s", type(exc).__name__)
+            db.rollback()
+        if resp is None:
+            resp = _safe_analysis_response(disclosures)
+            warnings.append("The generated analysis failed self-verification; a safe response was used.")
 
     persist_turns(
         conv_id,
