@@ -301,9 +301,22 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     });
     setupStage = 'webhook_reconciliation';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
+    // Webhook setup and read-only commerce ingestion are independent.
+    // A failed subscription must remain visible but must not prevent a
+    // merchant from receiving verified data via an authorized initial sync.
+    let webhookSetupError = null;
     if (reconcileWebhooks) {
-      const webhookResult = await reconcileShopifyWebhooks(store);
-      logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', registered: webhookResult.required });
+      try {
+        const webhookResult = await reconcileShopifyWebhooks(store);
+        logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', registered: webhookResult.required });
+      } catch (error) {
+        webhookSetupError = error;
+        logger.warn('shopify_webhook_setup_incomplete', {
+          store_id: store.id,
+          error_type: error.code || error.name || 'webhook_setup_error',
+          shopify_errors: error.shopifyErrors || [],
+        });
+      }
     } else {
       logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'skipped_for_background_order_reconciliation' });
     }
@@ -340,8 +353,8 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     }
     const rfm = await rfmSync({ storeId: store.id, correlationId: `shopify-sync-${store.id}-${Date.now()}` });
     if (!rfm.success) logger.warn('shopify_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
-    logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned });
-    return { success: true, customers, orders, abandoned, rfm: rfm.success };
+    logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned, webhook_setup_complete: !webhookSetupError });
+    return { success: true, customers, orders, abandoned, rfm: rfm.success, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null };
   } catch (error) {
     try {
       await prisma.stores.update({
