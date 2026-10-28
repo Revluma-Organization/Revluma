@@ -732,9 +732,19 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             return finish("chat", "Noted. I'll keep that in mind.")
 
     # ── 4. Capability ─────────────────────────────────────────────────────────
-    if u.intent == "capability":
+    if u.intent == "capability" and re.search(
+        r"\b(?:what can you do|what can you help(?: me)? with|how can you help(?: me)?"
+        r"|what do you do|your capabilities|what features)\b",
+        message.lower(),
+    ):
         has_store = _has_store(organization_id, db)
         return finish("capability", responder.compose_capability(has_store))
+
+    # A misclassified capability intent must not override a specific business question.
+    if u.intent == "capability":
+        u.intent = "strategy"
+        u.response_mode = MODE_EXPLANATION
+        u.requires_store_data = False
 
     # ── 5. Anything that does NOT need store data ─────────────────────────────
     if not _trigger_requires_store_data(u, trigger_type):
