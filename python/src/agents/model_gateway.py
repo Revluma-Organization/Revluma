@@ -18,7 +18,7 @@ class ModelProviderError(RuntimeError):
 
 
 def generate(prompt, *, role="fast", max_tokens=500, timeout=15.0,
-             image_base64=None, image_media_type=None):
+             image_base64=None, image_media_type=None, web_search=False):
     provider = os.getenv("AI_PROVIDER", "anthropic").strip().lower()
     if provider == "gemini":
         key = os.getenv("GEMINI_API_KEY")
@@ -28,13 +28,17 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=15.0,
         parts = [{"text": prompt}]
         if image_base64 and image_media_type:
             parts.append({"inline_data": {"mime_type": image_media_type, "data": image_base64}})
+        if web_search:
+            model = GEMINI_MODEL
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         try:
+            payload = {"contents": [{"role": "user", "parts": parts}], "generationConfig": {"maxOutputTokens": max_tokens}}
+            if web_search:
+                payload["tools"] = [{"google_search": {}}]
             with httpx.Client(timeout=timeout) as client:
                 response = client.post(
                     url, headers={"x-goog-api-key": key},
-                    json={"contents": [{"role": "user", "parts": parts}],
-                          "generationConfig": {"maxOutputTokens": max_tokens}},
+                    json=payload,
                 )
             if response.status_code >= 400:
                 logger.error("model_provider_http_error provider=gemini status=%s model=%s", response.status_code, model, extra={
@@ -50,6 +54,13 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=15.0,
                              candidates[0].get("content", {}).get("parts", []))
             if not output.strip():
                 raise ModelProviderError("gemini", "empty_text")
+            if web_search:
+                sources = []
+                for chunk in (candidates[0].get("groundingMetadata") or {}).get("groundingChunks", []):
+                    uri = (chunk.get("web") or {}).get("uri", "")
+                    if uri.startswith("https://") and uri not in sources:
+                        sources.append(uri)
+                output += "\n\nSources:\n" + "\n".join("- " + uri for uri in sources[:5]) if sources else "\n\n(Web search returned no verifiable sources.)"
             return output.strip()
         except httpx.HTTPError as exc:
             logger.error("model_provider_network_error", extra={
