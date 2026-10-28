@@ -641,6 +641,20 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         image_base64=image_base64,
         image_media_type=image_media_type,
     )
+    # Explicit first-party evidence requests must not depend on LLM intent
+    # classification, which can fail or mislabel them as conversational.
+    evidence_request = any(phrase in message.lower() for phrase in (
+        "verified findings", "my connected store", "connected store",
+        "supporting evidence", "store findings",
+    ))
+    if evidence_request and str(trigger_type or "conversation").lower() == "conversation":
+        u.intent = "diagnosis"
+        u.goal = "review verified merchant evidence"
+        u.requires_store_data = True
+        u.requires_web = False
+        u.requires_action = False
+        u.response_mode = MODE_ANALYSIS
+        u.domains = ["revenue"]
     orchestrator_mode = _classify_orchestrator_mode(u, trigger_type, message)
     logger.debug(
         "understanding_complete",
