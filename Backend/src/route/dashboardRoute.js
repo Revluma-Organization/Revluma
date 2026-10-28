@@ -14,4 +14,6 @@ router.get('/activity', authenticateToken, dashboardController.getActivity);
 
 router.get('/cart-recovery', authenticateToken, dashboardController.getCartRecovery);
 
+router.get('/operations', authenticateToken, require('../controller/operationalOverviewController').getOperationalOverview);
+
 module.exports = router;
