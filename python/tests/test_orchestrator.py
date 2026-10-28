@@ -411,7 +411,8 @@ def test_response_verifier_rejects_invented_numbers_pii_and_invalid_actions():
 
     assert "invented_number" in errors
     assert "pii_detected" in errors
-    assert "invalid_action_count" in errors
+    # One action is within the permitted 0–3 range; its tool is invalid.
+    assert "invalid_action_count" not in errors
     assert "invalid_action_tool" in errors
 
 
