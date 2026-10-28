@@ -136,7 +136,6 @@ def understand(message: str, history: list[dict],
     Understand the merchant message. Never raises.
     Falls back to a safe conversational reading if the model is unavailable.
     """
-    import anthropic, os
 
     context = _format_history(history)
     text_prompt = (
@@ -151,31 +150,9 @@ def understand(message: str, history: list[dict],
     )
 
     try:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            return _safe_fallback(message, history, "no api key")
-
-        client = anthropic.Anthropic(api_key=api_key, timeout=9.0)
-
-        # Build content: text + optional image
-        if image_base64 and image_media_type:
-            content = [
-                {"type": "image", "source": {
-                    "type": "base64",
-                    "media_type": image_media_type,
-                    "data": image_base64,
-                }},
-                {"type": "text", "text": text_prompt},
-            ]
-        else:
-            content = text_prompt
-
-        resp = client.messages.create(
-            model=UNDERSTANDING_MODEL,
-            max_tokens=400,
-            messages=[{"role": "user", "content": content}],
-        )
-        raw = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
+        from .model_gateway import generate
+        raw = generate(text_prompt, role="fast", max_tokens=700, timeout=12.0,
+                       image_base64=image_base64, image_media_type=image_media_type)
 
         parsed = _parse(raw)
         if parsed:
