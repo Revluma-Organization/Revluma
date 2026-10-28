@@ -45,14 +45,17 @@ async function buildMerchantContext(prisma, organizationId) {
     // Python's normalizer permits only three nested levels; array entries
     // must be primitive strings rather than nested objects.
     stores: stores.slice(0, 8).map(s =>
-      JSON.stringify({ id: s.id, platform: s.platform, status: s.status,
-        last_synced_at: s.last_synced_at }).slice(0, 280)),
+      ['store', String(s.id || '').slice(0, 36),
+        String(s.platform || '').slice(0, 24),
+        String(s.status || '').slice(0, 24),
+        s.last_synced_at ? new Date(s.last_synced_at).toISOString() : 'never_synced'].join(' | ')),
     verified_findings: findings.filter(f =>
       allowedStores.has(f.store_id) && f.evidence?.verified === true)
       .slice(0, 5).map(f =>
-        JSON.stringify({ id: f.id, store_id: f.store_id, type: f.type,
-          severity: f.severity, title: String(f.title || '').slice(0, 75),
-          evidence: compactEvidence(f.evidence) }).slice(0, 280)),
+        ['finding', String(f.id || '').slice(0, 36),
+          String(f.type || '').slice(0, 40),
+          String(f.severity || '').slice(0, 16),
+          compactEvidence(f.evidence)].join(' | ').slice(0, 300)),
     limitations: ['Connection does not prove complete order coverage.',
       'No verified checkout abandonment rate is available in this context.',
       'No findings does not prove the store has no issues.'],
