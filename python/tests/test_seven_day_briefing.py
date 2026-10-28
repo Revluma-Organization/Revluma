@@ -52,3 +52,30 @@ def test_missing_store_does_not_claim_metrics():
     output = compose_seven_day_briefing(evidence)
     assert "couldn't find an active connected store" in output
     assert "2 orders" not in output
+
+
+def test_orchestrator_uses_authenticated_organization_for_briefing(monkeypatch):
+    from unittest.mock import Mock
+    from src.agents import orchestrator
+
+    db = Mock()
+    calls = []
+    monkeypatch.setattr(orchestrator, "_get_or_create_conversation", lambda org, user, conv, db: ("conversation-1", False))
+    monkeypatch.setattr(orchestrator, "_persist_messages", lambda *args, **kwargs: None)
+
+    def scoped_evidence(org, session):
+        calls.append((org, session))
+        return _evidence()
+
+    import src.intelligence.seven_day_evidence as evidence_module
+    monkeypatch.setattr(evidence_module, "retrieve_seven_day_evidence", scoped_evidence)
+    result = orchestrator._run(
+        "authenticated-org", "authenticated-user",
+        "Rev, analyze my Shopify store's performance over the last seven days.",
+        "conversation-1", db, "correlation-1",
+        context_payload={"organization_id": "attacker-org", "_node_owns_chat_persistence": True},
+    )
+    assert result.success
+    assert result.intent == "seven_day_store_briefing"
+    assert calls == [("authenticated-org", db)]
+    assert "2 orders" in result.text
