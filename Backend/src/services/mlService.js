@@ -26,7 +26,7 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
 const ML_INTERNAL_KEY = process.env.ML_INTERNAL_KEY;
 
 const TIMEOUT_MS = parseInt(
-  process.env.ML_TIMEOUT_MS || '15000',
+  process.env.ML_TIMEOUT_MS || '45000',
   10
 );
 
