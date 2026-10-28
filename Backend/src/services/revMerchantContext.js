@@ -44,7 +44,7 @@ async function buildMerchantContext(prisma, organizationId) {
         title: String(f.title || '').slice(0, 180),
         description: String(f.description || '').slice(0, 400),
         detected_at: f.detected_at,
-        evidence: boundedEvidence(f.evidence),
+        evidence_summary: JSON.stringify(boundedEvidence(f.evidence)).slice(0, 300),
       })),
     limitations: ['Connection does not prove complete order coverage.',
       'No verified checkout abandonment rate is available in this context.',
