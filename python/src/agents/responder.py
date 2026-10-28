@@ -225,9 +225,10 @@ def compose_knowledge(message: str, understanding, history_text: str,
     try:
         return sanitise(_call(DEEP_MODEL, prompt, 1200, 25.0))
     except Exception as exc:
-        logger.error("responder_knowledge_primary_failed", extra={
-            "error_type": type(exc).__name__,
-        })
+        logger.error("responder_knowledge_primary_failed provider_status=%s error_type=%s",
+                     getattr(exc, "status", "unknown"), type(exc).__name__,
+                     extra={"error_type": type(exc).__name__,
+                            "provider_status": str(getattr(exc, "status", "unknown"))})
         return "I'm temporarily unable to generate a response. Please try again shortly."
 
 
