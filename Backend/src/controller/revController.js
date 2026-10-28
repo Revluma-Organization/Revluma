@@ -262,7 +262,7 @@ exports.chat = async (req, res, next) => {
         implication:    revData.implication,
         recommendation: revData.recommendation,
         confidence: {
-          score: revData.confidence_score ?? 0.7,
+          score: revData.confidence_score ?? null,
           basis: revData.confidence_basis || '',
         },
         actions:     revData.actions     || [],
