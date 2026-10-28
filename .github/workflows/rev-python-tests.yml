@@ -19,6 +19,8 @@ jobs:
   python-regressions:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      DATABASE_URL: postgresql+psycopg2://placeholder:placeholder@localhost:5432/placeholder
     defaults:
       run:
         working-directory: python
