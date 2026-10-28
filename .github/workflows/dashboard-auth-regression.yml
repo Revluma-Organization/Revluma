@@ -1,0 +1,23 @@
+name: Dashboard authentication regression
+on:
+  pull_request:
+    paths:
+      - 'Frontend/Dashboard/**'
+      - '.github/workflows/dashboard-auth-regression.yml'
+  workflow_dispatch:
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Frontend/Dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: Frontend/Dashboard/package-lock.json
+      - run: npm ci
+      - run: npm test -- --run src/lib/api.test.ts
+      - run: npm run build
