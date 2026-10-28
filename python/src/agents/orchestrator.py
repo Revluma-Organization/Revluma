@@ -613,6 +613,11 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
     if not message:
         raise ValueError("Empty message")
 
+    # Node owns persistence for HTTP chat requests. Python only persists when
+    # orchestrating independently (e.g. autonomous tasks). Never double-write.
+    node_owns_persistence = bool((context_payload or {}).get("_node_owns_chat_persistence"))
+    persist_turns = (lambda *args, **kwargs: None) if node_owns_persistence else _persist_messages
+
     # ── 1. Conversation context ───────────────────────────────────────────────
     conv_id, is_new = _get_or_create_conversation(organization_id, user_id, conversation_id, db)
     # Deterministic merchant questions must never wait on Gemini intent classification.
@@ -625,7 +630,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         answer = (_verified_store_connection_answer(organization_id, db) if is_connection
                   else responder.compose_capability(_has_store(organization_id, db)))
         response_type = "direct_answer" if is_connection else "capability"
-        _persist_messages(
+        persist_turns(
             conv_id, organization_id, user_id, message, answer, response_type,
             None, db, title_hint=message if is_new else None,
             orchestrator_mode="Operator" if is_connection else "Teacher",
@@ -701,7 +706,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         ad_evaluation: dict | None = None,
     ) -> OrchestrationResult:
         """Persist both turns, update the conversation, then return the result."""
-        _persist_messages(
+        persist_turns(
             conv_id,
             organization_id,
             user_id,
@@ -896,7 +901,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             "The generated analysis failed self-verification; a safe response was used."
         )
 
-    _persist_messages(
+    persist_turns(
         conv_id,
         organization_id,
         user_id,
