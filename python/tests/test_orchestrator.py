@@ -474,7 +474,7 @@ def test_message_pair_and_conversation_count_commit_atomically():
 def test_store_connection_intent_is_specific():
     detect = orchestrator_module._is_store_connection_question
     assert detect("Is my store connected to you?")
-    assert detect("Can you verify my Shopify store connection?") is False  # not a status question
+    assert detect("Can you verify my Shopify store connection?")
     assert detect("Check if my Shopify store is synced")
     assert not detect("How can you help me manage my Shopify store?")
     assert not detect("Why are my connected store sales declining?")
