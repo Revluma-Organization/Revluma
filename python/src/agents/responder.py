@@ -143,8 +143,13 @@ def compose_conversational(message: str, understanding, history_text: str,
     except Exception as exc:
         logger.error(
             "responder_conversational_failed",
-            extra={"error_type": type(exc).__name__},
+            extra={
+                "error_type": type(exc).__name__,
+                "http_status": getattr(exc, "status_code", None),
+                "provider_request_id": getattr(exc, "request_id", None),
+            },
         )
+        # Never misrepresent a failed provider call as a successful answer.
         return _static_conversational(message, understanding)
 
 
