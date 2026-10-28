@@ -638,13 +638,13 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         evidence = retrieve_seven_day_evidence(organization_id, db)
         answer = compose_seven_day_briefing(evidence)
         persist_turns(
-            conv_id, organization_id, user_id, message, answer, "analysis",
+            conv_id, organization_id, user_id, message, answer, "direct_answer",
             None, db, title_hint=message if is_new else None,
             orchestrator_mode="Analyst", correlation_id=correlation_id,
         )
         return OrchestrationResult(
             success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
-            response_type="analysis", text=answer, intent="seven_day_store_briefing",
+            response_type="direct_answer", text=answer, intent="seven_day_store_briefing",
             orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
         )
 
