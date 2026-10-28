@@ -16,6 +16,14 @@ function boundedEvidence(evidence) {
     )
   ));
 }
+function compactEvidence(evidence) {
+  const result = {};
+  for (const [key, value] of Object.entries(boundedEvidence(evidence))) {
+    const next = JSON.stringify({ ...result, [key]: value });
+    if (next.length <= 290) result[key] = value;
+  }
+  return JSON.stringify(result);
+}
 async function buildMerchantContext(prisma, organizationId) {
   if (!organizationId) throw new TypeError('organizationId is required');
   const stores = await prisma.stores.findMany({
@@ -44,7 +52,7 @@ async function buildMerchantContext(prisma, organizationId) {
         title: String(f.title || '').slice(0, 180),
         description: String(f.description || '').slice(0, 400),
         detected_at: f.detected_at,
-        evidence_summary: JSON.stringify(boundedEvidence(f.evidence)).slice(0, 300),
+        evidence_summary: compactEvidence(f.evidence),
       })),
     limitations: ['Connection does not prove complete order coverage.',
       'No verified checkout abandonment rate is available in this context.',
