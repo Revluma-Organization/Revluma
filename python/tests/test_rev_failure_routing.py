@@ -108,3 +108,12 @@ def test_knowledge_provider_failure_never_returns_unrelated_shopify_definition(m
     )
     assert "temporarily unable to generate" in reply
     assert "Shopify is a cloud-based" not in reply
+
+
+def test_revenue_leak_question_is_not_capability_request():
+    import re
+    question = "Can you explain three specific ways you would identify revenue leaks in my Shopify store?"
+    capability_pattern = (r"\\b(?:what can you do|what can you help(?: me)? with|how can you help(?: me)?"
+                          r"|what do you do|your capabilities|what features)\\b")
+    assert re.search(capability_pattern, question.lower()) is None
+    assert re.search(capability_pattern, "What can you do?", re.I) is not None
