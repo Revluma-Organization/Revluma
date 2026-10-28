@@ -202,7 +202,7 @@ exports.chat = async (req, res, next) => {
       organizationId: org.id,
       userId:         req.user.id,
       message: intelligenceMessage,
-      contextPayload: { merchant_context: merchantContext },
+      contextPayload: { merchant_context: merchantContext, _node_owns_chat_persistence: true },
       conversationId: activeConvId,
       correlationId,
       imageBase64,
@@ -243,6 +243,7 @@ exports.chat = async (req, res, next) => {
       });
     }
 
+    logger.info('rev_chat_python_succeeded', { correlationId, orgId: org.id, conversationId: activeConvId, latencyMs: Date.now() - startTime });
     const revData = mlResult.data;
     const responseType = revData.response_type || 'analysis';
 

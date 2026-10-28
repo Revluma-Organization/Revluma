@@ -613,6 +613,11 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
     if not message:
         raise ValueError("Empty message")
 
+    # Node owns persistence for HTTP chat requests. Python only persists when
+    # orchestrating independently (e.g. autonomous tasks). Never double-write.
+    node_owns_persistence = bool((context_payload or {}).get("_node_owns_chat_persistence"))
+    persist_turns = (lambda *args, **kwargs: None) if node_owns_persistence else _persist_messages
+
     # ── 1. Conversation context ───────────────────────────────────────────────
     conv_id, is_new = _get_or_create_conversation(organization_id, user_id, conversation_id, db)
     # Deterministic merchant questions must never wait on Gemini intent classification.
@@ -622,10 +627,11 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         _is_store_connection_question(message) or _is_general_capability_question(message)
     ):
         is_connection = _is_store_connection_question(message)
+        logger.info("rev_deterministic_route route=%s correlation_id=%s", "store_connection" if is_connection else "capability", correlation_id)
         answer = (_verified_store_connection_answer(organization_id, db) if is_connection
                   else responder.compose_capability(_has_store(organization_id, db)))
         response_type = "direct_answer" if is_connection else "capability"
-        _persist_messages(
+        persist_turns(
             conv_id, organization_id, user_id, message, answer, response_type,
             None, db, title_hint=message if is_new else None,
             orchestrator_mode="Operator" if is_connection else "Teacher",
@@ -701,7 +707,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         ad_evaluation: dict | None = None,
     ) -> OrchestrationResult:
         """Persist both turns, update the conversation, then return the result."""
-        _persist_messages(
+        persist_turns(
             conv_id,
             organization_id,
             user_id,
@@ -896,7 +902,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             "The generated analysis failed self-verification; a safe response was used."
         )
 
-    _persist_messages(
+    persist_turns(
         conv_id,
         organization_id,
         user_id,
@@ -1020,9 +1026,10 @@ def _verified_store_connection_answer(org_id: str, db) -> str:
             "CASE WHEN access_token IS NOT NULL AND access_token <> '' THEN TRUE ELSE FALSE END AS has_token "
             "FROM stores WHERE organization_id = :o ORDER BY updated_at DESC LIMIT 10"
         ), {"o": org_id}).mappings().all()
-    except Exception:
-        logger.error("rev_store_connection_lookup_failed")
+    except Exception as exc:
+        logger.error("rev_store_connection_lookup_failed error_type=%s", type(exc).__name__)
         return "I could not verify your store connection right now. Please check Stores and try again."
+    logger.info("rev_store_connection_lookup_complete store_count=%d", len(rows))
     if not rows:
         return "I cannot find a connected store for your organization. Open Stores to connect one."
     details = []

@@ -1,6 +1,7 @@
 """Centralised model transport. Merchant data is never logged or sent to fallback providers."""
 import logging
 import os
+import time
 
 import httpx
 
@@ -31,6 +32,8 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
         if web_search:
             model = GEMINI_MODEL
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        started = time.monotonic()
+        logger.info("model_provider_request_start provider=gemini model=%s role=%s grounded=%s timeout_seconds=%s", model, role, web_search, timeout)
         try:
             payload = {"contents": [{"role": "user", "parts": parts}], "generationConfig": {"maxOutputTokens": max_tokens}}
             if model.startswith("gemini-2.5-"):
@@ -43,7 +46,7 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
                     json=payload,
                 )
             if response.status_code >= 400:
-                logger.error("model_provider_http_error provider=gemini status=%s model=%s", response.status_code, model, extra={
+                logger.error("model_provider_http_error provider=gemini status=%s model=%s elapsed_ms=%d", response.status_code, model, int((time.monotonic()-started)*1000), extra={
                     "provider": "gemini", "status": response.status_code,
                     "model": model,
                 })
@@ -63,10 +66,11 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
                     if uri.startswith("https://") and uri not in sources:
                         sources.append(uri)
                 output += "\n\nSources:\n" + "\n".join("- " + uri for uri in sources[:5]) if sources else "\n\n(Web search returned no verifiable sources.)"
+            logger.info("model_provider_request_success provider=gemini model=%s elapsed_ms=%d", model, int((time.monotonic()-started)*1000))
             return output.strip()
         except httpx.HTTPError as exc:
-            logger.error("model_provider_network_error provider=gemini error_type=%s model=%s",
-                         type(exc).__name__, model,
+            logger.error("model_provider_network_error provider=gemini error_type=%s model=%s elapsed_ms=%d",
+                         type(exc).__name__, model, int((time.monotonic()-started)*1000),
                          extra={"provider": "gemini", "error_type": type(exc).__name__, "model": model})
             raise ModelProviderError("gemini", "network") from exc
     if provider == "anthropic":
