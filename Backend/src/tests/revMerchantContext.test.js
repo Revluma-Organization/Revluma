@@ -29,3 +29,21 @@ test('context filters unverified and out-of-scope findings', async () => {
 test('context rejects missing organization', async () => {
   await assert.rejects(buildMerchantContext({}, null), /organizationId/);
 });
+
+test('context remains below gateway limit with maximum selected records', async () => {
+  const id = 'a'.repeat(36);
+  const db = {
+    stores: { findMany: async () => Array.from({ length: 20 }, () => ({
+      id, platform: 'shopify', status: 'active', last_synced_at: null,
+    })) },
+    intelligence_findings: { findMany: async () => Array.from({ length: 10 }, (_, i) => ({
+      id: String(i), store_id: id, type: 'revenue_change', severity: 'high',
+      evidence: { verified: true, currentCount: 100, previousCount: 50 },
+    })) },
+  };
+  const context = await buildMerchantContext(db, 'org-a');
+  assert.equal(context.stores.length, 8);
+  assert.equal(context.verified_findings.length, 5);
+  assert.ok(Buffer.byteLength(JSON.stringify({ merchant_context: context })) < 16 * 1024);
+  assert.equal(typeof context.verified_findings[0], 'string');
+});
