@@ -516,10 +516,11 @@ def compose_web_research(message: str, understanding, history_text: str,
                          memories: list[dict]) -> str:
     """Search public web with Gemini grounding; never include private merchant context."""
     from .model_gateway import generate
+    # Grounded web searches must not receive private merchant history or memories.
+    # The current request is the only user-provided text forwarded to search.
     prompt = (PERSONA + "\\nAnswer this public-information research question using Google Search. "
               "Give a clear answer with sources. Do not invent citations. "
-              "No private store records are included.\\nConversation: "
-              + history_text[-1500:] + "\\nQuestion: " + message[:500])
+              "Never request or disclose private store records.\\nQuestion: " + message[:500])
     try:
         return sanitise(generate(prompt, role="deep", max_tokens=1200,
                                  timeout=25.0, web_search=True))
