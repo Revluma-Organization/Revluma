@@ -702,6 +702,9 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
     if str(trigger_type or "conversation").lower() == "conversation" and _is_store_connection_question(message):
         return finish("direct_answer", _verified_store_connection_answer(organization_id, db))
 
+    if str(trigger_type or "conversation").lower() == "conversation" and _is_general_capability_question(message):
+        return finish("capability", responder.compose_capability(_has_store(organization_id, db)))
+
     # ── 3. Preference statement: write memory, acknowledge ────────────────────
     if _is_ad_evaluation_request(
         u,
@@ -968,6 +971,15 @@ def _state_usable(bs) -> bool:
             and bs.computation_status != "failed"
             and bs.revenue_today is not None)
 
+
+def _is_general_capability_question(message: str) -> bool:
+    normalized = re.sub(r"\s+", " ", message.lower().strip())
+    if re.search(r"\b(?:my|our)\s+(?:shopify\s+)?store\b.*\b(?:connected|connection|synced)\b", normalized):
+        return False
+    return bool(re.search(
+        r"\b(?:what can you do|what do you do|your capabilities|how can you help(?: me)?|what can you help(?: me)? with|explain how you can help(?: me)?|how do you help(?: me)?)\b",
+        normalized,
+    ))
 
 def _is_store_connection_question(message: str) -> bool:
     normalized = re.sub(r"\s+", " ", message.lower().strip())
