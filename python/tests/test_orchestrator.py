@@ -512,3 +512,26 @@ def test_general_capability_question_never_requires_llm_routing():
     assert detect("What can you do?")
     assert not detect("Is my store connected to you?")
     assert not detect("Why did my Shopify store revenue drop?")
+
+
+def test_deterministic_routes_do_not_call_gemini_understanding(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Gemini intent classification must not run")
+    monkeypatch.setattr(orchestrator_module, "understand", forbidden)
+    monkeypatch.setattr(orchestrator_module, "_get_or_create_conversation",
+                        lambda *args: ("conv-1", False))
+    monkeypatch.setattr(orchestrator_module, "_persist_messages",
+                        lambda *args, **kwargs: None)
+    monkeypatch.setattr(orchestrator_module, "_verified_store_connection_answer",
+                        lambda org_id, db: "Verified Shopify connection")
+    monkeypatch.setattr(orchestrator_module, "_has_store", lambda *args: True)
+    db = MagicMock()
+    args = ("org-123", "user-123", "Is my store connected to you?", "conv-1", db, "corr-1")
+    result = orchestrator_module._run(*args)
+    assert result.text == "Verified Shopify connection"
+    assert result.response_type == "direct_answer"
+    result = orchestrator_module._run(
+        "org-123", "user-123", "Explain how you can help me manage my Shopify store.",
+        "conv-1", db, "corr-2")
+    assert result.response_type == "capability"
+    assert result.text
