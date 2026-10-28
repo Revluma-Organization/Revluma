@@ -342,6 +342,9 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     // Certification is best-effort and strictly fail-closed. A failed proof
     // must never block routine order reconciliation or fabricate findings.
     try {
+      if (webhookSetupError) {
+        throw Object.assign(new Error('Webhook reconciliation incomplete'), { code: 'ORDER_COVERAGE_WEBHOOK_SETUP_INCOMPLETE' });
+      }
       const { verifyShopifyOrderCoverage } = require('./intelligenceShopifyCoverageProducer');
       await verifyShopifyOrderCoverage(prisma, store);
       logger.info('shopify_order_coverage_certified', { store_id: store.id });
