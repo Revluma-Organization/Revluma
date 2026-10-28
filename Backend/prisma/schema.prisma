@@ -1505,3 +1505,41 @@ model intelligence_order_coverage {
 
   @@index([organization_id, certified_at(sort: Desc)], map: "idx_intelligence_order_coverage_org")
 }
+
+model shopify_inventory_observations {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id       String   @db.Uuid
+  store_id              String   @db.Uuid
+  observation_id        String   @db.Uuid
+  observed_at           DateTime @db.Timestamptz(6)
+  product_external_id   String   @db.VarChar(255)
+  variant_external_id   String   @db.VarChar(255)
+  product_title         String
+  product_status        String   @db.VarChar(32)
+  variant_title         String
+  available_for_sale    Boolean
+  inventory_quantity    Int?
+  inventory_policy      String   @db.VarChar(32)
+  source                String   @db.VarChar(60)
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([store_id, observation_id, variant_external_id])
+  @@index([organization_id, store_id, observed_at(sort: Desc)])
+  @@index([store_id, variant_external_id, observed_at(sort: Desc)])
+}
+
+model shopify_inventory_observation_runs {
+  id                     String   @id @db.Uuid
+  organization_id        String   @db.Uuid
+  store_id               String   @db.Uuid
+  observed_at            DateTime @db.Timestamptz(6)
+  source                 String   @db.VarChar(60)
+  scope_verified         Boolean
+  catalog_complete       Boolean
+  variants_complete      Boolean
+  product_count          Int
+  variant_count          Int
+  created_at             DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([organization_id, store_id, observed_at(sort: Desc)])
+}
