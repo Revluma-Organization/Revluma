@@ -56,9 +56,9 @@ function detectRevenueChange({ scope, evidence, minimumOrders = 10, minimumRelat
   const direction = delta < 0 ? 'decreased' : 'increased';
   return finding(TYPES.REVENUE_CHANGE, scope, delta < 0 ? 'high' : 'medium',
     `Verified revenue ${direction} ${Math.round(Math.abs(delta) * 100)}%`,
-    'Compared with an equal-length previous period using recorded orders in the same currency.',
+    'Compared with an equal-length previous period using recorded orders in the same currency. This change does not establish its cause or the amount of recoverable revenue.',
     { ...evidence, delta_pct: Number((delta * 100).toFixed(2)), source: 'orders' },
-    { label: 'Investigate orders', route: '/dashboard/analytics' });
+    { label: 'Investigate in Command Center', route: '/dashboard', guidance: 'Compare order count and average order value across the two periods. Check product availability and checkout activity where independently verified. Do not assume a cause from revenue movement alone.', measurement: 'Compare order count, recorded revenue, and average order value over a subsequent equal-length period in the same currency.' });
 }
 function detectReturningCustomerChange({ scope, evidence, minimumCustomers = 20, minimumPointChange = 10 }) {
   if (!scope?.organizationId || !scope?.storeId || !evidenceReady(evidence, minimumCustomers)) return null;
@@ -77,7 +77,7 @@ function detectReturningCustomerChange({ scope, evidence, minimumCustomers = 20,
     { ...evidence, current_rate_pct: Number(currentRate.toFixed(2)),
       previous_rate_pct: Number(previousRate.toFixed(2)),
       change_percentage_points: Number(pointChange.toFixed(2)), source: 'orders' },
-    { label: 'Investigate customers', route: '/dashboard/customers' });
+    { label: 'Investigate in Command Center', route: '/dashboard', guidance: 'Compare returning-buyer counts and prior purchase history for both periods. Do not infer why buyers did not return.', measurement: 'Compare verified returning-buyer purchase share over the next equivalent period.' });
 }
 function prioritizeFindings(findings) {
   return findings.filter(Boolean).sort((a, b) =>
