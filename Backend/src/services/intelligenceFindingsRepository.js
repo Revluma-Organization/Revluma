@@ -2,6 +2,7 @@
 const allowedStatuses = new Set(['acknowledged', 'resolved', 'dismissed']);
 const allowedTypes = new Set(['integration_failure', 'revenue_change', 'returning_customer_change']);
 const allowedSeverity = new Set(['low', 'medium', 'high', 'critical']);
+const { presentFindings } = require('./mvpFindingPresentation');
 const uuid = value => typeof value === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
@@ -35,12 +36,13 @@ async function persistVerifiedFindings(prisma, organizationId, findings) {
 async function listFindings(prisma, organizationId, { status = 'open', limit = 25 } = {}) {
   const where = { organization_id: organizationId };
   if (status !== 'all') where.status = status;
-  return prisma.intelligence_findings.findMany({
+  const findings = await prisma.intelligence_findings.findMany({
     where, orderBy: [{ detected_at: 'desc' }], take: Math.min(Math.max(Number(limit) || 25, 1), 100),
     select: { id: true, store_id: true, type: true, severity: true, status: true,
       title: true, description: true, evidence: true, action: true, detected_at: true,
       acknowledged_at: true, resolved_at: true, dismissed_at: true },
   });
+  return presentFindings(findings);
 }
 async function changeFindingStatus(prisma, organizationId, id, status) {
   if (!uuid(id) || !allowedStatuses.has(status)) return { invalid: true };
