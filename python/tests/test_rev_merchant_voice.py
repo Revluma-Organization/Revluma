@@ -29,8 +29,8 @@ def test_unverified_store_is_never_called_connected():
         "status": "error", "has_token": False, "last_synced_at": None,
     }]
     reply = orchestrator._verified_store_connection_answer("org-1", db)
-    assert "can't confirm an active connection" in reply
-    assert "is connected to Revluma!" not in reply
+    assert "connection is not verified" in reply
+    assert "is connected in Revluma!" not in reply
 
 
 def test_greeting_prompt_is_warm_and_preserves_history(monkeypatch):
