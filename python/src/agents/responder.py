@@ -133,31 +133,9 @@ def compose_conversational(message: str, understanding, history_text: str,
 
 
 def _static_conversational(message: str, understanding) -> str:
-    msg = message.lower().strip().rstrip("?!.,")
-    if understanding.intent == "identity":
-        return ("I'm Rev, Revluma's ecommerce intelligence. I monitor your store, "
-                "surface what matters before you ask, and help you understand what is "
-                "happening and what to do about it. What are you working on?")
-    table = {
-        "hi": "Hey. What are we working on?",
-        "hello": "Hey. What's on your mind?",
-        "hey": "Hey. What are we looking at?",
-        "how are you": "I'm good. What's going on with the business?",
-        "how are you doing": "Good. What are you working on?",
-        "how's it going": "Going well. What's on your mind?",
-        "hows it going": "Going well. What's on your mind?",
-        "nothing much": "Fair enough. Shout when you want to dig into something.",
-        "not much": "All good. What do you want to look at?",
-        "thanks": "Anytime.",
-        "thank you": "Anytime.",
-        "ok": "Got it.",
-        "okay": "Got it.",
-        "bye": "Talk soon.",
-    }
-    for k, v in table.items():
-        if msg.startswith(k):
-            return v
-    return "What do you want to look at?"
+    """Never pass canned replies off as AI-generated conversation."""
+    return ("I'm temporarily unable to generate a response. "
+            "Please try again shortly.")
 
 
 # ── Knowledge / strategy / explanation ────────────────────────────────────────
