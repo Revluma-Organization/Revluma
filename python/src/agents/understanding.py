@@ -294,8 +294,10 @@ def _safe_fallback(message: str, history: list[dict], reason: str) -> Understand
         return Understanding("capability", "understand Rev capabilities", False, False, False,
                              MODE_EXPLANATION, {}, [], "low", 0.85, reason)
 
+    # Questions about the merchant's present data are not external research.
+    # "current" and "recent" must not override first-party store evidence.
     # Web research signals
-    if any(p in msg for p in ["latest", "recent", "current trend", "this year", "2026",
+    if not needs_store and any(p in msg for p in ["latest", "recent", "current trend", "this year", "2026",
                               "search the web", "what changed", "news about", "benchmark"]):
         return Understanding("web_research", "get current external information", needs_store, True, False,
                              MODE_EXPLANATION, {}, domains, "low", 0.7, reason)
