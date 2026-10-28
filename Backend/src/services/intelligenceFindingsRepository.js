@@ -1,6 +1,6 @@
 'use strict';
 const allowedStatuses = new Set(['acknowledged', 'resolved', 'dismissed']);
-const allowedTypes = new Set(['integration_failure', 'revenue_change', 'returning_customer_change']);
+const allowedTypes = new Set(['integration_failure', 'revenue_change', 'order_volume_change', 'returning_customer_change']);
 const allowedSeverity = new Set(['low', 'medium', 'high', 'critical']);
 const uuid = value => typeof value === 'string' &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
