@@ -37,7 +37,7 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=15.0,
                           "generationConfig": {"maxOutputTokens": max_tokens}},
                 )
             if response.status_code >= 400:
-                logger.error("model_provider_http_error", extra={
+                logger.error("model_provider_http_error provider=gemini status=%s model=%s", response.status_code, model, extra={
                     "provider": "gemini", "status": response.status_code,
                     "model": model,
                 })
