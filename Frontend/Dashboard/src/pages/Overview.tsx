@@ -82,8 +82,14 @@ export default function Overview() {
         </div>
         <button onClick={() => navigate("/dashboard/rev-intell")} className="inline-flex items-center gap-2 rounded-xl bg-[#071225] px-4 py-3 text-xs font-semibold text-white transition hover:bg-[#17365d]"><BrainCircuit className="h-4 w-4 text-[#57a5ff]" /> Ask Rev Intell <ArrowUpRight className="h-3.5 w-3.5" /></button>
       </div>
-      <IntelligenceFindingsPanel />
-      <OperationalExecutionPanel />
+      <div className="grid min-w-0 items-stretch gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" aria-label="Intelligence and operations overview">
+        <div className="min-w-0 [&>section]:h-full">
+          <IntelligenceFindingsPanel />
+        </div>
+        <div className="min-w-0 [&>section]:h-full">
+          <OperationalExecutionPanel />
+        </div>
+      </div>
       <div className="min-w-0" aria-label="Merchant intelligence briefing">
         <MorningBriefing />
       </div>
