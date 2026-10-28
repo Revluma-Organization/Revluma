@@ -62,18 +62,9 @@ def sanitise(text: str) -> str:
 
 
 def _call(model: str, prompt: str, max_tokens: int, timeout: float) -> str:
-    import anthropic, os
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY not set")
-    client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
-    t0 = time.time()
-    resp = client.messages.create(
-        model=model, max_tokens=max_tokens,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    logger.info("llm_call", extra={"model": model, "ms": int((time.time() - t0) * 1000)})
-    return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
+    from .model_gateway import generate
+    role = "fast" if model == FAST_MODEL else "deep"
+    return generate(prompt, role=role, max_tokens=max_tokens, timeout=timeout)
 
 
 # ── Conversational / identity / capability / feedback ─────────────────────────
@@ -121,24 +112,12 @@ def compose_conversational(message: str, understanding, history_text: str,
     )
     try:
         if image_base64 and image_media_type:
-            import anthropic as _anth, os as _os
-            _client = _anth.Anthropic(api_key=_os.environ.get("ANTHROPIC_API_KEY"), timeout=10.0)
-            _resp = _client.messages.create(
-                model=FAST_MODEL, max_tokens=300,
-                messages=[{"role": "user", "content": [
-                    {"type": "image", "source": {
-                        "type": "base64",
-                        "media_type": image_media_type,
-                        "data": image_base64,
-                    }},
-                    {"type": "text", "text": (
-                        prompt + "\n\nThe merchant has also uploaded an image. "
-                        "Look at it carefully and incorporate what you see into your response. "
-                        "Describe what is relevant in the image as it relates to their message."
-                    )},
-                ]}]
-            )
-            return sanitise("".join(b.text for b in _resp.content if getattr(b, "type", "") == "text").strip())
+            from .model_gateway import generate
+            return sanitise(generate(
+                prompt + "\\n\\nThe merchant uploaded an image. Describe only relevant visible details.",
+                role="fast", max_tokens=300, timeout=10.0,
+                image_base64=image_base64, image_media_type=image_media_type,
+            ))
         return sanitise(_call(FAST_MODEL, prompt, 300, 10.0))
     except Exception as exc:
         logger.error(
