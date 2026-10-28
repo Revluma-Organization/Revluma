@@ -565,6 +565,15 @@ class OrchestrationResult:
         }
 
 
+
+def _is_seven_day_store_briefing(message: str) -> bool:
+    """Match explicit seven-day store performance questions, not generic advice."""
+    msg = message.lower()
+    window = any(x in msg for x in ("last seven days", "last 7 days", "past seven days", "past 7 days", "this week"))
+    store = any(x in msg for x in ("my store", "my shopify", "our store", "our shopify"))
+    analysis = any(x in msg for x in ("perform", "analy", "revenue", "sales", "brief", "how are we doing", "paying attention"))
+    return window and store and analysis
+
 def orchestrate(organization_id: str, user_id: str, message: str,
                 conversation_id: str | None, db,
                 image_base64: str | None = None,
@@ -620,6 +629,25 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
 
     # ── 1. Conversation context ───────────────────────────────────────────────
     conv_id, is_new = _get_or_create_conversation(organization_id, user_id, conversation_id, db)
+    # Verified seven-day briefing: bypass model intent classification, which can
+    # time out or incorrectly route a store-data request to generic advice.
+    if (str(trigger_type or "conversation").lower() == "conversation"
+            and _is_seven_day_store_briefing(message)):
+        from ..intelligence.seven_day_evidence import retrieve_seven_day_evidence
+        from ..intelligence.seven_day_briefing import compose_seven_day_briefing
+        evidence = retrieve_seven_day_evidence(organization_id, db)
+        answer = compose_seven_day_briefing(evidence)
+        persist_turns(
+            conv_id, organization_id, user_id, message, answer, "analysis",
+            None, db, title_hint=message if is_new else None,
+            orchestrator_mode="Analyst", correlation_id=correlation_id,
+        )
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="analysis", text=answer, intent="seven_day_store_briefing",
+            orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
+        )
+
     # Deterministic merchant questions must never wait on Gemini intent classification.
     # A provider ReadTimeout previously exhausted the Node request budget before
     # these routes could run, producing 503 for a simple connection-status lookup.
