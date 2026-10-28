@@ -19,7 +19,7 @@ test('context filters unverified and out-of-scope findings', async () => {
   };
   const context = await buildMerchantContext(db, 'org-a');
   assert.equal(context.verified_findings.length, 1);
-  assert.match(context.verified_findings[0], /finding \\| a/);
+  assert.ok(context.verified_findings[0].startsWith('finding | a |'));
   assert.equal(context.stores.length, 1);
   assert.match(context.verified_findings[0], /currentCount/);
   assert.doesNotMatch(JSON.stringify(context), /private@example.com/);
