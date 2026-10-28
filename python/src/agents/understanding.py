@@ -255,7 +255,14 @@ def _safe_fallback(message: str, history: list[dict], reason: str) -> Understand
         "analyze my", "analyse my", "how is my", "how's my", "hows my",
         "what happened yesterday", "what happened today", "this week",
     ]
-    needs_store = any(s in msg for s in store_signals)
+    # A merchant asking for connected-store facts must never be routed as small talk.
+    # Check these phrases before generic knowledge, identity, or web-research routing.
+    store_signals.extend([
+        "my connected store", "connected store", "verified findings",
+        "my findings", "store findings", "supporting evidence",
+        "store data", "my business data", "information is still unavailable",
+    ])
+    needs_store = any(signal in msg for signal in store_signals)
 
     domains = []
     for d, kws in {
@@ -267,6 +274,13 @@ def _safe_fallback(message: str, history: list[dict], reason: str) -> Understand
     }.items():
         if any(k in msg for k in kws):
             domains.append(d)
+
+    if needs_store and any(p in msg for p in (
+        "verified findings", "connected store", "supporting evidence",
+        "store findings", "information is still unavailable",
+    )):
+        return Understanding("diagnosis", "review verified merchant evidence", True, False, False,
+                             MODE_ANALYSIS, {}, domains or ["revenue"], "medium", 0.9, reason)
 
     # Identity
     if any(p in msg for p in ["who are you", "what are you", "introduce yourself",
