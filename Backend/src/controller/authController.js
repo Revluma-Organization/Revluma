@@ -825,10 +825,16 @@ exports.refresh = async (req, res, next) => {
     const { raw: newRawRefresh, hash: newRefreshHash, expiresAt } = generateRefreshToken();
 
     const rotationResult = await prisma.$transaction(async (tx) => {
-      await tx.refresh_tokens.update({
-        where: { id: storedToken.id },
+      // Compare-and-swap prevents concurrent refreshes from issuing two successors.
+      const claimed = await tx.refresh_tokens.updateMany({
+        where: { id: storedToken.id, is_revoked: false, expires_at: { gt: new Date() } },
         data: { is_revoked: true },
       });
+      if (claimed.count !== 1) {
+        const conflict = new Error('Refresh token already rotated.');
+        conflict.code = 'REFRESH_ROTATION_CONFLICT';
+        throw conflict;
+      }
 
       const refreshSession = await tx.refresh_tokens.create({
         data: {
@@ -850,7 +856,7 @@ exports.refresh = async (req, res, next) => {
       });
 
       return { accessToken, refreshSession };
-    });
+    }, { maxWait: 10000, timeout: 15000 });
 
     // Rotate the HttpOnly cookie alongside the body token
     res.cookie('refresh_token', newRawRefresh, {
@@ -866,6 +872,9 @@ exports.refresh = async (req, res, next) => {
     });
 
   } catch (error) {
+    if (error.code === 'REFRESH_ROTATION_CONFLICT') {
+      return res.status(401).json({ success: false, error: 'Refresh token already used. Please sign in again.' });
+    }
     next(error);
   }
 };
