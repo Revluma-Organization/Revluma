@@ -1523,9 +1523,9 @@ model shopify_inventory_observations {
   source                String   @db.VarChar(60)
   created_at            DateTime @default(now()) @db.Timestamptz(6)
 
-  @@unique([store_id, observation_id, variant_external_id])
-  @@index([organization_id, store_id, observed_at(sort: Desc)])
-  @@index([store_id, variant_external_id, observed_at(sort: Desc)])
+  @@unique([store_id, observation_id, variant_external_id], map: "uq_inventory_observation_variant")
+  @@index([organization_id, store_id, observed_at(sort: Desc)], map: "idx_inventory_observations_org_store_observed")
+  @@index([store_id, variant_external_id, observed_at(sort: Desc)], map: "idx_inventory_observations_store_variant_observed")
 }
 
 model shopify_inventory_observation_runs {
@@ -1541,5 +1541,5 @@ model shopify_inventory_observation_runs {
   variant_count          Int
   created_at             DateTime @default(now()) @db.Timestamptz(6)
 
-  @@index([organization_id, store_id, observed_at(sort: Desc)])
+  @@index([organization_id, store_id, observed_at(sort: Desc)], map: "idx_inventory_runs_org_store_observed")
 }
