@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { detectIntegrationFailure, detectRevenueChange, detectReturningCustomerChange, prioritizeFindings } = require('../services/intelligenceFindingsEngine');
+const { detectIntegrationFailure, detectRevenueChange, detectOrderVolumeChange, detectReturningCustomerChange, prioritizeFindings } = require('../services/intelligenceFindingsEngine');
 const scope = { organizationId: 'org-1', storeId: 'store-1' };
 const period = {
   verified: true, complete: true, currency: 'USD',
@@ -43,4 +43,19 @@ test('findings have deterministic dedupe keys and severity ordering', () => {
   assert.equal(ranked[0].type, 'integration_failure');
   assert.equal(ranked.length, 2);
   assert.ok(revenue.dedupe_key.includes('revenue_change'));
+});
+
+test('order-volume findings require verified comparable complete periods', () => {
+  const evidence = { ...period, previousCount: 40, currentCount: 20 };
+  const result = detectOrderVolumeChange({ scope, evidence });
+  assert.equal(result.type, 'order_volume_change');
+  assert.equal(result.severity, 'high');
+  assert.equal(result.evidence.delta_pct, -50);
+  assert.equal(result.action.route, '/dashboard');
+  assert.match(result.action.measurement, /completed-order counts/);
+  assert.equal(detectOrderVolumeChange({ scope, evidence: { ...evidence, complete: false } }), null);
+  assert.equal(detectOrderVolumeChange({ scope, evidence: { ...evidence, previousCount: 0 } }), null);
+  assert.equal(detectOrderVolumeChange({ scope, evidence: { ...evidence, currentCount: 2 } }), null);
+  assert.equal(detectOrderVolumeChange({ scope, evidence: { ...evidence, currentCount: 20.5 } }), null);
+  assert.equal(detectOrderVolumeChange({ scope, evidence: { ...evidence, previousEnd: '2026-10-07T00:00:00Z' } }), null);
 });
