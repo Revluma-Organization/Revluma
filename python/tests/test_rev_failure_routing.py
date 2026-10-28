@@ -35,7 +35,7 @@ def test_provider_failure_does_not_return_misleading_small_talk(monkeypatch):
         SimpleNamespace(intent="casual", goal="conversation"),
         "", [], True,
     )
-    assert "couldn't generate a reliable answer" in reply
+    assert "temporarily unable to generate a response" in reply
     assert "What do you want to look at?" not in reply
     assert "private-customer@example.com" not in reply
 
