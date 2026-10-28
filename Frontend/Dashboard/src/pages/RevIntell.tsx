@@ -364,8 +364,8 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {sections.map(({ label, text }) => (
         <div key={label}>
-          <p style={{ fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase",
-            letterSpacing: "0.08em", color: "#5865f2", marginBottom: 5, margin: "0 0 5px" }}>
+          <p style={{ fontSize: "1.05rem", fontWeight: 750,
+            letterSpacing: "-0.015em", color: t1, margin: "0 0 7px" }}>
             {label}
           </p>
           <RichText text={text!} t1={t1} isDark={isDark} />
