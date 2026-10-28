@@ -76,6 +76,6 @@ def test_orchestrator_uses_authenticated_organization_for_briefing(monkeypatch):
         context_payload={"organization_id": "attacker-org", "_node_owns_chat_persistence": True},
     )
     assert result.success
-    assert result.intent == "seven_day_store_briefing"
+    assert result.intent == "seven_day_store_briefing"\n    assert result.response_type == "direct_answer"
     assert calls == [("authenticated-org", db)]
     assert "2 orders" in result.text
