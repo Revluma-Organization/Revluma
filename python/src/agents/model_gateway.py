@@ -33,6 +33,8 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=15.0,
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         try:
             payload = {"contents": [{"role": "user", "parts": parts}], "generationConfig": {"maxOutputTokens": max_tokens}}
+            if model.startswith("gemini-2.5-"):
+                payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
             if web_search:
                 payload["tools"] = [{"google_search": {}}]
             with httpx.Client(timeout=timeout) as client:
