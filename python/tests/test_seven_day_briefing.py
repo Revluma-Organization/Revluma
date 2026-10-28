@@ -77,5 +77,6 @@ def test_orchestrator_uses_authenticated_organization_for_briefing(monkeypatch):
     )
     assert result.success
     assert result.intent == "seven_day_store_briefing"
+    assert result.response_type == "direct_answer"
     assert calls == [("authenticated-org", db)]
     assert "2 orders" in result.text
