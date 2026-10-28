@@ -8,6 +8,7 @@
 const TYPES = Object.freeze({
   INTEGRATION_FAILURE: 'integration_failure',
   REVENUE_CHANGE: 'revenue_change',
+  ORDER_VOLUME_CHANGE: 'order_volume_change',
   RETURNING_CUSTOMER_CHANGE: 'returning_customer_change',
 });
 const SEVERITIES = Object.freeze({ critical: 4, high: 3, medium: 2, low: 1 });
@@ -60,6 +61,21 @@ function detectRevenueChange({ scope, evidence, minimumOrders = 10, minimumRelat
     { ...evidence, delta_pct: Number((delta * 100).toFixed(2)), source: 'orders' },
     { label: 'Investigate in Command Center', route: '/dashboard', guidance: 'Compare order count and average order value across the two periods. Check product availability and checkout activity where independently verified. Do not assume a cause from revenue movement alone.', measurement: 'Compare order count, recorded revenue, and average order value over a subsequent equal-length period in the same currency.' });
 }
+function detectOrderVolumeChange({ scope, evidence, minimumOrders = 10, minimumRelativeChange = 0.25 }) {
+  if (!scope?.organizationId || !scope?.storeId || !evidenceReady(evidence, minimumOrders)) return null;
+  if (!Number.isInteger(evidence.currentCount) || !Number.isInteger(evidence.previousCount) ||
+      evidence.previousCount <= 0) return null;
+  const delta = (evidence.currentCount - evidence.previousCount) / evidence.previousCount;
+  if (Math.abs(delta) < minimumRelativeChange) return null;
+  const direction = delta < 0 ? 'decreased' : 'increased';
+  return finding(TYPES.ORDER_VOLUME_CHANGE, scope, delta < 0 ? 'high' : 'medium',
+    `Verified order volume ${direction} ${Math.round(Math.abs(delta) * 100)}%`,
+    'Completed-order records changed across equal-length, certified historical windows. The change alone does not establish why purchases changed.',
+    { ...evidence, delta_pct: Number((delta * 100).toFixed(2)), source: 'orders' },
+    { label: 'Investigate in Command Center', route: '/dashboard',
+      guidance: 'Compare product-level orders, recorded revenue and availability. Investigate checkout activity only where independently verified.',
+      measurement: 'Compare completed-order counts across the next equivalent period.' });
+}
 function detectReturningCustomerChange({ scope, evidence, minimumCustomers = 20, minimumPointChange = 10 }) {
   if (!scope?.organizationId || !scope?.storeId || !evidenceReady(evidence, minimumCustomers)) return null;
   if (![evidence.currentReturning, evidence.previousReturning].every(validNumber) ||
@@ -85,4 +101,4 @@ function prioritizeFindings(findings) {
     a.dedupe_key.localeCompare(b.dedupe_key));
 }
 module.exports = { TYPES, detectIntegrationFailure, detectRevenueChange,
-  detectReturningCustomerChange, prioritizeFindings };
+  detectReturningCustomerChange, detectOrderVolumeChange, prioritizeFindings };
