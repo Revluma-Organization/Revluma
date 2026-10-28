@@ -93,6 +93,7 @@ const VALID_RESPONSE_TYPES = [
   'conversational',
   'analysis',
   'capability',
+  'direct_answer',
   'clarification',
   'knowledge',
   'action_plan',
