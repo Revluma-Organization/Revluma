@@ -548,8 +548,9 @@ def compose_analysis(message: str, understanding, state_json: str, agent_json: s
                            attempt, "deep" if attempt == 1 else "fast")
         except Exception as exc:
             logger.error(
-                "responder_analysis_failed attempt=%s role=%s error_type=%s",
-                attempt, "deep" if attempt == 1 else "fast", type(exc).__name__,
+                "responder_analysis_failed",
+                extra={"attempt": attempt, "model_role": "deep" if attempt == 1 else "fast",
+                       "error_type": type(exc).__name__},
             )
     return {
         "situation": "I could not complete the analysis.",
