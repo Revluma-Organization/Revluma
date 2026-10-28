@@ -26,7 +26,7 @@ async function persistVerifiedFindings(prisma, organizationId, findings) {
         dedupe_key: candidate.dedupe_key,
       },
       update: { severity: candidate.severity, title: candidate.title, description: candidate.description,
-        evidence: candidate.evidence, updated_at: new Date() },
+        evidence: candidate.evidence, action: candidate.action || undefined, updated_at: new Date() },
     });
     saved++;
   }
