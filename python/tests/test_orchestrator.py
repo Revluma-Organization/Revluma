@@ -469,3 +469,46 @@ def test_message_pair_and_conversation_count_commit_atomically():
     assert "message_count = :message_count" in update_sql
     db.commit.assert_called_once()
     db.rollback.assert_not_called()
+
+
+def test_store_connection_intent_is_specific():
+    detect = orchestrator_module._is_store_connection_question
+    assert detect("Is my store connected to you?")
+    assert detect("Can you verify my Shopify store connection?")
+    assert detect("Check if my Shopify store is synced")
+    assert not detect("How can you help me manage my Shopify store?")
+    assert not detect("Why are my connected store sales declining?")
+
+
+def test_store_connection_reads_only_authenticated_organization():
+    db = MagicMock()
+    db.execute.return_value.mappings.return_value.all.return_value = [
+        {"platform": "shopify", "shop_domain": "example.myshopify.com",
+         "status": "active", "has_token": True, "last_synced_at": None}
+    ]
+    reply = orchestrator_module._verified_store_connection_answer("org-123", db)
+    assert "connected in Revluma" in reply
+    assert "Initial sync not yet confirmed" in reply
+    args, kwargs = db.execute.call_args
+    assert kwargs == {}
+    assert args[1] == {"o": "org-123"}
+
+
+def test_store_connection_fail_closed_on_missing_token_or_db_failure():
+    db = MagicMock()
+    db.execute.return_value.mappings.return_value.all.return_value = [
+        {"platform": "shopify", "shop_domain": "example.myshopify.com",
+         "status": "active", "has_token": False, "last_synced_at": None}
+    ]
+    assert "not verified" in orchestrator_module._verified_store_connection_answer("org-123", db)
+    db.execute.side_effect = RuntimeError("database offline")
+    assert "could not verify" in orchestrator_module._verified_store_connection_answer("org-123", db)
+
+
+def test_general_capability_question_never_requires_llm_routing():
+    detect = orchestrator_module._is_general_capability_question
+    assert detect("Hi Rev, can you introduce yourself and explain how you can help me manage my Shopify store?")
+    assert detect("explain how you can help me manage my Shopify store?")
+    assert detect("What can you do?")
+    assert not detect("Is my store connected to you?")
+    assert not detect("Why did my Shopify store revenue drop?")
