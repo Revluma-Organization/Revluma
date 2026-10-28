@@ -532,19 +532,24 @@ def compose_analysis(message: str, understanding, state_json: str, agent_json: s
         + "If no real action applies, return empty actions array. Never invent fake actions. "
         + "Two or three maximum."
     )
-    for attempt in range(2):
+    # Deep Gemini timed out twice in production (28 seconds) while the fast
+    # Gemini model answered in <1 second. Retry once on the configured fast
+    # model, using the SAME evidence and constraints, not a fabricated template.
+    for attempt, (model, timeout) in enumerate(((DEEP_MODEL, 14.0), (FAST_MODEL, 10.0)), 1):
         try:
-            raw = _call(DEEP_MODEL, prompt, 700, 14.0)
+            raw = _call(model, prompt, 700, timeout)
             parsed = _parse_analysis(raw)
             if parsed:
                 for f in ("situation", "insight", "implication", "recommendation"):
                     if isinstance(parsed.get(f), str):
                         parsed[f] = sanitise(parsed[f])
                 return parsed
+            logger.warning("responder_analysis_invalid_json attempt=%s role=%s",
+                           attempt, "deep" if attempt == 1 else "fast")
         except Exception as exc:
             logger.error(
-                "responder_analysis_failed",
-                extra={"attempt": attempt + 1, "error_type": type(exc).__name__},
+                "responder_analysis_failed attempt=%s role=%s error_type=%s",
+                attempt, "deep" if attempt == 1 else "fast", type(exc).__name__,
             )
     return {
         "situation": "I could not complete the analysis.",
