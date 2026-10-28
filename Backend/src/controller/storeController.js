@@ -99,6 +99,8 @@ exports.getStores = async (req, res, next) => {
       return {
         ...safeStore,
         connection_status: connected ? 'connected' : 'disconnected',
+        sync_status: syncStatus,
+        monitoring_mode: !connected ? 'disconnected' : webhooksReady && syncStatus === 'complete' ? 'webhook_and_sync' : syncStatus === 'complete' ? 'sync_only_limited' : 'awaiting_verified_sync',
         webhooks_registered: store.platform === 'shopify' ? registeredTopics.size : null,
         webhooks_required: store.platform === 'shopify' ? requiredTopics.length : null,
         webhook_details: store.platform === 'shopify' ? requiredTopics.map((topic) => {
