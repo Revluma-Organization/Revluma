@@ -516,13 +516,22 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     try:
         cart_result = db.execute(
             _store_query("""
-                SELECT
-                    COUNT(*) as abandoned_count,
-                    COALESCE(SUM(cart_value), 0) as total_value
-                FROM abandoned_carts
-                WHERE store_id IN :store_ids
-                  AND status = 'abandoned'
-                  AND abandoned_at >= NOW() - INTERVAL '48 hours'
+                WITH ranked AS (
+                    SELECT store_id, cart_value,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY store_id,
+                                 COALESCE(NULLIF(external_cart_id, ''), id::text)
+                               ORDER BY updated_at DESC NULLS LAST,
+                                        created_at DESC NULLS LAST, id DESC
+                           ) AS rn
+                    FROM abandoned_carts
+                    WHERE store_id IN :store_ids
+                      AND status = 'abandoned' AND recovered_at IS NULL
+                      AND abandoned_at >= NOW() - INTERVAL '48 hours'
+                )
+                SELECT COUNT(*) as abandoned_count,
+                       COALESCE(SUM(cart_value), 0) as total_value
+                FROM ranked WHERE rn = 1
             """),
             store_params,
         ).fetchone()
@@ -651,13 +660,21 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         # High-value unrecovered carts
         top_carts = db.execute(
             _store_query("""
-                SELECT id, cart_value, abandoned_at
-                FROM abandoned_carts
-                WHERE store_id IN :store_ids
-                  AND status = 'abandoned'
-                  AND abandoned_at >= NOW() - INTERVAL '24 hours'
-                ORDER BY cart_value DESC
-                LIMIT 5
+                WITH ranked AS (
+                    SELECT id, cart_value, abandoned_at,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY store_id,
+                                 COALESCE(NULLIF(external_cart_id, ''), id::text)
+                               ORDER BY updated_at DESC NULLS LAST,
+                                        created_at DESC NULLS LAST, id DESC
+                           ) AS rn
+                    FROM abandoned_carts
+                    WHERE store_id IN :store_ids
+                      AND status = 'abandoned' AND recovered_at IS NULL
+                      AND abandoned_at >= NOW() - INTERVAL '24 hours'
+                )
+                SELECT id, cart_value, abandoned_at FROM ranked
+                WHERE rn = 1 ORDER BY cart_value DESC LIMIT 5
             """),
             store_params,
         ).fetchall()
