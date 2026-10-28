@@ -61,6 +61,8 @@ interface ConnectedStore {
   webhooks_required: number | null;
   webhook_details?: WebhookDetail[] | null;
   last_synced_at: string | null;
+  sync_status?: "pending" | "in_progress" | "complete" | "failed";
+  monitoring_mode?: "disconnected" | "webhook_and_sync" | "sync_only_limited" | "awaiting_verified_sync";
 }
 
 const STORE_STATUS_CACHE_KEY = "revluma:integration-store-status:v1";
@@ -336,7 +338,9 @@ export default function Integrations() {
               ? "Shopify Connected — Setup Needs Attention"
               : "Shopify Connected — Setup Incomplete",
             shopifyStore.setup_status === "failed"
-              ? "Your store credentials are saved, but webhook setup or synchronization failed. Use Retry setup on the store card."
+              ? shopifyStore.monitoring_mode === "sync_only_limited"
+                ? "Your store data synchronized, but webhook setup failed. Monitoring is limited and may not reflect recent changes immediately. Review setup details or retry."
+                : "Your store credentials are saved, but webhook setup or synchronization failed. Use Retry setup on the store card."
               : "Your store credentials are saved. Webhook registration or initial synchronization is still pending; the current setup status is shown below.",
             "View setup status",
           );

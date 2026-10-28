@@ -301,9 +301,22 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     });
     setupStage = 'webhook_reconciliation';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
+    // Webhook setup and read-only commerce ingestion are independent.
+    // A failed subscription must remain visible but must not prevent a
+    // merchant from receiving verified data via an authorized initial sync.
+    let webhookSetupError = null;
     if (reconcileWebhooks) {
-      const webhookResult = await reconcileShopifyWebhooks(store);
-      logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', registered: webhookResult.required });
+      try {
+        const webhookResult = await reconcileShopifyWebhooks(store);
+        logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', registered: webhookResult.required });
+      } catch (error) {
+        webhookSetupError = error;
+        logger.warn('shopify_webhook_setup_incomplete', {
+          store_id: store.id,
+          error_type: error.code || error.name || 'webhook_setup_error',
+          shopify_errors: error.shopifyErrors || [],
+        });
+      }
     } else {
       logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'skipped_for_background_order_reconciliation' });
     }
@@ -329,6 +342,9 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     // Certification is best-effort and strictly fail-closed. A failed proof
     // must never block routine order reconciliation or fabricate findings.
     try {
+      if (webhookSetupError) {
+        throw Object.assign(new Error('Webhook reconciliation incomplete'), { code: 'ORDER_COVERAGE_WEBHOOK_SETUP_INCOMPLETE' });
+      }
       const { verifyShopifyOrderCoverage } = require('./intelligenceShopifyCoverageProducer');
       await verifyShopifyOrderCoverage(prisma, store);
       logger.info('shopify_order_coverage_certified', { store_id: store.id });
@@ -340,8 +356,8 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     }
     const rfm = await rfmSync({ storeId: store.id, correlationId: `shopify-sync-${store.id}-${Date.now()}` });
     if (!rfm.success) logger.warn('shopify_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
-    logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned });
-    return { success: true, customers, orders, abandoned, rfm: rfm.success };
+    logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned, webhook_setup_complete: !webhookSetupError });
+    return { success: true, customers, orders, abandoned, rfm: rfm.success, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null };
   } catch (error) {
     try {
       await prisma.stores.update({
