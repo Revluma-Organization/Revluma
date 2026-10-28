@@ -57,3 +57,46 @@ def test_unknown_provider_fails_closed(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "unknown")
     with pytest.raises(model_gateway.ModelProviderError):
         model_gateway.generate("hello")
+
+
+def test_gemini_25_disables_thinking_for_short_responses(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+    requests = []
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, url, **kwargs):
+            requests.append(kwargs["json"])
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "candidates": [{"content": {"parts": [{"text": "Hello!"}]}}]})
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    monkeypatch.setattr(model_gateway, "GEMINI_FAST_MODEL", "gemini-2.5-flash-lite")
+    assert model_gateway.generate("hello", max_tokens=100) == "Hello!"
+    assert requests[0]["generationConfig"]["thinkingConfig"]["thinkingBudget"] == 0
+
+
+def test_gemini_web_research_uses_grounding_sources(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+    requests = []
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, url, **kwargs):
+            requests.append(kwargs["json"])
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "candidates": [{"content": {"parts": [{"text": "Recent update."}]},
+                    "groundingMetadata": {"groundingChunks": [
+                        {"web": {"uri": "https://example.org/source"}}]}}]})
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    assert "https://example.org/source" in model_gateway.generate("research", web_search=True)
+    assert requests[0]["tools"] == [{"google_search": {}}]
