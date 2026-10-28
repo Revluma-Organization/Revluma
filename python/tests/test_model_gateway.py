@@ -100,3 +100,24 @@ def test_gemini_web_research_uses_grounding_sources(monkeypatch):
     monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
     assert "https://example.org/source" in model_gateway.generate("research", web_search=True)
     assert requests[0]["tools"] == [{"google_search": {}}]
+
+
+def test_gemini_network_timeout_reports_safe_error_type(monkeypatch, caplog):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only-secret")
+    class FakeClient:
+        def __init__(self, **kwargs):
+            assert kwargs["timeout"] == 30.0
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, *args, **kwargs):
+            raise model_gateway.httpx.ReadTimeout("timed out")
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    with pytest.raises(model_gateway.ModelProviderError) as error:
+        model_gateway.generate("private merchant prompt")
+    assert error.value.status == "network"
+    assert "ReadTimeout" in caplog.text
+    assert "test-only-secret" not in caplog.text
+    assert "private merchant prompt" not in caplog.text

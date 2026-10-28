@@ -17,7 +17,7 @@ class ModelProviderError(RuntimeError):
         super().__init__(f"{provider} request failed (HTTP {status or 'unknown'})")
 
 
-def generate(prompt, *, role="fast", max_tokens=500, timeout=15.0,
+def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
              image_base64=None, image_media_type=None, web_search=False):
     provider = os.getenv("AI_PROVIDER", "anthropic").strip().lower()
     if provider == "gemini":
@@ -65,9 +65,9 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=15.0,
                 output += "\n\nSources:\n" + "\n".join("- " + uri for uri in sources[:5]) if sources else "\n\n(Web search returned no verifiable sources.)"
             return output.strip()
         except httpx.HTTPError as exc:
-            logger.error("model_provider_network_error", extra={
-                "provider": "gemini", "error_type": type(exc).__name__,
-            })
+            logger.error("model_provider_network_error provider=gemini error_type=%s model=%s",
+                         type(exc).__name__, model,
+                         extra={"provider": "gemini", "error_type": type(exc).__name__, "model": model})
             raise ModelProviderError("gemini", "network") from exc
     if provider == "anthropic":
         import anthropic
