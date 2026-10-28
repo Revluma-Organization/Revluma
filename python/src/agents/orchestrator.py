@@ -971,7 +971,7 @@ def _state_usable(bs) -> bool:
 
 def _is_store_connection_question(message: str) -> bool:
     normalized = re.sub(r"\s+", " ", message.lower().strip())
-    return bool(re.search(r"\b(?:is|are|has|have|check|verify|confirm|tell me|show me)\b", normalized)
+    return bool(re.search(r"\b(?:is|are|has|have|can|check|verify|confirm|tell me|show me)\b", normalized)
         and re.search(r"\b(?:my|our)\s+(?:(?:shopify|woocommerce|online)\s+)?store\b", normalized)
         and re.search(r"\b(?:connect(?:ed|ion)?|link(?:ed)?|integrat(?:ed|ion)|sync(?:ed|ing)?|installed)\b", normalized))
 
