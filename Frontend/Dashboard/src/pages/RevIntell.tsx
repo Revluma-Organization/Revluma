@@ -30,6 +30,7 @@ import revIntellLogo from "@/assets/images/rev-intell-logo.png";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
+import { parseVerifiedComparison } from "@/lib/revComparison";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -339,26 +340,8 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
 
 /** Structured cards derived only from values explicitly present in Rev's verified answer. */
 const VerifiedComparison: FC<{ text: string; isDark: boolean; t1: string; t2: string }> = ({ text, isDark, t1, t2 }) => {
-  if (!text.startsWith("I compared your latest rolling seven days")) return null;
-  const blocks = text.split(/(?=\*\*(?:Latest period|Previous period [1-9])\*\*)/);
-  const periods = blocks.slice(1).filter(b => /^\*\*(Latest period|Previous period [1-9])\*\*/.test(b));
-  if (periods.length !== 4) return null;
-  const extract = (body: string, pattern: RegExp) => body.match(pattern)?.[1] ?? null;
-  const metrics = periods.map((body, index) => ({
-    title: index === 0 ? "Latest 7 days" : `Previous period ${index}`,
-    dates: extract(body, /\*\*[^*]+\*\* \(([^)]+)\)/),
-    orders: extract(body, /- Orders: (\d+) recorded/),
-    carts: extract(body, /- Unrecovered abandoned carts: (\d+) recorded/),
-    customers: extract(body, /- Newly recorded customer profiles: (\d+)/),
-    firstTime: extract(body, /- First-time purchaser orders: (\d+)/),
-    returning: extract(body, /returning purchaser orders: (\d+)/),
-    values: [...body.matchAll(/- Orders: \d+ recorded; ([^\n]+?)\.(?=\s|$)/g)].map(m => m[1]),
-    discounts: [...body.matchAll(/- Recorded order discounts: ([^\n]+)\./g)].map(m => m[1]),
-  }));
-  // A zero-record period is valid evidence, not missing data. Do not render empty cards.
-  const isComplete = metrics.every((p) => p.dates && p.orders !== null && p.carts !== null &&
-    p.customers !== null && p.firstTime !== null && p.returning !== null);
-  if (!isComplete) return null;
+  const metrics = parseVerifiedComparison(text);
+  if (!metrics) return null;
   const cardBg = isDark ? "#151824" : "#ffffff";
   const border = isDark ? "#34374b" : "#e5e7eb";
   return (
@@ -381,6 +364,7 @@ const VerifiedComparison: FC<{ text: string; isDark: boolean; t1: string; t2: st
                 <strong style={{ color: t1, fontSize: 13 }}>{value ?? "—"}</strong>
               </div>
             ))}
+            {period.cartValues.map((value, i) => <div key={`c${i}`} style={{ color: t1, fontSize: 12, marginTop: 6 }}>Recorded cart value: <strong>{value}</strong></div>)}
             {period.values.map((value, i) => <div key={`v${i}`} style={{ color: t1, fontSize: 12, marginTop: 9 }}>Recorded order value: <strong>{value}</strong></div>)}
             {period.discounts.map((value, i) => <div key={`d${i}`} style={{ color: t2, fontSize: 12, marginTop: 4 }}>Discounts: {value}</div>)}
           </div>
