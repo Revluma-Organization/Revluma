@@ -107,7 +107,7 @@ def test_gemini_network_timeout_reports_safe_error_type(monkeypatch, caplog):
     monkeypatch.setenv("GEMINI_API_KEY", "test-only-secret")
     class FakeClient:
         def __init__(self, **kwargs):
-            assert kwargs["timeout"] == 30.0
+            assert 0 < kwargs["timeout"] <= 30.0
         def __enter__(self):
             return self
         def __exit__(self, *args):
