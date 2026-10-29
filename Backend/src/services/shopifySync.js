@@ -19,7 +19,6 @@ async function evaluateCartWithDeadline(task, storeId, cartId, timeoutMs = OPTIO
       Promise.resolve().then(task),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(Object.assign(new Error('prediction deadline exceeded'), { code: 'PREDICTION_TIMEOUT' })), OPTIONAL_PREDICTION_TIMEOUT_MS);
-        timer.unref?.();
       }),
     ]);
   } catch (error) {
