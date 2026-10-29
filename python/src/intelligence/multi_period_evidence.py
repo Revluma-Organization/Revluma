@@ -59,6 +59,44 @@ def retrieve_multi_period_evidence(organization_id: str, db, *, now: datetime | 
     except Exception:
         db.rollback()
         result["warnings"].append("Order history could not be retrieved.")
+    # Full merchant-scoped order history is needed to classify returning buyers.
+    try:
+        history = db.execute(text("""
+            SELECT o.customer_id, o.ordered_at, o.id
+            FROM orders o JOIN stores s ON s.id = o.store_id
+            WHERE s.organization_id = :org_id
+              AND s.status IN ('active','connected','syncing')
+              AND o.customer_id IS NOT NULL AND o.ordered_at < :end
+            ORDER BY o.ordered_at, o.id
+        """), params).mappings().all()
+        seen = set()
+        for period in result["weeks"]:
+            period["purchasers"] = {"status": "available", "first_time_orders": 0, "returning_orders": 0}
+        for row in history:
+            customer = str(row["customer_id"])
+            occurred = row["ordered_at"].astimezone(timezone.utc).isoformat()
+            for period in result["weeks"]:
+                if period["start_utc"] <= occurred < period["end_utc"]:
+                    field = "returning_orders" if customer in seen else "first_time_orders"
+                    period["purchasers"][field] += 1
+                    break
+            seen.add(customer)
+    except Exception:
+        db.rollback()
+        result["warnings"].append("Purchaser history could not be retrieved.")
+    try:
+        customers = db.execute(text("""
+            SELECT c.created_at FROM customers c JOIN stores s ON s.id = c.store_id
+            WHERE s.organization_id = :org_id
+              AND s.status IN ('active','connected','syncing')
+              AND c.created_at >= :start AND c.created_at < :end
+        """), params).mappings().all()
+        for period in result["weeks"]:
+            count = sum(1 for row in customers if period["start_utc"] <= row["created_at"].astimezone(timezone.utc).isoformat() < period["end_utc"])
+            period["customers"] = {"status": "available", "new_customer_records": count}
+    except Exception:
+        db.rollback()
+        result["warnings"].append("Customer acquisition records could not be retrieved.")
     try:
         rows = db.execute(text("""
             SELECT c.store_id, c.external_cart_id, c.id, c.currency, c.cart_value,
