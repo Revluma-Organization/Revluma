@@ -30,6 +30,7 @@ const {
     runIntelligenceAutomation,
 } = require('./mlService');
 const { syncShopifyStore } = require('./shopifySync');
+const { ABANDONMENT_INACTIVITY_MS } = require('./checkoutInactivity');
 const { runFeatureJobs } = require('./featureWorkerService');
 const { runRecoveryActions } = require('./recoveryActionService');
 const { runDailyChurnScoring } = require('./churnWorkerService');
@@ -715,6 +716,22 @@ async function runTrainingObservationQueue() {
     }
 }
 
+async function promoteInactiveCheckouts() {
+    // Promote only genuinely inactive, unrecovered checkouts. Do not send messages.
+    const cutoff = new Date(Date.now() - ABANDONMENT_INACTIVITY_MS);
+    const result = await prisma.abandoned_carts.updateMany({
+        where: {
+            status: 'pending',
+            recovered_at: null,
+            updated_at: { lte: cutoff },
+            stores: { platform: 'shopify', status: { in: ['active', 'connected', 'syncing'] } },
+        },
+        data: { status: 'abandoned' },
+    });
+    logger.info('scheduler_inactive_checkouts_promoted', { count: result.count });
+    return result.count;
+}
+
 async function runStoreSync() {
     if (storeSyncRunning) return;
     const lock = await acquireLock('store-sync');
@@ -723,6 +740,7 @@ async function runStoreSync() {
     const startedAt = Date.now();
 
     try {
+        await promoteInactiveCheckouts();
         const cutoff = new Date(Date.now() - STORE_SYNC_INTERVAL_MS);
         const stores = await prisma.stores.findMany({
             where: {
@@ -923,4 +941,5 @@ module.exports = {
     runRecoveryQueue,
     runAutomationQueue,
     runTrainingObservationQueue,
+    promoteInactiveCheckouts,
 };
