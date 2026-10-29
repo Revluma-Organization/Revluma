@@ -680,7 +680,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
 
     # Friendly messages should receive generated, contextual replies rather than
     # a repeated hard-coded greeting. A provider outage is reported honestly.
-    greeting = re.sub(r"[!?.,\\s]+", " ", message.lower()).strip()
+    greeting = re.sub(r"[!?.,\s]+", " ", message.lower()).strip()
     if (str(trigger_type or "conversation").lower() == "conversation"
             and not image_base64 and not image_media_type
             and greeting in {"hi", "hello", "hey", "hey chat", "hello chat", "hi chat", "hi rev",
@@ -691,8 +691,8 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         from .model_gateway import generate, ModelProviderError
         try:
             answer = generate(
-                responder.PERSONA + "\\nThe merchant said: " + message[:200]
-                + "\\nReply warmly and naturally in one or two sentences. "
+                responder.PERSONA + "\nThe merchant said: " + message[:200]
+                + "\nReply warmly and naturally in one or two sentences. "
                 "Do not invent store facts, repeat a fixed greeting, or force a sales pitch.",
                 role="fast", max_tokens=120, timeout=12.0,
             )
