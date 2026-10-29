@@ -1,6 +1,6 @@
 'use strict';
 const { certifiedFinding, boundedEvidence } = require('./revMerchantContext');
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function validFindingId(id) { return typeof id === 'string' && UUID.test(id); }
 function safeText(value, max = 200) {
   return String(value ?? '').replace(/[\r\n\t]/g, ' ').slice(0, max);
