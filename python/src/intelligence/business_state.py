@@ -1044,6 +1044,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         baseline_event_rate=baseline_event_rate,
         next_rebuild_at=next_rebuild_at,
         cart_delta_pct_vs_avg=cart_delta_pct_vs_avg,
+        observed_drivers=observed_drivers,
     )
 
 
