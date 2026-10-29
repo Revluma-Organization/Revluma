@@ -173,6 +173,58 @@ def _load_customer_ml_signals(db, store_params: dict[str, Any]) -> dict[str, Any
     }
 
 
+def load_business_change_history(organization_id: str, db, *, limit: int = 24) -> dict:
+    """Read bounded historical snapshots for the authenticated merchant only.
+
+    This is observed change history, not a causal explanation. We compare
+    snapshot values, not aggregate repeated snapshots into fictitious revenue.
+    """
+    safe_limit = max(1, min(int(limit), 48))
+    rows = db.execute(text("""
+        SELECT id, generated_at, revenue_today, abandoned_cart_count,
+               churn_risk_count, computation_status
+        FROM business_states
+        WHERE organization_id = :org_id
+          AND computation_status IN ('complete', 'partial')
+        ORDER BY generated_at DESC, id DESC
+        LIMIT :history_limit
+    """), {"org_id": organization_id, "history_limit": safe_limit}).mappings().all()
+    snapshots = [
+        {
+            "snapshot_id": str(row["id"]),
+            "generated_at": row["generated_at"].isoformat(),
+            "revenue_today": float(row["revenue_today"]) if row["revenue_today"] is not None else None,
+            "abandoned_cart_count": row["abandoned_cart_count"],
+            "churn_risk_count": row["churn_risk_count"],
+            "computation_status": row["computation_status"],
+        }
+        for row in rows
+    ]
+    changes = []
+    for recent, earlier in zip(snapshots, snapshots[1:]):
+        for metric in ("revenue_today", "abandoned_cart_count", "churn_risk_count"):
+            current, previous = recent[metric], earlier[metric]
+            if current is None or previous is None or current == previous:
+                continue
+            changes.append({
+                "metric": metric,
+                "from": previous,
+                "to": current,
+                "delta": round(current - previous, 2),
+                "observed_at": recent["generated_at"],
+                "comparison_snapshot_at": earlier["generated_at"],
+                "causality": "unverified",
+            })
+    return {
+        "organization_id": organization_id,
+        "snapshots": snapshots,
+        "observed_changes": changes[:48],
+        "history_limit": safe_limit,
+        "truncated": len(snapshots) == safe_limit,
+        "interpretation": "Snapshot-to-snapshot observations; not independent daily totals or verified causes.",
+    }
+
+
 # ── BusinessState dataclass 
 
 @dataclass
@@ -214,6 +266,7 @@ class BusinessState:
     baseline_event_rate: float
     next_rebuild_at: datetime
     cart_delta_pct_vs_avg: float | None = None
+    observed_drivers: list[dict] = field(default_factory=list)
 
     def is_stale(self) -> bool:
         age_secs = (datetime.now(timezone.utc) - self.generated_at).total_seconds()
@@ -221,6 +274,46 @@ class BusinessState:
 
     def age_minutes(self) -> float:
         return (datetime.now(timezone.utc) - self.generated_at).total_seconds() / 60
+
+    def reliability(self) -> dict:
+        """Explain how much of the merchant snapshot can be trusted.
+
+        Confidence is a completeness/freshness indicator, not a probability
+        that any individual recommendation is correct.
+        """
+        now = datetime.now(timezone.utc)
+        generated = self.generated_at
+        if generated.tzinfo is None:
+            generated = generated.replace(tzinfo=timezone.utc)
+        age_minutes = max(0.0, (now - generated).total_seconds() / 60)
+        source_at = self.data_freshness_at
+        if source_at is not None and source_at.tzinfo is None:
+            source_at = source_at.replace(tzinfo=timezone.utc)
+        source_age_minutes = (
+            max(0.0, (now - source_at).total_seconds() / 60)
+            if source_at is not None else None
+        )
+        stale = age_minutes > self.staleness_threshold_mins
+        if self.computation_status == "failed":
+            level = "unavailable"
+        elif self.computation_status != "complete" or self.warnings or stale:
+            level = "limited"
+        elif source_age_minutes is None:
+            level = "unknown"
+        elif source_age_minutes > self.staleness_threshold_mins:
+            level = "limited"
+        else:
+            level = "high"
+        return {
+            "level": level,
+            "meaning": "Data completeness and freshness; not prediction accuracy.",
+            "snapshot_age_minutes": round(age_minutes, 1),
+            "source_age_minutes": round(source_age_minutes, 1) if source_age_minutes is not None else None,
+            "snapshot_stale": stale,
+            "source_freshness_known": source_age_minutes is not None,
+            "computation_status": self.computation_status,
+            "warnings": list(self.warnings),
+        }
 
     def to_dict(self) -> dict:
         revenue_today = float(self.revenue_today) if self.revenue_today is not None else None
@@ -247,6 +340,7 @@ class BusinessState:
             "staleness_threshold_mins": self.staleness_threshold_mins,
             "computation_status": self.computation_status,
             "warnings": self.warnings,
+            "reliability": self.reliability(),
             "next_rebuild_at": self.next_rebuild_at.isoformat(),
             "sales_health": {
                 "revenue_today": revenue_today,
@@ -269,6 +363,8 @@ class BusinessState:
                 "severity": self.anomaly_severity,
                 "items": self.anomalies,
                 "root_causes": self.root_causes,
+                "observed_drivers": self.observed_drivers,
+                "root_cause_verification": "not_established",
             },
             "traffic": {
                 "current_event_rate_5m": self.current_event_rate,
@@ -740,7 +836,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     # ── 7. Build anomalies and trends 
     anomalies: list[dict] = []
     trends: list[dict] = []
+    # Anomalies are observations, not proven causes. Preserve evidence separately.
     root_causes: list[str] = []
+    observed_drivers: list[dict] = []
     inventory_signals = {
         "status": "unavailable",
         "reason": "No inventory snapshot source is configured.",
@@ -756,7 +854,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             "message": "Revenue is outside its expected weekday range.",
             "action_url": "/dashboard/rev-intell",
         })
-        root_causes.append("Revenue deviated from its 30-day weekday baseline.")
+        observed_drivers.append({"metric": "revenue_delta_pct", "observed_change_pct": revenue_delta_pct, "comparison": "current day vs 30-day weekday baseline", "causality": "unverified"})
 
     if cart_anomaly:
         anomalies.append({
@@ -768,7 +866,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             "message": "Cart abandonment is more than 10 percentage points above baseline.",
             "action_url": "/dashboard/cart-recovery",
         })
-        root_causes.append("Cart abandonment exceeded its 30-day baseline.")
+        observed_drivers.append({"metric": "cart_abandonment", "comparison": "24-hour vs 30-day baseline", "causality": "unverified"})
 
     if churn_risk_count is not None and churn_risk_count >= 10:
         anomalies.append({
@@ -780,7 +878,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             "message": f"{churn_risk_count} customers are showing churn-risk signals.",
             "action_url": "/dashboard/customers",
         })
-        root_causes.append("The at-risk and hibernating RFM segments are elevated.")
+        observed_drivers.append({"metric": "churn_risk_count", "observed_count": churn_risk_count, "comparison": "current RFM population", "causality": "unverified"})
 
     if revenue_trend_7d is not None:
         trends.append({
@@ -808,6 +906,8 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         "warnings": warnings,
         "anomaly_severity": anomaly_severity,
         "root_causes": root_causes,
+        "observed_drivers": observed_drivers,
+        "root_cause_verification": "not_established",
     }
 
     alert_table_available = False
@@ -821,6 +921,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         _rollback_quietly(db)
         warnings.append("Alert queue availability could not be checked.")
         computation_status = "partial"
+
+    # Capture warnings raised during availability checks as well as metric collection.
+    state_metadata["warnings"] = list(warnings)
 
     persistence_failed = False
     try:
@@ -993,6 +1096,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         baseline_event_rate=baseline_event_rate,
         next_rebuild_at=next_rebuild_at,
         cart_delta_pct_vs_avg=cart_delta_pct_vs_avg,
+        observed_drivers=observed_drivers,
     )
 
 
@@ -1042,7 +1146,7 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
             data_freshness_at=row[4],
             staleness_threshold_mins=staleness_mins,
             computation_status=row[6] or "complete",
-            warnings=[],
+            warnings=metadata.get("warnings", []) if isinstance(metadata.get("warnings", []), list) else [],
             revenue_today=Decimal(str(row[7])) if row[7] is not None else None,
             revenue_yesterday=Decimal(str(row[8])) if row[8] is not None else None,
             revenue_delta_pct=float(row[9]) if row[9] is not None else None,
@@ -1070,6 +1174,7 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
             baseline_event_rate=float(source_data.get("baseline_event_rate_5m_30d") or 0),
             next_rebuild_at=next_rebuild_at,
             cart_delta_pct_vs_avg=source_data.get("cart_delta_pct_vs_avg"),
+            observed_drivers=metadata.get("observed_drivers", []) if isinstance(metadata.get("observed_drivers", []), list) else [],
         )
     except Exception as exc:
         logger.exception(
