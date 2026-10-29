@@ -781,7 +781,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     # ── 7. Build anomalies and trends 
     anomalies: list[dict] = []
     trends: list[dict] = []
+    # Anomalies are observations, not proven causes. Preserve evidence separately.
     root_causes: list[str] = []
+    observed_drivers: list[dict] = []
     inventory_signals = {
         "status": "unavailable",
         "reason": "No inventory snapshot source is configured.",
@@ -797,7 +799,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             "message": "Revenue is outside its expected weekday range.",
             "action_url": "/dashboard/rev-intell",
         })
-        root_causes.append("Revenue deviated from its 30-day weekday baseline.")
+        observed_drivers.append({"metric": "revenue_delta_pct", "observed_change_pct": revenue_delta_pct, "comparison": "current day vs 30-day weekday baseline", "causality": "unverified"})
 
     if cart_anomaly:
         anomalies.append({
@@ -809,7 +811,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             "message": "Cart abandonment is more than 10 percentage points above baseline.",
             "action_url": "/dashboard/cart-recovery",
         })
-        root_causes.append("Cart abandonment exceeded its 30-day baseline.")
+        observed_drivers.append({"metric": "cart_abandonment", "comparison": "24-hour vs 30-day baseline", "causality": "unverified"})
 
     if churn_risk_count is not None and churn_risk_count >= 10:
         anomalies.append({
@@ -821,7 +823,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             "message": f"{churn_risk_count} customers are showing churn-risk signals.",
             "action_url": "/dashboard/customers",
         })
-        root_causes.append("The at-risk and hibernating RFM segments are elevated.")
+        observed_drivers.append({"metric": "churn_risk_count", "observed_count": churn_risk_count, "comparison": "current RFM population", "causality": "unverified"})
 
     if revenue_trend_7d is not None:
         trends.append({
@@ -849,6 +851,8 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         "warnings": warnings,
         "anomaly_severity": anomaly_severity,
         "root_causes": root_causes,
+        "observed_drivers": observed_drivers,
+        "root_cause_verification": "not_established",
     }
 
     alert_table_available = False
