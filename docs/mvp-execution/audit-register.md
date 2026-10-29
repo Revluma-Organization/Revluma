@@ -17,7 +17,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 009 | Phase 1 | Map checkout/order Prisma models. | PARTIALLY VERIFIED (original PARTIAL) | [TASK-009](diagnostics/TASK-009.md) | Inspected cfb41b7; imported by Task 010 | 2026-10-29 (historical report) |
 | 010 | Phase 1 | Map existing checkout reconciliation tests. | COMPLETED — VERIFIED (test architecture audit; product coverage remains partial) | [TASK-010](diagnostics/TASK-010.md) | Inspected d410748; docs publication to main authorized 2026-10-30 | 2026-10-30 documentation follow-up |
 | 011 | Phase 1 | Record Shopify API version used by backend. | COMPLETE — VERIFIED (configuration audit; open findings retained) | [TASK-011](diagnostics/TASK-011.md) | Inspected 55d78f06; production cfb41b7 Backend content identical | 2026-10-30 |
-| 012 | Phase 1 | Record registered Shopify webhook topics. | NOT STARTED | — | — | — |
+| 012 | Phase 1 | Record registered Shopify webhook topics. | IN PROGRESS — live Shopify authentication pending | [TASK-012](diagnostics/TASK-012.md) | main db1f6be1; production cfb41b7 Backend identical | 2026-10-30 |
 | 013 | Phase 1 | Identify checkout fields actually received in test payloads. | NOT STARTED | — | — | — |
 | 014 | Phase 1 | Identify order fields actually received in test payloads. | NOT STARTED | — | — | — |
 | 015 | Phase 1 | Document checkout/order state definitions. | NOT STARTED | — | — | — |
@@ -561,3 +561,21 @@ Related existing findings0017,0038,0043,0001,0059,0013 remain unchanged and unre
 
 
 Task011 completion review: all section29 audit/documentation criteria satisfied. Prior partial/open entries are superseded by the authorized dashboard evidence in TASK-011 sectionG, not by resolving implementation findings. REV-FIND-0102–0106 remain OPEN. No configuration changes or live Shopify calls were made.
+
+
+## Task012 — Webhook configuration, stored registration and delivery audit checkpoint
+
+Source, Supabase schema/registration metadata and aggregate delivery ledger, Render deployment/configuration and selected existing tests inspected. Production BACKEND_URL matches the current host; boolean DATABASE_URL project match confirms the connected Revluma database. All9 topics configured and handled in source. Four store rows: A1 provider row, B10, C2, D9;27 synthetic state rows and8 failure rows. D has9succeeded state records and122processed deliveries across6topic types. Current Shopify subscription inventory is UNKNOWN pending developer sign-in; stored IDs do not establish live registration. Secure email-code form rejected the visible control twice; manual authentication handoff required. Task012 remains IN PROGRESS, not complete. Task013 not started. See [TASK-012](diagnostics/TASK-012.md).
+
+Existing finding0014 receives live evidence: two store rows under two organizations share revluma-test-store.myshopify.com; source still routes by first domain match. No misrouted event proved. Existing0048 receives ledger timing evidence: all7order processed intervals exceed5seconds, max22.345; acknowledgment occurs after processing by source. Actual HTTP timeout/delivery outcome unobserved. Existing0040/0042/0049–0051/0104 remain unresolved. No finding is marked resolved by this checkpoint.
+
+| Finding ID | Discovered In | Severity | Description | Evidence at deployed cfb41b7 | Resolution Task | Status |
+|---|---|---|---|---|---|---|
+| REV-FIND-0107 | [012](diagnostics/TASK-012.md#16-findings-register-and-future-tasks) | Medium | Stored active subscriptions/URLs can remain stale and mask latest setup failure | shopifyWebhookService142–168;storeController48–81;3old-host DBrows | 059–061; cleanup implementation requires scoped assignment | OPEN |
+| REV-FIND-0108 | [012](diagnostics/TASK-012.md#16-findings-register-and-future-tasks) | High | Inactive/uninstalled stores remain eligible for webhook processing | commerceWebhookService26–34,360–365 | 057–058,081 | OPEN |
+| REV-FIND-0109 | [012](diagnostics/TASK-012.md#16-findings-register-and-future-tasks) | High | Interrupted received delivery cannot be reclaimed; retry may get200 without processing | commerceWebhookService37–54;controller45–46; no current stranded row observed | 063–064; implementation BACKLOG MAPPING REQUIRED | OPEN |
+| REV-FIND-0110 | [012](diagnostics/TASK-012.md#16-findings-register-and-future-tasks) | Medium | Customer webhook raw payload enters nested-customer mapper | commerceWebhookService57–70,340–355; conditional top-level payload analysis | 080 validation; mapper implementation BACKLOG MAPPING REQUIRED | OPEN |
+| REV-FIND-0111 | [012](diagnostics/TASK-012.md#16-findings-register-and-future-tasks) | Medium | Registration list stops at250; duplicates/obsolete destinations not reconciled away | shopifyWebhookService17–27,142–168 | 061; pagination implementation BACKLOG MAPPING REQUIRED | OPEN |
+| REV-FIND-0112 | [012](diagnostics/TASK-012.md#16-findings-register-and-future-tasks) | Medium | C8latest topic setup states failed,642attempts each; current provider/root cause unknown | SELECT metadata; completedOct27;shopifyWebhookService failure persistence | 059–060,097 | OPEN |
+
+Existing selected tests:11runner entries passed,0failed/skipped/cancelled (4files; mocks/static/purehelpers). No newtests, app changes, DBwrites, Shopify changes or manualdeploy/restart/sync/retry actions. Decisions unchanged. Snapshot/report will be completed after authoritative live inventory comparison.
