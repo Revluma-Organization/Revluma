@@ -8,6 +8,7 @@ const { getRedisClient, isRedisReady } = require('../configs/redis');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
 
 const PAGE_SIZE = 100;
+const MAX_SYNC_PAGES = 100; // Explicit cap: never report a partial import as successful.
 const OPTIONAL_PREDICTION_TIMEOUT_MS = 12_000;
 
 // A non-critical ML evaluation must never indefinitely block Shopify ingestion.
@@ -53,7 +54,11 @@ function nextConnectionCursor(connection, previousCursor, rootName) {
 async function fetchConnection(store, query, rootName, fetchPage = shopifyGraphql) {
   const nodes = [];
   let cursor = null;
+  let pages = 0;
   do {
+    if (++pages > MAX_SYNC_PAGES) {
+      throw Object.assign(new Error(`shopify_${rootName}_pagination_limit_exceeded`), { code: 'SHOPIFY_PAGINATION_LIMIT_EXCEEDED' });
+    }
     const data = await fetchPage(store, query, { first: PAGE_SIZE, after: cursor });
     const connection = data[rootName];
     if (!connection) throw new Error(`shopify_${rootName}_response_missing`);
@@ -262,6 +267,7 @@ async function syncAbandonedCheckouts(store) {
   `;
   const checkouts = await fetchConnection(store, query, 'abandonedCheckouts');
   for (const checkout of checkouts) {
+    logger.info('shopify_checkout_sync_processing', { store_id: store.id, checkout_id: externalId(checkout.id), stage: 'started' });
     const payload = abandonedPayload(checkout);
     const cart = await upsertAbandonedCart(store, payload);
     if (!cart) continue;
@@ -280,6 +286,7 @@ async function syncAbandonedCheckouts(store) {
         });
       }
     });
+    logger.info('shopify_checkout_sync_processing', { store_id: store.id, checkout_id: externalId(checkout.id), stage: 'persisted' });
     if (cart.customer_id && cart.status === 'abandoned') {
       const snapshot = await prisma.ml_session_features.findFirst({
         where: {
@@ -308,6 +315,7 @@ async function syncAbandonedCheckouts(store) {
       }
     }
   }
+  logger.info('shopify_checkout_sync_batch_completed', { store_id: store.id, count: checkouts.length });
   return checkouts.length;
 }
 
