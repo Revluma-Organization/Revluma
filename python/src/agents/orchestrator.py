@@ -640,6 +640,25 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
 
     # ── 1. Conversation context ───────────────────────────────────────────────
     conv_id, is_new = _get_or_create_conversation(organization_id, user_id, conversation_id, db)
+    # Scheduled briefings must be evidence-grounded and deterministic. Never
+    # generate autonomous revenue claims from an unverified model response.
+    if str(trigger_type or "").lower() == "scheduler":
+        from ..intelligence.seven_day_evidence import retrieve_seven_day_evidence
+        from ..intelligence.seven_day_briefing import compose_seven_day_briefing
+        evidence = retrieve_seven_day_evidence(organization_id, db)
+        answer = compose_seven_day_briefing(evidence)
+        persist_turns(
+            conv_id, organization_id, user_id, message, answer, "direct_answer",
+            None, db, title_hint=message if is_new else None,
+            orchestrator_mode="Briefing", correlation_id=correlation_id,
+        )
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="direct_answer", text=answer,
+            intent="scheduled_evidence_briefing", orchestrator_mode="Briefing",
+            agents_used=[], correlation_id=correlation_id,
+        )
+
     # Verified seven-day briefing: bypass model intent classification, which can
     # time out or incorrectly route a store-data request to generic advice.
     if (str(trigger_type or "conversation").lower() == "conversation"
