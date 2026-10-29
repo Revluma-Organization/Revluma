@@ -781,6 +781,43 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
         )
 
+    # Observed snapshot comparisons are first-party evidence, not model guesses.
+    asks_historical_comparison = (
+        ("my store" in query_lower or "my performance" in query_lower)
+        and any(term in query_lower for term in ("changed", "changes", "compare", "previous records"))
+    )
+    if (str(trigger_type or "conversation").lower() == "conversation"
+            and not image_base64 and not image_media_type
+            and asks_historical_comparison):
+        historical = load_business_change_history(organization_id, db, limit=8)
+        snapshots = historical.get("snapshots", [])
+        changes = historical.get("observed_changes", [])
+        if len(snapshots) < 2:
+            answer = ("I don't have enough verified historical snapshots to compare your store yet. "
+                      "I'll need at least two completed or partial business-state snapshots.")
+        elif not changes:
+            answer = ("I compared the available business-state snapshots and found no recorded changes "
+                      "in the tracked metrics. This does not establish that all store activity was unchanged.")
+        else:
+            labels = {"revenue_today": "Recorded daily revenue snapshot",
+                      "abandoned_cart_count": "Abandoned-cart count",
+                      "churn_risk_count": "Customers flagged for churn risk"}
+            lines = ["Here are the changes recorded between your store's business-state snapshots:"]
+            for item in changes[:8]:
+                lines.append(f'**{labels.get(item["metric"], item["metric"])}:** '
+                             f'{item["from"]} to {item["to"]} (change: {item["delta"]}).')
+            lines.append("These are snapshot-to-snapshot observations, not cumulative sales or verified causes. "
+                         "I can't establish why they changed from these records alone.")
+            answer = "\\n\\n".join(lines)
+        persist_turns(conv_id, organization_id, user_id, message, answer,
+                      "direct_answer", None, db, title_hint=message if is_new else None,
+                      orchestrator_mode="Analyst", correlation_id=correlation_id)
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="direct_answer", text=answer, intent="verified_historical_comparison",
+            orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
+        )
+
     history      = _load_history(conv_id, db, MAX_HISTORY_TURNS)
     history_text = _format_history(history)
     memory_query = f"{message} {json.dumps(safe_context_payload, default=str)}"
