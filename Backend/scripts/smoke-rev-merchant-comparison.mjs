@@ -17,13 +17,13 @@ if (!response.ok || body.success === false) {
   console.error('Merchant comparison request failed:', response.status, body.error?.code || 'unknown');
   process.exit(1);
 }
-const answer = body.text || body.data?.text || body.response?.text || body.data?.response?.text || '';
+const answer = body.text || body.data?.text || body.response?.text || body.data?.response?.text || '';\nconst expected = process.env.REV_EXPECTED_RECORDED_ORDER_VALUE;\nconst expectedCurrency = process.env.REV_EXPECTED_CURRENCY;
 if (!answer.includes('Latest period') || !answer.includes('Previous period 1') || !answer.includes('Evidence limitations')) {
   console.error('Comparison response is missing verified period evidence sections.');
   process.exit(1);
 }
-if (!body.conversation_id && !body.data?.conversation_id) {
+if (expected && expectedCurrency && !answer.includes(`${expected} ${expectedCurrency}`)) {\n  console.error('Merchant comparison does not contain the expected currency-specific recorded order value.');\n  process.exit(1);\n}\nif (!body.conversation_id && !body.data?.conversation_id) {
   console.error('Response lacks conversation identifier.');
   process.exit(1);
 }
-console.log('PASS: authenticated merchant comparison returned period evidence and limitations.');
+console.log('PASS: authenticated merchant comparison returned period evidence and limitations.');\nif (expected && expectedCurrency) console.log('PASS: expected currency-specific recorded order value was present.');
