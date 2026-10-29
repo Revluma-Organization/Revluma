@@ -159,3 +159,17 @@ def test_new_chat_greeting_survives_model_provider_outage(monkeypatch):
     assert result.success is True
     assert result.intent == "greeting"
     assert "temporarily unable" not in result.text.lower()
+
+
+def test_existing_chat_hello_chat_does_not_depend_on_model(monkeypatch):
+    from src.agents import orchestrator as module
+    monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("existing-conversation", False))
+    monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "understand", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("Plain greeting must not call model")))
+    result = module._run("merchant-a", "user-a", "Hello chat", "existing-conversation",
+                         object(), "corr-a")
+    assert result.success is True
+    assert result.intent == "greeting"
+    assert result.conversation_id == "existing-conversation"
+    assert "temporarily unable" not in result.text.lower()
