@@ -157,7 +157,7 @@ def format_multi_period_comparison(evidence: dict) -> str:
             lines.append(f'- First-time purchaser orders: {purchaser_data["first_time_orders"]}; returning purchaser orders: {purchaser_data["returning_orders"]}.')
         if period["orders"]["status"] == "available":
             for entry in period["orders"]["by_currency"]:
-                lines.append(f'- Recorded order discounts: {entry["recorded_discount_amount"]} {entry["currency"]}.')
+                lines.append(f'- Recorded order discounts: {entry.get("recorded_discount_amount", "unavailable")} {entry["currency"]}.')
     lines.append("**What changed:**")
     for label, key, count_key in (("Orders", "orders", "order_count"), ("Unrecovered abandoned carts", "abandoned_carts", "cart_count")):
         latest, previous = periods[0][key], periods[1][key]
