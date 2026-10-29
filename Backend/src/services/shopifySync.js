@@ -127,6 +127,16 @@ function grantedOrderScopes(data) {
 async function verifyOrderReadScope(store, graphql = shopifyGraphql) {
   const data = await graphql(store, 'query RevlumaGrantedScopes { currentAppInstallation { accessScopes { handle } } }');
   const scopes = grantedOrderScopes(data);
+  const persistedScopes = new Set(String(store.granted_scopes || '').split(',').map(scope => scope.trim()).filter(Boolean));
+  // Log only capability booleans; never log access tokens or complete permission lists.
+  logger.info('shopify_order_scope_comparison', {
+    store_id: store.id,
+    oauth_recorded_read_orders: persistedScopes.has('read_orders'),
+    shopify_current_read_orders: scopes.has('read_orders'),
+    oauth_scopes_recorded: persistedScopes.size > 0,
+    shopify_scopes_returned: scopes.size > 0,
+    mismatch: persistedScopes.has('read_orders') !== scopes.has('read_orders'),
+  });
   if (!scopes.has('read_orders')) {
     // Only log the missing capability, never the access token or other granted scopes.
     // This distinguishes an OAuth authorization failure from a GraphQL/network failure.
