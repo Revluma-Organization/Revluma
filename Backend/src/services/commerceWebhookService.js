@@ -307,9 +307,26 @@ async function upsertAbandonedCart(store, payload) {
     recovered_at: payload.completed_at ? new Date(payload.completed_at) : (existing?.recovered_at || null),
     updated_at: activityAt,
   };
-  return existing
-    ? tx.abandoned_carts.update({ where: { id: existing.id }, data })
-    : tx.abandoned_carts.create({ data });
+  const cart = existing
+    ? await tx.abandoned_carts.update({ where: { id: existing.id }, data })
+    : await tx.abandoned_carts.create({ data });
+  // Webhooks can arrive before the periodic Shopify sync. Persist available
+  // product context immediately; an empty payload must not erase known items.
+  const items = Array.isArray(payload.line_items) ? payload.line_items : [];
+  if (items.length) {
+    await tx.abandoned_cart_items.deleteMany({ where: { abandoned_cart_id: cart.id } });
+    await tx.abandoned_cart_items.createMany({
+      data: items.map((item) => ({
+        abandoned_cart_id: cart.id,
+        external_product_id: String(item.product_id || 'unknown'),
+        external_variant_id: item.variant_id ? String(item.variant_id) : null,
+        product_name: String(item.title || item.name || 'Unknown product'),
+        price: Number(item.price || 0),
+        quantity: Math.max(1, Number(item.quantity || 1)),
+      })),
+    });
+  }
+  return cart;
   });
 }
 
