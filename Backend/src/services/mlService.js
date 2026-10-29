@@ -517,7 +517,7 @@ function validateOrchestrateRequest({
   imageBase64,
   imageMediaType,
 }) {
-  if (!organizationId) {
+  if (typeof organizationId !== 'string' || !organizationId.trim()) {
     return {
       valid: false,
       message:
@@ -525,7 +525,7 @@ function validateOrchestrateRequest({
     };
   }
 
-  if (!userId) {
+  if (typeof userId !== 'string' || !userId.trim()) {
     return {
       valid: false,
       message:
@@ -610,7 +610,7 @@ function validateOrchestrateRequest({
 }
 
 function validateOrchestrateResponse(data) {
-  if (!isPlainObject(data)) {
+  if (!isPlainObject(data) || data.success === false) {
     return false;
   }
 
@@ -626,8 +626,8 @@ function validateOrchestrateResponse(data) {
    * Every valid orchestrator response needs these.
    */
   if (
-    !data.conversation_id ||
-    !data.message_id
+    typeof data.conversation_id !== 'string' || !data.conversation_id.trim() ||
+    typeof data.message_id !== 'string' || !data.message_id.trim()
   ) {
     return false;
   }
@@ -644,14 +644,14 @@ function validateOrchestrateResponse(data) {
     ];
 
     for (const field of requiredAnalysisFields) {
-      if (!(field in data)) {
+      if (typeof data[field] !== 'string' || !data[field].trim()) {
         return false;
       }
     }
 
     if (
       data.actions !== undefined &&
-      !Array.isArray(data.actions)
+      (!Array.isArray(data.actions) || data.actions.length > 20)
     ) {
       return false;
     }
@@ -1348,4 +1348,5 @@ module.exports = {
     ML_ERRORS,
     CHURN_FEATURES,
     _validateOrchestrateResponse: validateOrchestrateResponse,
+    _validateOrchestrateRequest: validateOrchestrateRequest,
 };
