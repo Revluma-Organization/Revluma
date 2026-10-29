@@ -745,8 +745,18 @@ async function runStoreSync() {
         const stores = await prisma.stores.findMany({
             where: {
                 platform: 'shopify',
-                status: { in: ['active', 'error'] },
-                OR: [{ last_synced_at: null }, { last_synced_at: { lte: cutoff } }],
+                OR: [
+                    {
+                        status: { in: ['active', 'error'] },
+                        OR: [{ last_synced_at: null }, { last_synced_at: { lte: cutoff } }],
+                    },
+                    // Redis's per-store lock remains the authority for active runs.
+                    // Only retry stale syncing rows, never a fresh in-progress run.
+                    {
+                        status: 'syncing',
+                        updated_at: { lte: new Date(Date.now() - 20 * 60 * 1000) },
+                    },
+                ],
             },
             orderBy: { last_synced_at: 'asc' },
             take: 10,
