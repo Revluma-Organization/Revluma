@@ -1,11 +1,14 @@
 """Evidence-only briefing: no model can invent metrics or assert checkout coverage."""
 from decimal import Decimal
+from datetime import date
 
 
 def compose_seven_day_briefing(evidence: dict) -> str:
     start = evidence["period_start_utc"][:10]
     end = evidence["period_end_utc"][:10]
-    lines = [f"## Your Shopify performance briefing ({start} to {end}, UTC)",
+    start_label = date.fromisoformat(start).strftime("%-d %B %Y")
+    end_label = date.fromisoformat(end).strftime("%-d %B %Y")
+    lines = [f"## Your Shopify performance briefing ({start_label} - {end_label})",
              "Here's what Revluma can verify from your connected store records."]
 
     if evidence["store_count"] == 0:
