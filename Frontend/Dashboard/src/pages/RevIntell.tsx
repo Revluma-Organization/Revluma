@@ -18,6 +18,7 @@ import {
   useMemo,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { createPortal } from "react-dom";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Send, Plus, Menu, X, Copy, ThumbsUp, ThumbsDown,
@@ -798,6 +799,8 @@ export default function RevIntell() {
   const [renameModalId,  setRenameModalId]  = useState<string | null>(null);
   const [renameValue,    setRenameValue]    = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
@@ -1083,17 +1086,19 @@ export default function RevIntell() {
   const handleCall  = () => alert("Audio call booking coming soon.");
 
   const deleteConv = async (id: string) => {
+    if (deletingConvId) return;
+    setDeletingConvId(id);
+    setDeleteError(null);
     try {
-      await api.delete?.(`/rev/conversation/${id}`) ||
-            await (api as any).del?.(`/rev/conversation/${id}`) ||
-            await fetch(
-              `${(api as any).baseUrl || ""}/api/v1/rev/conversation/${id}`,
-              { method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("rv-auth") ? JSON.parse(localStorage.getItem("rv-auth")!).state?.csrfToken : ""}` } }
-            );
-    } catch { /* optimistic — remove from UI regardless */ }
-    setConversations(prev => prev.filter(c => c.id !== id));
-    setDeleteConfirmId(null);
-    if (activeId === id) newChat();
+      await api.delete(`/rev/conversation/${encodeURIComponent(id)}`);
+      setConversations(prev => prev.filter(c => c.id !== id));
+      setDeleteConfirmId(null);
+      if (activeId === id) newChat();
+    } catch {
+      setDeleteError("Could not delete this conversation. Please try again.");
+    } finally {
+      setDeletingConvId(null);
+    }
   };
   const renameConv = (id: string) => {
     const conv = conversations.find(c => c.id === id);
@@ -1372,39 +1377,48 @@ export default function RevIntell() {
         )}
       </AnimatePresence>
 
-      {/* Delete Confirm */}
-      <AnimatePresence>
-        {deleteConfirmId && (
-          <>
+      {/* Delete confirmation is portaled to the viewport to avoid transformed sidebar offsets on mobile. */}
+      {createPortal(
+        <AnimatePresence>
+          {deleteConfirmId && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[80]" style={{ background: "rgba(0,0,0,0.5)" }}
-              onClick={() => setDeleteConfirmId(null)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: -10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -10 }}
-              transition={{ duration: 0.15 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[90] w-80 rounded-2xl p-6 shadow-2xl"
-              style={{ background: card, border: `1px solid ${bdr}` }}>
-              <p className="text-[0.9rem] font-bold mb-2" style={{ color: t1 }}>Delete conversation?</p>
-              <p className="text-[0.82rem] mb-6" style={{ color: t2 }}>
-                This conversation will be permanently deleted and cannot be recovered.
-              </p>
-              <div className="flex gap-2 justify-end">
-                <button onClick={() => setDeleteConfirmId(null)}
-                  className="px-4 py-2 rounded-xl text-[0.82rem] font-medium"
-                  style={{ color: t2, background: isDark ? "#1f1f1f" : "#f3f4f6", fontFamily: "inherit" }}>
-                  Cancel
-                </button>
-                <button onClick={() => deleteConv(deleteConfirmId)}
-                  className="px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white"
-                  style={{ background: "#dc2626", fontFamily: "inherit" }}>
-                  Delete
-                </button>
-              </div>
+              className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+              role="presentation">
+              <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.5)" }}
+                onClick={() => { if (!deletingConvId) { setDeleteConfirmId(null); setDeleteError(null); } }} />
+              <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                transition={{ duration: 0.15 }}
+                role="alertdialog" aria-modal="true" aria-labelledby="rev-delete-title"
+                aria-describedby="rev-delete-description"
+                className="relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-2xl"
+                style={{ background: card, border: `1px solid ${bdr}` }}>
+                <p id="rev-delete-title" className="text-[0.9rem] font-bold mb-2" style={{ color: t1 }}>Delete conversation?</p>
+                <p id="rev-delete-description" className="text-[0.82rem] mb-6" style={{ color: t2 }}>
+                  This conversation will be permanently deleted and cannot be recovered.
+                </p>
+                {deleteError && <p role="alert" className="text-[0.78rem] mb-3 text-red-500">{deleteError}</p>}
+                <div className="flex gap-2 justify-end">
+                  <button type="button" disabled={!!deletingConvId}
+                    onClick={() => { setDeleteConfirmId(null); setDeleteError(null); }}
+                    className="px-4 py-2 rounded-xl text-[0.82rem] font-medium disabled:opacity-50"
+                    style={{ color: t2, background: isDark ? "#1f1f1f" : "#f3f4f6", fontFamily: "inherit" }}>
+                    Cancel
+                  </button>
+                  <button type="button" disabled={!!deletingConvId}
+                    onClick={() => deleteConv(deleteConfirmId)}
+                    className="min-w-[98px] px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white flex items-center justify-center gap-2 disabled:cursor-wait"
+                    style={{ background: deletingConvId ? "#9ca3af" : "#dc2626", fontFamily: "inherit" }}>
+                    {deletingConvId ? <><RefreshCw size={14} className="animate-spin" />Deleting...</> : "Delete"}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Copy toast */}
       <AnimatePresence>
