@@ -801,9 +801,13 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             orchestrator_mode=orchestrator_mode,
             correlation_id=correlation_id,
         )
+        provider_failed = text_out.strip() == ("I'm temporarily unable to generate a response. "
+                                                "Please try again shortly.")
+        if provider_failed:
+            logger.error("orchestrate_model_response_unavailable correlation_id=%s", correlation_id)
         return OrchestrationResult(
-            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
-            response_type=rtype, text=text_out, intent=u.intent,
+            success=not provider_failed, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="error" if provider_failed else rtype, text=text_out, intent=u.intent,
             orchestrator_mode=orchestrator_mode,
             agents_used=agents_used or [],
             ad_evaluation=ad_evaluation,
