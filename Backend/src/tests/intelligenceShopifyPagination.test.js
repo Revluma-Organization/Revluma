@@ -59,3 +59,14 @@ test('order import prefers Shopify adjusted total over original total', () => {
   assert.equal(payload.total_price, 70);
   assert.equal(payload.currency, 'NGN');
 });
+
+
+test('Shopify sync refuses unbounded pagination rather than claiming partial success', async () => {
+  let calls = 0;
+  const fetchPage = async () => {
+    calls += 1;
+    return { orders: { nodes: [{ id: calls }], pageInfo: { hasNextPage: true, endCursor: String(calls) } } };
+  };
+  await assert.rejects(fetchConnection({}, '', 'orders', fetchPage), { code: 'SHOPIFY_PAGINATION_LIMIT_EXCEEDED' });
+  assert.equal(calls, 100);
+});
