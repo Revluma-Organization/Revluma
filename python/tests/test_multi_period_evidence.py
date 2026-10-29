@@ -16,6 +16,8 @@ class QueryResult:
 class FakeDB:
     def __init__(self):
         self.calls = []
+    def rollback(self):
+        pass
     def execute(self, sql, params):
         self.calls.append((str(sql), params))
         if "FROM orders" in str(sql):
