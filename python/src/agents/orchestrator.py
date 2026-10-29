@@ -743,24 +743,6 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         )
 
     safe_context_payload = _normalize_context_payload(context_payload or {}) or {}
-    history      = _load_history(conv_id, db, MAX_HISTORY_TURNS)
-    history_text = _format_history(history)
-    memory_query = f"{message} {json.dumps(safe_context_payload, default=str)}"
-    all_memories = _load_memories(organization_id, user_id, db)
-    vector_scores = retrieve_memory_scores(
-        db,
-        organization_id,
-        user_id,
-        memory_query,
-        top_k=8,
-    )
-    memories = _select_relevant_memories(
-        all_memories,
-        message,
-        safe_context_payload,
-        vector_scores=vector_scores,
-    )
-
     # Verified merchant-record questions must remain answerable when the LLM
     # reasoning provider is unavailable. Never infer missing checkout counts.
     query_lower = message.lower()
@@ -798,6 +780,24 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             response_type="direct_answer", text=answer, intent="verified_cart_evidence",
             orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
         )
+
+    history      = _load_history(conv_id, db, MAX_HISTORY_TURNS)
+    history_text = _format_history(history)
+    memory_query = f"{message} {json.dumps(safe_context_payload, default=str)}"
+    all_memories = _load_memories(organization_id, user_id, db)
+    vector_scores = retrieve_memory_scores(
+        db,
+        organization_id,
+        user_id,
+        memory_query,
+        top_k=8,
+    )
+    memories = _select_relevant_memories(
+        all_memories,
+        message,
+        safe_context_payload,
+        vector_scores=vector_scores,
+    )
 
     # ── 2. UNDERSTAND (before anything else) ──────────────────────────────────
     u = understand(
