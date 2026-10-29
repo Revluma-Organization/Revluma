@@ -30,6 +30,7 @@ const {
     runIntelligenceAutomation,
 } = require('./mlService');
 const { syncShopifyStore } = require('./shopifySync');
+const { storeSyncEligibility } = require('./shopifySyncRecovery');
 const { ABANDONMENT_INACTIVITY_MS } = require('./checkoutInactivity');
 const { runFeatureJobs } = require('./featureWorkerService');
 const { runRecoveryActions } = require('./recoveryActionService');
@@ -741,23 +742,8 @@ async function runStoreSync() {
 
     try {
         await promoteInactiveCheckouts();
-        const cutoff = new Date(Date.now() - STORE_SYNC_INTERVAL_MS);
         const stores = await prisma.stores.findMany({
-            where: {
-                platform: 'shopify',
-                OR: [
-                    {
-                        status: { in: ['active', 'error'] },
-                        OR: [{ last_synced_at: null }, { last_synced_at: { lte: cutoff } }],
-                    },
-                    // Redis's per-store lock remains the authority for active runs.
-                    // Only retry stale syncing rows, never a fresh in-progress run.
-                    {
-                        status: 'syncing',
-                        updated_at: { lte: new Date(Date.now() - 20 * 60 * 1000) },
-                    },
-                ],
-            },
+            where: storeSyncEligibility(Date.now(), STORE_SYNC_INTERVAL_MS),
             orderBy: { last_synced_at: 'asc' },
             take: 10,
         });
