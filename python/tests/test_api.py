@@ -104,6 +104,7 @@ def test_orchestrate_forwards_scheduler_trigger_context(monkeypatch):
     monkeypatch.setattr(serving_api, "_orchestrate", fake_orchestrate)
     response = client.post(
         "/orchestrate",
+        headers={"x-contract-version": "1.0"},
         json={
             "organization_id": "11111111-1111-1111-1111-111111111111",
             "user_id": "22222222-2222-2222-2222-222222222222",
@@ -696,4 +697,22 @@ def test_offer_value_out_of_range():
 def test_offer_value_all_null():
     """Null body should return 422."""
     response = client.post("/predict/offer-value", json=None, headers=headers)
+    assert response.status_code == 422
+
+
+def test_orchestrate_contract_header_required_before_execution(monkeypatch):
+    def forbidden_session():
+        raise AssertionError("contract rejected only after opening database session")
+
+    monkeypatch.setattr(serving_api, "_Session", forbidden_session)
+    body = {
+        "organization_id": "11111111-1111-1111-1111-111111111111",
+        "user_id": "22222222-2222-2222-2222-222222222222",
+        "message": "Check my store",
+        "contract_version": "1.0",
+    }
+    for headers in ({}, {"x-contract-version": "0.9"}, {"x-contract-version": "2.0"}):
+        response = client.post("/orchestrate", json=body, headers=headers)
+        assert response.status_code == 400
+    response = client.post("/orchestrate", json={**body, "contract_version": "2.0"}, headers={"x-contract-version": "1.0"})
     assert response.status_code == 422
