@@ -104,7 +104,11 @@ Other date strings found in test fixtures (createdAt, range boundaries, NOW) are
 | Production served response version | Unknown | No response header observation captured | Client does not inspect X-Shopify-API-Version. |
 | App-configured webhook payload version | Unknown | No app version TOML/configuration record found; receiver ignores version header | Cannot infer from Admin subscription request version. |
 
-Render log lookup filtered to API-version diagnostics was attempted read-only. It failed with **503: failed to query Loki; log retrieval currently unavailable**. This is a tooling/runtime evidence limitation, not proof Shopify is unavailable or the app uses a bad version. No env mutation, shell credential retrieval, live Shopify probe, setup retry or synchronization was used to compensate.
+The initial Render log lookup failed with 503. On the user-requested completion follow-up, a read-only retry succeeded and returned three `shopify_callback_stage` / `oauth_configuration` events with `api_version: 2026-10`, at **2026-10-26T22:29:44.456Z**, **22:45:04.621Z** and **23:34:12.493Z**. These prove the effective resolver value at those historical callback times, irrespective of whether it came from an override or fallback. They do not expose the raw environment override and predate the currently live deployment.
+
+The follow-up independently reconfirmed the same current live production commit/deployment above. A second version/header/endpoint-filtered lookup from **2026-10-29T20:06:35Z** through the lookup time **2026-10-29T23:22:09.805Z** returned **zero matching entries**, `hasMore: false`. No current-deployment version observation or served-version header was recovered. This is absence of log evidence, not evidence of an incorrect API version.
+
+**Exact completion blocker:** read-only inspection of the current service's `SHOPIFY_API_VERSION` value/presence (including any inherited environment group), followed by an authorized read-only Admin response-header observation if served-version proof is required. The Render connector exposes no environment read operation. Browser fallback requires explicit user approval under the browser tool's connector-fallback instruction. No environment mutation, credential export, registration, setup retry, sync, or deployment was attempted. The user rejects partial completion; the task remains open pending this evidence rather than being relabeled complete.
 
 ## H. Compatibility assessment
 
@@ -168,13 +172,15 @@ Existing findings reused, not duplicated: REV-FIND-0017 (logging/diagnostic limi
 
 ## L. Limitations
 
-Production SHOPIFY_API_VERSION, served response headers, app-configured webhook payload version and staging/developer overrides remain unknown. Read-only Render log retrieval failed with a 503; no live Shopify call or environment export was used. Schema/introspection/query execution with actual merchant permissions was not performed. Documented field availability/deprecation does not prove complete query success. No unsupported active REST resource or confirmed removed-field usage was found; absence of such evidence is not comprehensive compatibility certification. Client date and local wall clock are only inputs to understanding fallback behavior.
+Production SHOPIFY_API_VERSION, served response headers, app-configured webhook payload version and staging/developer overrides remain unknown. The initial 503 was recovered on retry: historical October 26 resolver logs show 2026-10, but no current-deployment version/header log was found. No live Shopify call or environment export was used. Schema/introspection/query execution with actual merchant permissions was not performed. Documented field availability/deprecation does not prove complete query success. No unsupported active REST resource or confirmed removed-field usage was found; absence of such evidence is not comprehensive compatibility certification. Client date and local wall clock are only inputs to understanding fallback behavior.
 
 No SDK release upgrade, environment pin, client refactor, deprecated-field migration or production investigation outside this task was made. No historical engineering decision was invented: the decisions register remains unchanged. Prior Task001 report remains unavailable.
 
 ## M. Final status
 
-**PARTIAL — API version configuration identified, but important usage or compatibility details remain unverified.**
+**OPEN — completion requested; current-deployment version evidence is blocked on read-only configuration access.**
+
+The prior partial status is not accepted as completion. Historical production resolver version 2026-10 is now verified from three log events. Current runtime/environment parity remains a specific unresolved evidence requirement; no unsupported COMPLETE claim is made.
 
 All discovered Backend Shopify consumers and source version references are mapped. The source fallback is 2026-10 today, that release is documented supported/latest stable, and the existing version regression script passes. Production override/served version and webhook payload version were not verified, so this report cannot certify exact production runtime parity.
 

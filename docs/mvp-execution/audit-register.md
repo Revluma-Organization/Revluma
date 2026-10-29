@@ -16,7 +16,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 008 | Phase 1 | Map historical Shopify synchronization job. | PARTIALLY VERIFIED (original PARTIAL) | [TASK-008](diagnostics/TASK-008.md) | Inspected cfb41b7; imported by Task 010 | 2026-10-29 (historical report) |
 | 009 | Phase 1 | Map checkout/order Prisma models. | PARTIALLY VERIFIED (original PARTIAL) | [TASK-009](diagnostics/TASK-009.md) | Inspected cfb41b7; imported by Task 010 | 2026-10-29 (historical report) |
 | 010 | Phase 1 | Map existing checkout reconciliation tests. | COMPLETED — VERIFIED (test architecture audit; product coverage remains partial) | [TASK-010](diagnostics/TASK-010.md) | Inspected d410748; docs publication to main authorized 2026-10-30 | 2026-10-30 documentation follow-up |
-| 011 | Phase 1 | Record Shopify API version used by backend. | PARTIALLY VERIFIED (source mapped; production override/served version unverified) | [TASK-011](diagnostics/TASK-011.md) | Inspected 55d78f06; production cfb41b7 Backend content identical | 2026-10-30 |
+| 011 | Phase 1 | Record Shopify API version used by backend. | OPEN — completion blocked on current runtime version evidence | [TASK-011](diagnostics/TASK-011.md) | Inspected 55d78f06; production cfb41b7 Backend content identical | 2026-10-30 |
 | 012 | Phase 1 | Record registered Shopify webhook topics. | NOT STARTED | — | — | — |
 | 013 | Phase 1 | Identify checkout fields actually received in test payloads. | NOT STARTED | — | — | — |
 | 014 | Phase 1 | Identify order fields actually received in test payloads. | NOT STARTED | — | — | — |
@@ -547,7 +547,7 @@ These are imported diagnoses, not freshly reproduced defects. See each report fo
 
 ## Task011 — Shopify API version audit, 2026-10-30
 
-Source resolver defaults to UTC-quarter 2026-10 today; all discovered Admin GraphQL resource consumers share it. OAuth endpoints are unversioned. Exact production override/served version and app webhook payload version remain unverified; Render logs returned503. Existing install/version assertion script: one entry passed, zero failed/skipped. No source/API/env/infrastructure change; decisions unchanged. See [TASK-011](diagnostics/TASK-011.md) for exact lines, operation matrix, official support/deprecation evidence and limitations. Task012 not started.
+Source resolver defaults to UTC-quarter 2026-10 today; all discovered Admin GraphQL resource consumers share it. OAuth endpoints are unversioned. Follow-up recovered three October26 production resolver logs reporting2026-10. Current deployment was reconfirmed; version/header-filtered logs after its activation returned zero matches. Exact current production override/served version and app webhook payload version remain unverified; completion is OPEN pending read-only configuration access, not accepted as partially complete. Existing install/version assertion script: one entry passed, zero failed/skipped. No source/API/env/infrastructure change; decisions unchanged. See [TASK-011](diagnostics/TASK-011.md) for exact lines, operation matrix, official support/deprecation evidence and limitations. Task012 not started.
 
 | Finding ID | Discovered In | Severity | Description | Affected Component | Resolution Task | Status |
 |---|---|---|---|---|---|---|
