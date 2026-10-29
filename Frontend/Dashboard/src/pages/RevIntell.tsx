@@ -350,9 +350,13 @@ const VerifiedComparison: FC<{ text: string; isDark: boolean; t1: string; t2: st
     customers: extract(body, /- Newly recorded customer profiles: (\d+)/),
     firstTime: extract(body, /- First-time purchaser orders: (\d+)/),
     returning: extract(body, /returning purchaser orders: (\d+)/),
-    values: [...body.matchAll(/- Orders: \d+ recorded; ([^\n]+)\./g)].map(m => m[1]),
+    values: [...body.matchAll(/- Orders: \d+ recorded; ([^\n]+?)\.(?=\s|$)/g)].map(m => m[1]),
     discounts: [...body.matchAll(/- Recorded order discounts: ([^\n]+)\./g)].map(m => m[1]),
   }));
+  // A zero-record period is valid evidence, not missing data. Do not render empty cards.
+  const isComplete = metrics.every((p) => p.dates && p.orders !== null && p.carts !== null &&
+    p.customers !== null && p.firstTime !== null && p.returning !== null);
+  if (!isComplete) return null;
   const cardBg = isDark ? "#151824" : "#ffffff";
   const border = isDark ? "#34374b" : "#e5e7eb";
   return (
@@ -380,7 +384,7 @@ const VerifiedComparison: FC<{ text: string; isDark: boolean; t1: string; t2: st
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 11, color: t2, marginTop: 9 }}>Recorded merchant data, not verified net sales. Review the evidence limitations below.</div>
+      <div style={{ fontSize: 12, color: t2, marginTop: 12 }}>Recorded merchant data, not verified net sales. Review the evidence limitations below.</div>
     </section>
   );
 };
