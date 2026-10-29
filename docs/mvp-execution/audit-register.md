@@ -16,7 +16,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 008 | Phase 1 | Map historical Shopify synchronization job. | PARTIALLY VERIFIED (original PARTIAL) | [TASK-008](diagnostics/TASK-008.md) | Inspected cfb41b7; imported by Task 010 | 2026-10-29 (historical report) |
 | 009 | Phase 1 | Map checkout/order Prisma models. | PARTIALLY VERIFIED (original PARTIAL) | [TASK-009](diagnostics/TASK-009.md) | Inspected cfb41b7; imported by Task 010 | 2026-10-29 (historical report) |
 | 010 | Phase 1 | Map existing checkout reconciliation tests. | COMPLETED — VERIFIED (test architecture audit; product coverage remains partial) | [TASK-010](diagnostics/TASK-010.md) | Inspected d410748; docs publication to main authorized 2026-10-30 | 2026-10-30 documentation follow-up |
-| 011 | Phase 1 | Record Shopify API version used by backend. | OPEN — completion blocked on current runtime version evidence | [TASK-011](diagnostics/TASK-011.md) | Inspected 55d78f06; production cfb41b7 Backend content identical | 2026-10-30 |
+| 011 | Phase 1 | Record Shopify API version used by backend. | COMPLETE — VERIFIED (configuration audit; open findings retained) | [TASK-011](diagnostics/TASK-011.md) | Inspected 55d78f06; production cfb41b7 Backend content identical | 2026-10-30 |
 | 012 | Phase 1 | Record registered Shopify webhook topics. | NOT STARTED | — | — | — |
 | 013 | Phase 1 | Identify checkout fields actually received in test payloads. | NOT STARTED | — | — | — |
 | 014 | Phase 1 | Identify order fields actually received in test payloads. | NOT STARTED | — | — | — |
@@ -547,7 +547,7 @@ These are imported diagnoses, not freshly reproduced defects. See each report fo
 
 ## Task011 — Shopify API version audit, 2026-10-30
 
-Source resolver defaults to UTC-quarter 2026-10 today; all discovered Admin GraphQL resource consumers share it. OAuth endpoints are unversioned. Follow-up recovered three October26 production resolver logs reporting2026-10. Current deployment was reconfirmed; version/header-filtered logs after its activation returned zero matches. Exact current production override/served version and app webhook payload version remain unverified; completion is OPEN pending read-only configuration access, not accepted as partially complete. Existing install/version assertion script: one entry passed, zero failed/skipped. No source/API/env/infrastructure change; decisions unchanged. See [TASK-011](diagnostics/TASK-011.md) for exact lines, operation matrix, official support/deprecation evidence and limitations. Task012 not started.
+Source resolver defaults to UTC-quarter 2026-10 today; all discovered Admin GraphQL resource consumers share it. OAuth endpoints are unversioned. Follow-up recovered three October26 production resolver logs reporting2026-10. Current deployment was reconfirmed; version/header-filtered logs after its activation returned zero matches. Authorized signed-in Render dashboard inspection now verifies the production service override SHOPIFY_API_VERSION=2026-10, no linked environment groups, and the same live commit. Primary configuration gap closed; audit COMPLETE — VERIFIED. Current process/header and webhook payload-version observation remain open finding0104; audit completion does not certify end-to-end live compatibility. Existing install/version assertion script: one entry passed, zero failed/skipped. No source/API/env/infrastructure change; decisions unchanged. See [TASK-011](diagnostics/TASK-011.md) for exact lines, operation matrix, official support/deprecation evidence and limitations. Task012 not started.
 
 | Finding ID | Discovered In | Severity | Description | Affected Component | Resolution Task | Status |
 |---|---|---|---|---|---|---|
@@ -558,3 +558,6 @@ Source resolver defaults to UTC-quarter 2026-10 today; all discovered Admin Grap
 | REV-FIND-0106 | [011](diagnostics/TASK-011.md#j-findings-register) | Medium | No direct shared transport URL/header/version compatibility test found | shopify.install.test.js:19–22,90–95; client/test search | 100; implementation BACKLOG MAPPING REQUIRED | OPEN |
 
 Related existing findings0017,0038,0043,0001,0059,0013 remain unchanged and unresolved; Task011 references rather than duplicates those diagnoses.
+
+
+Task011 completion review: all section29 audit/documentation criteria satisfied. Prior partial/open entries are superseded by the authorized dashboard evidence in TASK-011 sectionG, not by resolving implementation findings. REV-FIND-0102–0106 remain OPEN. No configuration changes or live Shopify calls were made.

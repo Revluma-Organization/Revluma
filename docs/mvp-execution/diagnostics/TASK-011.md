@@ -9,7 +9,7 @@
 - Inspected branch/revision: main at `55d78f06aeb01303a0779073fd7e47b2f517d7e8`.
 - Working branch: `docs/mvp-task-011`.
 - Production backend: Render live deployment `dep-dbhqdso8v5cc7395g6i0`, commit `cfb41b7b468bfecd537d841d55c450ff21673342`.
-- Alignment: Main and production commit differ, but their Backend content diff is empty. Conclusions about Backend source apply to the production-aligned code; runtime configuration is separately unverified.
+- Alignment: Main and production commit differ, but their Backend content diff is empty. Conclusions about Backend source apply to the production-aligned code; current production service configuration was verified during the authorized dashboard follow-up; live response headers were not observed.
 - Local Node: v24.22.1. No Shopify SDK package is in Backend/package.json or package-lock.json. Axios lockfile version: 1.18.1.
 - Mode: Read-only application inspection, official documentation lookup, one existing isolated regression script, documentation-only changes. No app/API/scopes/environment changes or manual deployment.
 
@@ -23,7 +23,9 @@ Task008 already correctly distinguishes the dynamic resolver from the unused exp
 
 ## C. Primary Shopify API version
 
-**Primary source-resolved fallback today: 2026-10. Exact production-configured and Shopify-served version: UNABLE TO DETERMINE.**
+**Primary configured production Admin API request version: 2026-10 — VERIFIED.**
+
+After explicit browser-access authorization, the signed-in Render dashboard showed My Workspace → My project → Production → Revluma-backend, service `srv-db9m6pom7kps73dtk1tg`. Only the non-secret `SHOPIFY_API_VERSION` row was revealed: **2026-10**. No linked environment groups were available. The same page identified live commit `cfb41b7b468bfecd537d841d55c450ff21673342` and deployment `dep-dbhqdso8v5cc7395g6i0`. No setting was edited or saved. The configured request version is established by this setting and the production-aligned shared resolver/client. This is configuration/source evidence, supported by earlier production resolver logs, rather than an observation of the current process environment or Shopify response headers.
 
 `getShopifyApiVersion()` in `src/utils/shopify.js:3–28` executes for each GraphQL request:
 
@@ -35,7 +37,7 @@ Task008 already correctly distinguishes the dynamic resolver from the unused exp
 
 `src/services/shopifyGraphql.js:20–34` calls that function and builds `https://{shop_domain}/admin/api/{apiVersion}/graphql.json`. There is no per-call version parameter; all discovered Shopify GraphQL consumers share that implementation. Authentication is the decrypted store token sent as X-Shopify-Access-Token. The audit did not decrypt a token or issue this request.
 
-This is not an unconditional hardcoded production pin. Without an explicit override the request version advances with wall-clock quarters, without a source deploy. A truthy whitespace-only override becomes invalid rather than falling back. Malformed/future/stale overrides fail before the Axios call.
+Production has an explicit environment pin to 2026-10; the source default is not an unconditional hardcoded pin. Without an explicit override the request version advances with wall-clock quarters, without a source deploy. A truthy whitespace-only override becomes invalid rather than falling back. Malformed/future/stale overrides fail before the Axios call.
 
 ## D. Shopify SDK/client configuration
 
@@ -50,7 +52,7 @@ SDK compatibility/defaults therefore do not control the observed HTTP implementa
 
 ## E. API version usage matrix
 
-`V` means `getShopifyApiVersion()` at call time: current date fallback 2026-10, production override unknown. All versioned operations below use the same GraphQL Admin endpoint/client. Operation availability in documentation is not proof a merchant has permission or the live request succeeds.
+`V` means `getShopifyApiVersion()` at call time: verified production service override 2026-10; current date fallback also 2026-10. All versioned operations below use the same GraphQL Admin endpoint/client. Operation availability in documentation is not proof a merchant has permission or the live request succeeds.
 
 | Component / operation | API type/version | Source | Verified status and limits |
 |---|---|---|---|
@@ -100,7 +102,7 @@ Other date strings found in test fixtures (createdAt, range boundaries, NOW) are
 | Isolated install test | Test sets current UTC quarter | shopify.install.test.js:19–22 | Existing test executed successfully; no production env inherited. |
 | Callback test fixture | Env or 2026-10 | shopify.callback.test.js:9 | Fixture inspected; this does not validate a live request. |
 | Staging | Unknown; no separate staging version configuration found | Source/deployment config search | UNABLE TO DETERMINE whether a separate staging service uses an override. |
-| Production request target | Unknown override; otherwise date-derived current quarter | Render live SHA plus shared source | Environment value not exposed by available read-only Render tools. |
+| Production request target | **2026-10**, explicit SHOPIFY_API_VERSION | Authorized signed-in Render environment page; exact service/live SHA; shared resolver/client | **VERIFIED configuration and source request construction**; not direct process/header observation. No linked environment groups. |
 | Production served response version | Unknown | No response header observation captured | Client does not inspect X-Shopify-API-Version. |
 | App-configured webhook payload version | Unknown | No app version TOML/configuration record found; receiver ignores version header | Cannot infer from Admin subscription request version. |
 
@@ -108,7 +110,9 @@ The initial Render log lookup failed with 503. On the user-requested completion 
 
 The follow-up independently reconfirmed the same current live production commit/deployment above. A second version/header/endpoint-filtered lookup from **2026-10-29T20:06:35Z** through the lookup time **2026-10-29T23:22:09.805Z** returned **zero matching entries**, `hasMore: false`. No current-deployment version observation or served-version header was recovered. This is absence of log evidence, not evidence of an incorrect API version.
 
-**Exact completion blocker:** read-only inspection of the current service's `SHOPIFY_API_VERSION` value/presence (including any inherited environment group), followed by an authorized read-only Admin response-header observation if served-version proof is required. The Render connector exposes no environment read operation. Browser fallback requires explicit user approval under the browser tool's connector-fallback instruction. No environment mutation, credential export, registration, setup retry, sync, or deployment was attempted. The user rejects partial completion; the task remains open pending this evidence rather than being relabeled complete.
+**Completion follow-up:** The user explicitly authorized the browser fallback. Secure Render sign-in succeeded, and the production environment page at `https://dashboard.render.com/web/srv-db9m6pom7kps73dtk1tg/env` showed the exact service and live commit above. The only revealed value was SHOPIFY_API_VERSION=2026-10; no linked environment groups were present. This closes the primary configured-version gap. No credentials, other variable values, environment export, app configuration changes, or Shopify calls were needed.
+
+The previous follow-up imposed a live served-header observation as a completion gate. That was stricter than Task011's acceptance criteria: this is a configuration/compatibility **audit**, with unresolved findings explicitly required to remain open. Its criteria require environment assessment and documented compatibility concerns; they do not require a live merchant API probe or fixing observability. Served-version/payload-version observation remains REV-FIND-0104 for the mapped future tasks, not an unfulfilled promise of end-to-end production certification.
 
 ## H. Compatibility assessment
 
@@ -116,7 +120,7 @@ The follow-up independently reconfirmed the same current live production commit/
 
 Shopify lists **2026-10 as latest stable**, released 2026-10-01 and accessible until **2027-10-16 15:00 UTC**. 2027-01 is a release candidate, not a newer stable release. [Release notes](https://shopify.dev/changelog/release-notes/2026-10); [version schedule](https://shopify.dev/docs/api/usage/versioning).
 
-This establishes support for the fallback, not a production env override. The helper's rolling four-quarter check is calendar arithmetic, not a provider support-date lookup: it can reject a still-accessible previous version during Shopify's post-quarter grace interval. Also, automatic quarter rollover uses UTC midnight rather than checking actual release availability. Those are boundary risks; no present-date outage was reproduced.
+This establishes documented support for both the verified production service override and fallback, which are 2026-10. The helper's rolling four-quarter check is calendar arithmetic, not a provider support-date lookup: it can reject a still-accessible previous version during Shopify's post-quarter grace interval. Also, automatic quarter rollover uses UTC midnight rather than checking actual release availability. Those are boundary risks; no present-date outage was reproduced.
 
 ### Operation checks
 
@@ -172,17 +176,29 @@ Existing findings reused, not duplicated: REV-FIND-0017 (logging/diagnostic limi
 
 ## L. Limitations
 
-Production SHOPIFY_API_VERSION, served response headers, app-configured webhook payload version and staging/developer overrides remain unknown. The initial 503 was recovered on retry: historical October 26 resolver logs show 2026-10, but no current-deployment version/header log was found. No live Shopify call or environment export was used. Schema/introspection/query execution with actual merchant permissions was not performed. Documented field availability/deprecation does not prove complete query success. No unsupported active REST resource or confirmed removed-field usage was found; absence of such evidence is not comprehensive compatibility certification. Client date and local wall clock are only inputs to understanding fallback behavior.
+Production service SHOPIFY_API_VERSION is verified as 2026-10. Current-process environment, served response headers, app-configured webhook payload version and actual staging/developer overrides were not directly observed. The initial 503 was recovered on retry: historical October 26 resolver logs show 2026-10, but no current-deployment version/header log was found. No live Shopify call or environment export was used. Schema/introspection/query execution with actual merchant permissions was not performed. Documented field availability/deprecation does not prove complete query success. No unsupported active REST resource or confirmed removed-field usage was found; absence of such evidence is not comprehensive compatibility certification. Client date and local wall clock are only inputs to understanding fallback behavior.
 
 No SDK release upgrade, environment pin, client refactor, deprecated-field migration or production investigation outside this task was made. No historical engineering decision was invented: the decisions register remains unchanged. Prior Task001 report remains unavailable.
 
 ## M. Final status
 
-**OPEN — completion requested; current-deployment version evidence is blocked on read-only configuration access.**
+**COMPLETE — VERIFIED API configuration audit; open implementation/observability findings retained.**
 
-The prior partial status is not accepted as completion. Historical production resolver version 2026-10 is now verified from three log events. Current runtime/environment parity remains a specific unresolved evidence requirement; no unsupported COMPLETE claim is made.
+Production service SHOPIFY_API_VERSION is explicitly 2026-10. All discovered resource consumers use the production-aligned shared resolver/client; OAuth endpoints are unversioned. Official Shopify documentation confirms 2026-10 is supported/latest stable at inspection. Existing version regression passed. No source change was necessary.
 
-All discovered Backend Shopify consumers and source version references are mapped. The source fallback is 2026-10 today, that release is documented supported/latest stable, and the existing version regression script passes. Production override/served version and webhook payload version were not verified, so this report cannot certify exact production runtime parity.
+This completes the audit rather than certifying every live request, merchant permission, or reconciliation scenario. REV-FIND-0102–0106 remain OPEN with exact evidence and future-task mappings. The current served Admin response version and independent webhook payload version are unobserved; the absence of header capture is itself a documented audit finding, not a claim those values equal the configured request version.
+
+### Acceptance review against Task011 section29
+
+- [x] Inspected revision and production alignment recorded; relevant prior reports reviewed and missing Task001 identified.
+- [x] Version references located/classified; primary production setting verified; SDK/client configuration documented.
+- [x] OAuth, webhook registration, order, checkout, customer, product and historical synchronization usage mapped in E.
+- [x] GraphQL/REST consistency, environment configuration, official support and compatibility concerns assessed in F–H.
+- [x] Existing version tests inventoried and observed run recorded in I; no new tests created.
+- [x] Consolidated component matrix, stable findings, prior-finding links and approved-backlog dependencies recorded.
+- [x] Task report and central register updated; decisions register reviewed and unchanged because no historical rationale was established.
+- [x] Documentation-only changes reviewed and published under the standing authorization; final immutable commit is available in Git history and the delivery response.
+- [x] No application, Shopify, database or infrastructure configuration changes; no deployment/restart/sync/registration action invoked.
 
 **Next: TASK 012 — Record registered Shopify webhook topics. Not started.**
 
