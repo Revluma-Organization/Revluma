@@ -761,6 +761,44 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         vector_scores=vector_scores,
     )
 
+    # Verified merchant-record questions must remain answerable when the LLM
+    # reasoning provider is unavailable. Never infer missing checkout counts.
+    query_lower = message.lower()
+    wants_cart_value = ("abandoned" in query_lower and "cart" in query_lower
+                        and any(word in query_lower for word in ("value", "how much", "worth")))
+    wants_checkout_review = ("checkout" in query_lower and
+                             any(word in query_lower for word in ("review", "how many", "need")))
+    if (str(trigger_type or "conversation").lower() == "conversation"
+            and not image_base64 and not image_media_type
+            and (wants_cart_value or wants_checkout_review)):
+        from ..intelligence.seven_day_evidence import retrieve_seven_day_evidence
+        verified = retrieve_seven_day_evidence(organization_id, db)
+        lines = ["Here's what I can verify from your connected store records for the last seven days:"]
+        if wants_cart_value:
+            carts = verified["abandoned_carts"]
+            if carts["status"] != "available":
+                lines.append("**Recorded abandoned-cart value:** Unavailable; the store query did not complete.")
+            elif carts["by_currency"]:
+                lines.append("**Recorded abandoned-cart value:** " + "; ".join(
+                    f'{r["cart_value"]} {r["currency"]} across {r["cart_count"]} carts'
+                    for r in carts["by_currency"]) + ".")
+            else:
+                lines.append("**Recorded abandoned-cart value:** No abandoned carts recorded in this period; tracking completeness is unverified.")
+            lines.append("Recorded cart value is not guaranteed recoverable revenue.")
+        if wants_checkout_review:
+            lines.append("**Checkouts needing review:** Not yet verified. The seven-day evidence source does not provide a validated checkout-review count, so I won't invent one.")
+        if not verified.get("last_store_sync_at"):
+            lines.append("**Data freshness:** No completed sync timestamp is available; these records may be incomplete.")
+        answer = "\\n\\n".join(lines)
+        persist_turns(conv_id, organization_id, user_id, message, answer,
+                      "direct_answer", None, db, title_hint=message if is_new else None,
+                      orchestrator_mode="Analyst", correlation_id=correlation_id)
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="direct_answer", text=answer, intent="verified_cart_evidence",
+            orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
+        )
+
     # ── 2. UNDERSTAND (before anything else) ──────────────────────────────────
     u = understand(
         message,
