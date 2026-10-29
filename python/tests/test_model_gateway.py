@@ -121,3 +121,68 @@ def test_gemini_network_timeout_reports_safe_error_type(monkeypatch, caplog):
     assert "ReadTimeout" in caplog.text
     assert "test-only-secret" not in caplog.text
     assert "private merchant prompt" not in caplog.text
+
+
+def test_transient_gemini_503_fails_over_to_approved_gemini_model(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
+    monkeypatch.setattr(model_gateway, "GEMINI_FAST_MODEL", "gemini-3.5-flash-lite")
+    requests = []
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.timeout = kwargs["timeout"]
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, url, **kwargs):
+            requests.append((url, self.timeout))
+            if len(requests) == 1:
+                return SimpleNamespace(status_code=503)
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "candidates": [{"content": {"parts": [{"text": "Safe answer"}]}}]})
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    assert model_gateway.generate("private merchant question", timeout=10) == "Safe answer"
+    assert "gemini-3.5-flash-lite" in requests[0][0]
+    assert "gemini-2.5-flash-lite" in requests[1][0]
+    assert requests[0][1] <= 5.1
+    assert all("generativelanguage.googleapis.com" in url for url, _ in requests)
+
+
+def test_gemini_timeout_fails_over_without_cross_provider(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+    monkeypatch.setattr(model_gateway, "GEMINI_FAST_MODEL", "gemini-3.5-flash-lite")
+    attempts = []
+    class FakeClient:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, url, **kwargs):
+            attempts.append(url)
+            if len(attempts) == 1:
+                raise model_gateway.httpx.ReadTimeout("provider stalled")
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "candidates": [{"content": {"parts": [{"text": "Recovered"}]}}]})
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    assert model_gateway.generate("private merchant question", timeout=10) == "Recovered"
+    assert len(attempts) == 2
+
+
+def test_gemini_auth_failure_never_retries_or_leaks(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+    monkeypatch.setattr(model_gateway, "GEMINI_FAST_MODEL", "gemini-3.5-flash-lite")
+    attempts = []
+    class FakeClient:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, url, **kwargs):
+            attempts.append(url)
+            return SimpleNamespace(status_code=403)
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    with pytest.raises(model_gateway.ModelProviderError) as exc:
+        model_gateway.generate("secret merchant content")
+    assert exc.value.status == 403
+    assert len(attempts) == 1
+    assert "secret merchant content" not in str(exc.value)
