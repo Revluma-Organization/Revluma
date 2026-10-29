@@ -743,6 +743,81 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         )
 
     safe_context_payload = _normalize_context_payload(context_payload or {}) or {}
+    # Verified merchant-record questions must remain answerable when the LLM
+    # reasoning provider is unavailable. Never infer missing checkout counts.
+    query_lower = message.lower()
+    wants_cart_value = ("abandoned" in query_lower and "cart" in query_lower
+                        and any(word in query_lower for word in ("value", "how much", "worth")))
+    wants_checkout_review = ("checkout" in query_lower and
+                             any(word in query_lower for word in ("review", "how many", "need")))
+    if (str(trigger_type or "conversation").lower() == "conversation"
+            and not image_base64 and not image_media_type
+            and (wants_cart_value or wants_checkout_review)):
+        from ..intelligence.seven_day_evidence import retrieve_seven_day_evidence
+        verified = retrieve_seven_day_evidence(organization_id, db)
+        lines = ["Here's what I can verify from your connected store records for the last seven days:"]
+        if wants_cart_value:
+            carts = verified["abandoned_carts"]
+            if carts["status"] != "available":
+                lines.append("**Recorded abandoned-cart value:** Unavailable; the store query did not complete.")
+            elif carts["by_currency"]:
+                lines.append("**Recorded abandoned-cart value:** " + "; ".join(
+                    f'{r["cart_value"]} {r["currency"]} across {r["cart_count"]} carts'
+                    for r in carts["by_currency"]) + ".")
+            else:
+                lines.append("**Recorded abandoned-cart value:** No abandoned carts recorded in this period; tracking completeness is unverified.")
+            lines.append("Recorded cart value is not guaranteed recoverable revenue.")
+        if wants_checkout_review:
+            lines.append("**Checkouts needing review:** Not yet verified. The seven-day evidence source does not provide a validated checkout-review count, so I won't invent one.")
+        if not verified.get("last_store_sync_at"):
+            lines.append("**Data freshness:** No completed sync timestamp is available; these records may be incomplete.")
+        answer = "\\n\\n".join(lines)
+        persist_turns(conv_id, organization_id, user_id, message, answer,
+                      "direct_answer", None, db, title_hint=message if is_new else None,
+                      orchestrator_mode="Analyst", correlation_id=correlation_id)
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="direct_answer", text=answer, intent="verified_cart_evidence",
+            orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
+        )
+
+    # Observed snapshot comparisons are first-party evidence, not model guesses.
+    asks_historical_comparison = (
+        ("my store" in query_lower or "my performance" in query_lower)
+        and any(term in query_lower for term in ("changed", "changes", "compare", "previous records"))
+    )
+    if (str(trigger_type or "conversation").lower() == "conversation"
+            and not image_base64 and not image_media_type
+            and asks_historical_comparison):
+        historical = load_business_change_history(organization_id, db, limit=8)
+        snapshots = historical.get("snapshots", [])
+        changes = historical.get("observed_changes", [])
+        if len(snapshots) < 2:
+            answer = ("I don't have enough verified historical snapshots to compare your store yet. "
+                      "I'll need at least two completed or partial business-state snapshots.")
+        elif not changes:
+            answer = ("I compared the available business-state snapshots and found no recorded changes "
+                      "in the tracked metrics. This does not establish that all store activity was unchanged.")
+        else:
+            labels = {"revenue_today": "Recorded daily revenue snapshot",
+                      "abandoned_cart_count": "Abandoned-cart count",
+                      "churn_risk_count": "Customers flagged for churn risk"}
+            lines = ["Here are the changes recorded between your store's business-state snapshots:"]
+            for item in changes[:8]:
+                lines.append(f'**{labels.get(item["metric"], item["metric"])}:** '
+                             f'{item["from"]} to {item["to"]} (change: {item["delta"]}).')
+            lines.append("These are snapshot-to-snapshot observations, not cumulative sales or verified causes. "
+                         "I can't establish why they changed from these records alone.")
+            answer = "\\n\\n".join(lines)
+        persist_turns(conv_id, organization_id, user_id, message, answer,
+                      "direct_answer", None, db, title_hint=message if is_new else None,
+                      orchestrator_mode="Analyst", correlation_id=correlation_id)
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="direct_answer", text=answer, intent="verified_historical_comparison",
+            orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
+        )
+
     history      = _load_history(conv_id, db, MAX_HISTORY_TURNS)
     history_text = _format_history(history)
     memory_query = f"{message} {json.dumps(safe_context_payload, default=str)}"
