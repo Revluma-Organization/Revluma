@@ -149,27 +149,49 @@ def test_scheduler_briefing_uses_verified_evidence_without_model(monkeypatch):
     assert result.text == "Verified briefing for merchant-a"
 
 
-def test_new_chat_greeting_survives_model_provider_outage(monkeypatch):
+def test_new_chat_greeting_is_generated(monkeypatch):
     from src.agents import orchestrator as module
     monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("conversation-test", True))
     monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
     monkeypatch.setattr(module, "understand", lambda *args, **kwargs: (_ for _ in ()).throw(
         AssertionError("Greeting must not call provider")))
+    from src.agents import model_gateway
+    monkeypatch.setattr(model_gateway, "generate", lambda *args, **kwargs: "Hey! How are things?")
     result = module._run("merchant-a", "user-a", "hey chat how's it going?", None, object(), "corr")
     assert result.success is True
     assert result.intent == "greeting"
     assert "temporarily unable" not in result.text.lower()
 
 
-def test_existing_chat_hello_chat_does_not_depend_on_model(monkeypatch):
+def test_existing_chat_hello_chat_is_generated(monkeypatch):
     from src.agents import orchestrator as module
     monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("existing-conversation", False))
     monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
     monkeypatch.setattr(module, "understand", lambda *args, **kwargs: (_ for _ in ()).throw(
         AssertionError("Plain greeting must not call model")))
+    from src.agents import model_gateway
+    monkeypatch.setattr(model_gateway, "generate", lambda *args, **kwargs: "Hey! How are things?")
     result = module._run("merchant-a", "user-a", "Hello chat", "existing-conversation",
                          object(), "corr-a")
     assert result.success is True
     assert result.intent == "greeting"
     assert result.conversation_id == "existing-conversation"
     assert "temporarily unable" not in result.text.lower()
+
+
+def test_generated_greeting_provider_outage_is_explicit_failure(monkeypatch):
+    from src.agents import orchestrator as module, model_gateway
+    monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("conversation-test", True))
+    monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
+    monkeypatch.setattr(model_gateway, "generate", lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError()))
+    result = module._run("merchant-a", "user-a", "hey rev", None, object(), "corr")
+    assert result.success is False
+    assert result.response_type == "error"
+
+
+def test_briefing_date_range_is_readable_without_utc():
+    from src.intelligence.seven_day_briefing import compose_seven_day_briefing
+    evidence = {"period_start_utc": "2026-07-01T00:00:00Z", "period_end_utc": "2026-07-07T23:59:59Z", "store_count": 0}
+    answer = compose_seven_day_briefing(evidence)
+    assert "1 July 2026 - 7 July 2026" in answer
+    assert "UTC" not in answer
