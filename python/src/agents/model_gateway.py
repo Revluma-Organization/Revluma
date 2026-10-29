@@ -25,38 +25,61 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
         key = os.getenv("GEMINI_API_KEY")
         if not key:
             raise ModelProviderError("gemini", "missing_key")
-        model = GEMINI_FAST_MODEL if role == "fast" else GEMINI_MODEL
+        primary_model = GEMINI_FAST_MODEL if role == "fast" else GEMINI_MODEL
+        if web_search:
+            primary_model = GEMINI_MODEL
+        # Only retry transient failures with the SAME approved Gemini provider.
+        # No cross-provider transfer of merchant information is permitted.
+        fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite").strip()
+        models = [primary_model]
+        if fallback_model and fallback_model != primary_model:
+            models.append(fallback_model)
         parts = [{"text": prompt}]
         if image_base64 and image_media_type:
             parts.append({"inline_data": {"mime_type": image_media_type, "data": image_base64}})
-        if web_search:
-            model = GEMINI_MODEL
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         started = time.monotonic()
-        logger.info("model_provider_request_start provider=gemini model=%s role=%s grounded=%s timeout_seconds=%s", model, role, web_search, timeout)
-        try:
-            payload = {"contents": [{"role": "user", "parts": parts}], "generationConfig": {"maxOutputTokens": max_tokens}}
+        deadline = started + max(0.1, float(timeout))
+        last_error = None
+        for attempt, model in enumerate(models):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            # Reserve time for the fallback attempt instead of spending the
+            # entire Node request budget on a single slow model.
+            attempt_timeout = max(0.1, remaining / 2) if attempt == 0 and len(models) > 1 else remaining
+            logger.info("model_provider_request_start provider=gemini model=%s role=%s grounded=%s timeout_seconds=%.2f attempt=%d",
+                        model, role, web_search, attempt_timeout, attempt + 1)
+            payload = {"contents": [{"role": "user", "parts": parts}],
+                       "generationConfig": {"maxOutputTokens": max_tokens}}
             if model.startswith("gemini-2.5-"):
                 payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
             if web_search:
                 payload["tools"] = [{"google_search": {}}]
-            with httpx.Client(timeout=timeout) as client:
-                response = client.post(
-                    url, headers={"x-goog-api-key": key},
-                    json=payload,
-                )
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            try:
+                with httpx.Client(timeout=attempt_timeout) as client:
+                    response = client.post(url, headers={"x-goog-api-key": key}, json=payload)
+            except httpx.HTTPError as exc:
+                logger.warning("model_provider_network_error provider=gemini error_type=%s model=%s attempt=%d",
+                               type(exc).__name__, model, attempt + 1)
+                last_error = ModelProviderError("gemini", "network")
+                continue
             if response.status_code >= 400:
-                logger.error("model_provider_http_error provider=gemini status=%s model=%s elapsed_ms=%d", response.status_code, model, int((time.monotonic()-started)*1000), extra={
-                    "provider": "gemini", "status": response.status_code,
-                    "model": model,
-                })
-                raise ModelProviderError("gemini", response.status_code)
-            data = response.json()
-            candidates = data.get("candidates") or []
-            if not candidates:
-                raise ModelProviderError("gemini", "empty_candidates")
-            output = "".join(p.get("text", "") for p in
-                             candidates[0].get("content", {}).get("parts", []))
+                logger.warning("model_provider_http_error provider=gemini status=%s model=%s attempt=%d",
+                               response.status_code, model, attempt + 1)
+                last_error = ModelProviderError("gemini", response.status_code)
+                # Quota, auth, permission, malformed request, and unknown
+                # model errors are not transient; fail closed immediately.
+                if response.status_code not in (500, 502, 503, 504):
+                    raise last_error
+                continue
+            try:
+                data = response.json()
+                candidates = data.get("candidates") or []
+                output = "".join(p.get("text", "") for p in
+                                 (candidates[0].get("content", {}).get("parts", []) if candidates else []))
+            except (ValueError, TypeError, AttributeError, KeyError) as exc:
+                raise ModelProviderError("gemini", "invalid_response") from exc
             if not output.strip():
                 raise ModelProviderError("gemini", "empty_text")
             if web_search:
@@ -65,14 +88,11 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
                     uri = (chunk.get("web") or {}).get("uri", "")
                     if uri.startswith("https://") and uri not in sources:
                         sources.append(uri)
-                output += "\n\nSources:\n" + "\n".join("- " + uri for uri in sources[:5]) if sources else "\n\n(Web search returned no verifiable sources.)"
-            logger.info("model_provider_request_success provider=gemini model=%s elapsed_ms=%d", model, int((time.monotonic()-started)*1000))
+                output += ("\\n\\nSources:\\n" + "\\n".join("- " + uri for uri in sources[:5])) if sources else "\\n\\n(Web search returned no verifiable sources.)"
+            logger.info("model_provider_request_success provider=gemini model=%s elapsed_ms=%d attempt=%d",
+                        model, int((time.monotonic() - started) * 1000), attempt + 1)
             return output.strip()
-        except httpx.HTTPError as exc:
-            logger.error("model_provider_network_error provider=gemini error_type=%s model=%s elapsed_ms=%d",
-                         type(exc).__name__, model, int((time.monotonic()-started)*1000),
-                         extra={"provider": "gemini", "error_type": type(exc).__name__, "model": model})
-            raise ModelProviderError("gemini", "network") from exc
+        raise last_error or ModelProviderError("gemini", "timeout_budget_exhausted")
     if provider == "anthropic":
         import anthropic
         key = os.getenv("ANTHROPIC_API_KEY")
