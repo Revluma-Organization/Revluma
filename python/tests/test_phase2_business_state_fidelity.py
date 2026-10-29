@@ -50,3 +50,28 @@ def test_load_business_state_rejects_malformed_warning_metadata():
     state = load_current_business_state("merchant-2", Session())
     assert state is not None
     assert state.warnings == []
+
+
+def test_reliability_never_calls_missing_source_high_confidence():
+    from datetime import timedelta
+    from src.intelligence.business_state import _empty_state
+
+    now = datetime.now(timezone.utc)
+    state = _empty_state("state-3", "merchant-3", now, [])
+    state.computation_status = "complete"
+    assert state.to_dict()["reliability"]["level"] == "unknown"
+    assert state.to_dict()["reliability"]["source_freshness_known"] is False
+
+    state.data_freshness_at = now
+    assert state.to_dict()["reliability"]["level"] == "high"
+
+    state.warnings = ["Orders unavailable"]
+    assert state.to_dict()["reliability"]["level"] == "limited"
+
+    state.warnings = []
+    state.generated_at = now - timedelta(minutes=60)
+    assert state.to_dict()["reliability"]["snapshot_stale"] is True
+    assert state.to_dict()["reliability"]["level"] == "limited"
+
+    state.computation_status = "failed"
+    assert state.to_dict()["reliability"]["level"] == "unavailable"
