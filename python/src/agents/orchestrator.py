@@ -678,9 +678,9 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
         )
 
-    # Plain greetings need no provider calls. Keep this deliberately narrow:
-    # never intercept store questions or attachments. Existing conversations\n    # also need reliable greetings when the provider is unavailable.
-    greeting = re.sub(r"[!?.,\s]+", " ", message.lower()).strip()
+    # Friendly messages should receive generated, contextual replies rather than
+    # a repeated hard-coded greeting. A provider outage is reported honestly.
+    greeting = re.sub(r"[!?.,\\s]+", " ", message.lower()).strip()
     if (str(trigger_type or "conversation").lower() == "conversation"
             and not image_base64 and not image_media_type
             and greeting in {"hi", "hello", "hey", "hey chat", "hello chat", "hi chat", "hi rev",
@@ -688,8 +688,24 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
                              "hey chat how is it going", "how are you",
                              "how's it going", "good morning", "good afternoon",
                              "good evening"}):
-        answer = ("Hey! I'm here and ready to help. How's your day going? "
-                  "Anything you'd like to explore about your store?")
+        from .model_gateway import generate, ModelProviderError
+        try:
+            answer = generate(
+                responder.PERSONA + "\\nThe merchant said: " + message[:200]
+                + "\\nReply warmly and naturally in one or two sentences. "
+                "Do not invent store facts, repeat a fixed greeting, or force a sales pitch.",
+                role="fast", max_tokens=120, timeout=12.0,
+            )
+            if not answer or not answer.strip():
+                raise ValueError("Empty generated greeting")
+        except Exception as exc:
+            logger.warning("rev_greeting_generation_unavailable error_type=%s", type(exc).__name__)
+            return OrchestrationResult(
+                success=False, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+                response_type="error", text="Rev is temporarily unavailable. Please try again shortly.",
+                intent="greeting", orchestrator_mode="Analyst", agents_used=[],
+                correlation_id=correlation_id,
+            )
         persist_turns(
             conv_id, organization_id, user_id, message, answer, "chat",
             None, db, title_hint=message if is_new else None,
