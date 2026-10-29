@@ -13,10 +13,12 @@ vi.mock("@/lib/auth/session", () => ({
 
 import { api } from "./api";
 
+const jwt = (exp: number) => `header.${btoa(JSON.stringify({ exp }))}.signature`;
+
 describe("API token refresh concurrency", () => {
   beforeEach(() => {
     localStorage.clear();
-    localStorage.setItem("rv-auth", JSON.stringify({ state: { accessToken: "expired" } }));
+    localStorage.setItem("rv-auth", JSON.stringify({ state: { accessToken: jwt(Math.floor(Date.now() / 1000) - 60) } }));
     vi.restoreAllMocks();
   });
 
@@ -27,12 +29,12 @@ describe("API token refresh concurrency", () => {
       if (url.endsWith("/auth/refresh")) {
         refreshCount++;
         await new Promise((resolve) => setTimeout(resolve, 5));
-        return new Response(JSON.stringify({ data: { access_token: "fresh" } }), {
+        return new Response(JSON.stringify({ data: { access_token: jwt(Math.floor(Date.now() / 1000) + 3600) } }), {
           status: 200, headers: { "content-type": "application/json" },
         });
       }
       const stored = JSON.parse(localStorage.getItem("rv-auth") || "{}");
-      const authorized = stored.state?.accessToken === "fresh";
+      const authorized = stored.state?.accessToken === jwt(Math.floor(Date.now() / 1000) + 3600);
       return new Response(JSON.stringify({ success: authorized }), {
         status: authorized ? 200 : 401,
         headers: { "content-type": "application/json" },
@@ -45,6 +47,6 @@ describe("API token refresh concurrency", () => {
     ]);
     expect(results.every((result) => result.ok)).toBe(true);
     expect(refreshCount).toBe(1);
-    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });
