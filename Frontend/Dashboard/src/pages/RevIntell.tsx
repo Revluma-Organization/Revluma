@@ -334,6 +334,56 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
   );
 }
 
+/** Structured cards derived only from values explicitly present in Rev's verified answer. */
+const VerifiedComparison: FC<{ text: string; isDark: boolean; t1: string; t2: string }> = ({ text, isDark, t1, t2 }) => {
+  if (!text.startsWith("I compared your latest rolling seven days")) return null;
+  const blocks = text.split(/(?=\\*\\*(?:Latest period|Previous period [1-9])\\*\\*)/);
+  const periods = blocks.slice(1).filter(b => /^\\*\\*(Latest period|Previous period [1-9])\\*\\*/.test(b));
+  if (!periods.length) return null;
+  const extract = (body: string, pattern: RegExp) => body.match(pattern)?.[1] ?? null;
+  const metrics = periods.map((body, index) => ({
+    title: index === 0 ? "Latest 7 days" : `Previous period ${index}`,
+    dates: extract(body, /\\*\\*[^*]+\\*\\* \\(([^)]+)\\)/),
+    orders: extract(body, /- Orders: (\\d+) recorded/),
+    carts: extract(body, /- Unrecovered abandoned carts: (\\d+) recorded/),
+    customers: extract(body, /- Newly recorded customer profiles: (\\d+)/),
+    firstTime: extract(body, /- First-time purchaser orders: (\\d+)/),
+    returning: extract(body, /returning purchaser orders: (\\d+)/),
+    values: [...body.matchAll(/- Orders: \\d+ recorded; ([^\\n]+)\\./g)].map(m => m[1]),
+    discounts: [...body.matchAll(/- Recorded order discounts: ([^\\n]+)\\./g)].map(m => m[1]),
+  }));
+  const cardBg = isDark ? "#151824" : "#ffffff";
+  const border = isDark ? "#34374b" : "#e5e7eb";
+  return (
+    <section aria-label="Verified store performance comparison" style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <BarChart2 size={16} color="#1F06AC" />
+        <span style={{ color: t1, fontSize: 14, fontWeight: 750 }}>Verified performance evidence</span>
+        <span style={{ color: t2, fontSize: 11 }}>Rolling 7-day periods · UTC</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+        {metrics.map((period, index) => (
+          <div key={index} style={{ border: `1px solid ${index === 0 ? "#1F06AC" : border}`, borderRadius: 12,
+            padding: 14, background: index === 0 ? (isDark ? "#1b1740" : "#f4f2ff") : cardBg }}>
+            <div style={{ color: t1, fontSize: 13, fontWeight: 750 }}>{period.title}</div>
+            <div style={{ color: t2, fontSize: 11, marginTop: 4, marginBottom: 12 }}>{period.dates}</div>
+            {([["Orders", period.orders], ["Abandoned carts", period.carts], ["New profiles", period.customers],
+               ["First-time orders", period.firstTime], ["Returning orders", period.returning]] as Array<[string, string | null]>).map(([label, value]) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0" }}>
+                <span style={{ color: t2, fontSize: 12 }}>{label}</span>
+                <strong style={{ color: t1, fontSize: 13 }}>{value ?? "—"}</strong>
+              </div>
+            ))}
+            {period.values.map((value, i) => <div key={`v${i}`} style={{ color: t1, fontSize: 12, marginTop: 9 }}>Recorded order value: <strong>{value}</strong></div>)}
+            {period.discounts.map((value, i) => <div key={`d${i}`} style={{ color: t2, fontSize: 12, marginTop: 4 }}>Discounts: {value}</div>)}
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: t2, marginTop: 9 }}>Recorded merchant data, not verified net sales. Review the evidence limitations below.</div>
+    </section>
+  );
+};
+
 const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2: string; onSend?: (text: string) => void }> = ({
   response, isDark, t1, t2, onSend,
 }) => {
@@ -343,7 +393,7 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
   if (type !== "analysis") {
     const text = response.text || "";
     if (!text) return null;
-    return <RichText text={text} t1={t1} isDark={isDark} />;
+    return <><VerifiedComparison text={text} isDark={isDark} t1={t1} t2={t2} /><RichText text={text} t1={t1} isDark={isDark} /></>;
   }
 
   // Analysis: 6-part structured response
