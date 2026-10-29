@@ -214,6 +214,7 @@ class BusinessState:
     baseline_event_rate: float
     next_rebuild_at: datetime
     cart_delta_pct_vs_avg: float | None = None
+    observed_drivers: list[dict] = field(default_factory=list)
 
     def is_stale(self) -> bool:
         age_secs = (datetime.now(timezone.utc) - self.generated_at).total_seconds()
@@ -310,6 +311,8 @@ class BusinessState:
                 "severity": self.anomaly_severity,
                 "items": self.anomalies,
                 "root_causes": self.root_causes,
+                "observed_drivers": self.observed_drivers,
+                "root_cause_verification": "not_established",
             },
             "traffic": {
                 "current_event_rate_5m": self.current_event_rate,
@@ -1118,6 +1121,7 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
             baseline_event_rate=float(source_data.get("baseline_event_rate_5m_30d") or 0),
             next_rebuild_at=next_rebuild_at,
             cart_delta_pct_vs_avg=source_data.get("cart_delta_pct_vs_avg"),
+            observed_drivers=metadata.get("observed_drivers", []) if isinstance(metadata.get("observed_drivers", []), list) else [],
         )
     except Exception as exc:
         logger.exception(
