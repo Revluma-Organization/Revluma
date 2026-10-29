@@ -16,7 +16,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 008 | Phase 1 | Map historical Shopify synchronization job. | PARTIALLY VERIFIED (original PARTIAL) | [TASK-008](diagnostics/TASK-008.md) | Inspected cfb41b7; imported by Task 010 | 2026-10-29 (historical report) |
 | 009 | Phase 1 | Map checkout/order Prisma models. | PARTIALLY VERIFIED (original PARTIAL) | [TASK-009](diagnostics/TASK-009.md) | Inspected cfb41b7; imported by Task 010 | 2026-10-29 (historical report) |
 | 010 | Phase 1 | Map existing checkout reconciliation tests. | COMPLETED — VERIFIED (test architecture audit; product coverage remains partial) | [TASK-010](diagnostics/TASK-010.md) | Inspected d410748; docs publication to main authorized 2026-10-30 | 2026-10-30 documentation follow-up |
-| 011 | Phase 1 | Record Shopify API version used by backend. | NOT STARTED | — | — | — |
+| 011 | Phase 1 | Record Shopify API version used by backend. | PARTIALLY VERIFIED (source mapped; production override/served version unverified) | [TASK-011](diagnostics/TASK-011.md) | Inspected 55d78f06; production cfb41b7 Backend content identical | 2026-10-30 |
 | 012 | Phase 1 | Record registered Shopify webhook topics. | NOT STARTED | — | — | — |
 | 013 | Phase 1 | Identify checkout fields actually received in test payloads. | NOT STARTED | — | — | — |
 | 014 | Phase 1 | Identify order fields actually received in test payloads. | NOT STARTED | — | — | — |
@@ -544,3 +544,17 @@ REV-FIND-0047 is now UNDER INVESTIGATION: six of seven missing reports recovered
 | REV-FIND-0101 | [007](diagnostics/TASK-007.md) | Medium | Classification-specific integration tests were not established | Historical report: Existing test inventory; Runtime correctness unverified | 029,036,049 | UNDER INVESTIGATION |
 
 These are imported diagnoses, not freshly reproduced defects. See each report for its source files, inspected SHA and original test-execution limitations. Stable IDs 0001–0047 were retained unchanged except the dated resolution progress for 0047; 0048–0101 index the recovered historical findings.
+
+## Task011 — Shopify API version audit, 2026-10-30
+
+Source resolver defaults to UTC-quarter 2026-10 today; all discovered Admin GraphQL resource consumers share it. OAuth endpoints are unversioned. Exact production override/served version and app webhook payload version remain unverified; Render logs returned503. Existing install/version assertion script: one entry passed, zero failed/skipped. No source/API/env/infrastructure change; decisions unchanged. See [TASK-011](diagnostics/TASK-011.md) for exact lines, operation matrix, official support/deprecation evidence and limitations. Task012 not started.
+
+| Finding ID | Discovered In | Severity | Description | Affected Component | Resolution Task | Status |
+|---|---|---|---|---|---|---|
+| REV-FIND-0102 | [011](diagnostics/TASK-011.md#j-findings-register) | Medium | Calendar-quarter fallback and validator are not provider release/grace-window lookup | utils/shopify.js:3–25 | BACKLOG MAPPING REQUIRED; validation100/349 | OPEN |
+| REV-FIND-0103 | [011](diagnostics/TASK-011.md#j-findings-register) | Low | Unused fixed API_VERSION export can diverge from dynamic request resolver | shopifyGraphql.js:5,21,25,54 | BACKLOG MAPPING REQUIRED | OPEN |
+| REV-FIND-0104 | [011](diagnostics/TASK-011.md#j-findings-register) | Medium | Served Admin and independent webhook payload API versions not observed | shopifyGraphql.js:20–51; commerceWebhookController.js:16–22 | 012–014,098,364,366 | OPEN |
+| REV-FIND-0105 | [011](diagnostics/TASK-011.md#j-findings-register) | Medium | Customer email/phone/emailMarketingConsent/smsMarketingConsent selections are deprecated but present | shopifySync.js:76–78,195,255; official Customer reference | 066–067,080; migration BACKLOG MAPPING REQUIRED | OPEN |
+| REV-FIND-0106 | [011](diagnostics/TASK-011.md#j-findings-register) | Medium | No direct shared transport URL/header/version compatibility test found | shopify.install.test.js:19–22,90–95; client/test search | 100; implementation BACKLOG MAPPING REQUIRED | OPEN |
+
+Related existing findings0017,0038,0043,0001,0059,0013 remain unchanged and unresolved; Task011 references rather than duplicates those diagnoses.
