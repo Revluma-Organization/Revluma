@@ -22,8 +22,8 @@ if (!answer.includes('Latest period') || !answer.includes('Previous period 1') |
   console.error('Comparison response is missing verified period evidence sections.');
   process.exit(1);
 }
-if (expected && expectedCurrency && !answer.includes(`${expected} ${expectedCurrency}`)) {\n  console.error('Merchant comparison does not contain the expected currency-specific recorded order value.');\n  process.exit(1);\n}\nif (!body.conversation_id && !body.data?.conversation_id) {
+const latestPeriod = answer.split('**Latest period**')[1]?.split('**Previous period 1**')[0] || '';\nif (expected && expectedCurrency && !latestPeriod.includes(`${expected} ${expectedCurrency}`)) {\n  console.error('Latest merchant period does not contain the expected currency-specific recorded order value.');\n  process.exit(1);\n}\nif (!body.conversation_id && !body.data?.conversation_id) {
   console.error('Response lacks conversation identifier.');
   process.exit(1);
 }
-console.log('PASS: authenticated merchant comparison returned period evidence and limitations.');\nif (expected && expectedCurrency) console.log('PASS: expected currency-specific recorded order value was present.');
+console.log('PASS: authenticated merchant comparison returned period evidence and limitations.');\nif (expected && expectedCurrency) console.log('PASS: expected currency-specific recorded order value was present in latest period.');
