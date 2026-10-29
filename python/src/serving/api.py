@@ -516,7 +516,9 @@ def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int
 # Orchestration and scheduled briefing endpoints
 # ---------------------------------------------------------------------------
 @app.post("/orchestrate", dependencies=[Depends(verify_internal_caller)])
-async def orchestrate_endpoint(req: OrchestrateRequest):
+async def orchestrate_endpoint(req: OrchestrateRequest, x_contract_version: str | None = Header(default=None)):
+    if x_contract_version != req.contract_version:
+        raise HTTPException(status_code=400, detail='Intelligence contract version mismatch')
     db = _Session()
     try:
         result = await run_in_threadpool(
