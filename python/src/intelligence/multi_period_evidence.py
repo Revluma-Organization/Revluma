@@ -169,4 +169,4 @@ def format_multi_period_comparison(evidence: dict) -> str:
         lines.append(f"- {label}: {a} versus {b} in the preceding period (change: {a-b:+d}).")
     lines.extend(["**Evidence limitations:**"] + [f"- {warning}" for warning in evidence["warnings"]])
     lines.append("**Next investigation:** Review any unusual order changes and reconcile refunds in Shopify Admin before drawing net-revenue conclusions.")
-    return "\\n\\n".join(lines)
+    return "\n\n".join(lines)
