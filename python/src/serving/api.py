@@ -541,6 +541,8 @@ async def orchestrate_endpoint(req: OrchestrateRequest, x_contract_version: str 
         return result.to_dict()
     except HTTPException:
         raise
+    except PermissionError:
+        raise HTTPException(status_code=404, detail="Conversation not found")
     except Exception:
         logger.exception("orchestrate_unhandled_error")
         raise HTTPException(status_code=503, detail="Intelligence response unavailable; please retry.")

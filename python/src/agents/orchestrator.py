@@ -599,6 +599,8 @@ def orchestrate(organization_id: str, user_id: str, message: str,
                      image_base64=image_base64, image_media_type=image_media_type,
                      trigger_type=trigger_type, trigger_priority=trigger_priority,
                      context_payload=context_payload)
+    except PermissionError:
+        raise
     except Exception as exc:
         logger.critical(
             "orchestrate_fatal",
@@ -1465,6 +1467,9 @@ def _get_or_create_conversation(org_id, user_id, conv_id, db):
         ).fetchone()
         if row:
             return str(row[0]), False
+        # Never silently replace a foreign or missing conversation ID with a
+        # new conversation: doing so masks unauthorized cross-tenant access.
+        raise PermissionError("Conversation not found or not accessible")
     new_id = str(uuid.uuid4())
     db.execute(text("""
         INSERT INTO conversations (id, organization_id, user_id, status, message_count, last_activity_at)

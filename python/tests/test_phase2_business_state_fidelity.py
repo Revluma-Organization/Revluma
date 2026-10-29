@@ -1,5 +1,6 @@
 """Phase 2: reloaded merchant business state retains source reliability warnings."""
 from datetime import datetime, timezone
+import pytest
 
 from src.intelligence.business_state import load_current_business_state
 
@@ -233,3 +234,69 @@ def test_verified_historical_comparison_survives_model_outage(monkeypatch):
     assert result.success is True
     assert "4 to 7" in result.text
     assert "not cumulative sales or verified causes" in result.text
+
+
+def test_foreign_conversation_id_is_rejected_without_creating_new_chat():
+    from src.agents.orchestrator import _get_or_create_conversation
+
+    class MissingConversationResult:
+        def fetchone(self):
+            return None
+
+    class FakeDB:
+        def __init__(self):
+            self.statements = []
+        def execute(self, query, params):
+            self.statements.append(str(query))
+            return MissingConversationResult()
+        def commit(self):
+            raise AssertionError("Must not create a conversation for a foreign ID")
+
+    db = FakeDB()
+    with pytest.raises(PermissionError, match="not accessible"):
+        _get_or_create_conversation("merchant-a", "user-a", "foreign-conversation", db)
+    assert len(db.statements) == 1
+    assert "organization_id = :o AND user_id = :u" in db.statements[0]
+
+
+def test_morning_briefing_persistence_matches_database_unique_date_key():
+    from src.intelligence.morning_briefing import MorningBriefing, _persist_briefing
+    class FakeDB:
+        def __init__(self):
+            self.sql = ""
+            self.params = {}
+            self.committed = False
+        def execute(self, query, params):
+            self.sql = str(query)
+            self.params = params
+        def commit(self):
+            self.committed = True
+    db = FakeDB()
+    briefing = MorningBriefing(
+        id="b", organization_id="o", generated_at=datetime(2026, 10, 29, tzinfo=timezone.utc),
+        merchant_name="Merchant", greeting="Hello", yesterday_in_numbers=[],
+        todays_priority={}, active_concerns=[], opportunities=[], overnight_log=[])
+    _persist_briefing(briefing, db)
+    assert "ON CONFLICT (organization_id, briefing_date)" in db.sql
+    assert "briefing_date" in db.sql
+    assert str(db.params["briefing_date"]) == "2026-10-29"
+    assert db.committed
+
+
+def test_morning_briefing_persistence_failure_is_not_silent():
+    from src.intelligence.morning_briefing import MorningBriefing, _persist_briefing
+    class FailingDB:
+        def __init__(self):
+            self.rolled_back = False
+        def execute(self, *args, **kwargs):
+            raise RuntimeError("write failed")
+        def rollback(self):
+            self.rolled_back = True
+    db = FailingDB()
+    briefing = MorningBriefing(
+        id="b", organization_id="o", generated_at=datetime.now(timezone.utc),
+        merchant_name="Merchant", greeting="Hello", yesterday_in_numbers=[],
+        todays_priority={}, active_concerns=[], opportunities=[], overnight_log=[])
+    with pytest.raises(RuntimeError, match="write failed"):
+        _persist_briefing(briefing, db)
+    assert db.rolled_back
