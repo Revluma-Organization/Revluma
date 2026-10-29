@@ -186,3 +186,25 @@ def test_gemini_auth_failure_never_retries_or_leaks(monkeypatch):
     assert exc.value.status == 403
     assert len(attempts) == 1
     assert "secret merchant content" not in str(exc.value)
+
+
+def test_retired_primary_model_404_fails_over_to_configured_gemini(monkeypatch):
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(model_gateway, "GEMINI_FAST_MODEL", "retired-model")
+    calls = []
+    class FakeClient:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, url, **kwargs):
+            calls.append(url)
+            if len(calls) == 1:
+                return SimpleNamespace(status_code=404)
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "candidates": [{"content": {"parts": [{"text": "Recovered"}]}}]})
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    assert model_gateway.generate("merchant question", timeout=10) == "Recovered"
+    assert "retired-model" in calls[0]
+    assert "gemini-2.5-flash" in calls[1]

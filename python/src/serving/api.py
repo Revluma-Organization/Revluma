@@ -535,9 +535,15 @@ async def orchestrate_endpoint(req: OrchestrateRequest, x_contract_version: str 
                 context_payload=req.context_payload,
             )
         )
+        if not result.to_dict().get('success', False):
+            logger.error("orchestrate_failed correlation_id=%s", getattr(result, "correlation_id", None))
+            raise HTTPException(status_code=503, detail="Intelligence response unavailable; please retry.")
         return result.to_dict()
+    except HTTPException:
+        raise
     except Exception:
-        return {"success": False, "response_type": "error", "text": "Something went wrong. Please try again in a moment.", "orchestrator_mode": None}
+        logger.exception("orchestrate_unhandled_error")
+        raise HTTPException(status_code=503, detail="Intelligence response unavailable; please retry.")
     finally:
         db.close()
 

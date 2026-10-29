@@ -30,7 +30,7 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
             primary_model = GEMINI_MODEL
         # Only retry transient failures with the SAME approved Gemini provider.
         # No cross-provider transfer of merchant information is permitted.
-        fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite").strip()
+        fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash").strip()
         models = [primary_model]
         if fallback_model and fallback_model != primary_model:
             models.append(fallback_model)
@@ -70,7 +70,7 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
                 last_error = ModelProviderError("gemini", response.status_code)
                 # Quota, auth, permission, malformed request, and unknown
                 # model errors are not transient; fail closed immediately.
-                if response.status_code not in (500, 502, 503, 504):
+                if response.status_code not in (404, 500, 502, 503, 504):
                     raise last_error
                 continue
             try:
