@@ -216,3 +216,20 @@ def test_verified_cart_value_answer_bypasses_unavailable_model(monkeypatch):
     assert "13 carts" in result.text
     assert "Not yet verified" in result.text
     assert "No completed sync" in result.text
+
+
+def test_verified_historical_comparison_survives_model_outage(monkeypatch):
+    from src.agents import orchestrator as module
+    monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("conversation-test", True))
+    monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "understand", lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError()))
+    monkeypatch.setattr(module, "load_business_change_history", lambda *args, **kwargs: {
+        "snapshots": [{"snapshot_id": "new"}, {"snapshot_id": "old"}],
+        "observed_changes": [{"metric": "abandoned_cart_count", "from": 4, "to": 7, "delta": 3}],
+    })
+    result = module._run("merchant-a", "user-a",
+        "What has changed in my store recently? Compare my current performance with previous records.",
+        None, object(), "corr")
+    assert result.success is True
+    assert "4 to 7" in result.text
+    assert "not cumulative sales or verified causes" in result.text
