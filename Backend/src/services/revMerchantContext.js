@@ -1,6 +1,29 @@
 'use strict';
 
 // Builds a bounded read-only context from organization-scoped, verified records.
+const { TRUSTED_SOURCE } = require('./intelligenceOrderCoverage');
+const FINANCIAL_FINDING_TYPES = new Set(['revenue_change', 'order_volume_change', 'returning_customer_change']);
+const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
+function certifiedFinding(finding) {
+  const evidence = finding?.evidence;
+  if (!evidence || evidence.verified !== true) return false;
+  if (finding.type === 'integration_failure') return evidence.source === 'stores' && evidence.storeId === finding.store_id;
+  if (!FINANCIAL_FINDING_TYPES.has(finding.type)) return false; // Fail closed for unknown finding contracts.
+  if (evidence.complete !== true || evidence.coverage_source !== TRUSTED_SOURCE ||
+      typeof evidence.coverage_run_id !== 'string' || !evidence.coverage_run_id.trim()) return false;
+  const { previousStart, previousEnd, currentStart, currentEnd } = evidence;
+  if (![previousStart, previousEnd, currentStart, currentEnd].every(validDate)) return false;
+  const ps = Date.parse(previousStart), pe = Date.parse(previousEnd);
+  const cs = Date.parse(currentStart), ce = Date.parse(currentEnd);
+  if (!(ps < pe && pe <= cs && cs < ce && pe - ps === ce - cs)) return false;
+  if (typeof evidence.currency !== 'string' || !/^[A-Z]{3}$/.test(evidence.currency)) return false;
+  if (![evidence.currentCount, evidence.previousCount].every(n => Number.isInteger(n) && n >= 0)) return false;
+  if (finding.type === 'revenue_change' &&
+      ![evidence.currentRevenue, evidence.previousRevenue].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) return false;
+  if (finding.type === 'returning_customer_change' &&
+      ![evidence.currentReturning, evidence.previousReturning].every(n => Number.isInteger(n) && n >= 0)) return false;
+  return true;
+}
 const EVIDENCE_KEYS = new Set([
   'verified', 'complete', 'currency', 'currentCount', 'previousCount',
   'currentRevenue', 'previousRevenue', 'currentStart', 'currentEnd',
@@ -50,7 +73,7 @@ async function buildMerchantContext(prisma, organizationId) {
         String(s.status || '').slice(0, 24),
         s.last_synced_at ? new Date(s.last_synced_at).toISOString() : 'never_synced'].join(' | ')),
     verified_findings: findings.filter(f =>
-      allowedStores.has(f.store_id) && f.evidence?.verified === true)
+      allowedStores.has(f.store_id) && certifiedFinding(f))
       .slice(0, 5).map(f =>
         ['finding', String(f.id || '').slice(0, 36),
           String(f.type || '').slice(0, 40),
@@ -61,4 +84,4 @@ async function buildMerchantContext(prisma, organizationId) {
       'No findings does not prove the store has no issues.'],
   };
 }
-module.exports = { buildMerchantContext, boundedEvidence };
+module.exports = { buildMerchantContext, boundedEvidence, certifiedFinding };
