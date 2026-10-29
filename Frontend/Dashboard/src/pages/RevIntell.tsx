@@ -838,6 +838,8 @@ export default function RevIntell() {
   } | null>(null);
   const [renameModalId,  setRenameModalId]  = useState<string | null>(null);
   const [renameValue,    setRenameValue]    = useState("");
+  const [renameStatus, setRenameStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -1143,18 +1145,28 @@ export default function RevIntell() {
   const renameConv = (id: string) => {
     const conv = conversations.find(c => c.id === id);
     setRenameValue(conv?.title ?? "");
+    setRenameError(null);
+    setRenameStatus("idle");
     setRenameModalId(id);
   };
   const submitRename = async () => {
-    if (!renameModalId || !renameValue.trim()) return;
+    if (!renameModalId || !renameValue.trim() || renameStatus !== "idle") return;
     const id = renameModalId;
     const title = renameValue.trim().slice(0, 100);
+    setRenameError(null);
+    setRenameStatus("saving");
     try {
-      await api.patch?.(`/rev/conversation/${id}/title`, { title }) ||
-            await (api as any).put?.(`/rev/conversation/${id}/title`, { title });
-    } catch { /* optimistic */ }
-    setConversations(prev => prev.map(c => c.id === id ? { ...c, title } : c));
-    setRenameModalId(null);
+      await api.patch(`/rev/conversation/${encodeURIComponent(id)}/title`, { title });
+      setConversations(prev => prev.map(c => c.id === id ? { ...c, title } : c));
+      setRenameStatus("saved");
+      window.setTimeout(() => {
+        setRenameModalId(current => current === id ? null : current);
+        setRenameStatus(current => current === "saved" ? "idle" : current);
+      }, 650);
+    } catch {
+      setRenameError("Could not rename this conversation. Please try again.");
+      setRenameStatus("idle");
+    }
   };
 
   // Theme
@@ -1377,45 +1389,51 @@ export default function RevIntell() {
         </div>
       )}
 
-      {/* Rename Modal */}
-      <AnimatePresence>
-        {renameModalId && (
-          <>
+      {/* Rename dialog uses the same viewport-centered mobile UX as deletion. */}
+      {createPortal(
+        <AnimatePresence>
+          {renameModalId && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[80]" style={{ background: "rgba(0,0,0,0.5)" }}
-              onClick={() => setRenameModalId(null)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: -10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -10 }}
-              transition={{ duration: 0.15 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[90] w-80 rounded-2xl p-6 shadow-2xl"
-              style={{ background: card, border: `1px solid ${bdr}` }}>
-              <p className="text-[0.9rem] font-bold mb-4" style={{ color: t1 }}>Rename conversation</p>
-              <input
-                autoFocus
-                value={renameValue}
-                onChange={e => setRenameValue(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") submitRename(); if (e.key === "Escape") setRenameModalId(null); }}
-                maxLength={100}
-                className="w-full rounded-xl px-4 py-2.5 text-[0.88rem] outline-none mb-4"
-                style={{ background: isDark ? "#1f1f1f" : "#f3f4f6", color: t1, border: `1px solid ${bdr}` }}
-                placeholder="Conversation name" />
-              <div className="flex gap-2 justify-end">
-                <button onClick={() => setRenameModalId(null)}
-                  className="px-4 py-2 rounded-xl text-[0.82rem] font-medium transition-colors"
-                  style={{ color: t2, background: isDark ? "#1f1f1f" : "#f3f4f6", fontFamily: "inherit" }}>
-                  Cancel
-                </button>
-                <button onClick={submitRename}
-                  className="px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white transition-all"
-                  style={{ background: "#5865f2", fontFamily: "inherit" }}>
-                  Save
-                </button>
-              </div>
+              className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+              <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.5)" }}
+                onClick={() => { if (renameStatus === "idle") setRenameModalId(null); }} />
+              <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                transition={{ duration: 0.15 }}
+                role="dialog" aria-modal="true" aria-labelledby="rev-rename-title"
+                className="relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-2xl"
+                style={{ background: card, border: `1px solid ${bdr}` }}>
+                <p id="rev-rename-title" className="text-[0.9rem] font-bold mb-4" style={{ color: t1 }}>Rename conversation</p>
+                <form onSubmit={e => { e.preventDefault(); void submitRename(); }}>
+                  <input autoFocus value={renameValue} disabled={renameStatus !== "idle"}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Escape" && renameStatus === "idle") setRenameModalId(null); }}
+                    maxLength={100} aria-label="Conversation name"
+                    className="w-full rounded-xl px-4 py-2.5 text-[0.88rem] outline-none mb-4 disabled:opacity-60"
+                    style={{ background: isDark ? "#1f1f1f" : "#f3f4f6", color: t1, border: `1px solid ${bdr}` }}
+                    placeholder="Conversation name" />
+                  {renameError && <p role="alert" className="text-[0.78rem] mb-3 text-red-500">{renameError}</p>}
+                  <div className="flex gap-2 justify-end">
+                    <button type="button" disabled={renameStatus !== "idle"}
+                      onClick={() => setRenameModalId(null)}
+                      className="px-4 py-2 rounded-xl text-[0.82rem] font-medium disabled:opacity-50"
+                      style={{ color: t2, background: isDark ? "#1f1f1f" : "#f3f4f6", fontFamily: "inherit" }}>
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={!renameValue.trim() || renameStatus !== "idle"}
+                      className="min-w-[100px] px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white flex items-center justify-center gap-2 disabled:cursor-wait"
+                      style={{ background: renameStatus === "idle" ? "#5865f2" : renameStatus === "saved" ? "#16a34a" : "#9ca3af", fontFamily: "inherit" }}>
+                      {renameStatus === "saving" ? <><RefreshCw size={14} className="animate-spin" />Saving...</> : renameStatus === "saved" ? "Saved ✓" : "Save"}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
             </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Delete confirmation is portaled to the viewport to avoid transformed sidebar offsets on mobile. */}
       {createPortal(
