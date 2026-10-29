@@ -157,7 +157,8 @@ function LoadingBar({ isDark }: { isDark: boolean }) {
 // ── ResponseCard — adaptive to response type ──────────────────────────────────
 
 function renderInline(text: string) {
-  // Only render safe web URLs from untrusted model text.\n  const safeUrl = (raw: string) => { try { const u = new URL(raw); return ["https:", "http:"].includes(u.protocol) ? u.href : null; } catch { return null; } };\n  // Handle markdown image: ![alt](url)
+  // Only render safe web URLs from untrusted model text.
+  const safeUrl = (raw: string) => { try { const u = new URL(raw); return ["https:", "http:"].includes(u.protocol) ? u.href : null; } catch { return null; } };\n  // Handle markdown image: ![alt](url)
   const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   if (imgRegex.test(text)) {
     const parts: React.ReactNode[] = [];
