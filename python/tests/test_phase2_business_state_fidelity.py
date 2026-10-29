@@ -86,3 +86,41 @@ def test_observed_drivers_never_masquerade_as_verified_root_causes():
     assert summary["root_causes"] == []
     assert summary["observed_drivers"][0]["causality"] == "unverified"
     assert summary["root_cause_verification"] == "not_established"
+
+
+def test_historical_business_changes_are_tenant_scoped_bounded_and_noncausal():
+    from datetime import timedelta
+    from src.intelligence.business_state import load_business_change_history
+
+    now = datetime.now(timezone.utc)
+    seen = {}
+
+    class Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return [
+                {"id": "new", "generated_at": now, "revenue_today": 120,
+                 "abandoned_cart_count": 4, "churn_risk_count": None,
+                 "computation_status": "complete"},
+                {"id": "old", "generated_at": now - timedelta(minutes=15),
+                 "revenue_today": 100, "abandoned_cart_count": 6,
+                 "churn_risk_count": None, "computation_status": "partial"},
+            ]
+
+    class Session:
+        def execute(self, statement, params):
+            seen.update(params)
+            assert "organization_id = :org_id" in str(statement)
+            assert "LIMIT :history_limit" in str(statement)
+            return Result()
+
+    history = load_business_change_history("merchant-a", Session(), limit=1000)
+    assert seen == {"org_id": "merchant-a", "history_limit": 48}
+    assert len(history["snapshots"]) == 2
+    assert {item["metric"] for item in history["observed_changes"]} == {
+        "revenue_today", "abandoned_cart_count"
+    }
+    assert all(item["causality"] == "unverified" for item in history["observed_changes"])
+    assert all(item["metric"] != "churn_risk_count" for item in history["observed_changes"])
