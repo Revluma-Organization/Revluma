@@ -147,3 +147,15 @@ def test_scheduler_briefing_uses_verified_evidence_without_model(monkeypatch):
     assert result.orchestrator_mode == "Briefing"
     assert result.intent == "scheduled_evidence_briefing"
     assert result.text == "Verified briefing for merchant-a"
+
+
+def test_new_chat_greeting_survives_model_provider_outage(monkeypatch):
+    from src.agents import orchestrator as module
+    monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("conversation-test", True))
+    monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "understand", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("Greeting must not call provider")))
+    result = module._run("merchant-a", "user-a", "hey chat how's it going?", None, object(), "corr")
+    assert result.success is True
+    assert result.intent == "greeting"
+    assert "temporarily unable" not in result.text.lower()
