@@ -748,6 +748,28 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
     # Verified merchant-record questions must remain answerable when the LLM
     # reasoning provider is unavailable. Never infer missing checkout counts.
     query_lower = message.lower()
+    # Compare verified transaction periods before consulting any reasoning model.
+    asks_historical_comparison = (
+        ("my store" in query_lower or "my performance" in query_lower)
+        and any(term in query_lower for term in ("changed", "changes", "compare", "previous records"))
+    )
+    if (str(trigger_type or "conversation").lower() == "conversation"
+            and not image_base64 and not image_media_type
+            and asks_historical_comparison):
+        from ..intelligence.multi_period_evidence import (
+            retrieve_multi_period_evidence, format_multi_period_comparison,
+        )
+        evidence = retrieve_multi_period_evidence(organization_id, db, weeks=4)
+        answer = format_multi_period_comparison(evidence)
+        persist_turns(conv_id, organization_id, user_id, message, answer,
+                      "direct_answer", None, db, title_hint=message if is_new else None,
+                      orchestrator_mode="Analyst", correlation_id=correlation_id)
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="direct_answer", text=answer, intent="verified_historical_comparison",
+            orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
+        )
+
     wants_cart_value = ("abandoned" in query_lower and "cart" in query_lower
                         and any(word in query_lower for word in ("value", "how much", "worth")))
     wants_checkout_review = ("checkout" in query_lower and
@@ -773,35 +795,13 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             lines.append("**Checkouts needing review:** Not yet verified. The seven-day evidence source does not provide a validated checkout-review count, so I won't invent one.")
         if not verified.get("last_store_sync_at"):
             lines.append("**Data freshness:** No completed sync timestamp is available; these records may be incomplete.")
-        answer = "\\n\\n".join(lines)
+        answer = "\n\n".join(lines)
         persist_turns(conv_id, organization_id, user_id, message, answer,
                       "direct_answer", None, db, title_hint=message if is_new else None,
                       orchestrator_mode="Analyst", correlation_id=correlation_id)
         return OrchestrationResult(
             success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
             response_type="direct_answer", text=answer, intent="verified_cart_evidence",
-            orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
-        )
-
-    # Compare verified transaction periods before consulting any reasoning model.
-    asks_historical_comparison = (
-        ("my store" in query_lower or "my performance" in query_lower)
-        and any(term in query_lower for term in ("changed", "changes", "compare", "previous records"))
-    )
-    if (str(trigger_type or "conversation").lower() == "conversation"
-            and not image_base64 and not image_media_type
-            and asks_historical_comparison):
-        from ..intelligence.multi_period_evidence import (
-            retrieve_multi_period_evidence, format_multi_period_comparison,
-        )
-        evidence = retrieve_multi_period_evidence(organization_id, db, weeks=4)
-        answer = format_multi_period_comparison(evidence)
-        persist_turns(conv_id, organization_id, user_id, message, answer,
-                      "direct_answer", None, db, title_hint=message if is_new else None,
-                      orchestrator_mode="Analyst", correlation_id=correlation_id)
-        return OrchestrationResult(
-            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
-            response_type="direct_answer", text=answer, intent="verified_historical_comparison",
             orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
         )
 
