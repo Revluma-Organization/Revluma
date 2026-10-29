@@ -518,7 +518,7 @@ function Bubble({ msg, onCopy, onRetry, onSend, isDark, t1, t2 }: {
   if (!isRev) return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
       className="flex justify-end mb-5">
-      <div className="max-w-[72%] px-4 py-3 rounded-2xl rounded-tr-md text-[0.9rem] leading-relaxed text-white"
+      <div className="max-w-[85%] sm:max-w-[72%] px-4 py-3 rounded-2xl rounded-tr-md text-[0.9rem] leading-relaxed text-white whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
         style={{ background: "linear-gradient(135deg,#5865f2,#4a55e8)" }}>
         {typeof msg.content === "string" ? msg.content : ""}
       </div>
