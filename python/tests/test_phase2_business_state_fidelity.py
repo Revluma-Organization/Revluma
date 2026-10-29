@@ -124,3 +124,26 @@ def test_historical_business_changes_are_tenant_scoped_bounded_and_noncausal():
     }
     assert all(item["causality"] == "unverified" for item in history["observed_changes"])
     assert all(item["metric"] != "churn_risk_count" for item in history["observed_changes"])
+
+
+def test_scheduler_briefing_uses_verified_evidence_without_model(monkeypatch):
+    from src.agents import orchestrator as module
+    from src.intelligence import seven_day_evidence, seven_day_briefing
+
+    monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("conversation-a", False))
+    monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
+    monkeypatch.setattr(seven_day_evidence, "retrieve_seven_day_evidence",
+                        lambda org, db: {"organization_id": org, "store_count": 0})
+    monkeypatch.setattr(seven_day_briefing, "compose_seven_day_briefing",
+                        lambda evidence: "Verified briefing for " + evidence["organization_id"])
+    monkeypatch.setattr(module, "understand", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("Scheduler must not call the model")))
+
+    result = module._run(
+        "merchant-a", "user-a", "Prepare briefing", None, object(), "corr-a",
+        trigger_type="scheduler",
+    )
+    assert result.success is True
+    assert result.orchestrator_mode == "Briefing"
+    assert result.intent == "scheduled_evidence_briefing"
+    assert result.text == "Verified briefing for merchant-a"
