@@ -707,6 +707,41 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
   isDark: boolean; t1: string; t4: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const openActions = () => {
+    if (menuOpen) { setMenuOpen(false); return; }
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const menuHeight = 104;
+    const menuWidth = 156;
+    const gap = 6;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+    const viewportTop = window.visualViewport?.offsetTop ?? 0;
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    const roomBelow = viewportTop + viewportHeight - rect.bottom;
+    const top = roomBelow >= menuHeight + gap
+      ? rect.bottom + gap
+      : rect.top - menuHeight - gap;
+    setMenuPosition({
+      top: Math.max(viewportTop + 8, Math.min(top, viewportTop + viewportHeight - menuHeight - 8)),
+      left: Math.max(8, Math.min(rect.right - menuWidth, viewportWidth - menuWidth - 8)),
+    });
+    setMenuOpen(true);
+  };
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menuOpen]);
+
   return (
     <div className="relative group/item flex items-center rounded-lg transition-all"
       style={{ background: isActive ? (isDark ? "rgba(88,101,242,0.15)" : "rgba(88,101,242,0.08)") : "transparent" }}
@@ -717,39 +752,44 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
         style={{ color: isActive ? "#5865f2" : t1 }}>
         {conv.title || "Untitled conversation"}
       </button>
-      <div className="opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0 pr-1">
-        <button onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}
-          className="p-1 rounded-md opacity-60 hover:opacity-100 transition-opacity" style={{ color: t1 }}>
-          <MoreHorizontal size={14} />
+      <div className="shrink-0 pr-1">
+        <button ref={triggerRef} type="button" aria-label={`Actions for ${conv.title || "Untitled conversation"}`}
+          aria-haspopup="menu" aria-expanded={menuOpen}
+          onClick={e => { e.stopPropagation(); openActions(); }}
+          className="flex items-center justify-center w-9 h-9 rounded-md transition-colors hover:bg-black/5"
+          style={{ color: t1 }}>
+          <MoreHorizontal size={20} strokeWidth={2.5} />
         </button>
       </div>
-      <AnimatePresence>
-        {menuOpen && (
-          <>
-            <div className="fixed inset-0 z-[60]" onClick={() => setMenuOpen(false)} />
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }} transition={{ duration: 0.12 }}
-              style={{ position: "absolute", right: 4, top: "calc(100% + 4px)", zIndex: 70,
-                background: isDark ? "#1a1a1a" : "#fff",
-                border: `1px solid ${isDark ? "#2a2a2a" : "#e5e7eb"}`,
-                borderRadius: 10, padding: 4, minWidth: 140,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.15)" }}>
-              <button onClick={() => { onRename(); setMenuOpen(false); }}
-                className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[0.78rem] font-medium transition-colors hover:bg-black/5 text-left"
-                style={{ color: isDark ? "#e5e7eb" : "#1a1a2e", fontFamily: "inherit" }}>
-                <Pencil size={13} style={{ color: "#5865f2" }} />Rename
-              </button>
-              <button onClick={() => { onDelete(); setMenuOpen(false); }}
-                className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[0.78rem] font-medium transition-colors text-left"
-                style={{ color: "#dc2626", fontFamily: "inherit" }}
-                onMouseEnter={e => (e.currentTarget.style.background = "rgba(220,38,38,0.08)")}
-                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-                <Trash2 size={13} />Delete
-              </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      {createPortal(
+        <AnimatePresence>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-[150]" onClick={() => setMenuOpen(false)} />
+              <motion.div role="menu" aria-label="Conversation actions"
+                initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.12 }}
+                style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, zIndex: 151,
+                  background: isDark ? "#1a1a1a" : "#fff",
+                  border: `1px solid ${isDark ? "#2a2a2a" : "#e5e7eb"}`,
+                  borderRadius: 10, padding: 4, width: 156,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.15)" }}>
+                <button role="menuitem" onClick={() => { setMenuOpen(false); onRename(); }}
+                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[0.78rem] font-medium transition-colors hover:bg-black/5 text-left"
+                  style={{ color: isDark ? "#e5e7eb" : "#1a1a2e", fontFamily: "inherit" }}>
+                  <Pencil size={13} style={{ color: "#5865f2" }} />Rename
+                </button>
+                <button role="menuitem" onClick={() => { setMenuOpen(false); onDelete(); }}
+                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[0.78rem] font-medium transition-colors text-left hover:bg-red-500/10"
+                  style={{ color: "#dc2626", fontFamily: "inherit" }}>
+                  <Trash2 size={13} />Delete
+                </button>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }
