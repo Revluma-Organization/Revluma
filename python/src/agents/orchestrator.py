@@ -680,7 +680,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
 
     # Plain greetings need no provider calls. Keep this deliberately narrow:
     # never intercept store questions, attachments or contextual follow-ups.
-    greeting = re.sub(r"[!?.,\\s]+", " ", message.lower()).strip()
+    greeting = re.sub(r"[!?.,\s]+", " ", message.lower()).strip()
     if (str(trigger_type or "conversation").lower() == "conversation"
             and not image_base64 and not conversation_id
             and greeting in {"hi", "hello", "hey", "hey chat", "hi rev",
