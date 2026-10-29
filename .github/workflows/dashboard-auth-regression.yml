@@ -19,5 +19,5 @@ jobs:
           cache: npm
           cache-dependency-path: Frontend/Dashboard/package-lock.json
       - run: npm ci
-      - run: npm test -- --run src/lib/api.test.ts
+      - run: npm test -- --run src/lib/api.test.ts src/lib/revComparison.test.ts
       - run: npm run build

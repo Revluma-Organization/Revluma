@@ -30,6 +30,7 @@ import revIntellLogo from "@/assets/images/rev-intell-logo.png";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
+import { parseVerifiedComparison } from "@/lib/revComparison";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -157,6 +158,8 @@ function LoadingBar({ isDark }: { isDark: boolean }) {
 // ── ResponseCard — adaptive to response type ──────────────────────────────────
 
 function renderInline(text: string) {
+  // Only render safe web URLs from untrusted model text.
+  const safeUrl = (raw: string) => { try { const u = new URL(raw); return ["https:", "http:"].includes(u.protocol) ? u.href : null; } catch { return null; } };
   // Handle markdown image: ![alt](url)
   const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   if (imgRegex.test(text)) {
@@ -167,7 +170,7 @@ function renderInline(text: string) {
     while ((m = re.exec(text)) !== null) {
       if (m.index > last) parts.push(<span key={last}>{text.slice(last, m.index)}</span>);
       parts.push(
-        <img key={m.index} src={m[2]} alt={m[1]}
+        <img key={m.index} src={safeUrl(m[2]) ?? undefined} alt={m[1]}
           style={{ maxWidth: "100%", borderRadius: 8, margin: "8px 0", display: "block" }}
           onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
         />
@@ -187,7 +190,7 @@ function renderInline(text: string) {
     while ((m = re.exec(text)) !== null) {
       if (m.index > last) parts.push(<span key={last}>{renderBasicInline(text.slice(last, m.index))}</span>);
       parts.push(
-        <a key={m.index} href={m[2]} target="_blank" rel="noopener noreferrer"
+        <a key={m.index} href={safeUrl(m[2]) ?? undefined} target="_blank" rel="noopener noreferrer"
           style={{ color: "#5865f2", textDecoration: "underline", textDecorationColor: "rgba(88,101,242,0.4)" }}>
           {m[1]}
         </a>
@@ -227,11 +230,11 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
           const heading = lines[0].replace(/^##\s+/, "");
           return (
             <div key={bi}>
-              <p style={{ fontSize: "0.95rem", fontWeight: 700, color: t1, margin: "4px 0 6px" }}>
+              <p style={{ fontSize: "clamp(1.25rem, 1.8vw, 1.5rem)", lineHeight: 1.3, fontWeight: 700, color: t1, margin: "12px 0 10px" }}>
                 {renderInline(heading)}
               </p>
               {lines.slice(1).length > 0 && (
-                <p style={{ fontSize: "0.92rem", lineHeight: 1.7, color: t1, margin: 0 }}>
+                <p style={{ fontSize: "1rem", lineHeight: 1.7, color: t1, margin: 0 }}>
                   {lines.slice(1).map((l, li) => (
                     <span key={li}>{renderInline(l)}{li < lines.slice(1).length - 1 ? <br /> : null}</span>
                   ))}
@@ -245,7 +248,7 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
         if (lines[0].startsWith("# ")) {
           const heading = lines[0].replace(/^#\s+/, "");
           return (
-            <p key={bi} style={{ fontSize: "1.05rem", fontWeight: 800, color: t1, margin: "6px 0 2px", letterSpacing: "-0.01em" }}>
+            <p key={bi} style={{ fontSize: "clamp(1.5rem, 2.2vw, 2.25rem)", lineHeight: 1.25, fontWeight: 750, color: t1, margin: "16px 0 8px", letterSpacing: "-0.01em" }}>
               {renderInline(heading)}
             </p>
           );
@@ -277,7 +280,7 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
           return (
             <ul key={bi} style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 5 }}>
               {lines.map((l, li) => (
-                <li key={li} style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
+                <li key={li} style={{ fontSize: "1rem", lineHeight: 1.7, color: t1 }}>
                   {renderInline(l.replace(/^\s*[-*•]\s+/, ""))}
                 </li>
               ))}
@@ -291,7 +294,7 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
           return (
             <ol key={bi} style={{ margin: 0, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 5 }}>
               {lines.map((l, li) => (
-                <li key={li} style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
+                <li key={li} style={{ fontSize: "1rem", lineHeight: 1.7, color: t1 }}>
                   {renderInline(l.replace(/^\s*\d+[.)]\s+/, ""))}
                 </li>
               ))}
@@ -306,7 +309,7 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
               if (/^\s*[-*•]\s+/.test(l)) return (
                 <div key={li} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                   <span style={{ color: "#5865f2", flexShrink: 0, marginTop: 2 }}>•</span>
-                  <span style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
+                  <span style={{ fontSize: "1rem", lineHeight: 1.7, color: t1 }}>
                     {renderInline(l.replace(/^\s*[-*•]\s+/, ""))}
                   </span>
                 </div>
@@ -316,14 +319,14 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
                 return (
                   <div key={li} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
                     <span style={{ color: "#5865f2", fontWeight: 700, flexShrink: 0, fontSize: "0.85rem", minWidth: 16 }}>{num}.</span>
-                    <span style={{ fontSize: "0.92rem", lineHeight: 1.65, color: t1 }}>
+                    <span style={{ fontSize: "1rem", lineHeight: 1.7, color: t1 }}>
                       {renderInline(l.replace(/^\s*\d+[.)]\s+/, ""))}
                     </span>
                   </div>
                 );
               }
               return (
-                <p key={li} style={{ fontSize: "0.92rem", lineHeight: 1.7, color: t1, margin: 0 }}>
+                <p key={li} style={{ fontSize: "1rem", lineHeight: 1.7, color: t1, margin: 0 }}>
                   {renderInline(l)}
                 </p>
               );
@@ -337,22 +340,8 @@ function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boo
 
 /** Structured cards derived only from values explicitly present in Rev's verified answer. */
 const VerifiedComparison: FC<{ text: string; isDark: boolean; t1: string; t2: string }> = ({ text, isDark, t1, t2 }) => {
-  if (!text.startsWith("I compared your latest rolling seven days")) return null;
-  const blocks = text.split(/(?=\\*\\*(?:Latest period|Previous period [1-9])\\*\\*)/);
-  const periods = blocks.slice(1).filter(b => /^\\*\\*(Latest period|Previous period [1-9])\\*\\*/.test(b));
-  if (!periods.length) return null;
-  const extract = (body: string, pattern: RegExp) => body.match(pattern)?.[1] ?? null;
-  const metrics = periods.map((body, index) => ({
-    title: index === 0 ? "Latest 7 days" : `Previous period ${index}`,
-    dates: extract(body, /\\*\\*[^*]+\\*\\* \\(([^)]+)\\)/),
-    orders: extract(body, /- Orders: (\\d+) recorded/),
-    carts: extract(body, /- Unrecovered abandoned carts: (\\d+) recorded/),
-    customers: extract(body, /- Newly recorded customer profiles: (\\d+)/),
-    firstTime: extract(body, /- First-time purchaser orders: (\\d+)/),
-    returning: extract(body, /returning purchaser orders: (\\d+)/),
-    values: [...body.matchAll(/- Orders: \\d+ recorded; ([^\\n]+)\\./g)].map(m => m[1]),
-    discounts: [...body.matchAll(/- Recorded order discounts: ([^\\n]+)\\./g)].map(m => m[1]),
-  }));
+  const metrics = parseVerifiedComparison(text);
+  if (!metrics) return null;
   const cardBg = isDark ? "#151824" : "#ffffff";
   const border = isDark ? "#34374b" : "#e5e7eb";
   return (
@@ -375,12 +364,13 @@ const VerifiedComparison: FC<{ text: string; isDark: boolean; t1: string; t2: st
                 <strong style={{ color: t1, fontSize: 13 }}>{value ?? "—"}</strong>
               </div>
             ))}
+            {period.cartValues.map((value, i) => <div key={`c${i}`} style={{ color: t1, fontSize: 12, marginTop: 6 }}>Recorded cart value: <strong>{value}</strong></div>)}
             {period.values.map((value, i) => <div key={`v${i}`} style={{ color: t1, fontSize: 12, marginTop: 9 }}>Recorded order value: <strong>{value}</strong></div>)}
             {period.discounts.map((value, i) => <div key={`d${i}`} style={{ color: t2, fontSize: 12, marginTop: 4 }}>Discounts: {value}</div>)}
           </div>
         ))}
       </div>
-      <div style={{ fontSize: 11, color: t2, marginTop: 9 }}>Recorded merchant data, not verified net sales. Review the evidence limitations below.</div>
+      <div style={{ fontSize: 12, color: t2, marginTop: 12 }}>Recorded merchant data, not verified net sales. Review the evidence limitations below.</div>
     </section>
   );
 };
