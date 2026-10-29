@@ -20,6 +20,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import pandas as pd
 import httpx
@@ -457,6 +458,7 @@ _MAX_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 class OrchestrateRequest(BaseModel):
+    contract_version: Literal['1.0'] = '1.0'
     organization_id: str = Field(..., min_length=36, max_length=36)
     user_id: str | None = Field(None, min_length=36, max_length=36)
     customer_id: str | None = Field(None, min_length=36, max_length=36)
