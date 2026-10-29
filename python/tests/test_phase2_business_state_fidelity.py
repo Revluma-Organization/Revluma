@@ -75,3 +75,14 @@ def test_reliability_never_calls_missing_source_high_confidence():
 
     state.computation_status = "failed"
     assert state.to_dict()["reliability"]["level"] == "unavailable"
+
+
+def test_observed_drivers_never_masquerade_as_verified_root_causes():
+    from src.intelligence.business_state import _empty_state
+
+    state = _empty_state("state-4", "merchant-4", datetime.now(timezone.utc), [])
+    state.observed_drivers = [{"metric": "revenue_delta_pct", "causality": "unverified"}]
+    summary = state.to_dict()["anomaly_summary"]
+    assert summary["root_causes"] == []
+    assert summary["observed_drivers"][0]["causality"] == "unverified"
+    assert summary["root_cause_verification"] == "not_established"
