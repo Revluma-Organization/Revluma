@@ -222,6 +222,46 @@ class BusinessState:
     def age_minutes(self) -> float:
         return (datetime.now(timezone.utc) - self.generated_at).total_seconds() / 60
 
+    def reliability(self) -> dict:
+        """Explain how much of the merchant snapshot can be trusted.
+
+        Confidence is a completeness/freshness indicator, not a probability
+        that any individual recommendation is correct.
+        """
+        now = datetime.now(timezone.utc)
+        generated = self.generated_at
+        if generated.tzinfo is None:
+            generated = generated.replace(tzinfo=timezone.utc)
+        age_minutes = max(0.0, (now - generated).total_seconds() / 60)
+        source_at = self.data_freshness_at
+        if source_at is not None and source_at.tzinfo is None:
+            source_at = source_at.replace(tzinfo=timezone.utc)
+        source_age_minutes = (
+            max(0.0, (now - source_at).total_seconds() / 60)
+            if source_at is not None else None
+        )
+        stale = age_minutes > self.staleness_threshold_mins
+        if self.computation_status == "failed":
+            level = "unavailable"
+        elif self.computation_status != "complete" or self.warnings or stale:
+            level = "limited"
+        elif source_age_minutes is None:
+            level = "unknown"
+        elif source_age_minutes > self.staleness_threshold_mins:
+            level = "limited"
+        else:
+            level = "high"
+        return {
+            "level": level,
+            "meaning": "Data completeness and freshness; not prediction accuracy.",
+            "snapshot_age_minutes": round(age_minutes, 1),
+            "source_age_minutes": round(source_age_minutes, 1) if source_age_minutes is not None else None,
+            "snapshot_stale": stale,
+            "source_freshness_known": source_age_minutes is not None,
+            "computation_status": self.computation_status,
+            "warnings": list(self.warnings),
+        }
+
     def to_dict(self) -> dict:
         revenue_today = float(self.revenue_today) if self.revenue_today is not None else None
         revenue_yesterday = (
@@ -247,6 +287,7 @@ class BusinessState:
             "staleness_threshold_mins": self.staleness_threshold_mins,
             "computation_status": self.computation_status,
             "warnings": self.warnings,
+            "reliability": self.reliability(),
             "next_rebuild_at": self.next_rebuild_at.isoformat(),
             "sales_health": {
                 "revenue_today": revenue_today,
