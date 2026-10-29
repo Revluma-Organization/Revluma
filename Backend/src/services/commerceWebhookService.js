@@ -207,12 +207,19 @@ async function upsertOrder(store, provider, payload) {
       });
     }
 
-    const externalCartId = payload.checkout_id || payload.cart_token || payload.checkout_token;
+    // Shopify may identify a checkout by its numeric ID or opaque token.
+    // Try each distinct identifier rather than choosing only the first one.
+    const cartIdentifiers = [...new Set(
+      [payload.checkout_id, payload.cart_token, payload.checkout_token]
+        .filter((value) => value !== null && value !== undefined && String(value).trim())
+        .map(String)
+    )];
     let cart = null;
-    if (externalCartId) {
+    if (cartIdentifiers.length) {
       cart = await tx.abandoned_carts.findFirst({
-        where: { store_id: store.id, external_cart_id: String(externalCartId) },
+        where: { store_id: store.id, external_cart_id: { in: cartIdentifiers } },
         select: { id: true, session_id: true },
+        orderBy: { updated_at: 'desc' },
       });
     }
     if (!cart && couponCode) {
