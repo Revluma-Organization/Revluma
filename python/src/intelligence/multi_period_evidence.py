@@ -20,7 +20,7 @@ def retrieve_multi_period_evidence(organization_id: str, db, *, now: datetime | 
     result = {"organization_id": organization_id, "as_of_utc": end.isoformat(),
               "period_type": "rolling_7_day_utc", "weeks": [], "warnings": [
                   "Order totals are recorded order values, not verified net sales. Refunds, reversals and cancellations are not reconciled.",
-                  "Traffic, conversion, returning customers and product sales are not included without verified source queries.",
+                  "Traffic, conversion and product sales are not included without verified source queries. Returning purchaser classification depends on available order history.",
                   "Rolling seven-day periods are not Shopify Admin calendar-week reports.",
               ]}
     for index in range(weeks):
@@ -28,10 +28,12 @@ def retrieve_multi_period_evidence(organization_id: str, db, *, now: datetime | 
         period_start = period_end - timedelta(days=7)
         result["weeks"].append({"start_utc": period_start.isoformat(), "end_utc": period_end.isoformat(),
                                 "orders": {"status": "unavailable", "by_currency": []},
-                                "abandoned_carts": {"status": "unavailable", "by_currency": []}})
+                                "abandoned_carts": {"status": "unavailable", "by_currency": []},
+                                "customers": {"status": "unavailable"},
+                                "purchasers": {"status": "unavailable"}})
     try:
         rows = db.execute(text("""
-            SELECT o.currency, o.ordered_at AS occurred_at, o.total AS amount
+            SELECT o.currency, o.ordered_at AS occurred_at, o.total AS amount, o.discount_amount AS discount_amount
             FROM orders o JOIN stores s ON s.id = o.store_id
             WHERE s.organization_id = :org_id
               AND s.status IN ('active','connected','syncing')
@@ -45,8 +47,14 @@ def retrieve_multi_period_evidence(organization_id: str, db, *, now: datetime | 
                 currency = row["currency"] or "UNKNOWN"
                 count, amount = totals.get(currency, (0, Decimal("0")))
                 totals[currency] = (count + 1, amount + Decimal(str(row["amount"] or 0)))
+            discounts = {}
+            for row in rows:
+                if period["start_utc"] <= row["occurred_at"].astimezone(timezone.utc).isoformat() < period["end_utc"]:
+                    currency = row["currency"] or "UNKNOWN"
+                    discounts[currency] = discounts.get(currency, Decimal("0")) + Decimal(str(row["discount_amount"] or 0))
             period["orders"] = {"status": "available", "by_currency": [
-                {"currency": currency, "order_count": count, "recorded_order_value": str(amount)}
+                {"currency": currency, "order_count": count, "recorded_order_value": str(amount),
+                 "recorded_discount_amount": str(discounts.get(currency, Decimal("0")))}
                 for currency, (count, amount) in sorted(totals.items())]}
     except Exception:
         db.rollback()
