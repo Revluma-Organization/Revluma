@@ -12,7 +12,7 @@ const MAX_SYNC_PAGES = 100; // Explicit cap: never report a partial import as su
 const OPTIONAL_PREDICTION_TIMEOUT_MS = 12_000;
 
 // A non-critical ML evaluation must never indefinitely block Shopify ingestion.
-async function evaluateCartWithDeadline(task, storeId, cartId) {
+async function evaluateCartWithDeadline(task, storeId, cartId, timeoutMs = OPTIONAL_PREDICTION_TIMEOUT_MS) {
   let timer;
   try {
     await Promise.race([
@@ -333,6 +333,21 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     return { success: false, alreadyRunning: true };
   }
   let setupStage = 'marking_store_syncing';
+  // A new lock owner supersedes any interrupted previous run. Preserve the
+  // previous success timestamp; never claim the interrupted run completed.
+  const previousState = await prisma.stores.findUnique({
+    where: { id: store.id }, select: { status: true, updated_at: true, last_synced_at: true },
+  }).catch((error) => {
+    logger.warn('shopify_previous_sync_state_unavailable', { store_id: store.id, error_type: error.code || error.name });
+    return null;
+  });
+  if (previousState?.status === 'syncing') {
+    logger.warn('shopify_interrupted_sync_detected', {
+      store_id: store.id,
+      previous_updated_at: previousState.updated_at,
+      previous_success_at: previousState.last_synced_at,
+    });
+  }
   logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
   try {
     // A fresh ingestion attempt invalidates any historical completeness attestation.
@@ -453,6 +468,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
 }
 
 module.exports = {
+  evaluateCartWithDeadline,
   grantedOrderScopes,
   verifyOrderReadScope,
   fetchConnection,
