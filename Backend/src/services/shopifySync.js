@@ -224,8 +224,8 @@ async function syncAbandonedCheckouts(store) {
     const cart = await upsertAbandonedCart(store, payload);
     if (!cart) continue;
     await prisma.$transaction(async (tx) => {
-      await tx.abandoned_cart_items.deleteMany({ where: { abandoned_cart_id: cart.id } });
       if (payload.line_items.length) {
+        await tx.abandoned_cart_items.deleteMany({ where: { abandoned_cart_id: cart.id } });
         await tx.abandoned_cart_items.createMany({
           data: payload.line_items.map((item) => ({
             abandoned_cart_id: cart.id,
