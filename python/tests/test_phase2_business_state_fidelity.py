@@ -233,3 +233,26 @@ def test_verified_historical_comparison_survives_model_outage(monkeypatch):
     assert result.success is True
     assert "4 to 7" in result.text
     assert "not cumulative sales or verified causes" in result.text
+
+
+def test_foreign_conversation_id_is_rejected_without_creating_new_chat():
+    from src.agents.orchestrator import _get_or_create_conversation
+
+    class MissingConversationResult:
+        def fetchone(self):
+            return None
+
+    class FakeDB:
+        def __init__(self):
+            self.statements = []
+        def execute(self, query, params):
+            self.statements.append(str(query))
+            return MissingConversationResult()
+        def commit(self):
+            raise AssertionError("Must not create a conversation for a foreign ID")
+
+    db = FakeDB()
+    with pytest.raises(PermissionError, match="not accessible"):
+        _get_or_create_conversation("merchant-a", "user-a", "foreign-conversation", db)
+    assert len(db.statements) == 1
+    assert "organization_id = :o AND user_id = :u" in db.statements[0]
