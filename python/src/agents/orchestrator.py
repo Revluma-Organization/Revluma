@@ -678,6 +678,29 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
         )
 
+    # Plain greetings need no provider calls. Keep this deliberately narrow:
+    # never intercept store questions, attachments or contextual follow-ups.
+    greeting = re.sub(r"[!?.,\s]+", " ", message.lower()).strip()
+    if (str(trigger_type or "conversation").lower() == "conversation"
+            and not image_base64 and not conversation_id
+            and greeting in {"hi", "hello", "hey", "hey chat", "hi rev",
+                             "hello rev", "hey rev", "hey chat how's it going",
+                             "hey chat how is it going", "how are you",
+                             "how's it going", "good morning", "good afternoon",
+                             "good evening"}):
+        answer = ("Hey! I'm here and ready to help. How's your day going? "
+                  "Anything you'd like to explore about your store?")
+        persist_turns(
+            conv_id, organization_id, user_id, message, answer, "chat",
+            None, db, title_hint=message if is_new else None,
+            orchestrator_mode="Analyst", correlation_id=correlation_id,
+        )
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="chat", text=answer, intent="greeting",
+            orchestrator_mode="Analyst", agents_used=[], correlation_id=correlation_id,
+        )
+
     # Deterministic merchant questions must never wait on Gemini intent classification.
     # A provider ReadTimeout previously exhausted the Node request budget before
     # these routes could run, producing 503 for a simple connection-status lookup.
