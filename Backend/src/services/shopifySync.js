@@ -128,8 +128,17 @@ async function verifyOrderReadScope(store, graphql = shopifyGraphql) {
   const data = await graphql(store, 'query RevlumaGrantedScopes { currentAppInstallation { accessScopes { handle } } }');
   const scopes = grantedOrderScopes(data);
   if (!scopes.has('read_orders')) {
+    // Only log the missing capability, never the access token or other granted scopes.
+    // This distinguishes an OAuth authorization failure from a GraphQL/network failure.
+    logger.warn('shopify_order_scope_missing', {
+      store_id: store.id,
+      required_scope: 'read_orders',
+      resolution: 'merchant_reauthorization_required',
+    });
     throw Object.assign(new Error('Shopify has not granted read_orders; merchant reauthorization is required'), {
       code: 'SHOPIFY_READ_ORDERS_NOT_GRANTED',
+      setupStage: 'order_sync',
+      requiresReauthorization: true,
     });
   }
   return { readOrders: true, readAllOrders: scopes.has('read_all_orders') };
