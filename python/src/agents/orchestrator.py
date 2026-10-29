@@ -1211,6 +1211,11 @@ def _is_general_capability_question(message: str) -> bool:
 
 def _is_store_connection_question(message: str) -> bool:
     normalized = re.sub(r"\s+", " ", message.lower().strip())
+    # Performance comparisons may mention connection or sync only as context.
+    # Never let a secondary sync reference override the requested analysis.
+    if (("compare" in normalized or "comparison" in normalized)
+            and any(term in normalized for term in ("performance", "previous", "period", "orders", "revenue"))):
+        return False
     return bool(re.search(r"\b(?:is|are|has|have|can|check|verify|confirm|tell me|show me)\b", normalized)
         and re.search(r"\b(?:my|our)\s+(?:(?:shopify|woocommerce|online)\s+)?store\b", normalized)
         and re.search(r"\b(?:connect(?:ed|ion)?|link(?:ed)?|integrat(?:ed|ion)|sync(?:ed|ing)?|installed)\b", normalized))

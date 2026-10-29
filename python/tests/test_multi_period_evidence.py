@@ -96,3 +96,16 @@ def test_merchant_cohorts_and_discounts_match_recorded_history():
     assert "Returning" in answer or "returning purchaser orders: 2" in answer
     assert "Recorded order discounts: 5 USD" in answer
     assert len(db.calls) == 4
+
+
+def test_comparison_request_with_sync_context_is_not_store_connection_question():
+    from src.agents.orchestrator import _is_store_connection_question
+
+    question = (
+        "What has changed in my Shopify store recently? Compare my store's performance "
+        "over the latest 7 days against the previous three 7-day periods. "
+        "Use only verified data from my connected Shopify store. "
+        "Explain whether orders and checkout activity are syncing correctly."
+    )
+    assert not _is_store_connection_question(question)
+    assert _is_store_connection_question("Can you check if my Shopify store is connected and syncing?")
