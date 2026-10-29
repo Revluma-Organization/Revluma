@@ -16,6 +16,7 @@ test('context filters unverified and out-of-scope findings', async () => {
     }},
     intelligence_findings: { findMany: async query => {
       assert.equal(query.where.organization_id, 'org-a');
+      assert.deepEqual(query.where.store_id.in, ['store-a']);
       return [
         { id: 'a', type: 'revenue_change', store_id: 'store-a', evidence: { ...financialEvidence(), customer_email: 'private@example.com' } },
         { id: 'b', type: 'revenue_change', store_id: 'store-a', evidence: { verified: false } },
@@ -70,4 +71,26 @@ test('integration-health evidence remains available without financial coverage',
     evidence: { verified: true, source: 'stores', storeId: 'store-a' } };
   assert.equal(certifiedFinding(finding), true);
   assert.equal(certifiedFinding({ ...finding, evidence: { ...finding.evidence, storeId: 'store-b' } }), false);
+});
+
+test('context scopes finding retrieval to the same eight selected stores', async () => {
+  const selected = Array.from({ length: 8 }, (_, i) => `store-${i}`);
+  const db = {
+    stores: { findMany: async query => {
+      assert.equal(query.take, 8);
+      assert.equal(query.where.organization_id, 'org-a');
+      return selected.map(id => ({ id, platform: 'shopify', status: 'active', last_synced_at: 'not-a-date' }));
+    } },
+    intelligence_findings: { findMany: async query => {
+      assert.deepEqual(query.where.store_id.in, selected);
+      return [{ id: 'safe', store_id: 'store-0', type: 'revenue_change', evidence: financialEvidence() },
+        { id: 'outside', store_id: 'store-8', type: 'revenue_change', evidence: financialEvidence() }];
+    } },
+  };
+  const context = await buildMerchantContext(db, 'org-a');
+  assert.equal(context.stores.length, 8);
+  assert.ok(context.stores.every(row => row.endsWith('unknown_sync_time')));
+  assert.equal(context.verified_findings.length, 1);
+  assert.match(context.verified_findings[0], /coverage_run_id/);
+  assert.doesNotMatch(JSON.stringify(context), /outside/);
 });
