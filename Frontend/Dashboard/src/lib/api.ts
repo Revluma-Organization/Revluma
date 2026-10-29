@@ -6,9 +6,7 @@ import {
   broadcastLogout,
   clearAuthStorage,
   getAccessToken,
-  getRefreshToken,
   redirectToLogin,
-  storeRefreshToken,
 } from "@/lib/auth/session";
 import { queryClient } from "@/lib/queryClient";
 
@@ -84,6 +82,22 @@ function updateStoredAccessToken(accessToken: string): void {
   }
 }
 
+const TOKEN_REFRESH_LEEWAY_MS = 60_000;
+
+/** Inspect only JWT expiry metadata; signature validation remains server-side. */
+function isAccessTokenExpiring(token: string): boolean {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return true;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(atob(normalized)) as { exp?: unknown };
+    return typeof claims.exp !== "number" ||
+      claims.exp * 1000 <= Date.now() + TOKEN_REFRESH_LEEWAY_MS;
+  } catch {
+    return true;
+  }
+}
+
 let refreshInFlight: Promise<string | null> | null = null;
 
 async function performTokenRefresh(): Promise<string | null> {
@@ -149,9 +163,18 @@ async function request<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  // Wait for an already-running refresh rather than sending a known-stale token.
-  if (!isRetry && !options.skipAuthRedirect && refreshInFlight) {
-    await refreshInFlight;
+  // Preflight refresh prevents avoidable 401s when opening a dashboard with a
+  // previously persisted, expired JWT. Concurrent requests share one refresh.
+  if (!isRetry && !options.skipAuthRedirect) {
+    if (refreshInFlight) await refreshInFlight;
+    const currentToken = getAccessToken();
+    if (currentToken && isAccessTokenExpiring(currentToken)) {
+      const refreshed = await refreshAccessToken();
+      if (!refreshed) {
+        handleUnauthorized();
+        throw new ApiError(401, "Session expired – please sign in again");
+      }
+    }
   }
   const token = getAccessToken();
   if (token) {
@@ -174,12 +197,22 @@ async function request<T>(
   }
 
   if (response.status === 401 && !isRetry && !options.skipAuthRedirect) {
-    const refreshed = await refreshAccessToken();
+    // Another request may have rotated the token while this one was in flight.
+    // Reuse that new token before attempting another refresh.
+    const newerToken = getAccessToken();
+    const refreshed = newerToken && newerToken !== token
+      ? newerToken
+      : await refreshAccessToken();
     if (refreshed) {
       return request<T>(method, path, options, true);
     }
     handleUnauthorized();
     throw new ApiError(401, "Unauthorized – redirecting to login");
+  }
+
+  if (response.status === 401 && isRetry && !options.skipAuthRedirect) {
+    handleUnauthorized();
+    throw new ApiError(401, "Session expired – please sign in again");
   }
 
   if (response.status === 401 && options.skipAuthRedirect) {
