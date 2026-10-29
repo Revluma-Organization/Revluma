@@ -115,7 +115,9 @@ def generate_briefing(
             "morning_briefing_no_state",
             extra={"org_id": organization_id},
         )
-        return _fallback_briefing(briefing_id, organization_id, merchant_name, now)
+        fallback = _fallback_briefing(briefing_id, organization_id, merchant_name, now)
+        _persist_briefing(fallback, db)
+        return fallback
 
     overnight_actions = _load_overnight_actions(organization_id, db)
 
@@ -653,18 +655,20 @@ def _persist_briefing(briefing: MorningBriefing, db) -> None:
         db.execute(
             text("""
                 INSERT INTO morning_briefings (
-                    id, organization_id, generated_at, merchant_name,
+                    id, organization_id, briefing_date, generated_at, merchant_name,
                     greeting, yesterday_in_numbers, todays_priority,
                     active_concerns, opportunities, overnight_log,
                     has_concerns, fallback_used
                 ) VALUES (
-                    :id, :org, :gen_at, :name,
+                    :id, :org, :briefing_date, :gen_at, :name,
                     :greeting, CAST(:yin AS jsonb), CAST(:tp AS jsonb),
                     CAST(:ac AS jsonb), CAST(:opp AS jsonb), CAST(:log AS jsonb),
                     :has_concerns, :fallback
                 )
-                ON CONFLICT (organization_id, generated_at::date)
+                ON CONFLICT (organization_id, briefing_date)
                 DO UPDATE SET
+                    generated_at         = EXCLUDED.generated_at,
+                    merchant_name        = EXCLUDED.merchant_name,
                     greeting             = EXCLUDED.greeting,
                     yesterday_in_numbers = EXCLUDED.yesterday_in_numbers,
                     todays_priority      = EXCLUDED.todays_priority,
@@ -679,6 +683,7 @@ def _persist_briefing(briefing: MorningBriefing, db) -> None:
                 "id":          briefing.id,
                 "org":         briefing.organization_id,
                 "gen_at":      briefing.generated_at,
+                "briefing_date": briefing.generated_at.date(),
                 "name":        briefing.merchant_name,
                 "greeting":    briefing.greeting,
                 "yin":         json.dumps(briefing.yesterday_in_numbers),
@@ -700,6 +705,7 @@ def _persist_briefing(briefing: MorningBriefing, db) -> None:
             db.rollback()
         except Exception:
             logger.error("morning_briefing_persist_rollback_failed")
+        raise
 
 
 def _fallback_briefing(
