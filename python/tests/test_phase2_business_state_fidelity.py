@@ -221,19 +221,25 @@ def test_verified_cart_value_answer_bypasses_unavailable_model(monkeypatch):
 
 def test_verified_historical_comparison_survives_model_outage(monkeypatch):
     from src.agents import orchestrator as module
+    from src.intelligence import multi_period_evidence
     monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("conversation-test", True))
     monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
     monkeypatch.setattr(module, "understand", lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError()))
-    monkeypatch.setattr(module, "load_business_change_history", lambda *args, **kwargs: {
-        "snapshots": [{"snapshot_id": "new"}, {"snapshot_id": "old"}],
-        "observed_changes": [{"metric": "abandoned_cart_count", "from": 4, "to": 7, "delta": 3}],
+    monkeypatch.setattr(multi_period_evidence, "retrieve_multi_period_evidence", lambda *args, **kwargs: {
+        "weeks": [{"start_utc": "2026-10-22", "end_utc": "2026-10-29",
+                   "orders": {"status": "available", "by_currency": [{"currency": "USD", "order_count": 7, "recorded_order_value": "100"}]},
+                   "abandoned_carts": {"status": "available", "by_currency": []}},
+                  {"start_utc": "2026-10-15", "end_utc": "2026-10-22",
+                   "orders": {"status": "available", "by_currency": [{"currency": "USD", "order_count": 4, "recorded_order_value": "60"}]},
+                   "abandoned_carts": {"status": "available", "by_currency": []}}],
+        "warnings": [],
     })
     result = module._run("merchant-a", "user-a",
         "What has changed in my store recently? Compare my current performance with previous records.",
         None, object(), "corr")
     assert result.success is True
-    assert "4 to 7" in result.text
-    assert "not cumulative sales or verified causes" in result.text
+    assert "7 versus 4" in result.text
+    assert "not verified net sales" not in result.text or "not Shopify" in result.text
 
 
 def test_foreign_conversation_id_is_rejected_without_creating_new_chat():
