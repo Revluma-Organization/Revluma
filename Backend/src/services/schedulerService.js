@@ -764,6 +764,9 @@ async function runStoreSync() {
         let succeeded = 0;
         for (const store of stores) {
             try {
+                if (store.status === 'syncing') {
+                    logger.warn('scheduler_stale_shopify_sync_retry', { store_id: store.id, previous_updated_at: store.updated_at });
+                }
                 const result = await syncShopifyStore(store, { reconcileWebhooks: false });
                 if (!result.success) {
                     logger.warn('scheduler_store_sync_skipped', { store_id: store.id, reason: result.alreadyRunning ? 'already_running' : 'not_completed' });
