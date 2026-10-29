@@ -599,6 +599,8 @@ def orchestrate(organization_id: str, user_id: str, message: str,
                      image_base64=image_base64, image_media_type=image_media_type,
                      trigger_type=trigger_type, trigger_priority=trigger_priority,
                      context_payload=context_payload)
+    except PermissionError:
+        raise
     except Exception as exc:
         logger.critical(
             "orchestrate_fatal",
