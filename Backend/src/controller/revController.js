@@ -144,9 +144,14 @@ exports.chat = async (req, res, next) => {
       }
       const finding = await prisma.intelligence_findings.findFirst({
         where: { id: findingId, organization_id: org.id },
-        select: { type: true, title: true, description: true, evidence: true, detected_at: true },
+        select: { store_id: true, type: true, title: true, description: true, evidence: true, detected_at: true },
       });
       if (!finding) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
+      // Verify the referenced store is still owned by this organization.
+      const ownedStore = await prisma.stores.findFirst({
+        where: { id: finding.store_id, organization_id: org.id }, select: { id: true },
+      });
+      if (!ownedStore) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
       intelligenceMessage = buildFindingContext(message, finding);
       if (!intelligenceMessage) return res.status(409).json({
         success: false, error: { code: 'FINDING_EVIDENCE_UNVERIFIED' },
