@@ -822,6 +822,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         warnings.append("Alert queue availability could not be checked.")
         computation_status = "partial"
 
+    # Capture warnings raised during availability checks as well as metric collection.
+    state_metadata["warnings"] = list(warnings)
+
     persistence_failed = False
     try:
         # Step 1: mark existing current state as historical
@@ -1042,7 +1045,7 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
             data_freshness_at=row[4],
             staleness_threshold_mins=staleness_mins,
             computation_status=row[6] or "complete",
-            warnings=[],
+            warnings=metadata.get("warnings", []) if isinstance(metadata.get("warnings", []), list) else [],
             revenue_today=Decimal(str(row[7])) if row[7] is not None else None,
             revenue_yesterday=Decimal(str(row[8])) if row[8] is not None else None,
             revenue_delta_pct=float(row[9]) if row[9] is not None else None,
