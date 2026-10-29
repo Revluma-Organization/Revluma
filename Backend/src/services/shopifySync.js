@@ -8,6 +8,29 @@ const { getRedisClient, isRedisReady } = require('../configs/redis');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
 
 const PAGE_SIZE = 100;
+const OPTIONAL_PREDICTION_TIMEOUT_MS = 12_000;
+
+// A non-critical ML evaluation must never indefinitely block Shopify ingestion.
+async function evaluateCartWithDeadline(task, storeId, cartId) {
+  let timer;
+  try {
+    await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Object.assign(new Error('prediction deadline exceeded'), { code: 'PREDICTION_TIMEOUT' })), OPTIONAL_PREDICTION_TIMEOUT_MS);
+        timer.unref?.();
+      }),
+    ]);
+  } catch (error) {
+    logger.warn('shopify_cart_recovery_evaluation_deferred', {
+      store_id: storeId, cart_id: cartId,
+      error_type: error.code || error.name || 'evaluation_error',
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 
 function externalId(gid) {
   return String(gid || '').split('/').pop();
@@ -271,7 +294,7 @@ async function syncAbandonedCheckouts(store) {
           const value = snapshot[field];
           return [field, value && typeof value.toNumber === 'function' ? value.toNumber() : value];
         }));
-        await runPredictionChain({
+        await evaluateCartWithDeadline(() => runPredictionChain({
           envelope: {
             customer_id: cart.customer_id,
             session_id: snapshot.session_id,
@@ -281,13 +304,7 @@ async function syncAbandonedCheckouts(store) {
           store,
           snapshot,
           cartOverride: cart,
-        }).catch((error) => {
-          logger.warn('shopify_cart_recovery_evaluation_deferred', {
-            store_id: store.id,
-            cart_id: cart.id,
-            error_type: error.code || error.name || 'evaluation_error',
-          });
-        });
+        }), store.id, cart.id);
       }
     }
   }
