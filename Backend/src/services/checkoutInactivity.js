@@ -17,6 +17,7 @@ function isCheckoutInactive(updatedAt, now = new Date()) {
 function nextCheckoutStatus({ completedAt, existingStatus, isStale }) {
   if (completedAt || existingStatus === 'recovered') return 'recovered';
   if (isStale) return existingStatus || 'pending';
+  if (existingStatus === 'abandoned') return 'abandoned';
   return 'pending';
 }
 
