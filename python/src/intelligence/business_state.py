@@ -173,6 +173,58 @@ def _load_customer_ml_signals(db, store_params: dict[str, Any]) -> dict[str, Any
     }
 
 
+def load_business_change_history(organization_id: str, db, *, limit: int = 24) -> dict:
+    """Read bounded historical snapshots for the authenticated merchant only.
+
+    This is observed change history, not a causal explanation. We compare
+    snapshot values, not aggregate repeated snapshots into fictitious revenue.
+    """
+    safe_limit = max(1, min(int(limit), 48))
+    rows = db.execute(text("""
+        SELECT id, generated_at, revenue_today, abandoned_cart_count,
+               churn_risk_count, computation_status
+        FROM business_states
+        WHERE organization_id = :org_id
+          AND computation_status IN ('complete', 'partial')
+        ORDER BY generated_at DESC, id DESC
+        LIMIT :history_limit
+    """), {"org_id": organization_id, "history_limit": safe_limit}).mappings().all()
+    snapshots = [
+        {
+            "snapshot_id": str(row["id"]),
+            "generated_at": row["generated_at"].isoformat(),
+            "revenue_today": float(row["revenue_today"]) if row["revenue_today"] is not None else None,
+            "abandoned_cart_count": row["abandoned_cart_count"],
+            "churn_risk_count": row["churn_risk_count"],
+            "computation_status": row["computation_status"],
+        }
+        for row in rows
+    ]
+    changes = []
+    for recent, earlier in zip(snapshots, snapshots[1:]):
+        for metric in ("revenue_today", "abandoned_cart_count", "churn_risk_count"):
+            current, previous = recent[metric], earlier[metric]
+            if current is None or previous is None or current == previous:
+                continue
+            changes.append({
+                "metric": metric,
+                "from": previous,
+                "to": current,
+                "delta": round(current - previous, 2),
+                "observed_at": recent["generated_at"],
+                "comparison_snapshot_at": earlier["generated_at"],
+                "causality": "unverified",
+            })
+    return {
+        "organization_id": organization_id,
+        "snapshots": snapshots,
+        "observed_changes": changes[:48],
+        "history_limit": safe_limit,
+        "truncated": len(snapshots) == safe_limit,
+        "interpretation": "Snapshot-to-snapshot observations; not independent daily totals or verified causes.",
+    }
+
+
 # ── BusinessState dataclass 
 
 @dataclass
