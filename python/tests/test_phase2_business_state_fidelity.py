@@ -195,3 +195,24 @@ def test_briefing_date_range_is_readable_without_utc():
     answer = compose_seven_day_briefing(evidence)
     assert "1 July 2026 - 7 July 2026" in answer
     assert "UTC" not in answer
+
+
+def test_verified_cart_value_answer_bypasses_unavailable_model(monkeypatch):
+    from src.agents import orchestrator as module
+    from src.intelligence import seven_day_evidence
+    monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("conversation-test", True))
+    monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "understand", lambda *args, **kwargs: (_ for _ in ()).throw(TimeoutError()))
+    monkeypatch.setattr(seven_day_evidence, "retrieve_seven_day_evidence", lambda *args: {
+        "abandoned_carts": {"status": "available", "by_currency": [
+            {"cart_value": "14831.25", "currency": "USD", "cart_count": 13}]},
+        "last_store_sync_at": None,
+    })
+    result = module._run("merchant-a", "user-a",
+        "How much recorded abandoned-cart value does my store have, and how many checkouts need review?",
+        None, object(), "corr")
+    assert result.success is True
+    assert "14831.25 USD" in result.text
+    assert "13 carts" in result.text
+    assert "Not yet verified" in result.text
+    assert "No completed sync" in result.text
