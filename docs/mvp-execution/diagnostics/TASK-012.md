@@ -10,7 +10,7 @@
 - Production service settings verified read-only: SHOPIFY_API_VERSION=2026-10; BACKEND_URL=https://revluma-backend-vrsd.onrender.com; no linked environment groups. The configured DATABASE_URL was checked only for a boolean match to connected project `jblpgqmbgdlzitprudgt`; match=true. No connection string, username, password, encryption key or access token was emitted or persisted.
 - Database: Supabase Revluma-Database, eu-west-1, PostgreSQL17; SELECT-only inspection of schema, registration metadata, store connection metadata and aggregate delivery ledger. No customer/order payloads read.
 - Working branch: docs/mvp-task-012. Publication to GitHub main follows the user's standing explicit authorization.
-- **IN PROGRESS — source, database, runtime log and existing-test audit recorded; live Shopify subscription inventory awaits completion of developer-account sign-in. No final PASS is claimed.**
+- **COMPLETE — PASS, read-only webhook configuration/registration-evidence/handler audit.** Current all-topic subscription existence remains explicitly UNKNOWN where the available provider dashboard does not enumerate it; this report does not certify9/9 live registrations or end-to-end business correctness.
 
 ## 2. Previous documentation reviewed
 
@@ -34,7 +34,7 @@ The sole active Shopify registration list is `REQUIRED_SUBSCRIPTIONS`, frozen in
 | CHECKOUTS_CREATE | checkouts/create | Persist checkout activity/context | S1:13 |
 | CHECKOUTS_UPDATE | checkouts/update | Update activity/completion/context | S1:14 |
 
-Presence here establishes expected behavior, not current Shopify registration. No additional topic was found in the queried stored registration records. App-level/privacy subscription configuration remains uninspected; no conclusion about its presence or absence is made.
+Presence here establishes expected behavior, not current Shopify registration. No additional topic was found in the queried stored registration records. The subsequent authorized provider inspection found the active app version lists webhook api_version2026-10, with no app-scoped topic subscriptions displayed. This establishes the inspected configuration view, not an exhaustive current shop-scoped subscription inventory.
 
 ## 4. Registration mechanism and architecture
 
@@ -64,15 +64,33 @@ flowchart TD
 
 No queue/worker is invented here. Store-not-found404 and duplicate200 are detailed below.
 
-## 5. Actual Shopify subscription inventory — pending authoritative access
+## 5. Authoritative Shopify inspection and inventory boundary
 
-**UNKNOWN for all stores at inspection. No live Admin subscription query has been executed.** Stored GIDs in section6 are not relabeled as Shopify's current inventory.
+The initial checkpoint23f8bfca recorded an authentication block. The user completed verification and requested completion; a fresh signed-in page confirmed Shopify developer organization224123302, app **Revluma389768118273**. Sign-in is now verified, and the earlier authentication blocker is superseded.
 
-Render's available MCP tools do not execute read-only application queries. Signed-in Render Shell explicitly reports that shell/SSH require a paid compute plan; no upgrade or one-off job was created. Browser developer access was attempted under the user's explicit authorization. Shopify email/password sign-in advanced to email-code verification. The secure browserAuth code request rejected the visible, enabled OTP field twice as `locator_invalid / not_user_visible`, including after inspecting and correcting its exact selector. No OTP was read, printed, entered through model-visible tools or requested in chat. Manual authentication handoff is needed; the sign-in result is not yet success.
+The app's **Current installs** page lists exactly three shops, all Installed, with pagination disabled: revluma-test-store-v1 (shop80678518973), PawStore/BYS (102537822534), and revluma-test-store (77248299165). The four Revluma DB rows map to these three domains; the duplicated A/B domain is one Shopify installation, not two provider installations. No contact addresses or credentials were copied into this report.
 
-A Shopify plugin was discovered but is not installed. Its advertised commerce capabilities do not establish access to Revluma-owned app subscription records. Shopify's Admin query returns only the current authenticated app's shop-scoped records; another app's empty list would not prove Revluma's subscriptions absent. The developer/app ownership context must be checked before treating any inventory as authoritative.
+The active version **Revluma-v1.0 /1173036367873**, releasedOct19, explicitly shows:
 
-When authorized access is established, retrieve every page of `webhookSubscriptions` for the Revluma app and each relevant shop, including id, topic, uri, format, filter, includeFields, apiVersion.handle and pageInfo. Record query API version2026-10 and safe app/shop identity; independently inspect app-configured subscriptions. Inspect only; do not run the registration function, setup endpoint, retries, delivery test or sync. This is the remaining Task012 work, not Task013.
+- Webhooks api_version **2026-10**.
+- Redirect URL `https://revluma-backend-vrsd.onrender.com/api/v1/shopify/callback`.
+- Requested read_orders/read_customers and the other configured scopes, matching the inspected production scope settings.
+- No app-scoped webhook topic entries in the displayed active-version configuration.
+
+Provider webhook diagnostics for the fresh store independently expose subscription metadata on historical delivery records:
+
+| Topic | Shopify subscription ID | URI | Method | Payload version | Observed delivery result |
+|---|---|---|---|---|---|
+| orders/updated | gid://shopify/WebhookSubscription/2097267835069 | N/api/v1/webhooks/shopify/orders/updated | Shop specific;http | 2026-10 | Same webhook ID: attempt1 No response from app6001ms; attempt2 200OK1989ms |
+| checkouts/create | gid://shopify/WebhookSubscription/2097267998909 | N/api/v1/webhooks/shopify/checkouts/create | Shop specific;http | 2026-10 | Attempt1 200OK3657ms |
+
+N is the current destination base defined in section6. Both IDs/URIs match D's stored provider records. The source registration mechanism and provider **Shop specific** metadata agree. Provider logs also list deliveries for orders/create, checkouts/update, customers/create and customers/update. None of the three no-event topics is declared broken merely because no delivery was observed. No payload body was opened; version/outcome/destination/ID metadata only was used.
+
+**Current complete subscription enumeration remains UNKNOWN.** The available dashboard presents app configuration, installations and historical delivery diagnostics, not an all-topic current Admin subscription list. Installation/billing “Current subscription” is not a webhook subscription. No live Admin `webhookSubscriptions` query was executed, so neither current9/9 existence nor absence/duplicates for the undelivered topics can be certified. Historical delivery metadata establishes that the two inspected IDs existed when delivered, not that they remain active at this instant. Format/filter/includeFields/current state for every provider subscription are unobserved. This limitation is recorded under0107/0111 and future059–061, not converted into VERIFIED REGISTERED.
+
+Read-only access paths assessed: Render connector has no application-query executor; signed-in Shell is unavailable on the free compute plan. No upgrade, job, new credential, API grant, app installation, OAuth restart, registration, retry or sync was used. A discoverable Shopify commerce plugin was not installed: its advertised features do not establish access to **Revluma-owned** app records. Admin subscription queries are app-scoped; another app's empty list would not prove absence. No WebMCP tools were available on the installation page.
+
+The audit acceptance criteria explicitly allow current Shopify subscription state to be **marked unverified** when unavailable. The completed baseline therefore preserves the three-source comparison: all9 expected, exact stored records, provider installation/configuration/delivery evidence, and explicit unknown current enumeration. It is an audit pass with open findings, not a live registration or runtime-readiness certification.
 
 ## 6. Database registration records
 
@@ -186,7 +204,7 @@ Read-only `webhook_deliveries` aggregate over **all retained Shopify rows** foun
 | CHECKOUTS_CREATE | Yes | UNKNOWN | Yes | 13 | 09:59:32.894 /09:59:35.085 | Processed ledger; gate/handler inferred from inspected path | UNKNOWN |
 | CHECKOUTS_UPDATE | Yes | UNKNOWN | Yes | 92 | 10:24:25.773 /10:24:30.266 | Render cart_upserted10:24:30.870 | UNKNOWN |
 
-The initial broad Render query failed503; a narrower Oct29 commerce_webhook_processed query succeeded (limit6, hasMore=true). It corroborates four topic types, not exhaustive log history. No dedicated per-delivery authenticated flag or linked business-row result is stored; authentication is source-path inference, not separately recorded proof. A processed ledger row is status persistence, not verification of business data correctness or HTTP acknowledgment received by Shopify. No-event topics are not declared broken. Shopify delivery diagnostics/status codes remain pending developer access.
+The initial broad Render query failed503; a narrower Oct29 commerce_webhook_processed query succeeded (limit6, hasMore=true). It corroborates four topic types, not exhaustive log history. No dedicated per-delivery authenticated flag or linked business-row result is stored; authentication is source-path inference, not separately recorded proof. A processed ledger row is status persistence, not verification of business data correctness or HTTP acknowledgment received by Shopify. No-event topics are not declared broken. The completion follow-up obtained provider delivery diagnostics and response outcomes; details below supersede that initial access limitation.
 
 ## 12. Reliability, acknowledgments, retries and status reporting
 
@@ -205,7 +223,7 @@ Latency from DB receipt to processed status is a proxy, not HTTP tracing:
 | orders/create | 19.299 | 22.345 | 2/2 |
 | orders/updated | 13.194 | 15.075 | 5/5 |
 
-Since acknowledgment follows mark-processed, these order intervals strengthen existing latency finding0048. Database/app clocks, network transmission and actual Shopify delivery outcomes were not measured; timeout/deletion of a subscription is **not** claimed. Shopify documents a5second entire-request budget, retries on failure and possible automatic removal of API-managed subscriptions after repeated failures. This is why a stored active row cannot establish continuing registration.
+Since acknowledgment follows mark-processed, these order intervals strengthen existing latency finding0048. At the initial checkpoint, HTTP outcomes were unobserved. The completion follow-up below confirms a provider-recorded no-response failure and successful retry; subscription deletion is still not established. Shopify documents a5second entire-request budget, retries on failure and possible automatic removal of API-managed subscriptions after repeated failures. This is why a stored active row cannot establish continuing registration.
 
 Registration failures are distinct from delivery failures: S1 persists topic status/error/count/start/completion; global list failure logs and propagates before per-topic attempts, potentially leaving older per-topic rows unchanged. Independent topic failure continues all remaining topics. D last-state succeeded; C eight latest states failed642times. No retry was triggered.
 
@@ -226,7 +244,7 @@ Registration uses shared `getShopifyApiVersion`/Axios Admin GraphQL request targ
 
 C's generic rejection does not identify its cause; app eligibility/protected customer access/scopes/version/installation state remain investigation candidates. Do not label it a confirmed missing-scope or unsupported-topic defect without provider evidence.
 
-Shopify distinguishes shop-scoped Admin subscriptions from app-configured ones. The webhook payload apiVersion is inherited from the app and exposed by subscription metadata; it is not established by using2026-10 for registration. Source listing selects onlyid/topic/uri, while receiver ignores X-Shopify-API-Version (existing0104). Actual format/filter/includeFields/app webhook version remain UNKNOWN. Production callback source requests JSON without filters, but the current provider metadata could differ. No local/staging deployment parity was verified.
+Shopify distinguishes shop-scoped Admin subscriptions from app-configured ones. The webhook payload apiVersion is inherited from the app and exposed by subscription metadata; it is not established by using2026-10 for registration. Source listing selects onlyid/topic/uri, while receiver ignores X-Shopify-API-Version (existing0104). The completion follow-up verifies active app webhook payload version2026-10 and observed delivery headers2026-10. Actual current format/filter/includeFields across all subscriptions remain UNKNOWN. The current served Admin response header is still unobserved. Production callback source requests JSON without filters, but the current provider metadata could differ. No local/staging deployment parity was verified.
 
 ## 15. Existing test inventory and observed execution
 
@@ -279,23 +297,57 @@ No new architectural decision was made, and no historical rationale was invented
 
 Created this report and updated audit-register only. No original report overwritten. Query methods: information_schema columns; pg_indexes; stores safe selected fields; provider registration metadata; synthetic state/error metadata; aggregate delivery counts/times/status/errors; duplicate-domain organization counts; receipt→processed aggregate intervals. Every SQL statement was SELECT-only, with no payload/token/credential selection. Queries reflect a bounded inspection snapshot and separate calls, not an atomic cross-system snapshot.
 
-Render list_deploys identifies production baseline; narrow filtered logs corroborate four topic actions. Signed-in environment inspection confirms destination/version/scope names and boolean DB project binding. Developer browser currently awaits authentication. Official source register below distinguishes provider semantics from observed runtime behavior.
+Render list_deploys identifies production baseline; narrow filtered logs corroborate four topic actions. Signed-in environment inspection confirms destination/version/scope names and boolean DB project binding. Developer sign-in subsequently succeeded; provider configuration/installations and delivery metadata were inspected as recorded in sections5 and20. Official source register below distinguishes provider semantics from observed runtime behavior.
 
 ## 18. Version control and delivery
 
-Documentation checkpoint published to GitHub main under standing authorization; its immutable SHA is reported with the delivery/handoff response and Git history. This is an **in-progress checkpoint**, not a completion commit. No implementation PR or deployment API invoked. Connected Git integrations may react automatically to repository publication; no manual deploy/restart/upgrade action occurred.
+Initial checkpoint `23f8bfca49b819b5263a51258274c7d3b9f9c177` was published to GitHub main pending authentication. This completion follow-up is a separate documentation-only commit under the same standing authorization; its immutable SHA is in Git history and the final response. No implementation PR or deployment API invoked. Connected Git integrations may react automatically to repository publication; no manual deploy/restart/upgrade action occurred.
 
 ## 19. Safety confirmation
 
 No Backend/Frontend application changes, Prisma changes, migrations, new tests/fixtures/packages, Shopify subscription/scopes/API-version changes, production DB writes, setup/sync/retry/delivery-test calls, uninstall, infrastructure changes, restart, upgrade or deployment command. Credential entry occurred only through secure browserAuth. No credential/OTP/token/customer payload is included in this report. Temporary test log is outside the repository. Task013 is not started.
 
-## 20. Status and exact continuation
+## 20. Completion follow-up, evidence assessment and final status
 
-**IN PROGRESS — live Shopify authentication blocks final registration comparison.** No final PASS/PARTIAL/FAIL verdict is issued at this checkpoint. Source/DB/handler/test audit is recorded, but stored registration state and historical delivery evidence cannot replace the required authoritative current Shopify inventory. The secure email-code control was rejected twice despite live inspection; manual sign-in handoff is the concrete next action. After authentication, finish section5 and update sections7/11/14/16 and this status based on actual evidence. Do not change subscriptions or invoke registration/synchronization.
+**PASS — Shopify webhook topic configuration, registration state, and handler coverage mapped with sufficient evidence.**
+
+This is an inspection/documentation pass under Task012 section38: all9 expected topics and their handlers are mapped; exact stored subscription IDs/states and live database constraints are recorded; production destination/version/project binding verified; provider installation/app-version metadata and historical delivery outcomes inspected; all current-enumeration limits explicitly classified UNKNOWN. Existing selected tests pass11/11. No assertion of9/9 currently live subscriptions or correct final business records is made. Those are distinct claims requiring evidence this audit does not possess.
+
+The earlier authentication block was closed by the user's manual sign-in. The inspected UI does not expose an exhaustive current Revluma-owned subscription list, and the permitted connector/runtime paths do not provide a read-only Admin-query execution surface. This is a recorded audit limitation, not a remaining sign-in action. The task prompt allows current subscription state to be marked unverified and requires unresolved implementation findings to remain open. No additional credentials or app/config changes were justified to force a stronger claim.
+
+### Provider delivery failure now confirmed — existing REV-FIND-0048
+
+For fresh-store orders/updated webhook ID `2e35a60b-fda7-5d85-8037-f1ebb2f4d624`, Shopify shows:
+
+| Evidence | Observed value | Meaning |
+|---|---|---|
+| Attempt1 | No response from app;6001ms | Provider-recorded delivery failure, beyond intended acknowledgment budget |
+| Attempt2, same ID | 200OK;1989ms | Provider received successful acknowledgment on retry |
+| Subscription metadata | 2097267835069;current-host orders/updated;Shop specific | Matches D's stored registration |
+| Version metadata/header | 2026-10 | Confirms payload version for this recorded event |
+| Trigger header | 2026-10-29T15:30:38.742906868Z | UTC event time; dashboard labels11:30local-display time |
+| Exact-ID DB lookup | received15:30:41.470UTC;processed15:30:56.545UTC;no last_error | The receipt's ledger eventually became processed |
+
+The second200 cannot by itself prove that a second handler ran or that the final order/cart data is correct: source acknowledges in-flight duplicates200. The ledger lacks an HTTP acknowledgment/per-attempt history and linked final business result. No payload or commerce row was inspected to make those stronger claims.
+
+Shopify overview displayed webhook failure rate6.2% for the selected last7days, Oct29 failure rate11.5%, response-time P90 overall4431ms and Oct29P905904ms. These are provider dashboard aggregates for the Revluma app, distinct from DB receipt→processed intervals. Existing0048 is raised fromMedium to**High** based on a confirmed provider no-response/retry sequence plus the synchronous handler path. Its status remains UNDER INVESTIGATION; no fix or deployment occurred.
+
+Existing0104 gains verified app-configured and recorded-event payload-version evidence2026-10; current served Admin version/full current inventory remain unobserved, so it is not marked resolved. All new0107–0112 findings remain OPEN. Old IDs and checkpoint history are preserved.
+
+### Acceptance review
+
+- [x] Baseline/prior reports, expected9topics, additional stored topics, registration mechanism and naming assessed.
+- [x] Live DB registration records/constraints inspected; expected/stored/provider evidence compared; unavailable current subscription enumeration marked unverified.
+- [x] Destinations, all handlers, raw-body HMAC, tenant resolution, acknowledgment, deduplication, retries/failure tracking and idempotency mapped.
+- [x] Uninstall/order/customer/checkout behavior, purchase-completion precedence dependencies, version/scope compatibility and drift assessed.
+- [x] Existing test inventory and observed11pass results recorded; no new tests or fixtures.
+- [x] Required architecture diagram, stable findings, related diagnoses and approved future task dependencies recorded.
+- [x] Task report/register updated; decisions reviewed and unchanged; documentation-only diff and credential/link/ID checks completed before publication.
+- [x] No app/Shopify/database/infrastructure mutations or manual deployment/restart/setup/sync/retry actions.
 
 ## 21. Next task boundary
 
-TASK013 — Identify checkout fields actually received in test payloads. **Not started.** Complete the remaining Task012 live inventory and documentation first.
+TASK013 — Identify checkout fields actually received in test payloads. **Not started.** Task012 audit is complete; do not start Task013 without the next task instruction.
 
 ## Immutable source and official evidence register
 
@@ -318,3 +370,11 @@ TASK013 — Identify checkout fields actually received in test payloads. **Not s
 - [Supported enums/resource scopes](https://shopify.dev/docs/api/admin-graphql/latest/enums/WebhookSubscriptionTopic) — all9 present at inspection2026-10.
 - [Delivery HMAC, acknowledgment deadlines and retry behavior](https://shopify.dev/docs/apps/build/webhooks/verify-deliveries).
 - [API version lifecycle](https://shopify.dev/docs/api/usage/versioning), cross-referenced in Task011.
+
+
+### Provider UI evidence inspected on completion
+
+- [Revluma developer overview](https://dev.shopify.com/dashboard/224123302/apps/389768118273) — app identity and provider failure/latency aggregates.
+- [Current installations](https://dev.shopify.com/dashboard/224123302/apps/389768118273/installs) —3installed domains; pagination disabled.
+- [Active Revluma-v1.0 configuration](https://dev.shopify.com/dashboard/224123302/apps/389768118273/versions/1173036367873) — Webhooks api_version2026-10, redirect/scopes; no topic entries displayed.
+- [Fresh-store webhook diagnostics](https://dev.shopify.com/dashboard/224123302/apps/389768118273/logs?shop%5B%5D=revluma-test-store-v1.myshopify.com&time=now-7d..now&type=webhook) — select the Oct29orders/updated entries for the same ID, or checkouts/create, then More details for URI/subscription/method metadata. Drawer state is not encoded in the URL; do not trigger retry/testing.

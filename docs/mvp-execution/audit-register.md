@@ -17,7 +17,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 009 | Phase 1 | Map checkout/order Prisma models. | PARTIALLY VERIFIED (original PARTIAL) | [TASK-009](diagnostics/TASK-009.md) | Inspected cfb41b7; imported by Task 010 | 2026-10-29 (historical report) |
 | 010 | Phase 1 | Map existing checkout reconciliation tests. | COMPLETED — VERIFIED (test architecture audit; product coverage remains partial) | [TASK-010](diagnostics/TASK-010.md) | Inspected d410748; docs publication to main authorized 2026-10-30 | 2026-10-30 documentation follow-up |
 | 011 | Phase 1 | Record Shopify API version used by backend. | COMPLETE — VERIFIED (configuration audit; open findings retained) | [TASK-011](diagnostics/TASK-011.md) | Inspected 55d78f06; production cfb41b7 Backend content identical | 2026-10-30 |
-| 012 | Phase 1 | Record registered Shopify webhook topics. | IN PROGRESS — live Shopify authentication pending | [TASK-012](diagnostics/TASK-012.md) | main db1f6be1; production cfb41b7 Backend identical | 2026-10-30 |
+| 012 | Phase 1 | Record registered Shopify webhook topics. | COMPLETE — PASS (audit; live enumeration limits recorded) | [TASK-012](diagnostics/TASK-012.md) | main db1f6be1; production cfb41b7 Backend identical | 2026-10-30 |
 | 013 | Phase 1 | Identify checkout fields actually received in test payloads. | NOT STARTED | — | — | — |
 | 014 | Phase 1 | Identify order fields actually received in test payloads. | NOT STARTED | — | — | — |
 | 015 | Phase 1 | Document checkout/order state definitions. | NOT STARTED | — | — | — |
@@ -488,7 +488,7 @@ REV-FIND-0047 is now UNDER INVESTIGATION: six of seven missing reports recovered
 
 | Finding ID | Discovered In | Severity | Description | Affected Component / evidence | Resolution Task | Status |
 |---|---|---|---|---|---|---|
-| REV-FIND-0048 | [002](diagnostics/TASK-002.md) | Medium | Synchronous webhook processing | Historical report: Slow database or downstream operations may delay Shopify acknowledgments. | 065 | UNDER INVESTIGATION |
+| REV-FIND-0048 | [002](diagnostics/TASK-002.md) | High | Synchronous webhook processing | Historical report: Slow database or downstream operations may delay Shopify acknowledgments. | 065 | UNDER INVESTIGATION |
 | REV-FIND-0049 | [002](diagnostics/TASK-002.md) | Medium | Delivery ID fallback uses a payload hash | Historical report: Distinct deliveries with identical payloads may be treated as duplicates when Shopify's delivery ID is missing. | 063–064 | UNDER INVESTIGATION |
 | REV-FIND-0050 | [002](diagnostics/TASK-002.md) | Medium | Topic dispatch uses broad string matching | Historical report: Unexpected topic names could reach a handler if they match a recognized prefix. | 002,062 | UNDER INVESTIGATION |
 | REV-FIND-0051 | [002](diagnostics/TASK-002.md) | Low | Unsupported topics receive successful acknowledgment | Historical report: Unexpected subscription or routing errors may go unnoticed without monitoring. | 012,098 | UNDER INVESTIGATION |
@@ -579,3 +579,14 @@ Existing finding0014 receives live evidence: two store rows under two organizati
 | REV-FIND-0112 | [012](diagnostics/TASK-012.md#16-findings-register-and-future-tasks) | Medium | C8latest topic setup states failed,642attempts each; current provider/root cause unknown | SELECT metadata; completedOct27;shopifyWebhookService failure persistence | 059–060,097 | OPEN |
 
 Existing selected tests:11runner entries passed,0failed/skipped/cancelled (4files; mocks/static/purehelpers). No newtests, app changes, DBwrites, Shopify changes or manualdeploy/restart/sync/retry actions. Decisions unchanged. Snapshot/report will be completed after authoritative live inventory comparison.
+
+
+## Task012 completion follow-up — provider sign-in and diagnostics verified
+
+The user completed Shopify verification. Signed-in Revluma developer app389768118273 lists3installed shop domains, agreeing with the3distinct DBdomains (4store rows). Active Revluma-v1.0 configuration explicitly sets Webhooks api_version2026-10. Provider delivery metadata confirms Dorders/updated2097267835069 and checkouts/create2097267998909 at current URLs, Shop specific/http, matching stored IDs. No app-scoped topic entries displayed in the active version. Full current all-topic subscription enumeration is unavailable through the inspected UI/connector/runtime; per-topic current existence remains UNKNOWN, as the task's acceptance criteria permit. No9/9live-registration guarantee is made.
+
+Task012 is now **PASS — audit complete**: expected/stored/provider evidence and unknowns, all9handlers, security/tenant/reliability/compatibility/tests/findings documented. The earlier authentication checkpoint is preserved as history and superseded; no sign-in action remains. Final business correctness/full live registration validation are not certified. Task013 remains NOT STARTED.
+
+REV-FIND-0048 severity raised Medium→High, status remains UNDER INVESTIGATION: Shopify records an orders/updated attempt No response from app6001ms followed by200OK1989ms for the same ID. Exact-ID DBrow eventuallyprocessed15:30:56.545UTC; provider acknowledgment does not prove a second handler or correct commerce state. App overview failure rate6.2%, Oct29rate11.5%; Oct29responseP905904ms. This upgrades prior latency inference to provider-recorded failure evidence; no fix is claimed.
+
+REV-FIND-0104 gains authoritative active-app payload-version2026-10 and recorded delivery-header evidence. Current served Admin version is still unobserved; finding remains OPEN with its remaining scope. REV-FIND-0107–0112 remain OPEN. No new IDs or architectural decisions were introduced by the completion follow-up. No source/tests/Shopify/configuration/DB/infrastructure mutations or deployment actions.
