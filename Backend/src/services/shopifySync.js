@@ -89,6 +89,8 @@ async function syncCustomers(store) {
 function orderPayload(order) {
   return {
     id: externalId(order.id),
+    checkout_id: externalId(order.checkoutId),
+    cart_token: order.cartToken || null,
     created_at: order.createdAt,
     cancelled_at: order.cancelledAt,
     financial_status: order.displayFinancialStatus,
@@ -142,6 +144,7 @@ async function syncOrders(store) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         nodes {
           id createdAt cancelledAt displayFinancialStatus discountCodes
+          checkoutId cartToken
           currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
           subtotalPriceSet { shopMoney { amount currencyCode } }
