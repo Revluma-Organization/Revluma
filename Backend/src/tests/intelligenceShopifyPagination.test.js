@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { nextConnectionCursor, fetchConnection, verifyOrderReadScope, orderPayload } = require('../services/shopifySync');
+const { nextConnectionCursor, fetchConnection, verifyOrderReadScope, orderPayload, evaluateCartWithDeadline } = require('../services/shopifySync');
 
 test('pagination finishes only with an explicit terminal page', () => {
   assert.equal(nextConnectionCursor({ nodes: [], pageInfo: { hasNextPage: false, endCursor: null } }, null, 'orders'), null);
@@ -58,4 +58,28 @@ test('order import prefers Shopify adjusted total over original total', () => {
   });
   assert.equal(payload.total_price, 70);
   assert.equal(payload.currency, 'NGN');
+});
+
+
+test('Shopify sync refuses unbounded pagination rather than claiming partial success', async () => {
+  let calls = 0;
+  const fetchPage = async () => {
+    calls += 1;
+    return { orders: { nodes: [{ id: calls }], pageInfo: { hasNextPage: true, endCursor: String(calls) } } };
+  };
+  await assert.rejects(fetchConnection({}, '', 'orders', fetchPage), { code: 'SHOPIFY_PAGINATION_LIMIT_EXCEEDED' });
+  assert.equal(calls, 100);
+});
+
+
+test('optional ML prediction timeout does not block Shopify checkout ingestion', async () => {
+  const started = Date.now();
+  await evaluateCartWithDeadline(() => new Promise(() => {}), 'store-test', 'cart-test', 15);
+  assert.ok(Date.now() - started < 1000, 'deadline should return promptly');
+});
+
+test('optional ML prediction rejection is contained', async () => {
+  await assert.doesNotReject(evaluateCartWithDeadline(async () => {
+    throw Object.assign(new Error('prediction unavailable'), { code: 'PREDICTION_UNAVAILABLE' });
+  }, 'store-test', 'cart-test', 100));
 });

@@ -30,6 +30,7 @@ const {
     runIntelligenceAutomation,
 } = require('./mlService');
 const { syncShopifyStore } = require('./shopifySync');
+const { storeSyncEligibility } = require('./shopifySyncRecovery');
 const { ABANDONMENT_INACTIVITY_MS } = require('./checkoutInactivity');
 const { runFeatureJobs } = require('./featureWorkerService');
 const { runRecoveryActions } = require('./recoveryActionService');
@@ -741,19 +742,17 @@ async function runStoreSync() {
 
     try {
         await promoteInactiveCheckouts();
-        const cutoff = new Date(Date.now() - STORE_SYNC_INTERVAL_MS);
         const stores = await prisma.stores.findMany({
-            where: {
-                platform: 'shopify',
-                status: { in: ['active', 'error'] },
-                OR: [{ last_synced_at: null }, { last_synced_at: { lte: cutoff } }],
-            },
+            where: storeSyncEligibility(Date.now(), STORE_SYNC_INTERVAL_MS),
             orderBy: { last_synced_at: 'asc' },
             take: 10,
         });
         let succeeded = 0;
         for (const store of stores) {
             try {
+                if (store.status === 'syncing') {
+                    logger.warn('scheduler_stale_shopify_sync_retry', { store_id: store.id, previous_updated_at: store.updated_at });
+                }
                 const result = await syncShopifyStore(store, { reconcileWebhooks: false });
                 if (!result.success) {
                     logger.warn('scheduler_store_sync_skipped', { store_id: store.id, reason: result.alreadyRunning ? 'already_running' : 'not_completed' });

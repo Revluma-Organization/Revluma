@@ -8,6 +8,29 @@ const { getRedisClient, isRedisReady } = require('../configs/redis');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
 
 const PAGE_SIZE = 100;
+const MAX_SYNC_PAGES = 100; // Explicit cap: never report a partial import as successful.
+const OPTIONAL_PREDICTION_TIMEOUT_MS = 12_000;
+
+// A non-critical ML evaluation must never indefinitely block Shopify ingestion.
+async function evaluateCartWithDeadline(task, storeId, cartId, timeoutMs = OPTIONAL_PREDICTION_TIMEOUT_MS) {
+  let timer;
+  try {
+    await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Object.assign(new Error('prediction deadline exceeded'), { code: 'PREDICTION_TIMEOUT' })), timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    logger.warn('shopify_cart_recovery_evaluation_deferred', {
+      store_id: storeId, cart_id: cartId,
+      error_type: error.code || error.name || 'evaluation_error',
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 
 function externalId(gid) {
   return String(gid || '').split('/').pop();
@@ -30,7 +53,11 @@ function nextConnectionCursor(connection, previousCursor, rootName) {
 async function fetchConnection(store, query, rootName, fetchPage = shopifyGraphql) {
   const nodes = [];
   let cursor = null;
+  let pages = 0;
   do {
+    if (++pages > MAX_SYNC_PAGES) {
+      throw Object.assign(new Error(`shopify_${rootName}_pagination_limit_exceeded`), { code: 'SHOPIFY_PAGINATION_LIMIT_EXCEEDED' });
+    }
     const data = await fetchPage(store, query, { first: PAGE_SIZE, after: cursor });
     const connection = data[rootName];
     if (!connection) throw new Error(`shopify_${rootName}_response_missing`);
@@ -239,6 +266,7 @@ async function syncAbandonedCheckouts(store) {
   `;
   const checkouts = await fetchConnection(store, query, 'abandonedCheckouts');
   for (const checkout of checkouts) {
+    logger.info('shopify_checkout_sync_processing', { store_id: store.id, checkout_id: externalId(checkout.id), stage: 'started' });
     const payload = abandonedPayload(checkout);
     const cart = await upsertAbandonedCart(store, payload);
     if (!cart) continue;
@@ -257,6 +285,7 @@ async function syncAbandonedCheckouts(store) {
         });
       }
     });
+    logger.info('shopify_checkout_sync_processing', { store_id: store.id, checkout_id: externalId(checkout.id), stage: 'persisted' });
     if (cart.customer_id && cart.status === 'abandoned') {
       const snapshot = await prisma.ml_session_features.findFirst({
         where: {
@@ -271,7 +300,7 @@ async function syncAbandonedCheckouts(store) {
           const value = snapshot[field];
           return [field, value && typeof value.toNumber === 'function' ? value.toNumber() : value];
         }));
-        await runPredictionChain({
+        await evaluateCartWithDeadline(() => runPredictionChain({
           envelope: {
             customer_id: cart.customer_id,
             session_id: snapshot.session_id,
@@ -281,16 +310,11 @@ async function syncAbandonedCheckouts(store) {
           store,
           snapshot,
           cartOverride: cart,
-        }).catch((error) => {
-          logger.warn('shopify_cart_recovery_evaluation_deferred', {
-            store_id: store.id,
-            cart_id: cart.id,
-            error_type: error.code || error.name || 'evaluation_error',
-          });
-        });
+        }), store.id, cart.id);
       }
     }
   }
+  logger.info('shopify_checkout_sync_batch_completed', { store_id: store.id, count: checkouts.length });
   return checkouts.length;
 }
 
@@ -308,6 +332,21 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     return { success: false, alreadyRunning: true };
   }
   let setupStage = 'marking_store_syncing';
+  // A new lock owner supersedes any interrupted previous run. Preserve the
+  // previous success timestamp; never claim the interrupted run completed.
+  const previousState = await prisma.stores.findUnique({
+    where: { id: store.id }, select: { status: true, updated_at: true, last_synced_at: true },
+  }).catch((error) => {
+    logger.warn('shopify_previous_sync_state_unavailable', { store_id: store.id, error_type: error.code || error.name });
+    return null;
+  });
+  if (previousState?.status === 'syncing') {
+    logger.warn('shopify_interrupted_sync_detected', {
+      store_id: store.id,
+      previous_updated_at: previousState.updated_at,
+      previous_success_at: previousState.last_synced_at,
+    });
+  }
   logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
   try {
     // A fresh ingestion attempt invalidates any historical completeness attestation.
@@ -428,6 +467,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
 }
 
 module.exports = {
+  evaluateCartWithDeadline,
   grantedOrderScopes,
   verifyOrderReadScope,
   fetchConnection,
