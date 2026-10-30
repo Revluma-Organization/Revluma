@@ -364,6 +364,24 @@ async function main(){
         await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS task032_reject_relationship()");
       }
     });
+    await check('TC032-40-shopify-webhook-signature-rejects-forgery',async()=>{
+      const crypto=require('node:crypto');
+      const {verifyShopifySignature}=require('../services/commerceWebhookService');
+      const old=process.env.SHOPIFY_API_SECRET;
+      try{
+        process.env.SHOPIFY_API_SECRET='task032-isolated-signature-secret';
+        const raw=Buffer.from(JSON.stringify(checkout('signature')));
+        const valid=crypto.createHmac('sha256',process.env.SHOPIFY_API_SECRET).update(raw).digest('base64');
+        assert.equal(verifyShopifySignature(raw,valid),true);
+        assert.equal(verifyShopifySignature(raw,undefined),false);
+        assert.equal(verifyShopifySignature(raw,'invalid'),false);
+        assert.equal(verifyShopifySignature(Buffer.from(raw.toString()+' '),valid),false);
+        assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-signature'}}),0);
+      }finally{
+        if(old===undefined) delete process.env.SHOPIFY_API_SECRET;
+        else process.env.SHOPIFY_API_SECRET=old;
+      }
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
