@@ -19,3 +19,6 @@ REV-FIND-029-03: HIGH metric/classifier/concurrency verification incomplete; OPE
 REV-DEC-0010: Verified order FK, not weak resemblance, authorizes completion. Conditional merchant-scoped update inside order transaction; no campaign attribution. Alternative: independent nontransactional status update (rejected).
 ## Release
 Branch only; no merge, production migration or deployment. **PARTIAL — IMPLEMENTED, NOT DEPLOYED; 45-case acceptance pending.**
+
+## Verification follow-up (2026-10-30)
+Initial CI on c12ac576: Task029 12/12 PASS; backend tests PASS; backend refresh PASS; Task025 PASS; Task026 PASS; Task027 39/40 (TC027-32 obsolete pending assertion); Task028 43/44 (TC028-43 obsolete null completion assertion). Both legacy assertions corrected to assert the new verified-completion semantics, retaining rejected-claim protections. Expanded Task029 suite to 45 individually named cases at commit 341b925c; **45-case CI results pending**, not yet certified. Some added tests overlap and do not independently prove concurrency, historical sync or all acceptance semantics. Production verification remains outstanding. No merge/deploy.
