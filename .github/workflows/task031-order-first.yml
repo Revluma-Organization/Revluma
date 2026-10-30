@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'Backend/src/tests/task031OrderFirst.integration.js'
+      - 'Backend/src/services/commerceWebhookService.js'
       - '.github/workflows/task031-order-first.yml'
   workflow_dispatch:
 permissions:
