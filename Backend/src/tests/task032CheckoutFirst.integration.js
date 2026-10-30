@@ -351,7 +351,7 @@ async function main(){
     await check('TC032-48-failed-relationship-write-rolls-back-order-and-checkout',async()=>{
       const suffix='forced-relation-failure';
       await upsertAbandonedCart(store,checkout(suffix));
-      await prisma.$executeRawUnsafe("CREATE OR REPLACE FUNCTION task032_reject_relationship() RETURNS trigger LANGUAGE plpgsql AS $task032$ BEGIN IF NEW.external_order_id LIKE '%forced-relation-failure' AND NEW.abandoned_cart_id IS NOT NULL THEN RAISE EXCEPTION 'task032 injected relationship failure'; END IF; RETURN NEW; END; $");
+      await prisma.$executeRawUnsafe("CREATE OR REPLACE FUNCTION task032_reject_relationship() RETURNS trigger LANGUAGE plpgsql AS $task032$ BEGIN IF NEW.external_order_id LIKE '%forced-relation-failure' AND NEW.abandoned_cart_id IS NOT NULL THEN RAISE EXCEPTION 'task032 injected relationship failure'; END IF; RETURN NEW; END; $task032$");
       await prisma.$executeRawUnsafe("CREATE TRIGGER task032_relationship_failure BEFORE INSERT OR UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION task032_reject_relationship()");
       try{
         await assert.rejects(upsertOrder(store,'shopify',order(suffix)),/task032 injected relationship failure|task032_reject_relationship|P2010|P2004/);
