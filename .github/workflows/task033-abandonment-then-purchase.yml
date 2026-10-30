@@ -47,3 +47,14 @@ jobs:
         run: npx prisma db push --skip-generate --accept-data-loss
       - name: Execute abandonment-then-purchase diagnostic
         run: node src/tests/task033AbandonmentThenPurchase.integration.js
+
+      - name: Execute Task 032 checkout-first regression in isolated database
+        env:
+          TASK032_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task032?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task032?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task032;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task032 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task032CheckoutFirst.integration.js
