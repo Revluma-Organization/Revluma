@@ -45,13 +45,13 @@ Run via CI: `npm ci`, `psql -c 'CREATE EXTENSION IF NOT EXISTS vector;'`, `npx p
 | TC018-11 | whitespace token | no match | CI run 40984467993 | PASS |
 | TC018-12 | case sensitivity | exact case | CI run 40984467993 | PASS |
 | TC018-13 | partial token | exact only | CI run 40984467993 | PASS |
-| TC018-14 | duplicate token | reject ambiguity | CI run 40984467993 | PASS |
-| TC018-15 | conflicting ID and token | reject conflicting evidence | CI run 40984467993 | PASS |
+| TC018-14 | duplicate token | reject ambiguity | FAIL: duplicate token selected one record; CI 40984467993 | FAIL |
+| TC018-15 | conflicting ID and token | reject conflicting evidence | FAIL: conflicting ID and token silently linked; CI 40984467993 | FAIL |
 | TC018-16 | repeated token | deterministic | CI run 40984467993 | PASS |
-| TC018-17 | order before checkout | later relationship if supported | CI run 40984467993 | PASS |
+| TC018-17 | order before checkout | later relationship if supported | FAIL: late checkout did not reconcile existing order; CI 40984467993 | FAIL |
 | TC018-18 | persisted FK | correct FK | CI run 40984467993 | PASS |
 | TC018-19 | completion effect | only matched checkout recovered | CI run 40984467993 | PASS |
-| TC018-REAL | checkout `token` differs from `cart_token` | checkout token preserved and matched | CI run 40984467993 | PASS |
+| TC018-REAL | checkout `token` differs from `cart_token` | checkout token preserved and matched | FAIL: checkout token lost to cart token; CI 40984467993 | FAIL |
 
 ## M–P. Merchant isolation, conflict, persistence, completion
 Store scoping exists in query. Existing `orders.abandoned_cart_id` persists a relationship if matched; matched cart set `recovered`. Baseline Task 017 found incorrect relationship selection when ID/token conflict and arbitrary duplicate selection. No proof of automatic order-first reconciliation. Isolated tests will provide executed evidence.
