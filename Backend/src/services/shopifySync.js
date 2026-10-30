@@ -116,6 +116,8 @@ async function syncCustomers(store) {
 function orderPayload(order) {
   return {
     id: externalId(order.id),
+    checkout_token: order.checkoutToken || null,
+    cart_token: order.cartToken || null,
     created_at: order.createdAt,
     cancelled_at: order.cancelledAt,
     financial_status: order.displayFinancialStatus,
@@ -187,7 +189,7 @@ async function syncOrders(store) {
     query Orders($first: Int!, $after: String) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         nodes {
-          id createdAt cancelledAt displayFinancialStatus discountCodes
+          id checkoutToken cartToken createdAt cancelledAt displayFinancialStatus discountCodes
           currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
           subtotalPriceSet { shopMoney { amount currencyCode } }
@@ -221,6 +223,7 @@ async function syncOrders(store) {
 function abandonedPayload(checkout) {
   return {
     id: externalId(checkout.id),
+    checkout_id: checkout.id || null,
     created_at: checkout.createdAt,
     updated_at: checkout.updatedAt,
     completed_at: checkout.completedAt,

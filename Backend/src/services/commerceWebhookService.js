@@ -144,6 +144,37 @@ async function recordOrderReconciliationCase(tx, { storeId, orderId, reason, sou
   });
 }
 
+function sourceIdentifiers(payload, kind = 'checkout') {
+  // Do not coerce objects or unsafe JS numbers into invented Shopify identities.
+  const valid = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number' && !Number.isSafeInteger(v)) throw new Error('Unsafe Shopify identifier number');
+    if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'bigint') throw new Error('Invalid Shopify identifier type');
+    return String(v) || null;
+  };
+  return {
+    source_checkout_id: valid(payload.checkout_id ?? (kind === 'checkout' ? payload.id : null)),
+    source_checkout_token: valid(payload.checkout_token ?? (kind === 'checkout' ? payload.token : null)),
+    source_cart_token: valid(payload.cart_token),
+  };
+}
+
+function mergeSourceEvidence(existing, incoming) {
+  const data = {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === null) continue;
+    if (existing?.[key] && existing[key] !== value) {
+      // Abort the transaction rather than silently overwriting evidence.
+      const error = new Error('Conflicting Shopify source identifier');
+      error.code = 'SOURCE_IDENTIFIER_CONFLICT';
+      error.identifier_type = key;
+      throw error;
+    }
+    if (!existing?.[key]) data[key] = value;
+  }
+  return data;
+}
+
 async function upsertOrder(store, provider, payload) {
   const customer = customerData(provider, payload);
   const orderExternalId = String(payload.id || payload.order_id);
@@ -185,12 +216,26 @@ async function upsertOrder(store, provider, payload) {
       },
     });
 
+    const existingOrder = await tx.orders.findFirst({ where: { store_id: store.id, external_order_id: orderExternalId }, select: { source_checkout_id: true, source_checkout_token: true, source_cart_token: true } });
+    const orderEvidence = sourceIdentifiers(payload, 'order');
+    let sourceConflict = false;
+    let safeOrderEvidence;
+    try {
+      safeOrderEvidence = mergeSourceEvidence(existingOrder, orderEvidence);
+    } catch (error) {
+      if (error.code !== 'SOURCE_IDENTIFIER_CONFLICT') throw error;
+      // Keep original evidence and persist a reconciliation conflict in the
+      // same transaction; do not lose the diagnostic to a rollback.
+      sourceConflict = true;
+      safeOrderEvidence = {};
+    }
     const order = await tx.orders.upsert({
       where: { store_id_external_order_id: { store_id: store.id, external_order_id: orderExternalId } },
       create: {
         store_id: store.id,
         customer_id: dbCustomer.id,
         external_order_id: orderExternalId,
+        ...orderEvidence,
         total,
         subtotal,
         discount_amount: discountAmount,
@@ -203,6 +248,7 @@ async function upsertOrder(store, provider, payload) {
       },
       update: {
         customer_id: dbCustomer.id,
+        ...safeOrderEvidence,
         total,
         currency,
         ordered_at: orderDate,
@@ -253,24 +299,40 @@ async function upsertOrder(store, provider, payload) {
       ['cart_token', normalized(payload.cart_token)],
     ].filter(([, value]) => value);
     const lookups = new Map();
-    for (const [, identifier] of evidence) {
-      if (lookups.has(identifier)) continue;
+    const typedColumns = { checkout_id: 'source_checkout_id', checkout_token: 'source_checkout_token', cart_token: 'source_cart_token' };
+    for (const [type, identifier] of evidence) {
       const rows = await tx.abandoned_carts.findMany({
-        where: { store_id: store.id, external_cart_id: identifier },
+        where: {
+          store_id: store.id,
+          OR: [
+            { [typedColumns[type]]: identifier },
+            // Legacy records predate Task028 typed columns. Only consider
+            // their exact original identity when *all* typed identities
+            // are absent; never reinterpret a known token as another type.
+            {
+              external_cart_id: identifier,
+              source_checkout_id: null,
+              source_checkout_token: null,
+              source_cart_token: null,
+            },
+          ],
+        },
         select: { id: true, store_id: true, session_id: true, external_cart_id: true },
         take: 2,
       });
-      lookups.set(identifier, rows);
+      lookups.set(type, rows);
     }
     const strong = evidence.filter(([type]) => type !== 'cart_token');
     const evaluated = strong.length ? strong : evidence;
-    const hits = evaluated.flatMap(([, value]) => lookups.get(value) || []);
+    const hits = evaluated.flatMap(([type]) => lookups.get(type) || []);
     const candidates = [...new Map(hits.map((row) => [row.id, row])).values()];
-    const duplicateIdentity = evaluated.some(([, value]) => (lookups.get(value) || []).length > 1);
-    const strongResolved = strong.filter(([, value]) => (lookups.get(value) || []).length === 1);
+    const duplicateIdentity = evaluated.some(([type]) => (lookups.get(type) || []).length > 1);
+    const strongResolved = strong.filter(([type]) => (lookups.get(type) || []).length === 1);
     const conflictingStrong = strongResolved.length > 1 &&
-      new Set(strongResolved.map(([, value]) => lookups.get(value)[0].id)).size > 1;
-    const conflict = conflictingStrong;
+      new Set(strongResolved.map(([type]) => lookups.get(type)[0].id)).size > 1;
+    // Cart tokens are weak and may be shared. Contradictory weak evidence
+    // must never override an unambiguous checkout ID/token relationship.
+    const conflict = Boolean(sourceConflict || conflictingStrong);
     const ambiguous = duplicateIdentity || (!conflict && candidates.length > 1);
     const candidate = !conflict && !ambiguous && candidates.length === 1 ? candidates[0] : null;
     const current = await tx.orders.findFirst({
@@ -392,10 +454,12 @@ async function upsertAbandonedCart(store, payload) {
   const activityAt = lastCheckoutActivity(payload);
   const isStaleEvent = existing?.updated_at && activityAt < existing.updated_at;
   if (isStaleEvent && !payload.completed_at) return existing;
+  const safeCheckoutEvidence = mergeSourceEvidence(existing, sourceIdentifiers(payload, 'checkout'));
   const data = {
     store_id: store.id,
     customer_id: dbCustomer?.id || null,
     external_cart_id: externalId,
+    ...safeCheckoutEvidence,
     recovery_url: payload.abandoned_checkout_url || payload.recovery_url || null,
     cart_value: Number(payload.total_price ?? payload.total ?? 0),
     currency: payload.currency || 'USD',
