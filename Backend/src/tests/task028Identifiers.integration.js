@@ -2,8 +2,8 @@
 const assert=require('node:assert/strict');
 const {randomUUID}=require('node:crypto');
 const {prisma}=require('../configs/database');
+const {upsertOrder,upsertAbandonedCart}=require('../services/commerceWebhookService');
 if(process.env.TASK028_ISOLATED_DB!=='true'||!String(process.env.DATABASE_URL||'').includes('@127.0.0.1:5432/task028'))throw Error('Disposable localhost task028 PostgreSQL and explicit opt-in required');
-if(process.env.TASK028_ISOLATED_DB!=='true'||!/^postgres(?:ql)?:\\/\\/[^@]+@(?:127\\.0\\.0\\.1|localhost):5432\\/task028\\b/.test(process.env.DATABASE_URL||''))throw Error('Disposable task028 DB required');
 const tag=randomUUID().slice(0,8),uid=randomUUID(),org=randomUUID(),a=randomUUID(),b=randomUUID(),s={id:a,platform:'shopify'},t={id:b,platform:'shopify'},results=[];
 let serial=0;const key=x=>`t028-${tag}-${x}`;
 async function cart(store,name,extra={}){return upsertAbandonedCart(store,{id:key('checkout-'+name),created_at:new Date(Date.now()-90000).toISOString(),updated_at:new Date(Date.now()-60000).toISOString(),total_price:'25',currency:'USD',...extra})}
