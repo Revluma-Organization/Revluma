@@ -241,6 +241,54 @@ async function main(){
       assert.equal(active._count.id,0);
       assert.equal(Number(active._sum.cart_value||0),0);
     });
+    await check('TC032-13-ambiguous-cart-token-rejected',async()=>{
+      const token=prefix+'-ambiguous-cart';
+      await upsertAbandonedCart(store,checkout('ambiguous-a',{cart_token:token}));
+      await upsertAbandonedCart(store,checkout('ambiguous-b',{cart_token:token}));
+      await upsertOrder(store,'shopify',order('ambiguous',{checkout_token:null,cart_token:token}));
+      assert.equal((await getOrder('ambiguous')).abandoned_cart_id,null);
+    });
+    await check('TC032-39-identical-identifiers-both-merchants-reconcile-independently',async()=>{
+      const other={id:randomUUID(),platform:'shopify'};
+      await prisma.stores.create({data:{id:other.id,organization_id:org,platform:'shopify',shop_domain:prefix+'-tenant-independent.myshopify.com'}});
+      const payload=checkout('tenant-independent');
+      await upsertAbandonedCart(store,payload);
+      await upsertAbandonedCart(other,payload);
+      await upsertOrder(store,'shopify',order('tenant-independent'));
+      await upsertOrder(other,'shopify',order('tenant-independent'));
+      for(const merchant of [store,other]){
+        const c=await prisma.abandoned_carts.findFirstOrThrow({where:{store_id:merchant.id,external_cart_id:payload.id}});
+        const o=await prisma.orders.findFirstOrThrow({where:{store_id:merchant.id,external_order_id:prefix+'-order-tenant-independent'}});
+        assert.equal(o.abandoned_cart_id,c.id);
+        assert.equal(c.status,'recovered');
+      }
+    });
+    await check('TC032-41-42-43-historical-event-replays-are-idempotent',async()=>{
+      await upsertAbandonedCart(store,checkout('historical-checkout'));
+      await upsertOrder(store,'shopify',order('historical-checkout'));
+      await upsertOrder(store,'shopify',order('historical-order'));
+      await upsertAbandonedCart(store,checkout('historical-order'));
+      for(let i=0;i<3;i++){
+        for(const suffix of ['historical-checkout','historical-order']){
+          await upsertAbandonedCart(store,checkout(suffix));
+          await upsertOrder(store,'shopify',order(suffix));
+          assert.equal((await getOrder(suffix)).abandoned_cart_id,(await getCart(suffix)).id);
+          assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}}),1);
+          assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),1);
+        }
+      }
+    });
+    await check('TC032-44-fresh-prisma-client-reads-persisted-reconciliation',async()=>{
+      const {PrismaClient}=require('@prisma/client');
+      await upsertAbandonedCart(store,checkout('fresh-session'));
+      await upsertOrder(store,'shopify',order('fresh-session'));
+      const fresh=new PrismaClient();
+      try{
+        const o=await fresh.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-fresh-session'}});
+        const c=await fresh.abandoned_carts.findFirstOrThrow({where:{store_id:store.id,external_cart_id:prefix+'-checkout-fresh-session'}});
+        assert.equal(o.abandoned_cart_id,c.id);
+      }finally{await fresh.$disconnect();}
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
