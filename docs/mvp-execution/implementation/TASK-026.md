@@ -64,16 +64,16 @@ No historical FK reassignment; existing verified association preserved and discr
 Disposable PostgreSQL 16 + Node22; task026 localhost-only guard; synthetic merchants, orders, checkout rows.
 
 ## V. Test execution
-PENDING — CI execution will be appended.
+**PASS — VERIFIED.** GitHub Actions Task026 run `40989659035`, job `123848709961`, final tested code commit `15cfa91dfe988ae9cba338d5a017810a92b305e4`: `TASK026_SUMMARY={"passed":40,"failed":0,"total":40}`. Task025 regression run `40989659093`, job `123848710278`: 28 PASS/0 FAIL after adapting three expectations to stronger Task026 semantics. Backend tests `40989659072` SUCCESS; backend refresh regression `40989659252` SUCCESS.
 
 ## W. Conflict detection validation matrix
-See 40-case matrix below; statuses updated only after observed GitHub logs.
+All 40 test IDs TC026-01 through TC026-40 executed and passed on disposable PostgreSQL 16.15, Node22, isolated localhost DB; see CI run `40989659035` machine-readable TASK026_RESULTS and TASK026_SUMMARY.
 
 ## X. Performance review
 At most three indexed merchant-scoped queries (one per distinct provided identifier), each take:2, no full scans. Existing index (store_id,external_cart_id).
 
 ## Y. Findings
-REV-FIND-017-01: previously conflicting identifiers not classified; fix under test. REV-FIND-017-02: duplicate candidate ambiguity protected. REV-FIND-026-01: original FK conflict threw and lost durable evidence; fix under test.
+REV-FIND-017-01: previously conflicting identifiers not classified; RESOLVED — VERIFIED in isolated PostgreSQL (not deployed). REV-FIND-017-02: duplicate candidate ambiguity protected. REV-FIND-026-01: original FK conflict threw and lost durable evidence; fix under test.
 
 ## Z. Future dependencies
 Task027 checkout claimed by multiple orders, Task028 identifier persistence/provenance, Tasks029–030 lifecycle precedence, Tasks046–047 attribution, Task048 logs, Task049 end-to-end regression.
@@ -82,50 +82,57 @@ Task027 checkout claimed by multiple orders, Task028 identifier persistence/prov
 Real Shopify token pairs and production revision not verified; schema stores one checkout identifier; only checkout_id vs checkout_token disagreement treated authoritative, cart token considered weak; concurrent transactions may retry.
 
 ## AB. Final status
-PARTIAL — implementation written, CI pending; NOT DEPLOYED.
+**PASS — IMPLEMENTED AND VERIFIED IN ISOLATED POSTGRESQL; NOT DEPLOYED.** 40/40 Task026 scenarios, 28/28 inherited Task025 regression scenarios, backend tests and refresh regression successful.
 
 ## AC. Version control and deployment
-PR pending; stacked on unmerged Task025 #220, Task024 #219; no merge, deploy, production migration or Shopify writes.
+PR #221 OPEN, stacked on unmerged Task025 #220 and Task024 #219; final tested implementation commit `15cfa91dfe988ae9cba338d5a017810a92b305e4` (documentation-only commits follow). No merge, deploy, production migration or Shopify writes.
 
 | Test | Scenario | Expected | Actual | Evidence | Status |
 |---|---|---|---|---|---|
-| TC026-01 | ID/token agree | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-02 | ID/token disagree | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-03 | Missing token | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-04 | Missing ID | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-05 | ID/cart token | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-06 | Token/cart token | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-07 | Duplicate exact ID | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-08 | Duplicate checkout token | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-09 | Shared cart token | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-10 | Existing FK disagreement | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-11 | Historical conflict | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-12 | Webhook conflict | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-13 | Equivalent representation | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-14 | Large numeric ID | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-15 | Null optional ID | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-16 | Empty optional ID | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-17 | Whitespace optional ID | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-18 | Weak email | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-19 | Weak customer | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-20 | Weak amount | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-21 | Weak timestamp | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-22 | Weak coupon | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-23 | Multiple weak signals | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-24 | Cross merchant ID | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-25 | Cross merchant token | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-26 | Forged merchant | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-27 | Duplicate conflict | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-28 | Concurrent identical | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-29 | Concurrent conflicting | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-30 | Conflict during write | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-31 | Conflict persistence | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-32 | Conflict dedup | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-33 | Fresh session durability | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-34 | Lifecycle safety | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-35 | Revenue safety | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-36 | Processing error | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-37 | No match | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-38 | Ambiguity | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-39 | Existing FK preserved | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
-| TC026-40 | Historical reprocessing | Safe conflict-aware classification | Pending | GitHub Actions Task026 | NOT RUN |
+| TC026-01 | ID/token agree | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-02 | ID/token disagree | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-03 | Missing token | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-04 | Missing ID | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-05 | ID/cart token | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-06 | Token/cart token | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-07 | Duplicate exact ID | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-08 | Duplicate checkout token | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-09 | Shared cart token | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-10 | Existing FK disagreement | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-11 | Historical conflict | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-12 | Webhook conflict | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-13 | Equivalent representation | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-14 | Large numeric ID | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-15 | Null optional ID | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-16 | Empty optional ID | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-17 | Whitespace optional ID | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-18 | Weak email | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-19 | Weak customer | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-20 | Weak amount | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-21 | Weak timestamp | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-22 | Weak coupon | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-23 | Multiple weak signals | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-24 | Cross merchant ID | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-25 | Cross merchant token | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-26 | Forged merchant | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-27 | Duplicate conflict | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-28 | Concurrent identical | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-29 | Concurrent conflicting | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-30 | Conflict during write | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-31 | Conflict persistence | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-32 | Conflict dedup | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-33 | Fresh session durability | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-34 | Lifecycle safety | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-35 | Revenue safety | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-36 | Processing error | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-37 | No match | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-38 | Ambiguity | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-39 | Existing FK preserved | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+| TC026-40 | Historical reprocessing | Safe conflict-aware classification | PASS | Run 40989659035, job 123848709961 | PASS |
+
+## Final CI acceptance evidence
+- Task026 run 40989659035, job 123848709961, 40 PASS/0 FAIL/0 skipped. All TC026-01..TC026-40 individual results PASS.
+- Task025 inherited regression run 40989659093, job 123848710278, 28 PASS/0 FAIL/0 skipped. TC025-05 now uses duplicate identity fixtures to retain ambiguity coverage; TC025-06 expects genuine authoritative conflict; TC025-19 expects durable conflict recording while preserving verified FK instead of a rolled-back exception. These are deliberate compatibility changes, not deleted assertions.
+- Backend tests 40989659072 SUCCESS; backend refresh regression 40989659252 SUCCESS.
+- No new schema migration. Task025 additive migration re-applied to disposable database by both isolated CI workflows.
+- Limitation: checkout payload ingestion currently stores one identifier in external_cart_id, so real Shopify checkout-token versus cart-token provenance cannot be fully certified until Task028. Tests are synthetic, not real Shopify paired production events. The concurrent conflict test confirms only one FK is persisted; full deterministic retry behavior under every isolation level is not established. Task027 multi-order checkout claim exclusivity remains outside scope.
