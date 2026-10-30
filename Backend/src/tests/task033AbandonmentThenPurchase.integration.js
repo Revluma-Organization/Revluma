@@ -153,6 +153,7 @@ assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);
 }finally{
 console.log('TASK033_RESULTS='+JSON.stringify(results));
 console.log('TASK033_SUMMARY='+JSON.stringify({pass:results.filter(x=>x.status==='PASS').length,fail:results.filter(x=>x.status==='FAIL').length,total:results.length}));
+if(results.some(x=>x.status==='FAIL'))process.exitCode=1;
 await prisma.$disconnect();
 }
 }
