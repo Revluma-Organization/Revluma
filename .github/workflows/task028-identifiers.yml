@@ -1,4 +1,5 @@
 name: Task 028 isolated source identifier preservation
+# Re-run release gate after fixing checkout evidence and test harness.
 on:
   pull_request:
     paths:
