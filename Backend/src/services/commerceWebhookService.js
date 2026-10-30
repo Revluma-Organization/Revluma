@@ -294,7 +294,7 @@ async function upsertOrder(store, provider, payload) {
       // commit/rollback and prevents the read-then-write race between workers.
       // No blanket unique constraint until real Shopify cardinality and legacy
       // multi-claim data have been assessed (Task027 cardinality limitation).
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${candidate.id}::text, 0))`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${candidate.id}::text, 0))::text AS lock_acquired`;
       const checkout = await tx.abandoned_carts.findFirst({
         where: { id: candidate.id, store_id: store.id }, select: { id: true },
       });
