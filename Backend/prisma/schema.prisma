@@ -345,6 +345,9 @@ model abandoned_carts {
   store_id                          String                              @db.Uuid
   customer_id                       String?                             @db.Uuid
   external_cart_id                  String?
+  source_checkout_id                String?
+  source_checkout_token             String?
+  source_cart_token                 String?
   recovery_url                      String?
   session_id                        String?
   cart_value                        Decimal                             @db.Decimal(10, 2)
@@ -369,6 +372,9 @@ model abandoned_carts {
   sensitivity_training_observations sensitivity_training_observations[]
 
   @@index([store_id, external_cart_id], map: "idx_abandoned_carts_store_external")
+  @@index([store_id, source_checkout_id], map: "idx_carts_store_checkout_id")
+  @@index([store_id, source_checkout_token], map: "idx_carts_store_checkout_token")
+  @@index([store_id, source_cart_token], map: "idx_carts_store_cart_token")
 }
 
 /// Individual line items within an abandoned cart.
@@ -399,6 +405,9 @@ model orders {
   store_id                String           @db.Uuid
   customer_id             String           @db.Uuid
   external_order_id       String
+  source_checkout_id      String?
+  source_checkout_token   String?
+  source_cart_token       String?
   total                   Decimal          @db.Decimal(10, 2)
   subtotal                Decimal?         @db.Decimal(10, 2)
   discount_amount         Decimal?         @db.Decimal(10, 2)
