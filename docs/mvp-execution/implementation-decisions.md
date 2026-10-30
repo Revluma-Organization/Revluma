@@ -79,4 +79,4 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Consequences: checkout-first reconciliation not invented; historical orders use existing upsertOrder; database migration must precede app release; no production deployment authorized.
 - Related: REV-FIND-025-01, Tasks 024–028, 048–049.
 - Implementation commits: f2f58f2, 188087b, 7ced05a, 92d3eb3, 23a1c67.
-- Verification: CI pending.
+- Verification: 28/28 PASS on isolated PostgreSQL (run 40988985305, job 123846549587); SQL migration executed; backend tests and refresh regression SUCCESS; no production deployment.
