@@ -96,6 +96,32 @@ async function main(){
       assert.equal((await getOrder('large')).source_checkout_id,id);
       assert.equal((await getOrder('large')).abandoned_cart_id,(await prisma.abandoned_carts.findFirstOrThrow({where:{store_id:store.id,external_cart_id:id}})).id);
     });
+    await check('TC032-19-conflicting-checkout-id-and-token-must-not-link',async()=>{
+      await upsertAbandonedCart(store,checkout('conflict-a'));
+      await upsertAbandonedCart(store,checkout('conflict-b'));
+      await upsertOrder(store,'shopify',order('conflict-order',{
+        checkout_id:prefix+'-checkout-conflict-a',
+        checkout_token:prefix+'-token-conflict-b',
+      }));
+      assert.equal((await getOrder('conflict-order')).abandoned_cart_id,null);
+      assert.notEqual((await getCart('conflict-a')).status,'recovered');
+      assert.notEqual((await getCart('conflict-b')).status,'recovered');
+    });
+    await check('TC032-36-concurrent-duplicate-order-ingestion',async()=>{
+      await upsertAbandonedCart(store,checkout('parallel'));
+      await Promise.all(Array.from({length:4},()=>upsertOrder(store,'shopify',order('parallel'))));
+      const o=await getOrder('parallel'),c=await getCart('parallel');
+      assert.equal(o.abandoned_cart_id,c.id);
+      assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:o.external_order_id}}),1);
+    });
+    await check('TC032-37-concurrent-checkout-and-order-replay',async()=>{
+      await upsertAbandonedCart(store,checkout('simultaneous'));
+      await Promise.all([
+        upsertOrder(store,'shopify',order('simultaneous')),
+        upsertAbandonedCart(store,checkout('simultaneous')),
+      ]);
+      assert.equal((await getOrder('simultaneous')).abandoned_cart_id,(await getCart('simultaneous')).id);
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
