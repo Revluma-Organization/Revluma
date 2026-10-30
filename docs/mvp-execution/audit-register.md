@@ -25,7 +25,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 017 | Phase 1 | Test order-to-checkout exact ID match. | NOT STARTED | — | — | — |
 | 018 | Phase 1 | Test checkout token matching independently. | NOT STARTED | — | — | — |
 | 019 | Phase 1 | Test cart token matching independently. | NOT STARTED | — | — | — |
-| 020 | Phase 1 | Reject matches based only on customer identity. | NOT STARTED | — | — | — |
+| 020 | Phase 1 | Reject matches based only on customer identity. | IN PROGRESS — 22-case isolated PostgreSQL CI pending; inspected upsertOrder has no customer-only fallback | [TASK-020](validation/TASK-020.md) | service blob 0a042e3; customer-only negative fixtures; REV-FIND-020-01 missing production verification; Task 049 | 2026-10-30 |
 | 021 | Phase 1 | Reject matches based only on email. | NOT STARTED | — | — | — |
 | 022 | Phase 1 | Reject matches based only on amount or time. | NOT STARTED | — | — | — |
 | 023 | Phase 1 | Review coupon-based fallback for false matches. | NOT STARTED | — | — | — |
