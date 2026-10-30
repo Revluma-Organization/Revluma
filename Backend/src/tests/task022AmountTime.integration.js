@@ -54,7 +54,3 @@ await check('TC022-34','Unresolved FK remains null',async()=>{const c=await cart
 }finally{await prisma.stores.deleteMany({where:{id:{in:[a,b]}}});await prisma.organizations.deleteMany({where:{id:org}});await prisma.users.deleteMany({where:{id:uid}});await prisma.$disconnect()}
 console.log('TASK022_RESULTS='+JSON.stringify(results));console.log('TASK022_SUMMARY='+JSON.stringify({passed:results.filter(x=>x.status==='PASS').length,failed:results.filter(x=>x.status==='FAIL').length,total:results.length}));if(results.some(x=>x.status==='FAIL'))process.exitCode=1}
 run().catch(e=>{console.error(e);process.exitCode=1});
-
-}finally{await prisma.stores.deleteMany({where:{id:{in:[a,b]}}});await prisma.organizations.deleteMany({where:{id:org}});await prisma.users.deleteMany({where:{id:uid}});await prisma.$disconnect()}
-console.log('TASK022_RESULTS='+JSON.stringify(results));console.log('TASK022_SUMMARY='+JSON.stringify({passed:results.filter(x=>x.status==='PASS').length,failed:results.filter(x=>x.status==='FAIL').length,total:results.length}));if(results.some(x=>x.status==='FAIL'))process.exitCode=1}
-run().catch(e=>{console.error(e);process.exitCode=1});
