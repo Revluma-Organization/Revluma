@@ -122,6 +122,32 @@ async function main(){
       ]);
       assert.equal((await getOrder('simultaneous')).abandoned_cart_id,(await getCart('simultaneous')).id);
     });
+    await check('TC032-additional-checkout-first-evidence-and-durability',async()=>{
+      await upsertAbandonedCart(store,checkout('durable',{line_items:[{id:prefix+'-line',product_id:prefix+'-product',title:'Durable Product',price:'12.50',quantity:2}]}));
+      const cart=await getCart('durable');
+      assert.equal(await prisma.abandoned_cart_items.count({where:{abandoned_cart_id:cart.id}}),1);
+      await upsertAbandonedCart(store,checkout('durable',{line_items:[]}));
+      assert.equal(await prisma.abandoned_cart_items.count({where:{abandoned_cart_id:cart.id}}),1);
+      await upsertOrder(store,'shopify',order('durable'));
+      assert.equal((await getCart('durable')).status,'recovered');
+      await upsertAbandonedCart(store,checkout('durable',{updated_at:'2026-10-30T07:30:00Z'}));
+      assert.equal((await getCart('durable')).status,'recovered');
+    });
+    await check('TC032-additional-merchant-same-identifiers',async()=>{
+      const other={id:randomUUID(),platform:'shopify'};
+      await prisma.stores.create({data:{id:other.id,organization_id:org,platform:'shopify',shop_domain:prefix+'-same-ids.myshopify.com'}});
+      await upsertAbandonedCart(store,checkout('same-ids'));
+      await upsertAbandonedCart(other,checkout('same-ids'));
+      await upsertOrder(store,'shopify',order('same-ids'));
+      const own=await getCart('same-ids');
+      const foreign=await prisma.abandoned_carts.findFirstOrThrow({where:{store_id:other.id,external_cart_id:prefix+'-checkout-same-ids'}});
+      assert.equal((await getOrder('same-ids')).abandoned_cart_id,own.id);
+      assert.notEqual(foreign.status,'recovered');
+    });
+    await check('TC032-additional-concurrent-checkout-duplicates',async()=>{
+      await Promise.all(Array.from({length:4},()=>upsertAbandonedCart(store,checkout('parallel-cart'))));
+      assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-parallel-cart'}}),1);
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
