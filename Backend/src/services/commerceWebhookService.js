@@ -207,22 +207,38 @@ async function upsertOrder(store, provider, payload) {
       });
     }
 
-    // Shopify may identify a checkout by its numeric ID or opaque token.
-    // Try each distinct identifier rather than choosing only the first one.
+    // Prefer the authoritative checkout ID. Never let a newer token match
+    // override a verified exact ID, and never pick arbitrarily from duplicates.
+    // Preserve the existing token fallbacks only when higher-priority identifiers
+    // have no matching checkout. A duplicate at any priority is fail-closed.
     const cartIdentifiers = [...new Set(
       [payload.checkout_id, payload.cart_token, payload.checkout_token]
         .filter((value) => value !== null && value !== undefined && String(value).trim())
         .map(String)
     )];
     let cart = null;
-    if (cartIdentifiers.length) {
-      cart = await tx.abandoned_carts.findFirst({
-        where: { store_id: store.id, external_cart_id: { in: cartIdentifiers } },
+    let ambiguousCheckoutMatch = false;
+    for (const identifier of cartIdentifiers) {
+      const matches = await tx.abandoned_carts.findMany({
+        where: { store_id: store.id, external_cart_id: identifier },
         select: { id: true, session_id: true },
-        orderBy: { updated_at: 'desc' },
+        take: 2,
       });
+      if (matches.length > 1) {
+        ambiguousCheckoutMatch = true;
+        logger.warn('Ambiguous order checkout identifier; reconciliation skipped', {
+          storeId: store.id,
+          orderId: orderExternalId,
+          identifierSource: identifier === String(payload.checkout_id ?? '') ? 'checkout_id' : 'token',
+        });
+        break;
+      }
+      if (matches.length === 1) {
+        cart = matches[0];
+        break;
+      }
     }
-    if (!cart && couponCode) {
+    if (!cart && !ambiguousCheckoutMatch && couponCode) {
       const recoverySend = await tx.sequence_sends.findFirst({
         where: {
           store_id: store.id,
