@@ -319,7 +319,7 @@ async function processRecoverySend(send) {
     return { cancelled: true };
   }
   const cart = await prisma.abandoned_carts.findFirst({
-    where: { id: metadata.abandoned_cart_id, store_id: store.id, status: 'abandoned', updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+    where: { id: metadata.abandoned_cart_id, store_id: store.id, status: 'abandoned', recovered_at: null, updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
   });
   if (!cart) {
     await prisma.sequence_sends.update({ where: { id: send.id }, data: { status: 'cancelled' } });
