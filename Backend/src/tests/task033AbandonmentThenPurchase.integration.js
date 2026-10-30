@@ -55,6 +55,47 @@ await promoteInactiveCheckouts();
 await upsertOrder(store,'shopify',order('unmatched',{checkout_token:null,checkout_id:null,cart_token:null}));
 assert.equal((await cart('unmatched')).status,'abandoned');
 });
+
+await check('TC033-14-recent-activity-prevents-abandonment',async()=>{
+const suffix='recent-activity';
+await upsertAbandonedCart(store,checkout(suffix,{updated_at:new Date().toISOString()}));
+await promoteInactiveCheckouts();
+assert.equal((await cart(suffix)).status,'pending');
+});
+await check('TC033-17-exact-checkout-id-matching-after-abandonment',async()=>{
+const suffix='exact-id';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order(suffix,{checkout_id:prefix+'-checkout-'+suffix,checkout_token:null}));
+const c=await cart(suffix);
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}});
+assert.equal(o.abandoned_cart_id,c.id);assert.equal(c.status,'recovered');
+});
+await check('TC033-21-22-23-24-25-weak-evidence-never-completes',async()=>{
+const suffix='weak-evidence';
+await upsertAbandonedCart(store,checkout(suffix,{email:'same@example.invalid',total_price:'25'}));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order(suffix,{checkout_token:null,checkout_id:null,cart_token:null,email:'same@example.invalid',total_price:'25'}));
+assert.equal((await cart(suffix)).status,'abandoned');
+});
+await check('TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity',async()=>{
+const c=await cart('core');
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-core'}});
+assert.equal(c.status,'recovered');
+assert.equal(Number(o.total),25);
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,id:c.id,status:'abandoned'}}),0);
+assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:o.external_order_id}}),1);
+assert.equal(o.recovery_sequence_id??null,null);
+});
+await check('TC033-70-deterministic-repeatable-fixtures',async()=>{
+for(const suffix of ['repeat-a','repeat-b']){
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+assert.equal((await cart(suffix)).status,'abandoned');
+await upsertOrder(store,'shopify',order(suffix));
+assert.equal((await cart(suffix)).status,'recovered');
+}
+});
 }finally{
 console.log('TASK033_RESULTS='+JSON.stringify(results));
 console.log('TASK033_SUMMARY='+JSON.stringify({pass:results.filter(x=>x.status==='PASS').length,fail:results.filter(x=>x.status==='FAIL').length,total:results.length}));
