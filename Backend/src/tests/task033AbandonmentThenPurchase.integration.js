@@ -96,6 +96,60 @@ await upsertOrder(store,'shopify',order(suffix));
 assert.equal((await cart(suffix)).status,'recovered');
 }
 });
+
+await check('TC033-39-concurrent-scheduler-and-purchase-final-state-completed',async()=>{
+const suffix='race-scheduler';
+await upsertAbandonedCart(store,checkout(suffix));
+await Promise.all([promoteInactiveCheckouts(),upsertOrder(store,'shopify',order(suffix))]);
+assert.equal((await cart(suffix)).status,'recovered');
+});
+await check('TC033-40-concurrent-order-reconciliation-single-relationship',async()=>{
+const suffix='race-orders';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+await Promise.all([upsertOrder(store,'shopify',order(suffix)),upsertOrder(store,'shopify',order(suffix))]);
+const c=await cart(suffix);
+assert.equal(c.status,'recovered');
+assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}}),1);
+});
+await check('TC033-42-43-cross-merchant-isolation-with-overlapping-source-identifiers',async()=>{
+const otherUser=randomUUID(),otherOrg=randomUUID(),otherStore={id:randomUUID(),platform:'shopify'};
+await prisma.users.create({data:{id:otherUser,full_name:'Task033 Other',email:prefix+'-other@example.invalid'}});
+await prisma.organizations.create({data:{id:otherOrg,owner_id:otherUser,company_name:'Task033 Other',industry:'other',country:'US',slug:prefix+'-other'}});
+await prisma.stores.create({data:{id:otherStore.id,organization_id:otherOrg,platform:'shopify',shop_domain:prefix+'-other.myshopify.com',status:'active'}});
+const suffix='merchant-overlap';
+await upsertAbandonedCart(store,checkout(suffix));
+await upsertAbandonedCart(otherStore,checkout(suffix));
+await promoteInactiveCheckouts();
+await upsertOrder(otherStore,'shopify',order(suffix));
+assert.equal((await cart(suffix)).status,'abandoned');
+assert.equal((await prisma.abandoned_carts.findFirstOrThrow({where:{store_id:otherStore.id,external_cart_id:prefix+'-checkout-'+suffix}})).status,'recovered');
+await upsertOrder(store,'shopify',order(suffix));
+assert.equal((await cart(suffix)).status,'recovered');
+assert.equal(await prisma.orders.count({where:{external_order_id:prefix+'-order-'+suffix}}),2);
+});
+await check('TC033-45-checkout-persistence-failure-does-not-report-success',async()=>{
+const suffix='checkout-write-fail';
+const badStore={id:randomUUID(),platform:'shopify'};
+await assert.rejects(upsertAbandonedCart(badStore,checkout(suffix)));
+assert.equal(await prisma.abandoned_carts.count({where:{external_cart_id:prefix+'-checkout-'+suffix}}),0);
+});
+await check('TC033-47-order-persistence-failure-preserves-checkout',async()=>{
+const suffix='order-write-fail';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+await assert.rejects(upsertOrder({id:randomUUID(),platform:'shopify'},'shopify',order(suffix)));
+assert.equal((await cart(suffix)).status,'abandoned');
+});
+await check('TC033-49-fresh-prisma-client-verifies-durable-completion',async()=>{
+const {PrismaClient}=require('@prisma/client');
+const fresh=new PrismaClient();
+try{
+const c=await fresh.abandoned_carts.findFirstOrThrow({where:{store_id:store.id,external_cart_id:prefix+'-checkout-core'}});
+const o=await fresh.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-core'}});
+assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);
+}finally{await fresh.$disconnect();}
+});
 }finally{
 console.log('TASK033_RESULTS='+JSON.stringify(results));
 console.log('TASK033_SUMMARY='+JSON.stringify({pass:results.filter(x=>x.status==='PASS').length,fail:results.filter(x=>x.status==='FAIL').length,total:results.length}));
