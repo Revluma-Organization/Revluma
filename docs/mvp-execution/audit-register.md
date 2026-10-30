@@ -23,7 +23,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 015 | Phase 1 | Document checkout/order state definitions. | NOT STARTED | — | — | — |
 | 016 | Phase 1 | Test completed checkout payload handling. | NOT STARTED | — | — | — |
 | 017 | Phase 1 | Test order-to-checkout exact ID match. | NOT STARTED | — | — | — |
-| 018 | Phase 1 | Test checkout token matching independently. | NOT STARTED | — | — | — |
+| 018 | Phase 1 | Test checkout token matching independently. | IN PROGRESS — source-verified token persistence gap; isolated PostgreSQL CI pending | [TASK-018](validation/TASK-018.md) | Test-only branch; checkout `token` not persisted, order `checkout_token` searched; REV-FIND-018-01/02/03; CI results pending; earlier task reports on unmerged PRs | 2026-10-30 |
 | 019 | Phase 1 | Test cart token matching independently. | NOT STARTED | — | — | — |
 | 020 | Phase 1 | Reject matches based only on customer identity. | NOT STARTED | — | — | — |
 | 021 | Phase 1 | Reject matches based only on email. | NOT STARTED | — | — | — |
