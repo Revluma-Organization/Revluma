@@ -1,0 +1,64 @@
+'use strict';
+const assert=require('node:assert/strict');
+const {randomUUID}=require('node:crypto');
+const {prisma}=require('../configs/database');
+const {upsertAbandonedCart,upsertOrder}=require('../services/commerceWebhookService');
+const {promoteInactiveCheckouts}=require('../services/schedulerService');
+const {isCheckoutInactive,ABANDONMENT_INACTIVITY_MS}=require('../services/checkoutInactivity');
+if(process.env.TASK033_ISOLATED_DB!=='true'||!String(process.env.DATABASE_URL||'').includes('@127.0.0.1:5432/task033'))throw Error('Disposable task033 database required');
+const prefix='task033-'+randomUUID().slice(0,8),store={id:randomUUID(),platform:'shopify'};
+const results=[];
+async function check(name,fn){try{await fn();results.push({name,status:'PASS'});}catch(e){results.push({name,status:'FAIL',error:String(e.message).slice(0,260)});}}
+const checkout=(s,extra={})=>({id:prefix+'-checkout-'+s,token:prefix+'-token-'+s,created_at:'2026-10-30T08:00:00Z',updated_at:'2026-10-30T08:01:00Z',total_price:'25',currency:'USD',...extra});
+const order=(s,extra={})=>({id:prefix+'-order-'+s,checkout_token:prefix+'-token-'+s,created_at:'2026-10-30T08:40:00Z',total_price:'25',currency:'USD',...extra});
+const cart=s=>prisma.abandoned_carts.findFirstOrThrow({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+s}});
+async function main(){
+try{
+const user=randomUUID(),org=randomUUID();
+await prisma.users.create({data:{id:user,full_name:'Task033 Test',email:prefix+'@example.invalid'}});
+await prisma.organizations.create({data:{id:org,owner_id:user,company_name:'Task033',industry:'other',country:'US',slug:prefix}});
+await prisma.stores.create({data:{id:store.id,organization_id:org,platform:'shopify',shop_domain:prefix+'.myshopify.com',status:'active'}});
+await check('TC033-03-04-05-06-07-08-09-10-11-12-13-threshold-boundaries',async()=>{
+assert.equal(ABANDONMENT_INACTIVITY_MS,900000);
+const now=new Date('2026-10-30T09:00:00Z');
+for(const sec of [60,300,600,840,899])assert.equal(isCheckoutInactive(new Date(now.getTime()-sec*1000),now),false);
+for(const sec of [900,901,1200,1800,3600])assert.equal(isCheckoutInactive(new Date(now.getTime()-sec*1000),now),true);
+});
+await check('TC033-01-02-15-16-18-29-30-abandoned-then-verified-purchase',async()=>{
+await upsertAbandonedCart(store,checkout('core'));
+assert.equal((await cart('core')).status,'pending');
+await promoteInactiveCheckouts();
+assert.equal((await cart('core')).status,'abandoned');
+await upsertOrder(store,'shopify',order('core'));
+const c=await cart('core');
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-core'}});
+assert.equal(o.abandoned_cart_id,c.id);
+assert.equal(c.status,'recovered');
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,status:'abandoned',id:c.id}}),0);
+});
+await check('TC033-33-34-35-36-41-stale-and-repeated-classifier-cannot-reopen',async()=>{
+await upsertAbandonedCart(store,checkout('core',{updated_at:'2026-10-30T08:00:00Z'}));
+await upsertAbandonedCart(store,checkout('core',{updated_at:'2026-10-30T08:00:00Z'}));
+await promoteInactiveCheckouts();await promoteInactiveCheckouts();
+assert.equal((await cart('core')).status,'recovered');
+});
+await check('TC033-37-38-57-duplicate-purchase-and-checkout-do-not-duplicate',async()=>{
+await upsertOrder(store,'shopify',order('core'));
+await upsertAbandonedCart(store,checkout('core'));
+assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-core'}}),1);
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-core'}}),1);
+assert.equal((await cart('core')).status,'recovered');
+});
+await check('TC033-28-weak-evidence-does-not-complete-abandoned-checkout',async()=>{
+await upsertAbandonedCart(store,checkout('unmatched'));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order('unmatched',{checkout_token:null,checkout_id:null,cart_token:null}));
+assert.equal((await cart('unmatched')).status,'abandoned');
+});
+}finally{
+console.log('TASK033_RESULTS='+JSON.stringify(results));
+console.log('TASK033_SUMMARY='+JSON.stringify({pass:results.filter(x=>x.status==='PASS').length,fail:results.filter(x=>x.status==='FAIL').length,total:results.length}));
+await prisma.$disconnect();
+}
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});
