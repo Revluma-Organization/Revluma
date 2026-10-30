@@ -188,3 +188,13 @@ No production credentials, merchant records, Shopify state or deployment modifie
 - Backend tests run 41035894865 SUCCESS; backend refresh regression run 41035894904 SUCCESS.
 - The 26 case IDs in grouped test names have been mapped to their passing assertion groups in the ledger. This **does not establish complete individual-case verification**, because grouped assertions may check only part of the named contract. Other 34 IDs remain NOT RUN. Three additional passing tests (durability, same IDs across stores, concurrent checkout duplicates) have no exact TC032 number mapping and are not used to inflate the count.
 - No evidence for the outstanding 34 numbered scenarios was fabricated. Final status remains PARTIAL; Task033 gate stays closed pending executable scenario-specific checks and contract review.
+
+
+## Expanded acceptance evidence — 2026-10-30 (PR #230)
+- Isolated PostgreSQL CI run **41037847384** at commit `d23b765481709f825585172db5581f5513b4d461`: **38/38 grouped integration checks passed, zero failures**. Backend tests **41037847345** and backend refresh regression **41037847396** also succeeded.
+- Additional executed cases include TC032-06, 07, 13, 21–24, 27–30, 33, 35, 39–44, 46–47, 49–54, 58–60. Their presence in a passing grouped test is not by itself evidence that every subcondition is exhaustively checked.
+- Commit `282fcac022155c135800c531073f0d37d83bd801` adds process-restart durability (TC032-45) and a database-trigger-injected relationship failure (TC032-48). **These tests remain pending CI confirmation at the time of this documentation update.**
+- The TC032-40 test establishes database merchant scoping when the wrong store is supplied; it does **not** establish signature authentication or reject a forged HTTP request. The TC032-58/59 test checks reconciliation case rows, not every log or persistence location. The TC032-51/52 test checks filtered cart aggregation, not necessarily the production Command Center query.
+- TC032-55, TC032-56 and TC032-57 require explicit review of named prior-task regressions. General backend CI green does not by itself prove these three acceptance gates.
+- **Remaining certification gaps:** end-to-end webhook identity/authentication for TC032-40; actual scheduled threshold boundary and dashboard metric query for TC032-27–29/51–52; full logging/payload privacy review TC032-58/59; explicit Tasks017–031 regression mapping TC032-55–57; latest fault injection/restart CI evidence TC032-45/48.
+- **Decision:** Task032 remains **PARTIAL** and PR #230 must not merge as full acceptance until the gaps are closed. No production code changes were made.
