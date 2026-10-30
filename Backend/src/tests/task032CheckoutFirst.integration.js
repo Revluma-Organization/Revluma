@@ -309,7 +309,7 @@ async function main(){
       assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-bad-order'}}),0);
       assert.notEqual((await getCart('bad-order')).status,'recovered');
     });
-    await check('TC032-48-reconciliation-transaction-rollback-on-failed-relationship-write',async()=>{
+    await check('TC032-additional-successful-relationship-write-baseline',async()=>{
       await upsertAbandonedCart(store,checkout('transaction-relation'));
       await upsertOrder(store,'shopify',order('transaction-relation'));
       const o=await getOrder('transaction-relation'),c=await getCart('transaction-relation');
