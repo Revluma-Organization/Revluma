@@ -176,7 +176,6 @@ async function upsertOrder(store, provider, payload) {
         total,
         currency,
         ordered_at: orderDate,
-        recovery_status: 'completed',
         subtotal,
         discount_amount: discountAmount,
         discount_pct: discountPct,
