@@ -364,7 +364,7 @@ async function runRecoveryActions({ limit = 25 } = {}) {
   // Promote checkouts only after the full inactivity period. The conditional update
   // is idempotent across scheduler instances and excludes completed checkouts.
   await prisma.abandoned_carts.updateMany({
-    where: { status: 'pending', updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+    where: { status: 'pending', recovered_at: null, updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
     data: { status: 'abandoned' },
   });
   await prisma.sequence_sends.updateMany({
