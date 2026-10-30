@@ -59,45 +59,45 @@ GitHub Actions `pgvector/pgvector:pg16` service, local disposable `task022` Post
 Task 021 test suite covered same email/amount and same email/time cases, but not comprehensive amount/time combinations. Task 022 adds 34 isolated integration scenarios. Complete repository test inventory not independently established.
 
 ## N. Test Execution
-**PENDING** GitHub Actions evidence; do not infer PASS from source inspection.
+**EXECUTED — PASS**. GitHub Actions run 40986341784, job 123838147525, tested commit b7819fc5e49e9c66659ef8cceb1a4c51557aefa0. `TASK022_SUMMARY={"passed":34,"failed":0,"total":34}`. All TC022-01 through TC022-34 individually PASS. Disposable PostgreSQL 16.15; npm ci, vector extension, Prisma db push and execution succeeded. Earlier runs 40986160892 and 40986250347 failed from test-only JavaScript runner syntax/duplicate-footer mistakes; corrected on branch before successful run, not production defects.
 
 ## O. Amount/Time Rejection Matrix
 | Test ID | Scenario | Expected | Actual | Evidence | Status |
 |---|---|---|---|---|---|
-| TC022-01 | Exact amount equality | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-02 | Multiple identical totals | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-03 | Single matching total | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-04 | Similar unequal amounts | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-05 | Floating-point precision | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-06 | Different currencies same numeric | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-07 | Synthetic FX equivalent | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-08 | Discount-adjusted totals | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-09 | Shipping/tax differences | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-10 | Refund/order edit | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-11 | Identical timestamps | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-12 | One second | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-13 | One minute | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-14 | Five minutes | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-15 | Fifteen minutes | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-16 | Multiple nearby checkouts | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-17 | Checkout after order | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-18 | Receipt-time proximity | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-19 | Historical sync ingestion | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-20 | Timezone offsets | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-21 | Timestamp precision | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-22 | Exact amount and time | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-23 | Amount and close time | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-24 | Multiple identical candidates | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-25 | Amount/time and customer | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-26 | Amount/time and email | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-27 | Conflicting checkout ID | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-28 | Conflicting checkout token | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-29 | Existing verified FK | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-30 | Cross-merchant collision | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-31 | Repeated reconciliation | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-32 | Abandoned checkout lifecycle | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-33 | Recovered revenue attribution | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
-| TC022-34 | Unresolved FK | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | PENDING CI | Task 022 test source | NOT RUN |
+| TC022-01 | Exact amount equality | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-02 | Multiple identical totals | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-03 | Single matching total | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-04 | Similar unequal amounts | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-05 | Floating-point precision | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-06 | Different currencies same numeric | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-07 | Synthetic FX equivalent | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-08 | Discount-adjusted totals | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-09 | Shipping/tax differences | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-10 | Refund/order edit | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-11 | Identical timestamps | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-12 | One second | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-13 | One minute | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-14 | Five minutes | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-15 | Fifteen minutes | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-16 | Multiple nearby checkouts | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-17 | Checkout after order | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-18 | Receipt-time proximity | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-19 | Historical sync ingestion | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-20 | Timezone offsets | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-21 | Timestamp precision | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-22 | Exact amount and time | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-23 | Amount and close time | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-24 | Multiple identical candidates | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-25 | Amount/time and customer | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-26 | Amount/time and email | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-27 | Conflicting checkout ID | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-28 | Conflicting checkout token | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-29 | Existing verified FK | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-30 | Cross-merchant collision | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-31 | Repeated reconciliation | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-32 | Abandoned checkout lifecycle | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-33 | Recovered revenue attribution | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
+| TC022-34 | Unresolved FK | No unsupported match, mutation, or recovery; authoritative ID/token cases preserve correct match | Persisted state assertions passed | GitHub Actions run 40986341784, job 123838147525 | PASS |
 
 ## P. Merchant Isolation
 Both stores share one test organization but distinct store IDs; TC022-30 verifies same amount/time across stores does not associate the other store's checkout. The actual identifier query and coupon fallback both filter store_id. Cross-organization isolation not separately tested.
@@ -121,10 +121,18 @@ Task 023 coupon fallback, Task 025 unresolved tracking, Task 026 identifier conf
 Production revision alignment unverified; authenticated Shopify payload body fields and actual nullability unknown; order/checkout amount semantics not independently confirmed against live Shopify; full repository-wide search and downstream metrics not executed. No test validates external currency FX rate or full refund business logic; synthetic inputs verify **identity rejection only**.
 
 ## W. Final Status
-**IN PROGRESS** pending CI.
+**PASS — ALREADY IMPLEMENTED — VERIFIED IN ISOLATED PRISMA/POSTGRESQL TESTS**. 34/34 PASS, zero behavioral failures; amount/time-only matching absent in inspected service. This does not certify live Shopify payloads, deployed production SHA, or downstream Command Center/Rev Intelligence metric aggregation.
 
 ## X. Changes Made
 Test-only `Backend/src/tests/task022AmountTime.integration.js`, workflow `.github/workflows/task022-amount-time.yml`, report and audit register. No production code, schema, migration, frontend or infra changes.
 
 ## Y. Version Control
-Branch `test/task-022-amount-time-rejection`; PR and CI pending. Do not merge or deploy.
+Branch `test/task-022-amount-time-rejection`; PR #217 OPEN, UNMERGED; final CI run 40986341784, job 123838147525. No merge/deploy.
+
+## Dated completion evidence — 2026-10-30
+- `Backend/src/tests/task022AmountTime.integration.js` contains 34 isolated, actual Prisma-backed tests. Exact test command `node src/tests/task022AmountTime.integration.js`; CI Node 22, PostgreSQL 16.15 with vector extension, schema pushed to disposable localhost DB.
+- GitHub Actions run `40986341784`, job `123838147525`, commit `b7819fc5e49e9c66659ef8cceb1a4c51557aefa0`: 34 PASS, 0 FAIL, 0 skipped; individual test status printed for TC022-01 through TC022-34.
+- Earlier runs `40986160892` and `40986250347` failed at JavaScript parsing (first tests appended outside async runner, then duplicate footer); corrected in test-only branch commits `cd733cdb` and `b7819fc5`. Those are test harness defects, not application failures; retained for traceability.
+- TC022-27/28 confirm that **one** authoritative ID/token matches Checkout A despite Checkout B having closer amount/time; this does not establish general conflict precedence across multiple contradictory authoritative identifiers (Task 026).
+- No amount/time false relationship, checkout recovery, cross-store linkage, or recovered classification was observed in these 34 synthetic persisted scenarios. REV-FIND-022-01 remains OPEN as missing live payload and downstream aggregate evidence, not a confirmed production defect.
+- Production code, frontend, schema, migrations, production database, Shopify, infra and deployment untouched. PR #217 not merged.
