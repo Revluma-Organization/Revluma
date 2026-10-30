@@ -47,40 +47,40 @@ GitHub Actions isolated `pgvector/pgvector:pg16`, localhost `task021` DB, `TASK0
 Task 020 tests on separate PR #215 validate customer identity-only rejection but not email-specific variations. Task 021 adds 29 dedicated real Prisma scenarios; full repository test search and production path coverage not established.
 
 ## L. Test Execution
-Command `node src/tests/task021EmailOnly.integration.js` after `npm ci`, `CREATE EXTENSION vector`, `npx prisma db push --skip-generate --accept-data-loss`. **PENDING** GitHub Actions CI evidence.
+Command `node src/tests/task021EmailOnly.integration.js` after `npm ci`, `CREATE EXTENSION vector`, `npx prisma db push --skip-generate --accept-data-loss`. **EXECUTED — PASS**. GitHub Actions run 40985769888, job 123836305998, branch commit c3f47d9fcbe8f756bb4c5924312c18f4df6b0e01: `TASK021_SUMMARY={"passed":29,"failed":0,"total":29}`; all TC021-01 through TC021-29 individually PASS. Disposable PostgreSQL 16.15; npm ci, vector extension, Prisma db push, test step all succeeded.
 
 ## M. Email-Only Rejection Matrix
 | Test ID | Scenario | Expected | Actual | Evidence | Status |
 |---|---|---|---|---|---|
-| TC021-01 | Same email no identifiers | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-02 | Multiple checkouts one email | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-03 | Single checkout same email | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-04 | Previously abandoned | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-05 | Multiple abandoned | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-06 | Mixed checkout states | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-07 | Guest checkout | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-08 | Shared email different customers | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-09 | Different emails | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-10 | Missing email | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-11 | Null emails | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-12 | Empty emails | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-13 | Whitespace-only emails | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-14 | Case variation | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-15 | Plus-address variation | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-16 | Gmail-style dot variation | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-17 | Email changed | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-18 | Customer-account vs checkout email | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-19 | Same email and product | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-20 | Same email and amount | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-21 | Same email and time | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-22 | Cross-merchant collision | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-23 | Conflicting checkout ID | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-24 | Conflicting checkout token | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-25 | Existing verified relationship | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-26 | Repeated email-only attempts | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-27 | Checkout lifecycle | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-28 | Revenue attribution | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
-| TC021-29 | Unresolved relationship | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Pending | isolated CI | NOT RUN |
+| TC021-01 | Same email no identifiers | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-02 | Multiple checkouts one email | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-03 | Single checkout same email | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-04 | Previously abandoned | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-05 | Multiple abandoned | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-06 | Mixed checkout states | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-07 | Guest checkout | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-08 | Shared email different customers | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-09 | Different emails | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-10 | Missing email | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-11 | Null emails | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-12 | Empty emails | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-13 | Whitespace-only emails | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-14 | Case variation | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-15 | Plus-address variation | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-16 | Gmail-style dot variation | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-17 | Email changed | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-18 | Customer-account vs checkout email | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-19 | Same email and product | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-20 | Same email and amount | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-21 | Same email and time | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-22 | Cross-merchant collision | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-23 | Conflicting checkout ID | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-24 | Conflicting checkout token | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-25 | Existing verified relationship | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-26 | Repeated email-only attempts | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-27 | Checkout lifecycle | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-28 | Revenue attribution | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
+| TC021-29 | Unresolved relationship | No email-only checkout relationship/state/recovery attribution; TC021-23/24 allow stronger exact-ID match | Persisted assertions passed | GitHub Actions run 40985769888, job 123836305998 | PASS |
 
 ## N. Merchant Isolation
 `customers` upsert by store/external ID; checkout lookup by store/external_cart_id. TC021-22 specifically checks same email across two merchants without cross-store state mutation.
@@ -104,10 +104,18 @@ Task 022 amount/time negative checks, Task 023 coupon fallback, Task 025 unresol
 Actual Shopify email field frequency and nullability unknown; production revision alignment unknown; source audit focused on `commerceWebhookService.js`; synthetic integration tests cannot certify every webhook entrypoint, downstream metrics or real Shopify data.
 
 ## U. Final Status
-**IN PROGRESS** until 29 test cases executed and verified in isolated CI.
+**PASS — ALREADY IMPLEMENTED — VERIFIED IN ISOLATED PRISMA/POSTGRESQL TESTS**. 29/29 PASS, 0 FAIL, 0 skipped. Email-only cannot establish checkout linkage in inspected service. This does not certify production deployment revision, raw Shopify payload coverage, or downstream aggregate UI metrics.
 
 ## V. Changes Made
 Test-only `Backend/src/tests/task021EmailOnly.integration.js`, workflow `.github/workflows/task021-email-only.yml`, report and central register. No production changes.
 
 ## W. Version Control
-Branch `test/task-021-email-only-rejection`; PR and CI run to append. No merge/deploy.
+Branch `test/task-021-email-only-rejection`; PR #216 OPEN, UNMERGED. Test CI run 40985769888, job 123836305998, 29/29 PASS. Final documentation commit recorded in GitHub branch history. No merge/deploy.
+
+## Final test evidence — 2026-10-30
+- Source branch PR #216; GitHub Actions `Task 021 isolated email-only reconciliation`, run `40985769888`, job `123836305998`, 29 PASS / 0 FAIL / 0 skipped. All individual `TC021-01`–`TC021-29` printed `status: PASS`.
+- Test execution used real `upsertOrder`/`upsertAbandonedCart`, Prisma, disposable PostgreSQL 16.15; exact test command `node src/tests/task021EmailOnly.integration.js`. Synthetic fixtures and cleanup only.
+- TC021-23 and TC021-24 intentionally include a verified checkout ID/token and demonstrate email cannot override that identifier. Their pass does not validate all conflicting-authoritative-ID combinations; Task 026 owns those.
+- TC021-25 confirms existing verified FK retained on email-only retry; TC021-27 and TC021-28 confirm persisted lifecycle and order recovery classification safety; TC021-29 confirms unresolved order checkout FK remains null.
+- **No verified email-only false-match defect.** REV-FIND-021-01 remains OPEN as missing live payload and downstream UI verification, not a production bug. Do not infer actual Shopify email prevalence from fixtures.
+- No production code, schema, database, Shopify, infrastructure or deployment modifications. No merge.
