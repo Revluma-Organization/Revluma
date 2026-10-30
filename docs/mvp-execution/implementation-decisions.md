@@ -54,3 +54,16 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Affected: diagnostics/TASK-002.md through TASK-007.md, README, audit register, Task010 dated follow-up.
 - Verification: Source/export boundaries, local link/secret/diff review, documentation-only GitHub commit and read-back from main.
 - Status: ACCEPTED — main publication explicitly authorized; commit history records completion.
+
+
+## REV-DEC-0005 — Use existing FK with conditional persistence for Task 024
+
+- Date: 2026-10-30; task 024.
+- Problem: Current coupon fallback and arbitrary findFirst can persist unsupported or reassigned checkout relationships.
+- Alternatives: new relationship table; unique checkout FK migration; unconditional FK update; existing FK plus atomic conditional update.
+- Selected: reuse orders.abandoned_cart_id with same-store unambiguous identifier lookup and atomic compare-and-set, rejecting reassignment.
+- Rationale: smallest safe persistence change; preserves schema and existing data, prevents weak coupon-only relationship writes and concurrent FK overwrite.
+- Consequences: no migration; conflicting and missing identifiers remain unresolved (Tasks 025–028); no automatic historical repair; lifecycle and campaign attribution not changed by persistence (Tasks 029, 046–047).
+- Related findings: REV-FIND-023-01, REV-FIND-023-02, REV-FIND-023-05, REV-FIND-017-01/02.
+- Code commits: f5f8abd643c664747529f9ae59f468bf871bfbd2, 30758e40b26e393c66bf9a25a7296c9eec8d3e36.
+- Verification: 26-case isolated PostgreSQL CI pending; no production claim.
