@@ -73,16 +73,16 @@ Existing invalid multi-claims are not deleted. New candidate cannot be claimed i
 Disposable localhost PostgreSQL pgvector16, Node22, Prisma; synthetic stores and orders; TASK027_ISOLATED_DB guard.
 
 ## Y. Test execution
-PENDING GitHub Actions validation; report to be updated with observed runs and results.
+PASS — VERIFIED in isolated PostgreSQL 16.15: Task027 run 40990349650 job 123850964201, 40 PASS/0 FAIL. Initial run 40990251230 was 6 PASS/34 FAIL due Prisma inability to deserialize PostgreSQL void return from pg_advisory_xact_lock; fixed by explicit ::text cast. Backend tests run 40990349597 SUCCESS, backend refresh run 40990349580 SUCCESS. Inherited Task025/026 regression jobs still awaiting independent final confirmation.
 
 ## Z. Validation matrix
-See matrix of 42 scenarios; 40 runnable tests and two conditional NOT APPLICABLE cases pending evidence.
+40/40 runnable synthetic scenarios TC027-01..40 PASS in isolated PostgreSQL, GitHub Actions run 40990349650 job 123850964201. TC027-41 NOT APPLICABLE: no verified Shopify exception. TC027-42 NOT APPLICABLE: no new migration; production cardinality audit still pending.
 
 ## AA. Performance review
 Ownership query where store_id+abandoned_cart_id take:2; recommend dedicated composite index after production cardinality audit if needed; lock serializes checkout-specific claims, not all merchants.
 
 ## AB. Findings
-REV-FIND-027-01 (CRITICAL): existing orders.abandoned_cart_id allowed competing claims; guarded in application with advisory lock, CI pending. REV-FIND-027-02 (MEDIUM): no verified live Shopify exception/cardinality and no live historical duplicate aggregate; no blanket unique constraint. REV-FIND-027-03 (MEDIUM): direct SQL/other writers can bypass advisory-lock protocol; requires cross-writer audit before production readiness.
+REV-FIND-027-01 (CRITICAL): existing orders.abandoned_cart_id allowed competing claims; guarded in application with advisory lock, RESOLVED — VERIFIED in isolated PostgreSQL, NOT DEPLOYED. REV-FIND-027-02 (MEDIUM): no verified live Shopify exception/cardinality and no live historical duplicate aggregate; no blanket unique constraint. REV-FIND-027-03 (MEDIUM): direct SQL/other writers can bypass advisory-lock protocol; requires cross-writer audit before production readiness.
 
 ## AC. Future dependencies
 Task028 identifier provenance; Tasks029–030 lifecycle; Task048 logs; Task049 full regression; production review of cardinality and legacy data before any future unique migration.
@@ -91,52 +91,60 @@ Task028 identifier provenance; Tasks029–030 lifecycle; Task048 logs; Task049 f
 No real paired Shopify checkout/order evidence; no production aggregate counts; cannot prove exception absence; application-level lock protocol does not protect bypassing writers.
 
 ## AE. Final status
-PARTIAL — implementation pending isolated CI; NOT DEPLOYED.
+**PARTIAL — IMPLEMENTED AND VERIFIED IN ISOLATED POSTGRESQL; NOT DEPLOYED.** 40/40 Task027 tests passed, backend and refresh tests successful. Full production-ready PASS withheld: actual Shopify cardinality exceptions, production historical claims, and non-participating writers remain unverified; no DB unique constraint applied.
 
 ## AF. Version control and deployment
-PR pending; stacked on Task026 #221, Task025 #220, Task024 #219. No merge, deploy, production migration, merchant writes or Shopify mutation.
+PR #222 OPEN, implementation commit 47c2b96117adce490774937e52a0502d035a1eae and test commit 478fd71906fa030e4bf75b8c9242107ac75fef26; stacked on Task026 #221, Task025 #220, Task024 #219. No merge, deploy, production migration, merchant writes or Shopify mutation.
 
 | Test ID | Scenario | Expected | Actual | Evidence | Status |
 |---|---|---|---|---|---|
-| TC027-01 | First verified checkout claim | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-02 | Same order repeats claim | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-03 | Distinct order second claim | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-04 | Duplicate created event | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-05 | Updated event | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-06 | Historical same order | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-07 | Historical distinct order | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-08 | Concurrent identical | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-09 | Concurrent different | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-10 | Preexisting ownership | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-11 | Ownership race | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-12 | Duplicate internal order representation | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-13 | Distinct authoritative Shopify orders | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-14 | Shared email | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-15 | Shared customer ID | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-16 | Shared amount | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-17 | Shared timestamp | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-18 | Shared coupon | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-19 | Shared cart token | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-20 | Checkout token collision | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-21 | Checkout ID collision | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-22 | Cross merchant checkout rejected | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-23 | Same external ID across merchants | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-24 | Forged merchant context | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-25 | Existing claim preserved | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-26 | Rejected order preserved | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-27 | Conflict recorded | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-28 | Conflict idempotency | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-29 | Transaction rollback | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-30 | Database lock enforced | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-31 | Fresh database session | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-32 | No false checkout completion | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-33 | No duplicate checkout attribution | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-34 | Order revenue preserved | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-35 | Historical replay repeated | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-36 | Order first | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-37 | Checkout first | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-38 | Missing identifier | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-39 | Conflicting identifiers | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
-| TC027-40 | Existing invalid historical claims detected | Safe ownership enforcement | Pending execution | GitHub Actions Task027 | NOT RUN |
+| TC027-01 | First verified checkout claim | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-02 | Same order repeats claim | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-03 | Distinct order second claim | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-04 | Duplicate created event | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-05 | Updated event | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-06 | Historical same order | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-07 | Historical distinct order | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-08 | Concurrent identical | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-09 | Concurrent different | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-10 | Preexisting ownership | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-11 | Ownership race | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-12 | Duplicate internal order representation | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-13 | Distinct authoritative Shopify orders | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-14 | Shared email | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-15 | Shared customer ID | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-16 | Shared amount | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-17 | Shared timestamp | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-18 | Shared coupon | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-19 | Shared cart token | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-20 | Checkout token collision | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-21 | Checkout ID collision | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-22 | Cross merchant checkout rejected | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-23 | Same external ID across merchants | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-24 | Forged merchant context | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-25 | Existing claim preserved | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-26 | Rejected order preserved | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-27 | Conflict recorded | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-28 | Conflict idempotency | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-29 | Transaction rollback | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-30 | Database lock enforced | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-31 | Fresh database session | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-32 | No false checkout completion | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-33 | No duplicate checkout attribution | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-34 | Order revenue preserved | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-35 | Historical replay repeated | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-36 | Order first | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-37 | Checkout first | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-38 | Missing identifier | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-39 | Conflicting identifiers | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
+| TC027-40 | Existing invalid historical claims detected | Safe ownership enforcement | PASS | Run 40990349650 job 123850964201 | PASS |
 | TC027-41 | Legitimate cardinality exception | Safe ownership enforcement | Not applicable pending verified exception or new migration | No verified exception/new migration | NOT APPLICABLE |
 | TC027-42 | Production migration compatibility | Safe ownership enforcement | Not applicable pending verified exception or new migration | No verified exception/new migration | NOT APPLICABLE |
+
+## Observed CI evidence and qualification
+- Initial run 40990251230: 6/40 passed, 34 failed because Prisma cannot deserialize the PostgreSQL void return of pg_advisory_xact_lock. Fixed with explicit ::text cast in code and isolated rollback test.
+- Final Task027 run 40990349650, job 123850964201: TASK027_SUMMARY={"passed":40,"failed":0,"total":40}. Each of 40 individual scenario IDs passed.
+- Backend tests run 40990349597 SUCCESS; backend refresh regression 40990349580 SUCCESS.
+- Race tests assert at most one accepted physical FK; they do not guarantee both concurrent requests always complete without a transient retry. Transaction retry policy is a production limitation, not a hidden PASS.
+- Existing historical double claims are seeded and detected without deletion in TC027-40; live production aggregate counts have not been read.
+- A direct database writer bypassing advisory locks could still create a second FK because schema has no uniqueness on abandoned_cart_id; production-grade universal enforcement requires verifying Shopify cardinality, live duplicates and all writer paths before considering an index.
