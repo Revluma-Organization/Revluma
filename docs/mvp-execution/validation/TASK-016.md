@@ -99,3 +99,30 @@ At the user's explicit request to proceed with isolated PostgreSQL verification,
 
 ## 10. Ephemeral GitHub Actions PostgreSQL validation initiated
 Created test-only PR #211 (branch `test/task-016-isolated-postgres`, head `d4ed65be6687c5ad6a7be736b2075d38d6775c2b`) with `Backend/src/tests/task016IsolatedPostgres.integration.js` and `.github/workflows/task016-isolated-postgres.yml`. The workflow uses an ephemeral GitHub Actions `postgres:16` service on `127.0.0.1`, Node 22, `npm ci`, `prisma db push` and a 13-case real Prisma persistence matrix with synthetic users, organizations, stores and checkouts. It has an explicit localhost opt-in guard. GitHub Actions run `40983391974` was observed **in progress**; outcome not yet known at report-write time. This is isolated CI test code only, not production app changes; PR unmerged. The separate free Render PostgreSQL instance `dpg-dbhuo759el5s738i6g7g-a` remains unused for testing and should be cleaned up once CI outcome is settled. **Do not change PARTIAL verdict until actual CI results are inspected and documented.**
+
+## 11. FINAL — Real Prisma/PostgreSQL 16 acceptance (2026-10-30)
+
+**FINAL TASK VERDICT: PASS — VERIFIED** for Task 016's thirteen completed-checkout payload persistence scenarios in an isolated disposable PostgreSQL environment. Earlier PARTIAL / BLOCKED labels in sections 1–10 describe the historical sequence before the final successful CI execution and are superseded by this section.
+
+**Evidence:** GitHub Actions workflow `Task 016 isolated PostgreSQL checkout validation`, run ID **40983610337**, job **123829294995**, commit **`eb37c8f6b60e1f98272212ae4b890e2546090c4b`**, test-only PR **#211**. Workflow status **completed / success**. Node 22; `pgvector/pgvector:pg16` ephemeral PostgreSQL service; `CREATE EXTENSION vector`; `npm ci`; `npx prisma db push --skip-generate --accept-data-loss` succeeded; **actual source** `upsertAbandonedCart` using real Prisma Client 6.19.3 executed against a writable database. Synthetic test merchants, user and organization only; localhost guard `TASK016_ISOLATED_DB=true`. No production DB credentials, writes, deployments, Shopify events or production changes.
+
+**Results from CI log (not inferred): 13 PASS / 0 FAIL**:
+1. valid completion persisted recovered;
+2. completion on checkout creation;
+3. pending → recovered on checkout update;
+4. abandoned → recovered;
+5. `recovered_at` exact valid timestamp;
+6. missing `completed_at` stays pending;
+7. null `completed_at` stays pending;
+8. malformed completion date rejected by Prisma; no checkout row persisted as recovered;
+9. duplicate completed delivery reuses row and total count remains one;
+10. later non-completion update preserves recovered state and timestamp;
+11. missing optional fields tolerated;
+12. product items retained after empty update;
+13. identical checkout IDs in different merchants remain isolated.
+
+**Important distinction / retained finding TASK016-FIND-01:** The pure `nextCheckoutStatus` helper still considers a truthy malformed date as completion; the full Prisma write rejects invalid Date and rolls back the transaction in the tested case. The **persisted safety assertion PASSED**. This is not proof all malformed values or all production execution paths are safe; keep the helper-level weakness as a follow-up improvement, not a Task 016 blocker. The tests cover real service and Prisma behavior, not HTTP webhook authentication/controller, concurrent multi-worker race stress or all Shopify payload variants (out of scope).
+
+**CI history:** First run 40983391974 failed while initializing schema because plain `postgres:16` lacked the pgvector type. Updated ephemeral service to `pgvector/pgvector:pg16` and enabled extension. Second run 40983506082 created schema but failed on a synthetic test seed missing required `organization_id`; fixed fixture only. Third run 40983610337 passed all 13. These failures were test infrastructure/fixture issues, not production regressions.
+
+**Task 016 final acceptance:** PASS / VERIFIED. Task 017 can begin only when separately authorized. Test PR #211 and documentation PR #210 remain OPEN and UNMERGED. The separate Render free test instance `dpg-dbhuo759el5s738i6g7g-a` was created earlier but was **not used** in the passing test; Render connector offers no deletion action. It expires 2026-11-29, but manual deletion in the Render dashboard is recommended to avoid unnecessary resources. Do not claim it was deleted.
