@@ -36,6 +36,71 @@ async function main() {
       assert.equal(o.abandoned_cart_id,c.id,'Later checkout must reconcile the previously persisted order');
       assert.equal(c.status,'recovered','Verified completed order must override abandonment');
     });
+    const mkOrder = (suffix, token, extra = {}) => ({ id:prefix+'-order-'+suffix,
+      checkout_token:token, created_at:'2026-10-30T08:00:00Z',
+      total_price:'25', current_total_price:'25', currency:'USD', ...extra });
+    const mkCheckout = (suffix, token, extra = {}) => ({ id:prefix+'-checkout-'+suffix,
+      token, created_at:'2026-10-30T07:55:00Z',
+      updated_at:'2026-10-30T08:01:00Z', total_price:'25',currency:'USD', ...extra });
+    const getOrder = suffix => prisma.orders.findFirstOrThrow({where:{
+      store_id:store.id, external_order_id:prefix+'-order-'+suffix }});
+    await check('TC031-03-unrelated-checkout-does-not-claim-order', async () => {
+      const t=prefix+'-unrelated';
+      await upsertOrder(store,'shopify',mkOrder('unrelated',t));
+      await upsertAbandonedCart(store,mkCheckout('unrelated',prefix+'-different'));
+      assert.equal((await getOrder('unrelated')).abandoned_cart_id,null);
+    });
+    await check('TC031-04-order-first-idempotent-repeated-checkout', async () => {
+      const t=prefix+'-idempotent';
+      await upsertOrder(store,'shopify',mkOrder('idempotent',t));
+      await upsertAbandonedCart(store,mkCheckout('idempotent',t));
+      await upsertAbandonedCart(store,mkCheckout('idempotent',t));
+      const o=await getOrder('idempotent');
+      assert.ok(o.abandoned_cart_id);
+      assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,
+        external_cart_id:prefix+'-checkout-idempotent'}}),1);
+      assert.equal(await prisma.orders.count({where:{store_id:store.id,
+        abandoned_cart_id:o.abandoned_cart_id}}),1);
+    });
+    await check('TC031-05-second-order-cannot-claim-owned-checkout', async () => {
+      const t=prefix+'-owned';
+      await upsertOrder(store,'shopify',mkOrder('owned-a',t));
+      await upsertOrder(store,'shopify',mkOrder('owned-b',t));
+      await upsertAbandonedCart(store,mkCheckout('owned',t));
+      const a=await getOrder('owned-a'),b=await getOrder('owned-b');
+      const claimed=[a,b].filter(x=>x.abandoned_cart_id);
+      assert.equal(claimed.length,1);
+      assert.equal(a.abandoned_cart_id===b.abandoned_cart_id,false);
+    });
+    await check('TC031-06-cross-merchant-identity-isolation', async () => {
+      const otherStore={id:randomUUID(),platform:'shopify'};
+      await prisma.stores.create({data:{id:otherStore.id,organization_id:org,
+        platform:'shopify',shop_domain:prefix+'-other.myshopify.com'}});
+      const t=prefix+'-cross-merchant';
+      await upsertOrder(store,'shopify',mkOrder('cross-merchant',t));
+      await upsertAbandonedCart(otherStore,mkCheckout('cross-merchant',t));
+      assert.equal((await getOrder('cross-merchant')).abandoned_cart_id,null);
+    });
+    await check('TC031-08-cancelled-order-does-not-mark-recovered', async () => {
+      const t=prefix+'-cancelled';
+      await upsertOrder(store,'shopify',mkOrder('cancelled',t));
+      const o=await getOrder('cancelled');
+      await prisma.orders.update({where:{id:o.id},data:{recovery_status:'cancelled'}});
+      await upsertAbandonedCart(store,mkCheckout('cancelled',t));
+      const c=await prisma.abandoned_carts.findFirstOrThrow({where:{
+        store_id:store.id,external_cart_id:prefix+'-checkout-cancelled'}});
+      assert.notEqual(c.status,'recovered');
+    });
+    await check('TC031-09-replay-does-not-reopen-recovered', async () => {
+      const t=prefix+'-replay';
+      await upsertOrder(store,'shopify',mkOrder('replay',t));
+      await upsertAbandonedCart(store,mkCheckout('replay',t));
+      await upsertAbandonedCart(store,mkCheckout('replay',t,{
+        updated_at:'2026-10-30T07:54:00Z'}));
+      const c=await prisma.abandoned_carts.findFirstOrThrow({where:{
+        store_id:store.id,external_cart_id:prefix+'-checkout-replay'}});
+      assert.equal(c.status,'recovered');
+    });
     await check('TC031-07-duplicate-checkout-still-reconciles', async () => {
       await upsertAbandonedCart(store,{ id:checkoutId, token, created_at:'2026-10-30T07:55:00Z', updated_at:'2026-10-30T08:02:00Z', total_price:'25',currency:'USD' });
       const o = await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:externalOrder}});
