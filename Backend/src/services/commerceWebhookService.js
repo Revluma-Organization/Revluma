@@ -447,12 +447,23 @@ async function reconcileOrdersOnCheckoutArrival(store, cart) {
   // Include cart-token-only orders even when the incoming checkout also has
   // its own strong identity. Each order is evaluated against its own strongest
   // available evidence below; a cart token cannot override contradictory IDs.
-  const unresolved = await prisma.orders.findMany({
-    where: { store_id: store.id, abandoned_cart_id: null,
-      OR: identities.map(([field, value]) => ({ [field]: value })) },
-    select: { id: true }, take: 50,
-  });
-  for (const { id } of unresolved) {
+  // Page through every matching unresolved order. A fixed first-50 limit
+  // silently strands later orders, especially when earlier rows are ambiguous.
+  const pendingIds = [];
+  let cursor;
+  for (;;) {
+    const batch = await prisma.orders.findMany({
+      where: { store_id: store.id, abandoned_cart_id: null,
+        OR: identities.map(([field, value]) => ({ [field]: value })) },
+      select: { id: true }, orderBy: { id: 'asc' }, take: 50,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    if (!batch.length) break;
+    pendingIds.push(...batch.map(row => row.id));
+    cursor = batch[batch.length - 1].id;
+    if (batch.length < 50) break;
+  }
+  for (const id of pendingIds) {
     await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${cart.id}::text, 0))::text AS lock_acquired`;
       const order = await tx.orders.findFirst({
