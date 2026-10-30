@@ -1,6 +1,6 @@
 # TASK 032 — Checkout-first event delivery validation
 
-**Status: PARTIAL — 15/15 GROUPED ASSERTIONS PASSED; 60-SCENARIO ACCEPTANCE NOT YET COMPLETE; BOTH BACKENDS LIVE**
+**Status: PARTIAL — 18/18 GROUPED ASSERTIONS PASS; 26/60 CASE IDS NAMED IN PASSING ASSERTIONS; REMAINING CASES NOT VERIFIED**
 
 **Baseline:** `cfbb1f5dc10b032688a001f2f014ac7498f4c70d` (merged Task031). **Branch:** `test/mvp-task-032-checkout-first-delivery`. **Scope:** Shopify-only read-only validation. No production code changes.
 
@@ -104,44 +104,44 @@ Branch contains test, CI and documentation only. No merge or deployment authoriz
 
 | Case | Status | Evidence / outstanding work |
 |---|---|---|
-| TC032-01 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-02 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-03 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-04 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-05 | NOT RUN | Grouped isolated assertion authored; await CI execution |
+| TC032-01 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-01. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-02 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-02. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-03 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-03. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-04 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-04. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-05 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-05. Grouped evidence only; exact subcondition coverage must be reviewed. |
 | TC032-06 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-07 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-08 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-09 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-10 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-11 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-12 | NOT RUN | Grouped isolated assertion authored; await CI execution |
+| TC032-08 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-08. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-09 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-09. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-10 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-10. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-11 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-11. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-12 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-12. Grouped evidence only; exact subcondition coverage must be reviewed. |
 | TC032-13 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-14 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-15 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-16 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-17 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-18 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-19 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-20 | NOT RUN | Grouped isolated assertion authored; await CI execution |
+| TC032-14 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-14. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-15 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-15. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-16 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-16. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-17 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-17. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-18 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-18. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-19 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-19. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-20 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-20. Grouped evidence only; exact subcondition coverage must be reviewed. |
 | TC032-21 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-22 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-23 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-24 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-25 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-26 | NOT RUN | Grouped isolated assertion authored; await CI execution |
+| TC032-25 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-25. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-26 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-26. Grouped evidence only; exact subcondition coverage must be reviewed. |
 | TC032-27 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-28 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-29 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-30 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-31 | NOT RUN | Grouped isolated assertion authored; await CI execution |
-| TC032-32 | NOT RUN | Grouped isolated assertion authored; await CI execution |
+| TC032-31 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-31. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-32 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-32. Grouped evidence only; exact subcondition coverage must be reviewed. |
 | TC032-33 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-34 | NOT RUN | Grouped isolated assertion authored; await CI execution |
+| TC032-34 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-34. Grouped evidence only; exact subcondition coverage must be reviewed. |
 | TC032-35 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-36 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-37 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-38 | NOT RUN | Grouped isolated assertion authored; await CI execution |
+| TC032-36 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-36. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-37 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-37. Grouped evidence only; exact subcondition coverage must be reviewed. |
+| TC032-38 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-38. Grouped evidence only; exact subcondition coverage must be reviewed. |
 | TC032-39 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-40 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-41 | NOT RUN | Dedicated acceptance coverage not yet implemented |
@@ -156,7 +156,7 @@ Branch contains test, CI and documentation only. No merge or deployment authoriz
 | TC032-50 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-51 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-52 | NOT RUN | Dedicated acceptance coverage not yet implemented |
-| TC032-53 | NOT RUN | Grouped isolated assertion authored; await CI execution |
+| TC032-53 | PASS (grouped assertion) | Isolated PostgreSQL CI run 41035894741; see test assertion label containing TC032-53. Grouped evidence only; exact subcondition coverage must be reviewed. |
 | TC032-54 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-55 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 | TC032-56 | NOT RUN | Dedicated acceptance coverage not yet implemented |
@@ -182,3 +182,19 @@ No production credentials, merchant records, Shopify state or deployment modifie
 - Render Python service `srv-db9m923ncjis739s8co0`: deployment `dep-dbi63j4s728c73ces49g`, status LIVE, commit `a3bcb0e`.
 - The ledger above was originally authored before execution and is not a complete post-run accounting; named cases supported by the 15 grouped assertions have passing automated evidence, but other cases remain NOT RUN. A successful deployment does not resolve this gap.
 - Task033 must not be represented as unblocked by a full Task032 PASS until the 60-case acceptance ledger has defensible evidence.
+
+## Acceptance reconciliation — CI 41035894741
+- Branch `test/task032-acceptance-closure`, commit `1226ea743341f739e675d273e49f5dfc740d0074`: 18 grouped assertions PASS, 0 FAIL, 0 SKIP; PostgreSQL isolated via workflow.
+- Backend tests run 41035894865 SUCCESS; backend refresh regression run 41035894904 SUCCESS.
+- The 26 case IDs in grouped test names have been mapped to their passing assertion groups in the ledger. This **does not establish complete individual-case verification**, because grouped assertions may check only part of the named contract. Other 34 IDs remain NOT RUN. Three additional passing tests (durability, same IDs across stores, concurrent checkout duplicates) have no exact TC032 number mapping and are not used to inflate the count.
+- No evidence for the outstanding 34 numbered scenarios was fabricated. Final status remains PARTIAL; Task033 gate stays closed pending executable scenario-specific checks and contract review.
+
+
+## Expanded acceptance evidence — 2026-10-30 (PR #230)
+- Isolated PostgreSQL CI run **41037847384** at commit `d23b765481709f825585172db5581f5513b4d461`: **38/38 grouped integration checks passed, zero failures**. Backend tests **41037847345** and backend refresh regression **41037847396** also succeeded.
+- Additional executed cases include TC032-06, 07, 13, 21–24, 27–30, 33, 35, 39–44, 46–47, 49–54, 58–60. Their presence in a passing grouped test is not by itself evidence that every subcondition is exhaustively checked.
+- Commit `282fcac022155c135800c531073f0d37d83bd801` adds process-restart durability (TC032-45) and a database-trigger-injected relationship failure (TC032-48). **These tests remain pending CI confirmation at the time of this documentation update.**
+- The TC032-40 test establishes database merchant scoping when the wrong store is supplied; it does **not** establish signature authentication or reject a forged HTTP request. The TC032-58/59 test checks reconciliation case rows, not every log or persistence location. The TC032-51/52 test checks filtered cart aggregation, not necessarily the production Command Center query.
+- TC032-55, TC032-56 and TC032-57 require explicit review of named prior-task regressions. General backend CI green does not by itself prove these three acceptance gates.
+- **Remaining certification gaps:** end-to-end webhook identity/authentication for TC032-40; actual scheduled threshold boundary and dashboard metric query for TC032-27–29/51–52; full logging/payload privacy review TC032-58/59; explicit Tasks017–031 regression mapping TC032-55–57; latest fault injection/restart CI evidence TC032-45/48.
+- **Decision:** Task032 remains **PARTIAL** and PR #230 must not merge as full acceptance until the gaps are closed. No production code changes were made.
