@@ -292,7 +292,21 @@ async function upsertOrder(store, provider, payload) {
     const typedColumns = { checkout_id: 'source_checkout_id', checkout_token: 'source_checkout_token', cart_token: 'source_cart_token' };
     for (const [type, identifier] of evidence) {
       const rows = await tx.abandoned_carts.findMany({
-        where: { store_id: store.id, [typedColumns[type]]: identifier },
+        where: {
+          store_id: store.id,
+          OR: [
+            { [typedColumns[type]]: identifier },
+            // Legacy records predate Task028 typed columns. Only consider
+            // their exact original identity when *all* typed identities
+            // are absent; never reinterpret a known token as another type.
+            {
+              external_cart_id: identifier,
+              source_checkout_id: null,
+              source_checkout_token: null,
+              source_cart_token: null,
+            },
+          ],
+        },
         select: { id: true, store_id: true, session_id: true, external_cart_id: true },
         take: 2,
       });
