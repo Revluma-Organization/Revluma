@@ -29,7 +29,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 021 | Phase 1 | Reject matches based only on email. | NOT STARTED | — | — | — |
 | 022 | Phase 1 | Reject matches based only on amount or time. | NOT STARTED | — | — | — |
 | 023 | Phase 1 | Review coupon-based fallback for false matches. | NOT STARTED | — | — | — |
-| 024 | Phase 1 | Persist verified order-to-checkout relationship. | NOT STARTED | — | — | — |
+| 024 | Phase 1 | Persist verified order-to-checkout relationship. | PASS — VERIFIED IN ISOLATED POSTGRESQL; NOT DEPLOYED | [TASK-024](implementation/TASK-024.md) | branch fix/mvp-task-024-verified-checkout-order-persistence; source f5f8abd, 30758e4; 26/26 PASS, run 40988004734; backend tests and refresh regression SUCCESS; REV-FIND-023-01/02/05, REV-FIND-017-01/02; Tasks 025–029, 046–049 | 2026-10-30 |
 | 025 | Phase 1 | Record unresolved order-to-checkout relationships. | NOT STARTED | — | — | — |
 | 026 | Phase 1 | Detect conflicting checkout matches. | NOT STARTED | — | — | — |
 | 027 | Phase 1 | Prevent two orders from incorrectly claiming one checkout. | NOT STARTED | — | — | — |

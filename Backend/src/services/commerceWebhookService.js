@@ -176,7 +176,6 @@ async function upsertOrder(store, provider, payload) {
         total,
         currency,
         ordered_at: orderDate,
-        recovery_status: 'completed',
         subtotal,
         discount_amount: discountAmount,
         discount_pct: discountPct,
@@ -207,52 +206,43 @@ async function upsertOrder(store, provider, payload) {
       });
     }
 
-    // Shopify may identify a checkout by its numeric ID or opaque token.
-    // Try each distinct identifier rather than choosing only the first one.
-    const cartIdentifiers = [...new Set(
-      [payload.checkout_id, payload.cart_token, payload.checkout_token]
+    // Task 024: persist only an unambiguous merchant-scoped authoritative identity.
+    // The checkout ingestion currently stores one identifier in external_cart_id;
+    // do not infer a match from customer, email, amount, time, or coupon evidence.
+    const identifiers = [...new Set(
+      [payload.checkout_id, payload.checkout_token, payload.cart_token]
         .filter((value) => value !== null && value !== undefined && String(value).trim())
         .map(String)
     )];
-    let cart = null;
-    if (cartIdentifiers.length) {
-      cart = await tx.abandoned_carts.findFirst({
-        where: { store_id: store.id, external_cart_id: { in: cartIdentifiers } },
-        select: { id: true, session_id: true },
-        orderBy: { updated_at: 'desc' },
+    const matched = identifiers.length
+      ? await tx.abandoned_carts.findMany({
+          where: { store_id: store.id, external_cart_id: { in: identifiers } },
+          select: { id: true, store_id: true, session_id: true, external_cart_id: true },
+          take: 2,
+        })
+      : [];
+    // Multiple matching checkout rows are ambiguous; never choose by updated_at.
+    const candidate = matched.length === 1 ? matched[0] : null;
+    if (candidate) {
+      // Conditional compare-and-set is atomic even when two workers race.
+      // It cannot overwrite an existing relationship with another checkout.
+      const written = await tx.orders.updateMany({
+        where: { id: order.id, store_id: store.id, abandoned_cart_id: null },
+        data: { abandoned_cart_id: candidate.id, session_id: candidate.session_id },
       });
-    }
-    if (!cart && couponCode) {
-      const recoverySend = await tx.sequence_sends.findFirst({
-        where: {
-          store_id: store.id,
-          metadata: { path: ['discount_code'], equals: couponCode },
-        },
-        orderBy: { sent_at: 'desc' },
-        select: { metadata: true },
-      });
-      const cartId = recoverySend?.metadata?.abandoned_cart_id;
-      if (cartId) {
-        cart = await tx.abandoned_carts.findFirst({
-          where: { id: cartId, store_id: store.id },
-          select: { id: true, session_id: true },
+      if (!written.count) {
+        const current = await tx.orders.findUnique({
+          where: { id: order.id }, select: { abandoned_cart_id: true, store_id: true },
         });
+        if (current?.store_id !== store.id || current.abandoned_cart_id !== candidate.id) {
+          const error = new Error('Verified checkout relationship conflicts with an existing association');
+          error.code = 'CHECKOUT_RELATIONSHIP_CONFLICT';
+          throw error;
+        }
       }
     }
-    if (cart) {
-      await tx.abandoned_carts.update({
-        where: { id: cart.id },
-        data: { status: 'recovered', recovered_at: orderDate, updated_at: new Date() },
-      });
-      await tx.orders.update({
-        where: { id: order.id },
-        data: {
-          abandoned_cart_id: cart.id,
-          session_id: cart.session_id,
-          recovery_status: 'recovered',
-        },
-      });
-    }
+    // Do not mutate checkout lifecycle or claim recovered revenue here:
+    // relationship persistence is independent from attribution (Tasks 029, 046–047).
     await recalculateCustomerTotals(tx, dbCustomer.id);
     return order;
   });
