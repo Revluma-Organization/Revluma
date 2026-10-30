@@ -438,6 +438,7 @@ module.exports = {
   recalculateCustomerTotals,
   upsertAbandonedCart,
   upsertOrder,
+  recordOrderReconciliationCase,
   verifyShopifySignature,
   verifyWooCommerceSignature,
 };
