@@ -47,5 +47,9 @@ jobs:
         run: PGPASSWORD=task025_local_only psql -h 127.0.0.1 -U task025 -d task025 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
       - name: Initialize disposable Prisma schema
         run: npx prisma db push --skip-generate --accept-data-loss
+      - name: Validate additive migration against disposable existing schema
+        run: |
+          PGPASSWORD=task025_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task025 -d task025 -c 'DROP TABLE "order_checkout_reconciliation_cases"; DROP INDEX "uq_orders_store_id";'
+          PGPASSWORD=task025_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task025 -d task025 -f prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql
       - name: Execute unresolved rejection tests
         run: node src/tests/task025Unresolved.integration.js
