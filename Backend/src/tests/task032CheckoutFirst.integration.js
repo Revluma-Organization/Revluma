@@ -348,6 +348,22 @@ async function main(){
       assert.equal((await getOrder(suffix)).abandoned_cart_id,(await getCart(suffix)).id);
       assert.equal((await getCart(suffix)).status,'recovered');
     });
+    await check('TC032-48-failed-relationship-write-rolls-back-order-and-checkout',async()=>{
+      const suffix='forced-relation-failure';
+      await upsertAbandonedCart(store,checkout(suffix));
+      await prisma.$executeRawUnsafe("CREATE OR REPLACE FUNCTION task032_reject_relationship() RETURNS trigger LANGUAGE plpgsql AS $ BEGIN IF NEW.external_order_id LIKE '%forced-relation-failure' AND NEW.abandoned_cart_id IS NOT NULL THEN RAISE EXCEPTION 'task032 injected relationship failure'; END IF; RETURN NEW; END; $");
+      await prisma.$executeRawUnsafe("CREATE TRIGGER task032_relationship_failure BEFORE INSERT OR UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION task032_reject_relationship()");
+      try{
+        await assert.rejects(upsertOrder(store,'shopify',order(suffix)),/task032 injected relationship failure|task032_reject_relationship|P2010|P2004/);
+        assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}}),0);
+        const c=await getCart(suffix);
+        assert.notEqual(c.status,'recovered');
+        assert.equal(await prisma.orders.count({where:{store_id:store.id,abandoned_cart_id:c.id}}),0);
+      }finally{
+        await prisma.$executeRawUnsafe("DROP TRIGGER IF EXISTS task032_relationship_failure ON orders");
+        await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS task032_reject_relationship()");
+      }
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
