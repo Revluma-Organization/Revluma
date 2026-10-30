@@ -11,6 +11,8 @@ async function run() {
   }
   const runId = crypto.randomUUID().slice(0, 8);
   const id = () => crypto.randomUUID();
+  const userId = id();
+  const orgId = id();
   const storeId = id();
   const store2Id = id();
   const now = new Date('2026-10-30T00:15:00.000Z');
@@ -19,14 +21,16 @@ async function run() {
     updated_at: now.toISOString(), total_price: '100.00', currency: 'USD',
   });
   const completed = key => ({ ...base(key), completed_at: now.toISOString() });
-  const store = { id: storeId, platform: 'shopify' };
-  const otherStore = { id: store2Id, platform: 'shopify' };
+  const store = { id: storeId, organization_id: orgId, platform: 'shopify' };
+  const otherStore = { id: store2Id, organization_id: orgId, platform: 'shopify' };
   const checks = [];
   const check = async (name, callback) => {
     try { await callback(); checks.push({ name, pass: true }); }
     catch (error) { checks.push({ name, pass: false, error: error.message }); }
   };
   try {
+    await prisma.users.create({ data: { id: userId, full_name: 'Synthetic Task016', email: `task016-${runId}@example.invalid` } });
+    await prisma.organizations.create({ data: { id: orgId, owner_id: userId, company_name: 'Synthetic Task016', industry: 'other', country: 'US', slug: `task016-${runId}` } });
     await prisma.stores.createMany({ data: [
       { id: storeId, platform: 'shopify', shop_domain: `task016-${runId}.myshopify.com`, name: 'Task016 A' },
       { id: store2Id, platform: 'shopify', shop_domain: `task016-${runId}-b.myshopify.com`, name: 'Task016 B' },
@@ -99,6 +103,8 @@ async function run() {
     });
   } finally {
     await prisma.stores.deleteMany({ where: { id: { in: [storeId, store2Id] } } });
+    await prisma.organizations.deleteMany({ where: { id: orgId } });
+    await prisma.users.deleteMany({ where: { id: userId } });
     await prisma.$disconnect();
   }
   console.log(JSON.stringify({ task: '016', checks, passed: checks.filter(x => x.pass).length, total: checks.length }));
