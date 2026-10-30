@@ -91,4 +91,4 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Consequences: historical replays cannot silently reassign; conflicts with existing FK remain durably observable. Task028 required for full token provenance, Task027 for checkout claim exclusivity.
 - Related findings: REV-FIND-017-01/02, REV-FIND-026-01.
 - Source commit: 1d830e2fa383b603ad2b24b1cb9a53b30d1bc032.
-- Verification: pending GitHub Actions Task026 isolated PostgreSQL suite.
+- Verification: Task026 40/40 PASS run 40989659035 job 123848709961; inherited Task025 28/28 PASS run 40989659093 job 123848710278; backend tests and refresh regression SUCCESS. No production deployment.
