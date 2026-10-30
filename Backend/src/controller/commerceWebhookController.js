@@ -49,6 +49,31 @@ exports.receive = async (req, res, next) => {
 
   try {
     const payload = JSON.parse(rawBody.toString('utf8'));
+    // Temporary Task 013 diagnostic. Field names/types only; never log payload values.
+    // Restricted to the dedicated test shop and explicitly enabled deployments.
+    if (
+      process.env.TASK013_CHECKOUT_FIELD_CAPTURE === 'true' &&
+      provider === 'shopify' &&
+      headers.domain === 'revluma-test-store-v1.myshopify.com' &&
+      ['checkouts/create', 'checkouts/update'].includes(headers.topic)
+    ) {
+      const fieldType = (value) => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+      const fields = payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? Object.keys(payload).sort().map((key) => [key, fieldType(payload[key])])
+        : [];
+      const items = Array.isArray(payload?.line_items) ? payload.line_items : null;
+      const itemFields = items
+        ? [...new Set(items.flatMap((item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.keys(item) : []))].sort()
+        : [];
+      logger.info('task013_checkout_field_presence', {
+        topic: headers.topic,
+        store_id: store.id,
+        fields,
+        line_items_type: fieldType(payload?.line_items),
+        line_items_count: items?.length ?? null,
+        line_item_field_names: itemFields,
+      });
+    }
     const result = await processCommerceWebhook({ provider, store, topic: headers.topic, payload });
     await markDelivery(delivery.id, 'processed');
     logger.info('commerce_webhook_processed', { provider, store_id: store.id, topic: headers.topic, action: result.action });
