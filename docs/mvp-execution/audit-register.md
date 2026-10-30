@@ -23,7 +23,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 015 | Phase 1 | Document checkout/order state definitions. | NOT STARTED | — | — | — |
 | 016 | Phase 1 | Test completed checkout payload handling. | NOT STARTED | — | — | — |
 | 017 | Phase 1 | Test order-to-checkout exact ID match. | NOT STARTED | — | — | — |
-| 018 | Phase 1 | Test checkout token matching independently. | NOT STARTED | — | — | — |
+| 018 | Phase 1 | Test checkout token matching independently. | **FAIL — VERIFIED**; real isolated Prisma/PostgreSQL 16 PASS / 4 FAIL (20 tests); token lost, duplicate ambiguity, conflicting IDs, order-first unreconciled | [TASK-018](validation/TASK-018.md) | PR #213; CI run 40984467993 job 123832124394; findings REV-FIND-018-01/02/03 and inherited REV-FIND-017-01/02; TASK 025/026/028/049 dependencies; no production changes | 2026-10-30 |
 | 019 | Phase 1 | Test cart token matching independently. | NOT STARTED | — | — | — |
 | 020 | Phase 1 | Reject matches based only on customer identity. | NOT STARTED | — | — | — |
 | 021 | Phase 1 | Reject matches based only on email. | NOT STARTED | — | — | — |
