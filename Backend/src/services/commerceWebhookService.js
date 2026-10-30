@@ -403,8 +403,18 @@ async function upsertOrder(store, provider, payload) {
         candidateCount: candidates.length,
       });
     }
-    // Do not mutate checkout lifecycle or claim recovered revenue here:
-    // relationship persistence is independent from attribution (Tasks 029, 046–047).
+    // Task 029: only a durably verified, merchant-scoped order relationship
+    // establishes order-based checkout completion. Keep recovery attribution separate.
+    const verifiedOrder = await tx.orders.findFirst({
+      where: { id: order.id, store_id: store.id },
+      select: { abandoned_cart_id: true, ordered_at: true, recovery_status: true },
+    });
+    if (verifiedOrder?.abandoned_cart_id && verifiedOrder.recovery_status !== 'cancelled') {
+      await tx.abandoned_carts.updateMany({
+        where: { id: verifiedOrder.abandoned_cart_id, store_id: store.id, status: { not: 'recovered' } },
+        data: { status: 'recovered', recovered_at: verifiedOrder.ordered_at },
+      });
+    }
     await recalculateCustomerTotals(tx, dbCustomer.id);
     return order;
   });
