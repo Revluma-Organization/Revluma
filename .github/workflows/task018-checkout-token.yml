@@ -1,0 +1,48 @@
+name: Task 018 isolated checkout token matching
+on:
+  pull_request:
+    paths:
+      - "Backend/src/tests/task018CheckoutToken.integration.js"
+      - ".github/workflows/task018-checkout-token.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  task018:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: task018
+          POSTGRES_PASSWORD: task018_local_only
+          POSTGRES_DB: task018
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U task018 -d task018"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    defaults:
+      run:
+        working-directory: Backend
+    env:
+      DATABASE_URL: postgresql://task018:task018_local_only@127.0.0.1:5432/task018?schema=public
+      DIRECT_URL: postgresql://task018:task018_local_only@127.0.0.1:5432/task018?schema=public
+      TASK018_ISOLATED_DB: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - run: npm ci
+      - name: Enable vector extension
+        run: PGPASSWORD=task018_local_only psql -h 127.0.0.1 -U task018 -d task018 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+      - name: Initialize disposable Prisma schema
+        run: npx prisma db push --skip-generate --accept-data-loss
+      - name: Execute checkout token tests
+        run: node src/tests/task018CheckoutToken.integration.js
