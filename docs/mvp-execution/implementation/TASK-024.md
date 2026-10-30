@@ -49,37 +49,37 @@ No existing merchant rows altered. Existing weak-signal links are not automatica
 GitHub Actions Node 22 + disposable pgvector PostgreSQL 16 on localhost DB `task024`; `TASK024_ISOLATED_DB=true`; `npm ci`, `CREATE EXTENSION vector`, `npx prisma db push --skip-generate --accept-data-loss` **only on disposable database**, `node src/tests/task024VerifiedPersistence.integration.js`. No Shopify or production DB connection.
 
 ## Q. Test execution
-PENDING CI — do not infer PASS from source inspection.
+**PASS — VERIFIED**. GitHub Actions run 40988004734, job 123843440071, executed 2026-10-30T01:49:02Z; actual job log `TASK024_SUMMARY={"passed":26,"failed":0,"total":26}`. Backend tests run 40988004687 SUCCESS; Backend refresh regression run 40988004723 SUCCESS. Synthetic isolated PostgreSQL only; no production verification.
 
 ## R. Persistence validation matrix
 | Test | Scenario | Expected | Actual | Evidence | Status |
 |---|---|---|---|---|---|
-| TC024-01 | Exact checkout ID | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-02 | Checkout token | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-03 | Cart token | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-04 | Missing checkout | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-05 | Missing order | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-06 | Order-first arrival | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-07 | Checkout-first arrival | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-08 | Duplicate persistence | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-09 | Duplicate webhook | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-10 | Concurrent identical writes | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-11 | Concurrent conflicting writes | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-12 | Cross-merchant | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-13 | Forged merchant | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-14 | Email-only | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-15 | Customer-only | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-16 | Amount-only | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-17 | Time-only | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-18 | Coupon-only | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-19 | Combined weak | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-20 | Subsequent updates | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-21 | Historical reimport | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-22 | Transaction failure | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-23 | Fresh session durability | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-24 | Conflicting authoritative evidence | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-25 | Lifecycle isolation | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
-| TC024-26 | Revenue attribution isolation | Required safety behavior | PENDING CI | GitHub Actions | NOT RUN |
+| TC024-01 | Exact checkout ID | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-02 | Checkout token | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-03 | Cart token | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-04 | Missing checkout | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-05 | Missing order | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-06 | Order-first arrival | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-07 | Checkout-first arrival | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-08 | Duplicate persistence | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-09 | Duplicate webhook | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-10 | Concurrent identical writes | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-11 | Concurrent conflicting writes | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-12 | Cross-merchant | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-13 | Forged merchant | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-14 | Email-only | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-15 | Customer-only | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-16 | Amount-only | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-17 | Time-only | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-18 | Coupon-only | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-19 | Combined weak | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-20 | Subsequent updates | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-21 | Historical reimport | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-22 | Transaction failure | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-23 | Fresh session durability | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-24 | Conflicting authoritative evidence | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-25 | Lifecycle isolation | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
+| TC024-26 | Revenue attribution isolation | Required safety behavior | PASS | GitHub Actions 40988004734, job 123843440071 | VERIFIED |
 
 ## S. Performance review
 One indexed store/external-ID `findMany(take:2)`, conditional order PK update; avoids sequence-send JSON scan. No new index. At most two rows fetched to identify ambiguity. Existing order/customer upsert and item queries remain unchanged.
@@ -88,7 +88,7 @@ One indexed store/external-ID `findMany(take:2)`, conditional order PK update; a
 Conflicting FK throws `CHECKOUT_RELATIONSHIP_CONFLICT`; transaction rollback. No PII in error string. DB failures propagate, not silently claimed successful. Full transient failure retries not added.
 
 ## U. Findings
-REV-FIND-023-01 coupon-only unsafe FK: **RESOLVED — CODE** on this branch; verification pending. REV-FIND-023-02 arbitrary coupon candidate: **RESOLVED — CODE** on this branch; verification pending. REV-FIND-023-05 verified-FK reassignment: **RESOLVED — CODE** on this branch; verification pending. REV-FIND-017-01/02 ambiguous and conflicting identifier evidence: **PARTIALLY ADDRESSED IN CODE**; comprehensive policy Task 026 remains OPEN. REV-FIND-018-01 checkout-token provenance and REV-FIND-019-01 identifier slot loss: OPEN Task 028. No false claim of live merchant incident or production remediation.
+REV-FIND-023-01 coupon-only unsafe FK: **RESOLVED — CODE** on this branch; verified by isolated PostgreSQL CI. REV-FIND-023-02 arbitrary coupon candidate: **RESOLVED — CODE** on this branch; verified by isolated PostgreSQL CI. REV-FIND-023-05 verified-FK reassignment: **RESOLVED — CODE** on this branch; verified by isolated PostgreSQL CI. REV-FIND-017-01/02 ambiguous and conflicting identifier evidence: **PARTIALLY ADDRESSED IN CODE**; comprehensive policy Task 026 remains OPEN. REV-FIND-018-01 checkout-token provenance and REV-FIND-019-01 identifier slot loss: OPEN Task 028. No false claim of live merchant incident or production remediation.
 
 ## V. Future dependencies
 Task 025 unresolved relationship recording; Task 026 conflicting authoritative matches; Task 027 multiple orders claiming one checkout; Task 028 source identifier provenance; Tasks 029/030 checkout lifecycle; Tasks 046/047 attribution semantics; Task 049 regression. None started.
@@ -97,10 +97,10 @@ Task 025 unresolved relationship recording; Task 026 conflicting authoritative m
 Synthetic test fixtures do not prove real Shopify ID namespace equivalence; source checkout stores one identifier; no production revision alignment; no live merchant data audit; no complete concurrent webhook replay infrastructure validation. Existing historical false relationships remain untouched. Checkout-token match only if its value equals stored external_cart_id; no new source token fields introduced.
 
 ## X. Final status
-**PARTIAL — IMPLEMENTED, TEST VERIFICATION PENDING — NOT DEPLOYED.** Update only after actual CI evidence.
+**PASS — IMPLEMENTED AND VERIFIED IN ISOLATED POSTGRESQL; NOT MERGED OR DEPLOYED.** All 26 scenarios PASS, 0 FAIL; backend tests and refresh regression SUCCESS. This is task-scoped completion, not a certification of real Shopify identifiers or production deployment.
 
 ## Y. Version control
-Branch `fix/mvp-task-024-verified-checkout-order-persistence`, PR pending; commits listed in A. Test file `Backend/src/tests/task024VerifiedPersistence.integration.js`; workflow `.github/workflows/task024-verified-persistence.yml`; report and central audit register.
+Branch `fix/mvp-task-024-verified-checkout-order-persistence`, PR #219 open, unmerged; commits listed in A. CI run 40988004734. Test file `Backend/src/tests/task024VerifiedPersistence.integration.js`; workflow `.github/workflows/task024-verified-persistence.yml`; report and central audit register.
 
 ## Z. Deployment status
 **NOT MERGED, NOT DEPLOYED.** No production DB changes, Shopify mutations, migrations or release authorization.
