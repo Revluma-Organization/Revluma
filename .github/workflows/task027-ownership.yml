@@ -5,12 +5,12 @@ on:
       - "Backend/src/tests/task027Ownership.integration.js"
       - "Backend/src/services/commerceWebhookService.js"
       - "Backend/prisma/schema.prisma"
-      - "Backend/prisma/migrations/20271030020000_task025_unresolved_reconciliation/migration.sql"
+      - "Backend/prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql"
       - ".github/workflows/task027-ownership.yml"
   workflow_dispatch:
   push:
     branches:
-      - "fix/mvp-task-027-checkout-match-ownership"
+      - "fix/mvp-task-027-checkout-order-ownership"
 permissions:
   contents: read
 jobs:
@@ -53,6 +53,6 @@ jobs:
       - name: Validate additive migration against disposable existing schema
         run: |
           PGPASSWORD=task027_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task027 -d task027 -c 'DROP TABLE "order_checkout_reconciliation_cases"; DROP INDEX "uq_orders_store_id";'
-          PGPASSWORD=task027_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task027 -d task027 -f prisma/migrations/20271030020000_task025_unresolved_reconciliation/migration.sql
+          PGPASSWORD=task027_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task027 -d task027 -f prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql
       - name: Execute ownership rejection tests
         run: node src/tests/task027Ownership.integration.js
