@@ -1,6 +1,6 @@
 # TASK 032 — Checkout-first event delivery validation
 
-**Status: PARTIAL — 12/12 GROUPED ASSERTIONS PASSED AT COMMIT 21527452; EXPANDED REGRESSIONS PENDING / NOT PRODUCTION VERIFIED**
+**Status: PARTIAL — 15/15 GROUPED ASSERTIONS PASSED; 60-SCENARIO ACCEPTANCE NOT YET COMPLETE; BOTH BACKENDS LIVE**
 
 **Baseline:** `cfbb1f5dc10b032688a001f2f014ac7498f4c70d` (merged Task031). **Branch:** `test/mvp-task-032-checkout-first-delivery`. **Scope:** Shopify-only read-only validation. No production code changes.
 
@@ -95,7 +95,7 @@ Pending specific execution evidence; do not infer PASS from code inspection.
 Many matrix cases lack dedicated executable assertions; full contract not certified.
 
 ## AE. Final status
-PARTIAL pending CI, remaining scenarios, and defect triage.
+PARTIAL: all 15 implemented grouped assertions pass; outstanding 60-scenario acceptance coverage is not certified. Both Render backend services are live at the merged Task032 revision.
 
 ## AF. Version control
 Branch contains test, CI and documentation only. No merge or deployment authorized.
@@ -173,3 +173,12 @@ No production credentials, merchant records, Shopify state or deployment modifie
 - Three further grouped assertions were added: contradictory strong identifiers (TC032-19), concurrent order replay (TC032-36), and simultaneous checkout/order replay (TC032-37). Their results remain pending.
 - All 60 acceptance cases require individually defensible evidence; a grouped test does not imply full scenario coverage. The ledger above is conservative and retains NOT RUN until mapped with observed evidence.
 - **Merge gate:** do not merge while expanded checks are unverified or important matrix gaps remain.
+
+## Post-merge evidence reconciliation — 2026-10-30
+- GitHub Actions checkout-first diagnostic run `41032097212`, job `123984000339`: `TASK032_SUMMARY={"pass":15,"fail":0,"total":15}`; all three expanded checks (TC032-19, TC032-36, TC032-37) PASS.
+- Backend tests run `41032097164`: SUCCESS. Backend refresh regression run `41032097117`: SUCCESS.
+- PR #229 merged into `main` as `a3bcb0e0c2e4c9ab7cee195f8adb83556a3466c4`.
+- Render Node.js service `srv-db9m6pom7kps73dtk1tg`: deployment `dep-dbi63klg1s2s73e3v75g`, status LIVE, commit `a3bcb0e`.
+- Render Python service `srv-db9m923ncjis739s8co0`: deployment `dep-dbi63j4s728c73ces49g`, status LIVE, commit `a3bcb0e`.
+- The ledger above was originally authored before execution and is not a complete post-run accounting; named cases supported by the 15 grouped assertions have passing automated evidence, but other cases remain NOT RUN. A successful deployment does not resolve this gap.
+- Task033 must not be represented as unblocked by a full Task032 PASS until the 60-case acceptance ledger has defensible evidence.
