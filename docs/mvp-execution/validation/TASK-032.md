@@ -1,6 +1,6 @@
 # TASK 032 — Checkout-first event delivery validation
 
-**Status: PARTIAL — NOT YET EXECUTED / NOT PRODUCTION VERIFIED**
+**Status: PARTIAL — 12/12 GROUPED ASSERTIONS PASSED AT COMMIT 21527452; EXPANDED REGRESSIONS PENDING / NOT PRODUCTION VERIFIED**
 
 **Baseline:** `cfbb1f5dc10b032688a001f2f014ac7498f4c70d` (merged Task031). **Branch:** `test/mvp-task-032-checkout-first-delivery`. **Scope:** Shopify-only read-only validation. No production code changes.
 
@@ -74,7 +74,7 @@ Disposable pgvector PostgreSQL 16 configured via `.github/workflows/task032-chec
 `Backend/src/tests/task032CheckoutFirst.integration.js` contains 12 grouped assertions, representing a subset of the 60 contract cases.
 
 ## X. Test execution
-CI run not yet observed. No assertion is certified PASS before execution.
+GitHub Actions run 41031930929 at commit 215274525e8661821aa3163deff88d1d316afd7f: Task032 12/12 grouped assertions PASS. Backend tests and backend refresh regression also PASS. Additional conflict/concurrency checks added after that run and must be executed separately.
 
 ## Y. Validation matrix
 See per-case statuses below.
@@ -166,3 +166,10 @@ Branch contains test, CI and documentation only. No merge or deployment authoriz
 | TC032-60 | NOT RUN | Dedicated acceptance coverage not yet implemented |
 
 No production credentials, merchant records, Shopify state or deployment modified. Do not begin Task033 before Task032 closure.
+
+## Execution evidence update — 2026-10-30
+- GitHub Actions Task032 run `41031930929` (commit `215274525e8661821aa3163deff88d1d316afd7f`) succeeded: `TASK032_SUMMARY={"pass":12,"fail":0,"total":12}`.
+- Backend tests and backend refresh regression succeeded on that commit.
+- Three further grouped assertions were added: contradictory strong identifiers (TC032-19), concurrent order replay (TC032-36), and simultaneous checkout/order replay (TC032-37). Their results remain pending.
+- All 60 acceptance cases require individually defensible evidence; a grouped test does not imply full scenario coverage. The ledger above is conservative and retains NOT RUN until mapped with observed evidence.
+- **Merge gate:** do not merge while expanded checks are unverified or important matrix gaps remain.
