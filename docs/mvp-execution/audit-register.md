@@ -18,7 +18,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 010 | Phase 1 | Map existing checkout reconciliation tests. | COMPLETED — VERIFIED (test architecture audit; product coverage remains partial) | [TASK-010](diagnostics/TASK-010.md) | Inspected d410748; docs publication to main authorized 2026-10-30 | 2026-10-30 documentation follow-up |
 | 011 | Phase 1 | Record Shopify API version used by backend. | COMPLETE — VERIFIED (configuration audit; open findings retained) | [TASK-011](diagnostics/TASK-011.md) | Inspected 55d78f06; production cfb41b7 Backend content identical | 2026-10-30 |
 | 012 | Phase 1 | Record registered Shopify webhook topics. | COMPLETE — PASS (audit; live enumeration limits recorded) | [TASK-012](diagnostics/TASK-012.md) | main db1f6be1; production cfb41b7 Backend identical | 2026-10-30 |
-| 013 | Phase 1 | Identify checkout fields actually received in test payloads. | NOT STARTED | — | — | — |
+| 013 | Phase 1 | Identify checkout fields actually received in test payloads. | COMPLETE — VERIFIED: 2 authentic checkout/create and 13 checkout/update field-level captures; nested line-item keys verified | [TASK-013](diagnostics/TASK-013.md) | Render field-presence logs 2026-10-30 00:19–00:20 UTC; production commit 4ac02b7; diagnostic disabled pending replacement deployment verification; DB item persistence remains a separate open issue | 2026-10-30 |
 | 014 | Phase 1 | Identify order fields actually received in test payloads. | NOT STARTED | — | — | — |
 | 015 | Phase 1 | Document checkout/order state definitions. | NOT STARTED | — | — | — |
 | 016 | Phase 1 | Test completed checkout payload handling. | NOT STARTED | — | — | — |
