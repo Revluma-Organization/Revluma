@@ -66,4 +66,4 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Consequences: no migration; conflicting and missing identifiers remain unresolved (Tasks 025–028); no automatic historical repair; lifecycle and campaign attribution not changed by persistence (Tasks 029, 046–047).
 - Related findings: REV-FIND-023-01, REV-FIND-023-02, REV-FIND-023-05, REV-FIND-017-01/02.
 - Code commits: f5f8abd643c664747529f9ae59f468bf871bfbd2, 30758e40b26e393c66bf9a25a7296c9eec8d3e36.
-- Verification: 26-case isolated PostgreSQL CI pending; no production claim.
+- Verification: 26/26 isolated PostgreSQL integration tests PASS (run 40988004734, job 123843440071); backend tests and refresh regression SUCCESS; no production claim.
