@@ -102,3 +102,13 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Consequences: participating writers serialize and reject incompatible claims; other writers bypassing advisory protocol are not protected; follow-up source/legacy cardinality evidence required before production readiness.
 - Related: REV-FIND-027-01/02/03; Task024/025/026 and Task028/049.
 - Verification: Task027 40/40 PASS run 40990349650; Task026 40/40 PASS run 40990349624; Task025 28/28 PASS run 40990349608; backend/refresh PASS. Production cardinality and legacy claim audit remain unverified; no DB uniqueness migration.
+
+
+## REV-DEC-0009 — Task028 typed Shopify source identity preservation
+- Date: 2026-10-30. Decision: add nullable typed checkout ID, checkout token and cart token fields on orders and abandoned_carts; do not infer or backfill ambiguous legacy external_cart_id. Matching must query merchant-scoped typed fields only.
+- Context: Task027 live Shopify audit found 0 matching order checkout tokens in legacy checkout identity column and 5 duplicated external checkout identity groups. Existing generic field conflated source types.
+- Update safety: reject incompatible non-null source identity updates transactionally, preserve sparse existing evidence; never coerce unsafe JS numeric values or malformed objects. Preserve raw strings for exact matching within restricted database; avoid token logs and customer PII.
+- Historical: Shopify GraphQL order checkoutToken/cartToken and checkout GID passed to common ingestion. No full payload archive or unsupported source-event provenance fabrication.
+- Alternatives: reuse generic external_cart_id (unsafe type conflation); blanket backfill (unverifiable); full source-event archive (outside MVP scope).
+- Consequences: existing legacy rows with only external_cart_id cannot match via new typed lookup until authoritative source reprocessing. Event provenance and conflict snapshots need additional work; CI and full Task028 tests pending.
+- Related: REV-FIND-018-01, REV-FIND-019-01, REV-FIND-027-01, REV-FIND-028-01/02/03/04; Tasks027,028,048,049. Implementation commits 0a1cc837, 7973218a, 914dd518.
