@@ -1,4 +1,5 @@
 -- Task 025: additive, non-destructive, merchant-scoped unresolved reconciliation ledger.
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_orders_store_id" ON "orders" ("store_id", "id");
 CREATE TABLE IF NOT EXISTS "order_checkout_reconciliation_cases" (
   "id" UUID NOT NULL DEFAULT gen_random_uuid(),
   "store_id" UUID NOT NULL,
@@ -14,7 +15,7 @@ CREATE TABLE IF NOT EXISTS "order_checkout_reconciliation_cases" (
   "verified_checkout_id" UUID,
   CONSTRAINT "order_checkout_reconciliation_cases_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "order_checkout_reconciliation_cases_store_id_fkey" FOREIGN KEY ("store_id") REFERENCES "stores"("id") ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT "order_checkout_reconciliation_cases_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "order_checkout_reconciliation_cases_order_id_fkey" FOREIGN KEY ("store_id", "order_id") REFERENCES "orders"("store_id", "id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "uq_order_checkout_reconciliation_case_store_order" UNIQUE ("store_id","order_id"),
   CONSTRAINT "order_checkout_reconciliation_cases_status_check" CHECK ("status" IN ('UNRESOLVED','RESOLVED')),
   CONSTRAINT "order_checkout_reconciliation_cases_attempt_count_check" CHECK ("attempt_count" > 0),
