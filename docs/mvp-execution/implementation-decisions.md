@@ -112,3 +112,6 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Alternatives: reuse generic external_cart_id (unsafe type conflation); blanket backfill (unverifiable); full source-event archive (outside MVP scope).
 - Consequences: existing legacy rows with only external_cart_id cannot match via new typed lookup until authoritative source reprocessing. Event provenance and conflict snapshots need additional work; CI and full Task028 tests pending.
 - Related: REV-FIND-018-01, REV-FIND-019-01, REV-FIND-027-01, REV-FIND-028-01/02/03/04; Tasks027,028,048,049. Implementation commits 0a1cc837, 7973218a, 914dd518.
+
+## REV-DEC-0010 — Task029 verified completion precedence
+2026-10-30. A verified merchant-scoped persisted order-to-checkout FK is authoritative completion evidence; set checkout status recovered and timestamp in the same transaction, only if not already recovered. Preserve attribution and historical abandoned_at. Checkout completed_at remains an independent authoritative source. Alternative nontransactional updates rejected for inconsistency risk. Task029; REV-FIND-029-01/02/03. Commit cc37eca819b2a695106ae696bbb1cc5792f30aaf. Validation pending.
