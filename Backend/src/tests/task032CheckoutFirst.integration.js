@@ -329,6 +329,25 @@ async function main(){
         assert.equal(diagnostic.includes('PRIVATE_PAYLOAD_MARKER'),false);
       }
     });
+    await check('TC032-45-process-restart-preserves-checkout-before-order',async()=>{
+      const {execFileSync}=require('node:child_process');
+      const suffix='restart';
+      await upsertAbandonedCart(store,checkout(suffix));
+      const childCode=[
+        "const {upsertOrder}=require('./src/services/commerceWebhookService');",
+        "const {prisma}=require('./src/configs/database');",
+        "const store=JSON.parse(process.env.TASK032_CHILD_STORE);",
+        "const payload=JSON.parse(process.env.TASK032_CHILD_ORDER);",
+        "upsertOrder(store,'shopify',payload).then(()=>prisma.$disconnect()).catch(async e=>{console.error(e);await prisma.$disconnect();process.exitCode=1;});"
+      ].join('');
+      execFileSync(process.execPath,['-e',childCode],{
+        cwd:require('node:path').resolve(__dirname,'../..'),
+        env:{...process.env,TASK032_CHILD_STORE:JSON.stringify(store),TASK032_CHILD_ORDER:JSON.stringify(order(suffix))},
+        timeout:20000,stdio:'pipe'
+      });
+      assert.equal((await getOrder(suffix)).abandoned_cart_id,(await getCart(suffix)).id);
+      assert.equal((await getCart(suffix)).status,'recovered');
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
