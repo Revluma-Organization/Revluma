@@ -60,46 +60,46 @@ GitHub Actions disposable pgvector PostgreSQL 16, Node 22, `npm ci`, `CREATE EXT
 TASK-022 isolated tests explicitly omitted discount codes; no coupon-only negative validation there. Task 023 adds 35 narrowly scoped real Prisma/PostgreSQL cases. Repository-wide test inventory not exhaustively searched.
 
 ## N. Test Execution
-PENDING CI; no test outcome inferred from static inspection.
+Executed GitHub Actions run 40986852655, job 123839768564: 14 PASS, 21 FAIL, 35 total, on isolated PostgreSQL 16.15. Earlier run 40986739375 had cross-case synthetic coupon collisions, corrected by namespacing test coupon codes. CI exit code 1 correctly preserves application safety failures.
 
 ## O. Coupon-Based Fallback Test Matrix
 | Test ID | Scenario | Expected | Actual | Evidence | Status |
 |---|---|---|---|---|---|
-| TC023-01 | Identical coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-02 | Multiple checkouts | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-03 | Single checkout | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-04 | Multiple orders | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-05 | Different coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-06 | Case differences | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-07 | Partial similarity | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-08 | Missing coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-09 | Null coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-10 | Empty coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-11 | Whitespace coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-12 | Multiple coupons | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-13 | Same coupon different amounts | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-14 | Different coupons equal discount | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-15 | Automatic discounts | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-16 | Free shipping | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-17 | Coupon added later | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-18 | Coupon removed | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-19 | Coupon replaced | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-20 | Single-use coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-21 | Customer-restricted coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-22 | Coupon and email | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-23 | Coupon and customer ID | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-24 | Coupon and amount | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-25 | Coupon and time | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-26 | Coupon email amount time | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-27 | Cross merchant | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-28 | Conflicting checkout ID | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-29 | Conflicting checkout token | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-30 | Conflicting cart token | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-31 | Existing verified FK | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-32 | Repeated processing | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-33 | Checkout lifecycle | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-34 | Revenue attribution | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
-| TC023-35 | Unresolved FK | No coupon-only verified FK/recovery; stronger identifier precedence when provided | PENDING | Task 023 CI | NOT RUN |
+| TC023-01 | Identical coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-02 | Multiple checkouts | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-03 | Single checkout | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-04 | Multiple orders | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-05 | Different coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-06 | Case differences | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-07 | Partial similarity | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-08 | Missing coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-09 | Null coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-10 | Empty coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-11 | Whitespace coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-12 | Multiple coupons | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-13 | Same coupon different amounts | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-14 | Different coupons equal discount | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-15 | Automatic discounts | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-16 | Free shipping | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-17 | Coupon added later | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-18 | Coupon removed | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-19 | Coupon replaced | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-20 | Single-use coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-21 | Customer-restricted coupon | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-22 | Coupon and email | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-23 | Coupon and customer ID | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-24 | Coupon and amount | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-25 | Coupon and time | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-26 | Coupon email amount time | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-27 | Cross merchant | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-28 | Conflicting checkout ID | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-29 | Conflicting checkout token | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-30 | Conflicting cart token | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Assertions passed | CI 40986852655 | PASS |
+| TC023-31 | Existing verified FK | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-32 | Repeated processing | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-33 | Checkout lifecycle | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-34 | Revenue attribution | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
+| TC023-35 | Unresolved FK | No coupon-only verified FK/recovery; stronger identifier precedence when provided | Unexpected checkout FK observed | CI 40986852655 | FAIL |
 
 ## P. Merchant Isolation
 Coupon lookup filters `sequence_sends.store_id`; cart lookup filters both UUID and `store_id`. TC023-27 checks cross-store shared coupon. Cross-organization isolation not separately tested.
@@ -127,10 +127,20 @@ Task 024 verified FK persistence, 025 unresolved, 026 conflicting matches, 027 d
 Synthetic coupon metadata reflects the existing Prisma schema, not observed live `sequence_sends` traffic. Real Shopify checkout/order coupon values, single-use/customer-restricted discount semantics, historical sync coverage, actual production SHA, full existing tests and downstream dashboard calculations not verified. No claim of real merchant impact occurrence.
 
 ## W. Final Status
-**PENDING EXECUTED TESTS**. Source-level risk confirmed; verdict will be set from actual CI results.
+**FAIL — VERIFIED**. 35 executed, 14 PASS, 21 FAIL. Unsafe coupon-only FK association confirmed. Merchant isolation and stronger-ID precedence passed in tested cases.
 
 ## X. Changes Made
 Test-only `Backend/src/tests/task023CouponFallback.integration.js`; isolated CI workflow `.github/workflows/task023-coupon-fallback.yml`; this report and central audit register. No production code, schema, migrations, frontend, Shopify discount or infra changes.
 
 ## Y. Version Control
-Branch `test/task-023-coupon-fallback-safety`; PR/CI pending; do not merge/deploy.
+Branch `test/task-023-coupon-fallback-safety`; PR #218 OPEN, UNMERGED. CI 40986852655, job 123839768564. No deployment.
+
+## Final test evidence
+
+CI run 40986852655, job 123839768564, tested commit 7272ef4fd59e77c9cadbeb298449dce28d0c1ccf. Command: `node src/tests/task023CouponFallback.integration.js` with opt-in localhost disposable PostgreSQL and Prisma. Results: 14 PASS / 21 FAIL / 35 total.
+
+FAIL: TC023-01, 02, 03, 04, 11, 12, 13, 17, 19, 20, 21, 22, 23, 24, 25, 26, 31, 32, 33, 34, 35. PASS: TC023-05, 06, 07, 08, 09, 10, 14, 15, 16, 18, 27, 28, 29, 30.
+
+Failed tests show expected null checkout FK but actual non-null UUID. TC023-31 expected an existing verified FK to Checkout A, but a coupon-only replay reassigned the order to Checkout B. For TC023-33 through 35 the FK assertion fails before later status assertions run; source inspection independently shows checkout/order recovered status mutations. Tests with synthetic single-use and customer-restricted labels do not verify real Shopify restriction semantics.
+
+**REV-FIND-023-05 — HIGH, integration-confirmed:** An existing verified checkout relationship can be overwritten by a later coupon-only order replay (TC023-31). Map Tasks 024, 026, 049. No production fixes, schema changes, Shopify mutations, merge or deployment.
