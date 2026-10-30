@@ -20,7 +20,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 012 | Phase 1 | Record registered Shopify webhook topics. | COMPLETE — PASS (audit; live enumeration limits recorded) | [TASK-012](diagnostics/TASK-012.md) | main db1f6be1; production cfb41b7 Backend identical | 2026-10-30 |
 | 013 | Phase 1 | Identify checkout fields actually received in test payloads. | COMPLETE — VERIFIED: 2 authentic checkout/create and 13 checkout/update field-level captures; nested line-item keys verified | [TASK-013](diagnostics/TASK-013.md) | Render field-presence logs 2026-10-30 00:19–00:20 UTC; production commit 4ac02b7; diagnostic disabled pending replacement deployment verification; DB item persistence remains a separate open issue | 2026-10-30 |
 | 014 | Phase 1 | Identify order fields actually received in test payloads. | NOT STARTED | — | — | — |
-| 015 | Phase 1 | Document checkout/order state definitions. | NOT STARTED | — | — | — |
+| 015 | Phase 1 | Document checkout/order state definitions. | PARTIAL — lifecycle architecture mapped; classifier, ordering and concurrency guarantees not fully verified; READY WITH LIMITATIONS for 016 | [TASK-015](diagnostics/TASK-015.md) | Current main checkoutInactivity/commerceWebhookService/Prisma; Render 8349de9 production revision; TASK 014 authentic payload evidence in open PR #207; TASK015-FIND-01–05 | 2026-10-30 |
 | 016 | Phase 1 | Test completed checkout payload handling. | NOT STARTED | — | — | — |
 | 017 | Phase 1 | Test order-to-checkout exact ID match. | NOT STARTED | — | — | — |
 | 018 | Phase 1 | Test checkout token matching independently. | NOT STARTED | — | — | — |
@@ -590,3 +590,15 @@ Task012 is now **PASS — audit complete**: expected/stored/provider evidence an
 REV-FIND-0048 severity raised Medium→High, status remains UNDER INVESTIGATION: Shopify records an orders/updated attempt No response from app6001ms followed by200OK1989ms for the same ID. Exact-ID DBrow eventuallyprocessed15:30:56.545UTC; provider acknowledgment does not prove a second handler or correct commerce state. App overview failure rate6.2%, Oct29rate11.5%; Oct29responseP905904ms. This upgrades prior latency inference to provider-recorded failure evidence; no fix is claimed.
 
 REV-FIND-0104 gains authoritative active-app payload-version2026-10 and recorded delivery-header evidence. Current served Admin version is still unobserved; finding remains OPEN with its remaining scope. REV-FIND-0107–0112 remain OPEN. No new IDs or architectural decisions were introduced by the completion follow-up. No source/tests/Shopify/configuration/DB/infrastructure mutations or deployment actions.
+
+### Task 015 lifecycle findings (documentation-only)
+
+| ID | Severity | Category | Evidence | Follow-up | Status |
+|---|---|---|---|---|---|
+| TASK015-FIND-01 | High | Potential defect: later order upsert may overwrite cancellation | [TASK-015](diagnostics/TASK-015.md), commerceWebhookService.js:158–185,261–270 | BACKLOG MAPPING REQUIRED | OPEN |
+| TASK015-FIND-02 | High | Unverified reverse order-first checkout reconciliation | [TASK-015](diagnostics/TASK-015.md), commerceWebhookService.js:210–255,275–319 | BACKLOG MAPPING REQUIRED | OPEN |
+| TASK015-FIND-03 | High | Checkout abandoned_at/default abandoned vs pending-first classification mismatch | [TASK-015](diagnostics/TASK-015.md), schema.prisma and commerceWebhookService.js:300–315 | BACKLOG MAPPING REQUIRED | OPEN |
+| TASK015-FIND-04 | High | Classifier/completion concurrency and stale event precedence not proven | [TASK-015](diagnostics/TASK-015.md), checkoutInactivity.js and checkout advisory lock | BACKLOG MAPPING REQUIRED | OPEN |
+| TASK015-FIND-05 | Medium | Financial and fulfillment state not independently persisted | [TASK-015](diagnostics/TASK-015.md), Prisma orders model | BACKLOG MAPPING REQUIRED | OPEN |
+
+Task 015 baseline readiness: **READY WITH LIMITATIONS**. Task 014 evidence is verified in production but its documentation PR #207 remains unmerged, so the main-branch Task 014 register row is stale; reconcile through that PR rather than silently rewriting historical status.
