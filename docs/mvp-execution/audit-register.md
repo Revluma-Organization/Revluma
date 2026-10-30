@@ -22,7 +22,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 014 | Phase 1 | Identify order fields actually received in test payloads. | NOT STARTED | — | — | — |
 | 015 | Phase 1 | Document checkout/order state definitions. | NOT STARTED | — | — | — |
 | 016 | Phase 1 | Test completed checkout payload handling. | **PASS — VERIFIED**; 13/13 actual Prisma/PostgreSQL 16 checkout scenarios pass on isolated ephemeral GitHub Actions DB | [TASK-016](validation/TASK-016.md) | CI run 40983610337, job 123829294995, commit eb37c8f6; test PR #211; malformed timestamp rejected without persisted row; helper-level weakness retained as TASK016-FIND-01; no production writes | 2026-10-30 |
-| 017 | Phase 1 | Test order-to-checkout exact ID match. | IN PROGRESS — source defects found; isolated Prisma/PostgreSQL 17-scenario CI pending | [TASK-017](validation/TASK-017.md) | PR #212; inspected main 8349de91; exact-ID and cart-token combined IN query; ambiguous duplicate checkout IDs possible; real numeric ID pair not observed | 2026-10-30 |
+| 017 | Phase 1 | Test order-to-checkout exact ID match. | **FAIL — VERIFIED**; isolated Prisma/PostgreSQL: 14 PASS, 2 FAIL, 1 N/A; exact ID can lose to newer cart token, duplicate checkout ID silently matched | [TASK-017](validation/TASK-017.md) | PR #212, CI run 40983945493 job 123830380283; source main 8349de91; findings REV-FIND-017-01/02; future TASK 026/035; no production changes | 2026-10-30 |
 | 018 | Phase 1 | Test checkout token matching independently. | NOT STARTED | — | — | — |
 | 019 | Phase 1 | Test cart token matching independently. | NOT STARTED | — | — | — |
 | 020 | Phase 1 | Reject matches based only on customer identity. | NOT STARTED | — | — | — |
