@@ -27,7 +27,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 019 | Phase 1 | Test cart token matching independently. | NOT STARTED | — | — | — |
 | 020 | Phase 1 | Reject matches based only on customer identity. | NOT STARTED | — | — | — |
 | 021 | Phase 1 | Reject matches based only on email. | NOT STARTED | — | — | — |
-| 022 | Phase 1 | Reject matches based only on amount or time. | NOT STARTED | — | — | — |
+| 022 | Phase 1 | Reject matches based only on amount or time. | **PASS — ALREADY IMPLEMENTED — VERIFIED** in isolated Prisma/PostgreSQL (34 PASS / 0 FAIL); production alignment unverified | [TASK-022](validation/TASK-022.md) | PR #217; CI run 40986341784 job 123838147525; source main 8349de9; REV-FIND-022-01 OPEN missing real Shopify payload and downstream metric evidence; Task 049 | 2026-10-30 |
 | 023 | Phase 1 | Review coupon-based fallback for false matches. | NOT STARTED | — | — | — |
 | 024 | Phase 1 | Persist verified order-to-checkout relationship. | NOT STARTED | — | — | — |
 | 025 | Phase 1 | Record unresolved order-to-checkout relationships. | NOT STARTED | — | — | — |
