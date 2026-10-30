@@ -151,6 +151,22 @@ assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);
 }finally{await fresh.$disconnect();}
 });
 
+
+await check('TC033-46-48-transaction-rollback-on-injected-database-failure',async()=>{
+const suffix='tx-rollback';
+const before=await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}});
+await assert.rejects(prisma.$transaction(async tx=>{
+await tx.abandoned_carts.create({data:{id:randomUUID(),store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix,status:'pending'}});
+throw new Error('TASK033_INJECTED_TRANSACTION_FAILURE');
+}),/TASK033_INJECTED_TRANSACTION_FAILURE/);
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),before);
+await upsertAbandonedCart(store,checkout(suffix));
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),1);
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order(suffix));
+assert.equal((await cart(suffix)).status,'recovered');
+});
+
 await check('TC033-50-separate-node-process-verifies-persisted-reconciliation',async()=>{
 const {execFileSync}=require('node:child_process');
 const script=`const assert=require('node:assert/strict');const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const c=await p.abandoned_carts.findFirstOrThrow({where:{store_id:process.env.TASK033_STORE_ID,external_cart_id:process.env.TASK033_CART_ID}});const o=await p.orders.findFirstOrThrow({where:{store_id:process.env.TASK033_STORE_ID,external_order_id:process.env.TASK033_ORDER_ID}});assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);await p.$disconnect()})().catch(e=>{console.error(e);process.exit(1)})`;
