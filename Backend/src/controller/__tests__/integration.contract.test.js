@@ -21,4 +21,9 @@ assert.ok(!revController.includes("require('axios').post"), 'Rev controllers mus
 assert.ok(internalRoute.includes("router.post('/store-sync'"), 'the protected internal store-sync route must be mounted');
 assert.ok(internalController.includes('syncShopifyStore(store)'), 'the internal store-sync route must invoke the real Shopify sync');
 
+assert.ok(webhookController.includes("process.env.TASK013_CHECKOUT_FIELD_CAPTURE === 'true'"), 'Task 013 diagnostics must be opt-in');
+assert.ok(webhookController.includes("headers.domain === 'revluma-test-store-v1.myshopify.com'"), 'Task 013 diagnostics must be test-store-only');
+assert.ok(webhookController.includes("task013_checkout_field_presence"), 'Task 013 diagnostics must emit field-presence evidence');
+assert.ok(!webhookController.includes("logger.info('task013_checkout_field_presence', payload"), 'Task 013 must not log raw checkout payloads');
+
 console.log('integration.contract.test.js: all assertions passed');
