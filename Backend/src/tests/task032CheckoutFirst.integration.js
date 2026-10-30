@@ -210,6 +210,37 @@ async function main(){
       assert.equal(o.attribution_channel,null);
       assert.equal(o.attribution_sequence_id,null);
     });
+    await check('TC032-27-28-29-30-completion-precedes-and-overrides-abandonment',async()=>{
+      for(const [suffix,created,ordered] of [
+        ['early','2026-10-30T08:00:00Z','2026-10-30T08:14:00Z'],
+        ['late','2026-10-30T08:00:00Z','2026-10-30T08:16:00Z'],
+        ['boundary','2026-10-30T08:00:00Z','2026-10-30T08:15:00Z'],
+      ]){
+        await upsertAbandonedCart(store,checkout(suffix,{created_at:created,updated_at:created}));
+        await upsertOrder(store,'shopify',order(suffix,{created_at:ordered}));
+        const c=await getCart(suffix),o=await getOrder(suffix);
+        assert.equal(c.status,'recovered');
+        assert.equal(o.abandoned_cart_id,c.id);
+        assert.notEqual(c.status,'abandoned');
+      }
+    });
+    await check('TC032-50-completion-timestamp-preserved-from-checkout',async()=>{
+      const completedAt='2026-10-30T08:09:30Z';
+      await upsertAbandonedCart(store,checkout('completion-time',{completed_at:completedAt,updated_at:completedAt}));
+      const c=await getCart('completion-time');
+      assert.equal(c.status,'recovered');
+      assert.equal(c.recovered_at.toISOString(),new Date(completedAt).toISOString());
+    });
+    await check('TC032-51-52-completed-cart-not-active-risk',async()=>{
+      const c=await getCart('basic');
+      assert.equal(c.status,'recovered');
+      const active=await prisma.abandoned_carts.aggregate({
+        where:{store_id:store.id,status:'abandoned',id:c.id},
+        _count:{id:true},_sum:{cart_value:true},
+      });
+      assert.equal(active._count.id,0);
+      assert.equal(Number(active._sum.cart_value||0),0);
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
