@@ -92,3 +92,13 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Related findings: REV-FIND-017-01/02, REV-FIND-026-01.
 - Source commit: 1d830e2fa383b603ad2b24b1cb9a53b30d1bc032.
 - Verification: Task026 40/40 PASS run 40989659035 job 123848709961; inherited Task025 28/28 PASS run 40989659093 job 123848710278; backend tests and refresh regression SUCCESS. No production deployment.
+
+
+## REV-DEC-0008 — Task 027 checkout ownership concurrency policy
+- Date: 2026-10-30; Task 027; source commit eaecbae2358b54d533a38619e6ab90229232cdb0.
+- Decision: one accepted physical order FK claim per checkout through upsertOrder; same authoritative store/order identity remains idempotent. Acquire PostgreSQL transaction-scoped advisory lock on checkout UUID before merchant-scoped owner lookup and FK compare-and-set. Reject competing physical claims with Task026 CONFLICTING_IDENTIFIERS and Task025 durable ledger; preserve both orders.
+- Context: existing orders.abandoned_cart_id is nullable nonunique FK; competing workers can each see no owner. Real Shopify cardinality exceptions and historical data are not sufficiently verified for blanket database unique constraint.
+- Alternatives: global unique FK index (deferred: unsupported assumptions and potential historical conflicts), read-before-write only (race), new claims table (scope expansion), destructive duplicate cleanup (prohibited).
+- Consequences: participating writers serialize and reject incompatible claims; other writers bypassing advisory protocol are not protected; follow-up source/legacy cardinality evidence required before production readiness.
+- Related: REV-FIND-027-01/02/03; Task024/025/026 and Task028/049.
+- Verification: pending isolated PostgreSQL CI.
