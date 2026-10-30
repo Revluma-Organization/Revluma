@@ -73,7 +73,7 @@ Existing invalid multi-claims are not deleted. New candidate cannot be claimed i
 Disposable localhost PostgreSQL pgvector16, Node22, Prisma; synthetic stores and orders; TASK027_ISOLATED_DB guard.
 
 ## Y. Test execution
-PASS — VERIFIED in isolated PostgreSQL 16.15: Task027 run 40990349650 job 123850964201, 40 PASS/0 FAIL. Initial run 40990251230 was 6 PASS/34 FAIL due Prisma inability to deserialize PostgreSQL void return from pg_advisory_xact_lock; fixed by explicit ::text cast. Backend tests run 40990349597 SUCCESS, backend refresh run 40990349580 SUCCESS. Inherited Task025/026 regression jobs still awaiting independent final confirmation.
+PASS — VERIFIED in isolated PostgreSQL 16.15: Task027 run 40990349650 job 123850964201, 40 PASS/0 FAIL. Initial run 40990251230 was 6 PASS/34 FAIL due Prisma inability to deserialize PostgreSQL void return from pg_advisory_xact_lock; fixed by explicit ::text cast. Backend tests run 40990349597 SUCCESS, backend refresh run 40990349580 SUCCESS. Inherited Task025 run 40990349608, 28/28 PASS; Task026 run 40990349624, 40/40 PASS.
 
 ## Z. Validation matrix
 40/40 runnable synthetic scenarios TC027-01..40 PASS in isolated PostgreSQL, GitHub Actions run 40990349650 job 123850964201. TC027-41 NOT APPLICABLE: no verified Shopify exception. TC027-42 NOT APPLICABLE: no new migration; production cardinality audit still pending.
@@ -145,6 +145,7 @@ PR #222 OPEN, implementation commit 47c2b96117adce490774937e52a0502d035a1eae and
 - Initial run 40990251230: 6/40 passed, 34 failed because Prisma cannot deserialize the PostgreSQL void return of pg_advisory_xact_lock. Fixed with explicit ::text cast in code and isolated rollback test.
 - Final Task027 run 40990349650, job 123850964201: TASK027_SUMMARY={"passed":40,"failed":0,"total":40}. Each of 40 individual scenario IDs passed.
 - Backend tests run 40990349597 SUCCESS; backend refresh regression 40990349580 SUCCESS.
+- Inherited Task025 run 40990349608 28/28 PASS; Task026 run 40990349624 40/40 PASS. Total 108/108 isolated integration cases across three suites.
 - Race tests assert at most one accepted physical FK; they do not guarantee both concurrent requests always complete without a transient retry. Transaction retry policy is a production limitation, not a hidden PASS.
 - Existing historical double claims are seeded and detected without deletion in TC027-40; live production aggregate counts have not been read.
 - A direct database writer bypassing advisory locks could still create a second FK because schema has no uniqueness on abandoned_cart_id; production-grade universal enforcement requires verifying Shopify cardinality, live duplicates and all writer paths before considering an index.
