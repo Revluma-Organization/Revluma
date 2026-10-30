@@ -69,3 +69,27 @@ TASK 017 exact ID match, 018 checkout token, 019 cart token, 024 relationship pe
 
 ## 7. Safety, limitations and verdict
 **PARTIAL**: seven helper checks genuinely executed and passed, invalid timestamp classification risk demonstrated, but the core webhook-to-Prisma completed-checkout behavior remains **BLOCKED** without an isolated disposable database/test harness. The correct final database state cannot be asserted. No production backend, frontend, schema, Shopify, database, environment or deployment changes. Documentation-only PR, unmerged pending authorization.
+
+## 8. Follow-up execution: actual handler with isolated in-memory Prisma stand-in
+
+On 2026-10-30, re-fetched production source `commerceWebhookService.js` blob `0a042e3f61aee62cbca84e05938e606036394f50` and `checkoutInactivity.js` blob `e4a75aa5f1b76423b140680cfcbd46f16b74c81e`, evaluated both unchanged in an isolated V8 runtime, replacing only imports of database, logger, and optional ML service with inert in-memory stubs. Executed **actual** `processCommerceWebhook` → `upsertAbandonedCart` logic with synthetic store IDs and payloads. In-memory Prisma stand-in simulated `customers.upsert`, transaction callback, advisory lock, `abandoned_carts.findFirst/create/update`, and item replacement; **this does not simulate Prisma validation, SQL transactions, actual PostgreSQL constraints, or webhook HMAC/controller**. No production access or mutations.
+
+An initial harness run had a **harness-only defect**: its mock `findFirst` returned `{}` instead of `null` for missing rows, causing 13 harness errors. Corrected the mock and reran all scenarios. **Final corrected execution: 12 PASS, 1 FAIL (TC016-08)**.
+
+| Scenario | Final handler-with-memory result | Observed behavior |
+|---|---|---|
+| TC016-01 | PASS in-memory | Completed payload stored `recovered` |
+| TC016-02 | PASS in-memory | Completed checkout via `checkouts/create` stored recovered |
+| TC016-03 | PASS in-memory | Pending checkout updated to recovered |
+| TC016-04 | PASS in-memory | Abandoned checkout updated to recovered |
+| TC016-05 | PASS in-memory | `recovered_at` instant equals valid supplied timestamp |
+| TC016-06 | PASS in-memory | Absent `completed_at` leaves pending |
+| TC016-07 | PASS in-memory | Null `completed_at` leaves pending |
+| TC016-08 | **FAIL in-memory** | Malformed nonempty timestamp sets status `recovered` with `Invalid Date` in memory; real Prisma would need independent validation |
+| TC016-09 | PASS in-memory | Repeated completed payload reuses one logical record |
+| TC016-10 | PASS in-memory | Later noncompletion update preserves recovered status and timestamp |
+| TC016-11 | PASS in-memory | Missing optional customer/email/phone does not block completion |
+| TC016-12 | PASS in-memory | Empty line items on follow-up do not erase previously stored synthetic items |
+| TC016-13 | PASS in-memory | Two synthetic merchants with same checkout ID remain isolated |
+
+**Evidence classification:** These are handler-level results against a mocked persistence interface, not real database PASS. The original mandatory isolated PostgreSQL persisted-state gate is still **BLOCKED**, so the overall task remains **PARTIAL**. Do not merge this report or proceed to Task 017 as though Task 016 achieved full acceptance. **TASK016-FIND-01** upgraded from helper-only risk to **confirmed handler-level invalid-date construction**; real Prisma failure/rollback behavior unverified. No production fix made, consistent with Task 016 scope.
