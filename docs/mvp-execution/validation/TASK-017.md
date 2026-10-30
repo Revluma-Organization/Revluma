@@ -37,36 +37,36 @@ Test-only `Backend/src/tests/task017ExactCheckoutId.integration.js`, guarded to 
 Task 016 real Prisma checkout completion matrix: 13/13 passed in run 40983610337, but it **does not validate order-to-checkout exact-ID matching**. Task 017 adds narrowly scoped tests. Existing broader backend workflows run on PR; results to be recorded below.
 
 ## I–J. Test execution and matrix
-Command: `node src/tests/task017ExactCheckoutId.integration.js` (CI after isolated `prisma db push`). Workflow run and observed output to be appended after execution.
+Command: `node src/tests/task017ExactCheckoutId.integration.js` (CI after isolated `prisma db push`). GitHub Actions **run 40983945493, job 123830380283** completed with expected **failure** on two real reconciliation defects. Isolated Prisma/PostgreSQL schema initialized successfully; 14 PASS, 2 FAIL, 1 NOT APPLICABLE. Existing backend tests and backend refresh regression passed on same PR head 31275176.
 
 | Test | Scenario | Expected | Actual | Status |
 |---|---|---|---|---|
-| TC017-01 | Valid exact ID | Correct cart and FK | Pending CI | NOT RUN |
-| TC017-02 | Incorrect ID | No match | Pending CI | NOT RUN |
-| TC017-03 | Multiple checkouts | Correct selection | Pending CI | NOT RUN |
-| TC017-04 | Same customer | Exact ID wins | Pending CI | NOT RUN |
-| TC017-05 | Similar orders/different customers | Exact ID wins | Pending CI | NOT RUN |
-| TC017-06 | Cross-merchant collision | Tenant isolation | Pending CI | NOT RUN |
-| TC017-07 | Missing ID | No fabricated exact match | Pending CI | NOT RUN |
-| TC017-08 | Null ID | No false match | Pending CI | NOT RUN |
-| TC017-09 | Empty ID | No false match | Pending CI | NOT RUN |
-| TC017-10 | Number/string | Same safe ID matches | Pending CI | NOT RUN |
-| TC017-11 | Large numeric string | Exact digits retained | Pending CI | NOT RUN |
+| TC017-01 | Valid exact ID | Correct cart and FK | CI 40983945493 | PASS |
+| TC017-02 | Incorrect ID | No match | CI 40983945493 | PASS |
+| TC017-03 | Multiple checkouts | Correct selection | CI 40983945493 | PASS |
+| TC017-04 | Same customer | Exact ID wins | CI 40983945493 | PASS |
+| TC017-05 | Similar orders/different customers | Exact ID wins | CI 40983945493 | PASS |
+| TC017-06 | Cross-merchant collision | Tenant isolation | CI 40983945493 | PASS |
+| TC017-07 | Missing ID | No fabricated exact match | CI 40983945493 | PASS |
+| TC017-08 | Null ID | No false match | CI 40983945493 | PASS |
+| TC017-09 | Empty ID | No false match | CI 40983945493 | PASS |
+| TC017-10 | Number/string | Same safe ID matches | CI 40983945493 | PASS |
+| TC017-11 | Large numeric string | Exact digits retained | CI 40983945493 | PASS |
 | TC017-12 | REST/GraphQL | Only verified conversion | No conversion implemented | NOT APPLICABLE |
-| TC017-13 | Duplicate records | Reject ambiguity | Pending CI | NOT RUN |
-| TC017-14 | Repeated unique match | Deterministic | Pending CI | NOT RUN |
-| TC017-15 | Existing FK | Correct relationship | Pending CI | NOT RUN |
-| TC017-16 | Completion effect | Only linked cart recovered | Pending CI | NOT RUN |
-| Extra TC017-17 | Conflicting checkout_id and cart_token | Checkout ID has precedence | Pending CI | NOT RUN |
+| TC017-13 | Duplicate records | Reject ambiguity | **FAIL: selected one duplicate row; order FK set** | FAIL |
+| TC017-14 | Repeated unique match | Deterministic | CI 40983945493 | PASS |
+| TC017-15 | Existing FK | Correct relationship | CI 40983945493 | PASS |
+| TC017-16 | Completion effect | Only linked cart recovered | CI 40983945493 | PASS |
+| Extra TC017-17 | Conflicting checkout_id and cart_token | Checkout ID has precedence | **FAIL: selected newer unrelated cart-token checkout** | FAIL |
 
 ## K–M. Merchant isolation, persistence, completion
-Source query explicitly scopes by `store_id` (positive). FK persistence already implemented, contrary to generic Task 024 placeholder. A matched checkout is set recovered; an unmatched order stays completed. No separate exact-ID match provenance is recorded. All are **source-verified only** until CI.
+CI confirms merchant isolation (TC017-06), persisted FK (TC017-15) and checkout recovery (TC017-16). Source query explicitly scopes by `store_id` (positive). FK persistence already implemented, contrary to generic Task 024 placeholder. A matched checkout is set recovered; an unmatched order stays completed. No separate exact-ID match provenance is recorded. All are **source-verified only** until CI.
 
 ## N. Findings
 | Finding ID | Severity | Classification | Evidence | Impact | Approved future task |
 |---|---|---|---|---|---|
-| REV-FIND-017-01 | HIGH | Confirmed source-code design defect, execution pending | `findFirst` with `IN` and latest `updated_at` can select cart token match instead of different exact checkout ID | Wrong order-to-cart link and recovery | TASK 026 |
-| REV-FIND-017-02 | HIGH | Confirmed ambiguity risk | No unique constraint on `(store_id,external_cart_id)`; `findFirst` silently picks a row | False attribution when duplicates exist | TASK 026 / 035 |
+| REV-FIND-017-01 | HIGH | Confirmed source-code design defect, confirmed by CI | `findFirst` with `IN` and latest `updated_at` can select cart token match instead of different exact checkout ID | Wrong order-to-cart link and recovery | TASK 026 |
+| REV-FIND-017-02 | HIGH | Confirmed defect (real isolated PostgreSQL) | No unique constraint on `(store_id,external_cart_id)`; `findFirst` silently picks a row | False attribution when duplicates exist | TASK 026 / 035 |
 | REV-FIND-017-03 | MEDIUM | Missing real-payload verification | Neither actual order nor checkout field inventory contained numeric checkout ID | Real-world exact checkout ID matching cannot be established from sampled deliveries | TASK 028 / 049 |
 | REV-FIND-017-04 | MEDIUM | Potential precision risk | JS Number→String for JSON numeric checkout IDs; no safe integer guard | Distinct large IDs may collapse | TASK 028; BACKLOG MAPPING REQUIRED for guard |
 | REV-FIND-017-05 | MEDIUM | Existing mapping limitation | Checkout `token` not stored in `external_cart_id` selector | Some real checkout token references cannot match | TASK 018 |
@@ -74,10 +74,17 @@ Source query explicitly scopes by `store_id` (positive). FK persistence already 
 Finding IDs are task-scoped until reconciled against central stable finding register; do not duplicate earlier findings.
 
 ## O–P. Dependencies and limitations
-Tasks 018/019 separately test tokens; 020–023 fallbacks; 024/025 persistence and unresolved relationships; 026 conflicts; 028 identifiers; 029 completion precedence; 049 regression suite. No production real numeric checkout-ID pair observed. Source-only defects must not be labeled production incident without execution evidence.
+Tasks 018/019 separately test tokens; 020–023 fallbacks; 024/025 persistence and unresolved relationships; 026 conflicts; 028 identifiers; 029 completion precedence; 049 regression suite. No production real numeric checkout-ID pair observed. TC017-13 and TC017-17 are **confirmed failures in isolated real PostgreSQL tests**, not claims of an observed production incident. No actual order-side numeric checkout ID was observed in captured real Shopify deliveries. Test case TC017-11 uses a large **string** ID, so does not establish safety for unsafe JSON numeric IDs.
 
 ## Q. Current status
-**IN PROGRESS** — final PASS/PARTIAL/FAIL to be assigned from actual CI, with source-level defects already established.
+**FAIL — exact checkout ID reconciliation does not satisfy mandatory ambiguity rejection or authoritative-ID precedence.** 14 PASS, 2 FAIL, 1 NOT APPLICABLE in actual isolated Prisma/PostgreSQL CI run 40983945493. Production reliability is not certified. Do not change production matching logic in this validation task.
 
 ## R–S. Changes and version control
 Test-only file and isolated CI workflow plus this report and audit-register update; PR #212, unmerged; no production code, schema, frontend, merchant database or Shopify changes.
+
+## Final reproducible failure evidence
+
+- **TC017-13:** fixture creates two `abandoned_carts` with identical `store_id` and `external_cart_id`, then calls the real `upsertOrder`. Expected `orders.abandoned_cart_id=null` (reject ambiguity); actual FK is a UUID of one of the duplicate rows. Source `findFirst` with latest `updated_at` chooses a candidate without uniqueness validation. **REV-FIND-017-02; TASK 026 / 035.**
+- **TC017-17:** fixture creates checkout A matching `order.checkout_id` and a more recently updated checkout B matching `order.cart_token`. Expected A; actual FK B. This is an explicit wrong-checkout persisted relationship and recovered state in isolated database. **REV-FIND-017-01; TASK 026.**
+- CI run `40983945493`, job `123830380283`; `TASK017_SUMMARY={\"passed\":14,\"failed\":2,\"notApplicable\":1}`. Reproduce by checking out PR #212 and running the workflow or `TASK017_ISOLATED_DB=true node src/tests/task017ExactCheckoutId.integration.js` after setting up disposable localhost PostgreSQL and Prisma schema. Expected CI exit code **1** preserves known failures; do not weaken assertions to make green.
+- CI backend tests and backend refresh regression both passed on commit `31275176a2366a027a692776bed943bf4397dc19`.
