@@ -28,7 +28,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 020 | Phase 1 | Reject matches based only on customer identity. | NOT STARTED | — | — | — |
 | 021 | Phase 1 | Reject matches based only on email. | NOT STARTED | — | — | — |
 | 022 | Phase 1 | Reject matches based only on amount or time. | NOT STARTED | — | — | — |
-| 023 | Phase 1 | Review coupon-based fallback for false matches. | NOT STARTED | — | — | — |
+| 023 | Phase 1 | Review coupon-based fallback for false matches. | IN PROGRESS — source-confirmed unsafe coupon-only fallback; 35-case isolated PostgreSQL CI pending | [TASK-023](validation/TASK-023.md) | main service blob 0a042e3; REV-FIND-023-01/02/03/04; Tasks 026, 027, 028, 046, 047, 049 | 2026-10-30 |
 | 024 | Phase 1 | Persist verified order-to-checkout relationship. | NOT STARTED | — | — | — |
 | 025 | Phase 1 | Record unresolved order-to-checkout relationships. | NOT STARTED | — | — | — |
 | 026 | Phase 1 | Detect conflicting checkout matches. | NOT STARTED | — | — | — |
