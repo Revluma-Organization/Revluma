@@ -258,6 +258,7 @@ model stores {
   mlSessionFeatures                 ml_session_features[]
   order_items                       order_items[]
   orders                            orders[]
+  order_checkout_reconciliation_cases order_checkout_reconciliation_cases[]
   product_attributes                product_attributes[]
   product_categories                product_categories[]
   product_category_links            product_category_links[]
@@ -413,12 +414,14 @@ model orders {
   discount_pct            Float?
   session_id              String?
   orderItems              order_items[]
+  reconciliation_cases    order_checkout_reconciliation_cases[]
   abandoned_carts         abandoned_carts? @relation(fields: [abandoned_cart_id], references: [id], onUpdate: NoAction)
   sequences               sequences?       @relation(fields: [attribution_sequence_id], references: [id], onUpdate: NoAction)
   customers               customers        @relation(fields: [customer_id], references: [id], onUpdate: NoAction)
   stores                  stores           @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([store_id, external_order_id], map: "uq_orders_store_external")
+  @@unique([store_id, id], map: "uq_orders_store_id")
   @@index([customer_id, ordered_at(sort: Desc)])
 }
 
@@ -1504,4 +1507,27 @@ model intelligence_order_coverage {
   organizations   organizations @relation(fields: [organization_id], references: [id], onDelete: Cascade)
 
   @@index([organization_id, certified_at(sort: Desc)], map: "idx_intelligence_order_coverage_org")
+}
+
+
+// Task 025: one durable case per merchant/order, including resolved history.
+// Do not use nullable source identifiers in the unique key (PostgreSQL NULL semantics).
+model order_checkout_reconciliation_cases {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id             String    @db.Uuid
+  order_id             String    @db.Uuid
+  status               String    @default("UNRESOLVED") @db.VarChar(20)
+  reason               String    @db.VarChar(60)
+  source_identifier    String?   @db.VarChar(255)
+  candidate_count      Int       @default(0)
+  attempt_count        Int       @default(1)
+  first_observed_at    DateTime  @default(now()) @db.Timestamptz(6)
+  last_observed_at     DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at          DateTime? @db.Timestamptz(6)
+  verified_checkout_id String?   @db.Uuid
+  stores               stores    @relation(fields: [store_id], references: [id], onDelete: Cascade)
+  orders               orders    @relation(fields: [store_id, order_id], references: [store_id, id], onDelete: Cascade)
+
+  @@unique([store_id, order_id], map: "uq_order_checkout_reconciliation_case_store_order")
+  @@index([store_id, status, last_observed_at], map: "idx_order_checkout_reconciliation_case_status")
 }

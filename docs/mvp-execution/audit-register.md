@@ -30,7 +30,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 022 | Phase 1 | Reject matches based only on amount or time. | NOT STARTED | — | — | — |
 | 023 | Phase 1 | Review coupon-based fallback for false matches. | NOT STARTED | — | — | — |
 | 024 | Phase 1 | Persist verified order-to-checkout relationship. | PASS — VERIFIED IN ISOLATED POSTGRESQL; NOT DEPLOYED | [TASK-024](implementation/TASK-024.md) | branch fix/mvp-task-024-verified-checkout-order-persistence; source f5f8abd, 30758e4; 26/26 PASS, run 40988004734; backend tests and refresh regression SUCCESS; REV-FIND-023-01/02/05, REV-FIND-017-01/02; Tasks 025–029, 046–049 | 2026-10-30 |
-| 025 | Phase 1 | Record unresolved order-to-checkout relationships. | NOT STARTED | — | — | — |
+| 025 | Phase 1 | Record unresolved order-to-checkout relationships. | PASS — VERIFIED IN ISOLATED POSTGRESQL; NOT DEPLOYED | [TASK-025](implementation/TASK-025.md) | Branch fix/mvp-task-025-unresolved-reconciliation-records (based on unmerged Task024); schema f2f58f2, 92d3eb3; service 188087b; migration 23a1c67; 28/28 PASS run 40988985305; SQL migration validated; backend tests 40988985348 and refresh regression 40988985472 SUCCESS; REV-FIND-025-01; Tasks 026–030, 048–049 | 2026-10-30 |
 | 026 | Phase 1 | Detect conflicting checkout matches. | NOT STARTED | — | — | — |
 | 027 | Phase 1 | Prevent two orders from incorrectly claiming one checkout. | NOT STARTED | — | — | — |
 | 028 | Phase 1 | Preserve source identifiers for diagnostics. | NOT STARTED | — | — | — |
