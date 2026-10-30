@@ -430,6 +430,7 @@ async function upsertAbandonedCart(store, payload) {
   const activityAt = lastCheckoutActivity(payload);
   const isStaleEvent = existing?.updated_at && activityAt < existing.updated_at;
   if (isStaleEvent && !payload.completed_at) return existing;
+  const safeCheckoutEvidence = mergeSourceEvidence(existing, sourceIdentifiers(payload, 'checkout'));
   const data = {
     store_id: store.id,
     customer_id: dbCustomer?.id || null,
