@@ -8,6 +8,9 @@ on:
       - "Backend/prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql"
       - ".github/workflows/task026-conflicts.yml"
   workflow_dispatch:
+  push:
+    branches:
+      - "fix/mvp-task-026-checkout-match-conflicts"
 permissions:
   contents: read
 jobs:
