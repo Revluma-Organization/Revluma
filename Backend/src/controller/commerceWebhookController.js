@@ -74,6 +74,36 @@ exports.receive = async (req, res, next) => {
         line_item_field_names: itemFields,
       });
     }
+    // Task 014: temporary, opt-in order webhook shape audit. Never emit field values.
+    // Restrict to the dedicated Shopify test store; do not log raw bodies or identifiers.
+    if (
+      process.env.TASK014_ORDER_FIELD_CAPTURE === 'true' &&
+      provider === 'shopify' &&
+      headers.domain === 'revluma-test-store-v1.myshopify.com' &&
+      ['orders/create', 'orders/updated', 'orders/cancelled', 'orders/delete'].includes(headers.topic)
+    ) {
+      const fieldType = (value) => value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
+      const shape = (value) => value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.keys(value).sort().map((key) => [key, fieldType(value[key])])
+        : [];
+      const arrayShape = (value) => Array.isArray(value)
+        ? [...new Set(value.flatMap((entry) => entry && typeof entry === 'object' && !Array.isArray(entry) ? Object.keys(entry) : []))].sort()
+        : [];
+      logger.info('task014_order_field_presence', {
+        topic: headers.topic,
+        store_id: store.id,
+        fields: shape(payload),
+        line_items_type: fieldType(payload?.line_items),
+        line_items_count: Array.isArray(payload?.line_items) ? payload.line_items.length : null,
+        line_item_field_names: arrayShape(payload?.line_items),
+        customer_type: fieldType(payload?.customer),
+        customer_fields: shape(payload?.customer),
+        refunds_type: fieldType(payload?.refunds),
+        refund_field_names: arrayShape(payload?.refunds),
+        discount_codes_type: fieldType(payload?.discount_codes),
+        discount_code_field_names: arrayShape(payload?.discount_codes),
+      });
+    }
     const result = await processCommerceWebhook({ provider, store, topic: headers.topic, payload });
     await markDelivery(delivery.id, 'processed');
     logger.info('commerce_webhook_processed', { provider, store_id: store.id, topic: headers.topic, action: result.action });
