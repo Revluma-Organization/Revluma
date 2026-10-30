@@ -148,6 +148,49 @@ async function main(){
       await Promise.all(Array.from({length:4},()=>upsertAbandonedCart(store,checkout('parallel-cart'))));
       assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-parallel-cart'}}),1);
     });
+    await check('TC032-06-cart-token-preserved',async()=>{
+      const t=prefix+'-persist-cart-token';
+      await upsertAbandonedCart(store,checkout('cart-preserve',{cart_token:t}));
+      assert.equal((await getCart('cart-preserve')).source_cart_token,t);
+    });
+    await check('TC032-21-22-23-missing-one-identifier-safe-alternatives',async()=>{
+      for(const [suffix,extra] of [
+        ['missing-id',{checkout_id:null,checkout_token:prefix+'-token-missing-id'}],
+        ['missing-token',{checkout_token:null,checkout_id:prefix+'-checkout-missing-token'}],
+        ['missing-cart',{cart_token:null,checkout_token:prefix+'-token-missing-cart'}],
+      ]){
+        await upsertAbandonedCart(store,checkout(suffix));
+        await upsertOrder(store,'shopify',order(suffix,extra));
+        assert.equal((await getOrder(suffix)).abandoned_cart_id,(await getCart(suffix)).id);
+      }
+    });
+    await check('TC032-33-35-replayed-update-idempotency',async()=>{
+      await upsertAbandonedCart(store,checkout('updates'));
+      await upsertAbandonedCart(store,checkout('updates',{updated_at:'2026-10-30T08:02:00Z'}));
+      await upsertAbandonedCart(store,checkout('updates',{updated_at:'2026-10-30T08:02:00Z'}));
+      await upsertOrder(store,'shopify',order('updates'));
+      await upsertOrder(store,'shopify',order('updates',{updated_at:'2026-10-30T08:07:00Z'}));
+      await upsertOrder(store,'shopify',order('updates',{updated_at:'2026-10-30T08:07:00Z'}));
+      assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-updates'}}),1);
+      assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-updates'}}),1);
+      assert.equal((await getOrder('updates')).abandoned_cart_id,(await getCart('updates')).id);
+    });
+    await check('TC032-49-identifier-integrity-after-reconciliation',async()=>{
+      const c=await getCart('basic'),o=await getOrder('basic');
+      assert.equal(c.source_checkout_id,prefix+'-checkout-basic');
+      assert.equal(c.source_checkout_token,prefix+'-token-basic');
+      assert.equal(o.source_checkout_token,prefix+'-token-basic');
+    });
+    await check('TC032-60-repeatability-across-independent-fixtures',async()=>{
+      for(let i=0;i<3;i++){
+        const suffix='repeat-'+i;
+        await upsertAbandonedCart(store,checkout(suffix));
+        await upsertOrder(store,'shopify',order(suffix));
+        const c=await getCart(suffix),o=await getOrder(suffix);
+        assert.equal(c.status,'recovered');
+        assert.equal(o.abandoned_cart_id,c.id);
+      }
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
