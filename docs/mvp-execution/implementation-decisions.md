@@ -80,3 +80,15 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Related: REV-FIND-025-01, Tasks 024–028, 048–049.
 - Implementation commits: f2f58f2, 188087b, 7ced05a, 92d3eb3, 23a1c67.
 - Verification: 28/28 PASS on isolated PostgreSQL (run 40988985305, job 123846549587); SQL migration executed; backend tests and refresh regression SUCCESS; no production deployment.
+
+
+## REV-DEC-0007 — Task 026 authoritative contradiction detection
+- Date: 2026-10-30; Task 026.
+- Context: Task025 IN query treated two independently matched strong identifiers as ambiguous and threw on existing-FK conflict before durable recording.
+- Decision: Independently evaluate checkout_id and checkout_token (strong) and cart_token (weak); never allow cart token to override a unique strong identity. Two distinct strong checkout matches or proposed change to verified FK are CONFLICTING_IDENTIFIERS. Duplicate identities and shared weak cart tokens remain AMBIGUOUS_CANDIDATES.
+- Alternatives: first-match-wins, treat all signals equal, throw on all discrepancies, new conflict table. Rejected for integrity/diagnostic reasons.
+- Implementation: reuse Task024 CAS and Task025 ledger with preserveConflict, scoped by merchant and bounded lookups. No schema migration.
+- Consequences: historical replays cannot silently reassign; conflicts with existing FK remain durably observable. Task028 required for full token provenance, Task027 for checkout claim exclusivity.
+- Related findings: REV-FIND-017-01/02, REV-FIND-026-01.
+- Source commit: 1d830e2fa383b603ad2b24b1cb9a53b30d1bc032.
+- Verification: pending GitHub Actions Task026 isolated PostgreSQL suite.
