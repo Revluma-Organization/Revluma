@@ -191,6 +191,24 @@ async function main(){
         assert.equal(o.abandoned_cart_id,c.id);
       }
     });
+    await check('TC032-07-incomplete-checkout-not-completed',async()=>{
+      await upsertAbandonedCart(store,checkout('incomplete-state'));
+      assert.notEqual((await getCart('incomplete-state')).status,'recovered');
+      assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-incomplete-state'}}),0);
+    });
+    await check('TC032-24-unsafe-source-identifier-rejected',async()=>{
+      await upsertAbandonedCart(store,checkout('invalid-identifier'));
+      await assert.rejects(upsertOrder(store,'shopify',order('invalid-identifier',{checkout_id:9007199254740993})),/Unsafe Shopify identifier number/);
+      assert.equal((await getCart('invalid-identifier')).status==='recovered',false);
+      assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-invalid-identifier'}}),0);
+    });
+    await check('TC032-54-no-fabricated-recovery-attribution',async()=>{
+      await upsertAbandonedCart(store,checkout('no-attribution'));
+      await upsertOrder(store,'shopify',order('no-attribution'));
+      const o=await getOrder('no-attribution');
+      assert.equal(o.abandoned_cart_id,(await getCart('no-attribution')).id);
+      assert.equal(await prisma.recovery_events.count({where:{store_id:store.id}}),0);
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
