@@ -150,6 +150,12 @@ const o=await fresh.orders.findFirstOrThrow({where:{store_id:store.id,external_o
 assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);
 }finally{await fresh.$disconnect();}
 });
+
+await check('TC033-50-separate-node-process-verifies-persisted-reconciliation',async()=>{
+const {execFileSync}=require('node:child_process');
+const script=`const assert=require('node:assert/strict');const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const c=await p.abandoned_carts.findFirstOrThrow({where:{store_id:process.env.TASK033_STORE_ID,external_cart_id:process.env.TASK033_CART_ID}});const o=await p.orders.findFirstOrThrow({where:{store_id:process.env.TASK033_STORE_ID,external_order_id:process.env.TASK033_ORDER_ID}});assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);await p.$disconnect()})().catch(e=>{console.error(e);process.exit(1)})`;
+execFileSync(process.execPath,['-e',script],{cwd:require('node:path').resolve(__dirname,'../..'),env:{...process.env,TASK033_STORE_ID:store.id,TASK033_CART_ID:prefix+'-checkout-core',TASK033_ORDER_ID:prefix+'-order-core'},timeout:20000,stdio:'pipe'});
+});
 }finally{
 console.log('TASK033_RESULTS='+JSON.stringify(results));
 console.log('TASK033_SUMMARY='+JSON.stringify({pass:results.filter(x=>x.status==='PASS').length,fail:results.filter(x=>x.status==='FAIL').length,total:results.length}));
