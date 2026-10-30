@@ -289,6 +289,29 @@ async function upsertOrder(store, provider, payload) {
         candidateCount: candidates.length, preserveConflict: true,
       });
     } else if (candidate) {
+      // Task 027: serialize checkout claims in PostgreSQL before reading ownership.
+      // Advisory transaction lock is scoped to the checkout UUID; it releases on
+      // commit/rollback and prevents the read-then-write race between workers.
+      // No blanket unique constraint until real Shopify cardinality and legacy
+      // multi-claim data have been assessed (Task027 cardinality limitation).
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${candidate.id}::text, 0))::text AS lock_acquired`;
+      const checkout = await tx.abandoned_carts.findFirst({
+        where: { id: candidate.id, store_id: store.id }, select: { id: true },
+      });
+      if (!checkout) throw new Error('Checkout ownership merchant mismatch');
+      const owners = await tx.orders.findMany({
+        where: { store_id: store.id, abandoned_cart_id: candidate.id, id: { not: order.id } },
+        select: { id: true, external_order_id: true }, take: 2,
+      });
+      // Even duplicate local representations of one Shopify order must not
+      // create a second physical FK claim; preserve both records for review.
+      if (owners.length) {
+        await recordOrderReconciliationCase(tx, {
+          storeId: store.id, orderId: order.id, reason: 'CONFLICTING_IDENTIFIERS',
+          sourceIdentifier: reconciliationSourceIdentifier(evidence.map(([, value]) => value)),
+          candidateCount: owners.length, preserveConflict: true,
+        });
+      } else {
       // Atomic compare-and-set prevents a competing worker overwriting the FK.
       const written = await tx.orders.updateMany({
         where: { id: order.id, store_id: store.id, abandoned_cart_id: null },
@@ -309,6 +332,7 @@ async function upsertOrder(store, provider, payload) {
         }
       } else {
         await recordOrderReconciliationCase(tx, { storeId: store.id, orderId: order.id, reason: 'NO_VERIFIED_MATCH', verifiedCheckoutId: candidate.id });
+      }
       }
     } else if (!current?.abandoned_cart_id) {
       await recordOrderReconciliationCase(tx, {
