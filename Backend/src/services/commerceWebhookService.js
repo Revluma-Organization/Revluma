@@ -434,6 +434,96 @@ async function cancelOrder(store, payload) {
   });
 }
 
+// Task031: reconcile an order delivered before its checkout. Never infer identity
+// from customer, amount or time; only stored authoritative Shopify identifiers.
+async function reconcileOrdersOnCheckoutArrival(store, cart) {
+  if (store.platform !== 'shopify') return;
+  const identities = [
+    ['source_checkout_id', cart.source_checkout_id],
+    ['source_checkout_token', cart.source_checkout_token],
+    ['source_cart_token', cart.source_cart_token],
+  ].filter(([, value]) => value);
+  if (!identities.length) return;
+  // Include cart-token-only orders even when the incoming checkout also has
+  // its own strong identity. Each order is evaluated against its own strongest
+  // available evidence below; a cart token cannot override contradictory IDs.
+  // Page through every matching unresolved order. A fixed first-50 limit
+  // silently strands later orders, especially when earlier rows are ambiguous.
+  const pendingIds = [];
+  let cursor;
+  for (;;) {
+    const batch = await prisma.orders.findMany({
+      where: { store_id: store.id, abandoned_cart_id: null,
+        OR: identities.map(([field, value]) => ({ [field]: value })) },
+      select: { id: true }, orderBy: { id: 'asc' }, take: 50,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    if (!batch.length) break;
+    pendingIds.push(...batch.map(row => row.id));
+    cursor = batch[batch.length - 1].id;
+    if (batch.length < 50) break;
+  }
+  for (const id of pendingIds) {
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${cart.id}::text, 0))::text AS lock_acquired`;
+      const order = await tx.orders.findFirst({
+        where: { id, store_id: store.id },
+        select: { id:true, abandoned_cart_id:true, source_checkout_id:true,
+          source_checkout_token:true, source_cart_token:true, ordered_at:true,
+          recovery_status:true },
+      });
+      if (!order || order.abandoned_cart_id) return;
+      const strongFields = ['source_checkout_id','source_checkout_token'];
+      const effective = strongFields.some(field => order[field]) ? strongFields : ['source_cart_token'];
+      const evidence = effective.filter(field => order[field]);
+      if (!evidence.length) return;
+      const candidates = new Map();
+      for (const field of evidence) {
+        const value = order[field];
+        const rows = await tx.abandoned_carts.findMany({
+          where: { store_id: store.id, OR: [
+            { [field]: value },
+            { external_cart_id: value, source_checkout_id: null,
+              source_checkout_token: null, source_cart_token: null },
+          ] },
+          select: { id:true }, take:2,
+        });
+        if (rows.length > 1) {
+          await recordOrderReconciliationCase(tx, { storeId:store.id, orderId:order.id,
+            reason:'AMBIGUOUS_CANDIDATES', candidateCount:rows.length });
+          return;
+        }
+        for (const row of rows) candidates.set(row.id,row);
+      }
+      if (candidates.size !== 1 || !candidates.has(cart.id)) {
+        await recordOrderReconciliationCase(tx, { storeId:store.id, orderId:order.id,
+          reason:candidates.size>1?'CONFLICTING_IDENTIFIERS':'CHECKOUT_NOT_FOUND',
+          candidateCount:candidates.size, preserveConflict:candidates.size>1 });
+        return;
+      }
+      const owners = await tx.orders.count({ where: { store_id:store.id,
+        abandoned_cart_id:cart.id, id:{not:order.id} } });
+      if (owners) {
+        await recordOrderReconciliationCase(tx, { storeId:store.id, orderId:order.id,
+          reason:'CONFLICTING_IDENTIFIERS', candidateCount:owners, preserveConflict:true });
+        return;
+      }
+      const claimed = await tx.orders.updateMany({ where: { id:order.id,
+        store_id:store.id, abandoned_cart_id:null },
+        data: { abandoned_cart_id:cart.id } });
+      if (claimed.count) {
+        await recordOrderReconciliationCase(tx, { storeId:store.id, orderId:order.id,
+          reason:'NO_VERIFIED_MATCH', verifiedCheckoutId:cart.id });
+        if (order.recovery_status !== 'cancelled') {
+          await tx.abandoned_carts.updateMany({ where: { id:cart.id,
+            store_id:store.id, status:{not:'recovered'} },
+            data: { status:'recovered', recovered_at:order.ordered_at } });
+        }
+      }
+    });
+  }
+}
+
 async function upsertAbandonedCart(store, payload) {
   const externalId = String(payload.checkout_id || payload.id || payload.cart_token || payload.checkout_token || '');
   if (!externalId) return null;
@@ -453,7 +543,7 @@ async function upsertAbandonedCart(store, payload) {
         },
       })
     : null;
-  return prisma.$transaction(async (tx) => {
+  const savedCart = await prisma.$transaction(async (tx) => {
   // Serialize writes for the same store/checkout, even across parallel webhook workers.
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${store.id}), hashtext(${externalId}))::text AS locked`;
   // Task030: order reconciliation (Task027) uses this checkout UUID lock.
@@ -511,6 +601,8 @@ async function upsertAbandonedCart(store, payload) {
   }
   return cart;
   });
+  if (savedCart) await reconcileOrdersOnCheckoutArrival(store, savedCart);
+  return savedCart;
 }
 
 async function upsertCustomer(store, payload) {
