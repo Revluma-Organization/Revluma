@@ -593,3 +593,6 @@ REV-FIND-0104 gains authoritative active-app payload-version2026-10 and recorded
 
 ## TASK 029 — Checkout completion overrides abandonment (2026-10-30)
 Baseline main 8bd8245a5ffdd0ab4c421f269e281f19c11f1b28. Branch fix/mvp-task-029-completion-overrides-abandonment. Report: implementation/TASK-029.md. Order-based completion transition implemented in merchant-scoped transaction; 12 isolated scenarios authored, CI pending; remaining acceptance scenarios NOT RUN. REV-FIND-029-01 IN PROGRESS; REV-FIND-029-02 OPEN (Task031 order-first); REV-FIND-029-03 OPEN (classifier/metrics/concurrency). Status PARTIAL — NOT DEPLOYED. No production mutation.
+
+## TASK 030 — Delayed checkout event protection (2026-10-30)
+Report: implementation/TASK-030.md. Baseline main 858b0343d3faea4a34c80cd5979a84157113963c. Branch fix/mvp-task-030-delayed-checkout-event-protection. REV-FIND-030-01 HIGH differing checkout/order transaction locks: RESOLVED — CODE (verification pending); REV-FIND-030-02 MEDIUM source activity watermark regression: RESOLVED — CODE (verification pending); REV-FIND-030-03 HIGH full 50-case, classifier and metric verification: OPEN. 39 scenarios authored; none certified PASS yet. No production modification. PARTIAL — NOT DEPLOYED.

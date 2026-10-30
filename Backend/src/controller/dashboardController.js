@@ -48,8 +48,8 @@ exports.getKpis = async (req, res, next) => {
         where: {
           store_id: { in: storeIds },
           OR: [
-            { status: "abandoned", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
-            { status: "pending", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: "abandoned", recovered_at: null, updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: "pending", recovered_at: null, updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
             { status: { in: ["in_sequence", "recovered"] } },
           ],
         },
@@ -61,8 +61,8 @@ exports.getKpis = async (req, res, next) => {
         where: {
           store_id: { in: storeIds },
           OR: [
-            { status: "abandoned", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
-            { status: "pending", updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: "abandoned", recovered_at: null, updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
+            { status: "pending", recovered_at: null, updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
           ],
         },
         _sum: { cart_value: true },
@@ -387,8 +387,8 @@ exports.getCartRecovery = async (req, res, next) => {
     // are subject to the same gate, preventing premature display after rollout.
     const inactivityCutoff = new Date(Date.now() - 15 * 60 * 1000);
     const where = { store_id: { in: storeIds }, OR: [
-      { status: 'pending', updated_at: { lte: inactivityCutoff } },
-      { status: 'abandoned', updated_at: { lte: inactivityCutoff } },
+      { status: 'pending', recovered_at: null, updated_at: { lte: inactivityCutoff } },
+      { status: 'abandoned', recovered_at: null, updated_at: { lte: inactivityCutoff } },
       { status: { in: ['in_sequence', 'recovered', 'lost'] } },
     ] };
     const [carts, grouped] = await Promise.all([

@@ -456,13 +456,23 @@ async function upsertAbandonedCart(store, payload) {
   return prisma.$transaction(async (tx) => {
   // Serialize writes for the same store/checkout, even across parallel webhook workers.
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${store.id}), hashtext(${externalId}))::text AS locked`;
+  // Task030: order reconciliation (Task027) uses this checkout UUID lock.
+  // Take the same transaction lock before reading lifecycle state so an order
+  // completion cannot commit between our read and a stale checkout update.
+  const identity = await tx.abandoned_carts.findFirst({
+    where: { store_id: store.id, external_cart_id: externalId },
+    select: { id: true },
+  });
+  if (identity) {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${identity.id}::text, 0))::text AS lock_acquired`;
+  }
   const existing = await tx.abandoned_carts.findFirst({
     where: { store_id: store.id, external_cart_id: externalId },
   });
-  // Checkout webhooks describe activity, not abandonment. Wait 15 minutes after the last event.
-  // Completed checkouts remain recovered and must never be reopened by delayed events.
+  // Shopify updated_at is source activity time, not webhook arrival time.
+  // A stale non-completion snapshot cannot replace independently verified state.
   const activityAt = lastCheckoutActivity(payload);
-  const isStaleEvent = existing?.updated_at && activityAt < existing.updated_at;
+  const isStaleEvent = Boolean(existing?.updated_at && activityAt < existing.updated_at);
   if (isStaleEvent && !payload.completed_at) return existing;
   const safeCheckoutEvidence = mergeSourceEvidence(existing, sourceIdentifiers(payload, 'checkout'));
   const data = {
@@ -476,7 +486,9 @@ async function upsertAbandonedCart(store, payload) {
     status: nextCheckoutStatus({ completedAt: payload.completed_at, existingStatus: existing?.status, isStale: isStaleEvent }),
     abandoned_at: existing?.abandoned_at || new Date(payload.created_at || Date.now()),
     recovered_at: payload.completed_at ? new Date(payload.completed_at) : (existing?.recovered_at || null),
-    updated_at: activityAt,
+    // Never move the activity watermark backwards, including for delayed
+    // completion evidence whose Shopify source timestamp predates a newer update.
+    updated_at: existing?.updated_at && existing.updated_at > activityAt ? existing.updated_at : activityAt,
   };
   const cart = existing
     ? await tx.abandoned_carts.update({ where: { id: existing.id }, data })

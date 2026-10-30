@@ -115,3 +115,6 @@ These decisions were made during authorized Task 010 documentation work; they ar
 
 ## REV-DEC-0010 — Task029 verified completion precedence
 2026-10-30. A verified merchant-scoped persisted order-to-checkout FK is authoritative completion evidence; set checkout status recovered and timestamp in the same transaction, only if not already recovered. Preserve attribution and historical abandoned_at. Checkout completed_at remains an independent authoritative source. Alternative nontransactional updates rejected for inconsistency risk. Task029; REV-FIND-029-01/02/03. Commit cc37eca819b2a695106ae696bbb1cc5792f30aaf. Validation pending.
+
+## REV-DEC-0011 — Task030 checkout/order lock coordination
+2026-10-30. Share existing Task027 checkout UUID advisory transaction lock across checkout upsert and order reconciliation. Checkout path retains its store/external lock and re-reads after obtaining checkout UUID lock. Preserve monotonic Shopify activity watermark and verified completion over receipt ordering. Alternatives rejected: read-then-write without common lock, new queue, schema migration, last-write-wins. Consequence: checkout transaction may wait on order transaction; verify concurrency and deadlock behavior in isolated PostgreSQL. Related: REV-FIND-030-01/02/03, Task030. Implementation 31856d7bbc30037177812be046ef147f54cb74fe; verification pending.
