@@ -306,7 +306,9 @@ async function upsertOrder(store, provider, payload) {
     const strongResolved = strong.filter(([type]) => (lookups.get(type) || []).length === 1);
     const conflictingStrong = strongResolved.length > 1 &&
       new Set(strongResolved.map(([type]) => lookups.get(type)[0].id)).size > 1;
-    const conflict = conflictingStrong;
+    const cartResolved = evidence.filter(([type]) => type === 'cart_token' && (lookups.get(type) || []).length === 1);
+    const cartConflict = strongResolved.length && cartResolved.length && strongResolved.some(([type]) => cartResolved.some(([cartType]) => lookups.get(type)[0].id !== lookups.get(cartType)[0].id));
+    const conflict = Boolean(conflictingStrong || cartConflict);
     const ambiguous = duplicateIdentity || (!conflict && candidates.length > 1);
     const candidate = !conflict && !ambiguous && candidates.length === 1 ? candidates[0] : null;
     const current = await tx.orders.findFirst({
