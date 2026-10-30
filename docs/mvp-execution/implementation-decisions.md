@@ -67,3 +67,16 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Related findings: REV-FIND-023-01, REV-FIND-023-02, REV-FIND-023-05, REV-FIND-017-01/02.
 - Code commits: f5f8abd643c664747529f9ae59f468bf871bfbd2, 30758e40b26e393c66bf9a25a7296c9eec8d3e36.
 - Verification: 26/26 isolated PostgreSQL integration tests PASS (run 40988004734, job 123843440071); backend tests and refresh regression SUCCESS; no production claim.
+
+
+## REV-DEC-0006 — Task 025 durable unresolved order reconciliation
+- Date: 2026-10-30; task 025.
+- Problem: Orders with no verified checkout had nullable FK but no durable reason/history.
+- Options: logs-only, generic events JSON, new dedicated ledger.
+- Selected: one dedicated order_checkout_reconciliation_cases row per (store_id,order_id), reason/status and bounded source identifier, additive migration.
+- Rationale: concurrency-safe unique key, explicit state semantics, source traceability, merchant isolation via composite order FK.
+- Resolution: only after same transaction persists verified orders.abandoned_cart_id; stale no-ID replay never reopens.
+- Consequences: checkout-first reconciliation not invented; historical orders use existing upsertOrder; database migration must precede app release; no production deployment authorized.
+- Related: REV-FIND-025-01, Tasks 024–028, 048–049.
+- Implementation commits: f2f58f2, 188087b, 7ced05a, 92d3eb3, 23a1c67.
+- Verification: CI pending.
