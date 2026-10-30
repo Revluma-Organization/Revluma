@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: task016
           POSTGRES_PASSWORD: task016_local_only
@@ -43,6 +43,8 @@ jobs:
           cache: npm
           cache-dependency-path: Backend/package-lock.json
       - run: npm ci
+      - name: Enable pgvector in disposable PostgreSQL
+        run: PGPASSWORD=task016_local_only psql -h 127.0.0.1 -U task016 -d task016 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
       - name: Create isolated schema using Prisma
         run: npx prisma db push --skip-generate --accept-data-loss
       - name: Run checkout handler against real PostgreSQL
