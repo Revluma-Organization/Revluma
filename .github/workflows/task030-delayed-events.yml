@@ -1,5 +1,5 @@
 name: Task 030 delayed checkout event protection
-# Re-run release gate after fixing checkout evidence and test harness.
+# Isolated Task030 PostgreSQL regression gate.
 on:
   pull_request:
     paths:
@@ -54,9 +54,9 @@ jobs:
         run: |
           PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -c 'DROP TABLE "order_checkout_reconciliation_cases"; DROP INDEX "uq_orders_store_id";'
           PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -f prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql
-      - name: Validate Task029 additive migration on legacy-shaped tables
+      - name: Validate Task028 additive migration on legacy-shaped tables
         run: |
           PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -c 'DROP INDEX IF EXISTS idx_carts_store_checkout_id; DROP INDEX IF EXISTS idx_carts_store_checkout_token; DROP INDEX IF EXISTS idx_carts_store_cart_token; ALTER TABLE abandoned_carts DROP COLUMN source_checkout_id, DROP COLUMN source_checkout_token, DROP COLUMN source_cart_token; ALTER TABLE orders DROP COLUMN source_checkout_id, DROP COLUMN source_checkout_token, DROP COLUMN source_cart_token;'
           PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -f prisma/migrations/20261030093000_task028_source_identifiers/migration.sql
-      - name: Execute Task029 integration tests
+      - name: Execute Task030 integration tests
         run: node src/tests/task030DelayedEvents.integration.js
