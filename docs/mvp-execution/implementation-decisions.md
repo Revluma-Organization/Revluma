@@ -101,4 +101,4 @@ These decisions were made during authorized Task 010 documentation work; they ar
 - Alternatives: global unique FK index (deferred: unsupported assumptions and potential historical conflicts), read-before-write only (race), new claims table (scope expansion), destructive duplicate cleanup (prohibited).
 - Consequences: participating writers serialize and reject incompatible claims; other writers bypassing advisory protocol are not protected; follow-up source/legacy cardinality evidence required before production readiness.
 - Related: REV-FIND-027-01/02/03; Task024/025/026 and Task028/049.
-- Verification: pending isolated PostgreSQL CI.
+- Verification: Task027 40/40 PASS run 40990349650; Task026 40/40 PASS run 40990349624; Task025 28/28 PASS run 40990349608; backend/refresh PASS. Production cardinality and legacy claim audit remain unverified; no DB uniqueness migration.
