@@ -596,3 +596,7 @@ Baseline main 8bd8245a5ffdd0ab4c421f269e281f19c11f1b28. Branch fix/mvp-task-029-
 
 ## TASK 030 — Delayed checkout event protection (2026-10-30)
 Report: implementation/TASK-030.md. Baseline main 858b0343d3faea4a34c80cd5979a84157113963c. Branch fix/mvp-task-030-delayed-checkout-event-protection. REV-FIND-030-01 HIGH differing checkout/order transaction locks: RESOLVED — CODE (verification pending); REV-FIND-030-02 MEDIUM source activity watermark regression: RESOLVED — CODE (verification pending); REV-FIND-030-03 HIGH full 50-case, classifier and metric verification: OPEN. 39 scenarios authored; none certified PASS yet. No production modification. PARTIAL — NOT DEPLOYED.
+
+
+## TASK 031 — Order-first event delivery validation (2026-10-30)
+Branch: test/mvp-task-031-order-first-delivery. Test: Backend/src/tests/task031OrderFirst.integration.js. CI: .github/workflows/task031-order-first.yml. Report: validation/TASK-031.md (55-scenario matrix). Existing finding REV-FIND-029-02 remains OPEN: checkout ingestion does not trigger reconciliation of an earlier unresolved order; order path does reconcile when order is reprocessed. Three isolated DB assertions authored; CI execution pending, remaining scenarios NOT RUN. Status PARTIAL / NOT PRODUCTION VERIFIED. No production changes, migrations, or deployment. Task032 not started.
