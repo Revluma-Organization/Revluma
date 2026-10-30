@@ -88,3 +88,12 @@ No tests executed: no isolated safe test environment was established. No test re
 Documentation-only Task 013 report and audit-register row update on a dedicated branch. No application source, Prisma, Shopify configuration, database, infrastructure, deployment or raw customer payload changed. No real customer PII, credentials or tokens included.
 
 **Final status: PARTIAL — source mapping established; actual received field inventory unverified.** Next Task 014: Identify order fields actually received in test payloads. Not started.
+
+## 2026-10-30 follow-up — connected production evidence
+Authorized read-only inspection of Supabase project `Revluma-Database` (`jblpgqmbgdlzitprudgt`) confirmed actual live table metadata: `webhook_deliveries` stores topic/status/timestamps but **no payload body**. A grouped, PII-free query returned **13 processed checkouts/create** deliveries (2026-10-27 07:12:29.417 UTC through 2026-10-29 09:59:32.894 UTC) and **92 processed checkouts/update** deliveries (2026-10-27 07:12:29.417 UTC through 2026-10-29 10:24:25.773 UTC). These are database processing records, not proof of specific JSON fields.
+
+A read-only join of `abandoned_carts`, `abandoned_cart_items` and `stores` showed **19 checkout rows** for `revluma-test-store-v1.myshopify.com`: **7 with at least one persisted product item, 12 without**. This confirms that missing item associations occur in stored test-store data; it does not establish whether Shopify omitted `line_items` or whether the ingestion/sync pipeline lost them. No PII, customer rows, access tokens, or raw payloads were read.
+
+Render workspace `My Workspace` and live service `Revluma-backend` were identified. An attempted read-only checkout-log query for 2026-10-27 through 2026-10-30 returned **503: log retrieval is currently unavailable**. No logs or payload bodies were obtained. No production configuration changes, webhook replays, or new test checkouts were performed.
+
+**Verdict remains PARTIAL**: concrete production delivery and persistence evidence is now verified, but Task 013 specifically requires *actual field-level payload evidence*. Neither webhook-delivery metadata nor persisted DB rows can substitute for the original Shopify JSON body. Next required evidence: safely access an authenticated historical Shopify checkout delivery body, or capture a controlled checkout-create/update test payload through an approved redacted test-only mechanism, then compare observed keys/types and source-to-DB outcomes. Do not call this COMPLETED — VERIFIED until that happens.
