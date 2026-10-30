@@ -114,6 +114,36 @@ function shopifyNetOrderTotal(payload) {
   return Math.max(0, Math.round((gross - refunded) * 100) / 100);
 }
 
+// Task 025: safe, bounded diagnostic identity. Never persist customer details or raw payloads.
+const RECONCILIATION_REASONS = new Set([
+  'CHECKOUT_NOT_FOUND', 'MISSING_AUTHORITATIVE_IDENTIFIER', 'NO_VERIFIED_MATCH',
+  'AMBIGUOUS_CANDIDATES', 'CONFLICTING_IDENTIFIERS', 'MERCHANT_MISMATCH',
+]);
+function reconciliationSourceIdentifier(values) {
+  const value = values.find((v) => v !== null && v !== undefined && String(v).trim());
+  return value === undefined ? null : String(value).slice(0, 255);
+}
+async function recordOrderReconciliationCase(tx, { storeId, orderId, reason, sourceIdentifier = null, candidateCount = 0, verifiedCheckoutId = null }) {
+  if (!RECONCILIATION_REASONS.has(reason)) throw new Error('Unsupported reconciliation reason');
+  const order = await tx.orders.findFirst({ where: { id: orderId, store_id: storeId }, select: { id: true, abandoned_cart_id: true } });
+  if (!order) throw new Error('Reconciliation order does not belong to store');
+  if (verifiedCheckoutId) {
+    if (order.abandoned_cart_id !== verifiedCheckoutId) throw new Error('Cannot resolve without persisted verified checkout');
+    return tx.order_checkout_reconciliation_cases.updateMany({
+      where: { store_id: storeId, order_id: orderId, status: 'UNRESOLVED' },
+      data: { status: 'RESOLVED', resolved_at: new Date(), verified_checkout_id: verifiedCheckoutId, last_observed_at: new Date() },
+    });
+  }
+  // Once verified, delayed unresolved webhook evidence must never reopen the case.
+  if (order.abandoned_cart_id) return null;
+  const now = new Date();
+  return tx.order_checkout_reconciliation_cases.upsert({
+    where: { store_id_order_id: { store_id: storeId, order_id: orderId } },
+    create: { store_id: storeId, order_id: orderId, reason, source_identifier: sourceIdentifier, candidate_count: candidateCount, status: 'UNRESOLVED', first_observed_at: now, last_observed_at: now },
+    update: { reason, source_identifier: sourceIdentifier, candidate_count: candidateCount, last_observed_at: now, attempt_count: { increment: 1 } },
+  });
+}
+
 async function upsertOrder(store, provider, payload) {
   const customer = customerData(provider, payload);
   const orderExternalId = String(payload.id || payload.order_id);
@@ -240,6 +270,18 @@ async function upsertOrder(store, provider, payload) {
           throw error;
         }
       }
+    }
+    // Record the attempted order-initiated reconciliation in the same transaction.
+    // Checkout events alone do not initiate order matching in this service.
+    if (candidate) {
+      await recordOrderReconciliationCase(tx, { storeId: store.id, orderId: order.id, reason: 'NO_VERIFIED_MATCH', verifiedCheckoutId: candidate.id });
+    } else if (!order.abandoned_cart_id) {
+      const reason = identifiers.length === 0 ? 'MISSING_AUTHORITATIVE_IDENTIFIER'
+        : matched.length > 1 ? 'AMBIGUOUS_CANDIDATES' : 'CHECKOUT_NOT_FOUND';
+      await recordOrderReconciliationCase(tx, {
+        storeId: store.id, orderId: order.id, reason,
+        sourceIdentifier: reconciliationSourceIdentifier(identifiers), candidateCount: matched.length,
+      });
     }
     // Do not mutate checkout lifecycle or claim recovered revenue here:
     // relationship persistence is independent from attribution (Tasks 029, 046–047).
