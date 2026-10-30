@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const {randomUUID}=require('node:crypto');
 const {prisma}=require('../configs/database');
-const {upsertOrder,upsertAbandonedCart}=require('../services/commerceWebhookService');
+const {upsertOrder,upsertAbandonedCart,recordOrderReconciliationCase}=require('../services/commerceWebhookService');
 if(process.env.TASK025_ISOLATED_DB!=='true'||!/^postgres(?:ql)?:\/\/[^@]+@(?:127\.0\.0\.1|localhost):5432\/task025\b/.test(process.env.DATABASE_URL||''))throw Error('Disposable localhost task025 PostgreSQL and explicit opt-in required');
 const tag=randomUUID().slice(0,8),uid=randomUUID(),org=randomUUID(),a=randomUUID(),b=randomUUID(),stores=[{id:a,platform:'shopify'},{id:b,platform:'shopify'}],results=[];let n=0;
 const key=x=>`task025-${tag}-${x}`;
@@ -39,7 +39,7 @@ await check('TC025-19','Failed persistence does not resolve',async()=>{const id=
 await check('TC025-20','Stale webhook cannot reopen',async()=>{const id=key('order20'),o=await order(s,'20','A',{id,checkout_id:key('checkout-20')});const c=await cart(s,'20');await order(s,'20b','A',{id,checkout_id:c.external_cart_id});await order(s,'20c','A',{id});assert.equal((await prisma.order_checkout_reconciliation_cases.findUniqueOrThrow({where:{store_id_order_id:{store_id:s.id,order_id:o.id}}})).status,'RESOLVED');});
 await check('TC025-21','Repeated historical sync dedup',async()=>{const id=key('historical21'),o=await order(s,'21','A',{id});await order(s,'21b','A',{id});assert.equal(await prisma.order_checkout_reconciliation_cases.count({where:{order_id:o.id}}),1);});
 await check('TC025-22','Missing references validation',async()=>{await assert.rejects(prisma.order_checkout_reconciliation_cases.create({data:{store_id:s.id,order_id:randomUUID(),reason:'CHECKOUT_NOT_FOUND'}}));});
-await check('TC025-23','Invalid reason rejected through service',async()=>{const o=await order(s,'23');assert.equal((await prisma.order_checkout_reconciliation_cases.findUniqueOrThrow({where:{store_id_order_id:{store_id:s.id,order_id:o.id}}})).reason,'MISSING_AUTHORITATIVE_IDENTIFIER');});
+await check('TC025-23','Invalid reason rejected through service',async()=>{const o=await order(s,'23');await assert.rejects(prisma.$transaction(tx=>recordOrderReconciliationCase(tx,{storeId:s.id,orderId:o.id,reason:'INVALID_RECONCILIATION_REASON'})),/Unsupported reconciliation reason/);assert.equal((await prisma.order_checkout_reconciliation_cases.findUniqueOrThrow({where:{store_id_order_id:{store_id:s.id,order_id:o.id}}})).reason,'MISSING_AUTHORITATIVE_IDENTIFIER');});
 await check('TC025-24','No sensitive diagnostic payload',async()=>{const o=await order(s,'24','A',{email:'private@example.invalid',checkout_id:key('checkout-24')});const r=await prisma.order_checkout_reconciliation_cases.findUniqueOrThrow({where:{store_id_order_id:{store_id:s.id,order_id:o.id}}});assert.ok(!JSON.stringify(r).includes('private@example.invalid'));assert.equal(r.source_identifier,key('checkout-24'));});
 await check('TC025-25','No checkout lifecycle mutation',async()=>{const c=await cart(s,'25');await order(s,'25','A',{checkout_id:key('unknown25')});await unchanged(c);});
 await check('TC025-26','No false revenue attribution',async()=>{const o=await order(s,'26');assert.equal(o.attribution_channel,null);assert.equal(o.attribution_sequence_id,null);assert.notEqual(o.recovery_status,'recovered');});
