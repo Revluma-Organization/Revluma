@@ -32,8 +32,8 @@ async function run() {
     await prisma.users.create({ data: { id: userId, full_name: 'Synthetic Task016', email: `task016-${runId}@example.invalid` } });
     await prisma.organizations.create({ data: { id: orgId, owner_id: userId, company_name: 'Synthetic Task016', industry: 'other', country: 'US', slug: `task016-${runId}` } });
     await prisma.stores.createMany({ data: [
-      { id: storeId, platform: 'shopify', shop_domain: `task016-${runId}.myshopify.com`, name: 'Task016 A' },
-      { id: store2Id, platform: 'shopify', shop_domain: `task016-${runId}-b.myshopify.com`, name: 'Task016 B' },
+      { id: storeId, organization_id: orgId, platform: 'shopify', shop_domain: `task016-${runId}.myshopify.com` },
+      { id: store2Id, organization_id: orgId, platform: 'shopify', shop_domain: `task016-${runId}-b.myshopify.com` },
     ] });
     await check('01 valid completion persisted', async () => {
       await upsertAbandonedCart(store, completed('01'));
