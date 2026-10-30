@@ -144,6 +144,15 @@ async function recordOrderReconciliationCase(tx, { storeId, orderId, reason, sou
   });
 }
 
+function sourceIdentifiers(payload) {
+  const normalize = (v) => v === null || v === undefined ? null : (String(v).trim() || null);
+  return {
+    source_checkout_id: normalize(payload.checkout_id),
+    source_checkout_token: normalize(payload.checkout_token || payload.token),
+    source_cart_token: normalize(payload.cart_token),
+  };
+}
+
 async function upsertOrder(store, provider, payload) {
   const customer = customerData(provider, payload);
   const orderExternalId = String(payload.id || payload.order_id);
@@ -191,6 +200,7 @@ async function upsertOrder(store, provider, payload) {
         store_id: store.id,
         customer_id: dbCustomer.id,
         external_order_id: orderExternalId,
+        ...sourceIdentifiers({ ...payload, token: null }),
         total,
         subtotal,
         discount_amount: discountAmount,
@@ -203,6 +213,7 @@ async function upsertOrder(store, provider, payload) {
       },
       update: {
         customer_id: dbCustomer.id,
+        ...Object.fromEntries(Object.entries(sourceIdentifiers({ ...payload, token: null })).filter(([,v])=>v !== null)),
         total,
         currency,
         ordered_at: orderDate,
@@ -396,6 +407,7 @@ async function upsertAbandonedCart(store, payload) {
     store_id: store.id,
     customer_id: dbCustomer?.id || null,
     external_cart_id: externalId,
+    ...Object.fromEntries(Object.entries(sourceIdentifiers(payload)).filter(([,v])=>v !== null)),
     recovery_url: payload.abandoned_checkout_url || payload.recovery_url || null,
     cart_value: Number(payload.total_price ?? payload.total ?? 0),
     currency: payload.currency || 'USD',
