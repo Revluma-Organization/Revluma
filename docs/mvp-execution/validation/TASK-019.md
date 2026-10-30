@@ -37,34 +37,34 @@ Test-only `Backend/src/tests/task019CartToken.integration.js`, guard `TASK019_IS
 Task 017 test-only exact-ID suite and Task 018 checkout-token suite on unmerged branches. No existing independent cart-token-only 20-scenario Prisma suite confirmed on main before this task. Broader backend tests execute via repository PR CI, results separately recorded. This suite adds required cart-token-specific assertions without weakening existing tests.
 
 ## K. Test execution
-Workflow commands: `npm ci`; `CREATE EXTENSION vector`; `npx prisma db push --skip-generate --accept-data-loss` against disposable localhost `task019`; `node src/tests/task019CartToken.integration.js`. Actual run ID, job, summary, and failed assertions to be recorded after execution. The script exits nonzero on any failure by design.
+Workflow commands: `npm ci`; `CREATE EXTENSION vector`; `npx prisma db push --skip-generate --accept-data-loss` against disposable localhost `task019`; `node src/tests/task019CartToken.integration.js`. **Executed:** GitHub Actions run 40985086411, job 123834121860, head 1b568d58c95e76209094c03bc6de4c15732ff605. Disposable pgvector/PostgreSQL schema setup and actual Prisma tests completed. **15 PASS, 5 FAIL, 20 total**. Process intentionally exited 1 due to asserted reconciliation defects; full JSON in job logs. The script exits nonzero on any failure by design.
 
 ## L. Test matrix
 | Test ID | Scenario | Expected | Actual | Status |
 |---|---|---|---|---|
-| TC019-01 | Unique token | Match correct cart | Pending CI | NOT RUN |
-| TC019-02 | No stronger identifiers | Match by cart token | Pending CI | NOT RUN |
-| TC019-03 | Incorrect token | No match | Pending CI | NOT RUN |
-| TC019-04 | Multiple distinct tokens | Correct checkout only | Pending CI | NOT RUN |
-| TC019-05 | Duplicate token | Reject ambiguous association | Pending CI | NOT RUN |
-| TC019-06 | Same customer ambiguous token | Reject ambiguity | Pending CI | NOT RUN |
-| TC019-07 | Similar orders | Token-specific correct match | Pending CI | NOT RUN |
-| TC019-08 | Cross-merchant collision | Own-store only | Pending CI | NOT RUN |
-| TC019-09 | Missing token | No fabricated match | Pending CI | NOT RUN |
-| TC019-10 | Null token | No match | Pending CI | NOT RUN |
-| TC019-11 | Empty token | No match | Pending CI | NOT RUN |
-| TC019-12 | Whitespace-only | No match | Pending CI | NOT RUN |
-| TC019-13 | Case sensitivity | Exact case only | Pending CI | NOT RUN |
-| TC019-14 | Prefix collision | Exact equality only | Pending CI | NOT RUN |
-| TC019-15 | Conflicting checkout ID | No silent relationship | Pending CI | NOT RUN |
-| TC019-16 | Conflicting checkout token | No silent relationship | Pending CI | NOT RUN |
-| TC019-17 | Repeated token match | Deterministic | Pending CI | NOT RUN |
-| TC019-18 | Order before checkout | Reconcile when later checkout arrives | Pending CI | NOT RUN |
-| TC019-19 | Existing FK persistence | Correct FK | Pending CI | NOT RUN |
-| TC019-20 | Checkout completion | Only matched checkout recovered | Pending CI | NOT RUN |
+| TC019-01 | Unique token | Match correct cart | CI 40985086411 | PASS |
+| TC019-02 | No stronger identifiers | Match by cart token | CI 40985086411 | PASS |
+| TC019-03 | Incorrect token | No match | CI 40985086411 | PASS |
+| TC019-04 | Multiple distinct tokens | Correct checkout only | CI 40985086411 | PASS |
+| TC019-05 | Duplicate token | Reject ambiguous association | FAIL: duplicate token selected one cart; CI 40985086411 | FAIL |
+| TC019-06 | Same customer ambiguous token | Reject ambiguity | FAIL: shared customer duplicate token arbitrarily matched; CI 40985086411 | FAIL |
+| TC019-07 | Similar orders | Token-specific correct match | CI 40985086411 | PASS |
+| TC019-08 | Cross-merchant collision | Own-store only | CI 40985086411 | PASS |
+| TC019-09 | Missing token | No fabricated match | CI 40985086411 | PASS |
+| TC019-10 | Null token | No match | CI 40985086411 | PASS |
+| TC019-11 | Empty token | No match | CI 40985086411 | PASS |
+| TC019-12 | Whitespace-only | No match | CI 40985086411 | PASS |
+| TC019-13 | Case sensitivity | Exact case only | CI 40985086411 | PASS |
+| TC019-14 | Prefix collision | Exact equality only | CI 40985086411 | PASS |
+| TC019-15 | Conflicting checkout ID | No silent relationship | FAIL: conflicting checkout ID silently linked; CI 40985086411 | FAIL |
+| TC019-16 | Conflicting checkout token | No silent relationship | FAIL: conflicting checkout token silently linked; CI 40985086411 | FAIL |
+| TC019-17 | Repeated token match | Deterministic | CI 40985086411 | PASS |
+| TC019-18 | Order before checkout | Reconcile when later checkout arrives | FAIL: order-first relationship remained null after checkout arrived; CI 40985086411 | FAIL |
+| TC019-19 | Existing FK persistence | Correct FK | CI 40985086411 | PASS |
+| TC019-20 | Checkout completion | Only matched checkout recovered | CI 40985086411 | PASS |
 
 ## M–Q. Merchant isolation, ambiguity, conflict, persistence, completion
-Source scopes lookup to `store_id`. Duplicate checkout external IDs are allowed by schema and latest-updated `findFirst` selects one without ambiguity detection (inherited REV-FIND-017-02). When checkout ID, checkout token, and cart token refer to different records, candidate selection is latest-updated rather than evidence-strength or conflict rejection (inherited REV-FIND-017-01). On match, order FK is persisted and cart set recovered. Late checkout does not automatically revisit already-stored orders in inspected path (inherited REV-FIND-018-02). Executed evidence pending CI.
+Source scopes lookup to `store_id`. Duplicate checkout external IDs are allowed by schema and latest-updated `findFirst` selects one without ambiguity detection (inherited REV-FIND-017-02). When checkout ID, checkout token, and cart token refer to different records, candidate selection is latest-updated rather than evidence-strength or conflict rejection (inherited REV-FIND-017-01). On match, order FK is persisted and cart set recovered. Late checkout does not automatically revisit already-stored orders in inspected path (inherited REV-FIND-018-02). Executed against real disposable PostgreSQL: merchant isolation TC019-08, persistence TC019-19 and completion TC019-20 PASS; duplicate ambiguity TC019-05/06, conflicts TC019-15/16 and order-first TC019-18 FAIL.
 
 ## R. Findings and mapping
 | Finding ID | Severity | Classification | Evidence | Impact | Future task |
@@ -84,4 +84,18 @@ Approved tasks 020–023 test unrelated fallbacks; 024/025 persistence/unresolve
 No verified production revision SHA, no raw Shopify token values, no per-topic sample counts, no official Shopify cart-token semantic guarantee, no production checkout/order correlation. Isolated synthetic tests cannot certify live Shopify behavior.
 
 ## U–W. Status, changes, version control
-**IN PROGRESS** until CI evidence is recorded. Only test script, CI workflow, this report and audit register. Branch `test/task-019-cart-token-validation`; PR pending; no merge or deployment.
+**FAIL — VERIFIED**. Independent cart-token path isolated and exercised in real Prisma/PostgreSQL. 15 PASS / 5 FAIL. CI run 40985086411; job 123834121860. This is an isolated test failure verdict, not proof of a production incident. Only test script, CI workflow, this report and audit register. Branch `test/task-019-cart-token-validation`; PR pending; no merge or deployment.
+
+## Reproducible failure evidence — isolated PostgreSQL
+
+All failures reproduced by `node src/tests/task019CartToken.integration.js` in CI job `123834121860` with `TASK019_ISOLATED_DB=true`, `DATABASE_URL` pointing at disposable localhost `task019` PostgreSQL. Full `TASK019_RESULTS` output retained in job logs; summary `{"passed":15,"failed":5,"total":20}`. Assertions intentionally remain failing.
+
+| Test | Fixture and actual DB result | Expected | Stable finding | Future task |
+|---|---|---|---|---|
+| TC019-05 | Two same-store checkout rows share `cart_token`; order FK became one arbitrary cart UUID | Null FK, no cart recovered | REV-FIND-017-02 | 026; uniqueness follow-up mapping required |
+| TC019-06 | Two same-store rows share cart token and customer; order FK became one arbitrary UUID | Null FK, no customer fallback | REV-FIND-017-02 | 026 |
+| TC019-15 | Checkout A matches order `checkout_id`, B matches `cart_token`; FK became a UUID rather than rejecting conflict | Null FK, both carts unchanged | REV-FIND-017-01 | 026 |
+| TC019-16 | Checkout A matches order `checkout_token`, B matches `cart_token`; FK became a UUID rather than rejecting conflict | Null FK, both carts unchanged | REV-FIND-017-01 | 026 |
+| TC019-18 | Order inserted before checkout, FK null; after checkout inserted, reloaded order FK remained null | Relationship established on later availability if supported | REV-FIND-018-02 | 025 / 028 |
+
+**Evidence boundaries:** These results prove actual behavior of current main-based code on a synthetic isolated database. Real Shopify cart-token pairing and semantics across actual order/checkout deliveries remain unverified. Existing backend regression CI must be checked separately; test-only PR #214 remains unmerged and undeployed. No production code, schema, Shopify or production DB changes.
