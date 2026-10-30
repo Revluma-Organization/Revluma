@@ -91,10 +91,10 @@ async function main(){
     });
     await check('TC032-25-large-id-exact',async()=>{
       const id='90071992547409931234';
-      await upsertAbandonedCart(store,checkout('large',{checkout_id:id,token:null}));
+      await upsertAbandonedCart(store,checkout('large',{id,checkout_id:id,token:null}));
       await upsertOrder(store,'shopify',order('large',{checkout_id:id,checkout_token:null}));
       assert.equal((await getOrder('large')).source_checkout_id,id);
-      assert.equal((await getOrder('large')).abandoned_cart_id,(await getCart('large')).id);
+      assert.equal((await getOrder('large')).abandoned_cart_id,(await prisma.abandoned_carts.findFirstOrThrow({where:{store_id:store.id,external_cart_id:id}})).id);
     });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
