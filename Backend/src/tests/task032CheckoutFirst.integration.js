@@ -207,7 +207,7 @@ async function main(){
       await upsertOrder(store,'shopify',order('no-attribution'));
       const o=await getOrder('no-attribution');
       assert.equal(o.abandoned_cart_id,(await getCart('no-attribution')).id);
-      assert.equal(await prisma.recovery_events.count({where:{store_id:store.id}}),0);
+      assert.equal(o.attribution_channel,null);\n      assert.equal(o.attribution_sequence_id,null);
     });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
