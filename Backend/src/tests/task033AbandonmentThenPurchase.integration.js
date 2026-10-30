@@ -154,12 +154,12 @@ assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);
 
 await check('TC033-46-48-transaction-rollback-on-injected-database-failure',async()=>{
 const suffix='tx-rollback';
-const before=await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}});
+const before=await prisma.abandoned_carts.count({where:{store_id:store.id,status:'pending'}});
 await assert.rejects(prisma.$transaction(async tx=>{
-await tx.abandoned_carts.create({data:{id:randomUUID(),store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix,status:'pending'}});
+await tx.abandoned_carts.updateMany({where:{store_id:store.id,status:'pending'},data:{status:'abandoned'}});
 throw new Error('TASK033_INJECTED_TRANSACTION_FAILURE');
 }),/TASK033_INJECTED_TRANSACTION_FAILURE/);
-assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),before);
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,status:'pending'}}),before);
 await upsertAbandonedCart(store,checkout(suffix));
 assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),1);
 await promoteInactiveCheckouts();
