@@ -123,7 +123,7 @@ function reconciliationSourceIdentifier(values) {
   const value = values.find((v) => v !== null && v !== undefined && String(v).trim());
   return value === undefined ? null : String(value).slice(0, 255);
 }
-async function recordOrderReconciliationCase(tx, { storeId, orderId, reason, sourceIdentifier = null, candidateCount = 0, verifiedCheckoutId = null }) {
+async function recordOrderReconciliationCase(tx, { storeId, orderId, reason, sourceIdentifier = null, candidateCount = 0, verifiedCheckoutId = null, preserveConflict = false }) {
   if (!RECONCILIATION_REASONS.has(reason)) throw new Error('Unsupported reconciliation reason');
   const order = await tx.orders.findFirst({ where: { id: orderId, store_id: storeId }, select: { id: true, abandoned_cart_id: true } });
   if (!order) throw new Error('Reconciliation order does not belong to store');
@@ -135,12 +135,12 @@ async function recordOrderReconciliationCase(tx, { storeId, orderId, reason, sou
     });
   }
   // Once verified, delayed unresolved webhook evidence must never reopen the case.
-  if (order.abandoned_cart_id) return null;
+  if (order.abandoned_cart_id && !preserveConflict) return null;
   const now = new Date();
   return tx.order_checkout_reconciliation_cases.upsert({
     where: { store_id_order_id: { store_id: storeId, order_id: orderId } },
     create: { store_id: storeId, order_id: orderId, reason, source_identifier: sourceIdentifier, candidate_count: candidateCount, status: 'UNRESOLVED', first_observed_at: now, last_observed_at: now },
-    update: { reason, source_identifier: sourceIdentifier, candidate_count: candidateCount, last_observed_at: now, attempt_count: { increment: 1 } },
+    update: { reason, source_identifier: sourceIdentifier, candidate_count: candidateCount, last_observed_at: now, attempt_count: { increment: 1 }, ...(preserveConflict ? { status: 'UNRESOLVED', resolved_at: null, verified_checkout_id: null } : {}) },
   });
 }
 
@@ -239,48 +239,82 @@ async function upsertOrder(store, provider, payload) {
     // Task 024: persist only an unambiguous merchant-scoped authoritative identity.
     // The checkout ingestion currently stores one identifier in external_cart_id;
     // do not infer a match from customer, email, amount, time, or coupon evidence.
-    const identifiers = [...new Set(
-      [payload.checkout_id, payload.checkout_token, payload.cart_token]
-        .filter((value) => value !== null && value !== undefined && String(value).trim())
-        .map(String)
-    )];
-    const matched = identifiers.length
-      ? await tx.abandoned_carts.findMany({
-          where: { store_id: store.id, external_cart_id: { in: identifiers } },
-          select: { id: true, store_id: true, session_id: true, external_cart_id: true },
-          take: 2,
-        })
-      : [];
-    // Multiple matching checkout rows are ambiguous; never choose by updated_at.
-    const candidate = matched.length === 1 ? matched[0] : null;
-    if (candidate) {
-      // Conditional compare-and-set is atomic even when two workers race.
-      // It cannot overwrite an existing relationship with another checkout.
+    // Task 026: evaluate each identifier independently; never let a first match
+    // hide contradictory checkout-ID / checkout-token evidence.
+    const normalized = (value) => {
+      if (value === null || value === undefined) return null;
+      // Do not pass Shopify IDs through Number: large identifiers lose precision.
+      const string = String(value).trim();
+      return string || null;
+    };
+    const evidence = [
+      ['checkout_id', normalized(payload.checkout_id)],
+      ['checkout_token', normalized(payload.checkout_token)],
+      ['cart_token', normalized(payload.cart_token)],
+    ].filter(([, value]) => value);
+    const lookups = new Map();
+    for (const [, identifier] of evidence) {
+      if (lookups.has(identifier)) continue;
+      const rows = await tx.abandoned_carts.findMany({
+        where: { store_id: store.id, external_cart_id: identifier },
+        select: { id: true, store_id: true, session_id: true, external_cart_id: true },
+        take: 2,
+      });
+      lookups.set(identifier, rows);
+    }
+    const strong = evidence.filter(([type]) => type !== 'cart_token');
+    const evaluated = strong.length ? strong : evidence;
+    const hits = evaluated.flatMap(([, value]) => lookups.get(value) || []);
+    const candidates = [...new Map(hits.map((row) => [row.id, row])).values()];
+    const duplicateIdentity = evaluated.some(([, value]) => (lookups.get(value) || []).length > 1);
+    const strongResolved = strong.filter(([, value]) => (lookups.get(value) || []).length === 1);
+    const conflictingStrong = strongResolved.length > 1 &&
+      new Set(strongResolved.map(([, value]) => lookups.get(value)[0].id)).size > 1;
+    const conflict = conflictingStrong;
+    const ambiguous = duplicateIdentity || (!conflict && candidates.length > 1);
+    const candidate = !conflict && !ambiguous && candidates.length === 1 ? candidates[0] : null;
+    const current = await tx.orders.findFirst({
+      where: { id: order.id, store_id: store.id },
+      select: { abandoned_cart_id: true },
+    });
+    const relationshipConflict = Boolean(candidate && current?.abandoned_cart_id && current.abandoned_cart_id !== candidate.id);
+    const reason = conflict || relationshipConflict ? 'CONFLICTING_IDENTIFIERS'
+      : ambiguous ? 'AMBIGUOUS_CANDIDATES'
+      : !evidence.length ? 'MISSING_AUTHORITATIVE_IDENTIFIER'
+      : 'CHECKOUT_NOT_FOUND';
+    if (conflict || relationshipConflict) {
+      await recordOrderReconciliationCase(tx, {
+        storeId: store.id, orderId: order.id, reason: 'CONFLICTING_IDENTIFIERS',
+        sourceIdentifier: reconciliationSourceIdentifier(evidence.map(([, value]) => value)),
+        candidateCount: candidates.length, preserveConflict: true,
+      });
+    } else if (candidate) {
+      // Atomic compare-and-set prevents a competing worker overwriting the FK.
       const written = await tx.orders.updateMany({
         where: { id: order.id, store_id: store.id, abandoned_cart_id: null },
         data: { abandoned_cart_id: candidate.id, session_id: candidate.session_id },
       });
       if (!written.count) {
-        const current = await tx.orders.findUnique({
-          where: { id: order.id }, select: { abandoned_cart_id: true, store_id: true },
+        const latest = await tx.orders.findFirst({
+          where: { id: order.id, store_id: store.id }, select: { abandoned_cart_id: true },
         });
-        if (current?.store_id !== store.id || current.abandoned_cart_id !== candidate.id) {
-          const error = new Error('Verified checkout relationship conflicts with an existing association');
-          error.code = 'CHECKOUT_RELATIONSHIP_CONFLICT';
-          throw error;
+        if (latest?.abandoned_cart_id !== candidate.id) {
+          await recordOrderReconciliationCase(tx, {
+            storeId: store.id, orderId: order.id, reason: 'CONFLICTING_IDENTIFIERS',
+            sourceIdentifier: reconciliationSourceIdentifier(evidence.map(([, value]) => value)),
+            candidateCount: candidates.length, preserveConflict: true,
+          });
+        } else {
+          await recordOrderReconciliationCase(tx, { storeId: store.id, orderId: order.id, reason: 'NO_VERIFIED_MATCH', verifiedCheckoutId: candidate.id });
         }
+      } else {
+        await recordOrderReconciliationCase(tx, { storeId: store.id, orderId: order.id, reason: 'NO_VERIFIED_MATCH', verifiedCheckoutId: candidate.id });
       }
-    }
-    // Record the attempted order-initiated reconciliation in the same transaction.
-    // Checkout events alone do not initiate order matching in this service.
-    if (candidate) {
-      await recordOrderReconciliationCase(tx, { storeId: store.id, orderId: order.id, reason: 'NO_VERIFIED_MATCH', verifiedCheckoutId: candidate.id });
-    } else if (!order.abandoned_cart_id) {
-      const reason = identifiers.length === 0 ? 'MISSING_AUTHORITATIVE_IDENTIFIER'
-        : matched.length > 1 ? 'AMBIGUOUS_CANDIDATES' : 'CHECKOUT_NOT_FOUND';
+    } else if (!current?.abandoned_cart_id) {
       await recordOrderReconciliationCase(tx, {
         storeId: store.id, orderId: order.id, reason,
-        sourceIdentifier: reconciliationSourceIdentifier(identifiers), candidateCount: matched.length,
+        sourceIdentifier: reconciliationSourceIdentifier(evidence.map(([, value]) => value)),
+        candidateCount: candidates.length,
       });
     }
     // Do not mutate checkout lifecycle or claim recovered revenue here:

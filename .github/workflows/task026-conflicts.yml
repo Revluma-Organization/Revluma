@@ -1,0 +1,58 @@
+name: Task 026 isolated conflicts reconciliation
+on:
+  pull_request:
+    paths:
+      - "Backend/src/tests/task026Conflicts.integration.js"
+      - "Backend/src/services/commerceWebhookService.js"
+      - "Backend/prisma/schema.prisma"
+      - "Backend/prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql"
+      - ".github/workflows/task026-conflicts.yml"
+  workflow_dispatch:
+  push:
+    branches:
+      - "fix/mvp-task-026-checkout-match-conflicts"
+permissions:
+  contents: read
+jobs:
+  task026:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: task026
+          POSTGRES_PASSWORD: task026_local_only
+          POSTGRES_DB: task026
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U task026 -d task026"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    defaults:
+      run:
+        working-directory: Backend
+    env:
+      DATABASE_URL: postgresql://task026:task026_local_only@127.0.0.1:5432/task026?schema=public
+      DIRECT_URL: postgresql://task026:task026_local_only@127.0.0.1:5432/task026?schema=public
+      TASK026_ISOLATED_DB: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - run: npm ci
+      - name: Enable vector extension
+        run: PGPASSWORD=task026_local_only psql -h 127.0.0.1 -U task026 -d task026 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+      - name: Initialize disposable Prisma schema
+        run: npx prisma db push --skip-generate --accept-data-loss
+      - name: Validate additive migration against disposable existing schema
+        run: |
+          PGPASSWORD=task026_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task026 -d task026 -c 'DROP TABLE "order_checkout_reconciliation_cases"; DROP INDEX "uq_orders_store_id";'
+          PGPASSWORD=task026_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task026 -d task026 -f prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql
+      - name: Execute conflicts rejection tests
+        run: node src/tests/task026Conflicts.integration.js
