@@ -444,11 +444,12 @@ async function reconcileOrdersOnCheckoutArrival(store, cart) {
     ['source_cart_token', cart.source_cart_token],
   ].filter(([, value]) => value);
   if (!identities.length) return;
-  const strong = identities.filter(([field]) => field !== 'source_cart_token');
-  const lookup = strong.length ? strong : identities;
+  // Include cart-token-only orders even when the incoming checkout also has
+  // its own strong identity. Each order is evaluated against its own strongest
+  // available evidence below; a cart token cannot override contradictory IDs.
   const unresolved = await prisma.orders.findMany({
     where: { store_id: store.id, abandoned_cart_id: null,
-      OR: lookup.map(([field, value]) => ({ [field]: value })) },
+      OR: identities.map(([field, value]) => ({ [field]: value })) },
     select: { id: true }, take: 50,
   });
   for (const { id } of unresolved) {
