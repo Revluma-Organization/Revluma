@@ -2,7 +2,7 @@ name: Task 032 checkout-first delivery diagnostic
 on:
   pull_request:
     paths:
-      - 'Backend/src/tests/task032OrderFirst.integration.js'
+      - 'Backend/src/tests/task032CheckoutFirst.integration.js'
       - 'Backend/src/services/commerceWebhookService.js'
       - '.github/workflows/task032-checkout-first.yml'
   workflow_dispatch:
@@ -45,4 +45,4 @@ jobs:
       - name: Create disposable schema
         run: npx prisma db push --skip-generate --accept-data-loss
       - name: Execute checkout-first diagnostic
-        run: node src/tests/task032OrderFirst.integration.js
+        run: node src/tests/task032CheckoutFirst.integration.js
