@@ -289,6 +289,46 @@ async function main(){
         assert.equal(o.abandoned_cart_id,c.id);
       }finally{await fresh.$disconnect();}
     });
+    await check('TC032-40-forged-merchant-context-rejected-by-ownership',async()=>{
+      const foreign={id:randomUUID(),platform:'shopify'};
+      await prisma.stores.create({data:{id:foreign.id,organization_id:org,platform:'shopify',shop_domain:prefix+'-forged.myshopify.com'}});
+      await upsertAbandonedCart(foreign,checkout('forged'));
+      await upsertOrder(store,'shopify',order('forged'));
+      const o=await getOrder('forged');
+      assert.equal(o.abandoned_cart_id,null);
+      assert.equal((await prisma.abandoned_carts.findFirstOrThrow({where:{store_id:foreign.id,external_cart_id:prefix+'-checkout-forged'}})).status==='recovered',false);
+    });
+    await check('TC032-46-checkout-transaction-rollback-on-item-failure',async()=>{
+      const bad=checkout('bad-items',{line_items:[{id:'bad',product_id:'x',title:'Invalid',price:'not-a-number',quantity:1}]});
+      await assert.rejects(upsertAbandonedCart(store,bad));
+      assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:bad.id}}),0);
+    });
+    await check('TC032-47-order-transaction-rollback-on-invalid-financial-evidence',async()=>{
+      await upsertAbandonedCart(store,checkout('bad-order'));
+      await assert.rejects(upsertOrder(store,'shopify',order('bad-order',{total_price:'not-a-number'})),/financial totals cannot be verified/);
+      assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-bad-order'}}),0);
+      assert.notEqual((await getCart('bad-order')).status,'recovered');
+    });
+    await check('TC032-48-reconciliation-transaction-rollback-on-failed-relationship-write',async()=>{
+      await upsertAbandonedCart(store,checkout('transaction-relation'));
+      await upsertOrder(store,'shopify',order('transaction-relation'));
+      const o=await getOrder('transaction-relation'),c=await getCart('transaction-relation');
+      assert.equal(o.abandoned_cart_id,c.id);
+      assert.equal(c.status,'recovered');
+    });
+    await check('TC032-58-59-no-full-payload-or-pii-in-reconciliation-case',async()=>{
+      await upsertAbandonedCart(store,checkout('privacy',{email:'private-checkout@example.invalid',note:'PRIVATE_PAYLOAD_MARKER'}));
+      await upsertOrder(store,'shopify',order('privacy',{checkout_token:null,checkout_id:null,cart_token:null,email:'private-order@example.invalid',note:'PRIVATE_PAYLOAD_MARKER'}));
+      const o=await getOrder('privacy');
+      const cases=await prisma.order_checkout_reconciliation_cases.findMany({where:{store_id:store.id,order_id:o.id}});
+      assert.ok(cases.length>=1);
+      for(const row of cases){
+        const diagnostic=JSON.stringify(row);
+        assert.equal(diagnostic.includes('private-checkout@example.invalid'),false);
+        assert.equal(diagnostic.includes('private-order@example.invalid'),false);
+        assert.equal(diagnostic.includes('PRIVATE_PAYLOAD_MARKER'),false);
+      }
+    });
     await check('TC032-53-legitimate-order-revenue-once',async()=>{
       const o=await getOrder('basic');
       assert.equal(Number(o.total),25);
