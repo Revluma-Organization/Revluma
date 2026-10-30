@@ -24,7 +24,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 016 | Phase 1 | Test completed checkout payload handling. | NOT STARTED | — | — | — |
 | 017 | Phase 1 | Test order-to-checkout exact ID match. | NOT STARTED | — | — | — |
 | 018 | Phase 1 | Test checkout token matching independently. | NOT STARTED | — | — | — |
-| 019 | Phase 1 | Test cart token matching independently. | NOT STARTED | — | — | — |
+| 019 | Phase 1 | Test cart token matching independently. | IN PROGRESS — isolated Prisma/PostgreSQL 20-case CI pending; inherited ambiguous and conflicting matching defects | [TASK-019](validation/TASK-019.md) | PR pending; source service blob 0a042e3; REV-FIND-017-01/02, REV-FIND-018-02, REV-FIND-019-01/02; dependencies 025/026/028/049 | 2026-10-30 |
 | 020 | Phase 1 | Reject matches based only on customer identity. | NOT STARTED | — | — | — |
 | 021 | Phase 1 | Reject matches based only on email. | NOT STARTED | — | — | — |
 | 022 | Phase 1 | Reject matches based only on amount or time. | NOT STARTED | — | — | — |
