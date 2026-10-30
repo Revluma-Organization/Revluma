@@ -1,0 +1,62 @@
+name: Task 029 checkout completion precedence
+# Re-run release gate after fixing checkout evidence and test harness.
+on:
+  pull_request:
+    paths:
+      - "Backend/src/tests/task029Completion.integration.js"
+      - "Backend/src/services/commerceWebhookService.js"
+      - "Backend/src/services/shopifySync.js"
+      - "Backend/prisma/schema.prisma"
+      - "Backend/prisma/migrations/20261030093000_task028_source_identifiers/migration.sql"
+      - ".github/workflows/task029-completion.yml"
+  push:
+    branches: ["fix/mvp-task-029-completion-overrides-abandonment"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  task029:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: task029
+          POSTGRES_PASSWORD: task029_local_only
+          POSTGRES_DB: task029
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U task029 -d task029"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    defaults:
+      run:
+        working-directory: Backend
+    env:
+      DATABASE_URL: postgresql://task029:task029_local_only@127.0.0.1:5432/task029?schema=public
+      DIRECT_URL: postgresql://task029:task029_local_only@127.0.0.1:5432/task029?schema=public
+      TASK029_ISOLATED_DB: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - run: npm ci
+      - name: Enable vector extension
+        run: PGPASSWORD=task029_local_only psql -h 127.0.0.1 -U task029 -d task029 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+      - name: Initialize disposable schema
+        run: npx prisma db push --skip-generate --accept-data-loss
+      - name: Validate Task025 additive migration
+        run: |
+          PGPASSWORD=task029_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task029 -d task029 -c 'DROP TABLE "order_checkout_reconciliation_cases"; DROP INDEX "uq_orders_store_id";'
+          PGPASSWORD=task029_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task029 -d task029 -f prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql
+      - name: Validate Task029 additive migration on legacy-shaped tables
+        run: |
+          PGPASSWORD=task029_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task029 -d task029 -c 'DROP INDEX IF EXISTS idx_carts_store_checkout_id; DROP INDEX IF EXISTS idx_carts_store_checkout_token; DROP INDEX IF EXISTS idx_carts_store_cart_token; ALTER TABLE abandoned_carts DROP COLUMN source_checkout_id, DROP COLUMN source_checkout_token, DROP COLUMN source_cart_token; ALTER TABLE orders DROP COLUMN source_checkout_id, DROP COLUMN source_checkout_token, DROP COLUMN source_cart_token;'
+          PGPASSWORD=task029_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task029 -d task029 -f prisma/migrations/20261030093000_task028_source_identifiers/migration.sql
+      - name: Execute Task029 integration tests
+        run: node src/tests/task029Completion.integration.js
