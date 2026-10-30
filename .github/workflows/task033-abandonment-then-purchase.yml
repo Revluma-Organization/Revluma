@@ -32,6 +32,7 @@ jobs:
       DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task033?schema=public
       TASK033_ISOLATED_DB: 'true'
       NODE_ENV: test
+      SHOPIFY_TOKEN_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
