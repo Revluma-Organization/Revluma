@@ -605,3 +605,5 @@ TASK031 follow-up CI: commit 47ec2608d16d4501621b577a270588fa5b3e1489, run 41028
 
 ## TASK 032 — Checkout-first delivery validation (2026-10-30)
 Baseline `cfbb1f5dc10b032688a001f2f014ac7498f4c70d`. Branch `test/mvp-task-032-checkout-first-delivery`. Report `validation/TASK-032.md`. New isolated PostgreSQL test `Backend/src/tests/task032CheckoutFirst.integration.js`, CI `.github/workflows/task032-checkout-first.yml`. Twelve grouped assertions authored; 60-case acceptance matrix recorded with NOT RUN until actual execution. No production code changes. Status PARTIAL — test execution and comprehensive coverage pending. Task033 not started.
+
+| TASK 033 | Abandonment-then-purchase lifecycle validation | PARTIAL — CI and 70-case certification pending | `docs/mvp-execution/validation/TASK-033.md` | `Backend/src/tests/task033AbandonmentThenPurchase.integration.js` | No production changes; do not advance to Task034 until acceptance | 
