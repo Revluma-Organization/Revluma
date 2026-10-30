@@ -1,0 +1,48 @@
+name: Task 033 abandonment-then-purchase delivery diagnostic
+on:
+  pull_request:
+    paths:
+      - 'Backend/src/tests/task033AbandonmentThenPurchase.integration.js'
+      - 'Backend/src/services/commerceWebhookService.js'
+      - '.github/workflows/task033-abandonment-then-purchase.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  task033:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: task033
+          POSTGRES_PASSWORD: task033_local_only
+          POSTGRES_DB: task033
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U task033 -d task033"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    defaults:
+      run:
+        working-directory: Backend
+    env:
+      DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task033?schema=public
+      DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task033?schema=public
+      TASK033_ISOLATED_DB: 'true'
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - run: npm ci
+      - name: Enable pgvector
+        run: PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task033 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+      - name: Create disposable schema
+        run: npx prisma db push --skip-generate --accept-data-loss
+      - name: Execute abandonment-then-purchase diagnostic
+        run: node src/tests/task033AbandonmentThenPurchase.integration.js
