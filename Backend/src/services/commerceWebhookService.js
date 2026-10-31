@@ -211,7 +211,9 @@ async function upsertOrder(store, provider, payload) {
     error.code = 'ORDER_FINANCIAL_TOTAL_UNVERIFIED';
     throw error;
   }
-  const total = calculated;
+  // Prisma Decimal is passed to the DECIMAL(10,2) column directly; never
+  // round-trip Shopify order value through a JavaScript Number.
+  const total = provider === 'shopify' ? new Prisma.Decimal(calculated) : calculated;
   const subtotal = Number(payload.subtotal_price ?? payload.subtotal ?? total);
   const discountAmount = Math.max(0, Number(payload.total_discounts ?? payload.discount_total ?? 0));
   const discountPct = subtotal > 0 ? Math.min(100, (discountAmount / subtotal) * 100) : 0;
