@@ -79,7 +79,8 @@ export const Preferences: FC = () => {
         dateFormat?: string;
       } | { data?: { theme?: ThemeOption; language?: string; timezone?: string; dateFormat?: string } }>("/preferences", undefined, { skipAuthRedirect: true });
       const responseBody = res.data;
-      const prefs = "data" in responseBody ? responseBody.data : responseBody;
+      const prefs = (responseBody as { data?: { theme?: ThemeOption; language?: string; timezone?: string; dateFormat?: string } }).data
+        ?? responseBody as { theme?: ThemeOption; language?: string; timezone?: string; dateFormat?: string };
         if (prefs) {
           if (prefs.language) {
             setLanguage(prefs.language);
