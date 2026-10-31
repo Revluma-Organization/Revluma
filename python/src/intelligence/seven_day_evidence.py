@@ -593,6 +593,20 @@ def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict
                 "timezone": None,
             }
     else:
+        named_period = re.search(
+            r"\\b(?:q[1-4]|first quarter|second quarter|third quarter|fourth quarter|"
+            r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+            r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+            r"(?:\\s+(?:19|20)\\d{2})?\\b|\\b(?:fy|fiscal year)\\s*(?:19|20)\\d{2}\\b|"
+            r"\\b(?:in|for|during)\\s+(?:19|20)\\d{2}\\b",
+            lowered,
+        )
+        if named_period:
+            return {
+                "status": "unsupported",
+                "reason": "Named month, quarter, or year periods require an explicit UTC ISO date range in this MVP.",
+                "timezone": None,
+            }
         days = 7
     # Relative day ranges are complete UTC calendar days, not a rolling window
     # that includes the still-open current day.
