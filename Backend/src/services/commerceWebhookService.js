@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { prisma } = require('../configs/database');
+const { Prisma } = require('@prisma/client');
 const logger = require('../utils/logger');
 const { rfmSync } = require('./mlService');
 const { lastCheckoutActivity, nextCheckoutStatus } = require('./checkoutInactivity');
@@ -97,21 +98,34 @@ async function recalculateCustomerTotals(tx, customerId) {
  * Return null for malformed refund evidence rather than inventing net revenue.
  */
 function shopifyNetOrderTotal(payload) {
-  const gross = Number(payload.total_price);
-  if (!Number.isFinite(gross) || gross < 0) return null;
-  if (!Array.isArray(payload.refunds) || payload.refunds.length === 0) return gross;
-  let refunded = 0;
+  if (payload?.total_price === null || payload?.total_price === undefined || payload.total_price === '') return null;
+  let gross;
+  try {
+    gross = new Prisma.Decimal(String(payload.total_price));
+  } catch {
+    return null;
+  }
+  if (!gross.isFinite() || gross.isNegative()) return null;
+  if (!Array.isArray(payload.refunds) || payload.refunds.length === 0) return gross.toFixed(2);
+  let refunded = new Prisma.Decimal(0);
   for (const refund of payload.refunds) {
     if (!Array.isArray(refund.transactions)) return null;
     for (const transaction of refund.transactions) {
       if (String(transaction.kind || '').toLowerCase() !== 'refund') continue;
       if (String(transaction.status || '').toLowerCase() !== 'success') continue;
-      const amount = Number(transaction.amount);
-      if (!Number.isFinite(amount) || amount < 0) return null;
-      refunded += amount;
+      if (transaction.amount === null || transaction.amount === undefined || transaction.amount === '') return null;
+      let amount;
+      try {
+        amount = new Prisma.Decimal(String(transaction.amount));
+      } catch {
+        return null;
+      }
+      if (!amount.isFinite() || amount.isNegative()) return null;
+      refunded = refunded.plus(amount);
     }
   }
-  return Math.max(0, Math.round((gross - refunded) * 100) / 100);
+  return Prisma.Decimal.max(new Prisma.Decimal(0), gross.minus(refunded))
+    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2);
 }
 
 // Task 025: safe, bounded diagnostic identity. Never persist customer details or raw payloads.
@@ -190,7 +204,9 @@ async function upsertOrder(store, provider, payload) {
   const discountAmount = Math.max(0, Number(payload.total_discounts ?? payload.discount_total ?? 0));
   const discountPct = subtotal > 0 ? Math.min(100, (discountAmount / subtotal) * 100) : 0;
   const couponCode = payload.discount_codes?.[0]?.code || payload.coupon_lines?.[0]?.code || null;
-  const currency = payload.currency || 'USD';
+  const currency = typeof payload.currency === 'string' && /^[A-Za-z]{3}$/.test(payload.currency.trim())
+    ? payload.currency.trim().toUpperCase()
+    : null;
   const lineItems = payload.line_items || payload.products || [];
 
   return prisma.$transaction(async (tx) => {
@@ -216,7 +232,7 @@ async function upsertOrder(store, provider, payload) {
       },
     });
 
-    const existingOrder = await tx.orders.findFirst({ where: { store_id: store.id, external_order_id: orderExternalId }, select: { source_checkout_id: true, source_checkout_token: true, source_cart_token: true } });
+    const existingOrder = await tx.orders.findFirst({ where: { store_id: store.id, external_order_id: orderExternalId }, select: { source_checkout_id: true, source_checkout_token: true, source_cart_token: true, currency: true } });
     const orderEvidence = sourceIdentifiers(payload, 'order');
     let sourceConflict = false;
     let safeOrderEvidence;
@@ -240,7 +256,7 @@ async function upsertOrder(store, provider, payload) {
         subtotal,
         discount_amount: discountAmount,
         discount_pct: discountPct,
-        currency,
+        currency: currency || null,
         coupon_used: Boolean(payload.discount_codes?.length || payload.coupon_lines?.length),
         coupon_code: couponCode,
         ordered_at: orderDate,
@@ -250,7 +266,7 @@ async function upsertOrder(store, provider, payload) {
         customer_id: dbCustomer.id,
         ...safeOrderEvidence,
         total,
-        currency,
+        ...(currency ? { currency } : {}),
         ordered_at: orderDate,
         subtotal,
         discount_amount: discountAmount,
