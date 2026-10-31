@@ -174,7 +174,8 @@ export const Notifications: FC = () => {
       try {
         const res = await api.get<{ emailPreferences?: Record<string, boolean>; inAppPreferences?: Record<string, boolean> } | { data?: { emailPreferences?: Record<string, boolean>; inAppPreferences?: Record<string, boolean> } }>("/settings/notifications");
         const responseBody = res.data;
-        const prefsData = "data" in responseBody ? responseBody.data : responseBody;
+        const prefsData = (responseBody as { data?: { emailPreferences?: Record<string, boolean>; inAppPreferences?: Record<string, boolean> } }).data
+          ?? responseBody as { emailPreferences?: Record<string, boolean>; inAppPreferences?: Record<string, boolean> };
 
         if (prefsData) {
           if (prefsData.emailPreferences) setEmailPreferences(prefsData.emailPreferences);
