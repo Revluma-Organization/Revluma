@@ -313,3 +313,15 @@ def test_unsupported_relative_periods_are_not_silently_replaced_with_seven_days(
         result = resolve_revenue_period(phrase, now=NOW)
         assert result["status"] == "unsupported"
         assert "explicit UTC date range" in result["reason"]
+
+def test_zero_value_order_is_not_confused_with_zero_orders():
+    db = RevenueDB(orders=[
+        {"currency": "USD", "item_count": 1, "amount": Decimal("0.00")}
+    ])
+    evidence = retrieve(db)
+    count = next(item for item in evidence["items"] if item["metric"] == "recorded_order_count")
+    value = next(item for item in evidence["items"] if item["metric"] == "recorded_order_value")
+    assert evidence["overall_status"] == "available"
+    assert count["value"] == 1 and count["status"] == "available"
+    assert value["value"] == "0.00" and value["currency"] == "USD"
+    assert value["status"] == "available"
