@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
 export const Organization: FC = () => {
   // Initialize inputs as empty strings with helpful placeholders instead of hardcoded values
@@ -48,8 +48,9 @@ export const Organization: FC = () => {
     useEffect(() => {
     const fetchWorkspace = async () => {
       try {
-        const res = await api.get("/workspace/current");
-        const data = res.data?.data || res.data;
+        const res = await api.get<{ name?: string; slug?: string; logo_url?: string; industry?: string } | { data?: { name?: string; slug?: string; logo_url?: string; industry?: string } }>("/workspace/current");
+        const responseBody = res.data;
+        const data = "data" in responseBody ? responseBody.data : responseBody;
         if (data) {
           setOrgName(data.name || "");
           setSlug(data.slug || "");
@@ -127,10 +128,10 @@ export const Organization: FC = () => {
         industry: finalIndustry,
       });
       setSaveStatus("success");
-        } catch (err: any) {
+        } catch (err: unknown) {
       setSaveStatus("error");
-      // Check if the backend threw a 409 Conflict for a taken slug
-      if (err?.response?.status === 409 || err?.status === 409) {
+      // The centralized API client exposes HTTP status through ApiError.
+      if (err instanceof ApiError && err.status === 409) {
         setErrorMessage("That workspace URL slug is already taken. Please choose another.");
       } else {
         setErrorMessage("Failed to save organization settings. Please try again.");
