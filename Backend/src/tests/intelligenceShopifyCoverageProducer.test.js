@@ -99,3 +99,34 @@ test('rejects even a one-cent persisted/source amount mismatch', async () => {
   }), error => error.code === 'ORDER_COVERAGE_ORDER_TOTAL_MISMATCH');
   assert.equal(f.certificates, 0);
 });
+
+test('certifies cancellation exclusion only when Shopify and persisted order states agree', async () => {
+  const cancelledOrder = {
+    ...source[0],
+    cancelledAt: '2026-10-21T00:00:00Z',
+    currentTotalPriceSet: { shopMoney: { amount: '1.23', currencyCode: 'USD' } },
+  };
+  const matching = fixture({
+    orders: [cancelledOrder],
+    rows: [{
+      external_order_id: '1001', total: new Prisma.Decimal('1.23'),
+      currency: 'USD', recovery_status: 'cancelled',
+    }],
+  });
+  await verifyShopifyOrderCoverage(matching.db, shop, {
+    now: new Date('2026-10-27T12:00:00Z'), graphql: matching.graphql, fetchPages: matching.fetchPages,
+  });
+  assert.equal(matching.certificates, 1);
+
+  const mismatch = fixture({
+    orders: [cancelledOrder],
+    rows: [{
+      external_order_id: '1001', total: new Prisma.Decimal('1.23'),
+      currency: 'USD', recovery_status: 'completed',
+    }],
+  });
+  await assert.rejects(verifyShopifyOrderCoverage(mismatch.db, shop, {
+    now: new Date('2026-10-27T12:00:00Z'), graphql: mismatch.graphql, fetchPages: mismatch.fetchPages,
+  }), error => error.code === 'ORDER_COVERAGE_ORDER_STATUS_MISMATCH');
+  assert.equal(mismatch.certificates, 0);
+});
