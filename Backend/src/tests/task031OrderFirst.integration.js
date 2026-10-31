@@ -38,7 +38,7 @@ async function main() {
     });
     const mkOrder = (suffix, token, extra = {}) => ({ id:prefix+'-order-'+suffix,
       checkout_token:token, created_at:'2026-10-30T08:00:00Z',
-      total_price:'25', current_total_price:'25', currency:'USD', ...extra });
+      total_price:'25', current_total_price:'25', currency:'USD', refunds:[], ...extra });
     const mkCheckout = (suffix, token, extra = {}) => ({ id:prefix+'-checkout-'+suffix,
       token, created_at:'2026-10-30T07:55:00Z',
       updated_at:'2026-10-30T08:01:00Z', total_price:'25',currency:'USD', ...extra });
