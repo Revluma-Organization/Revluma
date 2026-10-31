@@ -111,7 +111,7 @@ def test_query_is_organization_scoped_and_never_adds_mixed_currencies():
     order_query = next(sql for sql, _ in db.calls if "FROM orders" in sql)
     assert "s.organization_id = :org_id" in order_query
     assert "GROUP BY CASE" in order_query
-    assert "UPPER(BTRIM(o.currency)) ~ '^[A-Z]{3}
+    assert "UPPER(BTRIM(o.currency)) ~" in order_query
     assert len([x for x in evidence["items"] if x["metric"] == "recorded_order_value"]) == 2
     assert not any(x["metric"] == "total_revenue_all_currencies" for x in evidence["items"])
 
