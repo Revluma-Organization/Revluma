@@ -186,9 +186,9 @@ def _insert_real_merchant(connection, organization_id, store_ids, now, status="a
         VALUES (:id, 'Task 198 Test Owner', :email, 'test-only-hash')
     """), {"id": owner_id, "email": f"{owner_id}@task198.invalid"})
     connection.execute(text("""
-        INSERT INTO organizations (id, owner_id, company_name, industry, country)
-        VALUES (:id, :owner, 'Task 198 disposable merchant', 'ecommerce', 'Nigeria')
-    """), {"id": organization_id, "owner": owner_id})
+        INSERT INTO organizations (id, owner_id, company_name, industry, country, slug)
+        VALUES (:id, :owner, 'Task 198 disposable merchant', 'ecommerce', 'Nigeria', :slug)
+    """), {"id": organization_id, "owner": owner_id, "slug": f"task198-{organization_id}"})
     for index, store_id in enumerate(store_ids):
         connection.execute(text("""
             INSERT INTO stores (id, organization_id, platform, shop_domain, status, last_synced_at)
