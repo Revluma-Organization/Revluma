@@ -20,7 +20,6 @@ def state(**overrides):
                 {"evidence_id": "evidence-yesterday", "metric": "recorded_order_value",
                  "value": "5000.25", "currency": "NGN", "status": "available",
                  "unit": "money", "epistemic_type": "observed",
-                 "unit": "money", "epistemic_type": "observed",
                  "period": {"start": "2026-10-30T00:00:00+00:00", "end": "2026-10-31T00:00:00+00:00"}},
                 {"evidence_id": "evidence-trend", "metric": "revenue_trend_7d",
                  "value": "12.5", "currency": "NGN", "status": "available",
@@ -79,6 +78,7 @@ def test_revenue_agent_does_not_infer_cause_from_revenue_movement():
             "items": [
                 {"evidence_id": "evidence-yesterday", "metric": "recorded_order_value",
                  "value": "5000.25", "currency": "NGN", "status": "available",
+                 "unit": "money", "epistemic_type": "observed",
                  "period": {"start": "2026-10-30T00:00:00+00:00", "end": "2026-10-31T00:00:00+00:00"}},
                 {"evidence_id": "evidence-trend", "metric": "revenue_trend_7d",
                  "value": "-18.0", "currency": "NGN", "status": "available",
