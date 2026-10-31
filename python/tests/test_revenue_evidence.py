@@ -269,3 +269,12 @@ def test_daylight_saving_boundary_is_not_guessed_without_store_timezone():
     )
     assert result["timezone"] == "UTC"
     assert result["end"] - result["start"] == timedelta(hours=72)
+
+def test_today_and_yesterday_are_supported_only_when_utc_is_explicit():
+    today = resolve_revenue_period("revenue today UTC", now=NOW)
+    yesterday = resolve_revenue_period("sales yesterday UTC", now=NOW)
+    today_start = datetime(2026, 10, 31, 0, tzinfo=timezone.utc)
+    assert today["start"] == today_start
+    assert today["end"] == today_start + timedelta(days=1)
+    assert yesterday["start"] == today_start - timedelta(days=1)
+    assert yesterday["end"] == today_start
