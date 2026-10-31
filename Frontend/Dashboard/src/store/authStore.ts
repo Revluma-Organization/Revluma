@@ -25,7 +25,7 @@ export interface User {
   onboarding_status: string;
   membership_tier?: string;
   account_status?: 'free' | 'in_trial' | 'trial_expired' | 'premium';
-  status?: string;
+  status?: 'free' | 'in_trial' | 'trial_expired' | 'premium';
   two_factor_enabled?: boolean;
   last_login_at?: string | null;
   organization_memberships?: OrgMembership[];
