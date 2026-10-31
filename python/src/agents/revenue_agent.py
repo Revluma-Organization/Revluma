@@ -53,8 +53,9 @@ class RevenueAgent(BaseAgent):
         }
 
     def _analyze(self, bs, memories: list[dict], question: str) -> AgentResult:
-        if bs.revenue_today is None and bs.revenue_yesterday is None:
-            return AgentResult.no_data("revenue", "No revenue data available. Ensure your store is connected and synced.")
+        currency = getattr(bs, "revenue_currency", None)
+        if not currency or (bs.revenue_today is None and bs.revenue_yesterday is None and bs.revenue_trend_7d is None):
+            return AgentResult.no_data("revenue", "No fresh, complete, single-currency revenue evidence is available for the requested analysis.")
 
         facts = []
         signals = []
@@ -62,7 +63,7 @@ class RevenueAgent(BaseAgent):
         opportunities = []
         recommendations = []
         warnings = list(bs.warnings)
-        data_sources = ["orders", "business_states"]
+        data_sources = ["orders.total", "orders.currency", "orders.ordered_at", "orders.recovery_status", "intelligence_order_coverage", "business_states"]
 
         # ── Facts (directly in data) 
         if bs.revenue_today is not None:
@@ -70,9 +71,9 @@ class RevenueAgent(BaseAgent):
                 "type": "fact",
                 "metric": "revenue_today",
                 "value": float(bs.revenue_today),
-                "currency": "USD",
-                "description": f"Revenue today: ${float(bs.revenue_today):,.2f}",
-                "source": "orders table, today",
+                "currency": currency,
+                "description": f"Recorded order value today (UTC): {float(bs.revenue_today):,.2f} {currency}",
+                "source": "orders.total and orders.currency, current UTC day",
             })
 
         if bs.revenue_yesterday is not None:
@@ -80,9 +81,9 @@ class RevenueAgent(BaseAgent):
                 "type": "fact",
                 "metric": "revenue_yesterday",
                 "value": float(bs.revenue_yesterday),
-                "currency": "USD",
-                "description": f"Revenue yesterday: ${float(bs.revenue_yesterday):,.2f}",
-                "source": "orders table, yesterday",
+                "currency": currency,
+                "description": f"Recorded order value yesterday (UTC): {float(bs.revenue_yesterday):,.2f} {currency}",
+                "source": "orders.total and orders.currency, previous complete UTC day",
             })
 
         # ── Signals (computed patterns) 
@@ -102,7 +103,8 @@ class RevenueAgent(BaseAgent):
                 "type": "signal",
                 "metric": "revenue_trend_7d",
                 "value": bs.revenue_trend_7d,
-                "description": f"7-day revenue trend: {direction} {abs(bs.revenue_trend_7d):.1f}% vs prior 7 days",
+                "currency": currency,
+                "description": f"Recorded order value in {currency}: {direction} {abs(bs.revenue_trend_7d):.1f}% across the last seven complete UTC days vs the prior seven complete UTC days",
                 "severity": "high" if abs(bs.revenue_trend_7d) > 15 else "medium",
             })
 
@@ -121,15 +123,15 @@ class RevenueAgent(BaseAgent):
             if bs.cart_anomaly:
                 diagnosis.append({
                     "type": "inference",
-                    "description": "Revenue drop correlates with elevated cart abandonment. Checkout friction is a likely contributor.",
-                    "confidence": 0.72,
-                    "supporting_signals": ["revenue_delta", "cart_anomaly"],
+                    "description": "Recorded order value declined. The available revenue evidence does not establish why; traffic, checkout, pricing and inventory causes have not been verified by this metric.",
+                    "confidence": 0.35,
+                    "supporting_signals": ["revenue_delta"],
                 })
             else:
                 diagnosis.append({
                     "type": "inference",
-                    "description": "Revenue dropped significantly vs yesterday. Check for traffic changes, pricing changes, or product availability issues.",
-                    "confidence": 0.55,
+                    "description": "Recorded order value declined. The available revenue evidence does not identify a cause.",
+                    "confidence": 0.35,
                     "supporting_signals": ["revenue_delta"],
                 })
 
@@ -146,11 +148,10 @@ class RevenueAgent(BaseAgent):
             if opp.get("category") == "cart_recovery":
                 opportunities.append(opp)
 
-        if bs.cart_anomaly and bs.abandoned_cart_value:
+        if bs.cart_anomaly and bs.abandoned_cart_count:
             opportunities.append({
                 "category": "revenue_recovery",
-                "description": f"${float(bs.abandoned_cart_value):,.2f} in carts abandoned in the last 48 hours",
-                "estimated_value": float(bs.abandoned_cart_value),
+                "description": f"{bs.abandoned_cart_count} recorded carts were abandoned in the last 48 hours. Their monetary value is not included because cart currency is not verified here.",
                 "urgency": "high",
             })
 
@@ -169,7 +170,7 @@ class RevenueAgent(BaseAgent):
             recommendations.append({
                 "action": "trigger_cart_recovery",
                 "description": f"Launch recovery sequence for {bs.abandoned_cart_count} abandoned carts. Use max {max_discount}% discount for price-sensitive shoppers.",
-                "predicted_impact": f"Estimated 18-25% recovery rate on ${float(bs.abandoned_cart_value or 0):,.2f}",
+                "predicted_impact": "Potential recovery opportunity; no revenue estimate is verified.",
                 "confidence": 0.75,
                 "category": "cart_recovery",
                 "params": {"max_discount_pct": max_discount},
