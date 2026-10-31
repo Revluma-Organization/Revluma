@@ -87,7 +87,12 @@ jobs:
         env:
           DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
           DIRECT_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
-        run: npx prisma db push --force-reset --accept-data-loss --schema prisma/schema.prisma
+        run: |
+          # Recreate only the disposable CI schema, then install pgvector before
+          # Prisma creates the actual application models.
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --accept-data-loss --schema prisma/schema.prisma
       - name: Record migration-chain diagnostic
         if: always()
         env:
