@@ -75,7 +75,8 @@ class RevenueAgent(BaseAgent):
         trend_evidence = next(
             (item for item in evidence_items
              if item.get("metric") == "revenue_trend_7d"
-             and item.get("status") == "available"),
+             and item.get("status") == "available"
+             and item.get("currency") == currency),
             None,
         )
         if (revenue_evidence.get("overall_status") != "available" or not currency
