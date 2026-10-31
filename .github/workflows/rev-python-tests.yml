@@ -108,17 +108,42 @@ jobs:
         working-directory: Frontend/Dashboard
         run: npm ci --include=dev
       - name: Run the configured Vercel Vite build command
+        id: dashboard_build
+        continue-on-error: true
         working-directory: Frontend/Dashboard
         run: npm run build -- --outDir ../dashboard --emptyOutDir
       - name: Run dashboard lint
+        id: dashboard_lint
+        continue-on-error: true
         working-directory: Frontend/Dashboard
         run: npm run lint
       - name: Type-check dashboard application
+        id: dashboard_app_types
+        continue-on-error: true
         working-directory: Frontend/Dashboard
         run: npx tsc --noEmit -p tsconfig.app.json
       - name: Type-check dashboard tooling
+        id: dashboard_node_types
+        continue-on-error: true
         working-directory: Frontend/Dashboard
         run: npx tsc --noEmit -p tsconfig.node.json
       - name: Run dashboard tests
+        id: dashboard_tests
+        continue-on-error: true
         working-directory: Frontend/Dashboard
         run: npm test
+      - name: Aggregate dashboard quality checks
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.dashboard_build.outcome }}
+          LINT_OUTCOME: ${{ steps.dashboard_lint.outcome }}
+          APP_TYPES_OUTCOME: ${{ steps.dashboard_app_types.outcome }}
+          NODE_TYPES_OUTCOME: ${{ steps.dashboard_node_types.outcome }}
+          TESTS_OUTCOME: ${{ steps.dashboard_tests.outcome }}
+        run: |
+          printf 'Vite build: %s\\nDashboard lint: %s\\nApp type-check: %s\\nTooling type-check: %s\\nDashboard tests: %s\\n' "$BUILD_OUTCOME" "$LINT_OUTCOME" "$APP_TYPES_OUTCOME" "$NODE_TYPES_OUTCOME" "$TESTS_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          test "$BUILD_OUTCOME" = success
+          test "$LINT_OUTCOME" = success
+          test "$APP_TYPES_OUTCOME" = success
+          test "$NODE_TYPES_OUTCOME" = success
+          test "$TESTS_OUTCOME" = success
