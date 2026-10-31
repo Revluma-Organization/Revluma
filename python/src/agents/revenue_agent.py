@@ -100,7 +100,7 @@ class RevenueAgent(BaseAgent):
                 "metric": "revenue_today",
                 "value": str(bs.revenue_today),
                 "currency": currency,
-                "description": f"Recorded order value today (UTC): {float(bs.revenue_today):,.2f} {currency}",
+                "description": f"Recorded order value today (UTC): {Decimal(str(bs.revenue_today)):,.2f} {currency}",
                 "source": "orders.total and orders.currency, current UTC day",
             })
 
