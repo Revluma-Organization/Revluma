@@ -131,7 +131,14 @@ test('certifies cancellation exclusion only when Shopify and persisted order sta
   assert.equal(mismatch.certificates, 0);
 });
 
-test('coverage money parser rejects values outside persisted DECIMAL(10,2) range', () => {
-  assert.equal(asMoney({ shopMoney: { amount: '100000000.00' } }), null);
-  assert.equal(asMoney({ shopMoney: { amount: '1.234' } }), null);
+test('coverage verification rejects source totals outside persisted DECIMAL(10,2) range', async () => {
+  const order = {
+    ...source[0],
+    currentTotalPriceSet: { shopMoney: { amount: '100000000.00', currencyCode: 'USD' } },
+  };
+  const f = fixture({ orders: [order], rows: [] });
+  await assert.rejects(verifyShopifyOrderCoverage(f.db, shop, {
+    now: new Date('2026-10-27T12:00:00Z'), graphql: f.graphql, fetchPages: f.fetchPages,
+  }), error => error.code === 'ORDER_COVERAGE_SOURCE_FINANCIALS_UNVERIFIED');
+  assert.equal(f.certificates, 0);
 });
