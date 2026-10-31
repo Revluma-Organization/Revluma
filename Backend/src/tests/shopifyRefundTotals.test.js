@@ -46,3 +46,14 @@ test('amounts exceeding the persisted DECIMAL(10,2) precision fail closed', () =
   assert.equal(shopifyNetOrderTotal({ total_price: '100.00', refunds: [refund('0.001')] }), null);
   assert.equal(shopifyNetOrderTotal({ total_price: '100000000.00', refunds: [] }), null);
 });
+
+test('successful refund in a different or unverifiable currency fails closed', () => {
+  assert.equal(shopifyNetOrderTotal({
+    total_price: '100.00', currency: 'USD',
+    refunds: [{ transactions: [{ kind: 'refund', status: 'success', amount: '10.00', currency: 'EUR' }] }],
+  }), null);
+  assert.equal(shopifyNetOrderTotal({
+    total_price: '100.00',
+    refunds: [{ transactions: [{ kind: 'refund', status: 'success', amount: '10.00', currency: 'EUR' }] }],
+  }), null);
+});
