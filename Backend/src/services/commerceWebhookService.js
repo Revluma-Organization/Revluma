@@ -115,7 +115,7 @@ function shopifyNetOrderTotal(payload) {
   for (const refund of payload.refunds) {
     if (!Array.isArray(refund.transactions) || refund.transactions.length === 0) return null;
     for (const transaction of refund.transactions) {
-      if (String(transaction.kind || '').toLowerCase() !== 'refund') continue;
+      if (String(transaction.kind || '').toLowerCase() !== 'refund') return null;
       const status = String(transaction.status || '').toLowerCase();
       if (!['success', 'failure', 'failed', 'pending', 'error', 'voided'].includes(status)) return null;
       if (status !== 'success') continue;
