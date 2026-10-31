@@ -27,7 +27,7 @@ test('nonrefunded Shopify orders retain original total', () => {
 
 test('decimal refund arithmetic does not introduce binary floating-point drift', () => {
   assert.equal(shopifyNetOrderTotal(order([refund('0.10'), refund('0.20')])), '99.70');
-  assert.equal(shopifyNetOrderTotal({ total_price: '0.30', refunds: [refund('0.10'), refund('0.20')] }), '0.00');
+  assert.equal(shopifyNetOrderTotal({ total_price: '0.30', currency: 'USD', refunds: [refund('0.10'), refund('0.20')] }), '0.00');
 });
 test('missing order total is not converted to zero', () => {
   assert.equal(shopifyNetOrderTotal({ refunds: [] }), null);
