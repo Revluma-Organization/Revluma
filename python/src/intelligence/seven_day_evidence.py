@@ -289,6 +289,9 @@ def retrieve_revenue_evidence(
     elif coverage_query_ok and all(fully_covered):
         status = "available"
         completeness = "known"
+    elif coverage_query_ok and not coverage_rows:
+        status = "unknown"
+        completeness = "unknown"
     elif coverage_rows and len(coverage_by_store) == len(store_ids) and start < min(
         (row["coverage_start"].replace(tzinfo=timezone.utc)
          if row["coverage_start"].tzinfo is None else row["coverage_start"]).astimezone(timezone.utc)
