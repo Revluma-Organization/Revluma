@@ -90,7 +90,7 @@ const Profile: FC = () => {
     useEffect(() => {
         const fetchProfile = async () => {
       try {
-        const res = await api.get<{ data?: { profile_picture_url?: string; full_name?: string } }>("/auth/getProfile");
+        const res = await api.get<{ data?: { profile_picture_url?: string; full_name?: string; two_factor_enabled?: boolean } }>("/auth/getProfile");
         
         // Target the nested 'data' object backend sends back
         const userData = res.data?.data;
