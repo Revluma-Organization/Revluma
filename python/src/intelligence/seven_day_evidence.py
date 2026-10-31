@@ -541,10 +541,27 @@ def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict
         raise ValueError("now must be timezone-aware")
     end = end.astimezone(timezone.utc)
     lowered = message.lower()
-    if re.search(r"\b(today|yesterday|this morning|last night)\b", lowered):
+    local_day_match = re.search(r"\b(today|yesterday)\b", lowered)
+    if local_day_match:
+        if re.search(r"\bUTC\b", lowered, re.IGNORECASE):
+            day = end.date() - (timedelta(days=1) if local_day_match.group(1) == "yesterday" else timedelta())
+            start_at = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+            return {
+                "status": "supported",
+                "start": start_at,
+                "end": start_at + timedelta(days=1),
+                "timezone": "UTC",
+                "label": f"{local_day_match.group(1)} UTC calendar day",
+            }
         return {
             "status": "unsupported",
-            "reason": "Merchant-local calendar periods cannot be resolved because the Shopify store timezone is not persisted.",
+            "reason": "Merchant-local calendar periods cannot be resolved because the Shopify store timezone is not persisted. Specify UTC or an explicit ISO date range.",
+            "timezone": None,
+        }
+    if re.search(r"\b(this morning|last night)\b", lowered):
+        return {
+            "status": "unsupported",
+            "reason": "Intraday local periods cannot be resolved because the Shopify store timezone is not persisted.",
             "timezone": None,
         }
     match = re.search(
