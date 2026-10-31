@@ -1,0 +1,217 @@
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+import pytest
+
+from src.intelligence.seven_day_evidence import (
+    format_revenue_evidence,
+    resolve_revenue_period,
+    retrieve_revenue_evidence,
+)
+
+
+NOW = datetime(2026, 10, 31, 12, tzinfo=timezone.utc)
+START = NOW - timedelta(days=7)
+END = NOW
+
+
+class Result:
+    def __init__(self, rows=None):
+        self.rows = rows or []
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return self.rows
+
+
+class RevenueDB:
+    def __init__(self, *, stores=None, coverage=None, orders=None, fail=None):
+        self.stores = stores if stores is not None else [
+            {"id": "store-a", "status": "active", "last_synced_at": NOW - timedelta(minutes=5)}
+        ]
+        self.coverage = coverage if coverage is not None else [
+            {"store_id": "store-a", "coverage_start": START - timedelta(days=1),
+             "coverage_end": END + timedelta(days=1), "certified_at": NOW,
+             "source": "shopify_verified_history_v1", "source_run_id": "coverage-run-123"}
+        ]
+        self.orders = orders if orders is not None else [
+            {"currency": "USD", "item_count": 2, "amount": Decimal("125.55")},
+            {"currency": "NGN", "item_count": 1, "amount": Decimal("5000.10")},
+        ]
+        self.fail = fail
+        self.calls = []
+        self.rollbacks = 0
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def execute(self, statement, params):
+        sql = str(statement)
+        self.calls.append((sql, params))
+        if self.fail == "stores" and "FROM stores" in sql:
+            raise RuntimeError("db unavailable")
+        if "FROM stores" in sql:
+            assert params["org_id"] == "org-a"
+            return Result(self.stores)
+        if "FROM intelligence_order_coverage" in sql:
+            assert params["org_id"] == "org-a"
+            assert params["trusted_source"] == "shopify_verified_history_v1"
+            assert "ANY(CAST(:store_ids AS uuid[]))" in sql
+            return Result(self.coverage)
+        if "FROM orders" in sql:
+            if self.fail == "orders":
+                raise RuntimeError("query failure")
+            assert params["org_id"] == "org-a"
+            assert params["start"] == START
+            assert params["end"] == END
+            assert "s.organization_id = :org_id" in sql
+            assert "o.ordered_at >= :start" in sql and "o.ordered_at < :end" in sql
+            assert "o.recovery_status IS DISTINCT FROM 'cancelled'" in sql
+            assert "COUNT(DISTINCT o.id)" in sql
+            return Result(self.orders)
+        raise AssertionError(f"Unexpected SQL: {sql}")
+
+
+def retrieve(db):
+    return retrieve_revenue_evidence("org-a", db, start=START, end=END, now=NOW)
+
+
+def test_contract_envelope_preserves_currency_decimal_and_calculation_lineage():
+    db = RevenueDB()
+    evidence = retrieve(db)
+    assert evidence["contract_version"] == "1.0"
+    assert evidence["overall_status"] == "available"
+    assert evidence["period"]["timezone"] == "UTC"
+    assert evidence["period"]["semantics"] == "[start,end)"
+    values = [x for x in evidence["items"] if x["metric"] == "recorded_order_value"]
+    assert [(x["currency"], x["value"]) for x in values] == [
+        ("NGN", "5000.10"), ("USD", "125.55")
+    ]
+    assert "gross_revenue" in {x["metric"] for x in evidence["items"]}
+    assert "net_revenue" in {x["metric"] for x in evidence["items"]}
+    assert "refund_value" in {x["metric"] for x in evidence["items"]}
+    aov = [x for x in evidence["items"] if x["metric"] == "average_order_value"]
+    assert {(x["currency"], x["value"]) for x in aov} == {
+        ("USD", "62.775"), ("NGN", "5000.1")
+    }
+    assert all(x["calculation"]["input_evidence_ids"] for x in aov)
+    assert all(x["source"]["system"] == "shopify" for x in values)
+    assert all(x["status"] == "available" for x in values)
+
+
+def test_query_is_organization_scoped_and_never_adds_mixed_currencies():
+    db = RevenueDB()
+    evidence = retrieve(db)
+    order_query = next(sql for sql, _ in db.calls if "FROM orders" in sql)
+    assert "s.organization_id = :org_id" in order_query
+    assert "GROUP BY COALESCE(NULLIF(UPPER(o.currency)" in order_query
+    assert len([x for x in evidence["items"] if x["metric"] == "recorded_order_value"]) == 2
+    assert not any(x["metric"] == "total_revenue_all_currencies" for x in evidence["items"])
+
+
+def test_missing_coverage_is_unknown_not_verified_zero():
+    db = RevenueDB(coverage=[])
+    evidence = retrieve(db)
+    assert evidence["overall_status"] == "unknown"
+    assert all(x["status"] == "unknown" for x in evidence["items"] if x["metric"] == "recorded_order_value")
+    assert "REVENUE_EVIDENCE_UNKNOWN" in [x["code"] for x in evidence["errors"]]
+
+
+def test_partial_store_coverage_never_claims_complete_organization_total():
+    stores = [
+        {"id": "store-a", "status": "active", "last_synced_at": NOW - timedelta(minutes=5)},
+        {"id": "store-b", "status": "active", "last_synced_at": NOW - timedelta(minutes=5)},
+    ]
+    db = RevenueDB(stores=stores)
+    evidence = retrieve(db)
+    assert evidence["overall_status"] == "partial"
+    assert all(x["coverage"]["completeness"] == "partial" for x in evidence["items"] if x["metric"] == "recorded_order_value")
+
+
+def test_stale_source_sync_is_reported_as_stale():
+    stores = [{"id": "store-a", "status": "active", "last_synced_at": NOW - timedelta(hours=2)}]
+    db = RevenueDB(stores=stores)
+    evidence = retrieve(db)
+    assert evidence["overall_status"] == "stale"
+    assert any("exceeds the 30-minute" in " ".join(x["coverage"]["limitations"]) for x in evidence["items"] if x["metric"] == "recorded_order_value")
+
+
+def test_failed_order_query_is_unavailable_and_never_zero():
+    db = RevenueDB(fail="orders")
+    evidence = retrieve(db)
+    assert evidence["overall_status"] == "unavailable"
+    assert evidence["items"] == []
+    assert evidence["errors"] == [{"code": "REVENUE_ORDER_QUERY_FAILED"}]
+    assert db.rollbacks == 1
+    assert "no zero value" in " ".join(evidence["warnings"])
+
+
+def test_failed_store_scope_is_unavailable():
+    db = RevenueDB(fail="stores")
+    evidence = retrieve(db)
+    assert evidence["overall_status"] == "unavailable"
+    assert evidence["organization_scope"]["store_count"] == 0
+
+
+def test_no_authorized_shopify_store_is_unavailable_not_zero():
+    db = RevenueDB(stores=[])
+    evidence = retrieve(db)
+    assert evidence["overall_status"] == "unavailable"
+    assert evidence["items"] == []
+    assert len(db.calls) == 1
+
+
+def test_zero_orders_with_full_coverage_only_certifies_zero_count_not_currencyless_money():
+    db = RevenueDB(orders=[])
+    evidence = retrieve(db)
+    assert evidence["overall_status"] == "available"
+    count = next(x for x in evidence["items"] if x["metric"] == "recorded_order_count")
+    value = next(x for x in evidence["items"] if x["metric"] == "recorded_order_value")
+    assert count["value"] == 0 and count["status"] == "available"
+    assert value["value"] is None and value["status"] == "unsupported"
+    assert value["currency"] is None
+
+
+def test_custom_periods_use_utc_inclusive_calendar_dates_and_half_open_end():
+    result = resolve_revenue_period(
+        "show revenue between 2026-12-30 and 2027-01-02",
+        now=NOW,
+    )
+    assert result["status"] == "supported"
+    assert result["start"] == datetime(2026, 12, 30, tzinfo=timezone.utc)
+    assert result["end"] == datetime(2027, 1, 3, tzinfo=timezone.utc)
+
+
+def test_merchant_local_today_and_yesterday_are_unsupported_without_store_timezone():
+    for phrase in ("revenue today", "sales yesterday"):
+        result = resolve_revenue_period(phrase, now=NOW)
+        assert result["status"] == "unsupported"
+        assert "timezone is not persisted" in result["reason"]
+
+
+def test_rolling_seven_and_thirty_day_windows_are_timezone_aware_utc():
+    seven = resolve_revenue_period("revenue for the last 7 days", now=NOW)
+    thirty = resolve_revenue_period("sales in the past 30 days", now=NOW)
+    assert seven["start"] == NOW - timedelta(days=7)
+    assert thirty["start"] == NOW - timedelta(days=30)
+    assert seven["end"] == thirty["end"] == NOW
+    assert seven["timezone"] == thirty["timezone"] == "UTC"
+
+
+def test_rejects_naive_or_invalid_period_boundaries():
+    with pytest.raises(ValueError, match="Authenticated organization"):
+        retrieve_revenue_evidence("", RevenueDB(), start=START, end=END, now=NOW)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        retrieve_revenue_evidence("org-a", RevenueDB(), start=datetime(2026, 10, 1), end=END, now=NOW)
+    with pytest.raises(ValueError, match="after start"):
+        retrieve_revenue_evidence("org-a", RevenueDB(), start=END, end=START, now=NOW)
+
+
+def test_formatter_never_labels_recorded_order_value_gross_or_net_revenue():
+    text = format_revenue_evidence(retrieve(RevenueDB()))
+    assert "Recorded order value (USD)" in text
+    assert "Recorded order value (NGN)" in text
+    assert "not a gross-sales or net-revenue report" in text
+    assert "not independently itemized" in text
