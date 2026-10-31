@@ -56,7 +56,7 @@ test('order import prefers Shopify adjusted total over original total', () => {
     totalPriceSet: { shopMoney: { amount: '100.00', currencyCode: 'NGN' } },
     lineItems: { nodes: [] },
   });
-  assert.equal(payload.total_price, 70);
+  assert.equal(payload.total_price, '70.00');
   assert.equal(payload.currency, 'NGN');
 });
 
