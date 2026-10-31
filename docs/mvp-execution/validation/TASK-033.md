@@ -84,7 +84,6 @@ All 70 scenarios are tracked below. **NOT RUN** means the precise acceptance req
 | TC033-55 | PASS | Actual Command Center risk query and Rev Intelligence active-cart evidence verified; run 41199612927 |
 | TC033-56 | PASS | Rev Intelligence order revenue query retains completed order once; run 41199612927 |
 | TC033-57 | PASS | TC033-37-38-57-duplicate-purchase-and-checkout-do-not-duplicate; CI PASS run 41041588576 |
-| TC033-58 | PASS | No false campaign recovery attribution; run 41200036597 |
 | TC033-59 | PASS | Completed checkout excluded from active opportunity evidence; run 41200036597 |
 | TC033-60 | PASS | Checkout/order source identifiers and completion timestamp preserved; run 41199612927 |
 | TC033-61 | PASS | Large Shopify identifier preserved exactly; run 41199612927 |
