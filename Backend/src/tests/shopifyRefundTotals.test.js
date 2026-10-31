@@ -57,3 +57,8 @@ test('successful refund in a different or unverifiable currency fails closed', (
     refunds: [{ transactions: [{ kind: 'refund', status: 'success', amount: '10.00', currency: 'EUR' }] }],
   }), null);
 });
+
+test('empty or unknown refund transaction states are not treated as no refund', () => {
+  assert.equal(shopifyNetOrderTotal(order([{ transactions: [] }])), null);
+  assert.equal(shopifyNetOrderTotal(order([refund('10.00', 'mystery-status')])), null);
+});
