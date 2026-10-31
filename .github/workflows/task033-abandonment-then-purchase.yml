@@ -58,3 +58,36 @@ jobs:
           PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task032 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
           npx prisma db push --skip-generate --accept-data-loss
           node src/tests/task032CheckoutFirst.integration.js
+      - name: Execute Task 029 completion-precedence regression in isolated database
+        env:
+          TASK029_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task029?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task029?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task029;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task029 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task029Completion.integration.js
+
+      - name: Execute Task 030 delayed-event regression in isolated database
+        env:
+          TASK030_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task030?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task030?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task030;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task030 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task030DelayedEvents.integration.js
+
+      - name: Execute Task 031 order-first regression in isolated database
+        env:
+          TASK031_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task031?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task031?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task031;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task031 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task031OrderFirst.integration.js
+
