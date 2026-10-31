@@ -280,6 +280,23 @@ def retrieve_revenue_evidence(
         envelope["warnings"].append("Order totals could not be retrieved; no zero value has been inferred.")
         return envelope
 
+    certified_times = []
+    for row in coverage_rows:
+        certified = row["certified_at"]
+        if certified is not None:
+            if certified.tzinfo is None:
+                certified = certified.replace(tzinfo=timezone.utc)
+            certified_times.append(certified.astimezone(timezone.utc))
+    oldest_certificate = min(certified_times) if certified_times else None
+    certificate_age = (
+        max(0, int((observed_at - oldest_certificate).total_seconds()))
+        if oldest_certificate else None
+    )
+    freshness_age = max(
+        [value for value in (age_seconds, certificate_age) if value is not None],
+        default=None,
+    )
+
     if oldest_sync is None:
         status = "unknown"
         completeness = "unknown"
@@ -310,22 +327,6 @@ def retrieve_revenue_evidence(
         status = "unknown"
         completeness = "unknown"
 
-    certified_times = []
-    for row in coverage_rows:
-        certified = row["certified_at"]
-        if certified is not None:
-            if certified.tzinfo is None:
-                certified = certified.replace(tzinfo=timezone.utc)
-            certified_times.append(certified.astimezone(timezone.utc))
-    oldest_certificate = min(certified_times) if certified_times else None
-    certificate_age = (
-        max(0, int((observed_at - oldest_certificate).total_seconds()))
-        if oldest_certificate else None
-    )
-    freshness_age = max(
-        [value for value in (age_seconds, certificate_age) if value is not None],
-        default=None,
-    )
     freshness = {
         "observed_at": observed_at.isoformat(),
         "source_synced_at": oldest_sync.isoformat() if oldest_sync else None,
