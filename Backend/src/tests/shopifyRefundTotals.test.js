@@ -74,3 +74,59 @@ test('successful refund without a verifiable currency fails closed', () => {
     refunds: [{ transactions: [{ kind: 'refund', status: 'success', amount: '10.00' }] }],
   }), null);
 });
+
+test('Shopify GraphQL refund connections use shopMoney currency evidence', () => {
+  const graphQlOrder = {
+    totalPriceSet: { shopMoney: { amount: '0.30', currencyCode: 'USD' } },
+    refunds: {
+      nodes: [{
+        transactions: {
+          nodes: [
+            { kind: 'REFUND', status: 'SUCCESS', amountSet: { shopMoney: { amount: '0.10', currencyCode: 'USD' } } },
+            { kind: 'REFUND', status: 'SUCCESS', amountSet: { shopMoney: { amount: '0.20', currencyCode: 'USD' } } },
+          ],
+        },
+      }],
+    },
+  };
+  assert.equal(shopifyNetOrderTotal(graphQlOrder), '0.00');
+});
+
+test('Shopify GraphQL currentTotalPriceSet is already refund-adjusted and is not reduced twice', () => {
+  assert.equal(shopifyNetOrderTotal({
+    totalPriceSet: { shopMoney: { amount: '0.30', currencyCode: 'USD' } },
+    currentTotalPriceSet: { shopMoney: { amount: '0.00', currencyCode: 'USD' } },
+    refunds: { nodes: [{
+      transactions: { nodes: [
+        { kind: 'REFUND', status: 'SUCCESS', amountSet: { shopMoney: { amount: '0.10', currencyCode: 'USD' } } },
+        { kind: 'REFUND', status: 'SUCCESS', amountSet: { shopMoney: { amount: '0.20', currencyCode: 'USD' } } },
+      ] },
+    }] },
+  }), '0.00');
+});
+
+test('Shopify GraphQL refund currency mismatch or missing shopMoney fails closed', () => {
+  const makeOrder = transaction => ({
+    totalPriceSet: { shopMoney: { amount: '0.30', currencyCode: 'USD' } },
+    refunds: { nodes: [{ transactions: { nodes: [transaction] } }] },
+  });
+  assert.equal(shopifyNetOrderTotal(makeOrder({
+    kind: 'REFUND', status: 'SUCCESS',
+    amountSet: { shopMoney: { amount: '0.10', currencyCode: 'EUR' } },
+  })), null);
+  assert.equal(shopifyNetOrderTotal(makeOrder({
+    kind: 'REFUND', status: 'SUCCESS',
+    amountSet: { presentmentMoney: { amount: '0.10', currencyCode: 'USD' } },
+  })), null);
+});
+
+test('GraphQL pending and failed refunds do not reduce the order total', () => {
+  const graphQlOrder = {
+    totalPriceSet: { shopMoney: { amount: '0.30', currencyCode: 'USD' } },
+    refunds: { nodes: [{ transactions: { nodes: [
+      { kind: 'REFUND', status: 'PENDING', amountSet: { shopMoney: { amount: '0.10', currencyCode: 'EUR' } } },
+      { kind: 'REFUND', status: 'FAILURE', amountSet: { shopMoney: { amount: '0.20', currencyCode: 'EUR' } } },
+    ] } }] },
+  };
+  assert.equal(shopifyNetOrderTotal(graphQlOrder), '0.30');
+});
