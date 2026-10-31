@@ -16,7 +16,7 @@ function asMoney(value) {
   if (!/^\d+(?:\.\d{1,2})?$/.test(exact)) return null;
   try {
     const decimal = new Prisma.Decimal(exact);
-    return decimal.isFinite() && !decimal.isNegative() ? decimal : null;
+    return decimal.isFinite() && !decimal.isNegative() && !decimal.greaterThan('99999999.99') ? decimal : null;
   } catch {
     return null;
   }
