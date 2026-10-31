@@ -302,3 +302,14 @@ def test_month_and_year_boundary_periods_are_inclusive_dates_with_exclusive_end(
     assert month["end"] == datetime(2026, 2, 1, tzinfo=timezone.utc)
     assert year["start"] == datetime(2026, 12, 31, tzinfo=timezone.utc)
     assert year["end"] == datetime(2027, 1, 2, tzinfo=timezone.utc)
+
+def test_unsupported_relative_periods_are_not_silently_replaced_with_seven_days():
+    for phrase in (
+        "revenue for the last month",
+        "sales over the last 90 days",
+        "revenue this quarter",
+        "sales for the previous year",
+    ):
+        result = resolve_revenue_period(phrase, now=NOW)
+        assert result["status"] == "unsupported"
+        assert "explicit UTC date range" in result["reason"]
