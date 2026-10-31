@@ -588,7 +588,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         else:
             coverage_rows = db.execute(
                 _store_query("""
-                    SELECT store_id, coverage_start, coverage_end, certified_at, source
+                    SELECT store_id, coverage_start, coverage_end, certified_at, source, source_run_id
                     FROM intelligence_order_coverage
                     WHERE organization_id = :org_id
                       AND store_id IN :store_ids
