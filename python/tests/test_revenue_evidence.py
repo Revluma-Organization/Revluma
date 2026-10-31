@@ -277,7 +277,8 @@ def test_today_and_yesterday_are_supported_only_when_utc_is_explicit():
     yesterday = resolve_revenue_period("sales yesterday UTC", now=NOW)
     today_start = datetime(2026, 10, 31, 0, tzinfo=timezone.utc)
     assert today["start"] == today_start
-    assert today["end"] == today_start + timedelta(days=1)
+    assert today["end"] == NOW
+    assert today["label"] == "today UTC to request time"
     assert yesterday["start"] == today_start - timedelta(days=1)
     assert yesterday["end"] == today_start
 
@@ -289,3 +290,15 @@ def test_coverage_query_failure_preserves_unknown_status_and_partial_values():
     assert values and all(item["status"] == "unknown" for item in values)
     assert any("attestations could not be retrieved" in warning for warning in evidence["warnings"])
     assert "REVENUE_EVIDENCE_UNKNOWN" in [item["code"] for item in evidence["errors"]]
+
+def test_month_and_year_boundary_periods_are_inclusive_dates_with_exclusive_end():
+    month = resolve_revenue_period(
+        "revenue between 2026-01-01 and 2026-01-31", now=NOW
+    )
+    year = resolve_revenue_period(
+        "revenue from 2026-12-31 to 2027-01-01", now=NOW
+    )
+    assert month["start"] == datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert month["end"] == datetime(2026, 2, 1, tzinfo=timezone.utc)
+    assert year["start"] == datetime(2026, 12, 31, tzinfo=timezone.utc)
+    assert year["end"] == datetime(2027, 1, 2, tzinfo=timezone.utc)
