@@ -170,6 +170,79 @@ assert.equal((await cart(suffix)).status,'recovered');
 });
 
 
+await check('TC033-19-safe-cart-token-reconciliation',async()=>{
+const suffix='cart-token-safe',token=prefix+'-shared-cart-token';
+await upsertAbandonedCart(store,checkout(suffix,{cart_token:token}));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order(suffix,{checkout_token:null,checkout_id:null,cart_token:token}));
+const c=await cart(suffix);
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}});
+assert.equal(o.abandoned_cart_id,c.id);assert.equal(c.status,'recovered');
+});
+await check('TC033-20-26-conflicting-and-ambiguous-identifiers-never-force-link',async()=>{
+const a='conflict-a',b='conflict-b';
+await upsertAbandonedCart(store,checkout(a));
+await upsertAbandonedCart(store,checkout(b));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order('conflict',{checkout_id:prefix+'-checkout-'+a,checkout_token:prefix+'-token-'+b}));
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-conflict'}});
+assert.equal(o.abandoned_cart_id,null);
+const conflict=await prisma.order_checkout_reconciliation_cases.findFirst({where:{store_id:store.id,order_id:o.id}});
+assert.equal(conflict.status,'UNRESOLVED');assert.equal(conflict.reason,'CONFLICTING_IDENTIFIERS');
+});
+await check('TC033-27-existing-checkout-ownership-rejects-second-order-claim',async()=>{
+const suffix='single-owner';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order(suffix));
+const second=await upsertOrder(store,'shopify',order(suffix+'-second',{checkout_id:prefix+'-checkout-'+suffix,checkout_token:null}));
+assert.equal(second.abandoned_cart_id,null);
+assert.equal(await prisma.orders.count({where:{store_id:store.id,abandoned_cart_id:(await cart(suffix)).id}}),1);
+});
+await check('TC033-31-32-60-source-identifiers-and-completion-timestamp-preserved',async()=>{
+const suffix='source-integrity',sourceTime='2026-10-30T08:40:00.000Z';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order(suffix,{created_at:sourceTime,checkout_id:prefix+'-checkout-'+suffix}));
+const c=await cart(suffix);
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}});
+assert.equal(c.source_checkout_id,prefix+'-checkout-'+suffix);
+assert.equal(o.source_checkout_id,prefix+'-checkout-'+suffix);
+assert.equal(c.recovered_at.toISOString(),sourceTime);
+});
+await check('TC033-61-large-Shopify-identifier-is-preserved-exactly',async()=>{
+const huge='9223372036854775806';
+await upsertAbandonedCart(store,{...checkout('large-id'),id:huge,checkout_id:huge,token:null});
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',{...order('large-id'),id:prefix+'-order-large-id',checkout_id:huge,checkout_token:null});
+const c=await prisma.abandoned_carts.findFirstOrThrow({where:{store_id:store.id,external_cart_id:huge}});
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-large-id'}});
+assert.equal(c.source_checkout_id,huge);assert.equal(o.source_checkout_id,huge);assert.equal(o.abandoned_cart_id,c.id);
+});
+await check('TC033-62-63-missing-and-invalid-identifiers-do-not-fabricate-links',async()=>{
+const suffix='missing-identity';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order(suffix,{checkout_id:null,checkout_token:null,cart_token:null}));
+assert.equal((await cart(suffix)).status,'abandoned');
+await assert.rejects(upsertOrder(store,'shopify',order('invalid-identity',{checkout_id:{bad:'object'},checkout_token:null,cart_token:null})));
+});
+await check('TC033-51-52-53-historical-payload-mappers-use-shared-persistence-path',async()=>{
+const sync=require('../services/shopifySync');
+const suffix='historical-map';
+const mappedCheckout=sync.abandonedPayload({id:'gid://shopify/AbandonedCheckout/'+prefix+'-checkout-'+suffix,createdAt:'2026-10-30T08:00:00Z',updatedAt:'2026-10-30T08:01:00Z',totalPriceSet:{shopMoney:{amount:'25',currencyCode:'USD'}}});
+await upsertAbandonedCart(store,mappedCheckout);
+await promoteInactiveCheckouts();
+const mappedOrder=sync.orderPayload({id:'gid://shopify/Order/'+prefix+'-order-'+suffix,checkoutToken:prefix+'-token-'+suffix,createdAt:'2026-10-30T08:40:00Z',displayFinancialStatus:'PAID',totalPriceSet:{shopMoney:{amount:'25',currencyCode:'USD'}},currentTotalPriceSet:{shopMoney:{amount:'25',currencyCode:'USD'}},subtotalPriceSet:{shopMoney:{amount:'25',currencyCode:'USD'}},totalDiscountsSet:{shopMoney:{amount:'0',currencyCode:'USD'}},lineItems:{nodes:[]}});
+await upsertOrder(store,'shopify',{...mappedOrder,checkout_id:prefix+'-checkout-'+suffix});
+const c=await cart(suffix);
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}});
+assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);
+await upsertAbandonedCart(store,mappedCheckout);
+await upsertOrder(store,'shopify',{...mappedOrder,checkout_id:prefix+'-checkout-'+suffix});
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),1);
+assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}}),1);
+});
 await check('TC033-54-55-58-59-real-dashboard-metric-query-integrity',async()=>{
 const now=new Date();
 const cutoff=new Date(now.getTime()-900000);
