@@ -560,11 +560,14 @@ def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict
         end_at = datetime.combine(last + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
         return {"status": "supported", "start": start_at, "end": end_at, "timezone": "UTC", "label": "custom UTC calendar dates"}
     days = 30 if re.search(r"\b(last|past)\s+30\s+days?\b", lowered) else 7
-    start_at = end - timedelta(days=days)
+    # Relative day ranges are complete UTC calendar days, not a rolling window
+    # that includes the still-open current day.
+    end_at = datetime.combine(end.date(), datetime.min.time(), tzinfo=timezone.utc)
+    start_at = end_at - timedelta(days=days)
     return {
         "status": "supported",
         "start": start_at,
-        "end": end,
+        "end": end_at,
         "timezone": "UTC",
-        "label": f"rolling {days}-day UTC window",
+        "label": f"last {days} complete UTC calendar days",
     }
