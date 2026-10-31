@@ -19,7 +19,7 @@ def state(**overrides):
                  "currency": "NGN", "status": "available",
                  "period": {"start": "2026-10-30T00:00:00+00:00", "end": "2026-10-31T00:00:00+00:00"}},
                 {"evidence_id": "evidence-trend", "metric": "revenue_trend_7d",
-                 "currency": "NGN", "status": "available"},
+                 "value": "12.5", "value": "-18.0", "currency": "NGN", "status": "available"},
             ],
         },
         "revenue_anomaly": False,
