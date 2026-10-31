@@ -109,7 +109,7 @@ export default function ForgotPassword() {
     setLoading(true);
     setError("");
     try {
-      await api.post<any>("/auth/forgot-password", { email });
+      await api.post("/auth/forgot-password", { email });
       setOtp(["", "", "", "", "", ""]);
       setResendSeconds(45);
       setExpirySeconds(10 * 60);
