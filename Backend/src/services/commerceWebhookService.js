@@ -194,7 +194,7 @@ async function upsertOrder(store, provider, payload) {
   const orderExternalId = String(payload.id || payload.order_id);
   const orderDate = new Date(payload.created_at || payload.date_created || Date.now());
   const calculated = provider === 'shopify' ? shopifyNetOrderTotal(payload) : Number(payload.total_price ?? payload.total ?? 0);
-  if (calculated === null || !Number.isFinite(calculated)) {
+  if (calculated === null || (provider !== 'shopify' && !Number.isFinite(calculated))) {
     const error = new Error('Order financial totals cannot be verified');
     error.code = 'ORDER_FINANCIAL_TOTAL_UNVERIFIED';
     throw error;
