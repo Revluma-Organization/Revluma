@@ -9,8 +9,8 @@ def test_revenue_question_retrieves_only_authenticated_organization_evidence(mon
         AssertionError("Verified revenue retrieval must not depend on the reasoning model")
     ))
 
-    def retrieve(organization_id, db, *, start, end):
-        seen.update({"organization_id": organization_id, "start": start, "end": end})
+    def retrieve(organization_id, db, *, start, end, request_id=None):
+        seen.update({"organization_id": organization_id, "start": start, "end": end, "request_id": request_id})
         return {"overall_status": "unknown", "period": {}, "items": [], "warnings": [], "errors": []}
 
     monkeypatch.setattr(seven_day_evidence, "retrieve_revenue_evidence", retrieve)
@@ -26,6 +26,7 @@ def test_revenue_question_retrieves_only_authenticated_organization_evidence(mon
     assert result.intent == "verified_revenue_evidence"
     assert result.text == "Evidence status: unknown"
     assert seen["organization_id"] == "org-a"
+    assert seen["request_id"] == "corr-198"
     assert seen["end"] - seen["start"] == __import__("datetime").timedelta(days=7)
 
 
