@@ -19,6 +19,20 @@ jobs:
   python-regressions:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: revluma_test
+          POSTGRES_USER: revluma
+          POSTGRES_PASSWORD: task198_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U revluma -d revluma_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgresql+psycopg2://placeholder:placeholder@localhost:5432/placeholder
     defaults:
@@ -37,6 +51,10 @@ jobs:
           python -m pip install -r requirements.txt pytest
       - name: Compile Python sources and tests
         run: python -m compileall -q src tests
+      - name: Run Task 198 disposable PostgreSQL revenue integration tests
+        env:
+          TASK198_DATABASE_URL: postgresql+psycopg2://revluma:task198_test_only@127.0.0.1:5432/revluma_test
+        run: python -m pytest -q tests/test_revenue_evidence_postgres.py
       - name: Run Gemini, routing and web research regressions
         run: python -m pytest -q tests/test_model_gateway.py tests/test_rev_failure_routing.py
       - name: Run all Python tests
