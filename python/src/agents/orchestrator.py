@@ -615,8 +615,9 @@ def orchestrate(organization_id: str, user_id: str, message: str,
                 image_media_type: str | None = None,
                 trigger_type: str = "conversation",
                 trigger_priority: str = "normal",
-                context_payload: dict | None = None) -> OrchestrationResult:
-    correlation_id = str(uuid.uuid4())
+                context_payload: dict | None = None,
+                correlation_id: str | None = None) -> OrchestrationResult:
+    correlation_id = str(correlation_id or uuid.uuid4())
     start = time.time()
     try:
         result = _run(organization_id, user_id, message, conversation_id, db, correlation_id,
