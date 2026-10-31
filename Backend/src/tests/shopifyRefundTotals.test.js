@@ -33,8 +33,8 @@ test('missing order total is not converted to zero', () => {
   assert.equal(shopifyNetOrderTotal({ refunds: [] }), null);
   assert.equal(shopifyNetOrderTotal({ total_price: null, refunds: [] }), null);
 });
-test('over-refund is clamped to zero using decimal arithmetic', () => {
-  assert.equal(shopifyNetOrderTotal(order([refund('150.00')])), '0.00');
+test('over-refund is contradictory evidence and fails closed instead of becoming zero', () => {
+  assert.equal(shopifyNetOrderTotal(order([refund('150.00')])), null);
 });
 
 test('missing Shopify refund collection is not treated as proof of no refunds', () => {
