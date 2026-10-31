@@ -61,7 +61,6 @@ jobs:
         run: npm ci
       - name: Initialize the real application schema with Prisma migrations
         id: prisma_migrations
-        continue-on-error: true
         working-directory: Backend
         env:
           DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
@@ -82,26 +81,14 @@ jobs:
           PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -f "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql"
           npx prisma migrate resolve --applied 0_baseline --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
           npx prisma migrate deploy --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
-      - name: Initialize actual Prisma model schema for isolated revenue integration
+      - name: Verify Prisma migration status and record applied checksums
         working-directory: Backend
         env:
           DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
           DIRECT_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
         run: |
-          # Recreate only the disposable CI schema, then install pgvector before
-          # Prisma creates the actual application models.
-          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'
-          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
-          npx prisma db push --accept-data-loss --schema prisma/schema.prisma
-      - name: Record migration-chain diagnostic
-        if: always()
-        env:
-          MIGRATION_OUTCOME: ${{ steps.prisma_migrations.outcome }}
-        run: |
-          echo "Prisma migration-chain diagnostic: $MIGRATION_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$MIGRATION_OUTCOME" != success ]; then
-            echo "The disposable migration history is incomplete; revenue integration uses the actual Prisma schema bootstrap. This remains a migration-readiness limitation, not a production schema change." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          npx prisma migrate status --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'SELECT migration_name, checksum, finished_at FROM "_prisma_migrations" WHERE rolled_back_at IS NULL ORDER BY started_at;'
       - name: Compile Python sources and tests
         run: python -m compileall -q src tests
       - name: Run Task 198 disposable PostgreSQL revenue integration tests
