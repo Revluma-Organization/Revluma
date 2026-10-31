@@ -39,8 +39,9 @@ function externalId(gid) {
 function money(value) {
   const amount = value?.shopMoney?.amount;
   if (amount === null || amount === undefined || amount === '') return null;
-  const parsed = Number(amount);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  const exact = String(amount).trim();
+  if (!/^\\d+(?:\\.\\d+)?$/.test(exact)) return null;
+  return exact;
 }
 
 function nextConnectionCursor(connection, previousCursor, rootName) {
