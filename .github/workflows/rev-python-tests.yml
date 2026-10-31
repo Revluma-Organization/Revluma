@@ -73,6 +73,9 @@ jobs:
           printf 'provider = "postgresql"\n' > "$RUNNER_TEMP/task198-prisma/migrations/migration_lock.toml"
           # The baseline contains a stray dotenv diagnostic before its SQL. Strip only in the disposable copy.
           sed -i '1{/injected env/d;}' "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql"
+          # Execute the baseline SQL through psql so PostgreSQL reports the exact failing statement if it is invalid.
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -f "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql"
+          npx prisma migrate resolve --applied 0_baseline --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
           npx prisma migrate deploy --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
       - name: Compile Python sources and tests
         run: python -m compileall -q src tests
