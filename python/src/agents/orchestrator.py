@@ -150,6 +150,30 @@ def _trigger_requires_store_data(understanding, trigger_type: str) -> bool:
         getattr(understanding, "requires_store_data", False)
     )
 
+def _is_revenue_evidence_request(message: str) -> bool:
+    """Route explicit merchant revenue questions to verified records, not generic recall."""
+    value = str(message or "").lower()
+    metric = any(term in value for term in (
+        "revenue", "sales", "turnover", "order value", "average order value",
+    ))
+    if not metric:
+        return False
+    if any(term in value for term in (
+        "how to increase", "how can i increase", "grow revenue",
+        "improve revenue", "revenue strategy", "increase sales",
+    )):
+        return False
+    return (
+        value.startswith(("what ", "how much", "show ", "give me", "check ", "review "))
+        or any(term in value for term in (
+            "revenue today", "revenue yesterday", "sales today", "sales yesterday",
+            "last 7 days", "past 7 days", "last 30 days", "past 30 days",
+            "recorded order value", "how much revenue", "how much sales",
+            "why did revenue", "why is revenue", "why has revenue",
+            "between 20", "from 20",
+        ))
+    )
+
 
 def _is_ad_evaluation_request(
     understanding,
@@ -748,6 +772,41 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
     # Verified merchant-record questions must remain answerable when the LLM
     # reasoning provider is unavailable. Never infer missing checkout counts.
     query_lower = message.lower()
+    # Revenue questions use the existing organization-scoped SQL evidence
+    # retriever. Merchant text selects a period only; it never supplies tenant
+    # or store authority. No model can convert missing evidence into zero.
+    if (str(trigger_type or "conversation").lower() == "conversation"
+            and not image_base64 and not image_media_type
+            and _is_revenue_evidence_request(message)):
+        from ..intelligence.seven_day_evidence import (
+            resolve_revenue_period, retrieve_revenue_evidence, format_revenue_evidence,
+        )
+        period_request = resolve_revenue_period(message)
+        if period_request["status"] != "supported":
+            answer = (
+                "I can't reliably interpret today or yesterday for this Shopify store because "
+                "the store's timezone is not persisted. I won't substitute UTC or your user-profile "
+                "timezone and call it the store's local day. Give me an explicit ISO date range "
+                "(for example, between 2026-10-01 and 2026-10-07) and I'll report it in UTC."
+            )
+        else:
+            revenue_evidence = retrieve_revenue_evidence(
+                organization_id, db,
+                start=period_request["start"], end=period_request["end"],
+            )
+            answer = format_revenue_evidence(revenue_evidence)
+        persist_turns(
+            conv_id, organization_id, user_id, message, answer,
+            "direct_answer", None, db, title_hint=message if is_new else None,
+            orchestrator_mode="Analyst", correlation_id=correlation_id,
+        )
+        return OrchestrationResult(
+            success=True, conversation_id=conv_id, message_id=str(uuid.uuid4()),
+            response_type="direct_answer", text=answer,
+            intent="verified_revenue_evidence", orchestrator_mode="Analyst",
+            agents_used=[], correlation_id=correlation_id,
+        )
+
     # Compare verified transaction periods before consulting any reasoning model.
     asks_historical_comparison = (
         ("my store" in query_lower or "my performance" in query_lower)
