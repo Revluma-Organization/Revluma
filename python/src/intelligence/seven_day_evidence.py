@@ -261,7 +261,371 @@ def retrieve_revenue_evidence(
     try:
         rows = db.execute(text("""
             SELECT
-                COALESCE(NULLIF(UPPER(o.currency), ''), 'UNKNOWN') AS currency,
+                CASE
+                    WHEN UPPER(BTRIM(o.currency)) ~ '^[A-Z]{3}
+        """), {"org_id": organization_id, "start": start, "end": end}).mappings().all()
+    except Exception:
+        db.rollback()
+        envelope["errors"].append({"code": "REVENUE_ORDER_QUERY_FAILED"})
+        envelope["warnings"].append("Order totals could not be retrieved; no zero value has been inferred.")
+        return envelope
+
+    certified_times = []
+    for row in coverage_rows:
+        certified = row["certified_at"]
+        if certified is not None:
+            if certified.tzinfo is None:
+                certified = certified.replace(tzinfo=timezone.utc)
+            certified_times.append(certified.astimezone(timezone.utc))
+    oldest_certificate = min(certified_times) if certified_times else None
+    certificate_age = (
+        max(0, int((observed_at - oldest_certificate).total_seconds()))
+        if oldest_certificate else None
+    )
+    freshness_age = max(
+        [value for value in (age_seconds, certificate_age) if value is not None],
+        default=None,
+    )
+
+    if oldest_sync is None:
+        status = "unknown"
+        completeness = "unknown"
+    elif freshness_age is not None and freshness_age > REVENUE_FRESHNESS_THRESHOLD_SECONDS:
+        status = "stale"
+        completeness = "known" if all(fully_covered) else "partial"
+    elif coverage_query_ok and all(fully_covered):
+        status = "available"
+        completeness = "known"
+    elif coverage_query_ok and not coverage_rows:
+        status = "unknown"
+        completeness = "unknown"
+    elif coverage_rows and len(coverage_by_store) == len(store_ids) and start < min(
+        (row["coverage_start"].replace(tzinfo=timezone.utc)
+         if row["coverage_start"].tzinfo is None else row["coverage_start"]).astimezone(timezone.utc)
+        for row in coverage_rows
+    ):
+        status = "insufficient_history"
+        completeness = "partial"
+    elif coverage_query_ok:
+        status = "partial"
+        completeness = "partial"
+    else:
+        status = "unknown"
+        completeness = "unknown"
+
+    freshness = {
+        "observed_at": observed_at.isoformat(),
+        "source_synced_at": oldest_sync.isoformat() if oldest_sync else None,
+        "coverage_certified_at": oldest_certificate.isoformat() if oldest_certificate else None,
+        "age_seconds": freshness_age,
+    }
+    limitations = [
+        "Only persisted orders with recovery_status other than cancelled are included.",
+        "No payment/financial status is stored; pending/authorized orders cannot be separated from captured payments.",
+        "Refund value is not independently itemized; use recorded_order_value only.",
+    ]
+    if status != "available":
+        limitations.append("Complete source coverage for the entire requested period is not currently certified.")
+    if status == "stale":
+        limitations.append("The oldest selected Shopify store sync exceeds the 30-minute business-state freshness threshold.")
+    if not coverage_query_ok:
+        limitations.append("Coverage attestation lookup failed.")
+
+    source = {
+        "system": "shopify",
+        "entity": "orders",
+        "fields": ["orders.total", "orders.currency", "orders.ordered_at", "orders.recovery_status"],
+        "record_count": sum(int(row["item_count"]) for row in rows),
+    }
+    scope = {"store_count": len(stores)}
+    warnings = list(envelope["warnings"])
+    if status != "available":
+        warnings.append(f"Revenue evidence availability is {status}; values must not be presented as complete period totals.")
+    if any(row["currency"] == "UNKNOWN" for row in rows):
+        warnings.append("At least one order has no usable persisted currency; its value is isolated under UNKNOWN and is not combined with other currencies.")
+
+    if not rows and status == "available":
+        envelope["items"].append({
+            "evidence_id": str(uuid4()),
+            "domain": "revenue",
+            "metric": "recorded_order_count",
+            "value": 0,
+            "unit": "orders",
+            "currency": None,
+            "status": "available",
+            "epistemic_type": "observed",
+            "source": {**source, "record_count": 0},
+            "scope": scope,
+            "period": period,
+            "freshness": freshness,
+            "coverage": {"completeness": "known", "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": limitations},
+            "calculation": None,
+            "warnings": [],
+        })
+        envelope["items"].append({
+            "evidence_id": str(uuid4()),
+            "domain": "revenue",
+            "metric": "recorded_order_value",
+            "value": None,
+            "unit": "money",
+            "currency": None,
+            "status": "unsupported",
+            "epistemic_type": "observed",
+            "source": {**source, "record_count": 0},
+            "scope": scope,
+            "period": period,
+            "freshness": freshness,
+            "coverage": {"completeness": "known", "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": ["Store base currency is not persisted, so a zero monetary value cannot be assigned a verified currency."]},
+            "calculation": None,
+            "warnings": ["No qualifying orders were recorded in a fully covered period; the store currency is unknown."],
+        })
+    else:
+        for row in rows:
+            currency = row["currency"]
+            count = int(row["item_count"])
+            amount = Decimal(str(row["amount"] or 0))
+            count_id = str(uuid4())
+            value_id = str(uuid4())
+            row_source = {**source, "record_count": count}
+            row_coverage = {
+                "completeness": completeness,
+                "is_truncated": False,
+                "source": TRUSTED_ORDER_COVERAGE_SOURCE if coverage_rows else None,
+                "attestation_run_ids": [str(item["source_run_id"]) for item in coverage_rows],
+                "limitations": limitations,
+            }
+            envelope["items"].append({
+                "evidence_id": count_id,
+                "domain": "revenue",
+                "metric": "recorded_order_count",
+                "value": count,
+                "unit": "orders",
+                "currency": None if currency == "UNKNOWN" else currency,
+                "status": status,
+                "epistemic_type": "observed",
+                "source": row_source,
+                "scope": scope,
+                "period": period,
+                "freshness": freshness,
+                "coverage": row_coverage,
+                "calculation": None,
+                "warnings": [],
+            })
+            value_supported = currency != "UNKNOWN"
+            envelope["items"].append({
+                "evidence_id": value_id,
+                "domain": "revenue",
+                "metric": "recorded_order_value",
+                "value": str(amount) if value_supported else None,
+                "unit": "money",
+                "currency": currency if value_supported else None,
+                "status": status if value_supported else "unsupported",
+                "epistemic_type": "observed",
+                "source": row_source,
+                "scope": scope,
+                "period": period,
+                "freshness": freshness,
+                "coverage": row_coverage,
+                "calculation": None,
+                "warnings": (
+                    ["This is a recorded order total, not gross revenue or independently verified net revenue."]
+                    if value_supported else ["Order currency is missing or invalid; this monetary amount is not reportable."]
+                ),
+            })
+            if count and value_supported:
+                envelope["items"].append({
+                    "evidence_id": str(uuid4()),
+                    "domain": "revenue",
+                    "metric": "average_order_value",
+                    "value": str(amount / Decimal(count)),
+                    "unit": "money",
+                    "currency": currency,
+                    "status": status,
+                    "epistemic_type": "calculated",
+                    "source": row_source,
+                    "scope": scope,
+                    "period": period,
+                    "freshness": freshness,
+                    "coverage": row_coverage,
+                    "calculation": {
+                        "formula_id": "recorded_order_average_v1",
+                        "formula": "sum(orders.total) / count(distinct orders.id)",
+                        "input_evidence_ids": [value_id, count_id],
+                        "rounding": "No rounding applied; decimal string retained.",
+                        "exclusions": ["recovery_status = cancelled"],
+                    },
+                    "warnings": ["Average is calculated separately within this currency; currencies are never combined."],
+                })
+        if any(row["currency"] == "UNKNOWN" for row in rows):
+            envelope["warnings"].append("Orders with missing or invalid currency are counted separately but their monetary values are withheld.");
+
+    # Unsupported financial measures remain explicit rather than being inferred from order totals.
+    for metric in ("gross_revenue", "net_revenue", "refund_value"):
+        envelope["items"].append({
+            "evidence_id": str(uuid4()),
+            "domain": "revenue",
+            "metric": metric,
+            "value": None,
+            "unit": "money",
+            "currency": None,
+            "status": "unsupported",
+            "epistemic_type": "observed",
+            "source": {"system": "shopify", "entity": "orders", "fields": [], "record_count": 0},
+            "scope": scope,
+            "period": period,
+            "freshness": freshness,
+            "coverage": {"completeness": completeness, "is_truncated": False, "limitations": limitations},
+            "calculation": None,
+            "warnings": ["The persisted schema does not contain an independent gross/refund ledger or payment-status evidence."],
+        })
+
+    envelope["overall_status"] = status
+    envelope["warnings"] = warnings
+    if status != "available":
+        envelope["errors"].append({"code": f"REVENUE_EVIDENCE_{status.upper()}"})
+    return envelope
+
+
+def format_revenue_evidence(evidence: dict) -> str:
+    """Present only claims supported by the revenue evidence envelope."""
+    period = evidence["period"]
+    lines = [
+        "## Recorded Shopify order evidence",
+        f"**Reporting window:** {period['start']} to {period['end']} (UTC, start inclusive; end exclusive).",
+        f"**Evidence status:** {evidence['overall_status']}.",
+    ]
+    if evidence["overall_status"] != "available":
+        lines.append("This period is not fully verified. Treat any returned figures as incomplete or stale, not as complete revenue.")
+    values = [item for item in evidence["items"] if item["metric"] == "recorded_order_value"]
+    counts = [item for item in evidence["items"] if item["metric"] == "recorded_order_count"]
+    if not values or all(item.get("value") is None for item in values):
+        lines.append("**Recorded order value:** Unavailable or unsupported. I won't turn missing evidence into zero.")
+    else:
+        for item in values:
+            if item.get("value") is not None:
+                count = next((entry["value"] for entry in counts if entry["currency"] == item.get("currency")), None)
+                lines.append(f"**Recorded order value ({item['currency']}):** {item['value']} {item['currency']} across {count} recorded orders.")
+            else:
+                lines.append("**Recorded order value:** Unsupported because the store currency is not known.")
+    lines.append("This is not a gross-sales or net-revenue report. Persisted order totals reflect the source total available at ingestion; refund value is not separately itemized, and payment capture status is not stored.")
+    if evidence.get("warnings"):
+        lines.append("**Limitations:**")
+        lines.extend(f"- {warning}" for warning in evidence["warnings"])
+    return "\n\n".join(lines)
+
+
+def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict:
+    """Resolve supported revenue windows without guessing a merchant timezone.
+
+    Rolling windows and explicit ISO calendar dates are UTC. Merchant-local
+    today/yesterday are unsupported because the store timezone is not stored.
+    """
+    import re
+    from datetime import date
+
+    if not isinstance(message, str):
+        raise ValueError("Revenue request must be text")
+    end = now or datetime.now(timezone.utc)
+    if end.tzinfo is None or end.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+    end = end.astimezone(timezone.utc)
+    lowered = message.lower()
+    local_day_match = re.search(r"\b(today|yesterday)\b", lowered)
+    if local_day_match:
+        if re.search(r"\bUTC\b", lowered, re.IGNORECASE):
+            day = end.date() - (timedelta(days=1) if local_day_match.group(1) == "yesterday" else timedelta())
+            start_at = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+            end_at = end if local_day_match.group(1) == "today" else start_at + timedelta(days=1)
+            return {
+                "status": "supported",
+                "start": start_at,
+                "end": end_at,
+                "timezone": "UTC",
+                "label": "today UTC to request time" if local_day_match.group(1) == "today" else "yesterday UTC calendar day",
+            }
+        return {
+            "status": "unsupported",
+            "reason": "Merchant-local calendar periods cannot be resolved because the Shopify store timezone is not persisted. Specify UTC or an explicit ISO date range.",
+            "timezone": None,
+        }
+    if re.search(r"\b(this morning|last night)\b", lowered):
+        return {
+            "status": "unsupported",
+            "reason": "Intraday local periods cannot be resolved because the Shopify store timezone is not persisted.",
+            "timezone": None,
+        }
+    match = re.search(
+        r"\b(?:between|from)\s+(\d{4}-\d{2}-\d{2})\s+(?:and|to)\s+(\d{4}-\d{2}-\d{2})\b",
+        lowered,
+    )
+    if match:
+        try:
+            first = date.fromisoformat(match.group(1))
+            last = date.fromisoformat(match.group(2))
+        except ValueError:
+            return {
+                "status": "unsupported",
+                "reason": "The custom reporting range contains an invalid ISO calendar date.",
+                "timezone": None,
+            }
+        if last < first:
+            return {
+                "status": "unsupported",
+                "reason": "The custom reporting range end must not precede its start.",
+                "timezone": None,
+            }
+        start_at = datetime.combine(first, datetime.min.time(), tzinfo=timezone.utc)
+        end_at = datetime.combine(last + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+        return {"status": "supported", "start": start_at, "end": end_at, "timezone": "UTC", "label": "custom UTC calendar dates"}
+    relative = re.search(
+        r"\b(?:last|past|previous|this)\s+(?:(\d+)\s+)?(days?|weeks?|months?|quarters?|years?)\b",
+        lowered,
+    )
+    if relative:
+        quantity = int(relative.group(1) or 1)
+        unit = relative.group(2)
+        if unit.startswith("day") and quantity in (7, 30) and relative.group(0).startswith(("last", "past")):
+            days = quantity
+        else:
+            return {
+                "status": "unsupported",
+                "reason": "The requested relative reporting period is not supported without an explicit UTC date range. Use last 7 days, last 30 days, today UTC, yesterday UTC, or explicit ISO dates.",
+                "timezone": None,
+            }
+    else:
+        named_period = re.search(
+            r"\bq[1-4]\b|\b(?:first|second|third|fourth) quarter\b|"
+            r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+            r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+            r"\s+(?:19|20)\d{2}\b|"
+            r"\b(?:in|for|during)\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|"
+            r"may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|"
+            r"nov(?:ember)?|dec(?:ember)?)(?:\s+(?:19|20)\d{2})?\b|"
+            r"\b(?:fy|fiscal year)\s*(?:19|20)\d{2}\b|"
+            r"\b(?:in|for|during)\s+(?:19|20)\d{2}\b",
+            lowered,
+        )
+        if named_period:
+            return {
+                "status": "unsupported",
+                "reason": "Named month, quarter, or year periods are not supported without an explicit UTC date range in this MVP.",
+                "timezone": None,
+            }
+        days = 7
+    # Relative day ranges are complete UTC calendar days, not a rolling window
+    # that includes the still-open current day.
+    end_at = datetime.combine(end.date(), datetime.min.time(), tzinfo=timezone.utc)
+    start_at = end_at - timedelta(days=days)
+    return {
+        "status": "supported",
+        "start": start_at,
+        "end": end_at,
+        "timezone": "UTC",
+        "label": f"last {days} complete UTC calendar days",
+    }
+ THEN UPPER(BTRIM(o.currency))
+                    ELSE 'UNKNOWN'
+                END AS currency,
                 COUNT(DISTINCT o.id) AS item_count,
                 COALESCE(SUM(o.total), 0) AS amount
             FROM orders o
@@ -271,8 +635,372 @@ def retrieve_revenue_evidence(
               AND s.status IN ('active', 'connected', 'syncing')
               AND o.ordered_at >= :start
               AND o.ordered_at < :end
-              AND o.recovery_status IS DISTINCT FROM 'cancelled'
-            GROUP BY COALESCE(NULLIF(UPPER(o.currency), ''), 'UNKNOWN')
+              AND LOWER(COALESCE(o.recovery_status, '')) <> 'cancelled'
+            GROUP BY CASE
+                WHEN UPPER(BTRIM(o.currency)) ~ '^[A-Z]{3}
+        """), {"org_id": organization_id, "start": start, "end": end}).mappings().all()
+    except Exception:
+        db.rollback()
+        envelope["errors"].append({"code": "REVENUE_ORDER_QUERY_FAILED"})
+        envelope["warnings"].append("Order totals could not be retrieved; no zero value has been inferred.")
+        return envelope
+
+    certified_times = []
+    for row in coverage_rows:
+        certified = row["certified_at"]
+        if certified is not None:
+            if certified.tzinfo is None:
+                certified = certified.replace(tzinfo=timezone.utc)
+            certified_times.append(certified.astimezone(timezone.utc))
+    oldest_certificate = min(certified_times) if certified_times else None
+    certificate_age = (
+        max(0, int((observed_at - oldest_certificate).total_seconds()))
+        if oldest_certificate else None
+    )
+    freshness_age = max(
+        [value for value in (age_seconds, certificate_age) if value is not None],
+        default=None,
+    )
+
+    if oldest_sync is None:
+        status = "unknown"
+        completeness = "unknown"
+    elif freshness_age is not None and freshness_age > REVENUE_FRESHNESS_THRESHOLD_SECONDS:
+        status = "stale"
+        completeness = "known" if all(fully_covered) else "partial"
+    elif coverage_query_ok and all(fully_covered):
+        status = "available"
+        completeness = "known"
+    elif coverage_query_ok and not coverage_rows:
+        status = "unknown"
+        completeness = "unknown"
+    elif coverage_rows and len(coverage_by_store) == len(store_ids) and start < min(
+        (row["coverage_start"].replace(tzinfo=timezone.utc)
+         if row["coverage_start"].tzinfo is None else row["coverage_start"]).astimezone(timezone.utc)
+        for row in coverage_rows
+    ):
+        status = "insufficient_history"
+        completeness = "partial"
+    elif coverage_query_ok:
+        status = "partial"
+        completeness = "partial"
+    else:
+        status = "unknown"
+        completeness = "unknown"
+
+    freshness = {
+        "observed_at": observed_at.isoformat(),
+        "source_synced_at": oldest_sync.isoformat() if oldest_sync else None,
+        "coverage_certified_at": oldest_certificate.isoformat() if oldest_certificate else None,
+        "age_seconds": freshness_age,
+    }
+    limitations = [
+        "Only persisted orders with recovery_status other than cancelled are included.",
+        "No payment/financial status is stored; pending/authorized orders cannot be separated from captured payments.",
+        "Refund value is not independently itemized; use recorded_order_value only.",
+    ]
+    if status != "available":
+        limitations.append("Complete source coverage for the entire requested period is not currently certified.")
+    if status == "stale":
+        limitations.append("The oldest selected Shopify store sync exceeds the 30-minute business-state freshness threshold.")
+    if not coverage_query_ok:
+        limitations.append("Coverage attestation lookup failed.")
+
+    source = {
+        "system": "shopify",
+        "entity": "orders",
+        "fields": ["orders.total", "orders.currency", "orders.ordered_at", "orders.recovery_status"],
+        "record_count": sum(int(row["item_count"]) for row in rows),
+    }
+    scope = {"store_count": len(stores)}
+    warnings = list(envelope["warnings"])
+    if status != "available":
+        warnings.append(f"Revenue evidence availability is {status}; values must not be presented as complete period totals.")
+    if any(row["currency"] == "UNKNOWN" for row in rows):
+        warnings.append("At least one order has no usable persisted currency; its value is isolated under UNKNOWN and is not combined with other currencies.")
+
+    if not rows and status == "available":
+        envelope["items"].append({
+            "evidence_id": str(uuid4()),
+            "domain": "revenue",
+            "metric": "recorded_order_count",
+            "value": 0,
+            "unit": "orders",
+            "currency": None,
+            "status": "available",
+            "epistemic_type": "observed",
+            "source": {**source, "record_count": 0},
+            "scope": scope,
+            "period": period,
+            "freshness": freshness,
+            "coverage": {"completeness": "known", "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": limitations},
+            "calculation": None,
+            "warnings": [],
+        })
+        envelope["items"].append({
+            "evidence_id": str(uuid4()),
+            "domain": "revenue",
+            "metric": "recorded_order_value",
+            "value": None,
+            "unit": "money",
+            "currency": None,
+            "status": "unsupported",
+            "epistemic_type": "observed",
+            "source": {**source, "record_count": 0},
+            "scope": scope,
+            "period": period,
+            "freshness": freshness,
+            "coverage": {"completeness": "known", "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": ["Store base currency is not persisted, so a zero monetary value cannot be assigned a verified currency."]},
+            "calculation": None,
+            "warnings": ["No qualifying orders were recorded in a fully covered period; the store currency is unknown."],
+        })
+    else:
+        for row in rows:
+            currency = row["currency"]
+            count = int(row["item_count"])
+            amount = Decimal(str(row["amount"] or 0))
+            count_id = str(uuid4())
+            value_id = str(uuid4())
+            row_source = {**source, "record_count": count}
+            row_coverage = {
+                "completeness": completeness,
+                "is_truncated": False,
+                "source": TRUSTED_ORDER_COVERAGE_SOURCE if coverage_rows else None,
+                "attestation_run_ids": [str(item["source_run_id"]) for item in coverage_rows],
+                "limitations": limitations,
+            }
+            envelope["items"].append({
+                "evidence_id": count_id,
+                "domain": "revenue",
+                "metric": "recorded_order_count",
+                "value": count,
+                "unit": "orders",
+                "currency": None if currency == "UNKNOWN" else currency,
+                "status": status,
+                "epistemic_type": "observed",
+                "source": row_source,
+                "scope": scope,
+                "period": period,
+                "freshness": freshness,
+                "coverage": row_coverage,
+                "calculation": None,
+                "warnings": [],
+            })
+            value_supported = currency != "UNKNOWN"
+            envelope["items"].append({
+                "evidence_id": value_id,
+                "domain": "revenue",
+                "metric": "recorded_order_value",
+                "value": str(amount) if value_supported else None,
+                "unit": "money",
+                "currency": currency if value_supported else None,
+                "status": status if value_supported else "unsupported",
+                "epistemic_type": "observed",
+                "source": row_source,
+                "scope": scope,
+                "period": period,
+                "freshness": freshness,
+                "coverage": row_coverage,
+                "calculation": None,
+                "warnings": (
+                    ["This is a recorded order total, not gross revenue or independently verified net revenue."]
+                    if value_supported else ["Order currency is missing or invalid; this monetary amount is not reportable."]
+                ),
+            })
+            if count and value_supported:
+                envelope["items"].append({
+                    "evidence_id": str(uuid4()),
+                    "domain": "revenue",
+                    "metric": "average_order_value",
+                    "value": str(amount / Decimal(count)),
+                    "unit": "money",
+                    "currency": currency,
+                    "status": status,
+                    "epistemic_type": "calculated",
+                    "source": row_source,
+                    "scope": scope,
+                    "period": period,
+                    "freshness": freshness,
+                    "coverage": row_coverage,
+                    "calculation": {
+                        "formula_id": "recorded_order_average_v1",
+                        "formula": "sum(orders.total) / count(distinct orders.id)",
+                        "input_evidence_ids": [value_id, count_id],
+                        "rounding": "No rounding applied; decimal string retained.",
+                        "exclusions": ["recovery_status = cancelled"],
+                    },
+                    "warnings": ["Average is calculated separately within this currency; currencies are never combined."],
+                })
+        if any(row["currency"] == "UNKNOWN" for row in rows):
+            envelope["warnings"].append("Orders with missing or invalid currency are counted separately but their monetary values are withheld.");
+
+    # Unsupported financial measures remain explicit rather than being inferred from order totals.
+    for metric in ("gross_revenue", "net_revenue", "refund_value"):
+        envelope["items"].append({
+            "evidence_id": str(uuid4()),
+            "domain": "revenue",
+            "metric": metric,
+            "value": None,
+            "unit": "money",
+            "currency": None,
+            "status": "unsupported",
+            "epistemic_type": "observed",
+            "source": {"system": "shopify", "entity": "orders", "fields": [], "record_count": 0},
+            "scope": scope,
+            "period": period,
+            "freshness": freshness,
+            "coverage": {"completeness": completeness, "is_truncated": False, "limitations": limitations},
+            "calculation": None,
+            "warnings": ["The persisted schema does not contain an independent gross/refund ledger or payment-status evidence."],
+        })
+
+    envelope["overall_status"] = status
+    envelope["warnings"] = warnings
+    if status != "available":
+        envelope["errors"].append({"code": f"REVENUE_EVIDENCE_{status.upper()}"})
+    return envelope
+
+
+def format_revenue_evidence(evidence: dict) -> str:
+    """Present only claims supported by the revenue evidence envelope."""
+    period = evidence["period"]
+    lines = [
+        "## Recorded Shopify order evidence",
+        f"**Reporting window:** {period['start']} to {period['end']} (UTC, start inclusive; end exclusive).",
+        f"**Evidence status:** {evidence['overall_status']}.",
+    ]
+    if evidence["overall_status"] != "available":
+        lines.append("This period is not fully verified. Treat any returned figures as incomplete or stale, not as complete revenue.")
+    values = [item for item in evidence["items"] if item["metric"] == "recorded_order_value"]
+    counts = [item for item in evidence["items"] if item["metric"] == "recorded_order_count"]
+    if not values or all(item.get("value") is None for item in values):
+        lines.append("**Recorded order value:** Unavailable or unsupported. I won't turn missing evidence into zero.")
+    else:
+        for item in values:
+            if item.get("value") is not None:
+                count = next((entry["value"] for entry in counts if entry["currency"] == item.get("currency")), None)
+                lines.append(f"**Recorded order value ({item['currency']}):** {item['value']} {item['currency']} across {count} recorded orders.")
+            else:
+                lines.append("**Recorded order value:** Unsupported because the store currency is not known.")
+    lines.append("This is not a gross-sales or net-revenue report. Persisted order totals reflect the source total available at ingestion; refund value is not separately itemized, and payment capture status is not stored.")
+    if evidence.get("warnings"):
+        lines.append("**Limitations:**")
+        lines.extend(f"- {warning}" for warning in evidence["warnings"])
+    return "\n\n".join(lines)
+
+
+def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict:
+    """Resolve supported revenue windows without guessing a merchant timezone.
+
+    Rolling windows and explicit ISO calendar dates are UTC. Merchant-local
+    today/yesterday are unsupported because the store timezone is not stored.
+    """
+    import re
+    from datetime import date
+
+    if not isinstance(message, str):
+        raise ValueError("Revenue request must be text")
+    end = now or datetime.now(timezone.utc)
+    if end.tzinfo is None or end.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+    end = end.astimezone(timezone.utc)
+    lowered = message.lower()
+    local_day_match = re.search(r"\b(today|yesterday)\b", lowered)
+    if local_day_match:
+        if re.search(r"\bUTC\b", lowered, re.IGNORECASE):
+            day = end.date() - (timedelta(days=1) if local_day_match.group(1) == "yesterday" else timedelta())
+            start_at = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+            end_at = end if local_day_match.group(1) == "today" else start_at + timedelta(days=1)
+            return {
+                "status": "supported",
+                "start": start_at,
+                "end": end_at,
+                "timezone": "UTC",
+                "label": "today UTC to request time" if local_day_match.group(1) == "today" else "yesterday UTC calendar day",
+            }
+        return {
+            "status": "unsupported",
+            "reason": "Merchant-local calendar periods cannot be resolved because the Shopify store timezone is not persisted. Specify UTC or an explicit ISO date range.",
+            "timezone": None,
+        }
+    if re.search(r"\b(this morning|last night)\b", lowered):
+        return {
+            "status": "unsupported",
+            "reason": "Intraday local periods cannot be resolved because the Shopify store timezone is not persisted.",
+            "timezone": None,
+        }
+    match = re.search(
+        r"\b(?:between|from)\s+(\d{4}-\d{2}-\d{2})\s+(?:and|to)\s+(\d{4}-\d{2}-\d{2})\b",
+        lowered,
+    )
+    if match:
+        try:
+            first = date.fromisoformat(match.group(1))
+            last = date.fromisoformat(match.group(2))
+        except ValueError:
+            return {
+                "status": "unsupported",
+                "reason": "The custom reporting range contains an invalid ISO calendar date.",
+                "timezone": None,
+            }
+        if last < first:
+            return {
+                "status": "unsupported",
+                "reason": "The custom reporting range end must not precede its start.",
+                "timezone": None,
+            }
+        start_at = datetime.combine(first, datetime.min.time(), tzinfo=timezone.utc)
+        end_at = datetime.combine(last + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+        return {"status": "supported", "start": start_at, "end": end_at, "timezone": "UTC", "label": "custom UTC calendar dates"}
+    relative = re.search(
+        r"\b(?:last|past|previous|this)\s+(?:(\d+)\s+)?(days?|weeks?|months?|quarters?|years?)\b",
+        lowered,
+    )
+    if relative:
+        quantity = int(relative.group(1) or 1)
+        unit = relative.group(2)
+        if unit.startswith("day") and quantity in (7, 30) and relative.group(0).startswith(("last", "past")):
+            days = quantity
+        else:
+            return {
+                "status": "unsupported",
+                "reason": "The requested relative reporting period is not supported without an explicit UTC date range. Use last 7 days, last 30 days, today UTC, yesterday UTC, or explicit ISO dates.",
+                "timezone": None,
+            }
+    else:
+        named_period = re.search(
+            r"\bq[1-4]\b|\b(?:first|second|third|fourth) quarter\b|"
+            r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+            r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+            r"\s+(?:19|20)\d{2}\b|"
+            r"\b(?:in|for|during)\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|"
+            r"may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|"
+            r"nov(?:ember)?|dec(?:ember)?)(?:\s+(?:19|20)\d{2})?\b|"
+            r"\b(?:fy|fiscal year)\s*(?:19|20)\d{2}\b|"
+            r"\b(?:in|for|during)\s+(?:19|20)\d{2}\b",
+            lowered,
+        )
+        if named_period:
+            return {
+                "status": "unsupported",
+                "reason": "Named month, quarter, or year periods are not supported without an explicit UTC date range in this MVP.",
+                "timezone": None,
+            }
+        days = 7
+    # Relative day ranges are complete UTC calendar days, not a rolling window
+    # that includes the still-open current day.
+    end_at = datetime.combine(end.date(), datetime.min.time(), tzinfo=timezone.utc)
+    start_at = end_at - timedelta(days=days)
+    return {
+        "status": "supported",
+        "start": start_at,
+        "end": end_at,
+        "timezone": "UTC",
+        "label": f"last {days} complete UTC calendar days",
+    }
+ THEN UPPER(BTRIM(o.currency))
+                ELSE 'UNKNOWN'
+            END
             ORDER BY currency
         """), {"org_id": organization_id, "start": start, "end": end}).mappings().all()
     except Exception:
