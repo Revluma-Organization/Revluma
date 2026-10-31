@@ -165,7 +165,7 @@ throw new Error('TASK033_INJECTED_TRANSACTION_FAILURE');
 }),/TASK033_INJECTED_TRANSACTION_FAILURE/);
 assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,status:'pending'}}),before);
 await upsertAbandonedCart(store,checkout(suffix));
-assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:mappedCheckout.checkout_id}}),1);
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),1);
 await promoteInactiveCheckouts();
 await upsertOrder(store,'shopify',order(suffix));
 assert.equal((await cart(suffix)).status,'recovered');
@@ -242,15 +242,15 @@ const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_
 assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);
 await upsertAbandonedCart(store,mappedCheckout);
 await upsertOrder(store,'shopify',{...mappedOrder,checkout_id:mappedCheckout.checkout_id});
-assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),1);
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:mappedCheckout.checkout_id}}),1);
 assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}}),1);
 });
 await check('TC033-56-Rev-Intelligence-order-revenue-query-preserves-completed-order-once',async()=>{
 const source=fs.readFileSync(path.resolve(__dirname,'../../../python/src/intelligence/business_state.py'),'utf8');
 const section=source.split('# ── 2. Revenue metrics')[1].split('# ── 3. Cart abandonment metrics')[0];
 assert.match(section,/SUM\\(total\\)/);
-assert.match(section,/store_id IN :store_ids/);
-assert.match(section,/ordered_at >= :cutoff/);
+assert.ok(section.includes('store_id IN :store_ids'));
+assert.ok(section.includes('ordered_at >= :cutoff'));
 const rows=await prisma.$queryRaw`SELECT COUNT(*)::int AS count, COALESCE(SUM(total),0)::numeric AS revenue FROM orders WHERE store_id=${store.id}::uuid AND ordered_at >= NOW() - INTERVAL '14 days'`;
 const expected=await prisma.orders.aggregate({where:{store_id:store.id,ordered_at:{gte:new Date(Date.now()-14*86400000)}},_count:{_all:true},_sum:{total:true}});
 assert.equal(rows[0].count,expected._count._all);
