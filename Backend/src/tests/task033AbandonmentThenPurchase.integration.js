@@ -5,6 +5,7 @@ const {prisma}=require('../configs/database');
 const {upsertAbandonedCart,upsertOrder}=require('../services/commerceWebhookService');
 const {promoteInactiveCheckouts}=require('../services/schedulerService');
 const {isCheckoutInactive,ABANDONMENT_INACTIVITY_MS}=require('../services/checkoutInactivity');
+const dashboardController=require('../controller/dashboardController');
 if(process.env.TASK033_ISOLATED_DB!=='true'||!String(process.env.DATABASE_URL||'').includes('@127.0.0.1:5432/task033'))throw Error('Disposable task033 database required');
 const prefix='task033-'+randomUUID().slice(0,8),store={id:randomUUID(),platform:'shopify'};
 const results=[];
@@ -170,20 +171,27 @@ assert.equal((await cart(suffix)).status,'recovered');
 
 await check('TC033-54-55-58-59-real-dashboard-metric-query-integrity',async()=>{
 const now=new Date();
-const activeCount=await prisma.abandoned_carts.count({where:{store_id:store.id,OR:[
-{status:'abandoned',recovered_at:null,updated_at:{lte:new Date(now.getTime()-900000)}},
-{status:'pending',recovered_at:null,updated_at:{lte:new Date(now.getTime()-900000)}},
-{status:{in:['in_sequence','recovered']}},
+const cutoff=new Date(now.getTime()-900000);
+const expectedActive=await prisma.abandoned_carts.count({where:{store_id:store.id,OR:[
+{status:'abandoned',recovered_at:null,updated_at:{lte:cutoff}},
+{status:'pending',recovered_at:null,updated_at:{lte:cutoff}},
+{status:'in_sequence'},
 ]}});
-const atRisk=await prisma.abandoned_carts.aggregate({where:{store_id:store.id,OR:[
-{status:'abandoned',recovered_at:null,updated_at:{lte:new Date(now.getTime()-900000)}},
-{status:'pending',recovered_at:null,updated_at:{lte:new Date(now.getTime()-900000)}},
+const expectedAtRisk=await prisma.abandoned_carts.aggregate({where:{store_id:store.id,OR:[
+{status:'abandoned',recovered_at:null,updated_at:{lte:cutoff}},
+{status:'pending',recovered_at:null,updated_at:{lte:cutoff}},
 ]},_sum:{cart_value:true}});
 const completedOrder=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-core'}});
 assert.equal(completedOrder.recovery_status,'completed');
 assert.equal((await cart('core')).status,'recovered');
-assert.equal(activeCount,0,'Dashboard active-abandonment count must exclude a checkout already completed by verified purchase');
-assert.equal(Number(atRisk._sum.cart_value||0),0);
+let statusCode=0,body;
+const response={status(code){statusCode=code;return this;},json(value){body=value;return this;}};
+await dashboardController.getKpis({user:{id:user}},response,error=>{throw error;});
+assert.equal(statusCode,200);
+const metrics=Object.fromEntries(body.data.kpi.map(item=>[item.id,item]));
+assert.equal(Number(metrics.carts.value),expectedActive,'Actual Command Center endpoint must exclude completed/recovered checkouts from active abandonment');
+assert.equal(Number(String(metrics.risk.value).replace(/[$,]/g,'')),Number(expectedAtRisk._sum.cart_value||0),'Revenue at risk must equal eligible open abandoned checkout value only');
+assert.equal(Number(String(metrics.rev.value).replace(/[$,]/g,'')),0,'A normal completed order must not be mislabeled as Revluma-attributed recovered revenue');
 });
 
 await check('TC033-50-separate-node-process-verifies-persisted-reconciliation',async()=>{
