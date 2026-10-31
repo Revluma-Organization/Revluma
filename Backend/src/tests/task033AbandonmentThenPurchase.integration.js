@@ -234,12 +234,12 @@ const mappedCheckout=sync.abandonedPayload({id:'gid://shopify/AbandonedCheckout/
 await upsertAbandonedCart(store,mappedCheckout);
 await promoteInactiveCheckouts();
 const mappedOrder=sync.orderPayload({id:'gid://shopify/Order/'+prefix+'-order-'+suffix,checkoutToken:prefix+'-token-'+suffix,createdAt:'2026-10-30T08:40:00Z',displayFinancialStatus:'PAID',totalPriceSet:{shopMoney:{amount:'25',currencyCode:'USD'}},currentTotalPriceSet:{shopMoney:{amount:'25',currencyCode:'USD'}},subtotalPriceSet:{shopMoney:{amount:'25',currencyCode:'USD'}},totalDiscountsSet:{shopMoney:{amount:'0',currencyCode:'USD'}},lineItems:{nodes:[]}});
-await upsertOrder(store,'shopify',{...mappedOrder,checkout_id:prefix+'-checkout-'+suffix});
+await upsertOrder(store,'shopify',{...mappedOrder,checkout_id:mappedCheckout.checkout_id});
 const c=await cart(suffix);
 const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}});
 assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);
 await upsertAbandonedCart(store,mappedCheckout);
-await upsertOrder(store,'shopify',{...mappedOrder,checkout_id:prefix+'-checkout-'+suffix});
+await upsertOrder(store,'shopify',{...mappedOrder,checkout_id:mappedCheckout.checkout_id});
 assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),1);
 assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}}),1);
 });
