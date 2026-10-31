@@ -341,10 +341,6 @@ def test_invalid_and_reversed_custom_periods_return_unsupported_without_throwing
     assert "invalid ISO calendar date" in invalid["reason"]
     assert reversed_range["status"] == "unsupported"
     assert "must not precede" in reversed_range["reason"]
-" in order_query
-    assert "LOWER(COALESCE(o.recovery_status, '')) <> 'cancelled'" in order_query
-    assert len([x for x in evidence["items"] if x["metric"] == "recorded_order_value"]) == 2
-    assert not any(x["metric"] == "total_revenue_all_currencies" for x in evidence["items"])
 
 
 def test_missing_coverage_is_unknown_not_verified_zero():
