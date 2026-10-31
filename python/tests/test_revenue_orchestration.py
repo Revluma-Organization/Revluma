@@ -130,3 +130,9 @@ def test_unsupported_relative_revenue_period_stays_out_of_generic_model_path(mon
     assert result.intent == "verified_revenue_evidence"
     assert "requested relative reporting period is not supported" in result.text
     assert "No revenue total has been inferred" in result.text
+    for query in ("Sales in Q1 2026", "Revenue for October 2026"):
+        result = module._run(
+            "org-a", "user-a", query, None, object(), "corr-198-named-period"
+        )
+        assert result.intent == "verified_revenue_evidence"
+        assert "explicit UTC date range" in result.text
