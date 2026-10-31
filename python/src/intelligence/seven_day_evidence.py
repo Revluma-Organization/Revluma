@@ -570,10 +570,21 @@ def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict
         lowered,
     )
     if match:
-        first = date.fromisoformat(match.group(1))
-        last = date.fromisoformat(match.group(2))
+        try:
+            first = date.fromisoformat(match.group(1))
+            last = date.fromisoformat(match.group(2))
+        except ValueError:
+            return {
+                "status": "unsupported",
+                "reason": "The custom reporting range contains an invalid ISO calendar date.",
+                "timezone": None,
+            }
         if last < first:
-            raise ValueError("Custom revenue period end must not precede start")
+            return {
+                "status": "unsupported",
+                "reason": "The custom reporting range end must not precede its start.",
+                "timezone": None,
+            }
         start_at = datetime.combine(first, datetime.min.time(), tzinfo=timezone.utc)
         end_at = datetime.combine(last + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
         return {"status": "supported", "start": start_at, "end": end_at, "timezone": "UTC", "label": "custom UTC calendar dates"}
