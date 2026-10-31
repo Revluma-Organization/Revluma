@@ -5,6 +5,7 @@ on:
     paths:
       - 'python/**'
       - 'Backend/prisma/schema.prisma'
+      - 'Backend/prisma/migrations/**'
       - 'Backend/src/services/commerceWebhookService.js'
       - 'Backend/src/services/shopifySync.js'
       - '.github/workflows/task198-prisma-schema-revenue-tests.yml'
