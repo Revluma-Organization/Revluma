@@ -7,6 +7,7 @@ Reads exclusively from BusinessState — does NOT query the database directly.
 from __future__ import annotations
 import json
 import logging
+from decimal import Decimal
 from .base_agent import BaseAgent, AgentResult
 
 logger = logging.getLogger("rev.agent.revenue")
@@ -102,30 +103,32 @@ class RevenueAgent(BaseAgent):
                 "source": "orders.total and orders.currency, current UTC day",
             })
 
-        if bs.revenue_yesterday is not None and yesterday_evidence:
+        if yesterday_evidence:
+            yesterday_value = Decimal(str(yesterday_evidence["value"]))
             facts.append({
                 "type": "fact",
                 "claim_type": "verified_fact",
                 "evidence_ids": [yesterday_evidence["evidence_id"]],
                 "metric": "revenue_yesterday",
-                "value": str(bs.revenue_yesterday),
+                "value": str(yesterday_value),
                 "currency": currency,
-                "description": f"Recorded order value yesterday (UTC): {float(bs.revenue_yesterday):,.2f} {currency}",
+                "description": f"Recorded order value yesterday (UTC): {yesterday_value:,.2f} {currency}",
                 "source": "orders.total and orders.currency, previous complete UTC day",
             })
 
         # ── Signals (computed patterns) 
-        if bs.revenue_trend_7d is not None and trend_evidence:
-            direction = "up" if bs.revenue_trend_7d > 0 else "down"
+        if trend_evidence:
+            trend_value = Decimal(str(trend_evidence["value"]))
+            direction = "up" if trend_value > 0 else "down"
             signals.append({
                 "type": "signal",
                 "claim_type": "calculated_observation",
                 "evidence_ids": [trend_evidence["evidence_id"]],
                 "metric": "revenue_trend_7d",
-                "value": bs.revenue_trend_7d,
+                "value": float(trend_value),
                 "currency": currency,
-                "description": f"Recorded order value in {currency}: {direction} {abs(bs.revenue_trend_7d):.1f}% across the last seven complete UTC days vs the prior seven complete UTC days",
-                "severity": "high" if abs(bs.revenue_trend_7d) > 15 else "medium",
+                "description": f"Recorded order value in {currency}: {direction} {abs(trend_value):.1f}% across the last seven complete UTC days vs the prior seven complete UTC days",
+                "severity": "high" if abs(trend_value) > 15 else "medium",
             })
 
         for anomaly in bs.anomalies:
@@ -140,7 +143,7 @@ class RevenueAgent(BaseAgent):
                 })
 
         # ── Diagnosis (inferences) 
-        if bs.revenue_trend_7d is not None and bs.revenue_trend_7d < -15 and trend_evidence:
+        if trend_evidence and Decimal(str(trend_evidence["value"])) < -15:
             diagnosis.append({
                 "type": "unknown",
                 "claim_type": "unknown",
