@@ -400,41 +400,53 @@ def retrieve_revenue_evidence(
             amount = Decimal(str(row["amount"] or 0))
             count_id = str(uuid4())
             value_id = str(uuid4())
+            row_source = {**source, "record_count": count}
+            row_coverage = {
+                "completeness": completeness,
+                "is_truncated": False,
+                "source": TRUSTED_ORDER_COVERAGE_SOURCE if coverage_rows else None,
+                "attestation_run_ids": [str(item["source_run_id"]) for item in coverage_rows],
+                "limitations": limitations,
+            }
             envelope["items"].append({
                 "evidence_id": count_id,
                 "domain": "revenue",
                 "metric": "recorded_order_count",
                 "value": count,
                 "unit": "orders",
-                "currency": currency,
+                "currency": None if currency == "UNKNOWN" else currency,
                 "status": status,
                 "epistemic_type": "observed",
-                "source": source,
+                "source": row_source,
                 "scope": scope,
                 "period": period,
                 "freshness": freshness,
-                "coverage": {"completeness": completeness, "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE if coverage_rows else None, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": limitations},
+                "coverage": row_coverage,
                 "calculation": None,
                 "warnings": [],
             })
+            value_supported = currency != "UNKNOWN"
             envelope["items"].append({
                 "evidence_id": value_id,
                 "domain": "revenue",
                 "metric": "recorded_order_value",
-                "value": str(amount),
+                "value": str(amount) if value_supported else None,
                 "unit": "money",
-                "currency": currency,
-                "status": status,
+                "currency": currency if value_supported else None,
+                "status": status if value_supported else "unsupported",
                 "epistemic_type": "observed",
-                "source": source,
+                "source": row_source,
                 "scope": scope,
                 "period": period,
                 "freshness": freshness,
-                "coverage": {"completeness": completeness, "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE if coverage_rows else None, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": limitations},
+                "coverage": row_coverage,
                 "calculation": None,
-                "warnings": ["This is a recorded order total, not gross revenue or independently verified net revenue."],
+                "warnings": (
+                    ["This is a recorded order total, not gross revenue or independently verified net revenue."]
+                    if value_supported else ["Order currency is missing or invalid; this monetary amount is not reportable."]
+                ),
             })
-            if count:
+            if count and value_supported:
                 envelope["items"].append({
                     "evidence_id": str(uuid4()),
                     "domain": "revenue",
@@ -444,12 +456,13 @@ def retrieve_revenue_evidence(
                     "currency": currency,
                     "status": status,
                     "epistemic_type": "calculated",
-                    "source": source,
+                    "source": row_source,
                     "scope": scope,
                     "period": period,
                     "freshness": freshness,
-                    "coverage": {"completeness": completeness, "is_truncated": False, "limitations": limitations},
+                    "coverage": row_coverage,
                     "calculation": {
+                        "formula_id": "recorded_order_average_v1",
                         "formula": "sum(orders.total) / count(distinct orders.id)",
                         "input_evidence_ids": [value_id, count_id],
                         "rounding": "No rounding applied; decimal string retained.",
@@ -457,6 +470,8 @@ def retrieve_revenue_evidence(
                     },
                     "warnings": ["Average is calculated separately within this currency; currencies are never combined."],
                 })
+        if any(row["currency"] == "UNKNOWN" for row in rows):
+            envelope["warnings"].append("Orders with missing or invalid currency are counted separately but their monetary values are withheld.");
 
     # Unsupported financial measures remain explicit rather than being inferred from order totals.
     for metric in ("gross_revenue", "net_revenue", "refund_value"):
