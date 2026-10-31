@@ -129,8 +129,10 @@ function shopifyNetOrderTotal(payload) {
       refunded = refunded.plus(amount);
     }
   }
-  return Prisma.Decimal.max(new Prisma.Decimal(0), gross.minus(refunded))
-    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2);
+  const adjusted = gross.minus(refunded);
+  // An over-refund is contradictory financial evidence, not a verified zero.
+  if (adjusted.isNegative()) return null;
+  return adjusted.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2);
 }
 
 // Task 025: safe, bounded diagnostic identity. Never persist customer details or raw payloads.
