@@ -1,6 +1,6 @@
 # TASK 033 — Abandonment-then-purchase validation
 
-**Status: PARTIAL — 16/16 grouped integration checks PASS, full TC033-01–70 evidence outstanding.**
+**Status: PARTIAL — 18/18 lifecycle checks passed on commit 9d50b6c1; metric-query integrity test added on 0d64652a and pending CI. Full TC033-01–70 evidence remains outstanding.**
 **Phase:** 1. **Workstream:** 1B. **Branch:** `test/mvp-task-033-abandonment-then-purchase`.
 **Scope:** Shopify-only read-only lifecycle verification; no production code changes.
 
@@ -8,10 +8,10 @@
 The approved backlog identifies Task 033 as abandonment-then-purchase. Reviewed source paths: `Backend/src/services/commerceWebhookService.js`, `checkoutInactivity.js`, and `schedulerService.js`. Prior Task031/032 regression work exists but Task032 was explicitly deferred without full certification. `upsertAbandonedCart` writes initial `pending` status, preserving source identifiers. `promoteInactiveCheckouts` updates pending checkouts with `recovered_at: null` and `updated_at <= now - 15 minutes`, scoped to active Shopify stores.
 
 ## F–W. Threshold, reconciliation, lifecycle, safety, metrics and attribution
-The helper `isCheckoutInactive` uses an inclusive 900,000ms boundary. The scheduler performs a database `updateMany` and excludes recovered records; the order service performs source-identifier-based matching and persists checkout ownership. The new integration suite tests checkout persistence, actual scheduler promotion, subsequent order reconciliation, stale updates, duplicate deliveries, and weak identity evidence. These claims were verified for the tested paths by 16/16 grouped integration checks; remaining acceptance paths require separate evidence. The existing `recovered` status means a completed purchase in current storage; it is not proof of a Revluma-attributed campaign recovery. Actual Command Center and Rev Intelligence metric query behavior is not yet proven by these tests.
+The helper `isCheckoutInactive` uses an inclusive 900,000ms boundary. The scheduler performs a database `updateMany` and excludes recovered records; the order service performs source-identifier-based matching and persists checkout ownership. The new integration suite tests checkout persistence, actual scheduler promotion, subsequent order reconciliation, stale updates, duplicate deliveries, and weak identity evidence. These claims were verified for the tested paths by 16/16 grouped integration checks; remaining acceptance paths require separate evidence. The existing `recovered` status means a completed purchase in current storage; it is not proof of a Revluma-attributed campaign recovery. Actual Command Center and Rev Intelligence metric query behavior was not covered by the 18 prior checks. A new test now exercises the Command Center abandoned-cart count predicate against the completed `core` checkout. Source inspection identifies a concrete mismatch: the controller counts `status: 'recovered'` as an active abandoned cart, while purchase persistence writes the order with `recovery_status: 'completed'`; this must be confirmed by the new disposable-DB test. Rev Intelligence query coverage remains unverified.
 
 ## X–Z. Environment, implementation and execution
-Disposable pgvector PostgreSQL 16, Node 22, Prisma `db push` in `.github/workflows/task033-abandonment-then-purchase.yml`. Test: `Backend/src/tests/task033AbandonmentThenPurchase.integration.js`. Command: `node src/tests/task033AbandonmentThenPurchase.integration.js`. CI result: **PASS, 16/16 grouped checks**, GitHub Actions run **41041588576**, commit **d8b3d9dd**. Backend tests and backend refresh regression also PASS. Grouped checks are not interchangeable with full individual scenario evidence.
+Disposable pgvector PostgreSQL 16, Node 22, Prisma `db push` in `.github/workflows/task033-abandonment-then-purchase.yml`. Test: `Backend/src/tests/task033AbandonmentThenPurchase.integration.js`. Command: `node src/tests/task033AbandonmentThenPurchase.integration.js`. CI result: **PASS, 18/18 grouped checks**, GitHub Actions run **41043686354**, commit **9d50b6c1**. Task032 regression: **15/15 PASS**, same run. Backend tests and refresh regression PASS. Backend tests and backend refresh regression also PASS. Grouped checks are not interchangeable with full individual scenario evidence.
 
 ## AA. Acceptance matrix
 All 70 scenarios are tracked below. **NOT RUN** means the precise acceptance requirement lacks recorded passing evidence, even when a grouped test mentions the case ID.
@@ -71,7 +71,8 @@ All 70 scenarios are tracked below. **NOT RUN** means the precise acceptance req
 | TC033-51 | NOT RUN | No direct passing acceptance evidence |
 | TC033-52 | NOT RUN | No direct passing acceptance evidence |
 | TC033-53 | NOT RUN | No direct passing acceptance evidence |
-| TC033-54 | PARTIAL | TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity; specific acceptance path not fully exercised |
+| TC033-54 | PARTIAL | New dashboard metric query test on commit 0d64652a; CI pending; existing controller predicate includes status recovered in outstanding count |
+| TC033-55 | PARTIAL | At-risk aggregate predicate excludes recovered status; pending direct assertion in new metric test |\n| TC033-58 | PARTIAL | TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity; specific acceptance path not fully exercised |
 | TC033-55 | PARTIAL | TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity; specific acceptance path not fully exercised |
 | TC033-56 | PARTIAL | TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity; specific acceptance path not fully exercised |
 | TC033-57 | PASS | TC033-37-38-57-duplicate-purchase-and-checkout-do-not-duplicate; CI PASS run 41041588576 |
