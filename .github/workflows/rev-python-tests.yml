@@ -110,3 +110,9 @@ jobs:
       - name: Run the configured Vercel Vite build command
         working-directory: Frontend/Dashboard
         run: npm run build -- --outDir ../dashboard --emptyOutDir
+      - name: Run dashboard lint
+        working-directory: Frontend/Dashboard
+        run: npm run lint
+      - name: Run dashboard tests
+        working-directory: Frontend/Dashboard
+        run: npm test
