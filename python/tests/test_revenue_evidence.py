@@ -37,10 +37,12 @@ class RevenueDB:
              "source": "shopify_verified_history_v1", "source_run_id": "coverage-run-123"}
         ]
         self.orders = orders if orders is not None else [
-            {"currency": "USD", "item_count": 2, "amount": Decimal("125.55")},
             {"currency": "NGN", "item_count": 1, "amount": Decimal("5000.10")},
+            {"currency": "USD", "item_count": 2, "amount": Decimal("125.55")},
         ]
         self.fail = fail
+        self.expected_start = START
+        self.expected_end = END
         self.calls = []
         self.rollbacks = 0
 
@@ -64,8 +66,8 @@ class RevenueDB:
             if self.fail == "orders":
                 raise RuntimeError("query failure")
             assert params["org_id"] == "org-a"
-            assert params["start"] == START
-            assert params["end"] == END
+            assert params["start"] == self.expected_start
+            assert params["end"] == self.expected_end
             assert "s.organization_id = :org_id" in sql
             assert "o.ordered_at >= :start" in sql and "o.ordered_at < :end" in sql
             assert "o.recovery_status IS DISTINCT FROM 'cancelled'" in sql
@@ -215,3 +217,28 @@ def test_formatter_never_labels_recorded_order_value_gross_or_net_revenue():
     assert "Recorded order value (NGN)" in text
     assert "not a gross-sales or net-revenue report" in text
     assert "not independently itemized" in text
+
+def test_period_older_than_verified_coverage_is_insufficient_history():
+    db = RevenueDB()
+    db.expected_start = NOW - timedelta(days=30)
+    db.expected_end = NOW
+    evidence = retrieve_revenue_evidence(
+        "org-a", db, start=db.expected_start, end=db.expected_end, now=NOW
+    )
+    assert evidence["overall_status"] == "insufficient_history"
+    assert all(
+        item["status"] == "insufficient_history"
+        for item in evidence["items"]
+        if item["metric"] == "recorded_order_value"
+    )
+
+
+def test_unknown_currency_is_counted_but_never_reported_as_money():
+    db = RevenueDB(orders=[
+        {"currency": "UNKNOWN", "item_count": 2, "amount": Decimal("123.45")}
+    ])
+    evidence = retrieve(db)
+    count = next(item for item in evidence["items"] if item["metric"] == "recorded_order_count")
+    value = next(item for item in evidence["items"] if item["metric"] == "recorded_order_value")
+    assert count["value"] == 2 and count["currency"] is None
+    assert value["value"] is None and value["currency"] is None and value["status"] == "unsupported"
