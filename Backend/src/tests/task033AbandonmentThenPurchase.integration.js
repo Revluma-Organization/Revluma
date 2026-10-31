@@ -363,6 +363,22 @@ assert.equal(Number(String(metrics.risk.value).replace(/[$,]/g,'')),Number(expec
 assert.equal(Number(String(metrics.rev.value).replace(/[$,]/g,'')),0,'A normal completed order must not be mislabeled as Revluma-attributed recovered revenue');
 });
 
+await check('TC033-50-fresh-backend-process-completes-persisted-abandoned-checkout',async()=>{
+const suffix='process-restart';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+assert.equal((await cart(suffix)).status,'abandoned');
+const {execFileSync}=require('node:child_process');
+const payload=order(suffix,{checkout_id:prefix+'-checkout-'+suffix,checkout_token:null});
+const script=`const {upsertOrder}=require('./src/services/commerceWebhookService');const payload=JSON.parse(process.env.TASK033_ORDER_PAYLOAD);upsertOrder({id:process.env.TASK033_STORE_ID,platform:'shopify'},'shopify',payload).then(()=>process.exit(0)).catch(e=>{console.error(e);process.exit(1)})`;
+execFileSync(process.execPath,['-e',script],{cwd:require('node:path').resolve(__dirname,'../..'),env:{...process.env,TASK033_STORE_ID:store.id,TASK033_ORDER_PAYLOAD:JSON.stringify(payload)},timeout:20000,stdio:'pipe'});
+const fresh=new (require('@prisma/client').PrismaClient)();
+try{
+const c=await fresh.abandoned_carts.findFirstOrThrow({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}});
+const o=await fresh.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}});
+assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);
+}finally{await fresh.$disconnect();}
+});
 await check('TC033-50-separate-node-process-verifies-persisted-reconciliation',async()=>{
 const {execFileSync}=require('node:child_process');
 const script=`const assert=require('node:assert/strict');const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const c=await p.abandoned_carts.findFirstOrThrow({where:{store_id:process.env.TASK033_STORE_ID,external_cart_id:process.env.TASK033_CART_ID}});const o=await p.orders.findFirstOrThrow({where:{store_id:process.env.TASK033_STORE_ID,external_order_id:process.env.TASK033_ORDER_ID}});assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);await p.$disconnect()})().catch(e=>{console.error(e);process.exit(1)})`;
