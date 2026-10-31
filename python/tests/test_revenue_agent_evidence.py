@@ -12,6 +12,16 @@ def state(**overrides):
         "revenue_delta_pct": None,
         "revenue_trend_7d": Decimal("12.5"),
         "revenue_currency": "NGN",
+        "revenue_evidence": {
+            "overall_status": "available",
+            "items": [
+                {"evidence_id": "evidence-yesterday", "metric": "recorded_order_value",
+                 "currency": "NGN", "status": "available",
+                 "period": {"start": "2026-10-30T00:00:00+00:00", "end": "2026-10-31T00:00:00+00:00"}},
+                {"evidence_id": "evidence-trend", "metric": "revenue_trend_7d",
+                 "currency": "NGN", "status": "available"},
+            ],
+        },
         "revenue_anomaly": False,
         "anomalies": [],
         "opportunities": [],
@@ -29,13 +39,18 @@ def test_revenue_agent_preserves_verified_currency_and_utc_period():
     assert result.facts == [{
         "type": "fact",
         "metric": "revenue_yesterday",
-        "value": 5000.25,
+        "claim_type": "verified_fact",
+        "evidence_ids": ["evidence-yesterday"],
+        "value": "5000.25",
         "currency": "NGN",
         "description": "Recorded order value yesterday (UTC): 5,000.25 NGN",
         "source": "orders.total and orders.currency, previous complete UTC day",
     }]
     trend = next(signal for signal in result.signals if signal["metric"] == "revenue_trend_7d")
     assert trend["currency"] == "NGN"
+    assert trend["claim_type"] == "calculated_observation"
+    assert trend["evidence_ids"] == ["evidence-trend"]
+    assert result.data_sources == ["evidence-yesterday", "evidence-trend"]
     assert "NGN" in trend["description"]
     assert "$" not in str(result.facts)
 
@@ -60,5 +75,6 @@ def test_revenue_agent_does_not_infer_cause_from_revenue_movement():
     assert result.status == "success"
     assert result.diagnosis
     assert all("does not" in item["description"] for item in result.diagnosis)
+    assert all(item["evidence_ids"] for item in result.diagnosis)
     assert all("traffic" not in item["description"].lower() or "not been verified" in item["description"].lower()
                for item in result.diagnosis)
