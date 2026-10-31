@@ -113,10 +113,12 @@ function shopifyNetOrderTotal(payload) {
   if (payload.refunds.length === 0) return gross.toFixed(2);
   let refunded = new Prisma.Decimal(0);
   for (const refund of payload.refunds) {
-    if (!Array.isArray(refund.transactions)) return null;
+    if (!Array.isArray(refund.transactions) || refund.transactions.length === 0) return null;
     for (const transaction of refund.transactions) {
       if (String(transaction.kind || '').toLowerCase() !== 'refund') continue;
-      if (String(transaction.status || '').toLowerCase() !== 'success') continue;
+      const status = String(transaction.status || '').toLowerCase();
+      if (!['success', 'failure', 'failed', 'pending', 'error', 'voided'].includes(status)) return null;
+      if (status !== 'success') continue;
       const transactionCurrency = String(transaction.currency || transaction.currency_code || '').trim().toUpperCase();
       const orderCurrency = String(payload.currency || payload.currency_code || '').trim().toUpperCase();
       if (transactionCurrency && (!orderCurrency || transactionCurrency !== orderCurrency)) return null;
