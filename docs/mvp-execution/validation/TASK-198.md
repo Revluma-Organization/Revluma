@@ -84,3 +84,59 @@ GitHub commit status for `a55decb0db3fb2db2ef101a00d1d29b6f7fa82c5` reported Ver
 ## Merge and deployment
 
 PR #233 remains open and draft. No merge, production deployment, production schema change or production data change has been performed.
+
+
+## Latest PR-head verification — 2026-10-31 (NOT CERTIFIED)
+
+**Inspected PR head:** `bf4246664931bf7b7fc8055d5587f88cb3f9fa61`  
+**PR merge test SHA:** `d27852b1149774d99d8164fe525091cf14547810`  
+**PR:** [#233](https://github.com/Revluma-Organization/Revluma/pull/233) (open, draft, not merged)
+
+### Latest GitHub Actions evidence
+
+Runs below were returned by the PR-head workflow-run lookup. Job logs confirm the merge SHA above.
+
+| Workflow | Run ID | Conclusion | Run URL |
+|---|---:|---|---|
+| Backend tests | 41206714885 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206714885 |
+| Task 024 | 41206714924 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206714924 |
+| Task 025 | 41206714926 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206714926 |
+| Task 026 | 41206714974 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206714974 |
+| Task 027 | 41206716538 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206716538 |
+| Task 028 | 41206714803 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206714803 |
+| Task 029 | 41206714845 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206714845 |
+| Task 030 | 41206714870 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206714870 |
+| Task 031 | 41206714950 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206714950 |
+| Task 032 | 41206714921 | SUCCESS | https://github.com/Revluma-Organization/Revluma/actions/runs/41206714921 |
+| Rev Python regression tests | 41206715095 | FAILURE | https://github.com/Revluma-Organization/Revluma/actions/runs/41206715095 |
+
+Task 024–032 each had one completed integration job and all steps in that job succeeded. These isolated task workflows do not substitute for the full revenue evidence/PostgreSQL test.
+
+### Python job failure and skipped tests
+
+Run 41206715095 failed during `Initialize the real application schema with Prisma migrations`. PostgreSQL returned SQLSTATE `42P01`: `relation "merchant_memories" does not exist` while applying migration `202609220002_add_zero_touch_automation`. Python compile checks, Task 198 PostgreSQL revenue integration, Gemini/routing/web research regressions, and the complete Python suite were skipped because initialization failed. None of those skipped checks is a pass.
+
+A direct schema/baseline comparison found 63 Prisma models versus 23 tables in `0_baseline/migration.sql`. The baseline omits `merchant_memories`, although migration 202609220002 requires it. The checked-in migration history therefore does not currently initialize the complete Prisma schema from an empty database. Do not repair this by editing an already-applied historical baseline or by treating a mocked schema as actual-schema proof. Safe migration-history reconciliation and a successful disposable PostgreSQL run remain mandatory.
+
+### Frontend workflow results
+
+The independent frontend job in run 41206715095 produced:
+- Vite build: SUCCESS.
+- Dashboard tests: SUCCESS — 9 test files, 29 tests.
+- Tooling TypeScript check: SUCCESS.
+- Dashboard lint: FAILURE — 34 errors, 16 warnings, across dashboard files.
+- Application TypeScript check: FAILURE — TS5103, invalid `--ignoreDeprecations` value in `tsconfig.app.json`.
+
+The workflow correctly failed its aggregate quality gate. These are not Vercel quota errors. The Vite build is verified independently, but lint/type-check acceptance remains open. No frontend files were changed as part of this inspection.
+
+### Updated acceptance status
+
+- Backend CI and Task 024–032 isolated workflows: verified passing on the PR merge ref.
+- Actual Prisma/PostgreSQL revenue integration: NOT RUN; schema initialization failed first.
+- Python compile and full Python regression suite: SKIPPED after schema initialization failure.
+- Node authenticated tenant boundary: backend suite passed, but controller/service-boundary assertions still require source-level review before claiming every Task 198 security criterion.
+- Frontend build: PASS; frontend lint and app type-check: FAIL.
+- Vercel preview deployment: no new deployment was triggered; quota limitation remains separate from build status.
+- PR remains draft; no merge, deployment, production schema change, or production data mutation.
+
+**Current status remains IN PROGRESS — NOT CERTIFIED.** No mandatory acceptance criterion is waived by these results.
