@@ -469,7 +469,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         store_ids = [str(r[0]) for r in stores_result]
         shopify_store_ids = [str(r[0]) for r in stores_result if str(r[2] or "").lower() == "shopify"]
         sync_times = [r[1] for r in stores_result if r[1] is not None]
+        shopify_sync_times = [r[1] for r in stores_result if str(r[2] or "").lower() == "shopify" and r[1] is not None]
         last_synced_at = min(sync_times) if sync_times else None
+        shopify_last_synced_at = min(shopify_sync_times) if shopify_sync_times else None
     except Exception as exc:
         logger.exception(
             "business_state_stores_failed",
@@ -477,7 +479,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         )
         _rollback_quietly(db)
         store_ids = []
+        shopify_store_ids = []
         last_synced_at = None
+        shopify_last_synced_at = None
         warnings.append("Could not load store data.")
 
     if not store_ids:
@@ -592,10 +596,10 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                             or (generated_at - certified_at.astimezone(timezone.utc)).total_seconds() > DEFAULT_STALENESS_MINS * 60):
                         coverage_complete = False
                         break
-            if last_synced_at is None:
+            if shopify_last_synced_at is None:
                 coverage_complete = False
             else:
-                sync_at = last_synced_at
+                sync_at = shopify_last_synced_at
                 if sync_at.tzinfo is None:
                     sync_at = sync_at.replace(tzinfo=timezone.utc)
                 if (generated_at - sync_at.astimezone(timezone.utc)).total_seconds() > DEFAULT_STALENESS_MINS * 60:
