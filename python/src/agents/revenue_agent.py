@@ -56,6 +56,14 @@ class RevenueAgent(BaseAgent):
         currency = getattr(bs, "revenue_currency", None)
         revenue_evidence = getattr(bs, "revenue_evidence", {}) or {}
         evidence_items = revenue_evidence.get("items", []) if isinstance(revenue_evidence, dict) else []
+        today_evidence = next(
+            (item for item in evidence_items
+             if item.get("metric") == "recorded_order_value"
+             and item.get("status") == "available"
+             and item.get("period", {}).get("end", "").startswith(bs.generated_at.date().isoformat())
+             and item.get("currency") == currency),
+            None,
+        ) if hasattr(bs, "generated_at") else None
         yesterday_evidence = next(
             (item for item in evidence_items
              if item.get("metric") == "recorded_order_value"
@@ -82,11 +90,13 @@ class RevenueAgent(BaseAgent):
         data_sources = [item["evidence_id"] for item in (yesterday_evidence, trend_evidence) if item]
 
         # ── Facts (directly in data) 
-        if bs.revenue_today is not None:
+        if bs.revenue_today is not None and today_evidence:
             facts.append({
                 "type": "fact",
+                "claim_type": "verified_fact",
+                "evidence_ids": [today_evidence["evidence_id"]],
                 "metric": "revenue_today",
-                "value": float(bs.revenue_today),
+                "value": str(bs.revenue_today),
                 "currency": currency,
                 "description": f"Recorded order value today (UTC): {float(bs.revenue_today):,.2f} {currency}",
                 "source": "orders.total and orders.currency, current UTC day",
@@ -105,7 +115,7 @@ class RevenueAgent(BaseAgent):
             })
 
         # ── Signals (computed patterns) 
-        if bs.revenue_delta_pct is not None:
+        if bs.revenue_delta_pct is not None and trend_evidence:
             direction = "up" if bs.revenue_delta_pct > 0 else "down"
             signals.append({
                 "type": "signal",
@@ -129,16 +139,18 @@ class RevenueAgent(BaseAgent):
             })
 
         for anomaly in bs.anomalies:
-            if anomaly.get("metric") == "revenue":
+            if anomaly.get("metric") == "revenue" and trend_evidence:
                 signals.append({
                     "type": "signal",
+                    "claim_type": "derived_signal",
+                    "evidence_ids": [trend_evidence["evidence_id"]],
                     "metric": "anomaly",
                     "description": f"Revenue anomaly detected: {anomaly.get('direction')} {abs(anomaly.get('deviation', 0)):.1f}% {anomaly.get('period')}",
                     "severity": "high",
                 })
 
         # ── Diagnosis (inferences) 
-        if bs.revenue_delta_pct is not None and bs.revenue_delta_pct < -15:
+        if bs.revenue_delta_pct is not None and trend_evidence and bs.revenue_delta_pct < -15:
             # Correlate with cart data if available
             if bs.cart_anomaly:
                 diagnosis.append({
@@ -180,7 +192,7 @@ class RevenueAgent(BaseAgent):
             })
 
         # ── Recommendations 
-        if bs.revenue_delta_pct is not None and bs.revenue_delta_pct < -15:
+        if bs.revenue_delta_pct is not None and trend_evidence and bs.revenue_delta_pct < -15:
             recommendations.append({
                 "action": "investigate_revenue_drop",
                 "description": "Review the verified recorded-order evidence and investigate potential causes separately; this metric does not identify payment, traffic or inventory causes.",
