@@ -40,3 +40,9 @@ test('over-refund is clamped to zero using decimal arithmetic', () => {
 test('missing Shopify refund collection is not treated as proof of no refunds', () => {
   assert.equal(shopifyNetOrderTotal({ total_price: '100.00' }), null);
 });
+
+test('amounts exceeding the persisted DECIMAL(10,2) precision fail closed', () => {
+  assert.equal(shopifyNetOrderTotal({ total_price: '1.234', refunds: [] }), null);
+  assert.equal(shopifyNetOrderTotal({ total_price: '100.00', refunds: [refund('0.001')] }), null);
+  assert.equal(shopifyNetOrderTotal({ total_price: '100000000.00', refunds: [] }), null);
+});
