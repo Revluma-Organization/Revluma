@@ -46,3 +46,25 @@ def test_merchant_local_revenue_day_does_not_call_database_or_guess_timezone(mon
     assert result.success is True
     assert result.intent == "verified_revenue_evidence"
     assert "timezone is not persisted" in result.text
+
+
+def test_orchestrate_preserves_node_correlation_id(monkeypatch):
+    from src.agents import orchestrator as module
+
+    seen = {}
+    def run(organization_id, user_id, message, conversation_id, db, correlation_id, **kwargs):
+        seen["correlation_id"] = correlation_id
+        return module.OrchestrationResult(
+            success=True, conversation_id=conversation_id or "conversation-198",
+            message_id="message-198", response_type="direct_answer",
+            text="ok", correlation_id=correlation_id,
+        )
+
+    monkeypatch.setattr(module, "_run", run)
+    result = module.orchestrate(
+        "org-a", "user-a", "Show revenue", None, object(),
+        correlation_id="node-correlation-198",
+    )
+    assert result.success is True
+    assert seen["correlation_id"] == "node-correlation-198"
+    assert result.correlation_id == "node-correlation-198"
