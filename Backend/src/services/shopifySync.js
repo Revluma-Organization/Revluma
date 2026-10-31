@@ -40,7 +40,7 @@ function money(value) {
   const amount = value?.shopMoney?.amount;
   if (amount === null || amount === undefined || amount === '') return null;
   const exact = String(amount).trim();
-  if (!/^\\d+(?:\\.\\d+)?$/.test(exact)) return null;
+  if (!/^\d+(?:\.\d+)?$/.test(exact)) return null;
   return exact;
 }
 
