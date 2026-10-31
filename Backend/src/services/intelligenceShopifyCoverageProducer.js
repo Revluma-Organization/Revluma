@@ -3,12 +3,24 @@
 // Re-read the bounded Shopify source of truth after order ingestion. Never
 // certify a period from local row counts or a generic "sync succeeded" flag.
 const crypto = require('crypto');
+const { Prisma } = require('@prisma/client');
 const { shopifyGraphql } = require('./shopifyGraphql');
 const { fetchConnection, verifyOrderReadScope } = require('./shopifySync');
 const { TRUSTED_SOURCE, certifyOrderCoverage } = require('./intelligenceOrderCoverage');
 
 const DAY = 86400000;
-const asMoney = value => Number(value?.shopMoney?.amount);
+function asMoney(value) {
+  const amount = value?.shopMoney?.amount;
+  if (amount === null || amount === undefined || amount === '') return null;
+  const exact = String(amount).trim();
+  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(exact)) return null;
+  try {
+    const decimal = new Prisma.Decimal(exact);
+    return decimal.isFinite() && !decimal.isNegative() ? decimal : null;
+  } catch {
+    return null;
+  }
+}
 const orderId = gid => String(gid || '').split('/').pop();
 function verificationError(code) {
   return Object.assign(new Error('Shopify historical coverage verification incomplete'), { code });
@@ -40,10 +52,11 @@ async function verifyShopifyOrderCoverage(prisma, store, { now = new Date(), gra
   for (const order of source) {
     const id = orderId(order.id);
     const amount = asMoney(order.currentTotalPriceSet);
-    const currency = order.currentTotalPriceSet?.shopMoney?.currencyCode;
+    const rawCurrency = order.currentTotalPriceSet?.shopMoney?.currencyCode;
+    const currency = typeof rawCurrency === 'string' && /^[A-Za-z]{3}$/.test(rawCurrency.trim())
+      ? rawCurrency.trim().toUpperCase() : null;
     const created = new Date(order.createdAt);
-    if (!id || sourceById.has(id) || !Number.isFinite(amount) || amount < 0 ||
-        !currency || !Number.isFinite(created.getTime()) || created < start || created >= end ||
+    if (!id || sourceById.has(id) || !amount || !currency || !Number.isFinite(created.getTime()) || created < start || created >= end ||
         order.cancelledAt || ['CANCELLED', 'FAILED', 'VOIDED'].includes(order.displayFinancialStatus)) {
       throw verificationError('ORDER_COVERAGE_SOURCE_FINANCIALS_UNVERIFIED');
     }
@@ -59,7 +72,7 @@ async function verifyShopifyOrderCoverage(prisma, store, { now = new Date(), gra
   for (const row of local) {
     const expected = sourceById.get(row.external_order_id);
     if (!expected || expected.currency !== row.currency ||
-        Math.round(expected.amount * 100) !== Math.round(Number(row.total) * 100)) {
+        !new Prisma.Decimal(row.total).equals(expected.amount)) {
       throw verificationError('ORDER_COVERAGE_ORDER_TOTAL_MISMATCH');
     }
   }
