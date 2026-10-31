@@ -826,12 +826,13 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                     },
                 ])
                 if prior_7d > 0:
-                    revenue_trend_7d = (recent_7d - prior_7d) / prior_7d * Decimal("100")
+                    revenue_trend_7d_decimal = (recent_7d - prior_7d) / prior_7d * Decimal("100")
+                    revenue_trend_7d = float(revenue_trend_7d_decimal)
                     revenue_evidence["items"].append({
                         "evidence_id": str(uuid.uuid4()),
                         "domain": "revenue",
                         "metric": "revenue_trend_7d",
-                        "value": str(revenue_trend_7d),
+                        "value": str(revenue_trend_7d_decimal),
                         "unit": "percent",
                         "status": "available",
                         "epistemic_type": "calculated",
