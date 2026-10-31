@@ -13,7 +13,7 @@ function asMoney(value) {
   const amount = value?.shopMoney?.amount;
   if (amount === null || amount === undefined || amount === '') return null;
   const exact = String(amount).trim();
-  if (!/^\\d+(?:\\.\\d{1,2})?$/.test(exact)) return null;
+  if (!/^\d+(?:\.\d{1,2})?$/.test(exact)) return null;
   try {
     const decimal = new Prisma.Decimal(exact);
     return decimal.isFinite() && !decimal.isNegative() ? decimal : null;
