@@ -38,7 +38,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 030 | Phase 1 | Prevent delayed checkout event reopening completion. | NOT STARTED | — | — | — |
 | 031 | Phase 1 | Test order-first event delivery. | NOT STARTED | — | — | — |
 | 032 | Phase 1 | Test checkout-first event delivery. | NOT STARTED | — | — | — |
-| 033 | Phase 1 | Test abandonment-then-purchase delivery. | NOT STARTED | — | — | — |
+| 033 | Phase 1 | Test abandonment-then-purchase delivery. | PARTIAL — 18/18 lifecycle groups pass; revenue/metric integrity finding under verification; 70-case matrix incomplete | [TASK-033](validation/TASK-033.md) | `9d50b6c1`, `0d64652a`; PR #231 | 2026-10-31 CI pending |
 | 034 | Phase 1 | Test duplicate order event delivery. | NOT STARTED | — | — | — |
 | 035 | Phase 1 | Test duplicate checkout event delivery. | NOT STARTED | — | — | — |
 | 036 | Phase 1 | Test simultaneous order and checkout processing. | NOT STARTED | — | — | — |
