@@ -121,7 +121,7 @@ function shopifyNetOrderTotal(payload) {
       if (status !== 'success') continue;
       const transactionCurrency = String(transaction.currency || transaction.currency_code || '').trim().toUpperCase();
       const orderCurrency = String(payload.currency || payload.currency_code || '').trim().toUpperCase();
-      if (transactionCurrency && (!orderCurrency || transactionCurrency !== orderCurrency)) return null;
+      if (!transactionCurrency || !orderCurrency || transactionCurrency !== orderCurrency) return null;
       if (transaction.amount === null || transaction.amount === undefined || transaction.amount === '') return null;
       let amount;
       try {
