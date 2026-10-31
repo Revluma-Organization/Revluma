@@ -88,3 +88,21 @@ jobs:
         run: |
           python --version
           python -m pip list --format=columns
+
+  frontend-build:
+    name: Independent Vercel-equivalent frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Frontend/Dashboard/package-lock.json
+      - name: Install dashboard dependencies
+        working-directory: Frontend/Dashboard
+        run: npm ci --include=dev
+      - name: Run the configured Vercel Vite build command
+        working-directory: Frontend/Dashboard
+        run: npm run build -- --outDir ../dashboard --emptyOutDir
