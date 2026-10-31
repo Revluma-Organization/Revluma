@@ -11,6 +11,7 @@ from src.agents.orchestrator import (
     _build_context_json,
     _classify_orchestrator_mode,
     _is_ad_evaluation_request,
+    _is_revenue_evidence_request,
     _normalize_context_payload,
     _persist_messages,
     _resolve_contradictions,
@@ -565,3 +566,19 @@ def test_standalone_python_chat_still_persists(monkeypatch):
         "conv-1", MagicMock(), "corr-1",
     )
     persist.assert_called_once()
+
+def test_explicit_revenue_questions_use_verified_evidence_route_not_generic_advice():
+    for question in (
+        "What was my revenue today?",
+        "How much sales did my store record in the last 7 days?",
+        "Show revenue for the last 30 days",
+        "Why did revenue fall between 2026-10-01 and 2026-10-07?",
+    ):
+        assert _is_revenue_evidence_request(question) is True
+    for question in (
+        "How can I increase revenue?",
+        "Give me a revenue growth strategy",
+        "Explain what revenue means",
+        "Hello Rev",
+    ):
+        assert _is_revenue_evidence_request(question) is False
