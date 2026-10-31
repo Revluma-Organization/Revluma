@@ -327,7 +327,7 @@ def test_zero_value_order_is_not_confused_with_zero_orders():
     value = next(item for item in evidence["items"] if item["metric"] == "recorded_order_value")
     assert evidence["overall_status"] == "available"
     assert count["value"] == 1 and count["status"] == "available"
-    assert value["value"] == "0.00" and value["currency"] == "USD"
+    assert Decimal(value["value"]) == Decimal("0.00") and value["currency"] == "USD"
     assert value["status"] == "available"
 
 def test_invalid_and_reversed_custom_periods_return_unsupported_without_throwing():
