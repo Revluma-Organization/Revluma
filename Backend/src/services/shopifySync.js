@@ -37,7 +37,10 @@ function externalId(gid) {
 }
 
 function money(value) {
-  return Number(value?.shopMoney?.amount || 0);
+  const amount = value?.shopMoney?.amount;
+  if (amount === null || amount === undefined || amount === '') return null;
+  const parsed = Number(amount);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function nextConnectionCursor(connection, previousCursor, rootName) {
@@ -127,7 +130,10 @@ function orderPayload(order) {
     refunds: [],
     subtotal_price: money(order.subtotalPriceSet),
     total_discounts: money(order.totalDiscountsSet),
-    currency: (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode || 'USD',
+    currency: (() => {
+      const code = (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode;
+      return typeof code === 'string' && /^[A-Za-z]{3}$/.test(code.trim()) ? code.trim().toUpperCase() : null;
+    })(),
     customer: order.customer ? {
       id: externalId(order.customer.id),
       email: order.customer.email,
