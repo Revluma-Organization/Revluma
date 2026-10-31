@@ -68,3 +68,42 @@ def test_orchestrate_preserves_node_correlation_id(monkeypatch):
     assert result.success is True
     assert seen["correlation_id"] == "node-correlation-198"
     assert result.correlation_id == "node-correlation-198"
+
+
+@pytest.mark.asyncio
+async def test_python_api_passes_node_correlation_id_into_orchestrator(monkeypatch):
+    from types import SimpleNamespace
+    from src.serving import api
+
+    seen = {}
+    class Database:
+        def close(self):
+            pass
+
+    def orchestrate(**kwargs):
+        seen.update(kwargs)
+        return SimpleNamespace(to_dict=lambda: {"success": True})
+
+    async def inline_threadpool(function):
+        return function()
+
+    monkeypatch.setattr(api, "_Session", Database)
+    monkeypatch.setattr(api, "_orchestrate", orchestrate)
+    monkeypatch.setattr(api, "run_in_threadpool", inline_threadpool)
+    request = api.OrchestrateRequest(
+        organization_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        user_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        message="Show revenue",
+        correlation_id="body-correlation-198",
+        context_payload={"merchant_context": {}},
+    )
+    await api.orchestrate_endpoint(
+        request, x_contract_version="1.0", x_correlation_id="header-correlation-198"
+    )
+    assert seen["correlation_id"] == "body-correlation-198"
+
+    request.correlation_id = None
+    await api.orchestrate_endpoint(
+        request, x_contract_version="1.0", x_correlation_id="header-correlation-198"
+    )
+    assert seen["correlation_id"] == "header-correlation-198"
