@@ -142,6 +142,7 @@ class TestBusinessStateContract:
             "severity": "low",
             "currency": None,
             "reporting_timezone": "UTC",
+            "evidence": {},
         }
         assert state["abandoned_carts"] == {
             "count": 2,
