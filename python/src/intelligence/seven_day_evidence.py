@@ -143,6 +143,7 @@ def retrieve_revenue_evidence(
     start: datetime,
     end: datetime,
     now: datetime | None = None,
+    request_id: str | None = None,
 ) -> dict:
     """Retrieve contract-shaped recorded-order evidence for authorized Shopify stores.
 
@@ -174,7 +175,7 @@ def retrieve_revenue_evidence(
     }
     envelope = {
         "contract_version": "1.0",
-        "request_id": str(uuid4()),
+        "request_id": str(request_id or uuid4()),
         "organization_scope": {"scope": "authorized_organization", "store_count": 0},
         "generated_at": observed_at.isoformat(),
         "overall_status": "unavailable",
