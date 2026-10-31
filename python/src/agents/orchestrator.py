@@ -168,7 +168,7 @@ def _is_revenue_evidence_request(message: str) -> bool:
         "tell me", "can you", "could you", "did we", "do we", "how many",
     ))
     explicit_period = bool(re.search(
-        r"\b(?:today|yesterday)\b|\b(?:last|past|previous|this)\s+(?:\d+\s+)?(?:days?|weeks?|months?|quarters?|years?)\b|\b20\d{2}-\d{2}-\d{2}\b",
+        r"\b(?:today|yesterday)\b|\b(?:last|past|previous|this)\s+(?:\d+\s+)?(?:days?|weeks?|months?|quarters?|years?)\b|\b20\d{2}-\d{2}-\d{2}\b|\bq[1-4]\b|\b(?:first|second|third|fourth) quarter\b|\b(?:in|for|during)\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:\s+(?:19|20)\d{2})?\b|\b(?:fy|fiscal year)\s*(?:19|20)\d{2}\b|\b(?:in|for|during)\s+(?:19|20)\d{2}\b",
         value,
     ))
     return (
