@@ -227,7 +227,7 @@ def retrieve_revenue_evidence(
             SELECT store_id, coverage_start, coverage_end, certified_at, source, source_run_id
             FROM intelligence_order_coverage
             WHERE organization_id = :org_id
-              AND store_id = ANY(:store_ids)
+              AND store_id = ANY(CAST(:store_ids AS uuid[]))
               AND source = :trusted_source
         """), {
             "org_id": organization_id,
@@ -289,7 +289,7 @@ def retrieve_revenue_evidence(
     elif coverage_query_ok and all(fully_covered):
         status = "available"
         completeness = "known"
-    elif coverage_rows and start < min(
+    elif coverage_rows and len(coverage_by_store) == len(store_ids) and start < min(
         (row["coverage_start"].replace(tzinfo=timezone.utc)
          if row["coverage_start"].tzinfo is None else row["coverage_start"]).astimezone(timezone.utc)
         for row in coverage_rows
@@ -434,6 +434,26 @@ def retrieve_revenue_evidence(
                     },
                     "warnings": ["Average is calculated separately within this currency; currencies are never combined."],
                 })
+
+    # Unsupported financial measures remain explicit rather than being inferred from order totals.
+    for metric in ("gross_revenue", "net_revenue", "refund_value"):
+        envelope["items"].append({
+            "evidence_id": str(uuid4()),
+            "domain": "revenue",
+            "metric": metric,
+            "value": None,
+            "unit": "money",
+            "currency": None,
+            "status": "unsupported",
+            "epistemic_type": "observed",
+            "source": {"system": "shopify", "entity": "orders", "fields": [], "record_count": 0},
+            "scope": scope,
+            "period": period,
+            "freshness": freshness,
+            "coverage": {"completeness": completeness, "is_truncated": False, "limitations": limitations},
+            "calculation": None,
+            "warnings": ["The persisted schema does not contain an independent gross/refund ledger or payment-status evidence."],
+        })
 
     envelope["overall_status"] = status
     envelope["warnings"] = warnings
