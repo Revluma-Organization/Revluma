@@ -112,3 +112,14 @@ test('order import preserves high precision decimal source strings', () => {
   assert.equal(payload.total_price, '90000000.13');
   assert.equal(payload.currency, 'USD');
 });
+
+test('Shopify order import rejects amounts that the DECIMAL(10,2) column cannot preserve', () => {
+  for (const amount of ['1.234', '100000000.00', '-1.00', 'not-money']) {
+    const payload = orderPayload({
+      id: 'gid://shopify/Order/127', createdAt: '2026-10-01T00:00:00Z',
+      currentTotalPriceSet: { shopMoney: { amount, currencyCode: 'USD' } },
+      lineItems: { nodes: [] },
+    });
+    assert.equal(payload.total_price, null, amount);
+  }
+});
