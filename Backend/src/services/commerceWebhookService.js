@@ -97,35 +97,102 @@ async function recalculateCustomerTotals(tx, customerId) {
  * failed transactions and do not subtract the order's current_total_price twice.
  * Return null for malformed refund evidence rather than inventing net revenue.
  */
-function shopifyNetOrderTotal(payload) {
-  if (payload?.total_price === null || payload?.total_price === undefined || payload.total_price === '') return null;
-  let gross;
+function shopifyMoneySet(value) {
+  const money = value?.shopMoney;
+  if (!money || money.amount === null || money.amount === undefined || money.amount === '') return null;
+  const currency = typeof money.currencyCode === 'string'
+    ? money.currencyCode.trim().toUpperCase()
+    : '';
+  if (!/^[A-Z]{3}$/.test(currency)) return null;
   try {
-    gross = new Prisma.Decimal(String(payload.total_price));
+    const amount = new Prisma.Decimal(String(money.amount));
+    if (!amount.isFinite() || amount.isNegative() || amount.decimalPlaces() > 2 ||
+        amount.greaterThan('99999999.99')) return null;
+    return { amount, currency };
   } catch {
     return null;
   }
-  // The application column is DECIMAL(10,2). Reject unsupported source precision
-  // or values outside that range instead of silently rounding during persistence.
-  if (!gross.isFinite() || gross.isNegative() || gross.decimalPlaces() > 2 ||
-      gross.greaterThan('99999999.99')) return null;
-  if (!Array.isArray(payload.refunds)) return null;
-  if (payload.refunds.length === 0) return gross.toFixed(2);
+}
+
+function shopifyRefundTransactions(refund) {
+  const transactions = refund?.transactions;
+  if (Array.isArray(transactions)) return transactions;
+  if (Array.isArray(transactions?.nodes)) return transactions.nodes;
+  if (Array.isArray(transactions?.edges)) return transactions.edges.map((edge) => edge?.node).filter(Boolean);
+  return null;
+}
+
+/**
+ * Shopify REST webhooks expose amount/currency directly on refund transactions.
+ * Shopify Admin GraphQL exposes amountSet.shopMoney and may wrap transactions
+ * in a connection. currentTotalPriceSet is already net of refunds, so it must
+ * never be reduced a second time.
+ */
+function shopifyNetOrderTotal(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const currentTotal = shopifyMoneySet(payload.currentTotalPriceSet);
+  if (payload.currentTotalPriceSet !== undefined && payload.currentTotalPriceSet !== null) {
+    const orderCurrency = String(
+      payload.currency || payload.currency_code || currentTotal?.currency || ''
+    ).trim().toUpperCase();
+    if (!currentTotal || !orderCurrency || currentTotal.currency !== orderCurrency) return null;
+    return currentTotal.amount.toFixed(2);
+  }
+
+  const graphQlGross = shopifyMoneySet(payload.totalPriceSet);
+  let gross;
+  let orderCurrency = String(payload.currency || payload.currency_code || '').trim().toUpperCase();
+  if (payload.total_price !== null && payload.total_price !== undefined && payload.total_price !== '') {
+    try {
+      gross = new Prisma.Decimal(String(payload.total_price));
+    } catch {
+      return null;
+    }
+  } else if (graphQlGross) {
+    gross = graphQlGross.amount;
+    if (!orderCurrency) orderCurrency = graphQlGross.currency;
+  } else {
+    return null;
+  }
+
+  if (!/^[A-Z]{3}$/.test(orderCurrency) || !gross.isFinite() || gross.isNegative() ||
+      gross.decimalPlaces() > 2 || gross.greaterThan('99999999.99')) return null;
+
+  const rawRefunds = payload.refunds;
+  const refunds = Array.isArray(rawRefunds)
+    ? rawRefunds
+    : Array.isArray(rawRefunds?.nodes)
+      ? rawRefunds.nodes
+      : Array.isArray(rawRefunds?.edges)
+        ? rawRefunds.edges.map((edge) => edge?.node).filter(Boolean)
+        : null;
+  if (!refunds) return null;
+  if (refunds.length === 0) return gross.toFixed(2);
+
   let refunded = new Prisma.Decimal(0);
-  for (const refund of payload.refunds) {
-    if (!Array.isArray(refund.transactions) || refund.transactions.length === 0) return null;
-    for (const transaction of refund.transactions) {
-      if (String(transaction.kind || '').toLowerCase() !== 'refund') return null;
+  for (const refund of refunds) {
+    const transactions = shopifyRefundTransactions(refund);
+    if (!transactions || transactions.length === 0) return null;
+    for (const transaction of transactions) {
+      if (String(transaction?.kind || '').toLowerCase() !== 'refund') return null;
       const status = String(transaction.status || '').toLowerCase();
       if (!['success', 'failure', 'failed', 'pending', 'error', 'voided'].includes(status)) return null;
       if (status !== 'success') continue;
-      const transactionCurrency = String(transaction.currency || transaction.currency_code || '').trim().toUpperCase();
-      const orderCurrency = String(payload.currency || payload.currency_code || '').trim().toUpperCase();
-      if (!transactionCurrency || !orderCurrency || transactionCurrency !== orderCurrency) return null;
-      if (transaction.amount === null || transaction.amount === undefined || transaction.amount === '') return null;
+
+      const graphQlAmount = shopifyMoneySet(transaction.amountSet);
+      const amountValue = transaction.amount ?? transaction.amount_set?.amount ?? graphQlAmount?.amount;
+      const transactionCurrency = String(
+        transaction.currency || transaction.currency_code || graphQlAmount?.currency || ''
+      ).trim().toUpperCase();
+      if (!transactionCurrency || transactionCurrency !== orderCurrency ||
+          amountValue === null || amountValue === undefined || amountValue === '') return null;
+
       let amount;
       try {
-        amount = new Prisma.Decimal(String(transaction.amount));
+        amount = amountValue instanceof Prisma.Decimal
+          ? amountValue
+          : new Prisma.Decimal(String(amountValue));
       } catch {
         return null;
       }
@@ -134,6 +201,7 @@ function shopifyNetOrderTotal(payload) {
       refunded = refunded.plus(amount);
     }
   }
+
   const adjusted = gross.minus(refunded);
   // An over-refund is contradictory financial evidence, not a verified zero.
   if (adjusted.isNegative()) return null;
