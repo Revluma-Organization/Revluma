@@ -8,7 +8,15 @@ test('Rev controller ignores merchant-supplied tenant and store IDs for revenue 
   const userId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   const capturedSqlValues = [];
   let orchestrateArgs = null;
+  const storeId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
   const prisma = {
+    stores: {
+      findMany: async ({ where }) => {
+        assert.equal(where.organization_id, orgId);
+        return [{ id: storeId, platform: 'shopify', status: 'active', last_synced_at: new Date('2026-10-31T11:55:00Z') }];
+      },
+    },
+    intelligence_findings: { findMany: async () => [] },
     organizations: {
       findFirst: async ({ where }) => {
         assert.equal(where.owner_id, userId);
@@ -38,12 +46,6 @@ test('Rev controller ignores merchant-supplied tenant and store IDs for revenue 
       },
     },
     '../utils/logger': { info() {}, warn() {}, error() {} },
-    '../services/revMerchantContext': {
-      buildMerchantContext: async (_db, authorizedOrgId) => {
-        assert.equal(authorizedOrgId, orgId);
-        return { authorized_store_ids: ['cccccccc-cccc-4ccc-8ccc-cccccccccccc'] };
-      },
-    },
   };
 
   Module._load = function(request, parent, isMain) {
@@ -73,10 +75,9 @@ test('Rev controller ignores merchant-supplied tenant and store IDs for revenue 
     assert.equal(orchestrateArgs.organizationId, orgId);
     assert.equal(orchestrateArgs.userId, userId);
     assert.equal(orchestrateArgs.contextPayload._node_owns_chat_persistence, true);
-    assert.deepEqual(
-      orchestrateArgs.contextPayload.merchant_context.authorized_store_ids,
-      ['cccccccc-cccc-4ccc-8ccc-cccccccccccc'],
-    );
+    assert.equal(orchestrateArgs.contextPayload.merchant_context.stores.length, 1);
+    assert.ok(orchestrateArgs.contextPayload.merchant_context.stores[0].includes(storeId));
+    assert.ok(!orchestrateArgs.contextPayload.merchant_context.stores[0].includes('store-b'));
     assert.equal(orchestrateArgs.message.includes('org-b'), true);
     assert.equal(capturedSqlValues.includes(orgId), true);
     assert.equal(capturedSqlValues.includes('org-b'), false);
