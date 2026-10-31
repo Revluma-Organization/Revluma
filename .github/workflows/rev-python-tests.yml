@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 40
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: revluma_test
           POSTGRES_USER: revluma
@@ -49,6 +49,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest
+      - name: Set up Node.js for the repository Prisma migrations
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - name: Install backend dependencies
+        working-directory: Backend
+        run: npm ci
+      - name: Initialize the real application schema with Prisma migrations
+        working-directory: Backend
+        env:
+          DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
+          DIRECT_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
+        run: |
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma migrate deploy
       - name: Compile Python sources and tests
         run: python -m compileall -q src tests
       - name: Run Task 198 disposable PostgreSQL revenue integration tests
