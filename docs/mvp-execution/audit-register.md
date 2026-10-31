@@ -38,7 +38,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 030 | Phase 1 | Prevent delayed checkout event reopening completion. | NOT STARTED | — | — | — |
 | 031 | Phase 1 | Test order-first event delivery. | NOT STARTED | — | — | — |
 | 032 | Phase 1 | Test checkout-first event delivery. | NOT STARTED | — | — | — |
-| 033 | Phase 1 | Test abandonment-then-purchase delivery. | NOT STARTED | — | — | — |
+| 033 | Phase 1 | Test abandonment-then-purchase delivery. | PARTIAL — 18 lifecycle checks PASS; metric assertion FAIL; 70-case matrix incomplete | [TASK-033](validation/TASK-033.md) | `9d50b6c1`, `0d64652a`, `bd029549`; PR #231 | 2026-10-31 |
 | 034 | Phase 1 | Test duplicate order event delivery. | NOT STARTED | — | — | — |
 | 035 | Phase 1 | Test duplicate checkout event delivery. | NOT STARTED | — | — | — |
 | 036 | Phase 1 | Test simultaneous order and checkout processing. | NOT STARTED | — | — | — |
@@ -605,3 +605,6 @@ TASK031 follow-up CI: commit 47ec2608d16d4501621b577a270588fa5b3e1489, run 41028
 
 ## TASK 032 — Checkout-first delivery validation (2026-10-30)
 Baseline `cfbb1f5dc10b032688a001f2f014ac7498f4c70d`. Branch `test/mvp-task-032-checkout-first-delivery`. Report `validation/TASK-032.md`. New isolated PostgreSQL test `Backend/src/tests/task032CheckoutFirst.integration.js`, CI `.github/workflows/task032-checkout-first.yml`. Twelve grouped assertions authored; 60-case acceptance matrix recorded with NOT RUN until actual execution. No production code changes. Status PARTIAL — test execution and comprehensive coverage pending. Task033 not started.
+
+| TASK 033 | Abandonment-then-purchase lifecycle validation | PASS — Task033 36/36; all 70 acceptance rows PASS. Prior regressions: Task024 26, Task025 28, Task026 40, Task027 40, Task028 44, Task029 45, Task030 50, Task031 15, Task032 15 — all PASS. Backend tests and refresh regression PASS. Isolated CI only; no production deploy. REV-FIND-0113 resolved in code. | `docs/mvp-execution/validation/TASK-033.md` | `Backend/src/tests/task033AbandonmentThenPurchase.integration.js`; PR #231; CI run 41200036597; verified branch commit bf1efb55 | No production deploy/merge; PR #231 remains open/draft. | 
+\n\n**REV-FIND-0113 — HIGH — RESOLVED IN CODE / NOT DEPLOYED — Task033:** Command Center `getKpis` no longer counts `status = 'recovered'` as active abandonment. The real controller endpoint, revenue-at-risk, and Rev Intelligence evidence-query regressions pass on disposable PostgreSQL (Task033 CI run 41200036597, 36/36 grouped checks). All 70 Task033 matrix rows pass; prior regression suites Task024–032 also pass. No production deployment or merchant-data mutation was performed. See `validation/TASK-033.md`.\n

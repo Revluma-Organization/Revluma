@@ -50,7 +50,7 @@ exports.getKpis = async (req, res, next) => {
           OR: [
             { status: "abandoned", recovered_at: null, updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
             { status: "pending", recovered_at: null, updated_at: { lte: new Date(Date.now() - 15 * 60 * 1000) } },
-            { status: { in: ["in_sequence", "recovered"] } },
+            { status: "in_sequence" },
           ],
         },
       }),
