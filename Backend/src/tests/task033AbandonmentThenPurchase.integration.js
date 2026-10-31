@@ -1,6 +1,8 @@
 'use strict';
 const assert=require('node:assert/strict');
 const {randomUUID}=require('node:crypto');
+const fs=require('node:fs');
+const path=require('node:path');
 const {prisma}=require('../configs/database');
 const {upsertAbandonedCart,upsertOrder}=require('../services/commerceWebhookService');
 const {promoteInactiveCheckouts}=require('../services/schedulerService');
@@ -242,6 +244,30 @@ await upsertAbandonedCart(store,mappedCheckout);
 await upsertOrder(store,'shopify',{...mappedOrder,checkout_id:mappedCheckout.checkout_id});
 assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),1);
 assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}}),1);
+});
+await check('TC033-56-Rev-Intelligence-order-revenue-query-preserves-completed-order-once',async()=>{
+const source=fs.readFileSync(path.resolve(__dirname,'../../../python/src/intelligence/business_state.py'),'utf8');
+const section=source.split('# ── 2. Revenue metrics')[1].split('# ── 3. Cart abandonment metrics')[0];
+assert.match(section,/SUM\\(total\\)/);
+assert.match(section,/store_id IN :store_ids/);
+assert.match(section,/ordered_at >= :cutoff/);
+const rows=await prisma.$queryRaw`SELECT COUNT(*)::int AS count, COALESCE(SUM(total),0)::numeric AS revenue FROM orders WHERE store_id=${store.id}::uuid AND ordered_at >= NOW() - INTERVAL '14 days'`;
+const expected=await prisma.orders.aggregate({where:{store_id:store.id,ordered_at:{gte:new Date(Date.now()-14*86400000)}},_count:{_all:true},_sum:{total:true}});
+assert.equal(rows[0].count,expected._count._all);
+assert.equal(Number(rows[0].revenue),Number(expected._sum.total||0));
+const completed=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-core'}});
+assert.equal(completed.recovery_status,'completed');
+assert.equal(Number(rows[0].revenue)>=Number(completed.total),true);
+});
+await check('TC033-55-Rev-Intelligence-active-cart-evidence-excludes-completed-checkout',async()=>{
+const source=fs.readFileSync(path.resolve(__dirname,'../../../python/src/intelligence/business_state.py'),'utf8');
+const section=source.split('# ── 3. Cart abandonment metrics')[1].split('# ── 4.')[0];
+assert.match(section,/status = 'abandoned'/);
+assert.match(section,/recovered_at IS NULL/);
+assert.match(section,/abandoned_at >= NOW\\(\\) - INTERVAL '48 hours'/);
+const rows=await prisma.$queryRaw`WITH ranked AS (SELECT store_id,cart_value,ROW_NUMBER() OVER (PARTITION BY store_id,COALESCE(NULLIF(external_cart_id,''),id::text) ORDER BY updated_at DESC NULLS LAST,created_at DESC NULLS LAST,id DESC) AS rn FROM abandoned_carts WHERE store_id=${store.id}::uuid AND status='abandoned' AND recovered_at IS NULL AND abandoned_at >= NOW()-INTERVAL '48 hours') SELECT COUNT(*)::int AS count,COALESCE(SUM(cart_value),0)::numeric AS value FROM ranked WHERE rn=1`;
+assert.equal(Number(rows[0].count),await prisma.abandoned_carts.count({where:{store_id:store.id,status:'abandoned',recovered_at:null,abandoned_at:{gte:new Date(Date.now()-48*3600000)}}}));
+assert.equal((await cart('core')).status,'recovered');
 });
 await check('TC033-54-55-58-59-real-dashboard-metric-query-integrity',async()=>{
 const now=new Date();
