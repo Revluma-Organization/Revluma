@@ -248,7 +248,7 @@ assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_
 await check('TC033-56-Rev-Intelligence-order-revenue-query-preserves-completed-order-once',async()=>{
 const source=fs.readFileSync(path.resolve(__dirname,'../../../python/src/intelligence/business_state.py'),'utf8');
 const section=source.split('# ── 2. Revenue metrics')[1].split('# ── 3. Cart abandonment metrics')[0];
-assert.match(section,/SUM\\(total\\)/);
+assert.ok(section.includes('SUM(total)'));
 assert.ok(section.includes('store_id IN :store_ids'));
 assert.ok(section.includes('ordered_at >= :cutoff'));
 const rows=await prisma.$queryRaw`SELECT COUNT(*)::int AS count, COALESCE(SUM(total),0)::numeric AS revenue FROM orders WHERE store_id=${store.id}::uuid AND ordered_at >= NOW() - INTERVAL '14 days'`;
@@ -264,7 +264,7 @@ const source=fs.readFileSync(path.resolve(__dirname,'../../../python/src/intelli
 const section=source.split('# ── 3. Cart abandonment metrics')[1].split('# ── 4.')[0];
 assert.match(section,/status = 'abandoned'/);
 assert.match(section,/recovered_at IS NULL/);
-assert.match(section,/abandoned_at >= NOW\\(\\) - INTERVAL '48 hours'/);
+assert.ok(section.includes("abandoned_at >= NOW() - INTERVAL '48 hours'"));
 const rows=await prisma.$queryRaw`WITH ranked AS (SELECT store_id,cart_value,ROW_NUMBER() OVER (PARTITION BY store_id,COALESCE(NULLIF(external_cart_id,''),id::text) ORDER BY updated_at DESC NULLS LAST,created_at DESC NULLS LAST,id DESC) AS rn FROM abandoned_carts WHERE store_id=${store.id}::uuid AND status='abandoned' AND recovered_at IS NULL AND abandoned_at >= NOW()-INTERVAL '48 hours') SELECT COUNT(*)::int AS count,COALESCE(SUM(cart_value),0)::numeric AS value FROM ranked WHERE rn=1`;
 assert.equal(Number(rows[0].count),await prisma.abandoned_carts.count({where:{store_id:store.id,status:'abandoned',recovered_at:null,abandoned_at:{gte:new Date(Date.now()-48*3600000)}}}));
 assert.equal((await cart('core')).status,'recovered');
