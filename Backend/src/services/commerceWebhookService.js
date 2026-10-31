@@ -105,7 +105,10 @@ function shopifyNetOrderTotal(payload) {
   } catch {
     return null;
   }
-  if (!gross.isFinite() || gross.isNegative()) return null;
+  // The application column is DECIMAL(10,2). Reject unsupported source precision
+  // or values outside that range instead of silently rounding during persistence.
+  if (!gross.isFinite() || gross.isNegative() || gross.decimalPlaces() > 2 ||
+      gross.greaterThan('99999999.99')) return null;
   if (!Array.isArray(payload.refunds)) return null;
   if (payload.refunds.length === 0) return gross.toFixed(2);
   let refunded = new Prisma.Decimal(0);
@@ -121,7 +124,8 @@ function shopifyNetOrderTotal(payload) {
       } catch {
         return null;
       }
-      if (!amount.isFinite() || amount.isNegative()) return null;
+      if (!amount.isFinite() || amount.isNegative() || amount.decimalPlaces() > 2 ||
+          amount.greaterThan('99999999.99')) return null;
       refunded = refunded.plus(amount);
     }
   }
