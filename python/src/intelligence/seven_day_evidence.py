@@ -488,3 +488,48 @@ def format_revenue_evidence(evidence: dict) -> str:
         lines.append("**Limitations:**")
         lines.extend(f"- {warning}" for warning in evidence["warnings"])
     return "\n\n".join(lines)
+
+
+def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict:
+    """Resolve supported revenue windows without guessing a merchant timezone.
+
+    Rolling windows and explicit ISO calendar dates are UTC. Merchant-local
+    today/yesterday are unsupported because the store timezone is not stored.
+    """
+    import re
+    from datetime import date
+
+    if not isinstance(message, str):
+        raise ValueError("Revenue request must be text")
+    end = now or datetime.now(timezone.utc)
+    if end.tzinfo is None or end.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
+    end = end.astimezone(timezone.utc)
+    lowered = message.lower()
+    if re.search(r"\b(today|yesterday|this morning|last night)\b", lowered):
+        return {
+            "status": "unsupported",
+            "reason": "Merchant-local calendar periods cannot be resolved because the Shopify store timezone is not persisted.",
+            "timezone": None,
+        }
+    match = re.search(
+        r"\b(?:between|from)\s+(\d{4}-\d{2}-\d{2})\s+(?:and|to)\s+(\d{4}-\d{2}-\d{2})\b",
+        lowered,
+    )
+    if match:
+        first = date.fromisoformat(match.group(1))
+        last = date.fromisoformat(match.group(2))
+        if last < first:
+            raise ValueError("Custom revenue period end must not precede start")
+        start_at = datetime.combine(first, datetime.min.time(), tzinfo=timezone.utc)
+        end_at = datetime.combine(last + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+        return {"status": "supported", "start": start_at, "end": end_at, "timezone": "UTC", "label": "custom UTC calendar dates"}
+    days = 30 if re.search(r"\b(last|past)\s+30\s+days?\b", lowered) else 7
+    start_at = end - timedelta(days=days)
+    return {
+        "status": "supported",
+        "start": start_at,
+        "end": end,
+        "timezone": "UTC",
+        "label": f"rolling {days}-day UTC window",
+    }
