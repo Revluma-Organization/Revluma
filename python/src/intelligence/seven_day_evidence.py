@@ -262,9 +262,7 @@ def retrieve_revenue_evidence(
         rows = db.execute(text("""
             SELECT
                 CASE
-                    WHEN UPPER(BTRIM(o.currency)) ~ '^[A-Z]{3}
-        """), {"org_id": organization_id, "start": start, "end": end}).mappings().all()
-    except Exception:
+                    WHEN UPPER(BTRIM(o.currency)) ~ '^[A-Z]{3}    except Exception:
         db.rollback()
         envelope["errors"].append({"code": "REVENUE_ORDER_QUERY_FAILED"})
         envelope["warnings"].append("Order totals could not be retrieved; no zero value has been inferred.")
@@ -637,9 +635,7 @@ def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict
               AND o.ordered_at < :end
               AND LOWER(COALESCE(o.recovery_status, '')) <> 'cancelled'
             GROUP BY CASE
-                WHEN UPPER(BTRIM(o.currency)) ~ '^[A-Z]{3}
-        """), {"org_id": organization_id, "start": start, "end": end}).mappings().all()
-    except Exception:
+                WHEN UPPER(BTRIM(o.currency)) ~ '^[A-Z]{3}    except Exception:
         db.rollback()
         envelope["errors"].append({"code": "REVENUE_ORDER_QUERY_FAILED"})
         envelope["warnings"].append("Order totals could not be retrieved; no zero value has been inferred.")
