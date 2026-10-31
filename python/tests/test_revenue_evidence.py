@@ -260,3 +260,11 @@ def test_gbp_eur_usd_ngn_are_reported_as_separate_currency_items():
         "EUR": "19.99", "GBP": "30.01", "NGN": "5000.10", "USD": "40.40"
     }
     assert len(values) == 4
+
+def test_daylight_saving_boundary_is_not_guessed_without_store_timezone():
+    result = resolve_revenue_period(
+        "revenue between 2026-03-07 and 2026-03-09",
+        now=NOW,
+    )
+    assert result["timezone"] == "UTC"
+    assert result["end"] - result["start"] == timedelta(hours=72)
