@@ -475,6 +475,8 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         shopify_sync_times = [r[1] for r in stores_result if str(r[2] or "").lower() == "shopify" and r[1] is not None]
         last_synced_at = min(sync_times) if sync_times else None
         shopify_last_synced_at = min(shopify_sync_times) if shopify_sync_times else None
+        if shopify_last_synced_at is not None and shopify_last_synced_at.tzinfo is None:
+            shopify_last_synced_at = shopify_last_synced_at.replace(tzinfo=timezone.utc)
     except Exception as exc:
         logger.exception(
             "business_state_stores_failed",
@@ -647,11 +649,24 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             currencies = {str(row[0] or "UNKNOWN").upper() for row in rev_result}
             if not coverage_complete:
                 coverage_status = "partial" if coverage_rows else "unknown"
-                if shopify_last_synced_at is not None:
-                    sync_at = shopify_last_synced_at
-                    if sync_at.tzinfo is None:
-                        sync_at = sync_at.replace(tzinfo=timezone.utc)
-                    if (generated_at - sync_at.astimezone(timezone.utc)).total_seconds() > DEFAULT_STALENESS_MINS * 60:
+                if shopify_last_synced_at is None:
+                    coverage_status = "unknown"
+                elif (generated_at - shopify_last_synced_at.astimezone(timezone.utc)).total_seconds() > DEFAULT_STALENESS_MINS * 60:
+                    coverage_status = "stale"
+                elif coverage_rows and len(coverage_by_store) == len(shopify_store_ids):
+                    earliest_coverage_start = min(
+                        row["coverage_start"].replace(tzinfo=timezone.utc)
+                        if row["coverage_start"].tzinfo is None else row["coverage_start"]
+                        for row in coverage_rows
+                    )
+                    if period_start < earliest_coverage_start.astimezone(timezone.utc):
+                        coverage_status = "insufficient_history"
+                    elif any(
+                        (generated_at - (row["certified_at"].replace(tzinfo=timezone.utc)
+                         if row["certified_at"].tzinfo is None else row["certified_at"]).astimezone(timezone.utc)).total_seconds()
+                        > DEFAULT_STALENESS_MINS * 60
+                        for row in coverage_rows
+                    ):
                         coverage_status = "stale"
                 revenue_evidence["overall_status"] = coverage_status
                 revenue_evidence["warnings"] = ["Complete, fresh Shopify order coverage for the last 14 full UTC days is not certified."]
@@ -838,6 +853,29 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                 revenue_evidence["overall_status"] = "unsupported"
                 revenue_evidence["warnings"] = ["No currency-bearing order records exist in the verified window; a monetary zero cannot be assigned a store currency."]
                 warnings.append("Revenue specialist metrics are unavailable because no currency-bearing order records exist in the verified window.")
+
+            for unsupported_metric in ("gross_revenue", "net_revenue", "refund_value"):
+                revenue_evidence["items"].append({
+                    "evidence_id": str(uuid.uuid4()),
+                    "domain": "revenue",
+                    "metric": unsupported_metric,
+                    "value": None,
+                    "unit": "money",
+                    "currency": None,
+                    "status": "unsupported",
+                    "epistemic_type": "observed",
+                    "source": {"system": "shopify", "entity": "orders", "fields": [], "record_count": 0},
+                    "scope": {"store_count": len(shopify_store_ids)},
+                    "period": revenue_evidence["period"],
+                    "freshness": {"observed_at": generated_at.isoformat(),
+                                  "source_synced_at": shopify_last_synced_at.isoformat() if shopify_last_synced_at else None,
+                                  "age_seconds": max(0, int((generated_at - shopify_last_synced_at).total_seconds())) if shopify_last_synced_at else None},
+                    "coverage": {"completeness": "known" if coverage_complete else "unknown",
+                                 "is_truncated": False,
+                                 "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows]},
+                    "calculation": None,
+                    "warnings": ["No independent gross-sales or refund ledger/payment-status evidence is persisted."],
+                })
     except Exception as exc:
         logger.exception(
             "business_state_revenue_failed",
@@ -855,6 +893,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         revenue_evidence["items"] = []
         revenue_evidence["errors"] = [{"code": "REVENUE_BUSINESS_STATE_QUERY_FAILED"}]
         revenue_evidence["warnings"] = ["Revenue evidence could not be computed or its coverage could not be verified."]
+        revenue_evidence["items"] = []
 
     # ── 3. Cart abandonment metrics 
     abandoned_cart_count = None
