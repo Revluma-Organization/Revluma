@@ -577,7 +577,23 @@ def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict
         start_at = datetime.combine(first, datetime.min.time(), tzinfo=timezone.utc)
         end_at = datetime.combine(last + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
         return {"status": "supported", "start": start_at, "end": end_at, "timezone": "UTC", "label": "custom UTC calendar dates"}
-    days = 30 if re.search(r"\b(last|past)\s+30\s+days?\b", lowered) else 7
+    relative = re.search(
+        r"\b(?:last|past|previous|this)\s+(?:(\d+)\s+)?(days?|weeks?|months?|quarters?|years?)\b",
+        lowered,
+    )
+    if relative:
+        quantity = int(relative.group(1) or 1)
+        unit = relative.group(2)
+        if unit.startswith("day") and quantity in (7, 30) and relative.group(0).startswith(("last", "past")):
+            days = quantity
+        else:
+            return {
+                "status": "unsupported",
+                "reason": "The requested relative reporting period is not supported without an explicit UTC date range. Use last 7 days, last 30 days, today UTC, yesterday UTC, or explicit ISO dates.",
+                "timezone": None,
+            }
+    else:
+        days = 7
     # Relative day ranges are complete UTC calendar days, not a rolling window
     # that includes the still-open current day.
     end_at = datetime.combine(end.date(), datetime.min.time(), tzinfo=timezone.utc)
