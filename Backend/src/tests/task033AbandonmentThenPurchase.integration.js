@@ -18,6 +18,7 @@ try{
 const user=randomUUID(),org=randomUUID();
 await prisma.users.create({data:{id:user,full_name:'Task033 Test',email:prefix+'@example.invalid'}});
 await prisma.organizations.create({data:{id:org,owner_id:user,company_name:'Task033',industry:'other',country:'US',slug:prefix}});
+await prisma.organization_members.create({data:{organization_id:org,user_id:user,role:'Owner',status:'active'}});
 await prisma.stores.create({data:{id:store.id,organization_id:org,platform:'shopify',shop_domain:prefix+'.myshopify.com',status:'active'}});
 await check('TC033-03-04-05-06-07-08-09-10-11-12-13-threshold-boundaries',async()=>{
 assert.equal(ABANDONMENT_INACTIVITY_MS,900000);
