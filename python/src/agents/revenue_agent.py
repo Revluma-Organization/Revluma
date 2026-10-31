@@ -138,8 +138,8 @@ class RevenueAgent(BaseAgent):
         if bs.revenue_trend_7d is not None and bs.revenue_trend_7d > 20:
             diagnosis.append({
                 "type": "inference",
-                "description": "Strong 7-day revenue growth suggests either increased traffic, improved conversion, or higher AOV. Identify which to sustain it.",
-                "confidence": 0.65,
+                "description": "Recorded order value increased over the verified comparison periods. This metric alone does not establish whether traffic, conversion, pricing or order mix caused the change.",
+                "confidence": 0.35,
                 "supporting_signals": ["revenue_trend_7d"],
             })
 
@@ -159,7 +159,7 @@ class RevenueAgent(BaseAgent):
         if bs.revenue_delta_pct is not None and bs.revenue_delta_pct < -15:
             recommendations.append({
                 "action": "investigate_revenue_drop",
-                "description": "Review today's orders for patterns: payment failures, traffic source changes, or product stockouts.",
+                "description": "Review the verified recorded-order evidence and investigate potential causes separately; this metric does not identify payment, traffic or inventory causes.",
                 "predicted_impact": "diagnostic",
                 "confidence": 0.80,
                 "category": "revenue_optimization",
