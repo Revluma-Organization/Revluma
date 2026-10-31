@@ -163,7 +163,7 @@ throw new Error('TASK033_INJECTED_TRANSACTION_FAILURE');
 }),/TASK033_INJECTED_TRANSACTION_FAILURE/);
 assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,status:'pending'}}),before);
 await upsertAbandonedCart(store,checkout(suffix));
-assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}}),1);
+assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:mappedCheckout.checkout_id}}),1);
 await promoteInactiveCheckouts();
 await upsertOrder(store,'shopify',order(suffix));
 assert.equal((await cart(suffix)).status,'recovered');
