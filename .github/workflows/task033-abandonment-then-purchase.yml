@@ -58,6 +58,17 @@ jobs:
           PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task032 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
           npx prisma db push --skip-generate --accept-data-loss
           node src/tests/task032CheckoutFirst.integration.js
+      - name: Execute Task 024 verified-persistence regression in isolated database
+        env:
+          TASK024_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task024?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task024?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task024;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task024 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task024VerifiedPersistence.integration.js
+
       - name: Execute Task 025 unresolved-reconciliation regression in isolated database
         env:
           TASK025_ISOLATED_DB: 'true'
