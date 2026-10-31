@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'Backend/src/tests/task033AbandonmentThenPurchase.integration.js'
+      - 'Backend/src/tests/task024VerifiedPersistence.integration.js'
       - 'Backend/src/services/commerceWebhookService.js'
       - '.github/workflows/task033-abandonment-then-purchase.yml'
   workflow_dispatch:
