@@ -34,7 +34,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql+psycopg2://placeholder:placeholder@localhost:5432/placeholder
+      DATABASE_URL: postgresql+psycopg2://revluma:task198_test_only@localhost:5432/revluma_test
+      TASK198_DATABASE_URL: postgresql+psycopg2://revluma:task198_test_only@localhost:5432/revluma_test
     defaults:
       run:
         working-directory: python
