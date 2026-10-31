@@ -309,6 +309,9 @@ def test_unsupported_relative_periods_are_not_silently_replaced_with_seven_days(
         "sales over the last 90 days",
         "revenue this quarter",
         "sales for the previous year",
+        "what was revenue in Q1 2026",
+        "show sales for October 2026",
+        "what was revenue in FY2026",
     ):
         result = resolve_revenue_period(phrase, now=NOW)
         assert result["status"] == "unsupported"
