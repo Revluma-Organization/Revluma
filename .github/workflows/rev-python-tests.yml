@@ -113,6 +113,12 @@ jobs:
       - name: Run dashboard lint
         working-directory: Frontend/Dashboard
         run: npm run lint
+      - name: Type-check dashboard application
+        working-directory: Frontend/Dashboard
+        run: npx tsc --noEmit -p tsconfig.app.json
+      - name: Type-check dashboard tooling
+        working-directory: Frontend/Dashboard
+        run: npx tsc --noEmit -p tsconfig.node.json
       - name: Run dashboard tests
         working-directory: Frontend/Dashboard
         run: npm test
