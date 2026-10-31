@@ -10,7 +10,7 @@
 
 Task 198 verifies revenue evidence retrieval for Rev Intelligence. The code-level envelope currently declares `contract_version: "1.0"` in `python/src/intelligence/seven_day_evidence.py`. It returns organization scope, request ID, UTC half-open period, generated timestamp, status, evidence items, warnings and errors.
 
-The central audit register still records Task 197 (formal evidence retrieval contract definition) as NOT STARTED, and no separate Task 197 contract document was found in the repository. Task 198 therefore uses the current code-level version-1.0 envelope but does not certify that a separately approved Task 197 artifact exists.
+The Task 197 contract artifact exists on this PR branch at `docs/rev-intelligence/REV-EVIDENCE-RETRIEVAL-CONTRACT.md`. Its contract-definition criteria are checked; source-specific retrieval verification (Tasks 198–203) and runtime enforcement remain explicitly open. The audit register now records Task 197 as CONTRACT DEFINED — SOURCE-SPECIFIC VERIFICATION PENDING. Task 198's revenue envelope is compared against that normative contract, not treated as a substitute for it.
 
 The implementation deliberately reports persisted Shopify order totals as recorded order values. It does not independently claim gross revenue, net revenue, captured/settled payments, or a separate refund-value ledger. Merchant-local dates are not inferred because store timezone is not persisted.
 
