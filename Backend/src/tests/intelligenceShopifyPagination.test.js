@@ -83,3 +83,22 @@ test('optional ML prediction rejection is contained', async () => {
     throw Object.assign(new Error('prediction unavailable'), { code: 'PREDICTION_UNAVAILABLE' });
   }, 'store-test', 'cart-test', 100));
 });
+
+test('order import does not invent USD when Shopify omits currency', () => {
+  const payload = orderPayload({
+    id: 'gid://shopify/Order/124', createdAt: '2026-10-01T00:00:00Z',
+    currentTotalPriceSet: { shopMoney: { amount: '12.34' } },
+    lineItems: { nodes: [] },
+  });
+  assert.equal(payload.total_price, 12.34);
+  assert.equal(payload.currency, null);
+});
+test('order import does not turn a missing money amount into zero', () => {
+  const payload = orderPayload({
+    id: 'gid://shopify/Order/125', createdAt: '2026-10-01T00:00:00Z',
+    currentTotalPriceSet: null, totalPriceSet: null,
+    lineItems: { nodes: [] },
+  });
+  assert.equal(payload.total_price, null);
+  assert.equal(payload.currency, null);
+});
