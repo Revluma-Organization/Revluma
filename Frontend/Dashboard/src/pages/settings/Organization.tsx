@@ -50,7 +50,8 @@ export const Organization: FC = () => {
       try {
         const res = await api.get<{ name?: string; slug?: string; logo_url?: string; industry?: string } | { data?: { name?: string; slug?: string; logo_url?: string; industry?: string } }>("/workspace/current");
         const responseBody = res.data;
-        const data = "data" in responseBody ? responseBody.data : responseBody;
+        const data = (responseBody as { data?: { name?: string; slug?: string; logo_url?: string; industry?: string } }).data
+          ?? responseBody as { name?: string; slug?: string; logo_url?: string; industry?: string };
         if (data) {
           setOrgName(data.name || "");
           setSlug(data.slug || "");
