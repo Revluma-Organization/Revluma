@@ -56,23 +56,32 @@ async function verifyShopifyOrderCoverage(prisma, store, { now = new Date(), gra
     const currency = typeof rawCurrency === 'string' && /^[A-Za-z]{3}$/.test(rawCurrency.trim())
       ? rawCurrency.trim().toUpperCase() : null;
     const created = new Date(order.createdAt);
-    if (!id || sourceById.has(id) || !amount || !currency || !Number.isFinite(created.getTime()) || created < start || created >= end ||
-        order.cancelledAt || ['CANCELLED', 'FAILED', 'VOIDED'].includes(order.displayFinancialStatus)) {
+    const cancelled = Boolean(order.cancelledAt) ||
+      String(order.displayFinancialStatus || '').toUpperCase() === 'CANCELLED';
+    if (!id || sourceById.has(id) || !Number.isFinite(created.getTime()) || created < start || created >= end ||
+        ['FAILED', 'VOIDED'].includes(String(order.displayFinancialStatus || '').toUpperCase())) {
       throw verificationError('ORDER_COVERAGE_SOURCE_FINANCIALS_UNVERIFIED');
     }
-    sourceById.set(id, { amount, currency });
+    if (!cancelled && (!amount || !currency)) {
+      throw verificationError('ORDER_COVERAGE_SOURCE_FINANCIALS_UNVERIFIED');
+    }
+    sourceById.set(id, { amount, currency, cancelled });
   }
-  // Any cancelled or otherwise excluded Shopify order makes this window
-  // uncertifiable until cancellation accounting is separately attested.
+  // Compare cancellation state as well as the order set. Cancelled records are
+  // verified against Shopify and excluded from the revenue query on both sides.
   const local = await prisma.orders.findMany({
     where: { store_id: store.id, ordered_at: { gte: start, lt: end } },
-    select: { external_order_id: true, total: true, currency: true },
+    select: { external_order_id: true, total: true, currency: true, recovery_status: true },
   });
   if (local.length !== sourceById.size) throw verificationError('ORDER_COVERAGE_ORDER_SET_MISMATCH');
   for (const row of local) {
     const expected = sourceById.get(row.external_order_id);
-    if (!expected || expected.currency !== row.currency ||
-        !new Prisma.Decimal(row.total).equals(expected.amount)) {
+    const locallyCancelled = String(row.recovery_status || '').toLowerCase() === 'cancelled';
+    if (!expected || locallyCancelled !== expected.cancelled) {
+      throw verificationError('ORDER_COVERAGE_ORDER_STATUS_MISMATCH');
+    }
+    if (!expected.cancelled && (expected.currency !== row.currency ||
+        !new Prisma.Decimal(row.total).equals(expected.amount))) {
       throw verificationError('ORDER_COVERAGE_ORDER_TOTAL_MISMATCH');
     }
   }
