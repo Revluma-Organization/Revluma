@@ -62,3 +62,7 @@ test('empty or unknown refund transaction states are not treated as no refund', 
   assert.equal(shopifyNetOrderTotal(order([{ transactions: [] }])), null);
   assert.equal(shopifyNetOrderTotal(order([refund('10.00', 'mystery-status')])), null);
 });
+
+test('refund transaction without a refund kind is malformed evidence', () => {
+  assert.equal(shopifyNetOrderTotal(order([{ transactions: [{ status: 'success', amount: '10.00' }] }])), null);
+});
