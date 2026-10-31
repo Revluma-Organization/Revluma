@@ -193,12 +193,13 @@ def test_merchant_local_today_and_yesterday_are_unsupported_without_store_timezo
         assert "timezone is not persisted" in result["reason"]
 
 
-def test_rolling_seven_and_thirty_day_windows_are_timezone_aware_utc():
+def test_rolling_seven_and_thirty_day_windows_are_complete_utc_calendar_days():
     seven = resolve_revenue_period("revenue for the last 7 days", now=NOW)
     thirty = resolve_revenue_period("sales in the past 30 days", now=NOW)
-    assert seven["start"] == NOW - timedelta(days=7)
-    assert thirty["start"] == NOW - timedelta(days=30)
-    assert seven["end"] == thirty["end"] == NOW
+    utc_today_start = datetime(2026, 10, 31, 0, tzinfo=timezone.utc)
+    assert seven["start"] == utc_today_start - timedelta(days=7)
+    assert thirty["start"] == utc_today_start - timedelta(days=30)
+    assert seven["end"] == thirty["end"] == utc_today_start
     assert seven["timezone"] == thirty["timezone"] == "UTC"
 
 
