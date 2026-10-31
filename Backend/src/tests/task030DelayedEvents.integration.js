@@ -9,7 +9,7 @@ const t0='2026-10-30T09:00:00.000Z',t1='2026-10-30T09:05:00.000Z',t2='2026-10-30
 async function check(id,fn){try{await fn();results.push({id,status:'PASS'})}catch(e){results.push({id,status:'FAIL',error:e.message.slice(0,240)})}}
 const payload=(id,extra={})=>({id:key(id),token:key('token-'+id),created_at:t0,updated_at:t1,total_price:'25',currency:'USD',refunds:[],...extra});
 async function cart(s,id,extra={}){return upsertAbandonedCart(s,payload(id,extra))}
-async function order(s,id,extra={}){return upsertOrder(s,'shopify',{id:key('order-'+id),created_at:t2,total_price:'25',currency:'USD',...extra})}
+async function order(s,id,extra={}){return upsertOrder(s,'shopify',{id:key('order-'+id),created_at:t2,total_price:'25',currency:'USD',refunds:[],...extra})}
 async function get(id){return prisma.abandoned_carts.findUniqueOrThrow({where:{id}})}
 async function run(){try{
 const user=randomUUID(),org=randomUUID();
