@@ -107,3 +107,26 @@ def test_python_api_passes_node_correlation_id_into_orchestrator(monkeypatch):
         request, x_contract_version="1.0", x_correlation_id="header-correlation-198"
     ))
     assert seen["correlation_id"] == "header-correlation-198"
+
+
+def test_unsupported_relative_revenue_period_stays_out_of_generic_model_path(monkeypatch):
+    from src.agents import orchestrator as module
+    from src.intelligence import seven_day_evidence
+
+    monkeypatch.setattr(module, "_get_or_create_conversation", lambda *args: ("conversation-198", False))
+    monkeypatch.setattr(module, "_persist_messages", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "understand", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("Unsupported revenue period must not fall through to generic model")
+    ))
+    monkeypatch.setattr(seven_day_evidence, "retrieve_revenue_evidence",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(
+                            AssertionError("Unsupported period must not query revenue")
+                        ))
+    result = module._run(
+        "org-a", "user-a", "Could you tell me sales for the last 90 days?",
+        None, object(), "corr-198-unsupported",
+    )
+    assert result.success is True
+    assert result.intent == "verified_revenue_evidence"
+    assert "requested relative reporting period is not supported" in result.text
+    assert "No revenue total has been inferred" in result.text
