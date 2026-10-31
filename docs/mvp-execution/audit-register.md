@@ -38,7 +38,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 030 | Phase 1 | Prevent delayed checkout event reopening completion. | NOT STARTED | — | — | — |
 | 031 | Phase 1 | Test order-first event delivery. | NOT STARTED | — | — | — |
 | 032 | Phase 1 | Test checkout-first event delivery. | NOT STARTED | — | — | — |
-| 033 | Phase 1 | Test abandonment-then-purchase delivery. | PARTIAL — 18/18 lifecycle groups pass; revenue/metric integrity finding under verification; 70-case matrix incomplete | [TASK-033](validation/TASK-033.md) | `9d50b6c1`, `0d64652a`; PR #231 | 2026-10-31 CI pending |
+| 033 | Phase 1 | Test abandonment-then-purchase delivery. | PARTIAL — 18 lifecycle checks PASS; metric assertion FAIL; 70-case matrix incomplete | [TASK-033](validation/TASK-033.md) | `9d50b6c1`, `0d64652a`, `bd029549`; PR #231 | 2026-10-31 |
 | 034 | Phase 1 | Test duplicate order event delivery. | NOT STARTED | — | — | — |
 | 035 | Phase 1 | Test duplicate checkout event delivery. | NOT STARTED | — | — | — |
 | 036 | Phase 1 | Test simultaneous order and checkout processing. | NOT STARTED | — | — | — |
@@ -606,4 +606,5 @@ TASK031 follow-up CI: commit 47ec2608d16d4501621b577a270588fa5b3e1489, run 41028
 ## TASK 032 — Checkout-first delivery validation (2026-10-30)
 Baseline `cfbb1f5dc10b032688a001f2f014ac7498f4c70d`. Branch `test/mvp-task-032-checkout-first-delivery`. Report `validation/TASK-032.md`. New isolated PostgreSQL test `Backend/src/tests/task032CheckoutFirst.integration.js`, CI `.github/workflows/task032-checkout-first.yml`. Twelve grouped assertions authored; 60-case acceptance matrix recorded with NOT RUN until actual execution. No production code changes. Status PARTIAL — test execution and comprehensive coverage pending. Task033 not started.
 
-| TASK 033 | Abandonment-then-purchase lifecycle validation | PARTIAL — 10/10 grouped checks PASS in CI run 41041134068; 70-case certification pending | `docs/mvp-execution/validation/TASK-033.md` | `Backend/src/tests/task033AbandonmentThenPurchase.integration.js` | No production changes; do not advance to Task034 until acceptance | 
+| TASK 033 | Abandonment-then-purchase lifecycle validation | PARTIAL — 18/18 lifecycle groups PASS in run 41043686354; Task032 regression 15/15 PASS. Real dashboard metric assertion FAIL in run 41198665146 (18 PASS / 1 FAIL); 70-case certification incomplete. | `docs/mvp-execution/validation/TASK-033.md` | `Backend/src/tests/task033AbandonmentThenPurchase.integration.js`; PR #231 | No production changes; do not advance to Task034 until acceptance. | 
+\n\n**REV-FIND-0113 — HIGH — OPEN — Task033:** Command Center dashboard `totalAbandoned` query includes checkout status `recovered`, causing completed purchases to remain in active abandoned-cart counts. The new disposable PostgreSQL metric test observed 11 counted completed/recovered checkouts where expected 0 (CI run 41198665146). Production code not changed because Task033 scope prohibits it. See `validation/TASK-033.md`; requires authorized correction and regression verification.\n
