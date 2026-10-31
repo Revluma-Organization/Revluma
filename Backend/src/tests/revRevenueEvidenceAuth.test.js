@@ -74,6 +74,8 @@ test('Rev controller ignores merchant-supplied tenant and store IDs for revenue 
     assert.equal(response.statusCode, 200);
     assert.equal(orchestrateArgs.organizationId, orgId);
     assert.equal(orchestrateArgs.userId, userId);
+    assert.match(orchestrateArgs.correlationId, /^[0-9a-f-]{36}$/i);
+    assert.ok(capturedSqlValues.includes(orchestrateArgs.correlationId));
     assert.equal(orchestrateArgs.contextPayload._node_owns_chat_persistence, true);
     assert.equal(orchestrateArgs.contextPayload.merchant_context.stores.length, 1);
     assert.ok(orchestrateArgs.contextPayload.merchant_context.stores[0].includes(storeId));
