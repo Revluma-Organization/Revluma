@@ -115,16 +115,6 @@ class RevenueAgent(BaseAgent):
             })
 
         # ── Signals (computed patterns) 
-        if bs.revenue_delta_pct is not None and trend_evidence:
-            direction = "up" if bs.revenue_delta_pct > 0 else "down"
-            signals.append({
-                "type": "signal",
-                "metric": "revenue_delta",
-                "value": bs.revenue_delta_pct,
-                "description": f"Revenue is {direction} {abs(bs.revenue_delta_pct):.1f}% vs yesterday",
-                "severity": "high" if abs(bs.revenue_delta_pct) > 20 else "medium" if abs(bs.revenue_delta_pct) > 10 else "low",
-            })
-
         if bs.revenue_trend_7d is not None and trend_evidence:
             direction = "up" if bs.revenue_trend_7d > 0 else "down"
             signals.append({
@@ -150,25 +140,6 @@ class RevenueAgent(BaseAgent):
                 })
 
         # ── Diagnosis (inferences) 
-        if bs.revenue_delta_pct is not None and trend_evidence and bs.revenue_delta_pct < -15:
-            # Correlate with cart data if available
-            if bs.cart_anomaly:
-                diagnosis.append({
-                    "type": "inference",
-                    "claim_type": "hypothesis",
-                    "evidence_ids": [trend_evidence["evidence_id"]] if trend_evidence else [],
-                    "description": "Recorded order value declined. The available revenue evidence does not establish why; traffic, checkout, pricing and inventory causes have not been verified by this metric.",
-                    "confidence": 0.35,
-                    "supporting_signals": ["revenue_delta"],
-                })
-            else:
-                diagnosis.append({
-                    "type": "inference",
-                    "description": "Recorded order value declined. The available revenue evidence does not identify a cause.",
-                    "confidence": 0.35,
-                    "supporting_signals": ["revenue_delta"],
-                })
-
         if bs.revenue_trend_7d is not None and bs.revenue_trend_7d > 20:
             diagnosis.append({
                 "type": "inference",
@@ -192,15 +163,6 @@ class RevenueAgent(BaseAgent):
             })
 
         # ── Recommendations 
-        if bs.revenue_delta_pct is not None and trend_evidence and bs.revenue_delta_pct < -15:
-            recommendations.append({
-                "action": "investigate_revenue_drop",
-                "description": "Review the verified recorded-order evidence and investigate potential causes separately; this metric does not identify payment, traffic or inventory causes.",
-                "predicted_impact": "diagnostic",
-                "confidence": 0.80,
-                "category": "revenue_optimization",
-            })
-
         if bs.abandoned_cart_count and bs.abandoned_cart_count > 0:
             max_discount = _get_memory_constraint(memories, "max_discount_pct", 15)
             recommendations.append({
