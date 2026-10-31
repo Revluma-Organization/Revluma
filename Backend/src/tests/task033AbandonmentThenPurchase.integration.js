@@ -110,8 +110,7 @@ const suffix='no-payload-archive';
 await upsertAbandonedCart(store,checkout(suffix));
 await promoteInactiveCheckouts();
 await upsertOrder(store,'shopify',order(suffix));
-const tables=['webhook_deliveries','order_checkout_reconciliation_cases','orders','abandoned_carts'];
-const columns=await prisma.$queryRaw`SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public' AND table_name = ANY(${tables})`;
+const columns=await prisma.$queryRaw`SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('webhook_deliveries','order_checkout_reconciliation_cases','orders','abandoned_carts')`;
 const payloadColumns=columns.filter(row=>/payload|raw_body|request_body|webhook_body/i.test(row.column_name));
 assert.equal(payloadColumns.length,0,'Relevant lifecycle and diagnostic tables must not archive complete Shopify request payloads');
 assert.equal((await cart(suffix)).status,'recovered');
@@ -168,6 +167,23 @@ const suffix='order-write-fail';
 await upsertAbandonedCart(store,checkout(suffix));
 await promoteInactiveCheckouts();
 await assert.rejects(upsertOrder({id:randomUUID(),platform:'shopify'},'shopify',order(suffix)));
+assert.equal((await cart(suffix)).status,'abandoned');
+});
+await check('TC033-48-reconciliation-transaction-failure-rolls-back-order-and-link',async()=>{
+const suffix='reconciliation-tx-fail';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+const before=await cart(suffix);
+assert.equal(before.status,'abandoned');
+await prisma.$executeRaw`CREATE OR REPLACE FUNCTION task033_fail_reconciliation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.abandoned_cart_id IS NOT NULL THEN RAISE EXCEPTION 'TASK033_INJECTED_RECONCILIATION_FAILURE'; END IF; RETURN NEW; END; $$`;
+await prisma.$executeRaw`CREATE TRIGGER task033_fail_reconciliation_trigger BEFORE UPDATE OF abandoned_cart_id ON orders FOR EACH ROW EXECUTE FUNCTION task033_fail_reconciliation()`;
+try{
+await assert.rejects(upsertOrder(store,'shopify',order(suffix)),/TASK033_INJECTED_RECONCILIATION_FAILURE/);
+}finally{
+await prisma.$executeRaw`DROP TRIGGER IF EXISTS task033_fail_reconciliation_trigger ON orders`;
+await prisma.$executeRaw`DROP FUNCTION IF EXISTS task033_fail_reconciliation()`;
+}
+assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}}),0);
 assert.equal((await cart(suffix)).status,'abandoned');
 });
 await check('TC033-49-fresh-prisma-client-verifies-durable-completion',async()=>{
