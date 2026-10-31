@@ -69,18 +69,12 @@ jobs:
           PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
           # Supabase-managed roles referenced by the checked-in RLS migration are not
           # present in the vanilla disposable PostgreSQL service.
-          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test <<'SQL'
-          DO $
-          BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-              CREATE ROLE anon NOLOGIN;
-            END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-              CREATE ROLE authenticated NOLOGIN;
-            END IF;
-          END
-          $;
-          SQL
+          if ! PGPASSWORD=task198_test_only psql -h 127.0.0.1 -U revluma -d revluma_test -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'anon'" | grep -q 1; then
+            PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE ROLE anon NOLOGIN'
+          fi
+          if ! PGPASSWORD=task198_test_only psql -h 127.0.0.1 -U revluma -d revluma_test -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'authenticated'" | grep -q 1; then
+            PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE ROLE authenticated NOLOGIN'
+          fi
           # Preserve the checked-in historical migration; execute a disposable copy.
           mkdir -p "$RUNNER_TEMP/task198-prisma"
           cp prisma/schema.prisma "$RUNNER_TEMP/task198-prisma/schema.prisma"
