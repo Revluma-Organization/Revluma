@@ -96,7 +96,7 @@ def test_contract_envelope_preserves_currency_decimal_and_calculation_lineage():
     assert "refund_value" in {x["metric"] for x in evidence["items"]}
     aov = [x for x in evidence["items"] if x["metric"] == "average_order_value"]
     assert {(x["currency"], x["value"]) for x in aov} == {
-        ("USD", "62.775"), ("NGN", "5000.1")
+        ("USD", "62.775"), ("NGN", "5000.10")
     }
     assert all(x["calculation"]["input_evidence_ids"] for x in aov)
     assert all(x["source"]["system"] == "shopify" for x in values)
@@ -216,7 +216,7 @@ def test_formatter_never_labels_recorded_order_value_gross_or_net_revenue():
     assert "Recorded order value (USD)" in text
     assert "Recorded order value (NGN)" in text
     assert "not a gross-sales or net-revenue report" in text
-    assert "not independently itemized" in text
+    assert "not separately itemized" in text
 
 def test_period_older_than_verified_coverage_is_insufficient_history():
     db = RevenueDB()
