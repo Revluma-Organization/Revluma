@@ -19,7 +19,7 @@ def state(**overrides):
                  "currency": "NGN", "status": "available",
                  "period": {"start": "2026-10-30T00:00:00+00:00", "end": "2026-10-31T00:00:00+00:00"}},
                 {"evidence_id": "evidence-trend", "metric": "revenue_trend_7d",
-                 "value": "12.5", "value": "-18.0", "currency": "NGN", "status": "available"},
+                 "value": "12.5", "currency": "NGN", "status": "available"},
             ],
         },
         "revenue_anomaly": False,
@@ -68,7 +68,15 @@ def test_revenue_agent_fails_closed_for_legacy_snapshot_without_currency():
 
 def test_revenue_agent_does_not_infer_cause_from_revenue_movement():
     result = RevenueAgent().analyze(
-        state(revenue_delta_pct=-20.0, revenue_trend_7d=-18.0),
+        state(revenue_delta_pct=-20.0, revenue_trend_7d=-18.0, revenue_evidence={
+            "overall_status": "available",
+            "items": [
+                {"evidence_id": "evidence-yesterday", "metric": "recorded_order_value",
+                 "value": "5000.25", "currency": "NGN", "status": "available"},
+                {"evidence_id": "evidence-trend", "metric": "revenue_trend_7d",
+                 "value": "-18.0", "currency": "NGN", "status": "available"},
+            ],
+        }),
         [],
         "Why did recorded order value decline?",
     )
