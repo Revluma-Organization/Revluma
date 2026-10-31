@@ -99,6 +99,8 @@ def test_postgres_revenue_retrieval_is_currency_separated_tenant_scoped_and_peri
         (store_a1, "USD", "0.01", start + timedelta(hours=2), None),
         (store_a1, "NGN", "1000.00", start + timedelta(hours=3), "completed"),
         (store_a1, "USD", "999.00", start + timedelta(hours=4), "cancelled"),
+        (store_a1, "USD", "888.00", start + timedelta(hours=4, minutes=30), "CANCELLED"),
+        (store_a1, "US", "7.77", start + timedelta(hours=4, minutes=45), "completed"),
         (store_b, "USD", "500.00", start + timedelta(hours=5), "completed"),
         (store_a1, "USD", "30.00", end, "completed"),
     ]
@@ -119,7 +121,10 @@ def test_postgres_revenue_retrieval_is_currency_separated_tenant_scoped_and_peri
     counts = {item["currency"]: item["value"] for item in evidence["items"]
               if item["metric"] == "recorded_order_count"}
     assert values == {"NGN": "1000.00", "USD": "30.31"}
-    assert counts == {"NGN": 1, "USD": 3}
+    assert counts == {"NGN": 1, "USD": 3, None: 1}
+    unknown_value = next(item for item in evidence["items"]
+                         if item["metric"] == "recorded_order_value" and item["currency"] is None)
+    assert unknown_value["status"] == "unsupported" and unknown_value["value"] is None
     assert "500.00" not in str(evidence)
     assert "999.00" not in str(evidence)
     assert "30.00" not in str(evidence)
