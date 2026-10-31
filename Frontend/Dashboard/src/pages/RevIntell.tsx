@@ -62,10 +62,22 @@ interface Message {
 }
 
 interface Conversation {
-  id:               string;
-  title:            string;
-  message_count:    number;
+  id: string;
+  title: string;
+  message_count: number;
   last_activity_at: string;
+}
+
+type ConversationMessagePayload = {
+  id: string;
+  role: string;
+  content: unknown;
+  created_at: string;
+  has_error?: boolean;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // ── Error message mapper ──────────────────────────────────────────────────────
@@ -848,9 +860,10 @@ export default function RevIntell() {
   const loadConversations = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      const res = await api.get<{ data: Conversation[] }>("/rev/conversations");
-      const data = (res as any)?.data?.data ?? (res as any)?.data ?? [];
-      setConversations(Array.isArray(data) ? data : []);
+      const res = await api.get<Conversation[] | { data?: Conversation[] }>("/rev/conversations");
+      const body = res.data;
+      const data = Array.isArray(body) ? body : Array.isArray(body.data) ? body.data : [];
+      setConversations(data);
     } catch {
       // Silent fail — sidebar just shows empty
     } finally {
@@ -866,51 +879,46 @@ export default function RevIntell() {
 
     try {
       const res = await api.get<{
-        data: {
-          messages: Array<{
-            id: string; role: string; content: unknown;
-            created_at: string; has_error?: boolean;
-          }>;
-        };
+        data?: { messages?: ConversationMessagePayload[] };
+        messages?: ConversationMessagePayload[];
       }>(`/rev/conversation/${convId}`);
 
-      const msgs = (res as any)?.data?.data?.messages
-                ?? (res as any)?.data?.messages
-                ?? [];
+      const body = res.data;
+      const msgs = body.data?.messages ?? body.messages ?? [];
 
-      const parsed: Message[] = msgs.map((m: any) => {
+      const parsed: Message[] = msgs.map((m) => {
         let content: string | RevResponse = "";
         const raw = m.content;
-        if (typeof raw === "object" && raw !== null) {
-          if ("response_type" in raw) {
-            content = raw as RevResponse;
-          } else if ("text" in raw) {
-            content = (raw as any).text || "";
+        if (isRecord(raw)) {
+          if (typeof raw.response_type === "string") {
+            content = raw as unknown as RevResponse;
+          } else if (typeof raw.text === "string") {
+            content = raw.text;
           } else if ("situation" in raw) {
-            content = { response_type: "analysis", ...raw } as RevResponse;
+            content = { response_type: "analysis", ...raw } as unknown as RevResponse;
           } else {
             content = JSON.stringify(raw);
           }
         } else if (typeof raw === "string") {
           try {
-            const parsed2 = JSON.parse(raw);
-            if ("response_type" in parsed2) content = parsed2 as RevResponse;
-            else if ("text" in parsed2) content = parsed2.text || "";
+            const parsed2: unknown = JSON.parse(raw);
+            if (isRecord(parsed2) && typeof parsed2.response_type === "string") content = parsed2 as unknown as RevResponse;
+            else if (isRecord(parsed2) && typeof parsed2.text === "string") content = parsed2.text;
             else content = raw;
           } catch { content = raw; }
         }
         return {
-          id:        m.id,
-          role:      m.role as "user" | "rev",
+          id: m.id,
+          role: m.role as "user" | "rev",
           content,
           timestamp: new Date(m.created_at),
-          hasError:  m.has_error || false,
+          hasError: m.has_error ?? false,
         };
       });
 
       setMessages(parsed);
-    } catch (err: any) {
-      if (err?.status === 404 || err?.status === 403) {
+    } catch (err: unknown) {
+      if (err instanceof ApiError && (err.status === 404 || err.status === 403)) {
         setConvNotFound(true);
       }
     } finally {
@@ -937,12 +945,12 @@ export default function RevIntell() {
       setMessages([]);
       setConvNotFound(false);
     }
-  }, [urlConvId]); // loadConversation is stable (useCallback with no deps that change)
+  }, [urlConvId, loadConversation]);
 
   // Load sidebar on mount
   useEffect(() => {
     loadConversations();
-  }, []);
+  }, [loadConversations]);
 
   // ── New chat ──────────────────────────────────────────────────────────────
   const newChat = useCallback(() => {
@@ -970,12 +978,8 @@ export default function RevIntell() {
       setInput("");
       if (inputRef.current) inputRef.current.style.height = "auto";
       // Add user message optimistically (with image preview if present)
-      const capturedImg2 = imageAttachment; // snapshot before clear
-      const userContent: any = capturedImg2
-        ? { text: trimmed, imagePreview: capturedImg2.preview }
-        : trimmed;
       setMessages(prev => [...prev, {
-        id: `u${Date.now()}`, role: "user", content: userContent, timestamp: new Date(),
+        id: `u${Date.now()}`, role: "user", content: trimmed, timestamp: new Date(),
       }]);
     }
 
@@ -1000,15 +1004,22 @@ export default function RevIntell() {
 
       const res = await api.post<{
         success: boolean;
-        conversation_id: string;
-        message_id: string;
-        response_type: string;
-        text: string | null;
-        response: RevResponse;
-        error?: { code: string; message: string };
+        conversation_id?: string;
+        message_id?: string;
+        response_type?: string;
+        intent?: string;
+        text?: string | null;
+        response?: RevResponse;
+        error?: { code?: string; message?: string };
+        confidence_score?: number;
+        confidence_basis?: string;
+        actions?: RevResponse["actions"];
+        agents_used?: string[];
+        warnings?: string[];
+        meta?: { agents_used?: string[] };
       }>("/rev/chat", body);
 
-      const data = (res as any)?.data ?? (res as any);
+      const data = res.data;
 
       if (!data?.success) {
         setMessages(prev => prev.map(m => m.id === sid ? {
@@ -1052,7 +1063,7 @@ export default function RevIntell() {
       }
     } catch (err) {
       const msg = err instanceof ApiError
-        ? cleanError(String((err as any).status), err.message)
+        ? cleanError(String(err.status), err.message)
         : "Rev is taking a moment. Please try again shortly.";
       setMessages(prev => prev.map(m => m.id === sid ? {
         ...m, isStreaming: false, hasError: true, content: msg,
@@ -1060,7 +1071,7 @@ export default function RevIntell() {
     } finally {
       setThinking(false);
     }
-  }, [activeId, thinking, navigate]);
+  }, [activeId, thinking, navigate, imageAttachment, loadConversations]);
 
   const handleRetry = useCallback(() => {
     setMessages(prev => {
