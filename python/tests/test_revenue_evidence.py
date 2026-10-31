@@ -242,3 +242,21 @@ def test_unknown_currency_is_counted_but_never_reported_as_money():
     value = next(item for item in evidence["items"] if item["metric"] == "recorded_order_value")
     assert count["value"] == 2 and count["currency"] is None
     assert value["value"] is None and value["currency"] is None and value["status"] == "unsupported"
+
+def test_gbp_eur_usd_ngn_are_reported_as_separate_currency_items():
+    db = RevenueDB(orders=[
+        {"currency": "EUR", "item_count": 1, "amount": Decimal("19.99")},
+        {"currency": "GBP", "item_count": 2, "amount": Decimal("30.01")},
+        {"currency": "NGN", "item_count": 3, "amount": Decimal("5000.10")},
+        {"currency": "USD", "item_count": 4, "amount": Decimal("40.40")},
+    ])
+    evidence = retrieve(db)
+    values = {
+        item["currency"]: item["value"]
+        for item in evidence["items"]
+        if item["metric"] == "recorded_order_value"
+    }
+    assert values == {
+        "EUR": "19.99", "GBP": "30.01", "NGN": "5000.10", "USD": "40.40"
+    }
+    assert len(values) == 4
