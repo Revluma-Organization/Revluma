@@ -605,3 +605,8 @@ TASK031 follow-up CI: commit 47ec2608d16d4501621b577a270588fa5b3e1489, run 41028
 
 ## TASK 032 — Checkout-first delivery validation (2026-10-30)
 Baseline `cfbb1f5dc10b032688a001f2f014ac7498f4c70d`. Branch `test/mvp-task-032-checkout-first-delivery`. Report `validation/TASK-032.md`. New isolated PostgreSQL test `Backend/src/tests/task032CheckoutFirst.integration.js`, CI `.github/workflows/task032-checkout-first.yml`. Twelve grouped assertions authored; 60-case acceptance matrix recorded with NOT RUN until actual execution. No production code changes. Status PARTIAL — test execution and comprehensive coverage pending. Task033 not started.
+
+
+## TASK 198 latest verification follow-up — 2026-10-31
+
+PR #233 head `bf4246664931bf7b7fc8055d5587f88cb3f9fa61`; merge-test SHA `d27852b1149774d99d8164fe525091cf14547810`. Backend suite and isolated Task 024–032 workflows passed (runs 41206714885, 41206714924, 41206714926, 41206714974, 41206716538, 41206714803, 41206714845, 41206714870, 41206714950, 41206714921). Rev Python workflow 41206715095 failed applying migration 202609220002_add_zero_touch_automation because `merchant_memories` is absent; Python compile, Task198 PostgreSQL integration, targeted Python regressions and full Python suite were skipped. Prisma schema has 63 models while the checked-in baseline creates 23 tables. Frontend build passed and 29 tests passed, but lint failed (34 errors/16 warnings) and app TypeScript failed (TS5103). Task198 remains IN PROGRESS — NOT CERTIFIED. PR remains draft; no merge or deployment; production unchanged. Full evidence and run URLs are in validation/TASK-198.md.
