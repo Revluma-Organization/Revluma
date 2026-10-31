@@ -71,7 +71,10 @@ jobs:
           cp prisma/schema.prisma "$RUNNER_TEMP/task198-prisma/schema.prisma"
           cp -R prisma/migrations "$RUNNER_TEMP/task198-prisma/migrations"
           printf 'provider = "postgresql"\n' > "$RUNNER_TEMP/task198-prisma/migrations/migration_lock.toml"
-          # The baseline contains a stray dotenv diagnostic before its SQL. Strip only in the disposable copy.
+          # The historical baseline is UTF-16LE with a stray dotenv diagnostic before its SQL.
+          # Normalize only the disposable copy; never rewrite the checked-in migration checksum.
+          iconv -f UTF-16LE -t UTF-8 "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql" > "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.utf8.sql"
+          mv "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.utf8.sql" "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql"
           sed -i '1{/injected env/d;}' "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql"
           # Execute the baseline SQL through psql so PostgreSQL reports the exact failing statement if it is invalid.
           PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -f "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql"
