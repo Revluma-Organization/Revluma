@@ -313,10 +313,6 @@ def retrieve_revenue_evidence(
         (row["coverage_start"].replace(tzinfo=timezone.utc)
          if row["coverage_start"].tzinfo is None else row["coverage_start"]).astimezone(timezone.utc)
         for row in coverage_rows
-    ) and end <= max(
-        (row["coverage_end"].replace(tzinfo=timezone.utc)
-         if row["coverage_end"].tzinfo is None else row["coverage_end"]).astimezone(timezone.utc)
-        for row in coverage_rows
     ):
         status = "insufficient_history"
         completeness = "partial"
