@@ -1,5 +1,6 @@
 from decimal import Decimal
 from types import SimpleNamespace
+from datetime import datetime, timezone
 
 from src.agents.revenue_agent import RevenueAgent
 
@@ -7,6 +8,7 @@ from src.agents.revenue_agent import RevenueAgent
 def state(**overrides):
     values = {
         "warnings": [],
+        "generated_at": datetime(2026, 10, 31, 12, tzinfo=timezone.utc),
         "revenue_today": None,
         "revenue_yesterday": Decimal("5000.25"),
         "revenue_delta_pct": None,
