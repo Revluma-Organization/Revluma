@@ -594,10 +594,14 @@ def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict
             }
     else:
         named_period = re.search(
-            r"\b(?:q[1-4]|first quarter|second quarter|third quarter|fourth quarter|"
-            r"jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
+            r"\bq[1-4]\b|\b(?:first|second|third|fourth) quarter\b|"
+            r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|"
             r"jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
-            r"(?:\s+(?:19|20)\d{2})?\b|\b(?:fy|fiscal year)\s*(?:19|20)\d{2}\b|"
+            r"\s+(?:19|20)\d{2}\b|"
+            r"\b(?:in|for|during)\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|"
+            r"may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|"
+            r"nov(?:ember)?|dec(?:ember)?)(?:\s+(?:19|20)\d{2})?\b|"
+            r"\b(?:fy|fiscal year)\s*(?:19|20)\d{2}\b|"
             r"\b(?:in|for|during)\s+(?:19|20)\d{2}\b",
             lowered,
         )
