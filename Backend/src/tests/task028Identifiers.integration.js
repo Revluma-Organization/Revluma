@@ -6,7 +6,7 @@ const {upsertOrder,upsertAbandonedCart}=require('../services/commerceWebhookServ
 if(process.env.TASK028_ISOLATED_DB!=='true'||!String(process.env.DATABASE_URL||'').includes('@127.0.0.1:5432/task028'))throw Error('Disposable localhost task028 PostgreSQL and explicit opt-in required');
 const tag=randomUUID().slice(0,8),uid=randomUUID(),org=randomUUID(),a=randomUUID(),b=randomUUID(),s={id:a,platform:'shopify'},t={id:b,platform:'shopify'},results=[];
 let serial=0;const key=x=>`t028-${tag}-${x}`;
-async function cart(store,name,extra={}){return upsertAbandonedCart(store,{id:key('checkout-'+name),created_at:new Date(Date.now()-90000).toISOString(),updated_at:new Date(Date.now()-60000).toISOString(),total_price:'25',currency:'USD',...extra})}
+async function cart(store,name,extra={}){return upsertAbandonedCart(store,{id:key('checkout-'+name),created_at:new Date(Date.now()-90000).toISOString(),updated_at:new Date(Date.now()-60000).toISOString(),total_price:'25',currency:'USD',refunds:[],...extra})}
 async function order(store,name,extra={}){const id=extra.id||key('order-'+name+'-'+(++serial));await upsertOrder(store,'shopify',{id,created_at:new Date().toISOString(),total_price:'25',currency:'USD',...extra});return prisma.orders.findUniqueOrThrow({where:{store_id_external_order_id:{store_id:store.id,external_order_id:String(id)}}})}
 async function check(id,fn){try{await fn();results.push({id,status:'PASS'})}catch(e){results.push({id,status:'FAIL',error:String(e.message).slice(0,260)})}}
 async function run(){try{
