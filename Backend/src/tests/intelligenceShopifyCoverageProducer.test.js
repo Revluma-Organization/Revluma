@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { Prisma } = require('@prisma/client');
 const { verifyShopifyOrderCoverage } = require('../services/intelligenceShopifyCoverageProducer');
 
 const start = '2026-10-13T00:00:00.000Z';
@@ -53,5 +54,48 @@ test('does not certify if Shopify granted scopes cannot be verified', async () =
     graphql: async () => ({ currentAppInstallation: { accessScopes: [] } }),
     fetchPages: f.fetchPages,
   }), /read_orders/);
+  assert.equal(f.certificates, 0);
+});
+
+test('uses exact decimal comparison for high-value Shopify coverage', async () => {
+  const order = {
+    id: 'gid://shopify/Order/1002', createdAt: '2026-10-20T12:00:00Z',
+    cancelledAt: null, displayFinancialStatus: 'PAID',
+    currentTotalPriceSet: { shopMoney: { amount: '90000000.13', currencyCode: 'USD' } },
+  };
+  const f = fixture({
+    orders: [order],
+    rows: [{ external_order_id: '1002', total: new Prisma.Decimal('90000000.13'), currency: 'USD' }],
+  });
+  await verifyShopifyOrderCoverage(f.db, shop, {
+    now: new Date('2026-10-27T12:00:00Z'), graphql: f.graphql, fetchPages: f.fetchPages,
+  });
+  assert.equal(f.certificates, 1);
+});
+
+test('rejects source monetary precision unsupported by DECIMAL(10,2)', async () => {
+  const order = {
+    ...source[0],
+    currentTotalPriceSet: { shopMoney: { amount: '1.234', currencyCode: 'USD' } },
+  };
+  const f = fixture({ orders: [order], rows: [] });
+  await assert.rejects(verifyShopifyOrderCoverage(f.db, shop, {
+    now: new Date('2026-10-27T12:00:00Z'), graphql: f.graphql, fetchPages: f.fetchPages,
+  }), error => error.code === 'ORDER_COVERAGE_SOURCE_FINANCIALS_UNVERIFIED');
+  assert.equal(f.certificates, 0);
+});
+
+test('rejects even a one-cent persisted/source amount mismatch', async () => {
+  const order = {
+    ...source[0],
+    currentTotalPriceSet: { shopMoney: { amount: '1.23', currencyCode: 'USD' } },
+  };
+  const f = fixture({
+    orders: [order],
+    rows: [{ external_order_id: '1001', total: new Prisma.Decimal('1.24'), currency: 'USD' }],
+  });
+  await assert.rejects(verifyShopifyOrderCoverage(f.db, shop, {
+    now: new Date('2026-10-27T12:00:00Z'), graphql: f.graphql, fetchPages: f.fetchPages,
+  }), error => error.code === 'ORDER_COVERAGE_ORDER_TOTAL_MISMATCH');
   assert.equal(f.certificates, 0);
 });
