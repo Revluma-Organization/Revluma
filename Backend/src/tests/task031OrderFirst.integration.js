@@ -21,7 +21,7 @@ async function main() {
     await prisma.organizations.create({ data: { id:org, owner_id:user, company_name:'Task031', industry:'other', country:'US', slug:prefix } });
     await prisma.stores.create({ data: { id:store.id, organization_id:org, platform:'shopify', shop_domain:prefix+'.myshopify.com' } });
     const token = prefix+'-checkout-token', externalOrder = prefix+'-order', checkoutId = prefix+'-checkout';
-    const orderPayload = { id:externalOrder, checkout_token:token, created_at:'2026-10-30T08:00:00Z', total_price:'25', current_total_price:'25', currency:'USD' };
+    const orderPayload = { id:externalOrder, checkout_token:token, created_at:'2026-10-30T08:00:00Z', total_price:'25', current_total_price:'25', currency:'USD', refunds:[] };
     await check('TC031-02-order-durable-without-checkout', async () => {
       await upsertOrder(store,'shopify',orderPayload);
       const o = await prisma.orders.findFirstOrThrow({ where:{store_id:store.id,external_order_id:externalOrder} });
