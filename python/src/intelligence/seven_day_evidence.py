@@ -546,12 +546,13 @@ def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict
         if re.search(r"\bUTC\b", lowered, re.IGNORECASE):
             day = end.date() - (timedelta(days=1) if local_day_match.group(1) == "yesterday" else timedelta())
             start_at = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc)
+            end_at = end if local_day_match.group(1) == "today" else start_at + timedelta(days=1)
             return {
                 "status": "supported",
                 "start": start_at,
-                "end": start_at + timedelta(days=1),
+                "end": end_at,
                 "timezone": "UTC",
-                "label": f"{local_day_match.group(1)} UTC calendar day",
+                "label": "today UTC to request time" if local_day_match.group(1) == "today" else "yesterday UTC calendar day",
             }
         return {
             "status": "unsupported",
