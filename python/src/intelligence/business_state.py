@@ -837,7 +837,13 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                         "currency": revenue_currency,
                         "status": "available",
                         "epistemic_type": "calculated",
-                        "source": source,
+                        "source": {
+                            **source,
+                            "record_count": (
+                                sum(entry["count"] for day, entry in daily.items() if str(seven_days_ago) <= day < str(today))
+                                + sum(entry["count"] for day, entry in daily.items() if str(fourteen_days_ago) <= day < str(seven_days_ago))
+                            ),
+                        },
                         "scope": {"store_count": len(shopify_store_ids)},
                         "period": {"start": previous_7d_start.isoformat(), "end": today_start.isoformat(), "timezone": "UTC", "semantics": "[start,end)"},
                         "freshness": {"observed_at": generated_at.isoformat(), "source_synced_at": shopify_last_synced_at.isoformat(), "age_seconds": freshness_age},
