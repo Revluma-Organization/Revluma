@@ -130,3 +130,8 @@ test('certifies cancellation exclusion only when Shopify and persisted order sta
   }), error => error.code === 'ORDER_COVERAGE_ORDER_STATUS_MISMATCH');
   assert.equal(mismatch.certificates, 0);
 });
+
+test('coverage money parser rejects values outside persisted DECIMAL(10,2) range', () => {
+  assert.equal(asMoney({ shopMoney: { amount: '100000000.00' } }), null);
+  assert.equal(asMoney({ shopMoney: { amount: '1.234' } }), null);
+});
