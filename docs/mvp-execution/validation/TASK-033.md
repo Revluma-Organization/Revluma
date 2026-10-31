@@ -71,9 +71,9 @@ All 70 scenarios are tracked below. **NOT RUN** means the precise acceptance req
 | TC033-51 | NOT RUN | No direct passing acceptance evidence |
 | TC033-52 | NOT RUN | No direct passing acceptance evidence |
 | TC033-53 | NOT RUN | No direct passing acceptance evidence |
-| TC033-54 | PARTIAL | New dashboard metric query test on commit 0d64652a; CI pending; existing controller predicate includes status recovered in outstanding count |
-| TC033-55 | PARTIAL | At-risk aggregate predicate excludes recovered status; pending direct assertion in new metric test |\n| TC033-58 | PARTIAL | TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity; specific acceptance path not fully exercised |
-| TC033-55 | PARTIAL | TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity; specific acceptance path not fully exercised |
+| TC033-54 | PARTIAL | New dashboard metric test on commit 0d64652a; CI pending. Controller's current count predicate includes status `recovered` among active abandonment statuses.
+| TC033-58 | PARTIAL | TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity; specific acceptance path not fully exercised |
+| TC033-55 | PARTIAL | At-risk aggregate predicate excludes recovered status; pending direct assertion in metric test |
 | TC033-56 | PARTIAL | TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity; specific acceptance path not fully exercised |
 | TC033-57 | PASS | TC033-37-38-57-duplicate-purchase-and-checkout-do-not-duplicate; CI PASS run 41041588576 |
 | TC033-58 | PARTIAL | TC033-54-55-56-58-59-active-abandonment-and-order-financial-integrity; specific acceptance path not fully exercised |
