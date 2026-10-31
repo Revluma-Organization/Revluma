@@ -86,3 +86,8 @@ def test_revenue_agent_does_not_infer_cause_from_revenue_movement():
     assert all(item["evidence_ids"] for item in result.diagnosis)
     assert all("traffic" not in item["description"].lower() or "not been verified" in item["description"].lower()
                for item in result.diagnosis)
+
+def test_structured_specialist_boundary_returns_real_evidence_ids():
+    output = RevenueAgent().structured_output(state(), [], "Review revenue")
+    assert output["domain"] == "revenue"
+    assert output["evidence_references"] == ["evidence-yesterday", "evidence-trend"]
