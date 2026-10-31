@@ -793,6 +793,7 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
             revenue_evidence = retrieve_revenue_evidence(
                 organization_id, db,
                 start=period_request["start"], end=period_request["end"],
+                request_id=correlation_id,
             )
             answer = format_revenue_evidence(revenue_evidence)
         persist_turns(
