@@ -54,8 +54,24 @@ class RevenueAgent(BaseAgent):
 
     def _analyze(self, bs, memories: list[dict], question: str) -> AgentResult:
         currency = getattr(bs, "revenue_currency", None)
-        if not currency or (bs.revenue_today is None and bs.revenue_yesterday is None and bs.revenue_trend_7d is None):
-            return AgentResult.no_data("revenue", "No fresh, complete, single-currency revenue evidence is available for the requested analysis.")
+        revenue_evidence = getattr(bs, "revenue_evidence", {}) or {}
+        evidence_items = revenue_evidence.get("items", []) if isinstance(revenue_evidence, dict) else []
+        yesterday_evidence = next(
+            (item for item in evidence_items
+             if item.get("metric") == "recorded_order_value"
+             and item.get("status") == "available"
+             and item.get("currency") == currency),
+            None,
+        )
+        trend_evidence = next(
+            (item for item in evidence_items
+             if item.get("metric") == "revenue_trend_7d"
+             and item.get("status") == "available"),
+            None,
+        )
+        if (revenue_evidence.get("overall_status") != "available" or not currency
+                or (yesterday_evidence is None and trend_evidence is None)):
+            return AgentResult.no_data("revenue", "No fresh, complete, single-currency revenue evidence with provenance is available for the requested analysis.")
 
         facts = []
         signals = []
@@ -63,7 +79,7 @@ class RevenueAgent(BaseAgent):
         opportunities = []
         recommendations = []
         warnings = list(bs.warnings)
-        data_sources = ["orders.total", "orders.currency", "orders.ordered_at", "orders.recovery_status", "intelligence_order_coverage", "business_states"]
+        data_sources = [item["evidence_id"] for item in (yesterday_evidence, trend_evidence) if item]
 
         # ── Facts (directly in data) 
         if bs.revenue_today is not None:
@@ -76,11 +92,13 @@ class RevenueAgent(BaseAgent):
                 "source": "orders.total and orders.currency, current UTC day",
             })
 
-        if bs.revenue_yesterday is not None:
+        if bs.revenue_yesterday is not None and yesterday_evidence:
             facts.append({
                 "type": "fact",
+                "claim_type": "verified_fact",
+                "evidence_ids": [yesterday_evidence["evidence_id"]],
                 "metric": "revenue_yesterday",
-                "value": float(bs.revenue_yesterday),
+                "value": str(bs.revenue_yesterday),
                 "currency": currency,
                 "description": f"Recorded order value yesterday (UTC): {float(bs.revenue_yesterday):,.2f} {currency}",
                 "source": "orders.total and orders.currency, previous complete UTC day",
@@ -97,10 +115,12 @@ class RevenueAgent(BaseAgent):
                 "severity": "high" if abs(bs.revenue_delta_pct) > 20 else "medium" if abs(bs.revenue_delta_pct) > 10 else "low",
             })
 
-        if bs.revenue_trend_7d is not None:
+        if bs.revenue_trend_7d is not None and trend_evidence:
             direction = "up" if bs.revenue_trend_7d > 0 else "down"
             signals.append({
                 "type": "signal",
+                "claim_type": "calculated_observation",
+                "evidence_ids": [trend_evidence["evidence_id"]],
                 "metric": "revenue_trend_7d",
                 "value": bs.revenue_trend_7d,
                 "currency": currency,
@@ -123,6 +143,8 @@ class RevenueAgent(BaseAgent):
             if bs.cart_anomaly:
                 diagnosis.append({
                     "type": "inference",
+                    "claim_type": "hypothesis",
+                    "evidence_ids": [trend_evidence["evidence_id"]] if trend_evidence else [],
                     "description": "Recorded order value declined. The available revenue evidence does not establish why; traffic, checkout, pricing and inventory causes have not been verified by this metric.",
                     "confidence": 0.35,
                     "supporting_signals": ["revenue_delta"],
@@ -138,6 +160,8 @@ class RevenueAgent(BaseAgent):
         if bs.revenue_trend_7d is not None and bs.revenue_trend_7d > 20:
             diagnosis.append({
                 "type": "inference",
+                "claim_type": "hypothesis",
+                "evidence_ids": [trend_evidence["evidence_id"]] if trend_evidence else [],
                 "description": "Recorded order value increased over the verified comparison periods. This metric alone does not establish whether traffic, conversion, pricing or order mix caused the change.",
                 "confidence": 0.35,
                 "supporting_signals": ["revenue_trend_7d"],
