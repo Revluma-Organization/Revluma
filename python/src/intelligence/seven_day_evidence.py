@@ -604,7 +604,7 @@ def resolve_revenue_period(message: str, *, now: datetime | None = None) -> dict
         if named_period:
             return {
                 "status": "unsupported",
-                "reason": "Named month, quarter, or year periods require an explicit UTC ISO date range in this MVP.",
+                "reason": "Named month, quarter, or year periods are not supported without an explicit UTC date range in this MVP.",
                 "timezone": None,
             }
         days = 7
