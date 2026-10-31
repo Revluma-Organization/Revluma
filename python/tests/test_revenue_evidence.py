@@ -58,6 +58,8 @@ class RevenueDB:
             assert params["org_id"] == "org-a"
             return Result(self.stores)
         if "FROM intelligence_order_coverage" in sql:
+            if self.fail == "coverage":
+                raise RuntimeError("coverage unavailable")
             assert params["org_id"] == "org-a"
             assert params["trusted_source"] == "shopify_verified_history_v1"
             assert "ANY(CAST(:store_ids AS uuid[]))" in sql
@@ -278,3 +280,12 @@ def test_today_and_yesterday_are_supported_only_when_utc_is_explicit():
     assert today["end"] == today_start + timedelta(days=1)
     assert yesterday["start"] == today_start - timedelta(days=1)
     assert yesterday["end"] == today_start
+
+def test_coverage_query_failure_preserves_unknown_status_and_partial_values():
+    db = RevenueDB(fail="coverage")
+    evidence = retrieve(db)
+    assert evidence["overall_status"] == "unknown"
+    values = [item for item in evidence["items"] if item["metric"] == "recorded_order_value"]
+    assert values and all(item["status"] == "unknown" for item in values)
+    assert any("attestations could not be retrieved" in warning for warning in evidence["warnings"])
+    assert "REVENUE_EVIDENCE_UNKNOWN" in [item["code"] for item in evidence["errors"]]
