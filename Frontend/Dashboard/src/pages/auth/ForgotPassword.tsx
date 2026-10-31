@@ -61,7 +61,7 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      await api.post<any>("/auth/forgot-password", { email });
+      await api.post("/auth/forgot-password", { email });
       setOtp(["", "", "", "", "", ""]);
       setResendSeconds(45);
       setExpirySeconds(10 * 60);
@@ -132,15 +132,15 @@ export default function ForgotPassword() {
     setError("");
 
     try {
-      const res = await api.post<any>("/auth/forgot-password/verify", { 
+      const res = await api.post<{ reset_token?: string; resetToken?: string; data?: { reset_token?: string; resetToken?: string }; token?: string }>("/auth/forgot-password/verify", { 
         email, 
         code: otpString 
       });
-            const token = res.data?.reset_token 
-        || res.data?.resetToken 
-        || res.data?.data?.reset_token 
-        || res.data?.data?.resetToken 
-        || res.data?.token;
+            const token = res.data.reset_token
+        || res.data.resetToken
+        || res.data.data?.reset_token
+        || res.data.data?.resetToken
+        || res.data.token;
 
       if (token) {
         setResetToken(token);
@@ -169,7 +169,7 @@ export default function ForgotPassword() {
     setError("");
 
         try {
-      await api.post<any>("/auth/forgot-password/reset", {
+      await api.post("/auth/forgot-password/reset", {
         email: email,
         reset_token: resetToken,
         password: newPassword,
