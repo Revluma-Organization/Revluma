@@ -181,6 +181,53 @@ const c=await cart(suffix);
 const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}});
 assert.equal(o.abandoned_cart_id,c.id);assert.equal(c.status,'recovered');
 });
+await check('TC033-20-ambiguous-cart-token-cannot-select-arbitrary-checkout',async()=>{
+const token=prefix+'-ambiguous-cart-token';
+await upsertAbandonedCart(store,checkout('ambiguous-a',{cart_token:token}));
+await upsertAbandonedCart(store,checkout('ambiguous-b',{cart_token:token}));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order('ambiguous-cart',{checkout_id:null,checkout_token:null,cart_token:token}));
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-ambiguous-cart'}});
+assert.equal(o.abandoned_cart_id,null);
+const issue=await prisma.order_checkout_reconciliation_cases.findFirst({where:{store_id:store.id,order_id:o.id}});
+assert.equal(issue.reason,'AMBIGUOUS_CANDIDATES');assert.equal(issue.status,'UNRESOLVED');
+});
+await check('TC033-21-22-23-24-25-each-weak-identity-signal-is-insufficient-alone',async()=>{
+const cases=[
+['customer',{customer:{id:prefix+'-same-customer',email:'first@example.invalid'},total_price:'10',created_at:'2026-10-28T08:00:00Z'}, {customer:{id:prefix+'-same-customer',email:'different@example.invalid'},total_price:'99',created_at:'2026-10-31T08:00:00Z'}],
+['email',{customer:{id:prefix+'-customer-a',email:'same@example.invalid'}},{customer:{id:prefix+'-customer-b',email:'same@example.invalid'}}],
+['amount',{total_price:'25'},{total_price:'25'}],
+['timestamp',{created_at:'2026-10-30T08:00:00Z'},{created_at:'2026-10-30T08:01:00Z'}],
+['coupon',{discount_codes:[{code:'SAME'}]},{discount_codes:[{code:'SAME'}]}],
+];
+for(const [suffix,checkoutExtra,orderExtra] of cases){
+await upsertAbandonedCart(store,checkout('weak-'+suffix,checkoutExtra));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order('weak-'+suffix,{checkout_id:null,checkout_token:null,cart_token:null,...orderExtra}));
+assert.equal((await cart('weak-'+suffix)).status,'abandoned',suffix+' must not reconcile on weak evidence alone');
+}
+});
+await check('TC033-44-forged-merchant-context-cannot-reconcile-foreign-checkout',async()=>{
+const otherUser=randomUUID(),otherOrg=randomUUID(),otherStore={id:randomUUID(),platform:'shopify'};
+await prisma.users.create({data:{id:otherUser,full_name:'Task033 Forged',email:prefix+'-forged@example.invalid'}});
+await prisma.organizations.create({data:{id:otherOrg,owner_id:otherUser,company_name:'Task033 Forged',industry:'other',country:'US',slug:prefix+'-forged'}});
+await prisma.stores.create({data:{id:otherStore.id,organization_id:otherOrg,platform:'shopify',shop_domain:prefix+'-forged.myshopify.com',status:'active'}});
+const suffix='forged-context';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+await upsertOrder(otherStore,'shopify',order(suffix,{checkout_id:prefix+'-checkout-'+suffix,checkout_token:null}));
+assert.equal((await cart(suffix)).status,'abandoned');
+assert.equal(await prisma.orders.count({where:{store_id:otherStore.id,abandoned_cart_id:{not:null}}}),0);
+});
+await check('TC033-46-abandonment-classifier-write-failure-preserves-pending-checkout',async()=>{
+const suffix='classifier-write-fail';
+await upsertAbandonedCart(store,checkout(suffix));
+const original=prisma.abandoned_carts.updateMany;
+prisma.abandoned_carts.updateMany=async()=>{throw new Error('TASK033_INJECTED_CLASSIFIER_FAILURE');};
+try{await assert.rejects(promoteInactiveCheckouts(),/TASK033_INJECTED_CLASSIFIER_FAILURE/);}
+finally{prisma.abandoned_carts.updateMany=original;}
+assert.equal((await cart(suffix)).status,'pending');
+});
 await check('TC033-20-26-conflicting-and-ambiguous-identifiers-never-force-link',async()=>{
 const a='conflict-a',b='conflict-b';
 await upsertAbandonedCart(store,checkout(a));
