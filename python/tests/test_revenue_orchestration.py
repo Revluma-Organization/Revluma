@@ -70,8 +70,8 @@ def test_orchestrate_preserves_node_correlation_id(monkeypatch):
     assert result.correlation_id == "node-correlation-198"
 
 
-@pytest.mark.asyncio
-async def test_python_api_passes_node_correlation_id_into_orchestrator(monkeypatch):
+def test_python_api_passes_node_correlation_id_into_orchestrator(monkeypatch):
+    import asyncio
     from types import SimpleNamespace
     from src.serving import api
 
@@ -97,13 +97,13 @@ async def test_python_api_passes_node_correlation_id_into_orchestrator(monkeypat
         correlation_id="body-correlation-198",
         context_payload={"merchant_context": {}},
     )
-    await api.orchestrate_endpoint(
+    asyncio.run(api.orchestrate_endpoint(
         request, x_contract_version="1.0", x_correlation_id="header-correlation-198"
-    )
+    ))
     assert seen["correlation_id"] == "body-correlation-198"
 
     request.correlation_id = None
-    await api.orchestrate_endpoint(
+    asyncio.run(api.orchestrate_endpoint(
         request, x_contract_version="1.0", x_correlation_id="header-correlation-198"
-    )
+    ))
     assert seen["correlation_id"] == "header-correlation-198"
