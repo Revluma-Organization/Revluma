@@ -42,7 +42,7 @@ const Profile: FC = () => {
   const handleSetup2FA = async () => {
     setIsFetching2FA(true);
     try {
-      const res = await api.post("/auth/2fa/setup");
+      const res = await api.post<{ qrCode?: string; secret?: string }>("/auth/2fa/setup");
       setQrCodeUrl(res.data.qrCode);
       setSetupSecret(res.data.secret);
       setIs2FAModalOpen(true);
@@ -90,7 +90,7 @@ const Profile: FC = () => {
     useEffect(() => {
         const fetchProfile = async () => {
       try {
-        const res = await api.get("/auth/getProfile");
+        const res = await api.get<{ data?: { profile_picture_url?: string; full_name?: string } }>("/auth/getProfile");
         
         // Target the nested 'data' object backend sends back
         const userData = res.data?.data;
