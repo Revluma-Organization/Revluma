@@ -233,7 +233,7 @@ async function upsertOrder(store, provider, payload) {
       },
     });
 
-    const existingOrder = await tx.orders.findFirst({ where: { store_id: store.id, external_order_id: orderExternalId }, select: { source_checkout_id: true, source_checkout_token: true, source_cart_token: true, currency: true } });
+    const existingOrder = await tx.orders.findFirst({ where: { store_id: store.id, external_order_id: orderExternalId }, select: { source_checkout_id: true, source_checkout_token: true, source_cart_token: true } });
     const orderEvidence = sourceIdentifiers(payload, 'order');
     let sourceConflict = false;
     let safeOrderEvidence;
@@ -267,7 +267,7 @@ async function upsertOrder(store, provider, payload) {
         customer_id: dbCustomer.id,
         ...safeOrderEvidence,
         total,
-        ...(currency ? { currency } : {}),
+        currency: currency || null,
         ordered_at: orderDate,
         subtotal,
         discount_amount: discountAmount,
