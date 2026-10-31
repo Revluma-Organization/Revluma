@@ -834,6 +834,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                         "metric": "revenue_trend_7d",
                         "value": str(revenue_trend_7d_decimal),
                         "unit": "percent",
+                        "currency": revenue_currency,
                         "status": "available",
                         "epistemic_type": "calculated",
                         "source": source,
