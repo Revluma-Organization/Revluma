@@ -163,11 +163,18 @@ def _is_revenue_evidence_request(message: str) -> bool:
         "improve revenue", "revenue strategy", "growth strategy", "increase sales",
     )):
         return False
+    explicit_fact_request = value.startswith((
+        "what ", "how much", "show ", "give me", "check ", "review ",
+        "tell me", "can you", "could you", "did we", "do we", "how many",
+    ))
+    explicit_period = bool(re.search(
+        r"\\b(?:today|yesterday|last|past|previous|this)\\b|\\b20\\d{2}-\\d{2}-\\d{2}\\b",
+        value,
+    ))
     return (
-        value.startswith(("what ", "how much", "show ", "give me", "check ", "review "))
+        explicit_fact_request
+        or (explicit_period and metric)
         or any(term in value for term in (
-            "revenue today", "revenue yesterday", "sales today", "sales yesterday",
-            "last 7 days", "past 7 days", "last 30 days", "past 30 days",
             "recorded order value", "how much revenue", "how much sales",
             "why did revenue", "why is revenue", "why has revenue",
             "between 20", "from 20",
@@ -784,11 +791,11 @@ def _run(organization_id, user_id, message, conversation_id, db, correlation_id,
         )
         period_request = resolve_revenue_period(message)
         if period_request["status"] != "supported":
+            reason = str(period_request.get("reason") or "The requested reporting period is not supported.")
             answer = (
-                "I can't reliably interpret today or yesterday for this Shopify store because "
-                "the store's timezone is not persisted. I won't substitute UTC or your user-profile "
-                "timezone and call it the store's local day. Give me an explicit ISO date range "
-                "(for example, between 2026-10-01 and 2026-10-07) and I'll report it in UTC."
+                "I can't report that revenue period reliably. "
+                + reason
+                + " No revenue total has been inferred or substituted."
             )
         else:
             revenue_evidence = retrieve_revenue_evidence(
