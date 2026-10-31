@@ -61,7 +61,6 @@ jobs:
         run: npm ci
       - name: Initialize the real application schema with Prisma migrations
         id: prisma_migrations
-        continue-on-error: true
         working-directory: Backend
         env:
           DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
@@ -83,7 +82,6 @@ jobs:
           npx prisma migrate resolve --applied 0_baseline --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
           npx prisma migrate deploy --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
       - name: Verify Prisma migration status and record applied checksums
-        if: steps.prisma_migrations.outcome == 'success'
         working-directory: Backend
         env:
           DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
@@ -91,26 +89,6 @@ jobs:
         run: |
           npx prisma migrate status --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
           PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'SELECT migration_name, checksum, finished_at FROM "_prisma_migrations" WHERE rolled_back_at IS NULL ORDER BY started_at;'
-      - name: Initialize actual Prisma model schema for isolated revenue integration
-        working-directory: Backend
-        env:
-          DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
-          DIRECT_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
-        run: |
-          # This is a separate disposable-schema verification, not a substitute
-          # for the migration-chain gate above.
-          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'
-          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
-          npx prisma db push --accept-data-loss --schema prisma/schema.prisma
-      - name: Record Prisma migration diagnostic
-        if: always()
-        env:
-          MIGRATION_OUTCOME: ${{ steps.prisma_migrations.outcome }}
-        run: |
-          echo "Prisma migration-chain diagnostic: $MIGRATION_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$MIGRATION_OUTCOME" != success ]; then
-            echo "Migration deploy failed; schema-level revenue tests run separately against the current Prisma model. The migration-chain failure remains a release blocker." >> "$GITHUB_STEP_SUMMARY"
-          fi
       - name: Compile Python sources and tests
         run: python -m compileall -q src tests
       - name: Run Task 198 disposable PostgreSQL revenue integration tests
@@ -121,12 +99,6 @@ jobs:
         run: python -m pytest -q tests/test_model_gateway.py tests/test_rev_failure_routing.py
       - name: Run all Python tests
         run: python -m pytest -q tests
-      - name: Enforce clean Prisma migration history
-        if: always()
-        env:
-          MIGRATION_OUTCOME: ${{ steps.prisma_migrations.outcome }}
-        run: |
-          test "$MIGRATION_OUTCOME" = success
       - name: Record Python interpreter and installed packages
         if: failure()
         run: |
@@ -182,8 +154,8 @@ jobs:
           TESTS_OUTCOME: ${{ steps.dashboard_tests.outcome }}
         run: |
           printf 'Vite build: %s\\nDashboard lint: %s\\nApp type-check: %s\\nTooling type-check: %s\\nDashboard tests: %s\\n' "$BUILD_OUTCOME" "$LINT_OUTCOME" "$APP_TYPES_OUTCOME" "$NODE_TYPES_OUTCOME" "$TESTS_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
-          # Lint is executed and reported, but this backend-only PR does not
-          # change the pre-existing dashboard sources that currently fail it.
           test "$BUILD_OUTCOME" = success
+          test "$LINT_OUTCOME" = success
+          test "$APP_TYPES_OUTCOME" = success
           test "$NODE_TYPES_OUTCOME" = success
           test "$TESTS_OUTCOME" = success
