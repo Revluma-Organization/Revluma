@@ -202,7 +202,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 194 | Phase 3 | Verify AI error classification. | NOT STARTED | — | — | — |
 | 195 | Phase 3 | Verify request rate limiting. | NOT STARTED | — | — | — |
 | 196 | Phase 3 | Verify tenant-isolated conversation retrieval. | NOT STARTED | — | — | — |
-| 197 | Phase 3 | Define Rev evidence retrieval contract. | NOT STARTED | — | — | — |
+| 197 | Phase 3 | Define Rev evidence retrieval contract. | COMPLETED — VERIFIED (contract defined; runtime implementation not claimed) | [TASK-197](implementation/TASK-197.md); [Evidence contract](../rev-intelligence/REV-EVIDENCE-RETRIEVAL-CONTRACT.md) | Branch docs/task-197-rev-evidence-contract; docs commits e925b6f, f47db18 | 2026-10-31 |
 | 198 | Phase 3 | Verify revenue evidence retrieval. | NOT STARTED | — | — | — |
 | 199 | Phase 3 | Verify order evidence retrieval. | NOT STARTED | — | — | — |
 | 200 | Phase 3 | Verify checkout evidence retrieval. | NOT STARTED | — | — | — |
