@@ -283,7 +283,7 @@ def retrieve_revenue_evidence(
     if oldest_sync is None:
         status = "unknown"
         completeness = "unknown"
-    elif age_seconds is not None and age_seconds > REVENUE_FRESHNESS_THRESHOLD_SECONDS:
+    elif freshness_age is not None and freshness_age > REVENUE_FRESHNESS_THRESHOLD_SECONDS:
         status = "stale"
         completeness = "known" if all(fully_covered) else "partial"
     elif coverage_query_ok and all(fully_covered):
@@ -310,10 +310,27 @@ def retrieve_revenue_evidence(
         status = "unknown"
         completeness = "unknown"
 
+    certified_times = []
+    for row in coverage_rows:
+        certified = row["certified_at"]
+        if certified is not None:
+            if certified.tzinfo is None:
+                certified = certified.replace(tzinfo=timezone.utc)
+            certified_times.append(certified.astimezone(timezone.utc))
+    oldest_certificate = min(certified_times) if certified_times else None
+    certificate_age = (
+        max(0, int((observed_at - oldest_certificate).total_seconds()))
+        if oldest_certificate else None
+    )
+    freshness_age = max(
+        [value for value in (age_seconds, certificate_age) if value is not None],
+        default=None,
+    )
     freshness = {
         "observed_at": observed_at.isoformat(),
         "source_synced_at": oldest_sync.isoformat() if oldest_sync else None,
-        "age_seconds": age_seconds,
+        "coverage_certified_at": oldest_certificate.isoformat() if oldest_certificate else None,
+        "age_seconds": freshness_age,
     }
     limitations = [
         "Only persisted orders with recovery_status other than cancelled are included.",
@@ -353,7 +370,7 @@ def retrieve_revenue_evidence(
             "scope": scope,
             "period": period,
             "freshness": freshness,
-            "coverage": {"completeness": "known", "is_truncated": False, "limitations": limitations},
+            "coverage": {"completeness": "known", "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": limitations},
             "calculation": None,
             "warnings": [],
         })
@@ -370,7 +387,7 @@ def retrieve_revenue_evidence(
             "scope": scope,
             "period": period,
             "freshness": freshness,
-            "coverage": {"completeness": "known", "is_truncated": False, "limitations": ["Store base currency is not persisted, so a zero monetary value cannot be assigned a verified currency."]},
+            "coverage": {"completeness": "known", "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": ["Store base currency is not persisted, so a zero monetary value cannot be assigned a verified currency."]},
             "calculation": None,
             "warnings": ["No qualifying orders were recorded in a fully covered period; the store currency is unknown."],
         })
@@ -393,7 +410,7 @@ def retrieve_revenue_evidence(
                 "scope": scope,
                 "period": period,
                 "freshness": freshness,
-                "coverage": {"completeness": completeness, "is_truncated": False, "limitations": limitations},
+                "coverage": {"completeness": completeness, "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE if coverage_rows else None, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": limitations},
                 "calculation": None,
                 "warnings": [],
             })
@@ -410,7 +427,7 @@ def retrieve_revenue_evidence(
                 "scope": scope,
                 "period": period,
                 "freshness": freshness,
-                "coverage": {"completeness": completeness, "is_truncated": False, "limitations": limitations},
+                "coverage": {"completeness": completeness, "is_truncated": False, "source": TRUSTED_ORDER_COVERAGE_SOURCE if coverage_rows else None, "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows], "limitations": limitations},
                 "calculation": None,
                 "warnings": ["This is a recorded order total, not gross revenue or independently verified net revenue."],
             })
