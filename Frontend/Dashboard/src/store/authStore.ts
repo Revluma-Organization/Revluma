@@ -220,8 +220,8 @@ export const useAuthStore = create<AuthStore>()(
               full_name: user.full_name,
               display_name: user.full_name.split(' ')[0],
               avatar_url: null,
-              profile_picture_url: (user as any).profile_picture_url || null,
-              role: (user as any).role || 'member', 
+              profile_picture_url: user.profile_picture_url || null,
+              role: user.role || 'member', 
               tenant_id: '',
               email_verified: true,
               onboarding_status: 'completed',
@@ -229,7 +229,7 @@ export const useAuthStore = create<AuthStore>()(
             loading: false,
             error: null,
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           set({ loading: false, error: 'Invalid 2FA code. Please try again.' });
           throw err;
         }
