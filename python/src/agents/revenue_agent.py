@@ -7,6 +7,7 @@ Reads exclusively from BusinessState — does NOT query the database directly.
 from __future__ import annotations
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from .base_agent import BaseAgent, AgentResult
 
@@ -57,26 +58,45 @@ class RevenueAgent(BaseAgent):
         currency = getattr(bs, "revenue_currency", None)
         revenue_evidence = getattr(bs, "revenue_evidence", {}) or {}
         evidence_items = revenue_evidence.get("items", []) if isinstance(revenue_evidence, dict) else []
+        generated_at = getattr(bs, "generated_at", None)
+        today_start = None
+        if isinstance(generated_at, datetime) and generated_at.tzinfo is not None and generated_at.utcoffset() is not None:
+            today_start = datetime.combine(
+                generated_at.astimezone(timezone.utc).date(), datetime.min.time(), tzinfo=timezone.utc
+            )
+        yesterday_start = today_start - timedelta(days=1) if today_start else None
+        trend_start = today_start - timedelta(days=14) if today_start else None
         today_evidence = next(
             (item for item in evidence_items
              if item.get("metric") == "recorded_order_value"
              and item.get("status") == "available"
-             and item.get("period", {}).get("end", "").startswith(bs.generated_at.date().isoformat())
-             and item.get("currency") == currency),
+             and item.get("unit") == "money"
+             and item.get("epistemic_type") == "observed"
+             and item.get("currency") == currency
+             and today_start is not None
+             and _period_matches(item, today_start, None, end_day=today_start)),
             None,
-        ) if hasattr(bs, "generated_at") else None
+        )
         yesterday_evidence = next(
             (item for item in evidence_items
              if item.get("metric") == "recorded_order_value"
              and item.get("status") == "available"
-             and item.get("currency") == currency),
+             and item.get("unit") == "money"
+             and item.get("epistemic_type") == "observed"
+             and item.get("currency") == currency
+             and yesterday_start is not None
+             and _period_matches(item, yesterday_start, today_start)),
             None,
         )
         trend_evidence = next(
             (item for item in evidence_items
              if item.get("metric") == "revenue_trend_7d"
              and item.get("status") == "available"
-             and item.get("currency") == currency),
+             and item.get("unit") == "percent"
+             and item.get("epistemic_type") == "calculated"
+             and item.get("currency") == currency
+             and trend_start is not None
+             and _period_matches(item, trend_start, today_start)),
             None,
         )
         if (revenue_evidence.get("overall_status") != "available" or not currency
@@ -213,3 +233,15 @@ def _compute_confidence(facts, signals, warnings) -> float:
     if warnings:
         base -= 0.1 * min(len(warnings), 3)
     return round(max(0.1, min(0.95, base)), 2)
+
+
+def _period_matches(item: dict, start: datetime, end: datetime | None, *, end_day: datetime | None = None) -> bool:
+    period = item.get("period") if isinstance(item, dict) else None
+    if not isinstance(period, dict):
+        return False
+    start_value = str(period.get("start") or "")
+    end_value = str(period.get("end") or "")
+    if not start_value.startswith(start.date().isoformat()):
+        return False
+    expected_end = end_day or end
+    return bool(expected_end and end_value.startswith(expected_end.date().isoformat()))
