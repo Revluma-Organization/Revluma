@@ -267,6 +267,7 @@ class BusinessState:
     next_rebuild_at: datetime
     cart_delta_pct_vs_avg: float | None = None
     observed_drivers: list[dict] = field(default_factory=list)
+    revenue_currency: str | None = None
 
     def is_stale(self) -> bool:
         age_secs = (datetime.now(timezone.utc) - self.generated_at).total_seconds()
@@ -348,6 +349,8 @@ class BusinessState:
                 "revenue_delta_pct": self.revenue_delta_pct,
                 "revenue_trend_7d": self.revenue_trend_7d,
                 "revenue_anomaly": self.revenue_anomaly,
+                "currency": self.revenue_currency,
+                "reporting_timezone": "UTC",
                 "abandoned_cart_count": self.abandoned_cart_count,
                 "abandoned_cart_value": abandoned_cart_value,
                 "cart_anomaly": self.cart_anomaly,
@@ -385,6 +388,8 @@ class BusinessState:
                 "trend_7d": self.revenue_trend_7d,
                 "anomaly": self.revenue_anomaly,
                 "severity": revenue_severity,
+                "currency": self.revenue_currency,
+                "reporting_timezone": "UTC",
             },
             "abandoned_carts": {
                 "count": self.abandoned_cart_count,
@@ -453,7 +458,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     try:
         stores_result = db.execute(
             text("""
-                SELECT id, last_synced_at
+                SELECT id, last_synced_at, platform
                 FROM stores
                 WHERE organization_id = :org_id
                   AND (status IN ('active', 'syncing', 'error') OR status = 'connected')
@@ -462,7 +467,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             {"org_id": organization_id},
         ).fetchall()
         store_ids = [str(r[0]) for r in stores_result]
-        last_synced_at = stores_result[0][1] if stores_result else None
+        shopify_store_ids = [str(r[0]) for r in stores_result if str(r[2] or "").lower() == "shopify"]
+        sync_times = [r[1] for r in stores_result if r[1] is not None]
+        last_synced_at = min(sync_times) if sync_times else None
     except Exception as exc:
         logger.exception(
             "business_state_stores_failed",
@@ -537,71 +544,125 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     next_rebuild_at = generated_at + next_interval
     staleness_threshold_mins = max(1, int(next_interval.total_seconds() / 60))
 
-    # ── 2. Revenue metrics 
+    # ── 2. Revenue metrics
     revenue_today = None
     revenue_yesterday = None
     revenue_delta_pct = None
     revenue_trend_7d = None
     revenue_anomaly = False
+    revenue_currency = None
 
     try:
-        today = generated_at.date()
+        today = generated_at.astimezone(timezone.utc).date()
         yesterday = today - timedelta(days=1)
         seven_days_ago = today - timedelta(days=7)
         fourteen_days_ago = today - timedelta(days=14)
+        period_start = datetime.combine(fourteen_days_ago, datetime.min.time(), tzinfo=timezone.utc)
+        period_end = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
 
-        rev_result = db.execute(
-            _store_query("""
-                SELECT
-                    DATE(ordered_at AT TIME ZONE 'UTC') as order_date,
-                    SUM(total) as daily_revenue,
-                    COUNT(*) as order_count,
-                    AVG(total) as avg_order_value
-                FROM orders
-                WHERE store_id IN :store_ids
-                  AND ordered_at >= :cutoff
-                GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
-                ORDER BY order_date DESC
-            """),
-            {**store_params, "cutoff": fourteen_days_ago},
-        ).fetchall()
+        if not shopify_store_ids:
+            warnings.append("Revenue specialist metrics are unavailable: no active Shopify store scope was found.")
+        else:
+            coverage_rows = db.execute(
+                _store_query("""
+                    SELECT store_id, coverage_start, coverage_end, certified_at, source
+                    FROM intelligence_order_coverage
+                    WHERE organization_id = :org_id
+                      AND store_id IN :store_ids
+                      AND source = 'shopify_verified_history_v1'
+                """),
+                {"org_id": organization_id, "store_ids": tuple(shopify_store_ids)},
+            ).mappings().all()
+            coverage_by_store = {str(row["store_id"]): row for row in coverage_rows}
+            coverage_complete = len(coverage_by_store) == len(shopify_store_ids)
+            if coverage_complete:
+                for store_id in shopify_store_ids:
+                    attestation = coverage_by_store[store_id]
+                    coverage_start = attestation["coverage_start"]
+                    coverage_end = attestation["coverage_end"]
+                    certified_at = attestation["certified_at"]
+                    if coverage_start.tzinfo is None:
+                        coverage_start = coverage_start.replace(tzinfo=timezone.utc)
+                    if coverage_end.tzinfo is None:
+                        coverage_end = coverage_end.replace(tzinfo=timezone.utc)
+                    if certified_at.tzinfo is None:
+                        certified_at = certified_at.replace(tzinfo=timezone.utc)
+                    if (coverage_start.astimezone(timezone.utc) > period_start
+                            or coverage_end.astimezone(timezone.utc) < period_end
+                            or (generated_at - certified_at.astimezone(timezone.utc)).total_seconds() > DEFAULT_STALENESS_MINS * 60):
+                        coverage_complete = False
+                        break
+            if last_synced_at is None:
+                coverage_complete = False
+            else:
+                sync_at = last_synced_at
+                if sync_at.tzinfo is None:
+                    sync_at = sync_at.replace(tzinfo=timezone.utc)
+                if (generated_at - sync_at.astimezone(timezone.utc)).total_seconds() > DEFAULT_STALENESS_MINS * 60:
+                    coverage_complete = False
 
-        daily = {str(r[0]): {"revenue": Decimal(str(r[1])), "orders": r[2], "aov": Decimal(str(r[3]))} for r in rev_result}
+            rev_result = db.execute(
+                _store_query("""
+                    SELECT currency,
+                           DATE(ordered_at AT TIME ZONE 'UTC') AS order_date,
+                           SUM(total) AS daily_revenue,
+                           COUNT(DISTINCT id) AS order_count,
+                           AVG(total) AS avg_order_value
+                    FROM orders
+                    WHERE store_id IN :store_ids
+                      AND ordered_at >= :cutoff
+                      AND ordered_at < :period_end
+                      AND recovery_status IS DISTINCT FROM 'cancelled'
+                    GROUP BY currency, DATE(ordered_at AT TIME ZONE 'UTC')
+                    ORDER BY order_date DESC, currency
+                """),
+                {
+                    "store_ids": tuple(shopify_store_ids),
+                    "cutoff": period_start,
+                    "period_end": period_end,
+                },
+            ).fetchall()
 
-        revenue_today = daily.get(str(today), {}).get("revenue", Decimal("0"))
-        revenue_yesterday = daily.get(str(yesterday), {}).get("revenue", Decimal("0"))
-
-        if revenue_yesterday and revenue_yesterday > 0:
-            revenue_delta_pct = float((revenue_today - revenue_yesterday) / revenue_yesterday * 100)
-
-        # 7d trend: compare last 7 days vs prior 7 days
-        recent_7d = sum(v["revenue"] for k, v in daily.items() if str(seven_days_ago) <= k <= str(today))
-        prior_7d  = sum(v["revenue"] for k, v in daily.items() if str(fourteen_days_ago) <= k < str(seven_days_ago))
-        if prior_7d and prior_7d > 0:
-            revenue_trend_7d = float((recent_7d - prior_7d) / prior_7d * 100)
-
-        weekday_baselines = _json_value(baseline.get("day_of_week_baseline"), {})
-        weekday_baseline = weekday_baselines.get(str(today.weekday()), {})
-        expected_revenue = float(weekday_baseline.get("average_revenue") or 0)
-        revenue_stddev = float(weekday_baseline.get("stddev_revenue") or 0)
-        if expected_revenue > 0:
-            baseline_delta = abs(float(revenue_today) - expected_revenue)
-            revenue_anomaly = (
-                baseline_delta > 2 * revenue_stddev
-                if revenue_stddev > 0
-                else baseline_delta / expected_revenue > 0.30
-            )
-        elif revenue_delta_pct is not None:
-            revenue_anomaly = revenue_delta_pct < -20 or revenue_delta_pct > 50
-
+            currencies = {str(row[0] or "UNKNOWN").upper() for row in rev_result}
+            if not coverage_complete:
+                warnings.append("Revenue specialist metrics are withheld because complete, fresh Shopify order coverage for the last 14 full UTC days is not certified.")
+            elif len(currencies) > 1 or "UNKNOWN" in currencies:
+                warnings.append("Revenue specialist metrics are withheld because the Shopify order scope contains mixed or unknown currencies.")
+            elif len(currencies) == 1:
+                revenue_currency = next(iter(currencies))
+                daily = {
+                    str(row[1]): Decimal(str(row[2]))
+                    for row in rev_result
+                }
+                # The current UTC day is incomplete. Never report it as a full day.
+                revenue_yesterday = daily.get(str(yesterday), Decimal("0"))
+                recent_7d = sum(
+                    (value for day, value in daily.items()
+                     if str(seven_days_ago) <= day < str(today)),
+                    Decimal("0"),
+                )
+                prior_7d = sum(
+                    (value for day, value in daily.items()
+                     if str(fourteen_days_ago) <= day < str(seven_days_ago)),
+                    Decimal("0"),
+                )
+                if prior_7d > 0:
+                    revenue_trend_7d = float((recent_7d - prior_7d) / prior_7d * 100)
+            else:
+                warnings.append("Revenue specialist metrics are unavailable because no currency-bearing order records exist in the verified window.")
     except Exception as exc:
         logger.exception(
             "business_state_revenue_failed",
             extra={"org_id": organization_id, "error_type": type(exc).__name__},
         )
         _rollback_quietly(db)
-        warnings.append("Revenue metrics could not be computed.")
+        warnings.append("Revenue metrics could not be computed or coverage could not be verified.")
         computation_status = "partial"
+        revenue_today = None
+        revenue_yesterday = None
+        revenue_delta_pct = None
+        revenue_trend_7d = None
+        revenue_currency = None
 
     # ── 3. Cart abandonment metrics 
     abandoned_cart_count = None
@@ -901,6 +962,10 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         "returning_customer_rate_delta": returning_customer_rate_delta,
         "cart_delta_pct_vs_avg": cart_delta_pct_vs_avg,
         "inventory_signals": inventory_signals,
+        "revenue_currency": revenue_currency,
+        "revenue_reporting_timezone": "UTC",
+        "revenue_period_start": period_start.isoformat() if "period_start" in locals() else None,
+        "revenue_period_end": period_end.isoformat() if "period_end" in locals() else None,
     }
     state_metadata = {
         "warnings": warnings,
@@ -1097,6 +1162,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         next_rebuild_at=next_rebuild_at,
         cart_delta_pct_vs_avg=cart_delta_pct_vs_avg,
         observed_drivers=observed_drivers,
+        revenue_currency=revenue_currency,
     )
 
 
@@ -1175,6 +1241,7 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
             next_rebuild_at=next_rebuild_at,
             cart_delta_pct_vs_avg=source_data.get("cart_delta_pct_vs_avg"),
             observed_drivers=metadata.get("observed_drivers", []) if isinstance(metadata.get("observed_drivers", []), list) else [],
+            revenue_currency=source_data.get("revenue_currency"),
         )
     except Exception as exc:
         logger.exception(
