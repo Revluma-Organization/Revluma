@@ -111,9 +111,10 @@ export default function MorningBriefing() {
   const bdr = isDark ? "#1e1e2e" : "#e8eaf0";
 
   useEffect(() => {
-    (api as any).get("/rev/briefing")
-      .then((res: any) => {
-        const b = res?.data?.data || res?.data;
+    api.get<Briefing | { data: Briefing }>("/rev/briefing")
+      .then((res) => {
+        const payload = res.data;
+        const b = "data" in payload ? payload.data : payload;
         if (b && typeof b.greeting === "string" && Array.isArray(b.yesterday_in_numbers)) {
           setBriefing(b);
 
