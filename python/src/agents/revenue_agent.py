@@ -140,13 +140,13 @@ class RevenueAgent(BaseAgent):
                 })
 
         # ── Diagnosis (inferences) 
-        if bs.revenue_trend_7d is not None and bs.revenue_trend_7d > 20:
+        if bs.revenue_trend_7d is not None and bs.revenue_trend_7d < -15 and trend_evidence:
             diagnosis.append({
-                "type": "inference",
-                "claim_type": "hypothesis",
-                "evidence_ids": [trend_evidence["evidence_id"]] if trend_evidence else [],
-                "description": "Recorded order value increased over the verified comparison periods. This metric alone does not establish whether traffic, conversion, pricing or order mix caused the change.",
-                "confidence": 0.35,
+                "type": "unknown",
+                "claim_type": "unknown",
+                "evidence_ids": [trend_evidence["evidence_id"]],
+                "description": "Recorded order value declined across the verified comparison periods, but this revenue evidence does not establish why.",
+                "confidence": 1.0,
                 "supporting_signals": ["revenue_trend_7d"],
             })
 
