@@ -90,7 +90,7 @@ test('order import does not invent USD when Shopify omits currency', () => {
     currentTotalPriceSet: { shopMoney: { amount: '12.34' } },
     lineItems: { nodes: [] },
   });
-  assert.equal(payload.total_price, 12.34);
+  assert.equal(payload.total_price, '12.34');
   assert.equal(payload.currency, null);
 });
 test('order import does not turn a missing money amount into zero', () => {
@@ -101,4 +101,14 @@ test('order import does not turn a missing money amount into zero', () => {
   });
   assert.equal(payload.total_price, null);
   assert.equal(payload.currency, null);
+});
+
+test('order import preserves high precision decimal source strings', () => {
+  const payload = orderPayload({
+    id: 'gid://shopify/Order/126', createdAt: '2026-10-01T00:00:00Z',
+    currentTotalPriceSet: { shopMoney: { amount: '90000000.13', currencyCode: 'USD' } },
+    lineItems: { nodes: [] },
+  });
+  assert.equal(payload.total_price, '90000000.13');
+  assert.equal(payload.currency, 'USD');
 });
