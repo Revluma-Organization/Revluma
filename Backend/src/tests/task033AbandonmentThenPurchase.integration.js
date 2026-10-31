@@ -167,6 +167,25 @@ await upsertOrder(store,'shopify',order(suffix));
 assert.equal((await cart(suffix)).status,'recovered');
 });
 
+
+await check('TC033-54-55-58-59-real-dashboard-metric-query-integrity',async()=>{
+const now=new Date();
+const activeCount=await prisma.abandoned_carts.count({where:{store_id:store.id,OR:[
+{status:'abandoned',recovered_at:null,updated_at:{lte:new Date(now.getTime()-900000)}},
+{status:'pending',recovered_at:null,updated_at:{lte:new Date(now.getTime()-900000)}},
+{status:{in:['in_sequence','recovered']}},
+]}});
+const atRisk=await prisma.abandoned_carts.aggregate({where:{store_id:store.id,OR:[
+{status:'abandoned',recovered_at:null,updated_at:{lte:new Date(now.getTime()-900000)}},
+{status:'pending',recovered_at:null,updated_at:{lte:new Date(now.getTime()-900000)}},
+]},_sum:{cart_value:true}});
+const completedOrder=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-core'}});
+assert.equal(completedOrder.recovery_status,'completed');
+assert.equal((await cart('core')).status,'recovered');
+assert.equal(activeCount,0,'Dashboard active-abandonment count must exclude a checkout already completed by verified purchase');
+assert.equal(Number(atRisk._sum.cart_value||0),0);
+});
+
 await check('TC033-50-separate-node-process-verifies-persisted-reconciliation',async()=>{
 const {execFileSync}=require('node:child_process');
 const script=`const assert=require('node:assert/strict');const {PrismaClient}=require('@prisma/client');const p=new PrismaClient();(async()=>{const c=await p.abandoned_carts.findFirstOrThrow({where:{store_id:process.env.TASK033_STORE_ID,external_cart_id:process.env.TASK033_CART_ID}});const o=await p.orders.findFirstOrThrow({where:{store_id:process.env.TASK033_STORE_ID,external_order_id:process.env.TASK033_ORDER_ID}});assert.equal(c.status,'recovered');assert.equal(o.abandoned_cart_id,c.id);await p.$disconnect()})().catch(e=>{console.error(e);process.exit(1)})`;
