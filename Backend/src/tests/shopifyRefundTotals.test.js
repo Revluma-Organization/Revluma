@@ -3,9 +3,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { shopifyNetOrderTotal } = require('../services/commerceWebhookService');
 
-const order = refunds => ({ total_price: '100.00', refunds });
+const order = refunds => ({ total_price: '100.00', currency: 'USD', refunds });
 const refund = (amount, status = 'success') => ({
-  transactions: [{ kind: 'refund', status, amount }],
+  transactions: [{ kind: 'refund', status, amount, currency: 'USD' }],
 });
 
 test('Shopify full refund yields zero net revenue', () => {
@@ -65,4 +65,12 @@ test('empty or unknown refund transaction states are not treated as no refund', 
 
 test('refund transaction without a refund kind is malformed evidence', () => {
   assert.equal(shopifyNetOrderTotal(order([{ transactions: [{ status: 'success', amount: '10.00' }] }])), null);
+});
+
+test('successful refund without a verifiable currency fails closed', () => {
+  assert.equal(shopifyNetOrderTotal({
+    total_price: '100.00',
+    currency: 'USD',
+    refunds: [{ transactions: [{ kind: 'refund', status: 'success', amount: '10.00' }] }],
+  }), null);
 });
