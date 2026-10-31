@@ -461,7 +461,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     try:
         stores_result = db.execute(
             text("""
-                SELECT id, last_synced_at, platform
+                SELECT id, last_synced_at, platform, status
                 FROM stores
                 WHERE organization_id = :org_id
                   AND (status IN ('active', 'syncing', 'error') OR status = 'connected')
@@ -470,9 +470,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             {"org_id": organization_id},
         ).fetchall()
         store_ids = [str(r[0]) for r in stores_result]
-        shopify_store_ids = [str(r[0]) for r in stores_result if str(r[2] or "").lower() == "shopify"]
+        shopify_store_ids = [str(r[0]) for r in stores_result if str(r[2] or "").lower() == "shopify" and str(r[3] or "").lower() in {"active", "connected", "syncing"}]
         sync_times = [r[1] for r in stores_result if r[1] is not None]
-        shopify_sync_times = [r[1] for r in stores_result if str(r[2] or "").lower() == "shopify" and r[1] is not None]
+        shopify_sync_times = [r[1] for r in stores_result if str(r[2] or "").lower() == "shopify" and str(r[3] or "").lower() in {"active", "connected", "syncing"} and r[1] is not None]
         last_synced_at = min(sync_times) if sync_times else None
         shopify_last_synced_at = min(shopify_sync_times) if shopify_sync_times else None
         if shopify_last_synced_at is not None and shopify_last_synced_at.tzinfo is None:
