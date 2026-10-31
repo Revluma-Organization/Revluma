@@ -202,8 +202,8 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 194 | Phase 3 | Verify AI error classification. | NOT STARTED | — | — | — |
 | 195 | Phase 3 | Verify request rate limiting. | NOT STARTED | — | — | — |
 | 196 | Phase 3 | Verify tenant-isolated conversation retrieval. | NOT STARTED | — | — | — |
-| 197 | Phase 3 | Define Rev evidence retrieval contract. | NOT STARTED | — | — | — |
-| 198 | Phase 3 | Verify revenue evidence retrieval. | NOT STARTED | — | — | — |
+| 197 | Phase 3 | Define Rev evidence retrieval contract. | CONTRACT DEFINED — SOURCE-SPECIFIC VERIFICATION PENDING | [REV-EVIDENCE-RETRIEVAL-CONTRACT](../rev-intelligence/REV-EVIDENCE-RETRIEVAL-CONTRACT.md) | Contract definition on Task 198 PR #233; Tasks 198–203 verify source-specific retrieval | 2026-10-31 |
+| 198 | Phase 3 | Verify revenue evidence retrieval. | IN PROGRESS — NOT CERTIFIED; actual Prisma PostgreSQL integration and final regression suite pending | [TASK-198](validation/TASK-198.md) | PR #233; latest verification commits on feat/task-198-revenue-evidence-verification | 2026-10-31 |
 | 199 | Phase 3 | Verify order evidence retrieval. | NOT STARTED | — | — | — |
 | 200 | Phase 3 | Verify checkout evidence retrieval. | NOT STARTED | — | — | — |
 | 201 | Phase 3 | Verify integration evidence retrieval. | NOT STARTED | — | — | — |
@@ -605,3 +605,59 @@ TASK031 follow-up CI: commit 47ec2608d16d4501621b577a270588fa5b3e1489, run 41028
 
 ## TASK 032 — Checkout-first delivery validation (2026-10-30)
 Baseline `cfbb1f5dc10b032688a001f2f014ac7498f4c70d`. Branch `test/mvp-task-032-checkout-first-delivery`. Report `validation/TASK-032.md`. New isolated PostgreSQL test `Backend/src/tests/task032CheckoutFirst.integration.js`, CI `.github/workflows/task032-checkout-first.yml`. Twelve grouped assertions authored; 60-case acceptance matrix recorded with NOT RUN until actual execution. No production code changes. Status PARTIAL — test execution and comprehensive coverage pending. Task033 not started.
+
+
+## TASK 198 latest verification follow-up — 2026-10-31
+
+PR #233 head `bf4246664931bf7b7fc8055d5587f88cb3f9fa61`; merge-test SHA `d27852b1149774d99d8164fe525091cf14547810`. Backend suite and isolated Task 024–032 workflows passed (runs 41206714885, 41206714924, 41206714926, 41206714974, 41206716538, 41206714803, 41206714845, 41206714870, 41206714950, 41206714921). Rev Python workflow 41206715095 failed applying migration 202609220002_add_zero_touch_automation because `merchant_memories` is absent; Python compile, Task198 PostgreSQL integration, targeted Python regressions and full Python suite were skipped. Prisma schema has 63 models while the checked-in baseline creates 23 tables. Frontend build passed and 29 tests passed, but lint failed (34 errors/16 warnings) and app TypeScript failed (TS5103). Task198 remains IN PROGRESS — NOT CERTIFIED. PR remains draft; no merge or deployment; production unchanged. Full evidence and run URLs are in validation/TASK-198.md.
+
+
+## Final blocker elimination — 2026-10-31
+
+**Status: PASS — CI VERIFIED; PR OPEN / NOT MERGED.**  
+**Verified PR head:** `29a2240a1e3b746f39c01022516cf373a6e021e3`  
+**Base:** `96aa4cfe7be09743e697b8346bb7565fd179deb3`  
+**PR:** https://github.com/Revluma-Organization/Revluma/pull/233 (open, draft, not merged).
+
+### Blockers fixed
+
+- Repaired the disposable PostgreSQL bootstrap. The previous shell heredoc transformed the dollar-quoted PL/pgSQL block into invalid `DO $`; the replacement uses idempotent role-existence checks and ordinary `CREATE ROLE` statements.
+- Added a forward-only organization-slug reconciliation migration because the historical baseline omitted the current required `organizations.slug` field. Existing non-empty slugs are retained; missing values are deterministically backfilled before the unique, non-null constraint is applied.
+- Kept historical baseline migration files unchanged. The clean-database test now executes the baseline from a disposable normalized copy and deploys the complete checked-in migration chain; no `prisma db push` fallback is present in the migration-verification workflow.
+- Fixed the zero-order-value test to compare decimal numeric value rather than requiring a two-decimal string representation for every currency.
+
+### Verification on the exact PR head
+
+| Workflow | Run | Result |
+|---|---:|---|
+| Rev Python regression tests (real migration chain + revenue integration + full Python suite + frontend quality) | 41210437152 | **SUCCESS** |
+| Task 198 actual Prisma schema + revenue integration + full Python suite | 41210437215 | **SUCCESS** |
+| Backend tests | 41210437180 | **SUCCESS** |
+| Backend refresh regression | 41210437235 | **SUCCESS** |
+| Dashboard authentication regression | 41210437162 | **SUCCESS** |
+| Task 024 verified-persistence reconciliation | 41210437245 | **SUCCESS** |
+| Task 025 unresolved reconciliation | 41210437221 | **SUCCESS** |
+| Task 026 conflicts reconciliation | 41210437194 | **SUCCESS** |
+| Task 027 ownership reconciliation | 41210437175 | **SUCCESS** |
+| Task 028 source identifier preservation | 41210437229 | **SUCCESS** |
+| Task 029 checkout completion precedence | 41210437239 | **SUCCESS** |
+| Task 030 delayed checkout event protection | 41210437231 | **SUCCESS** |
+| Task 031 order-first delivery diagnostic | 41210437198 | **SUCCESS** |
+| Task 032 checkout-first delivery diagnostic | 41210437310 | **SUCCESS** |
+
+The Rev Python workflow completed the real Prisma migration initialization, migration status/checksum verification, Python compilation, Task 198 disposable PostgreSQL revenue integration tests, Gemini/routing/web research regressions, and the full Python suite. Full Python result: **606 passed, 1 skipped, 34 warnings**. The single skip is the explicitly opt-in paid/network-dependent live LLM judge benchmark; it requires `RUN_LIVE_LLM_JUDGE=1` and `ANTHROPIC_API_KEY`, so it is intentionally not run in ordinary CI. Targeted Task 198 PostgreSQL integration: **3 passed**. Gemini/routing/web research regressions: **19 passed**.
+
+The separate actual-Prisma-schema workflow also completed schema initialization, the Task 198 actual-schema PostgreSQL integration, and the full Python suite successfully (606 passed, 1 skipped). This is additional evidence; it does not replace the real migration-chain run above.
+
+Frontend quality on this head: Vite production build passed; ESLint completed with **0 errors and 13 warnings**; application TypeScript check passed; tooling TypeScript check passed; dashboard tests passed (**9 files, 29 tests**); aggregate frontend gate passed.
+
+All nine Task 024–032 workflows, backend tests, backend refresh regression and dashboard authentication regression passed on this exact SHA. There are no failed or pending required workflows in the 14-run PR-head set.
+
+### Scope and limitations
+
+- CI verifies the isolated PostgreSQL migration chain and real-schema revenue query behavior, including organization isolation, currency separation, period boundaries, cancellation filtering, trusted coverage and zero/unknown distinctions.
+- One optional live LLM-as-judge benchmark remains skipped by design because it consumes a paid external API key; it is not a Task 198 deterministic acceptance test.
+- No Shopify production-store comparison, production database migration, production deployment, or live merchant data mutation was performed. Those remain post-merge/release validation steps requiring the normal authorization path.
+- PR #233 remains draft/open. No merge or deployment was performed.
+
+**Task 198 CI acceptance is PASS.** Do not describe this as production deployment or live-store verification.

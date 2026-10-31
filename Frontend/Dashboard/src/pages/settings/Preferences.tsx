@@ -77,8 +77,10 @@ export const Preferences: FC = () => {
         language?: string;
         timezone?: string;
         dateFormat?: string;
-      }>("/preferences", undefined, { skipAuthRedirect: true });
-                const prefs = res.data?.data;
+      } | { data?: { theme?: ThemeOption; language?: string; timezone?: string; dateFormat?: string } }>("/preferences", undefined, { skipAuthRedirect: true });
+      const responseBody = res.data;
+      const prefs = (responseBody as { data?: { theme?: ThemeOption; language?: string; timezone?: string; dateFormat?: string } }).data
+        ?? responseBody as { theme?: ThemeOption; language?: string; timezone?: string; dateFormat?: string };
         if (prefs) {
           if (prefs.language) {
             setLanguage(prefs.language);

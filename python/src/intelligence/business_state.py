@@ -267,6 +267,8 @@ class BusinessState:
     next_rebuild_at: datetime
     cart_delta_pct_vs_avg: float | None = None
     observed_drivers: list[dict] = field(default_factory=list)
+    revenue_currency: str | None = None
+    revenue_evidence: dict = field(default_factory=dict)
 
     def is_stale(self) -> bool:
         age_secs = (datetime.now(timezone.utc) - self.generated_at).total_seconds()
@@ -348,6 +350,9 @@ class BusinessState:
                 "revenue_delta_pct": self.revenue_delta_pct,
                 "revenue_trend_7d": self.revenue_trend_7d,
                 "revenue_anomaly": self.revenue_anomaly,
+                "currency": self.revenue_currency,
+                "reporting_timezone": "UTC",
+                "evidence": self.revenue_evidence,
                 "abandoned_cart_count": self.abandoned_cart_count,
                 "abandoned_cart_value": abandoned_cart_value,
                 "cart_anomaly": self.cart_anomaly,
@@ -385,6 +390,9 @@ class BusinessState:
                 "trend_7d": self.revenue_trend_7d,
                 "anomaly": self.revenue_anomaly,
                 "severity": revenue_severity,
+                "currency": self.revenue_currency,
+                "reporting_timezone": "UTC",
+                "evidence": self.revenue_evidence,
             },
             "abandoned_carts": {
                 "count": self.abandoned_cart_count,
@@ -453,7 +461,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     try:
         stores_result = db.execute(
             text("""
-                SELECT id, last_synced_at
+                SELECT id, last_synced_at, platform, status
                 FROM stores
                 WHERE organization_id = :org_id
                   AND (status IN ('active', 'syncing', 'error') OR status = 'connected')
@@ -462,7 +470,13 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             {"org_id": organization_id},
         ).fetchall()
         store_ids = [str(r[0]) for r in stores_result]
-        last_synced_at = stores_result[0][1] if stores_result else None
+        shopify_store_ids = [str(r[0]) for r in stores_result if str(r[2] or "").lower() == "shopify" and str(r[3] or "").lower() in {"active", "connected", "syncing"}]
+        sync_times = [r[1] for r in stores_result if r[1] is not None]
+        shopify_sync_times = [r[1] for r in stores_result if str(r[2] or "").lower() == "shopify" and str(r[3] or "").lower() in {"active", "connected", "syncing"} and r[1] is not None]
+        last_synced_at = min(sync_times) if sync_times else None
+        shopify_last_synced_at = min(shopify_sync_times) if shopify_sync_times else None
+        if shopify_last_synced_at is not None and shopify_last_synced_at.tzinfo is None:
+            shopify_last_synced_at = shopify_last_synced_at.replace(tzinfo=timezone.utc)
     except Exception as exc:
         logger.exception(
             "business_state_stores_failed",
@@ -470,7 +484,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         )
         _rollback_quietly(db)
         store_ids = []
+        shopify_store_ids = []
         last_synced_at = None
+        shopify_last_synced_at = None
         warnings.append("Could not load store data.")
 
     if not store_ids:
@@ -537,71 +553,362 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     next_rebuild_at = generated_at + next_interval
     staleness_threshold_mins = max(1, int(next_interval.total_seconds() / 60))
 
-    # ── 2. Revenue metrics 
+    # ── 2. Revenue metrics
     revenue_today = None
     revenue_yesterday = None
     revenue_delta_pct = None
     revenue_trend_7d = None
     revenue_anomaly = False
+    revenue_currency = None
+    revenue_evidence = {
+        "contract_version": "1.0",
+        "overall_status": "unknown",
+        "generated_at": generated_at.isoformat(),
+        "period": {"timezone": "UTC", "semantics": "[start,end)"},
+        "organization_scope": {"scope": "authorized_organization", "store_count": 0},
+        "items": [],
+        "warnings": ["Revenue evidence has not been verified for this snapshot."],
+        "errors": [],
+    }
 
     try:
-        today = generated_at.date()
+        today = generated_at.astimezone(timezone.utc).date()
         yesterday = today - timedelta(days=1)
         seven_days_ago = today - timedelta(days=7)
         fourteen_days_ago = today - timedelta(days=14)
+        period_start = datetime.combine(fourteen_days_ago, datetime.min.time(), tzinfo=timezone.utc)
+        period_end = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
 
-        rev_result = db.execute(
-            _store_query("""
-                SELECT
-                    DATE(ordered_at AT TIME ZONE 'UTC') as order_date,
-                    SUM(total) as daily_revenue,
-                    COUNT(*) as order_count,
-                    AVG(total) as avg_order_value
-                FROM orders
-                WHERE store_id IN :store_ids
-                  AND ordered_at >= :cutoff
-                GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
-                ORDER BY order_date DESC
-            """),
-            {**store_params, "cutoff": fourteen_days_ago},
-        ).fetchall()
+        revenue_evidence["period"].update({"start": period_start.isoformat(), "end": period_end.isoformat()})
+        revenue_evidence["organization_scope"]["store_count"] = len(shopify_store_ids)
+        if not shopify_store_ids:
+            revenue_evidence["overall_status"] = "unavailable"
+            revenue_evidence["warnings"] = ["No active Shopify store scope was found."]
+            warnings.append("Revenue specialist metrics are unavailable: no active Shopify store scope was found.")
+        else:
+            coverage_rows = db.execute(
+                _store_query("""
+                    SELECT store_id, coverage_start, coverage_end, certified_at, source, source_run_id
+                    FROM intelligence_order_coverage
+                    WHERE organization_id = :org_id
+                      AND store_id IN :store_ids
+                      AND source = 'shopify_verified_history_v1'
+                """),
+                {"org_id": organization_id, "store_ids": tuple(shopify_store_ids)},
+            ).mappings().all()
+            coverage_by_store = {str(row["store_id"]): row for row in coverage_rows}
+            coverage_complete = len(coverage_by_store) == len(shopify_store_ids)
+            if coverage_complete:
+                for store_id in shopify_store_ids:
+                    attestation = coverage_by_store[store_id]
+                    coverage_start = attestation["coverage_start"]
+                    coverage_end = attestation["coverage_end"]
+                    certified_at = attestation["certified_at"]
+                    if coverage_start.tzinfo is None:
+                        coverage_start = coverage_start.replace(tzinfo=timezone.utc)
+                    if coverage_end.tzinfo is None:
+                        coverage_end = coverage_end.replace(tzinfo=timezone.utc)
+                    if certified_at.tzinfo is None:
+                        certified_at = certified_at.replace(tzinfo=timezone.utc)
+                    if (coverage_start.astimezone(timezone.utc) > period_start
+                            or coverage_end.astimezone(timezone.utc) < period_end
+                            or (generated_at - certified_at.astimezone(timezone.utc)).total_seconds() > DEFAULT_STALENESS_MINS * 60):
+                        coverage_complete = False
+                        break
+            if shopify_last_synced_at is None:
+                coverage_complete = False
+            else:
+                sync_at = shopify_last_synced_at
+                if sync_at.tzinfo is None:
+                    sync_at = sync_at.replace(tzinfo=timezone.utc)
+                if (generated_at - sync_at.astimezone(timezone.utc)).total_seconds() > DEFAULT_STALENESS_MINS * 60:
+                    coverage_complete = False
 
-        daily = {str(r[0]): {"revenue": Decimal(str(r[1])), "orders": r[2], "aov": Decimal(str(r[3]))} for r in rev_result}
+            rev_result = db.execute(
+                _store_query("""
+                    SELECT CASE
+                               WHEN UPPER(BTRIM(currency)) ~ '^[A-Z]{3}$' THEN UPPER(BTRIM(currency))
+                               ELSE 'UNKNOWN'
+                           END AS currency,
+                           DATE(ordered_at AT TIME ZONE 'UTC') AS order_date,
+                           SUM(total) AS daily_revenue,
+                           COUNT(DISTINCT id) AS order_count,
+                           AVG(total) AS avg_order_value
+                    FROM orders
+                    WHERE store_id IN :store_ids
+                      AND ordered_at >= :cutoff
+                      AND ordered_at < :period_end
+                      AND LOWER(COALESCE(recovery_status, '')) <> 'cancelled'
+                    GROUP BY CASE
+                                 WHEN UPPER(BTRIM(currency)) ~ '^[A-Z]{3}$' THEN UPPER(BTRIM(currency))
+                                 ELSE 'UNKNOWN'
+                             END,
+                             DATE(ordered_at AT TIME ZONE 'UTC')
+                    ORDER BY order_date DESC, currency
+                """),
+                {
+                    "store_ids": tuple(shopify_store_ids),
+                    "cutoff": period_start,
+                    "period_end": period_end,
+                },
+            ).fetchall()
 
-        revenue_today = daily.get(str(today), {}).get("revenue", Decimal("0"))
-        revenue_yesterday = daily.get(str(yesterday), {}).get("revenue", Decimal("0"))
+            currencies = {str(row[0] or "UNKNOWN").upper() for row in rev_result}
+            if not coverage_complete:
+                coverage_status = "partial" if coverage_rows else "unknown"
+                if shopify_last_synced_at is None:
+                    coverage_status = "unknown"
+                elif (generated_at - shopify_last_synced_at.astimezone(timezone.utc)).total_seconds() > DEFAULT_STALENESS_MINS * 60:
+                    coverage_status = "stale"
+                elif coverage_rows and len(coverage_by_store) == len(shopify_store_ids):
+                    earliest_coverage_start = min(
+                        row["coverage_start"].replace(tzinfo=timezone.utc)
+                        if row["coverage_start"].tzinfo is None else row["coverage_start"]
+                        for row in coverage_rows
+                    )
+                    if period_start < earliest_coverage_start.astimezone(timezone.utc):
+                        coverage_status = "insufficient_history"
+                    elif any(
+                        (generated_at - (row["certified_at"].replace(tzinfo=timezone.utc)
+                         if row["certified_at"].tzinfo is None else row["certified_at"]).astimezone(timezone.utc)).total_seconds()
+                        > DEFAULT_STALENESS_MINS * 60
+                        for row in coverage_rows
+                    ):
+                        coverage_status = "stale"
+                revenue_evidence["overall_status"] = coverage_status
+                revenue_evidence["warnings"] = ["Complete, fresh Shopify order coverage for the last 14 full UTC days is not certified."]
+                warnings.append("Revenue specialist metrics are withheld because complete, fresh Shopify order coverage for the last 14 full UTC days is not certified.")
+            elif len(currencies) > 1 or "UNKNOWN" in currencies:
+                revenue_evidence["overall_status"] = "unsupported"
+                revenue_evidence["warnings"] = ["Revenue totals cannot be combined because the authorized store scope contains mixed or unknown currencies."]
+                warnings.append("Revenue specialist metrics are withheld because the Shopify order scope contains mixed or unknown currencies.")
+            elif len(currencies) == 1:
+                revenue_currency = next(iter(currencies))
+                daily = {
+                    str(row[1]): {
+                        "value": Decimal(str(row[2])),
+                        "count": int(row[3]),
+                    }
+                    for row in rev_result
+                }
+                # The current UTC day is incomplete. Never report it as a full day.
+                yesterday_row = daily.get(str(yesterday), {"value": Decimal("0"), "count": 0})
+                revenue_yesterday = yesterday_row["value"]
+                recent_7d = sum(
+                    (entry["value"] for day, entry in daily.items()
+                     if str(seven_days_ago) <= day < str(today)),
+                    Decimal("0"),
+                )
+                prior_7d = sum(
+                    (entry["value"] for day, entry in daily.items()
+                     if str(fourteen_days_ago) <= day < str(seven_days_ago)),
+                    Decimal("0"),
+                )
+                revenue_evidence["overall_status"] = "available"
+                revenue_evidence["warnings"] = [
+                    "Recorded order values are not gross revenue or independently verified net revenue.",
+                    "The current UTC day is incomplete and is intentionally omitted.",
+                ]
+                source = {
+                    "system": "shopify",
+                    "entity": "orders",
+                    "fields": ["orders.total", "orders.currency", "orders.ordered_at", "orders.recovery_status"],
+                    "record_count": yesterday_row["count"],
+                }
+                freshness_age = max(0, int((generated_at - shopify_last_synced_at).total_seconds()))
+                coverage_run_ids = [str(row["source_run_id"]) for row in coverage_rows]
+                coverage = {
+                    "completeness": "known",
+                    "is_truncated": False,
+                    "source": "shopify_verified_history_v1",
+                    "attestation_run_ids": coverage_run_ids,
+                    "limitations": [
+                        "Cancelled orders are excluded.",
+                        "Payment capture status is not persisted.",
+                        "Refund value is not independently itemized.",
+                    ],
+                }
+                yesterday_start = datetime.combine(yesterday, datetime.min.time(), tzinfo=timezone.utc)
+                today_start = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+                yesterday_value_id = str(uuid.uuid4())
+                yesterday_count_id = str(uuid.uuid4())
+                revenue_evidence["items"].extend([
+                    {
+                        "evidence_id": yesterday_value_id,
+                        "domain": "revenue",
+                        "metric": "recorded_order_value",
+                        "value": str(revenue_yesterday),
+                        "unit": "money",
+                        "currency": revenue_currency,
+                        "status": "available",
+                        "epistemic_type": "observed",
+                        "source": source,
+                        "scope": {"store_count": len(shopify_store_ids)},
+                        "period": {"start": yesterday_start.isoformat(), "end": today_start.isoformat(), "timezone": "UTC", "semantics": "[start,end)"},
+                        "freshness": {"observed_at": generated_at.isoformat(), "source_synced_at": shopify_last_synced_at.isoformat(), "age_seconds": freshness_age},
+                        "coverage": coverage,
+                        "calculation": None,
+                        "warnings": [],
+                    },
+                    {
+                        "evidence_id": yesterday_count_id,
+                        "domain": "revenue",
+                        "metric": "recorded_order_count",
+                        "value": yesterday_row["count"],
+                        "unit": "orders",
+                        "currency": revenue_currency,
+                        "status": "available",
+                        "epistemic_type": "observed",
+                        "source": {**source, "record_count": yesterday_row["count"]},
+                        "scope": {"store_count": len(shopify_store_ids)},
+                        "period": {"start": yesterday_start.isoformat(), "end": today_start.isoformat(), "timezone": "UTC", "semantics": "[start,end)"},
+                        "freshness": {"observed_at": generated_at.isoformat(), "source_synced_at": shopify_last_synced_at.isoformat(), "age_seconds": freshness_age},
+                        "coverage": coverage,
+                        "calculation": None,
+                        "warnings": [],
+                    },
+                ])
+                if yesterday_row["count"]:
+                    revenue_evidence["items"].append({
+                        "evidence_id": str(uuid.uuid4()),
+                        "domain": "revenue",
+                        "metric": "average_order_value",
+                        "value": str(revenue_yesterday / Decimal(yesterday_row["count"])),
+                        "unit": "money",
+                        "currency": revenue_currency,
+                        "status": "available",
+                        "epistemic_type": "calculated",
+                        "source": source,
+                        "scope": {"store_count": len(shopify_store_ids)},
+                        "period": {"start": yesterday_start.isoformat(), "end": today_start.isoformat(), "timezone": "UTC", "semantics": "[start,end)"},
+                        "freshness": {"observed_at": generated_at.isoformat(), "source_synced_at": shopify_last_synced_at.isoformat(), "age_seconds": freshness_age},
+                        "coverage": coverage,
+                        "calculation": {
+                            "formula_id": "recorded_order_average_v1",
+                            "formula": "sum(orders.total) / count(distinct orders.id)",
+                            "input_evidence_ids": [yesterday_value_id, yesterday_count_id],
+                            "rounding": "Decimal arithmetic; no display rounding applied.",
+                            "exclusions": ["recovery_status = cancelled"],
+                        },
+                        "warnings": [],
+                    })
+                current_7d_id = str(uuid.uuid4())
+                previous_7d_id = str(uuid.uuid4())
+                current_7d_start = datetime.combine(seven_days_ago, datetime.min.time(), tzinfo=timezone.utc)
+                previous_7d_start = datetime.combine(fourteen_days_ago, datetime.min.time(), tzinfo=timezone.utc)
+                revenue_evidence["items"].extend([
+                    {
+                        "evidence_id": current_7d_id,
+                        "domain": "revenue",
+                        "metric": "recorded_order_value_7d",
+                        "value": str(recent_7d),
+                        "unit": "money",
+                        "currency": revenue_currency,
+                        "status": "available",
+                        "epistemic_type": "observed",
+                        "source": {**source, "record_count": sum(entry["count"] for day, entry in daily.items() if str(seven_days_ago) <= day < str(today))},
+                        "scope": {"store_count": len(shopify_store_ids)},
+                        "period": {"start": current_7d_start.isoformat(), "end": today_start.isoformat(), "timezone": "UTC", "semantics": "[start,end)"},
+                        "freshness": {"observed_at": generated_at.isoformat(), "source_synced_at": shopify_last_synced_at.isoformat(), "age_seconds": freshness_age},
+                        "coverage": coverage,
+                        "calculation": None,
+                        "warnings": [],
+                    },
+                    {
+                        "evidence_id": previous_7d_id,
+                        "domain": "revenue",
+                        "metric": "recorded_order_value_7d",
+                        "value": str(prior_7d),
+                        "unit": "money",
+                        "currency": revenue_currency,
+                        "status": "available",
+                        "epistemic_type": "observed",
+                        "source": {**source, "record_count": sum(entry["count"] for day, entry in daily.items() if str(fourteen_days_ago) <= day < str(seven_days_ago))},
+                        "scope": {"store_count": len(shopify_store_ids)},
+                        "period": {"start": previous_7d_start.isoformat(), "end": current_7d_start.isoformat(), "timezone": "UTC", "semantics": "[start,end)"},
+                        "freshness": {"observed_at": generated_at.isoformat(), "source_synced_at": shopify_last_synced_at.isoformat(), "age_seconds": freshness_age},
+                        "coverage": coverage,
+                        "calculation": None,
+                        "warnings": [],
+                    },
+                ])
+                if prior_7d > 0:
+                    revenue_trend_7d_decimal = (recent_7d - prior_7d) / prior_7d * Decimal("100")
+                    revenue_trend_7d = float(revenue_trend_7d_decimal)
+                    revenue_evidence["items"].append({
+                        "evidence_id": str(uuid.uuid4()),
+                        "domain": "revenue",
+                        "metric": "revenue_trend_7d",
+                        "value": str(revenue_trend_7d_decimal),
+                        "unit": "percent",
+                        "currency": revenue_currency,
+                        "status": "available",
+                        "epistemic_type": "calculated",
+                        "source": {
+                            **source,
+                            "record_count": (
+                                sum(entry["count"] for day, entry in daily.items() if str(seven_days_ago) <= day < str(today))
+                                + sum(entry["count"] for day, entry in daily.items() if str(fourteen_days_ago) <= day < str(seven_days_ago))
+                            ),
+                        },
+                        "scope": {"store_count": len(shopify_store_ids)},
+                        "period": {"start": previous_7d_start.isoformat(), "end": today_start.isoformat(), "timezone": "UTC", "semantics": "[start,end)"},
+                        "freshness": {"observed_at": generated_at.isoformat(), "source_synced_at": shopify_last_synced_at.isoformat(), "age_seconds": freshness_age},
+                        "coverage": coverage,
+                        "calculation": {
+                            "formula_id": "recorded_order_value_change_pct_v1",
+                            "formula": "(current_7d - previous_7d) / previous_7d * 100",
+                            "input_evidence_ids": [current_7d_id, previous_7d_id],
+                            "rounding": "Decimal division; output serialized as finite percentage.",
+                            "exclusions": ["recovery_status = cancelled"],
+                        },
+                        "warnings": [],
+                    })
+            else:
+                revenue_evidence["overall_status"] = "unsupported"
+                revenue_evidence["warnings"] = ["No currency-bearing order records exist in the verified window; a monetary zero cannot be assigned a store currency."]
+                warnings.append("Revenue specialist metrics are unavailable because no currency-bearing order records exist in the verified window.")
 
-        if revenue_yesterday and revenue_yesterday > 0:
-            revenue_delta_pct = float((revenue_today - revenue_yesterday) / revenue_yesterday * 100)
-
-        # 7d trend: compare last 7 days vs prior 7 days
-        recent_7d = sum(v["revenue"] for k, v in daily.items() if str(seven_days_ago) <= k <= str(today))
-        prior_7d  = sum(v["revenue"] for k, v in daily.items() if str(fourteen_days_ago) <= k < str(seven_days_ago))
-        if prior_7d and prior_7d > 0:
-            revenue_trend_7d = float((recent_7d - prior_7d) / prior_7d * 100)
-
-        weekday_baselines = _json_value(baseline.get("day_of_week_baseline"), {})
-        weekday_baseline = weekday_baselines.get(str(today.weekday()), {})
-        expected_revenue = float(weekday_baseline.get("average_revenue") or 0)
-        revenue_stddev = float(weekday_baseline.get("stddev_revenue") or 0)
-        if expected_revenue > 0:
-            baseline_delta = abs(float(revenue_today) - expected_revenue)
-            revenue_anomaly = (
-                baseline_delta > 2 * revenue_stddev
-                if revenue_stddev > 0
-                else baseline_delta / expected_revenue > 0.30
-            )
-        elif revenue_delta_pct is not None:
-            revenue_anomaly = revenue_delta_pct < -20 or revenue_delta_pct > 50
-
+            for unsupported_metric in ("gross_revenue", "net_revenue", "refund_value"):
+                revenue_evidence["items"].append({
+                    "evidence_id": str(uuid.uuid4()),
+                    "domain": "revenue",
+                    "metric": unsupported_metric,
+                    "value": None,
+                    "unit": "money",
+                    "currency": None,
+                    "status": "unsupported",
+                    "epistemic_type": "observed",
+                    "source": {"system": "shopify", "entity": "orders", "fields": [], "record_count": 0},
+                    "scope": {"store_count": len(shopify_store_ids)},
+                    "period": revenue_evidence["period"],
+                    "freshness": {"observed_at": generated_at.isoformat(),
+                                  "source_synced_at": shopify_last_synced_at.isoformat() if shopify_last_synced_at else None,
+                                  "age_seconds": max(0, int((generated_at - shopify_last_synced_at).total_seconds())) if shopify_last_synced_at else None},
+                    "coverage": {"completeness": "known" if coverage_complete else "unknown",
+                                 "is_truncated": False,
+                                 "attestation_run_ids": [str(row["source_run_id"]) for row in coverage_rows]},
+                    "calculation": None,
+                    "warnings": ["No independent gross-sales or refund ledger/payment-status evidence is persisted."],
+                })
     except Exception as exc:
         logger.exception(
             "business_state_revenue_failed",
             extra={"org_id": organization_id, "error_type": type(exc).__name__},
         )
         _rollback_quietly(db)
-        warnings.append("Revenue metrics could not be computed.")
+        warnings.append("Revenue metrics could not be computed or coverage could not be verified.")
         computation_status = "partial"
+        revenue_today = None
+        revenue_yesterday = None
+        revenue_delta_pct = None
+        revenue_trend_7d = None
+        revenue_currency = None
+        revenue_evidence["overall_status"] = "unavailable"
+        revenue_evidence["items"] = []
+        revenue_evidence["errors"] = [{"code": "REVENUE_BUSINESS_STATE_QUERY_FAILED"}]
+        revenue_evidence["warnings"] = ["Revenue evidence could not be computed or its coverage could not be verified."]
+        revenue_evidence["items"] = []
 
     # ── 3. Cart abandonment metrics 
     abandoned_cart_count = None
@@ -901,6 +1208,11 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         "returning_customer_rate_delta": returning_customer_rate_delta,
         "cart_delta_pct_vs_avg": cart_delta_pct_vs_avg,
         "inventory_signals": inventory_signals,
+        "revenue_currency": revenue_currency,
+        "revenue_evidence": revenue_evidence,
+        "revenue_reporting_timezone": "UTC",
+        "revenue_period_start": period_start.isoformat() if "period_start" in locals() else None,
+        "revenue_period_end": period_end.isoformat() if "period_end" in locals() else None,
     }
     state_metadata = {
         "warnings": warnings,
@@ -1097,6 +1409,8 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         next_rebuild_at=next_rebuild_at,
         cart_delta_pct_vs_avg=cart_delta_pct_vs_avg,
         observed_drivers=observed_drivers,
+        revenue_currency=revenue_currency,
+        revenue_evidence=revenue_evidence,
     )
 
 
@@ -1175,6 +1489,8 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
             next_rebuild_at=next_rebuild_at,
             cart_delta_pct_vs_avg=source_data.get("cart_delta_pct_vs_avg"),
             observed_drivers=metadata.get("observed_drivers", []) if isinstance(metadata.get("observed_drivers", []), list) else [],
+            revenue_currency=source_data.get("revenue_currency"),
+            revenue_evidence=source_data.get("revenue_evidence") or {},
         )
     except Exception as exc:
         logger.exception(

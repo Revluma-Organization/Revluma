@@ -172,9 +172,10 @@ export const Notifications: FC = () => {
     useEffect(() => {
     const fetchPreferences = async () => {
       try {
-        const res = await api.get("/settings/notifications");
-        
-        const prefsData = res.data?.data || res.data;
+        const res = await api.get<{ emailPreferences?: Record<string, boolean>; inAppPreferences?: Record<string, boolean> } | { data?: { emailPreferences?: Record<string, boolean>; inAppPreferences?: Record<string, boolean> } }>("/settings/notifications");
+        const responseBody = res.data;
+        const prefsData = (responseBody as { data?: { emailPreferences?: Record<string, boolean>; inAppPreferences?: Record<string, boolean> } }).data
+          ?? responseBody as { emailPreferences?: Record<string, boolean>; inAppPreferences?: Record<string, boolean> };
 
         if (prefsData) {
           if (prefsData.emailPreferences) setEmailPreferences(prefsData.emailPreferences);

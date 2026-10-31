@@ -42,6 +42,7 @@ export class ApiError extends Error {
 export interface RequestOptions {
   params?: Record<string, unknown>;
   body?: unknown;
+  headers?: Record<string, string>;
   /** When true, 401 does not purge session / redirect (used by logout + refresh). */
   skipAuthRedirect?: boolean;
 }
@@ -180,6 +181,7 @@ async function request<T>(
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
+  Object.assign(headers, options.headers ?? {});
 
   let response: Response;
   try {

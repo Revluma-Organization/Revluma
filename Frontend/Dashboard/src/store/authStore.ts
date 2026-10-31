@@ -24,7 +24,9 @@ export interface User {
   email_verified: boolean;
   onboarding_status: string;
   membership_tier?: string;
-  account_status?: string;
+  account_status?: 'free' | 'in_trial' | 'trial_expired' | 'premium';
+  status?: 'free' | 'in_trial' | 'trial_expired' | 'premium';
+  two_factor_enabled?: boolean;
   last_login_at?: string | null;
   organization_memberships?: OrgMembership[];
 }
@@ -55,6 +57,18 @@ interface AuthActions {
   /** Reset in-memory auth state after a cross-tab logout (storage already cleared). */
   resetLocalAuthState: () => void;
 }
+
+type AuthUserPayload = { id: string; email: string; full_name: string; profile_picture_url?: string | null; role?: string };
+type AuthSessionPayload = { access_token: string; refresh_token: string; user: AuthUserPayload };
+type LoginResponsePayload = {
+  requires_2fa?: boolean;
+  temp_token?: string;
+  data?: AuthSessionPayload & { requires_2fa?: boolean; temp_token?: string; access_token?: string };
+};
+type OtpVerificationPayload = {
+  resetToken?: string; reset_token?: string; token?: string;
+  data?: { resetToken?: string; reset_token?: string };
+};
 
 type AuthStore = AuthState & AuthActions;
 
@@ -105,12 +119,14 @@ export const useAuthStore = create<AuthStore>()(
       verifyOtp: async (email, otp) => {
   set({ loading: true, error: null });
   try {
-    const res = await api.post<any>('/auth/forgot-password/verify', {
+    const res = await api.post<OtpVerificationPayload>('/auth/forgot-password/verify', {
       email,
       code: otp,
     });
+    const resetToken = res.data.resetToken || res.data.reset_token || res.data.data?.resetToken || res.data.data?.reset_token || res.data.token;
+    if (!resetToken) throw new Error('Password reset token was not returned');
     set({ loading: false });
-    return res.data.resetToken || res.data.data.resetToken;
+    return { resetToken };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Invalid OTP';
     set({ loading: false, error: message });
@@ -138,20 +154,21 @@ export const useAuthStore = create<AuthStore>()(
       login: async (email, password) => {
         set({ loading: true, error: null });
         try {
-          // Changed typing to 'any' to dynamically handle both 2FA and normal login responses
-          const res = await api.post<any>('/auth/login', { account: { email, password } });
+                    const res = await api.post<LoginResponsePayload>('/auth/login', { account: { email, password } });
 
           // --- PHASE 1: 2FA INTERCEPTION ---
-          if (res.data.requires_2fa || res.data.data?.requires_2fa) {
+          const loginData = res.data.data;
+          if (res.data.requires_2fa || loginData?.requires_2fa) {
             set({ loading: false });
             return { 
               requires2FA: true, 
-              tempToken: res.data.temp_token || res.data.data?.temp_token || res.data.data?.access_token 
+              tempToken: res.data.temp_token || loginData?.temp_token || loginData?.access_token 
             };
           }
 
           // --- PHASE 1: STANDARD LOGIN (If 2FA is OFF) ---
-          const { access_token, refresh_token, user } = res.data.data;
+          if (!loginData?.access_token || !loginData.refresh_token || !loginData.user) throw new Error('Login response did not contain a complete authenticated session');
+          const { access_token, refresh_token, user } = loginData;
 
           storeRefreshToken(refresh_token);
           broadcastLogin();
@@ -164,8 +181,8 @@ export const useAuthStore = create<AuthStore>()(
               full_name: user.full_name,
               display_name: user.full_name.split(' ')[0],
               avatar_url: null,
-              profile_picture_url: (user as any).profile_picture_url || null,
-              role: (user as any).role || 'member', 
+              profile_picture_url: user.profile_picture_url || null,
+              role: user.role || 'member', 
               tenant_id: '',
               email_verified: true,
               onboarding_status: 'completed',
@@ -173,7 +190,7 @@ export const useAuthStore = create<AuthStore>()(
             loading: false,
             error: null,
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           set({ loading: false, error: 'Invalid email or password. Please try again.' });
           throw err;
         }
@@ -184,7 +201,7 @@ export const useAuthStore = create<AuthStore>()(
         set({ loading: true, error: null });
         try {
           // Pass the boolean to backend's endpoint
-          const res = await api.post<any>('/auth/2fa/verify', 
+          const res = await api.post<{ data: AuthSessionPayload }>('/auth/2fa/verify', 
             { code, trust_device: trustDevice }, 
             { headers: { Authorization: `Bearer ${tempToken}` } }
           );
@@ -203,8 +220,8 @@ export const useAuthStore = create<AuthStore>()(
               full_name: user.full_name,
               display_name: user.full_name.split(' ')[0],
               avatar_url: null,
-              profile_picture_url: (user as any).profile_picture_url || null,
-              role: (user as any).role || 'member', 
+              profile_picture_url: user.profile_picture_url || null,
+              role: user.role || 'member', 
               tenant_id: '',
               email_verified: true,
               onboarding_status: 'completed',
@@ -212,7 +229,7 @@ export const useAuthStore = create<AuthStore>()(
             loading: false,
             error: null,
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
           set({ loading: false, error: 'Invalid 2FA code. Please try again.' });
           throw err;
         }

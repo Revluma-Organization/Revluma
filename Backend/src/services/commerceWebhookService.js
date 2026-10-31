@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { prisma } = require('../configs/database');
+const { Prisma } = require('@prisma/client');
 const logger = require('../utils/logger');
 const { rfmSync } = require('./mlService');
 const { lastCheckoutActivity, nextCheckoutStatus } = require('./checkoutInactivity');
@@ -96,22 +97,115 @@ async function recalculateCustomerTotals(tx, customerId) {
  * failed transactions and do not subtract the order's current_total_price twice.
  * Return null for malformed refund evidence rather than inventing net revenue.
  */
+function shopifyMoneySet(value) {
+  const money = value?.shopMoney;
+  if (!money || money.amount === null || money.amount === undefined || money.amount === '') return null;
+  const currency = typeof money.currencyCode === 'string'
+    ? money.currencyCode.trim().toUpperCase()
+    : '';
+  if (!/^[A-Z]{3}$/.test(currency)) return null;
+  try {
+    const amount = new Prisma.Decimal(String(money.amount));
+    if (!amount.isFinite() || amount.isNegative() || amount.decimalPlaces() > 2 ||
+        amount.greaterThan('99999999.99')) return null;
+    return { amount, currency };
+  } catch {
+    return null;
+  }
+}
+
+function shopifyRefundTransactions(refund) {
+  const transactions = refund?.transactions;
+  if (Array.isArray(transactions)) return transactions;
+  if (Array.isArray(transactions?.nodes)) return transactions.nodes;
+  if (Array.isArray(transactions?.edges)) return transactions.edges.map((edge) => edge?.node).filter(Boolean);
+  return null;
+}
+
+/**
+ * Shopify REST webhooks expose amount/currency directly on refund transactions.
+ * Shopify Admin GraphQL exposes amountSet.shopMoney and may wrap transactions
+ * in a connection. currentTotalPriceSet is already net of refunds, so it must
+ * never be reduced a second time.
+ */
 function shopifyNetOrderTotal(payload) {
-  const gross = Number(payload.total_price);
-  if (!Number.isFinite(gross) || gross < 0) return null;
-  if (!Array.isArray(payload.refunds) || payload.refunds.length === 0) return gross;
-  let refunded = 0;
-  for (const refund of payload.refunds) {
-    if (!Array.isArray(refund.transactions)) return null;
-    for (const transaction of refund.transactions) {
-      if (String(transaction.kind || '').toLowerCase() !== 'refund') continue;
-      if (String(transaction.status || '').toLowerCase() !== 'success') continue;
-      const amount = Number(transaction.amount);
-      if (!Number.isFinite(amount) || amount < 0) return null;
-      refunded += amount;
+  if (!payload || typeof payload !== 'object') return null;
+
+  const currentTotal = shopifyMoneySet(payload.currentTotalPriceSet);
+  if (payload.currentTotalPriceSet !== undefined && payload.currentTotalPriceSet !== null) {
+    const orderCurrency = String(
+      payload.currency || payload.currency_code || currentTotal?.currency || ''
+    ).trim().toUpperCase();
+    if (!currentTotal || !orderCurrency || currentTotal.currency !== orderCurrency) return null;
+    return currentTotal.amount.toFixed(2);
+  }
+
+  const graphQlGross = shopifyMoneySet(payload.totalPriceSet);
+  let gross;
+  let orderCurrency = String(payload.currency || payload.currency_code || '').trim().toUpperCase();
+  if (payload.total_price !== null && payload.total_price !== undefined && payload.total_price !== '') {
+    try {
+      gross = new Prisma.Decimal(String(payload.total_price));
+    } catch {
+      return null;
+    }
+  } else if (graphQlGross) {
+    gross = graphQlGross.amount;
+    if (!orderCurrency) orderCurrency = graphQlGross.currency;
+  } else {
+    return null;
+  }
+
+  if (!/^[A-Z]{3}$/.test(orderCurrency) || !gross.isFinite() || gross.isNegative() ||
+      gross.decimalPlaces() > 2 || gross.greaterThan('99999999.99')) return null;
+
+  const rawRefunds = payload.refunds;
+  const refunds = Array.isArray(rawRefunds)
+    ? rawRefunds
+    : Array.isArray(rawRefunds?.nodes)
+      ? rawRefunds.nodes
+      : Array.isArray(rawRefunds?.edges)
+        ? rawRefunds.edges.map((edge) => edge?.node).filter(Boolean)
+        : null;
+  if (!refunds) return null;
+  if (refunds.length === 0) return gross.toFixed(2);
+
+  let refunded = new Prisma.Decimal(0);
+  for (const refund of refunds) {
+    const transactions = shopifyRefundTransactions(refund);
+    if (!transactions || transactions.length === 0) return null;
+    for (const transaction of transactions) {
+      if (String(transaction?.kind || '').toLowerCase() !== 'refund') return null;
+      const status = String(transaction.status || '').toLowerCase();
+      if (!['success', 'failure', 'failed', 'pending', 'error', 'voided'].includes(status)) return null;
+      if (status !== 'success') continue;
+
+      const graphQlAmount = shopifyMoneySet(transaction.amountSet);
+      const amountValue = transaction.amount ?? transaction.amount_set?.amount ?? graphQlAmount?.amount;
+      const transactionCurrency = String(
+        transaction.currency || transaction.currency_code || graphQlAmount?.currency || ''
+      ).trim().toUpperCase();
+      if (!transactionCurrency || transactionCurrency !== orderCurrency ||
+          amountValue === null || amountValue === undefined || amountValue === '') return null;
+
+      let amount;
+      try {
+        amount = amountValue instanceof Prisma.Decimal
+          ? amountValue
+          : new Prisma.Decimal(String(amountValue));
+      } catch {
+        return null;
+      }
+      if (!amount.isFinite() || amount.isNegative() || amount.decimalPlaces() > 2 ||
+          amount.greaterThan('99999999.99')) return null;
+      refunded = refunded.plus(amount);
     }
   }
-  return Math.max(0, Math.round((gross - refunded) * 100) / 100);
+
+  const adjusted = gross.minus(refunded);
+  // An over-refund is contradictory financial evidence, not a verified zero.
+  if (adjusted.isNegative()) return null;
+  return adjusted.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2);
 }
 
 // Task 025: safe, bounded diagnostic identity. Never persist customer details or raw payloads.
@@ -180,17 +274,21 @@ async function upsertOrder(store, provider, payload) {
   const orderExternalId = String(payload.id || payload.order_id);
   const orderDate = new Date(payload.created_at || payload.date_created || Date.now());
   const calculated = provider === 'shopify' ? shopifyNetOrderTotal(payload) : Number(payload.total_price ?? payload.total ?? 0);
-  if (calculated === null || !Number.isFinite(calculated)) {
+  if (calculated === null || (provider !== 'shopify' && !Number.isFinite(calculated))) {
     const error = new Error('Order financial totals cannot be verified');
     error.code = 'ORDER_FINANCIAL_TOTAL_UNVERIFIED';
     throw error;
   }
-  const total = calculated;
+  // Prisma Decimal is passed to the DECIMAL(10,2) column directly; never
+  // round-trip Shopify order value through a JavaScript Number.
+  const total = provider === 'shopify' ? new Prisma.Decimal(calculated) : calculated;
   const subtotal = Number(payload.subtotal_price ?? payload.subtotal ?? total);
   const discountAmount = Math.max(0, Number(payload.total_discounts ?? payload.discount_total ?? 0));
   const discountPct = subtotal > 0 ? Math.min(100, (discountAmount / subtotal) * 100) : 0;
   const couponCode = payload.discount_codes?.[0]?.code || payload.coupon_lines?.[0]?.code || null;
-  const currency = payload.currency || 'USD';
+  const currency = typeof payload.currency === 'string' && /^[A-Za-z]{3}$/.test(payload.currency.trim())
+    ? payload.currency.trim().toUpperCase()
+    : null;
   const lineItems = payload.line_items || payload.products || [];
 
   return prisma.$transaction(async (tx) => {
@@ -240,7 +338,7 @@ async function upsertOrder(store, provider, payload) {
         subtotal,
         discount_amount: discountAmount,
         discount_pct: discountPct,
-        currency,
+        currency: currency || null,
         coupon_used: Boolean(payload.discount_codes?.length || payload.coupon_lines?.length),
         coupon_code: couponCode,
         ordered_at: orderDate,
@@ -250,7 +348,7 @@ async function upsertOrder(store, provider, payload) {
         customer_id: dbCustomer.id,
         ...safeOrderEvidence,
         total,
-        currency,
+        currency: currency || null,
         ordered_at: orderDate,
         subtotal,
         discount_amount: discountAmount,

@@ -19,8 +19,23 @@ jobs:
   python-regressions:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: revluma_test
+          POSTGRES_USER: revluma
+          POSTGRES_PASSWORD: task198_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U revluma -d revluma_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
-      DATABASE_URL: postgresql+psycopg2://placeholder:placeholder@localhost:5432/placeholder
+      DATABASE_URL: postgresql+psycopg2://revluma:task198_test_only@localhost:5432/revluma_test
+      TASK198_DATABASE_URL: postgresql+psycopg2://revluma:task198_test_only@localhost:5432/revluma_test
     defaults:
       run:
         working-directory: python
@@ -35,8 +50,59 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt pytest
+      - name: Set up Node.js for the repository Prisma migrations
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - name: Install backend dependencies
+        working-directory: Backend
+        run: npm ci
+      - name: Initialize the real application schema with Prisma migrations
+        id: prisma_migrations
+        working-directory: Backend
+        env:
+          DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
+          DIRECT_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
+        run: |
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          # Supabase-managed roles referenced by the checked-in RLS migration are not
+          # present in the vanilla disposable PostgreSQL service.
+          if ! PGPASSWORD=task198_test_only psql -h 127.0.0.1 -U revluma -d revluma_test -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'anon'" | grep -q 1; then
+            PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE ROLE anon NOLOGIN'
+          fi
+          if ! PGPASSWORD=task198_test_only psql -h 127.0.0.1 -U revluma -d revluma_test -tAc "SELECT 1 FROM pg_roles WHERE rolname = 'authenticated'" | grep -q 1; then
+            PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE ROLE authenticated NOLOGIN'
+          fi
+          # Preserve the checked-in historical migration; execute a disposable copy.
+          mkdir -p "$RUNNER_TEMP/task198-prisma"
+          cp prisma/schema.prisma "$RUNNER_TEMP/task198-prisma/schema.prisma"
+          cp -R prisma/migrations "$RUNNER_TEMP/task198-prisma/migrations"
+          printf 'provider = "postgresql"\n' > "$RUNNER_TEMP/task198-prisma/migrations/migration_lock.toml"
+          # The historical baseline is UTF-16LE with a stray dotenv diagnostic before its SQL.
+          # Normalize only the disposable copy; never rewrite the checked-in migration checksum.
+          iconv -f UTF-16LE -t UTF-8 "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql" > "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.utf8.sql"
+          mv "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.utf8.sql" "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql"
+          sed -i '1{/injected env/d;}' "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql"
+          # Execute the baseline SQL through psql so PostgreSQL reports the exact failing statement if it is invalid.
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -f "$RUNNER_TEMP/task198-prisma/migrations/0_baseline/migration.sql"
+          npx prisma migrate resolve --applied 0_baseline --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
+          npx prisma migrate deploy --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
+      - name: Verify Prisma migration status and record applied checksums
+        working-directory: Backend
+        env:
+          DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
+          DIRECT_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
+        run: |
+          npx prisma migrate status --schema "$RUNNER_TEMP/task198-prisma/schema.prisma"
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'SELECT migration_name, checksum, finished_at FROM "_prisma_migrations" WHERE rolled_back_at IS NULL ORDER BY started_at;'
       - name: Compile Python sources and tests
         run: python -m compileall -q src tests
+      - name: Run Task 198 disposable PostgreSQL revenue integration tests
+        env:
+          TASK198_DATABASE_URL: postgresql+psycopg2://revluma:task198_test_only@127.0.0.1:5432/revluma_test
+        run: python -m pytest -q tests/test_revenue_evidence_postgres.py
       - name: Run Gemini, routing and web research regressions
         run: python -m pytest -q tests/test_model_gateway.py tests/test_rev_failure_routing.py
       - name: Run all Python tests
@@ -46,3 +112,58 @@ jobs:
         run: |
           python --version
           python -m pip list --format=columns
+
+  frontend-build:
+    name: Independent Vercel-equivalent frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Frontend/Dashboard/package-lock.json
+      - name: Install dashboard dependencies
+        working-directory: Frontend/Dashboard
+        run: npm ci --include=dev
+      - name: Run the configured Vercel Vite build command
+        id: dashboard_build
+        continue-on-error: true
+        working-directory: Frontend/Dashboard
+        run: npm run build -- --outDir ../dashboard --emptyOutDir
+      - name: Run dashboard lint
+        id: dashboard_lint
+        continue-on-error: true
+        working-directory: Frontend/Dashboard
+        run: npm run lint
+      - name: Type-check dashboard application
+        id: dashboard_app_types
+        continue-on-error: true
+        working-directory: Frontend/Dashboard
+        run: npx tsc --noEmit -p tsconfig.app.json
+      - name: Type-check dashboard tooling
+        id: dashboard_node_types
+        continue-on-error: true
+        working-directory: Frontend/Dashboard
+        run: npx tsc --noEmit -p tsconfig.node.json
+      - name: Run dashboard tests
+        id: dashboard_tests
+        continue-on-error: true
+        working-directory: Frontend/Dashboard
+        run: npm test
+      - name: Aggregate dashboard quality checks
+        if: always()
+        env:
+          BUILD_OUTCOME: ${{ steps.dashboard_build.outcome }}
+          LINT_OUTCOME: ${{ steps.dashboard_lint.outcome }}
+          APP_TYPES_OUTCOME: ${{ steps.dashboard_app_types.outcome }}
+          NODE_TYPES_OUTCOME: ${{ steps.dashboard_node_types.outcome }}
+          TESTS_OUTCOME: ${{ steps.dashboard_tests.outcome }}
+        run: |
+          printf 'Vite build: %s\\nDashboard lint: %s\\nApp type-check: %s\\nTooling type-check: %s\\nDashboard tests: %s\\n' "$BUILD_OUTCOME" "$LINT_OUTCOME" "$APP_TYPES_OUTCOME" "$NODE_TYPES_OUTCOME" "$TESTS_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          test "$BUILD_OUTCOME" = success
+          test "$LINT_OUTCOME" = success
+          test "$APP_TYPES_OUTCOME" = success
+          test "$NODE_TYPES_OUTCOME" = success
+          test "$TESTS_OUTCOME" = success

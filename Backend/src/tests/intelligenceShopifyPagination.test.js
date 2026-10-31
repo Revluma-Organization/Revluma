@@ -56,7 +56,7 @@ test('order import prefers Shopify adjusted total over original total', () => {
     totalPriceSet: { shopMoney: { amount: '100.00', currencyCode: 'NGN' } },
     lineItems: { nodes: [] },
   });
-  assert.equal(payload.total_price, 70);
+  assert.equal(payload.total_price, '70.00');
   assert.equal(payload.currency, 'NGN');
 });
 
@@ -82,4 +82,44 @@ test('optional ML prediction rejection is contained', async () => {
   await assert.doesNotReject(evaluateCartWithDeadline(async () => {
     throw Object.assign(new Error('prediction unavailable'), { code: 'PREDICTION_UNAVAILABLE' });
   }, 'store-test', 'cart-test', 100));
+});
+
+test('order import does not invent USD when Shopify omits currency', () => {
+  const payload = orderPayload({
+    id: 'gid://shopify/Order/124', createdAt: '2026-10-01T00:00:00Z',
+    currentTotalPriceSet: { shopMoney: { amount: '12.34' } },
+    lineItems: { nodes: [] },
+  });
+  assert.equal(payload.total_price, '12.34');
+  assert.equal(payload.currency, null);
+});
+test('order import does not turn a missing money amount into zero', () => {
+  const payload = orderPayload({
+    id: 'gid://shopify/Order/125', createdAt: '2026-10-01T00:00:00Z',
+    currentTotalPriceSet: null, totalPriceSet: null,
+    lineItems: { nodes: [] },
+  });
+  assert.equal(payload.total_price, null);
+  assert.equal(payload.currency, null);
+});
+
+test('order import preserves high precision decimal source strings', () => {
+  const payload = orderPayload({
+    id: 'gid://shopify/Order/126', createdAt: '2026-10-01T00:00:00Z',
+    currentTotalPriceSet: { shopMoney: { amount: '90000000.13', currencyCode: 'USD' } },
+    lineItems: { nodes: [] },
+  });
+  assert.equal(payload.total_price, '90000000.13');
+  assert.equal(payload.currency, 'USD');
+});
+
+test('Shopify order import rejects amounts that the DECIMAL(10,2) column cannot preserve', () => {
+  for (const amount of ['1.234', '100000000.00', '-1.00', 'not-money']) {
+    const payload = orderPayload({
+      id: 'gid://shopify/Order/127', createdAt: '2026-10-01T00:00:00Z',
+      currentTotalPriceSet: { shopMoney: { amount, currencyCode: 'USD' } },
+      lineItems: { nodes: [] },
+    });
+    assert.equal(payload.total_price, null, amount);
+  }
 });

@@ -6,8 +6,8 @@ const {upsertOrder,upsertAbandonedCart}=require('../services/commerceWebhookServ
 if(process.env.TASK029_ISOLATED_DB!=='true'||!String(process.env.DATABASE_URL||'').includes('@127.0.0.1:5432/task029'))throw Error('Disposable task029 database required');
 const tag=randomUUID().slice(0,8),key=x=>'t029-'+tag+'-'+x,results=[],store={id:randomUUID(),platform:'shopify'},other={id:randomUUID(),platform:'shopify'};
 async function check(id,fn){try{await fn();results.push({id,status:'PASS'})}catch(e){results.push({id,status:'FAIL',error:e.message.slice(0,200)})}}
-async function cart(s,id,extra={}){return upsertAbandonedCart(s,{id:key(id),token:key('token-'+id),created_at:new Date(Date.now()-3600000).toISOString(),updated_at:new Date(Date.now()-3600000).toISOString(),total_price:'25',currency:'USD',...extra})}
-async function order(s,id,extra={}){await upsertOrder(s,'shopify',{id:key('order-'+id),created_at:new Date().toISOString(),total_price:'25',currency:'USD',...extra});return prisma.orders.findUniqueOrThrow({where:{store_id_external_order_id:{store_id:s.id,external_order_id:key('order-'+id)}}})}
+async function cart(s,id,extra={}){return upsertAbandonedCart(s,{id:key(id),token:key('token-'+id),created_at:new Date(Date.now()-3600000).toISOString(),updated_at:new Date(Date.now()-3600000).toISOString(),total_price:'25',currency:'USD',refunds:[],...extra})}
+async function order(s,id,extra={}){await upsertOrder(s,'shopify',{id:key('order-'+id),created_at:new Date().toISOString(),total_price:'25',currency:'USD',refunds:[],...extra});return prisma.orders.findUniqueOrThrow({where:{store_id_external_order_id:{store_id:s.id,external_order_id:key('order-'+id)}}})}
 async function run(){try{
 const user=randomUUID(),org=randomUUID();
 await prisma.users.create({data:{id:user,full_name:'Task029 Synthetic',email:key('user')+'@example.invalid'}});

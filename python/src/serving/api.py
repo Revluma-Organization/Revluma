@@ -468,6 +468,7 @@ class OrchestrateRequest(BaseModel):
     image_media_type: str | None = None
     trigger_type: str = Field("conversation", pattern="^(conversation|alert|scheduler)$")
     trigger_priority: str = Field("normal", pattern="^(low|normal|high|critical)$")
+    correlation_id: str | None = Field(None, min_length=1, max_length=128, pattern="^[A-Za-z0-9._:-]+$")
     context_payload: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -516,7 +517,11 @@ def _next_occurrence_utc(target_hour: int, target_day: int, tz_offset_hours: int
 # Orchestration and scheduled briefing endpoints
 # ---------------------------------------------------------------------------
 @app.post("/orchestrate", dependencies=[Depends(verify_internal_caller)])
-async def orchestrate_endpoint(req: OrchestrateRequest, x_contract_version: str | None = Header(default=None)):
+async def orchestrate_endpoint(
+    req: OrchestrateRequest,
+    x_contract_version: str | None = Header(default=None),
+    x_correlation_id: str | None = Header(default=None, alias="X-Correlation-ID"),
+):
     if x_contract_version != '1.0' or req.contract_version != '1.0':
         raise HTTPException(status_code=400, detail='Intelligence contract version mismatch')
     db = _Session()
@@ -533,6 +538,7 @@ async def orchestrate_endpoint(req: OrchestrateRequest, x_contract_version: str 
                 trigger_type=req.trigger_type,
                 trigger_priority=req.trigger_priority,
                 context_payload=req.context_payload,
+                correlation_id=req.correlation_id or x_correlation_id,
             )
         )
         if not result.to_dict().get('success', False):

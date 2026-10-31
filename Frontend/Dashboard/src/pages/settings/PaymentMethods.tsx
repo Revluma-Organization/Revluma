@@ -187,7 +187,7 @@ export const PaymentMethods: FC = () => {
             </p>
             <Button
               type="button"
-              onClick={() => router.push('/dashboard/checkout')}
+              onClick={() => navigate('/dashboard/checkout')}
               className="mt-6 bg-sky-600 font-semibold text-white hover:bg-sky-500"
             >
               <Plus className="mr-2 h-4 w-4" />

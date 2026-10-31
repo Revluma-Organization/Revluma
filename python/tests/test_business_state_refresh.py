@@ -140,6 +140,9 @@ class TestBusinessStateContract:
             "trend_7d": 8.0,
             "anomaly": False,
             "severity": "low",
+            "currency": None,
+            "reporting_timezone": "UTC",
+            "evidence": {},
         }
         assert state["abandoned_carts"] == {
             "count": 2,
@@ -215,3 +218,11 @@ class TestCustomerAgentContext:
         payload = _load_customer_ml_signals(db, {"store_ids": ("store-1",)})
 
         assert payload["truncated"] is True
+
+def test_business_state_exposes_currency_and_utc_reporting_context():
+    state = _complete_state()
+    state.revenue_currency = "NGN"
+    payload = state.to_dict()
+    assert payload["revenue"]["currency"] == "NGN"
+    assert payload["revenue"]["reporting_timezone"] == "UTC"
+    assert payload["sales_health"]["currency"] == "NGN"

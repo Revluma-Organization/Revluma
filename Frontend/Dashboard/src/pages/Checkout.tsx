@@ -47,15 +47,15 @@ export const Checkout: FC = () => {
         { skipAuthRedirect: true }
       );
 
-      if (res && res.data && res.data.authorization_url) {
-        window.location.href = res.data.authorization_url;
+      if (res.data?.success && res.data.data?.authorization_url) {
+        window.location.href = res.data.data.authorization_url;
       } else {
-        setErrorMsg(res?.error || "Could not initialize payment. Please try again.");
+        setErrorMsg(res.data?.error || "Could not initialize payment. Please try again.");
         setIsSubmitting(false);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Paystack API Error:", err);
-      setErrorMsg(err.message || "Network error. Check your connection and try again.");
+      setErrorMsg(err instanceof Error ? err.message : "Network error. Check your connection and try again.");
       setIsSubmitting(false);
     }
   };

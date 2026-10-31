@@ -39,10 +39,10 @@ export const ActiveSessions: FC = () => {
   const fetchSessions = useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await api.get<DeviceSession[]>("/auth/sessions", undefined, {
+      const res = await api.get<{ data?: { sessions?: DeviceSession[] }; sessions?: DeviceSession[] }>("/auth/sessions", undefined, {
         skipAuthRedirect: true,
       });
-      const active = res.data?.data?.sessions;
+      const active = res.data.data?.sessions ?? res.data.sessions;
       if (active && Array.isArray(active)) {
         setSessions(active);
       } else {
@@ -210,7 +210,7 @@ export const ActiveSessions: FC = () => {
                   {/* Left Device Info */}
                   <div className="flex items-start gap-4 sm:items-center">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-950">
-                      {getDeviceIcon(session.device)}
+                      {getDeviceIcon(session.deviceType)}
                     </div>
 
                     <div className="space-y-1">

@@ -306,3 +306,50 @@ def test_morning_briefing_persistence_failure_is_not_silent():
     with pytest.raises(RuntimeError, match="write failed"):
         _persist_briefing(briefing, db)
     assert db.rolled_back
+
+def test_load_business_state_restores_persisted_revenue_evidence_and_currency():
+    now = datetime.now(timezone.utc)
+    evidence = {
+        "contract_version": "1.0",
+        "overall_status": "available",
+        "items": [{
+            "evidence_id": "rev-evidence-198",
+            "domain": "revenue",
+            "metric": "recorded_order_value",
+            "value": "125.50",
+            "unit": "money",
+            "currency": "NGN",
+            "status": "available",
+            "epistemic_type": "observed",
+            "source": {"system": "shopify", "entity": "orders",
+                       "fields": ["orders.total", "orders.currency"], "record_count": 2},
+            "scope": {"store_count": 1},
+            "period": {"start": "2026-10-30T00:00:00Z", "end": "2026-10-31T00:00:00Z",
+                       "timezone": "UTC", "semantics": "[start,end)"},
+            "freshness": {"observed_at": now.isoformat(), "source_synced_at": now.isoformat(),
+                          "age_seconds": 0},
+            "coverage": {"completeness": "known", "is_truncated": False, "limitations": []},
+            "calculation": None,
+            "warnings": [],
+        }],
+    }
+    row = [None] * 26
+    row[0], row[1], row[2], row[3] = "state-revenue", "merchant-198", "1.1", now
+    row[5], row[6] = 30, "complete"
+    row[23] = {"revenue_currency": "NGN", "revenue_evidence": evidence}
+    row[24] = {"warnings": [], "anomaly_severity": "normal"}
+    row[25] = now
+
+    class Result:
+        def fetchone(self):
+            return tuple(row)
+
+    class Session:
+        def execute(self, statement, params):
+            assert params["org_id"] == "merchant-198"
+            return Result()
+
+    state = load_current_business_state("merchant-198", Session())
+    assert state.revenue_currency == "NGN"
+    assert state.revenue_evidence == evidence
+    assert state.to_dict()["revenue"]["evidence"] == evidence

@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const { prisma } = require('../configs/database');
 const { rfmSync } = require('./mlService');
 const { shopifyGraphql } = require('./shopifyGraphql');
@@ -37,7 +38,17 @@ function externalId(gid) {
 }
 
 function money(value) {
-  return Number(value?.shopMoney?.amount || 0);
+  const amount = value?.shopMoney?.amount;
+  if (amount === null || amount === undefined || amount === '') return null;
+  const exact = String(amount).trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(exact)) return null;
+  try {
+    const decimal = new Prisma.Decimal(exact);
+    if (!decimal.isFinite() || decimal.isNegative() || decimal.greaterThan('99999999.99')) return null;
+  } catch {
+    return null;
+  }
+  return exact;
 }
 
 function nextConnectionCursor(connection, previousCursor, rootName) {
@@ -127,7 +138,10 @@ function orderPayload(order) {
     refunds: [],
     subtotal_price: money(order.subtotalPriceSet),
     total_discounts: money(order.totalDiscountsSet),
-    currency: (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode || 'USD',
+    currency: (() => {
+      const code = (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode;
+      return typeof code === 'string' && /^[A-Za-z]{3}$/.test(code.trim()) ? code.trim().toUpperCase() : null;
+    })(),
     customer: order.customer ? {
       id: externalId(order.customer.id),
       email: order.customer.email,

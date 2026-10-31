@@ -22,7 +22,7 @@ const checkout = (suffix, extra={}) => ({
 });
 const order = (suffix,extra={}) => ({
   id:prefix+'-order-'+suffix,checkout_token:prefix+'-token-'+suffix,
-  created_at:'2026-10-30T08:05:00Z',total_price:'25',currency:'USD',...extra,
+  created_at:'2026-10-30T08:05:00Z',total_price:'25',currency:'USD',refunds:[],...extra,
 });
 const getCart = suffix => prisma.abandoned_carts.findFirstOrThrow({
   where:{store_id:store.id,external_cart_id:prefix+'-checkout-'+suffix}});
