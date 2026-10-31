@@ -16,7 +16,7 @@ def state(**overrides):
             "overall_status": "available",
             "items": [
                 {"evidence_id": "evidence-yesterday", "metric": "recorded_order_value",
-                 "currency": "NGN", "status": "available",
+                 "value": "5000.25", "currency": "NGN", "status": "available",
                  "period": {"start": "2026-10-30T00:00:00+00:00", "end": "2026-10-31T00:00:00+00:00"}},
                 {"evidence_id": "evidence-trend", "metric": "revenue_trend_7d",
                  "value": "12.5", "currency": "NGN", "status": "available"},
