@@ -160,7 +160,7 @@ def _is_revenue_evidence_request(message: str) -> bool:
         return False
     if any(term in value for term in (
         "how to increase", "how can i increase", "grow revenue",
-        "improve revenue", "revenue strategy", "increase sales",
+        "improve revenue", "revenue strategy", "growth strategy", "increase sales",
     )):
         return False
     return (
