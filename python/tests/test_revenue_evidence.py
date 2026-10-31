@@ -328,3 +328,15 @@ def test_zero_value_order_is_not_confused_with_zero_orders():
     assert count["value"] == 1 and count["status"] == "available"
     assert value["value"] == "0.00" and value["currency"] == "USD"
     assert value["status"] == "available"
+
+def test_invalid_and_reversed_custom_periods_return_unsupported_without_throwing():
+    invalid = resolve_revenue_period(
+        "revenue between 2026-02-30 and 2026-03-02", now=NOW
+    )
+    reversed_range = resolve_revenue_period(
+        "sales from 2026-03-02 to 2026-02-28", now=NOW
+    )
+    assert invalid["status"] == "unsupported"
+    assert "invalid ISO calendar date" in invalid["reason"]
+    assert reversed_range["status"] == "unsupported"
+    assert "must not precede" in reversed_range["reason"]
