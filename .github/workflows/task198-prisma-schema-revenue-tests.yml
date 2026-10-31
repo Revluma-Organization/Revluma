@@ -1,0 +1,75 @@
+name: Task 198 Prisma schema revenue verification
+
+on:
+  pull_request:
+    paths:
+      - 'python/**'
+      - 'Backend/prisma/schema.prisma'
+      - 'Backend/src/services/commerceWebhookService.js'
+      - 'Backend/src/services/shopifySync.js'
+      - '.github/workflows/task198-prisma-schema-revenue-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prisma-schema-revenue-tests:
+    name: Actual Prisma schema and full Python regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: revluma_test
+          POSTGRES_USER: revluma
+          POSTGRES_PASSWORD: task198_test_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U revluma -d revluma_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg2://revluma:task198_test_only@localhost:5432/revluma_test
+      TASK198_DATABASE_URL: postgresql+psycopg2://revluma:task198_test_only@localhost:5432/revluma_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: python/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - name: Install Python dependencies
+        working-directory: python
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Install backend dependencies and generate Prisma client
+        working-directory: Backend
+        run: npm ci
+      - name: Initialize disposable database from the actual Prisma schema
+        working-directory: Backend
+        env:
+          DATABASE_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
+          DIRECT_URL: postgresql://revluma:task198_test_only@127.0.0.1:5432/revluma_test?schema=public
+        run: |
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'
+          PGPASSWORD=task198_test_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U revluma -d revluma_test -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --accept-data-loss --schema prisma/schema.prisma
+      - name: Compile Python sources and tests
+        working-directory: python
+        run: python -m compileall -q src tests
+      - name: Run actual-schema revenue integration tests
+        working-directory: python
+        run: python -m pytest -q tests/test_revenue_evidence_postgres.py
+      - name: Run complete Python regression suite
+        working-directory: python
+        run: python -m pytest -q tests
