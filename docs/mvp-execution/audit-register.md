@@ -202,7 +202,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 194 | Phase 3 | Verify AI error classification. | NOT STARTED | — | — | — |
 | 195 | Phase 3 | Verify request rate limiting. | NOT STARTED | — | — | — |
 | 196 | Phase 3 | Verify tenant-isolated conversation retrieval. | NOT STARTED | — | — | — |
-| 197 | Phase 3 | Define Rev evidence retrieval contract. | NOT STARTED | — | — | — |
+| 197 | Phase 3 | Define Rev evidence retrieval contract. | CONTRACT DEFINED — SOURCE-SPECIFIC VERIFICATION PENDING | [REV-EVIDENCE-RETRIEVAL-CONTRACT](../rev-intelligence/REV-EVIDENCE-RETRIEVAL-CONTRACT.md) | Contract definition on Task 198 PR #233; Tasks 198–203 verify source-specific retrieval | 2026-10-31 |
 | 198 | Phase 3 | Verify revenue evidence retrieval. | IN PROGRESS — NOT CERTIFIED; actual Prisma PostgreSQL integration and final regression suite pending | [TASK-198](validation/TASK-198.md) | PR #233; latest verification commits on feat/task-198-revenue-evidence-verification | 2026-10-31 |
 | 199 | Phase 3 | Verify order evidence retrieval. | NOT STARTED | — | — | — |
 | 200 | Phase 3 | Verify checkout evidence retrieval. | NOT STARTED | — | — | — |
