@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const { prisma } = require('../configs/database');
 const { rfmSync } = require('./mlService');
 const { shopifyGraphql } = require('./shopifyGraphql');
@@ -40,7 +41,13 @@ function money(value) {
   const amount = value?.shopMoney?.amount;
   if (amount === null || amount === undefined || amount === '') return null;
   const exact = String(amount).trim();
-  if (!/^\d+(?:\.\d+)?$/.test(exact)) return null;
+  if (!/^\d+(?:\.\d{1,2})?$/.test(exact)) return null;
+  try {
+    const decimal = new Prisma.Decimal(exact);
+    if (!decimal.isFinite() || decimal.isNegative() || decimal.greaterThan('99999999.99')) return null;
+  } catch {
+    return null;
+  }
   return exact;
 }
 
