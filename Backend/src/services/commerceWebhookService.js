@@ -117,6 +117,9 @@ function shopifyNetOrderTotal(payload) {
     for (const transaction of refund.transactions) {
       if (String(transaction.kind || '').toLowerCase() !== 'refund') continue;
       if (String(transaction.status || '').toLowerCase() !== 'success') continue;
+      const transactionCurrency = String(transaction.currency || transaction.currency_code || '').trim().toUpperCase();
+      const orderCurrency = String(payload.currency || payload.currency_code || '').trim().toUpperCase();
+      if (transactionCurrency && (!orderCurrency || transactionCurrency !== orderCurrency)) return null;
       if (transaction.amount === null || transaction.amount === undefined || transaction.amount === '') return null;
       let amount;
       try {
