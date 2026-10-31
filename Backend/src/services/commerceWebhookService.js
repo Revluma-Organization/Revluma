@@ -106,7 +106,8 @@ function shopifyNetOrderTotal(payload) {
     return null;
   }
   if (!gross.isFinite() || gross.isNegative()) return null;
-  if (!Array.isArray(payload.refunds) || payload.refunds.length === 0) return gross.toFixed(2);
+  if (!Array.isArray(payload.refunds)) return null;
+  if (payload.refunds.length === 0) return gross.toFixed(2);
   let refunded = new Prisma.Decimal(0);
   for (const refund of payload.refunds) {
     if (!Array.isArray(refund.transactions)) return null;
