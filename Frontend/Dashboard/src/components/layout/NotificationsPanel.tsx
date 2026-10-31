@@ -78,12 +78,12 @@ export function NotificationsPanel() {
   useEffect(() => {
     if (!notifOpen) return;
     setLoading(true);
-    api.get<{ data: { notifications: Array<{ id: string; type: string; message: string; unread: boolean; created_at: string }> } }>(
+    api.get<{ data: { notifications: Array<{ id: string; type: string; message: string; unread: boolean; created_at: string; action_url?: string | null }> } }>(
       '/notifications?limit=20'
     )
       .then((res) => {
         setItems(
-          res.data.data.notifications.map((n: any) => ({
+          res.data.data.notifications.map((n) => ({
             id:        n.id,
             unread:    n.unread,
             tag:       TYPE_TAG_MAP[n.type] ?? n.type ?? 'system',
