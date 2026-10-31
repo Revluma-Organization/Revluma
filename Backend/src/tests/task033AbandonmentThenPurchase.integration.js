@@ -91,6 +91,31 @@ assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,id:c.i
 assert.equal(await prisma.orders.count({where:{store_id:store.id,external_order_id:o.external_order_id}}),1);
 assert.equal(o.recovery_sequence_id??null,null);
 });
+await check('TC033-68-diagnostic-records-contain-no-unnecessary-customer-PII',async()=>{
+const suffix='pii-diagnostic';
+const email='private-'+prefix+'@example.invalid',phone='+15550001111',fullName='Synthetic Private Customer';
+await upsertAbandonedCart(store,checkout(suffix,{customer:{id:prefix+'-pii-customer',email,phone,first_name:'Synthetic',last_name:'Customer'}}));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order(suffix,{checkout_id:null,checkout_token:null,cart_token:null,customer:{id:prefix+'-pii-customer',email,phone,first_name:'Synthetic',last_name:'Customer'}}));
+const o=await prisma.orders.findFirstOrThrow({where:{store_id:store.id,external_order_id:prefix+'-order-'+suffix}});
+const diagnostic=await prisma.order_checkout_reconciliation_cases.findFirstOrThrow({where:{store_id:store.id,order_id:o.id}});
+const serialized=JSON.stringify(diagnostic);
+assert.equal(serialized.includes(email),false);
+assert.equal(serialized.includes(phone),false);
+assert.equal(serialized.includes(fullName),false);
+assert.equal(Object.keys(diagnostic).some(key=>/email|phone|full_name|customer_name/i.test(key)),false);
+});
+await check('TC033-69-no-full-Shopify-payload-archived-for-checkout-or-purchase',async()=>{
+const suffix='no-payload-archive';
+await upsertAbandonedCart(store,checkout(suffix));
+await promoteInactiveCheckouts();
+await upsertOrder(store,'shopify',order(suffix));
+const tables=['webhook_deliveries','order_checkout_reconciliation_cases','orders','abandoned_carts'];
+const columns=await prisma.$queryRaw`SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public' AND table_name = ANY(${tables})`;
+const payloadColumns=columns.filter(row=>/payload|raw_body|request_body|webhook_body/i.test(row.column_name));
+assert.equal(payloadColumns.length,0,'Relevant lifecycle and diagnostic tables must not archive complete Shopify request payloads');
+assert.equal((await cart(suffix)).status,'recovered');
+});
 await check('TC033-70-deterministic-repeatable-fixtures',async()=>{
 for(const suffix of ['repeat-a','repeat-b']){
 await upsertAbandonedCart(store,checkout(suffix));
