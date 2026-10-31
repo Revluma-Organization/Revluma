@@ -230,21 +230,25 @@ assert.equal((await cart(suffix)).status,'abandoned');
 await assert.rejects(upsertOrder(store,'shopify',order('invalid-identity',{checkout_id:{bad:'object'},checkout_token:null,cart_token:null})));
 });
 await check('TC033-51-52-53-historical-Shopify-sync-paths-reconcile-and-remain-idempotent',async()=>{
-const graphqlPath=require.resolve('../services/shopifyGraphql');
-const originalGraphqlModule=require.cache[graphqlPath];
+const axios=require('axios');
+const {encrypt}=require('../utils/encryption');
+const originalPost=axios.post;
 const historicalCheckoutId='gid://shopify/AbandonedCheckout/'+prefix+'-checkout-historical';
 const historicalOrderId='gid://shopify/Order/'+prefix+'-order-historical';
 const token=prefix+'-token-historical';
 const money={shopMoney:{amount:'25',currencyCode:'USD'}};
-require.cache[graphqlPath]={id:graphqlPath,filename:graphqlPath,loaded:true,exports:{shopifyGraphql:async(_store,query)=>{
-if(query.includes('currentAppInstallation'))return {currentAppInstallation:{accessScopes:[{handle:'read_orders'}]}};
-if(query.includes('AbandonedCheckouts'))return {abandonedCheckouts:{nodes:[{id:historicalCheckoutId,createdAt:'2026-10-30T08:00:00Z',updatedAt:'2026-10-30T08:01:00Z',completedAt:null,abandonedCheckoutUrl:'https://example.invalid/checkout',totalPriceSet:money,customer:null,lineItems:{nodes:[]}}],pageInfo:{hasNextPage:false,endCursor:null}}};
-if(query.includes('query Orders'))return {orders:{nodes:[{id:historicalOrderId,checkoutToken:token,cartToken:null,createdAt:'2026-10-30T08:40:00Z',cancelledAt:null,displayFinancialStatus:'PAID',discountCodes:[],currentTotalPriceSet:money,totalPriceSet:money,subtotalPriceSet:money,totalDiscountsSet:{shopMoney:{amount:'0',currencyCode:'USD'}},customer:null,lineItems:{nodes:[]}}],pageInfo:{hasNextPage:false,endCursor:null}}};
-throw new Error('Unexpected synthetic Shopify query');
-}}};
+axios.post=async(_url,body)=>{
+const query=body.query;
+let data;
+if(query.includes('currentAppInstallation'))data={currentAppInstallation:{accessScopes:[{handle:'read_orders'}]}};
+else if(query.includes('AbandonedCheckouts'))data={abandonedCheckouts:{nodes:[{id:historicalCheckoutId,createdAt:'2026-10-30T08:00:00Z',updatedAt:'2026-10-30T08:01:00Z',completedAt:null,abandonedCheckoutUrl:'https://example.invalid/checkout',totalPriceSet:money,customer:null,lineItems:{nodes:[]}}],pageInfo:{hasNextPage:false,endCursor:null}}};
+else if(query.includes('query Orders'))data={orders:{nodes:[{id:historicalOrderId,checkoutToken:token,cartToken:null,createdAt:'2026-10-30T08:40:00Z',cancelledAt:null,displayFinancialStatus:'PAID',discountCodes:[],currentTotalPriceSet:money,totalPriceSet:money,subtotalPriceSet:money,totalDiscountsSet:{shopMoney:{amount:'0',currencyCode:'USD'}},customer:null,lineItems:{nodes:[]}}],pageInfo:{hasNextPage:false,endCursor:null}}};
+else throw new Error('Unexpected synthetic Shopify query');
+return {status:200,data:{data}};
+};
 try{
 const sync=require('../services/shopifySync');
-const syncStore={...store,granted_scopes:'read_orders'};
+const syncStore={...store,granted_scopes:'read_orders',access_token:encrypt('synthetic-shopify-token'),shop_domain:prefix+'.myshopify.com'};
 assert.equal(await sync.syncAbandonedCheckouts(syncStore),1);
 await promoteInactiveCheckouts();
 await upsertOrder(store,'shopify',{id:prefix+'-live-order-for-historical-checkout',checkout_id:historicalCheckoutId,created_at:'2026-10-30T08:40:00Z',total_price:'25',currency:'USD'});
@@ -261,10 +265,7 @@ assert.equal(liveCart.status,'recovered');
 assert.equal(await sync.syncAbandonedCheckouts(syncStore),1);
 assert.equal(await prisma.abandoned_carts.count({where:{store_id:store.id,external_cart_id:historicalCheckoutId}}),1);
 assert.equal((await prisma.abandoned_carts.findFirstOrThrow({where:{store_id:store.id,external_cart_id:historicalCheckoutId}})).status,'recovered');
-}finally{
-if(originalGraphqlModule)require.cache[graphqlPath]=originalGraphqlModule;
-else delete require.cache[graphqlPath];
-}
+}finally{axios.post=originalPost;}
 });
 await check('TC033-56-Rev-Intelligence-order-revenue-query-preserves-completed-order-once',async()=>{
 const source=fs.readFileSync(path.resolve(__dirname,'../../../python/src/intelligence/business_state.py'),'utf8');
