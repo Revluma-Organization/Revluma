@@ -1,12 +1,8 @@
+const { requireMembership } = require('../utils/organizationContext');
 const prisma = require("../configs/database").prisma;
 
-const getUserOrganization = async (userId) => {
-  const membership = await prisma.organization_members.findFirst({
-    where: { user_id: userId, status: 'active' },
-    select: { organization_id: true },
-    orderBy: { created_at: 'asc' },
-  });
-  if (!membership) return null;
+const getUserOrganization = async (userId, organizationId) => {
+  const membership = await requireMembership(prisma, userId, organizationId);
   return { id: membership.organization_id };
 };
 
@@ -20,7 +16,7 @@ const getOrgStoreIds = async (orgId) => {
 
 exports.getKpis = async (req, res, next) => {
   try {
-    const org = await getUserOrganization(req.user.id);
+    const org = await getUserOrganization(req.user.id, req.user.tenantId);
     if (!org) {
       return res.status(200).json({
         success: true,
@@ -154,7 +150,7 @@ exports.getKpis = async (req, res, next) => {
 
 exports.getChart = async (req, res, next) => {
   try {
-    const org = await getUserOrganization(req.user.id);
+    const org = await getUserOrganization(req.user.id, req.user.tenantId);
     if (!org) {
       return res.status(200).json({
         success: true,
@@ -200,7 +196,7 @@ exports.getChart = async (req, res, next) => {
 
 exports.getActivity = async (req, res, next) => {
   try {
-    const org = await getUserOrganization(req.user.id);
+    const org = await getUserOrganization(req.user.id, req.user.tenantId);
     if (!org) {
       return res.status(200).json({
         success: true,
@@ -380,7 +376,7 @@ function formatEventTag(eventType) {
 }
 exports.getCartRecovery = async (req, res, next) => {
   try {
-    const org = await getUserOrganization(req.user.id);
+    const org = await getUserOrganization(req.user.id, req.user.tenantId);
     const storeIds = org ? await getOrgStoreIds(org.id) : [];
     if (!storeIds.length) return res.status(200).json({ success: true, data: { carts: [], stats: { total_abandoned: 0, total_recovered: 0, recovery_rate: 0 } } });
     // A checkout only qualifies after 15 minutes without activity. Legacy 'abandoned' rows

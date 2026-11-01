@@ -1,3 +1,4 @@
+const { requireMembership } = require('../utils/organizationContext');
 const axios = require("axios");
 const crypto = require('crypto');
 
@@ -78,18 +79,9 @@ const exchangeAccessToken = async (shop, code) => {
 };
 
 /**Get organization that belongs to the authenticated user.*/
-const getOrganizationByUser = async (userId) => {
-  const membership = await prisma.organization_members.findFirst({
-    where: { user_id: userId, status: 'active' },
-    select: { organization_id: true },
-    orderBy: { created_at: 'asc' },
-  });
-  if (membership) {
-    return prisma.organizations.findUnique({ where: { id: membership.organization_id } });
-  }
-
-  // Keep older owner accounts visible even if they predate membership rows.
-  return prisma.organizations.findFirst({ where: { owner_id: userId } });
+const getOrganizationByUser = async (userId, organizationId) => {
+  const member = await requireMembership(prisma, userId, organizationId);
+  return prisma.organizations.findUnique({ where: { id: member.organization_id } });
 };
 
 /**Create or update a Shopify store.*/

@@ -1,3 +1,4 @@
+import { storedOrganizationId, notifySessionTokenChanged, currentSessionGeneration, assertCurrentSession } from '@/lib/auth/organization';
 // src/lib/api.ts
 // Centralized HTTP client for the entire Revluma frontend.
 // No component ever calls raw fetch() — all requests go through api.get/post/put/delete.
@@ -40,6 +41,8 @@ export class ApiError extends Error {
 }
 
 export interface RequestOptions {
+  /** Explicit short-lived challenge token, used only for 2FA verification. */
+  accessToken?: string;
   params?: Record<string, unknown>;
   body?: unknown;
   /** When true, 401 does not purge session / redirect (used by logout + refresh). */
@@ -101,11 +104,14 @@ function isAccessTokenExpiring(token: string): boolean {
 let refreshInFlight: Promise<string | null> | null = null;
 
 async function performTokenRefresh(): Promise<string | null> {
+  const generation = currentSessionGeneration();
+  const originalToken = getAccessToken();
   try {
     const response = await fetch(`${BASE_URL}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include", // Sends the HttpOnly cookie automatically
+      body: JSON.stringify({ organization_id: storedOrganizationId() }),
     });
 
     if (!response.ok) return null;
@@ -120,7 +126,10 @@ async function performTokenRefresh(): Promise<string | null> {
 
     if (!accessToken) return null;
 
+    assertCurrentSession(generation);
+    if (getAccessToken() !== originalToken) return null;
     updateStoredAccessToken(accessToken);
+    notifySessionTokenChanged(accessToken);
     return accessToken;
   } catch {
     return null;
@@ -143,6 +152,8 @@ async function request<T>(
   options: RequestOptions = {},
   isRetry = false,
 ): Promise<ApiResponse<T>> {
+  const generation = currentSessionGeneration();
+  assertCurrentSession(generation);
   const url = new URL(
     path.startsWith("/") ? `${BASE_URL}${path}` : `${BASE_URL}/${path}`,
   );
@@ -165,18 +176,21 @@ async function request<T>(
 
   // Preflight refresh prevents avoidable 401s when opening a dashboard with a
   // previously persisted, expired JWT. Concurrent requests share one refresh.
-  if (!isRetry && !options.skipAuthRedirect) {
+  if (!isRetry && !options.skipAuthRedirect && !options.accessToken) {
     if (refreshInFlight) await refreshInFlight;
+    assertCurrentSession(generation);
     const currentToken = getAccessToken();
     if (currentToken && isAccessTokenExpiring(currentToken)) {
       const refreshed = await refreshAccessToken();
+      assertCurrentSession(generation);
       if (!refreshed) {
         handleUnauthorized();
         throw new ApiError(401, "Session expired – please sign in again");
       }
     }
   }
-  const token = getAccessToken();
+  assertCurrentSession(generation);
+  const token = options.accessToken || getAccessToken();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -196,6 +210,7 @@ async function request<T>(
     throw new ApiError(0, `Network error: ${(networkError as Error).message}`);
   }
 
+  assertCurrentSession(generation);
   if (response.status === 401 && !isRetry && !options.skipAuthRedirect) {
     // Another request may have rotated the token while this one was in flight.
     // Reuse that new token before attempting another refresh.
@@ -203,6 +218,7 @@ async function request<T>(
     const refreshed = newerToken && newerToken !== token
       ? newerToken
       : await refreshAccessToken();
+    assertCurrentSession(generation);
     if (refreshed) {
       return request<T>(method, path, options, true);
     }
@@ -223,6 +239,7 @@ async function request<T>(
   const data = ct.includes("application/json")
     ? ((await response.json()) as T)
     : (null as unknown as T);
+  assertCurrentSession(generation);
 
   if (!response.ok) {
     const errorBody = data as {

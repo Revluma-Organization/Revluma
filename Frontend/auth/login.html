@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+  <script src="../assets/js/theme.js"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="../assets/images/Revluma-icon.png" />
@@ -820,6 +821,7 @@
       window.history.replaceState(null, '', window.location.pathname.replace('.html', '') + window.location.search);
     }
   </script>
+  <link rel="stylesheet" href="../assets/css/auth-theme.css">
 </head>
 
 <body>
@@ -1138,10 +1140,6 @@
 
   <script>
 
-    // FIX: Use same-origin /api on Vercel so requests go through the vercel.json
-    // proxy rewrite (→ Render). Using the absolute Render URL directly causes
-    // cross-origin requests that can fail on cold starts / cookie SameSite issues.
-    const API_BASE = '/api';
 
     // Client-side rate-limit tracking
     const RATE_LIMIT = { max: 5, windowMs: 15 * 60 * 1000 };
@@ -1431,9 +1429,6 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       return token;
     }
 
-    function checkAutoLogin() {
-      // Mock — no backend call
-    }
 
     function redirectAfterLogin(user) {
       if (!user) {
@@ -1471,10 +1466,6 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       }
     }
 
-    async function verifyServerSessionAndRedirect(user) {
-      redirectAfterLogin(user);
-      return true;
-    }
 
 
     /**
@@ -1506,14 +1497,11 @@ storage.setItem('rv-auth', JSON.stringify(authData));
      * Send a new verification code for unverified accounts
      */
     async function apiResendVerification(email) {
-      return { success: true, message: 'Verification code sent' };
+      return window.revlumaAuth.resendVerification(email);
     }
 
     async function apiVerifyCode(code, email) {
-      return {
-        token: 'mock-token-123',
-        user: { id: 'mock-user-001', email, full_name: 'Alex Johnson', onboarding_status: 'completed' }
-      };
+      return window.revlumaAuth.verifyEmail(email, code);
     }
 
 
@@ -1575,19 +1563,8 @@ storage.setItem('rv-auth', JSON.stringify(authData));
         hideVerifySection();
         hideAllBanners();
 
-        if (data.token && data.user) {
-          storeSession(data.token, data.user, state.rememberMe);
-          showSuccess('Email verified — signing you in…');
-          setTimeout(async () => {
-            await verifyServerSessionAndRedirect(data.user);
-          }, 1000);
-        } else {
-          // Verified but no token returned — prompt to log in again
-          showInfoBanner(
-            'Email verified!',
-            'Your account is confirmed. Please sign in now.',
-          );
-        }
+        showInfoBanner('Email verified!', 'Your account is confirmed. Please sign in now.');
+
       } catch (err) {
         el.verifyError.textContent = err.message || 'Invalid or expired code';
         el.verifyError.classList.add('visible');
@@ -1600,9 +1577,9 @@ storage.setItem('rv-auth', JSON.stringify(authData));
       if (!state.verifyEmail) return;
       el.resendBtn.disabled = true;
       try {
-        await apiResendVerification(state.verifyEmail);
+        const result = await apiResendVerification(state.verifyEmail);
         startVerifyCountdown(60);
-        showInfo('A new code has been sent to ' + state.verifyEmail);
+        showInfo(result.message || 'Verification request accepted.');
       } catch (err) {
         showError(err.message || 'Could not resend code — try again');
         el.resendBtn.disabled = false;
@@ -1785,7 +1762,7 @@ storage.setItem('rv-auth', JSON.stringify(authData));
     // Check for URL params (e.g. ?verified=1 from a link)
     const params = new URLSearchParams(window.location.search);
     if (params.get('verified') === '1') {
-      showInfoBanner('Email verified ✓', 'Your email is confirmed. Sign in to get started.');
+      showInfoBanner('Verification link opened', 'Sign in to check your account status.');
     }
     if (params.get('reset') === '1') {
       showSuccess('Password updated successfully. You can now sign in with your new password.');
@@ -1802,7 +1779,7 @@ storage.setItem('rv-auth', JSON.stringify(authData));
     }
 
     // Auto-login check
-    checkAutoLogin();
+
 
     if (isLockedOut()) {
       startLockoutCountdown();

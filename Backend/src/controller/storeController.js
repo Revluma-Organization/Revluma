@@ -1,22 +1,11 @@
+const { requireMembership } = require('../utils/organizationContext');
 const prisma = require("../configs/database").prisma;
 const { REQUIRED_SUBSCRIPTIONS } = require('../services/shopifyWebhookService');
 
 exports.getStores = async (req, res, next) => {
   try {
-    const membership = await prisma.organization_members.findFirst({
-      where: { user_id: req.user.id, status: 'active' },
-      select: { organization_id: true },
-      orderBy: { created_at: 'asc' },
-    });
-
-    const organization = membership
-      ? null
-      : await prisma.organizations.findFirst({
-        where: { owner_id: req.user.id },
-        select: { id: true },
-      });
-    const organizationId = membership?.organization_id || organization?.id;
-    if (!organizationId) return res.status(200).json({ success: true, data: { stores: [] } });
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
+    const organizationId = membership.organization_id;
 
     const stores = await prisma.stores.findMany({
       where: { organization_id: organizationId },

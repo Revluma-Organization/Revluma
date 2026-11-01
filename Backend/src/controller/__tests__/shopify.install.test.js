@@ -1,5 +1,8 @@
 const assert = require('assert');
 const jwt = require('jsonwebtoken');
+// Isolate membership lookup; this OAuth contract test never queries a database.
+const shopifyService = require('../../services/shopifyService');
+shopifyService.getOrganizationByUser = async () => ({ id: 'org-123' });
 const shopifyController = require('../shopifyController');
 const { authenticateToken, JWT_ISSUER, JWT_AUDIENCE, ALLOWED_ALGORITHMS } = require('../../middlewares/authMiddleware');
 const {
@@ -64,6 +67,7 @@ const createAccessToken = (userId) => jwt.sign({
 
   assert.ok(response, 'expected installShopify to return a JSON response');
   assert.strictEqual(response.code, 200);
+  assert.ok(cookies.some(cookie => cookie.name === 'shopify_organization' && cookie.value === 'org-123' && cookie.options.signed), 'OAuth must preserve the verified initiating organisation');
   assert.ok(response.payload.redirectUrl, 'expected installShopify to return a redirectUrl');
   assert.ok(
     response.payload.redirectUrl.includes(encodeURIComponent(process.env.SHOPIFY_REDIRECT_URI)),

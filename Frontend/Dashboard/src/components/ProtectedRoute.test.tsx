@@ -13,6 +13,7 @@ describe("ProtectedRoute", () => {
       isHydrated: true,
       loading: false,
       error: null,
+      sessionVerified: false,
     });
   });
 
@@ -28,6 +29,7 @@ describe("ProtectedRoute", () => {
         onboarding_status: "completed",
       },
       csrfToken: "token",
+      sessionVerified: true,
       isHydrated: true,
     });
 
@@ -81,4 +83,11 @@ describe("ProtectedRoute", () => {
     expect(screen.queryByText("Secret dashboard")).toBeNull();
     expect(screen.getByLabelText("Loading session")).toBeInTheDocument();
   });
+});
+
+it('does not render persisted permissions before the session is verified', () => {
+  useAuthStore.setState({ user: { id: 'u', email: 'owner@example.test', full_name: 'Owner', role: 'owner', tenant_id: 'A', email_verified: true, onboarding_status: 'completed' }, csrfToken: 'old-token', isHydrated: true, sessionVerified: false });
+  render(<MemoryRouter><ProtectedRoute><div>Unverified management controls</div></ProtectedRoute></MemoryRouter>);
+  expect(screen.queryByText('Unverified management controls')).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Loading session')).toBeInTheDocument();
 });

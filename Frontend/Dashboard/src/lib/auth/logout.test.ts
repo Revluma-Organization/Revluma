@@ -53,7 +53,7 @@ describe("performLogout", () => {
     expect(postMock).toHaveBeenCalledWith(
       "/auth/logout",
       { refresh_token: "refresh-xyz" },
-      { skipAuthRedirect: true },
+      { skipAuthRedirect: true, accessToken: 'tok' },
     );
     expect(localStorage.getItem("rv-auth")).toBeNull();
     expect(localStorage.getItem("revluma_refresh_token")).toBeNull();
@@ -93,7 +93,7 @@ describe("performLogout", () => {
     expect(postMock).toHaveBeenCalledWith(
       "/auth/logout-all",
       { refresh_token: "refresh-xyz" },
-      { skipAuthRedirect: true },
+      { skipAuthRedirect: true, accessToken: 'tok' },
     );
   });
 
@@ -111,5 +111,11 @@ describe("performLogout", () => {
     expect(postMock).not.toHaveBeenCalled();
     expect(localStorage.getItem("rv-auth")).toBeNull();
     expect(replace).toHaveBeenCalledWith(LOGIN_PATH);
+  });
+  it('uses the captured credential for logout-all after the local auth record is cleared', async () => {
+    localStorage.removeItem('rv-auth');
+    postMock.mockResolvedValue({ ok: true, status: 200, data: {} });
+    await performLogout({ allSessions: true, skipRedirect: true, accessToken: 'captured-token' });
+    expect(postMock).toHaveBeenCalledWith('/auth/logout-all', { refresh_token: 'refresh-xyz' }, { skipAuthRedirect: true, accessToken: 'captured-token' });
   });
 });

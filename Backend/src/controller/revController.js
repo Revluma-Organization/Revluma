@@ -1,3 +1,4 @@
+const { requireMembership } = require('../utils/organizationContext');
 /**
  * Revluma Rev Intelligence Controller
  *
@@ -24,9 +25,10 @@ const logger            = require('../utils/logger');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function getAuthenticatedOrg(userId) {
-  const org = await prisma.organizations.findFirst({
-    where:  { owner_id: userId },
+async function getAuthenticatedOrg(userId, organizationId) {
+  const member = await requireMembership(prisma, userId, organizationId);
+  const org = await prisma.organizations.findUnique({
+    where: { id: member.organization_id },
     select: { id: true, company_name: true },
   });
   if (!org) {
@@ -132,7 +134,7 @@ exports.chat = async (req, res, next) => {
     }
 
     // 2. Resolve org from JWT — never from body
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
 
     // Finding context is always resolved server-side under the authenticated organization.
     let intelligenceMessage = message;
@@ -346,7 +348,7 @@ exports.chat = async (req, res, next) => {
 
 exports.getConversations = async (req, res, next) => {
   try {
-    const org    = await getAuthenticatedOrg(req.user.id);
+    const org    = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const limit  = Math.min(parseInt(req.query.limit  || '20', 10), 50);
     const offset = Math.max(parseInt(req.query.offset || '0',  10), 0);
 
@@ -381,7 +383,7 @@ exports.getConversation = async (req, res, next) => {
       });
     }
 
-    const org  = await getAuthenticatedOrg(req.user.id);
+    const org  = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const conv = await verifyConversationOwnership(id, org.id);
 
     const limit  = Math.min(parseInt(req.query.limit  || '50', 10), 100);
@@ -470,7 +472,7 @@ exports.createMemory = async (req, res, next) => {
       });
     }
 
-    const org          = await getAuthenticatedOrg(req.user.id);
+    const org          = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const source       = ALLOWED_MEMORY_SOURCES.includes(memory_source) ? memory_source : 'explicit';
     const authorityLevel = source === 'explicit' ? 5 : 2;
     const importanceVal  = Math.min(Math.max(parseInt(importance || '3', 10), 1), 5);
@@ -528,7 +530,7 @@ exports.deleteConversation = async (req, res, next) => {
     const { id } = req.params;
     if (!id) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'ID required.' } });
 
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     // Verify ownership
     await verifyConversationOwnership(id, org.id);
 
@@ -558,7 +560,7 @@ exports.renameConversation = async (req, res, next) => {
     }
     const cleanTitle = title.trim().slice(0, 100);
 
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     await verifyConversationOwnership(id, org.id);
 
     await prisma.$executeRaw`
@@ -578,7 +580,7 @@ exports.renameConversation = async (req, res, next) => {
 exports.getMorningBriefing = async (req, res, next) => {
   const correlationId = uuidv4();
   try {
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
 
     const briefing = await prisma.morning_briefings.findFirst({
       where: { organization_id: org.id },
@@ -601,7 +603,7 @@ exports.getMorningBriefing = async (req, res, next) => {
 
 exports.checkAndCreateAlerts = async (req, res, next) => {
   try {
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
 
     // Get all active users in this org
     const members = await prisma.organization_members.findMany({
@@ -653,7 +655,7 @@ exports.checkAndCreateAlerts = async (req, res, next) => {
  */
 exports.getIntelligenceFindings = async (req, res, next) => {
   try {
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const { listFindings } = require('../services/intelligenceFindingsRepository');
     const findings = await listFindings(prisma, org.id, { status: req.query.status, limit: req.query.limit });
     return res.status(200).json({ success: true, data: { findings } });
@@ -662,7 +664,7 @@ exports.getIntelligenceFindings = async (req, res, next) => {
 
 exports.refreshIntelligenceFindings = async (req, res, next) => {
   try {
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const { evaluateOrganizationFindings } = require('../services/intelligenceFindingsAggregator');
     const { persistVerifiedFindings } = require('../services/intelligenceFindingsRepository');
     const evaluated = await evaluateOrganizationFindings(prisma, org.id);
@@ -675,7 +677,7 @@ exports.refreshIntelligenceFindings = async (req, res, next) => {
 
 exports.getIntelligenceFinding = async (req, res, next) => {
   try {
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
       return res.status(400).json({ success: false, error: { code: 'INVALID_FINDING_ID' } });
     }
@@ -691,7 +693,7 @@ exports.getIntelligenceFinding = async (req, res, next) => {
 
 exports.updateIntelligenceFinding = async (req, res, next) => {
   try {
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const { changeFindingStatus } = require('../services/intelligenceFindingsRepository');
     const result = await changeFindingStatus(prisma, org.id, req.params.id, req.body?.status);
     if (result.invalid) return res.status(400).json({ success: false, error: { code: 'INVALID_FINDING_STATUS' } });

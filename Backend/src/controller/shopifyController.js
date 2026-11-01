@@ -47,6 +47,8 @@ exports.installShopify = async (req, res, next) => {
       });
     }
     const normalizedShop = shop.toLowerCase();
+    const organization = await getOrganizationByUser(userId, req.user.tenantId);
+    if (!organization) return res.status(403).json({ success: false, error: "Active organisation membership required." });
 
     const state = generateState(userId);
     const cookieOptions = {
@@ -60,6 +62,7 @@ exports.installShopify = async (req, res, next) => {
     res.cookie("shopify_state", state, cookieOptions);
 
     res.cookie("shopify_user", userId, cookieOptions);
+    res.cookie("shopify_organization", organization.id, cookieOptions);
     res.cookie("shopify_shop", normalizedShop, cookieOptions);
     
     const installUrl = buildInstallUrl({
@@ -102,7 +105,7 @@ exports.retryShopifySetup = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Invalid Shopify store ID' });
     }
 
-    const organization = await getOrganizationByUser(req.user.id);
+    const organization = await getOrganizationByUser(req.user.id, req.user.tenantId);
     if (!organization) {
       return res.status(404).json({ success: false, error: 'Organization not found' });
     }
@@ -179,7 +182,7 @@ exports.shopifyCallback = async (req, res, next) => {
     } = req.query;
 
     if (authorizationError === 'access_denied') {
-      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user']) {
+      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user', 'shopify_organization']) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations?shopify=cancelled', configuredFrontendUrl);
@@ -275,7 +278,7 @@ exports.shopifyCallback = async (req, res, next) => {
 
     // Reject callbacks for accounts without an active organization before consuming the one-use code.
     stage = 'organization_lookup';
-    const organization = await getOrganizationByUser(userId);
+    const organization = await getOrganizationByUser(userId, req.signedCookies?.shopify_organization || undefined);
     if (!organization) {
       logStage('failed', { reason: 'organization_not_found' });
       return res.status(404).json({ success: false, error: 'Organization not found', stage, reference: requestId });
@@ -331,6 +334,7 @@ exports.shopifyCallback = async (req, res, next) => {
       path: "/",
     });
 
+    res.clearCookie("shopify_organization", { ...buildCookieOptions(req), path: "/" });
     res.clearCookie("shopify_shop", { ...buildCookieOptions(req), path: "/" });
 
     res.clearCookie("shopify_user", {
@@ -377,7 +381,7 @@ exports.shopifyCallback = async (req, res, next) => {
       configured_api_version: error.configuredApiVersion || undefined,
     });
     if (frontendOrigin) {
-      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user']) {
+      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user', 'shopify_organization']) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations', frontendOrigin);

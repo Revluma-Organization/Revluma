@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
@@ -13,6 +13,7 @@ import {
   Store as StoreIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,6 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { ApiError } from "@/lib/api";
 import {
   DISABLED_AUTOMATION_POLICY,
+  validateAutomationPolicy,
   getBetaAutomationPolicy,
   listAutomationStores,
   updateBetaAutomationPolicy,
@@ -47,11 +49,10 @@ function errorMessage(error: unknown, fallback: string): string {
 
 function numericValue(value: string): number {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return value.trim() && Number.isFinite(parsed) ? parsed : NaN;
 }
 
-export default function Automation() {
-  const role = useAuthStore((state) => state.user?.role?.toLowerCase());
+function useAutomationController(role: string | undefined) {
   const canManage = role === "owner" || role === "admin";
   const [stores, setStores] = useState<AutomationStore[]>([]);
   const [storeId, setStoreId] = useState("");
@@ -62,10 +63,23 @@ export default function Automation() {
   const [storesLoading, setStoresLoading] = useState(canManage);
   const [policyLoading, setPolicyLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [storesError, setStoresError] = useState<string | null>(null);
+  const [policyError, setPolicyError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [storesAttempt, retryStores] = useState(0);
+  const [policyAttempt, retryPolicy] = useState(0);
+  const [loadedStoreId, setLoadedStoreId] = useState('');
+  const saveInFlight = useRef(false);
+  const generation = useRef(0);
 
   useEffect(() => {
     if (!canManage) return;
     let cancelled = false;
+    setStoresLoading(true);
+    setStoresError(null);
+    setStoreId('');
+    setStores([]);
     void listAutomationStores()
       .then((availableStores) => {
         if (cancelled) return;
@@ -74,7 +88,7 @@ export default function Automation() {
       })
       .catch((error) => {
         if (!cancelled) {
-          toast.error(errorMessage(error, "Unable to load connected stores."));
+          setStoresError(errorMessage(error, "Unable to load connected stores."));
         }
       })
       .finally(() => {
@@ -83,9 +97,16 @@ export default function Automation() {
     return () => {
       cancelled = true;
     };
-  }, [canManage]);
+  }, [canManage, storesAttempt]);
 
   useEffect(() => {
+    generation.current += 1;
+    setLoadedStoreId('');
+    setSaved(false);
+    setSaveError(null);
+    setPolicyError(null);
+    setPolicy({ ...DISABLED_AUTOMATION_POLICY });
+    setAcknowledged(false);
     if (!canManage || !storeId) return;
     let cancelled = false;
     setPolicyLoading(true);
@@ -93,13 +114,14 @@ export default function Automation() {
       .then((loadedPolicy) => {
         if (cancelled) return;
         setPolicy(loadedPolicy);
-        setAcknowledged(loadedPolicy.enabled);
+        setLoadedStoreId(storeId);
+        setAcknowledged(false);
       })
       .catch((error) => {
         if (cancelled) return;
         setPolicy({ ...DISABLED_AUTOMATION_POLICY });
         setAcknowledged(false);
-        toast.error(errorMessage(error, "Unable to load the automation policy."));
+        setPolicyError(errorMessage(error, "Unable to load the automation policy."));
       })
       .finally(() => {
         if (!cancelled) setPolicyLoading(false);
@@ -107,9 +129,11 @@ export default function Automation() {
     return () => {
       cancelled = true;
     };
-  }, [canManage, storeId]);
+  }, [canManage, storeId, policyAttempt]);
 
   const setEnabled = (enabled: boolean) => {
+    setSaved(false);
+    setSaveError(null);
     setPolicy((current) => ({
       ...current,
       enabled,
@@ -131,6 +155,8 @@ export default function Automation() {
   };
 
   const setDiscountsEnabled = (enabled: boolean) => {
+    setSaved(false);
+    setSaveError(null);
     setPolicy((current) => ({
       ...current,
       allowed_actions: enabled
@@ -143,36 +169,68 @@ export default function Automation() {
   };
 
   const savePolicy = async () => {
-    if (!storeId) return;
-    if (policy.enabled && !acknowledged) {
-      toast.error("Confirm the authorization statement before enabling automation.");
-      return;
-    }
+    if (!canManage || !storeId || storesLoading || policyLoading || policyError ||
+        loadedStoreId !== storeId || saveInFlight.current) return;
+    // Automated recovery is deferred for the MVP. Existing authorisation may be paused.
+    if (policy.enabled) return;
+    const invalid = validateAutomationPolicy(policy, acknowledged);
+    if (invalid) { setSaveError(invalid); return; }
+    const requestGeneration = generation.current;
+    saveInFlight.current = true;
+    setSaveError(null);
+    setSaved(false);
     try {
       setSaving(true);
       const saved = await updateBetaAutomationPolicy(storeId, policy);
+      if (generation.current !== requestGeneration) return;
       setPolicy(saved);
-      setAcknowledged(saved.enabled);
-      toast.success(saved.enabled ? "Store automation authorization saved." : "Automation paused for this store.");
+      setAcknowledged(false);
+      setSaved(true);
+      toast.success(saved.enabled ? "Store automation authorisation saved." : "Automation paused for this store.");
     } catch (error) {
-      toast.error(errorMessage(error, "Unable to save the automation policy."));
+      if (generation.current === requestGeneration) setSaveError(errorMessage(error, "Unable to save the automation policy."));
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   };
 
+  return {
+    canManage, stores, storeId, policy, acknowledged, storesLoading,
+    policyLoading: policyLoading || (!!storeId && loadedStoreId !== storeId && !policyError),
+    saving, storesError, policyError, saveError, saved,
+    setStoreId, setPolicy: (update: Parameters<typeof setPolicy>[0]) => { setSaved(false); setSaveError(null); setPolicy(update); },
+    setAcknowledged, setEnabled, setDiscountsEnabled, savePolicy,
+    retryStores: () => retryStores(value => value + 1),
+    retryPolicy: () => retryPolicy(value => value + 1),
+  };
+}
+
+export type AutomationPresentationProps = ReturnType<typeof useAutomationController> & { preview?: boolean };
+
+export default function Automation() {
+  const role = useAuthStore(state => state.user?.role?.toLowerCase());
+  const controller = useAutomationController(role);
+  return <AutomationPresentation {...controller} />;
+}
+
+export function AutomationPresentation({
+  canManage, stores, storeId, policy, acknowledged, storesLoading, policyLoading,
+  saving, storesError, policyError, saveError, saved, setStoreId, setPolicy,
+  setAcknowledged, setEnabled, setDiscountsEnabled, savePolicy, retryStores, retryPolicy, preview = false,
+}: AutomationPresentationProps) {
   if (!canManage) {
     return (
       <div className="space-y-6">
         <header>
           <h1 className="text-2xl font-bold tracking-tight text-t1">Automation</h1>
-          <p className="mt-1 text-sm text-t3">Control real customer recovery actions.</p>
+          <p className="mt-1 text-sm text-t3">Review recovery policy settings.</p>
         </header>
         <div className="rounded-2xl border border-border bg-bg-2 p-8 text-center">
           <LockKeyhole className="mx-auto h-8 w-8 text-t3" />
           <h2 className="mt-4 font-semibold text-t1">Owner or admin access required</h2>
           <p className="mt-2 text-sm text-t3">
-            Only workspace owners and administrators can authorize customer-facing actions.
+            Only workspace owners and administrators can manage recovery policies.
           </p>
         </div>
       </div>
@@ -191,17 +249,25 @@ export default function Automation() {
             <Bot className="h-5 w-5 text-[hsl(var(--accent))]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-t1">Customer Recovery Automation</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-t1">Recovery Automation</h1>
             <p className="mt-1 text-sm text-t3">
-              Authorize and limit automated cart-recovery emails and discounts.
+              Automated recovery is deferred. Review policy settings or pause existing authorisation.
             </p>
           </div>
         </div>
       </header>
 
+      <div role="note" className="rounded-xl border border-border bg-bg-3 p-4 text-sm text-t2">
+        Shopify-only MVP: automated emails and coupons are deferred. New automation cannot be enabled here.
+      </div>
       {storesLoading ? (
         <div className="flex min-h-48 items-center justify-center rounded-2xl border border-border bg-bg-2">
           <Loader2 className="h-5 w-5 animate-spin text-t3" aria-label="Loading connected stores" />
+        </div>
+      ) : storesError ? (
+        <div role="alert" className="rounded-xl border border-red-500/30 bg-bg-2 p-6 text-t1">
+          <p>{storesError}</p><p className="mt-2 text-sm text-t2">Store connection status is unavailable.</p>
+          <Button onClick={retryStores} className="mt-4">Retry stores</Button>
         </div>
       ) : stores.length === 0 ? (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-6">
@@ -210,8 +276,9 @@ export default function Automation() {
             <div>
               <h2 className="font-semibold text-t1">Connect an active store first</h2>
               <p className="mt-1 text-sm text-t2">
-                Automation policies are stored separately for each connected store.
+                Policies belong to an active Shopify store.
               </p>
+              <Link className="mt-4 inline-flex font-semibold text-t1 underline" to="/dashboard/integrations">Open Integrations</Link>
             </div>
           </div>
         </div>
@@ -239,6 +306,13 @@ export default function Automation() {
             </Select>
           </motion.section>
 
+          {policyLoading ? (
+            <div role="status" className="rounded-xl border border-border bg-bg-2 p-8 text-t2">Loading store policy…</div>
+          ) : policyError ? (
+            <div role="alert" className="rounded-xl border border-red-500/30 bg-bg-2 p-6 text-t1">
+              <p>{policyError}</p><Button onClick={retryPolicy} className="mt-4">Retry policy</Button>
+            </div>
+          ) : <>
           <motion.section
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -249,18 +323,17 @@ export default function Automation() {
               <div>
                 <div className="flex items-center gap-2">
                   <StoreIcon className="h-4 w-4 text-[hsl(var(--accent))]" />
-                  <h2 className="font-semibold text-t1">Enable controlled automation</h2>
+                  <h2 className="font-semibold text-t1">Recovery authorisation</h2>
                 </div>
                 <p className="mt-2 max-w-xl text-sm leading-relaxed text-t3">
-                  When enabled, Revluma can automatically schedule approved recovery emails for
-                  eligible abandoned carts from {selectedStore?.shop_domain || "this store"}.
+                  Policy for {selectedStore?.shop_domain || "this store"}. Automated recovery remains deferred for the MVP.
                 </p>
               </div>
               <Switch
                 checked={policy.enabled}
                 onCheckedChange={setEnabled}
-                disabled={busy || saving}
-                aria-label="Enable controlled automation"
+                disabled={busy || saving || (!preview && !policy.enabled)}
+                aria-label="Recovery authorisation"
               />
             </div>
             <div className={`mt-4 rounded-xl border p-3 text-sm ${
@@ -270,7 +343,7 @@ export default function Automation() {
             }`}>
               <div className="flex items-center gap-2">
                 {policy.enabled ? <CheckCircle2 className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
-                {policy.enabled ? "Store authorization will be enabled after saving" : "Paused; no new customer actions will be sent"}
+                {policy.enabled ? "Existing authorisation recorded; recovery is deferred" : "Policy disabled; recovery remains deferred"}
               </div>
             </div>
           </motion.section>
@@ -282,7 +355,7 @@ export default function Automation() {
             className="rounded-2xl border border-border bg-bg-2 p-6 shadow-sm"
           >
             <h2 className="font-semibold text-t1">Allowed actions</h2>
-            <p className="mt-1 text-sm text-t3">Only the actions selected here can be executed.</p>
+            <p className="mt-1 text-sm text-t3">Retained policy settings for future recovery support.</p>
 
             <div className="mt-5 space-y-4">
               <div className="flex items-start gap-3 rounded-xl border border-border bg-bg-3 p-4">
@@ -292,7 +365,7 @@ export default function Automation() {
                     <Mail className="h-4 w-4" /> Cart-recovery email
                   </Label>
                   <p className="mt-1 text-xs leading-relaxed text-t3">
-                    Required for this beta. Emails are sent only to shoppers with recorded email-marketing consent.
+                    Deferred. Any future email recovery requires recorded shopper marketing consent.
                   </p>
                 </div>
               </div>
@@ -302,14 +375,14 @@ export default function Automation() {
                   id="percentage-discount"
                   checked={discountsEnabled}
                   onCheckedChange={(value) => setDiscountsEnabled(value === true)}
-                  disabled={!policy.enabled || busy || saving}
+                  disabled={!preview || !policy.enabled || busy || saving}
                 />
                 <div className="flex-1">
                   <Label htmlFor="percentage-discount" className="flex items-center gap-2 font-medium text-t1">
                     <Percent className="h-4 w-4" /> Percentage discount
                   </Label>
                   <p className="mt-1 text-xs leading-relaxed text-t3">
-                    Permit single-use Shopify recovery codes when the recommendation requires an offer.
+                    Deferred Shopify percentage-discount policy. No coupon actions run from this page.
                   </p>
                   {discountsEnabled && (
                     <div className="mt-4 max-w-xs">
@@ -319,14 +392,14 @@ export default function Automation() {
                       <Input
                         id="max-discount"
                         type="number"
-                        min={0}
+                        min={1}
                         max={25}
-                        value={policy.max_discount_pct}
+                        value={Number.isNaN(policy.max_discount_pct) ? "" : policy.max_discount_pct}
                         onChange={(event) => setPolicy((current) => ({
                           ...current,
                           max_discount_pct: numericValue(event.target.value),
                         }))}
-                        disabled={saving}
+                        disabled={!preview || !policy.enabled || busy || saving}
                         className="mt-2 bg-bg-2"
                       />
                       <p className="mt-1 text-xs text-t3">The Backend enforces a hard maximum of 25%.</p>
@@ -344,7 +417,7 @@ export default function Automation() {
             className="rounded-2xl border border-border bg-bg-2 p-6 shadow-sm"
           >
             <h2 className="font-semibold text-t1">Safety limits</h2>
-            <p className="mt-1 text-sm text-t3">These limits are enforced again immediately before every send.</p>
+            <p className="mt-1 text-sm text-t3">Policy limits are validated before saving. Automated sending is deferred.</p>
             <div className="mt-5 grid gap-5 sm:grid-cols-2">
               <div>
                 <Label htmlFor="customer-limit" className="text-sm font-medium text-t2">
@@ -353,17 +426,17 @@ export default function Automation() {
                 <Input
                   id="customer-limit"
                   type="number"
-                  min={1}
+                  min={policy.enabled ? 1 : 0}
                   max={10}
-                  value={policy.max_messages_per_customer_24h}
+                  value={Number.isNaN(policy.max_messages_per_customer_24h) ? "" : policy.max_messages_per_customer_24h}
                   onChange={(event) => setPolicy((current) => ({
                     ...current,
                     max_messages_per_customer_24h: numericValue(event.target.value),
                   }))}
-                  disabled={!policy.enabled || busy || saving}
+                  disabled={!preview || !policy.enabled || busy || saving}
                   className="mt-2 bg-bg-3"
                 />
-                <p className="mt-1 text-xs text-t3">Allowed range: 1–10.</p>
+                <p className="mt-1 text-xs text-t3">{policy.enabled ? "Allowed range: 1–10." : "Disabled policy: 0 emails. Future enabled range: 1–10."}</p>
               </div>
               <div>
                 <Label htmlFor="store-limit" className="text-sm font-medium text-t2">
@@ -372,17 +445,17 @@ export default function Automation() {
                 <Input
                   id="store-limit"
                   type="number"
-                  min={1}
+                  min={policy.enabled ? 1 : 0}
                   max={1000}
-                  value={policy.max_actions_per_store_24h}
+                  value={Number.isNaN(policy.max_actions_per_store_24h) ? "" : policy.max_actions_per_store_24h}
                   onChange={(event) => setPolicy((current) => ({
                     ...current,
                     max_actions_per_store_24h: numericValue(event.target.value),
                   }))}
-                  disabled={!policy.enabled || busy || saving}
+                  disabled={!preview || !policy.enabled || busy || saving}
                   className="mt-2 bg-bg-3"
                 />
-                <p className="mt-1 text-xs text-t3">Allowed range: 1–1,000.</p>
+                <p className="mt-1 text-xs text-t3">{policy.enabled ? "Allowed range: 1–1,000." : "Disabled policy: 0 actions. Future enabled range: 1–1,000."}</p>
               </div>
             </div>
           </motion.section>
@@ -394,33 +467,37 @@ export default function Automation() {
                   id="automation-authorization"
                   checked={acknowledged}
                   onCheckedChange={(value) => setAcknowledged(value === true)}
-                  disabled={saving}
+                  disabled={!preview || saving}
                   className="mt-0.5"
                 />
                 <div>
                   <Label htmlFor="automation-authorization" className="font-semibold text-t1">
-                    Confirm merchant authorization
+                    Confirm merchant authorisation
                   </Label>
                   <p className="mt-1 text-sm leading-relaxed text-t2">
-                    The merchant authorizes Revluma to perform the selected actions within these limits.
-                    Shopper marketing consent is still checked separately before every email.
+                    Future recovery requires merchant authorisation within these limits and separate
+                    shopper marketing consent. Recovery remains deferred.
                   </p>
                 </div>
               </div>
             </section>
           )}
 
+          {validateAutomationPolicy(policy, acknowledged) && <p role="status" className="text-sm text-t2">{validateAutomationPolicy(policy, acknowledged)}</p>}
+          {saveError && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{saveError} Review the form and try saving again.</p>}
+          {saved && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{preview ? 'Sample saved visual — no changes were saved.' : 'Automation policy saved.'}</p>}
           <div className="flex justify-end">
             <Button
               type="button"
               onClick={savePolicy}
-              disabled={busy || saving || !storeId || (policy.enabled && !acknowledged)}
+              disabled={preview || busy || saving || !storeId || (!preview && policy.enabled) || !!validateAutomationPolicy(policy, acknowledged)}
               className="h-11 min-w-44 bg-sky-600 text-white hover:bg-sky-500"
             >
               {saving ? <Loader2 className="animate-spin" /> : <Save />}
               {saving ? "Saving..." : "Save automation policy"}
             </Button>
           </div>
+          </>}
         </>
       )}
     </div>

@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
+import { WorkspaceSelection } from './WorkspaceSelection';
 import { LOGIN_PATH } from '@/lib/auth/constants';
 import type { ReactNode } from 'react';
 
@@ -14,10 +15,11 @@ interface ProtectedRouteProps {
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const user = useAuthStore((s) => s.user);
   const csrfToken = useAuthStore((s) => s.csrfToken);
+  const sessionVerified = useAuthStore((s) => s.sessionVerified);
   const isHydrated = useAuthStore((s) => s.isHydrated);
   const location = useLocation();
 
-  if (!isHydrated) {
+  if (!isHydrated || (user && csrfToken && !sessionVerified)) {
     return (
       <div
         className="flex min-h-screen items-center justify-center bg-background"
@@ -39,5 +41,6 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
+  if (!user.tenant_id) return <WorkspaceSelection />;
   return <>{children}</>;
 };

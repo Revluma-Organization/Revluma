@@ -5,7 +5,7 @@ import {
   Clock, ShieldCheck, ArrowUpRight, Code2, Sparkles
 } from "lucide-react";
 import { WooCommerceConnect } from "./WooCommerceConnect";
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { api, ApiError } from "@/lib/api";
@@ -16,7 +16,7 @@ import GlassmorphismCard from "@/components/GlassmorphismCard";
 import { createPortal } from "react-dom";
 
 // Types
-type ConnectionStatus = "not_connected" | "connecting" | "connected" | "error";
+type ConnectionStatus = "not_connected" | "connecting" | "connected" | "error" | "syncing";
 
 interface Platform {
   id: "shopify" | "woocommerce";
@@ -93,12 +93,16 @@ function statusesFromStores(stores: ConnectedStore[]): Record<Platform["id"], Co
     shopify: "not_connected",
     woocommerce: "not_connected",
   };
+  const priority: Record<ConnectionStatus, number> = { not_connected: 0, connecting: 1, connected: 2, syncing: 3, error: 4 };
   stores.forEach((store) => {
+    let status: ConnectionStatus = 'not_connected';
     if (store.connection_status === "connected") {
-      statuses[store.platform] = "connected";
-    } else if (store.platform === "shopify" && store.installed_at && statuses.shopify !== "connected") {
-      statuses.shopify = "error";
+      status = store.setup_status === 'failed' || store.sync_status === 'failed' || store.status === 'error'
+        ? 'error' : isStoreSetupComplete(store) ? 'connected' : 'syncing';
+    } else if (store.platform === "shopify" && store.installed_at) {
+      status = "error";
     }
+    if (priority[status] > priority[statuses[store.platform]]) statuses[store.platform] = status;
   });
   return statuses;
 }
@@ -110,7 +114,7 @@ const PLATFORMS: Platform[] = [
     name: "Shopify",
     tagline: "The world's leading e-commerce platform",
     description:
-      "Connect your Shopify store to automatically detect abandoned carts, sync customer profiles, and fire recovery sequences — no code required.",
+      "Connect Shopify to sync store data and review evidence-backed operational findings. Automated recovery is deferred.",
     logo: "https://cdn.simpleicons.org/shopify/5C8F4D",
     accentColor: "#5C8F4D",
     accentBg: "hsl(142 40% 42% / 0.10)",
@@ -118,9 +122,9 @@ const PLATFORMS: Platform[] = [
     docsUrl: "https://shopify.dev/docs/apps/auth/oauth",
     popular: true,
     features: [
-      "Automatic cart abandonment detection via pixel",
+      "Checkout activity available from Shopify",
       "Real-time order and customer sync",
-      "Shopify ScriptTag injection — no plugin needed",
+      "Evidence-backed operational findings",
       "Webhook-based OOS and inventory updates",
     ],
   },
@@ -156,13 +160,15 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   not_connected: "Not Connected",
   connecting: "Connecting…",
   connected: "Connected",
-  error: "Connection Error",
+  error: "Needs attention",
+  syncing: "Syncing / setup pending",
 };
 
 const STATUS_STYLE: Record<ConnectionStatus, { color: string; bg: string }> = {
   not_connected: { color: "hsl(var(--t3))", bg: "hsl(var(--bg-4))" },
   connecting: { color: "hsl(var(--amber))", bg: "hsl(var(--amber) / 0.12)" },
   connected: { color: "hsl(var(--accent))", bg: "hsl(var(--accent) / 0.12)" },
+  syncing: { color: "hsl(var(--amber))", bg: "hsl(var(--amber) / 0.12)" },
   error: { color: "hsl(var(--red))", bg: "hsl(var(--red) / 0.12)" },
 };
 
@@ -230,7 +236,7 @@ export default function Integrations() {
   const initialCachedStores = readCachedStores();
   const [stores, setStores] = useState<ConnectedStore[]>(initialCachedStores);
   const [statuses, setStatuses] = useState<Record<Platform["id"], ConnectionStatus>>(() => statusesFromStores(initialCachedStores));
-  const [loading, setLoading] = useState(initialCachedStores.length === 0);
+  const [loading, setLoading] = useState(true);
   const [storeLoadError, setStoreLoadError] = useState(false);
   const [retryingStoreIds, setRetryingStoreIds] = useState<string[]>([]);
   const [webhookDetailsStoreId, setWebhookDetailsStoreId] = useState<string | null>(null);
@@ -271,10 +277,11 @@ export default function Integrations() {
 
   // Fetch initial statuses
   const fetchStatuses = useCallback(async (): Promise<ConnectedStore[] | null> => {
+    setLoading(true);
     try {
-      const res = await api.get<{ data: { stores: ConnectedStore[] } }>("/stores");
-      const stores = res.data?.data?.stores;
-      if (!Array.isArray(stores)) {
+      const res = await api.get<{ success: boolean; data: { stores: ConnectedStore[] } }>("/stores");
+      const stores = res.data?.data?.stores?.filter(store => store.platform === "shopify");
+      if (res.data?.success !== true || !Array.isArray(stores)) {
         throw new Error("The store list response was invalid.");
       }
       setStatuses(statusesFromStores(stores));
@@ -463,7 +470,7 @@ export default function Integrations() {
     }
   }
 
-  const connectedCount = Object.values(statuses).filter((s) => s === "connected").length;
+  const connectedCount = stores.filter(store => store.platform === "shopify" && store.connection_status === "connected").length;
   const anyConnected = connectedCount > 0;
   const fullySetupStores = stores.filter(isStoreSetupComplete);
   const anyFullySetup = fullySetupStores.length > 0;
@@ -478,7 +485,7 @@ export default function Integrations() {
             Connect Your Store
           </h1>
           <p className="mt-1 text-[0.85rem] text-t2">
-            Connect your Shopify or WooCommerce store to start recovering abandoned carts.
+            Connect Shopify to review store activity and operational intelligence. Automated recovery is deferred.
           </p>
         </div>
         <div className="flex items-center gap-2 self-start rounded-full border border-border bg-bg-2 px-3 py-1.5 text-[0.72rem] font-semibold text-t2 sm:self-auto">
@@ -486,15 +493,15 @@ export default function Integrations() {
             className="h-1.5 w-1.5 rounded-full"
             style={{ background: anyConnected ? "hsl(var(--accent))" : "hsl(var(--t4))" }}
           />
-          {connectedCount} of {PLATFORMS.length} platforms connected
+          {loading ? "Checking connections…" : storeLoadError ? "Connection status unavailable" : `${connectedCount} Shopify store${connectedCount === 1 ? "" : "s"} connected`}
         </div>
       </div>
 
       {/* Active Store Sync & Onboarding Card */}
-      {!loading && anyConnected && (
+      {!loading && !storeLoadError && anyConnected && (
         <div className="flex flex-col justify-between gap-4 rounded-2xl border border-emerald-500/25 bg-bg-2 p-5 sm:flex-row sm:items-center">
           <div className="space-y-2">
-            <div className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider", allConnectedStoresReady ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-300")}>
+            <div className={cn("inline-flex items-center gap-2 rounded-full px-3 py-1 text-[0.72rem] font-bold uppercase tracking-wider", allConnectedStoresReady ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/10 text-amber-800 dark:text-amber-300")}>
               {allConnectedStoresReady ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
               {allConnectedStoresReady ? "Store Connections Active" : anyFullySetup ? "Some Stores Ready — Others Need Setup" : "Store Connection Saved — Setup Incomplete"}
             </div>
@@ -508,21 +515,22 @@ export default function Integrations() {
             onClick={() => navigate("/dashboard/settings/automation")}
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-[0.82rem] font-bold text-black shadow-md transition-all hover:bg-emerald-400"
           >
-            Configure Automation
+            Review automation policy
             <ArrowUpRight className="h-4 w-4" />
           </button>
         </div>
       )}
 
-      {!loading && storeLoadError && (
+      {storeLoadError && (
         <div role="alert" className="rounded-xl border border-red-500/25 bg-red-500/5 p-4 text-sm text-t2">
           Could not load your saved store connections. Refresh the list before trying to connect a store again.
           <button
             type="button"
+            disabled={loading}
             onClick={() => void fetchStatuses()}
             className="ml-2 font-semibold text-t1 underline underline-offset-2"
           >
-            Retry
+            {loading ? "Retrying…" : "Retry"}
           </button>
         </div>
       )}
@@ -535,7 +543,7 @@ export default function Integrations() {
           </div>
           <h3 className={DESIGN_TOKENS.emptyState.title}>No Store Connected</h3>
           <p className={DESIGN_TOKENS.emptyState.description}>
-            Connect your Shopify or WooCommerce store to activate recovery sequences and unlock your live dashboard.
+            Connect Shopify to begin reviewing store data and verified findings. Automated recovery is deferred.
           </p>
           <button
             onClick={() => handleConnectClick("shopify")}
@@ -548,9 +556,9 @@ export default function Integrations() {
 
       {/* Platform cards — side by side */}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2" aria-label="Platform integrations">
-        {PLATFORMS.map((platform) => {
+        {PLATFORMS.filter(platform => platform.id === "shopify").map((platform) => {
           const status = statuses[platform.id];
-          const isConnected = status === "connected";
+          const isConnected = stores.some(store => store.platform === platform.id && store.connection_status === "connected");
 
           return (
             <div
@@ -584,7 +592,7 @@ export default function Integrations() {
                   </div>
                   {loading ? (
                     <span className="inline-flex items-center gap-2 rounded-full border border-border bg-bg-3 px-3 py-1.5 text-xs font-medium text-t2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking status</span>
-                  ) : <StatusBadge status={status} />}
+                   ) : storeLoadError ? <span className="text-xs font-semibold text-t2">Status unavailable</span> : <StatusBadge status={status} />}
                 </div>
 
                 {/* Description & Features */}
@@ -621,7 +629,7 @@ export default function Integrations() {
                   />
                 )}
 
-                {platform.id === "shopify" && stores
+                {!loading && !storeLoadError && platform.id === "shopify" && stores
                   .filter((store) => store.platform === "shopify")
                   .map((store) => {
                     const isRetrying = retryingStoreIds.includes(store.id) || store.setup_status === "in_progress";
@@ -647,7 +655,7 @@ export default function Integrations() {
                     const rowDetail = (topic: string) => details.find((item) => item.topic === topic);
                     const rowState = (topic: string) => rowDetail(topic)?.status ?? "unknown";
                     return (
-                      <>
+                      <Fragment key={store.id}>
                         <div key={store.id} className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
                           <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{store.shop_domain}</p>
                           <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{heading}</h3>
@@ -733,7 +741,7 @@ export default function Integrations() {
                       </div>
                             </div>
                           </div>, document.body)}
-                      </>
+                      </Fragment>
                     );
                   })}
                 {/* Actions */}
@@ -741,6 +749,8 @@ export default function Integrations() {
                   <div className="mt-auto flex items-center gap-2 pt-1">
                     {loading ? (
                       <div className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-bg-3 py-2.5 text-xs text-t2"><Loader2 className="h-4 w-4 animate-spin" /> Loading saved connection…</div>
+                    ) : storeLoadError ? (
+                      <p className="text-sm text-t2">Retry the store list to verify your connection.</p>
                     ) : isConnected ? (
                       <button
                         onClick={() => navigate("/dashboard/settings/automation")}

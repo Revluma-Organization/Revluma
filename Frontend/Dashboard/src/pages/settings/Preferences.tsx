@@ -59,38 +59,33 @@ const THEME_BLOCKS: AestheticBlock[] = [
 ];
 
 export const Preferences: FC = () => {
-  const globalTheme = useThemeStore((state) => state.theme);
+  const globalTheme = useThemeStore((state) => state.preference);
   const setThemeGlobal = useThemeStore((state) => state.setTheme);
   const updatePreference = useThemeStore((state) => state.updatePreference);
 
-  const [theme, setTheme] = useState<ThemeOption>(
-    globalTheme === "light" ? "light" : "dark"
-  );
+  const theme = globalTheme;
   const [language, setLanguage] = useState<string>("");
   const [timezone, setTimezone] = useState<string>("");
   const [dateFormat, setDateFormat] = useState<string>("");
 
   const fetchUserPreferences = useCallback(async () => {
     try {
-            const res = await api.get<{
+      const res = await api.get<{ data: {
         theme?: ThemeOption;
         language?: string;
         timezone?: string;
-        dateFormat?: string;
-      }>("/preferences", undefined, { skipAuthRedirect: true });
-                const prefs = res.data?.data;
-        if (prefs) {
-          if (prefs.language) {
-            setLanguage(prefs.language);
-            updatePreference("language", prefs.language);
-            if (typeof document !== "undefined") {
-              document.documentElement.lang = prefs.language;
-            }
-          }
-          if (prefs.timezone) setTimezone(prefs.timezone);
-        
-          if (prefs.dateFormat) setDateFormat(prefs.dateFormat); 
+        date_format?: string;
+      } }>("/preferences", undefined, { skipAuthRedirect: true });
+      const prefs = res.data?.data;
+      if (prefs) {
+        if (prefs.language) {
+          setLanguage(prefs.language);
+          updatePreference("language", prefs.language);
+          document.documentElement.lang = prefs.language;
         }
+        if (prefs.timezone) setTimezone(prefs.timezone);
+        if (prefs.date_format) setDateFormat(prefs.date_format);
+      }
     } catch (err) {
       console.warn("Failed to fetch preferences from API:", err);
     }
@@ -101,16 +96,8 @@ export const Preferences: FC = () => {
   }, [fetchUserPreferences]);
 
   const handleThemeSelect = (mode: ThemeOption) => {
-    setTheme(mode);
     setSavedSuccessfully(false);
-    if (mode === "system") {
-      const isSystemDark = window.matchMedia(
-        "(prefers-color-scheme: dark)"
-      ).matches;
-      setThemeGlobal(isSystemDark ? "dark" : "light");
-    } else {
-      setThemeGlobal(mode);
-    }
+    setThemeGlobal(mode);
   };
 
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -121,13 +108,13 @@ export const Preferences: FC = () => {
     setIsSaving(true);
     setSavedSuccessfully(false);
     const payload = {
-      theme: theme === "system" ? globalTheme : theme,
+      theme,
       language,
-      dateFormat: dateFormat,
+      date_format: dateFormat,
       timezone,
     };
     try {
-            await api.put("/preferences", payload, { skipAuthRedirect: true });
+      await api.put("/preferences", payload, { skipAuthRedirect: true });
       if (language) {
         updatePreference("language", language);
         if (typeof document !== "undefined") {
@@ -191,9 +178,11 @@ export const Preferences: FC = () => {
                     handleThemeSelect(block.id);
                   }}
                   role="button"
+                  aria-pressed={isSelected}
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
                       handleThemeSelect(block.id);
                     }
                   }}

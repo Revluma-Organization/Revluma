@@ -17,6 +17,15 @@ import { useAuthStore } from '@/store/authStore';
  */
 export function AuthSync() {
   const resetLocalAuthState = useAuthStore((s) => s.resetLocalAuthState);
+  const synchroniseSession = useAuthStore((s) => s.synchroniseSession);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === 'rv-auth' || event.key === null) synchroniseSession();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [synchroniseSession]);
 
   useEffect(() => {
     return onAuthBroadcast((message) => {
@@ -35,6 +44,7 @@ export function AuthSync() {
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent) => {
       if (!event.persisted) return;
+      synchroniseSession();
       if (!getAccessToken()) {
         resetLocalAuthState();
         window.location.replace(LOGIN_PATH);
@@ -42,7 +52,7 @@ export function AuthSync() {
     };
     window.addEventListener('pageshow', onPageShow);
     return () => window.removeEventListener('pageshow', onPageShow);
-  }, [resetLocalAuthState]);
+  }, [resetLocalAuthState, synchroniseSession]);
 
   return null;
 }

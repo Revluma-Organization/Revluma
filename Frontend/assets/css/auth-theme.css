@@ -1,0 +1,31 @@
+/* Shared authentication colours; the synchronous theme bootstrap precedes paint. */
+html.dark { --muted: #b0b0c1; --muted2: #a0a0b3; }
+html.light {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-md: #eef2f6;
+  --surface-hover: #e8edf4;
+  --border: #cbd5e1;
+  --border-focus: #64748b;
+  --text: #172033;
+  --muted: #475569;
+  --muted2: #526176;
+  --accent: #5b46c7;
+  --red: #b91c1c;
+  --red-bg: #fef2f2;
+  --red-border: #fca5a5;
+  --green: #047857;
+  --yellow: #854d0e;
+}
+html.light body { background: var(--bg); color: var(--text); }
+html.light .text-white, html.light .social-auth-icon-button { color: var(--text); }
+html.light input, html.light select, html.light .social-auth-icon-button {
+  background-color: var(--surface); color: var(--text); border-color: var(--border);
+}
+html.light input::placeholder { color: var(--muted); }
+html.light .btn-primary, html.light .btn-submit { background: var(--text); color: var(--bg); }
+html.light .btn-secondary, html.light .btn-secondary-sm, html.light .btn-ghost {
+  background: var(--surface); color: var(--text); border-color: var(--border);
+}
+html.light .text-zinc-400, html.light .text-gray-400, html.light .text-gray-500 { color: var(--muted); }
+html.light .social-auth-icon-button:hover { background: var(--surface-hover); border-color: var(--border-focus); }

@@ -62,3 +62,24 @@ export const NAV: NavItem[] = [
     keywords: ["experimental", "labs", "preview"],
   },
 ];
+
+// MVP visibility only. Legacy pages and routes remain preserved.
+const MVP_ROUTES = new Set([
+  "/dashboard/overview",
+  "/dashboard/rev-intell",
+  "/dashboard/integrations",
+]);
+
+const MVP_DESCRIPTIONS: Record<string, string> = {
+  "/dashboard/overview": "Store health, priority findings, and next steps",
+  "/dashboard/rev-intell": "Investigate available store evidence with Rev",
+  "/dashboard/integrations": "Manage Shopify connection and synchronization",
+};
+
+export const MVP_NAV: NavItem[] = NAV
+  .filter((item) => MVP_ROUTES.has(item.to))
+  .map((item) => ({
+    ...item,
+    group: "Workspace",
+    description: MVP_DESCRIPTIONS[item.to] ?? item.description,
+  }));

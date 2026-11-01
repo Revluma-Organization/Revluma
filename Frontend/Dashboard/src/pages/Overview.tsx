@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import MorningBriefing from "@/components/dashboard/MorningBriefing";
+import IntelligenceFindingsPanel from "@/components/dashboard/IntelligenceFindingsPanel";
 import { LiveActivity } from "@/components/dashboard/LiveActivity";
 import type { KPI, ActivityItem, ChartData } from "@/data/mockOverview";
 import { Activity, ArrowRight, ArrowUpRight, BrainCircuit, CheckCircle2, ChevronRight, CircleAlert, Clock3, Mail, MessageCircle, Search, ShieldCheck, ShoppingCart, Sparkles, Store, TrendingUp, Users, Workflow, Zap } from "lucide-react";
@@ -15,6 +16,10 @@ const card = "rounded-2xl border border-[#e7ebf2] dark:border-[#292929] bg-white
 const iconBox = "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eaf2ff] dark:bg-[#202020] text-[#0868ed]";
 const money = (value: number, currency = "USD") => { try { return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value); } catch { return String(value); } };
 
+// Preserve the previous workspace row for potential post-MVP reuse.
+const SHOW_LEGACY_WORKSPACES = false;
+const SHOW_LEGACY_REPORTING = false;
+
 export default function Overview() {
   const navigate = useNavigate();
   const [firstName, setFirstName] = useState("");
@@ -25,6 +30,7 @@ export default function Overview() {
   const [recovery, setRecovery] = useState<RecoveryResponse["data"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [storeLoadFailed, setStoreLoadFailed] = useState(false);
   const [investigationOpen, setInvestigationOpen] = useState(false);
   useEffect(() => {
     let active = true;
@@ -43,8 +49,13 @@ export default function Overview() {
       if (metrics.status === "fulfilled") setKpis(metrics.value.data.data?.kpi || []);
       if (graph.status === "fulfilled") setChart(graph.value.data.data?.chart || null);
       if (events.status === "fulfilled") setActivity(events.value.data.data?.activity || []);
-      if (integrations.status === "fulfilled") setStores(integrations.value.data.data?.stores || []);
+      const validStores = integrations.status === "fulfilled" && integrations.value.data.success === true && Array.isArray(integrations.value.data.data?.stores);
+      if (validStores && integrations.status === "fulfilled") setStores(integrations.value.data.data.stores.filter(store => store.platform === 'shopify'));
       if (carts.status === "fulfilled") setRecovery(carts.value.data.data);
+      setStoreLoadFailed(
+        !validStores ||
+        (integrations.status === "fulfilled" && integrations.value.data.success !== true)
+      );
       setError(metrics.status === "rejected" || integrations.status === "rejected" || carts.status === "rejected");
       setLoading(false);
     }
@@ -67,7 +78,7 @@ export default function Overview() {
   const metrics = [
     { label: "Recorded cart value", value: recovery ? cartValueDisplay : "—", detail: "Abandoned-classified records", icon: ShoppingCart },
     { label: "Recovered checkouts", value: recovery ? recovered.toLocaleString() : "—", detail: "Recorded recoveries", icon: TrendingUp },
-    { label: "Store connection", value: loading ? "Checking…" : !connected ? "Not connected" : needsAttention ? "Attention needed" : "Connected", detail: connected?.platform || "No platform connected", icon: Store },
+    { label: "Store connection", value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : !connected ? "Not connected" : needsAttention ? "Attention needed" : "Connected", detail: storeLoadFailed ? "Status unavailable" : connected?.platform || "No platform connected", icon: Store },
     { label: "Recovery rate", value: recovery ? `${rate.toFixed(1)}%` : "—", detail: "Based on recorded checkouts", icon: Activity },
   ];
   return (
@@ -76,26 +87,153 @@ export default function Overview() {
         <div>
           <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#687992] dark:text-[#a6b8d4]">Command Center</p>
           <h1 className="text-[clamp(1.7rem,2.6vw,2.3rem)] font-extrabold tracking-[-0.045em] text-[#0b1426] dark:text-[#f3f7ff]">{greeting}{firstName ? `, ${firstName}` : ""}</h1>
-          <p className="mt-1.5 max-w-3xl text-[13px] leading-6 text-[#69758b] dark:text-[#a6b8d4]">{!connected ? "Connect your store to begin monitoring business activity." : needsAttention ? "Your store connection needs attention. Review its setup before relying on new data." : "Here's your store's current operational picture. Explore the evidence behind each reported figure."}</p>
+          <p className="mt-1.5 max-w-3xl text-[13px] leading-6 text-[#69758b] dark:text-[#a6b8d4]">{storeLoadFailed ? "Store connection status could not be verified. Review Integrations." : !connected ? "Connect your store to begin monitoring business activity." : needsAttention ? "Your store connection needs attention. Review its setup before relying on new data." : "Here's your store's current operational picture. Explore the evidence behind each reported figure."}</p>
         </div>
         <button onClick={() => navigate("/dashboard/rev-intell")} className="inline-flex items-center gap-2 rounded-xl bg-[#071225] px-4 py-3 text-xs font-semibold text-white transition hover:bg-[#17365d]"><BrainCircuit className="h-4 w-4 text-[#57a5ff]" /> Ask Rev Intell <ArrowUpRight className="h-3.5 w-3.5" /></button>
       </div>
       <div className="min-w-0" aria-label="Merchant intelligence briefing">
-        <MorningBriefing />
+        {SHOW_LEGACY_REPORTING && <MorningBriefing />}
       </div>
       {error && <div role="alert" className="flex gap-2 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 p-3 text-xs text-red-700 dark:text-red-300"><CircleAlert className="h-4 w-4" /> Some live data is unavailable. Figures may be incomplete.</div>}
+      {SHOW_LEGACY_REPORTING && (
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {metrics.map(({ label, value, detail, icon: Icon }) => <div key={label} className={`${card} flex min-h-[118px] items-start gap-3 p-5`}><span className={iconBox}><Icon className="h-5 w-5" /></span><div className="min-w-0"><p className="text-xs font-medium text-[#77849a] dark:text-[#a5b7d1]">{label}</p><p className="mt-1.5 break-words text-[clamp(1.1rem,1.9vw,1.6rem)] font-extrabold tracking-tight text-[#0b1426] dark:text-[#f3f7ff]">{loading ? "…" : value}</p><p className="mt-1 text-[11px] text-[#8190a4] dark:text-[#a5b7d1]">{detail}</p></div></div>)}
       </div>
+      )}
+      <section aria-label="Operational health" className={`${card} p-4 sm:p-5`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-extrabold">Operational health</h2>
+            <p className="mt-1 text-xs text-[#8190a4] dark:text-[#a5b7d1]">
+              Reported integration status and verification limitations
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard/integrations")}
+            className="text-xs font-semibold text-[#0868ed] dark:text-[#86b5ff]"
+          >
+            Review integration →
+          </button>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              label: "Shopify connection",
+              value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : connected ? "Connected" : "Not connected",
+            },
+            {
+              label: "Synchronization",
+              value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : connected?.sync_status === "failed" ? "Needs attention" : connected?.sync_status ? `Reported: ${connected.sync_status.replace(/_/g, " ")}` : "Not verified",
+            },
+            {
+              label: "Webhook health",
+              value: "Not verified",
+            },
+            {
+              label: "Data completeness",
+              value: "Not verified",
+            },
+          ].map(item => (
+            <div key={item.label} className="rounded-xl border border-[#e7ebf2] bg-[#f8faff] p-4 dark:border-[#303030] dark:bg-[#1b1b1b]">
+              <p className="text-xs text-[#69758b] dark:text-[#a5b7d1]">{item.label}</p>
+              <p className="mt-2 break-words text-sm font-bold">{item.value}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <section
+          aria-label="Operational overview"
+          className={`${card} flex min-w-0 flex-col justify-between gap-8 border-[#b7d2ff] bg-gradient-to-br from-[#f7faff] to-[#e7f0ff] p-6 dark:border-[#333333] dark:from-[#191919] dark:to-[#111111] sm:p-7`}
+        >
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#0868ed] dark:text-[#86b5ff]">
+              Operational overview
+            </p>
+            <h2 className="mt-4 text-2xl font-extrabold tracking-tight text-[#101d33] dark:text-white">
+              {loading
+                ? "Checking your store status"
+                : storeLoadFailed
+                  ? "Store status is unavailable"
+                  : !connected
+                    ? "Connect your store to get started"
+                    : needsAttention
+                      ? "Your Shopify integration needs attention"
+                      : "Your Shopify store is connected"}
+            </h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[#60728d] dark:text-[#b2c4de]">
+              {loading
+                ? "Retrieving the latest available connection information."
+                : storeLoadFailed
+                  ? "Revluma could not verify your store connection. This does not mean your store is disconnected."
+                  : !connected
+                    ? "Connect your Shopify store to begin receiving evidence-backed operational findings."
+                    : needsAttention
+                      ? "Review the integration before relying on newly synchronized information."
+                      : "Review available verified findings below. A connected store does not necessarily mean every intelligence check has sufficient evidence."}
+            </p>
+          </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => navigate(
+                connected && !needsAttention && !storeLoadFailed
+                  ? "/dashboard/rev-intell"
+                  : "/dashboard/integrations"
+              )}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#0868ed] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#0059cf]"
+            >
+              {connected && !needsAttention && !storeLoadFailed
+                ? "Investigate with Rev"
+                : storeLoadFailed
+                  ? "Open Integrations"
+                  : !connected
+                    ? "Connect Shopify"
+                    : "Review Shopify integration"}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </section>
+
+        <section
+          aria-label="Rev Intelligence"
+          className="flex min-w-0 flex-col justify-between gap-8 rounded-2xl bg-[#1F06AC] p-6 text-white shadow-sm sm:p-7"
+        >
+          <div>
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/15">
+              <BrainCircuit className="h-6 w-6 text-white" />
+            </div>
+            <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.14em] text-white/75">
+              Rev Intelligence
+            </p>
+            <h2 className="mt-2 text-2xl font-extrabold tracking-tight">
+              Understand what deserves attention.
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-white/80">
+              Ask Rev about available store information and investigate verified findings without navigating complex analytics.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard/rev-intell")}
+            className="inline-flex w-fit items-center gap-2 rounded-xl bg-white px-4 py-3 text-xs font-bold text-[#1F06AC] transition hover:bg-[#eeebff]"
+          >
+            Open Rev Intelligence
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </section>
+      </div>
+      {SHOW_LEGACY_WORKSPACES && (
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(300px,.75fr)]">
         <section className={`${card} relative overflow-hidden border-[#b7d2ff] dark:border-[#333333] bg-gradient-to-br from-[#f7faff] via-[#eef5ff] to-[#dfeeff] dark:from-[#191919] dark:via-[#151515] dark:to-[#101010] p-6 sm:p-7`}>
           <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full border-[35px] border-[#c7dcff]/50 dark:border-[#333333]/40" />
           <div className="relative flex h-full flex-col justify-between gap-8">
-            <div><div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-bold uppercase tracking-[.13em] text-[#60728d] dark:text-[#b2c4de]">Operational priority</span><span className="rounded-full bg-[#dceaff] dark:bg-[#252525] px-2.5 py-1 text-[10px] font-bold text-[#075bd3]">{!connected ? "Setup" : needsAttention ? "Needs attention" : "Store activity"}</span></div>
-              <h2 className="mt-4 max-w-[600px] text-[clamp(1.4rem,2.3vw,2rem)] font-extrabold leading-tight tracking-[-.035em] text-[#0d1930] dark:text-[#f3f7ff]">{!connected ? "Connect your store to get started" : needsAttention ? "Your store integration needs attention" : abandoned > 0 ? `${abandoned} checkout records need review` : "Your store is connected and ready to explore"}</h2>
-              <p className="mt-3 max-w-[570px] text-[13px] leading-6 text-[#60728d] dark:text-[#b2c4de]">{!connected ? "Bring your commerce data into Revluma to start exploring customer and checkout activity." : needsAttention ? "Review the connection and synchronization status to restore reliable monitoring." : abandoned > 0 ? "Review the underlying checkout records. Revluma's classification may differ from Shopify until reconciliation is complete." : "Review customer activity, explore store intelligence, or ask Rev Intell a question."}</p>
+            <div><div className="flex flex-wrap items-center gap-2"><span className="text-[10px] font-bold uppercase tracking-[.13em] text-[#60728d] dark:text-[#b2c4de]">Operational priority</span><span className="rounded-full bg-[#dceaff] dark:bg-[#252525] px-2.5 py-1 text-[10px] font-bold text-[#075bd3]">{storeLoadFailed ? "Unavailable" : !connected ? "Setup" : needsAttention ? "Needs attention" : "Store activity"}</span></div>
+              <h2 className="mt-4 max-w-[600px] text-[clamp(1.4rem,2.3vw,2rem)] font-extrabold leading-tight tracking-[-.035em] text-[#0d1930] dark:text-[#f3f7ff]">{loading ? "Checking your store status" : storeLoadFailed ? "Store status is unavailable" : !connected ? "Connect your store to get started" : needsAttention ? "Your store integration needs attention" : abandoned > 0 ? `${abandoned} checkout records need review` : "Your store is connected and ready to explore"}</h2>
+              <p className="mt-3 max-w-[570px] text-[13px] leading-6 text-[#60728d] dark:text-[#b2c4de]">{storeLoadFailed ? "Store connection information could not be verified. Review Integrations and try again." : !connected ? "Bring your commerce data into Revluma to start exploring customer and checkout activity." : needsAttention ? "Review the connection and synchronization status to restore reliable monitoring." : abandoned > 0 ? "Review the underlying checkout records. Revluma's classification may differ from Shopify until reconciliation is complete." : "Review customer activity, explore store intelligence, or ask Rev Intell a question."}</p>
             </div>
-            <div className="flex flex-wrap items-end justify-between gap-4"><div className="flex gap-7"><div><p className="text-xl font-extrabold">{recovery ? cartValueDisplay : "—"}</p><p className="mt-1 text-[11px] text-[#77849a] dark:text-[#a5b7d1]">Recorded cart value</p></div><div><p className="text-xl font-extrabold">{recovery ? pendingReview.length : "—"}</p><p className="mt-1 text-[11px] text-[#77849a] dark:text-[#a5b7d1]">Checkout records to review</p></div></div><button onClick={() => !connected || needsAttention ? navigate("/dashboard/integrations") : abandoned ? setInvestigationOpen(true) : navigate("/dashboard/rev-intell")} className="inline-flex items-center gap-2 rounded-lg bg-[#0868ed] px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-[#0059cf]">{!connected ? "Connect store" : needsAttention ? "Review integration" : abandoned ? "Investigate evidence" : "Explore intelligence"} <ArrowRight className="h-4 w-4" /></button></div>
+            <div className="flex flex-wrap items-end justify-between gap-4"><div className="flex gap-7"><div><p className="text-xl font-extrabold">{recovery ? cartValueDisplay : "—"}</p><p className="mt-1 text-[11px] text-[#77849a] dark:text-[#a5b7d1]">Recorded cart value</p></div><div><p className="text-xl font-extrabold">{recovery ? pendingReview.length : "—"}</p><p className="mt-1 text-[11px] text-[#77849a] dark:text-[#a5b7d1]">Checkout records to review</p></div></div><button onClick={() => !connected || needsAttention ? navigate("/dashboard/integrations") : abandoned ? setInvestigationOpen(true) : navigate("/dashboard/rev-intell")} className="inline-flex items-center gap-2 rounded-lg bg-[#0868ed] px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-[#0059cf]">{storeLoadFailed ? "Review Integrations" : !connected ? "Connect Shopify" : needsAttention ? "Review integration" : abandoned ? "Investigate evidence" : "Explore intelligence"} <ArrowRight className="h-4 w-4" /></button></div>
           </div>
         </section>
         <section className={`${card} p-5`}><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Other important areas</h2><span className="text-[10px] font-semibold text-[#77849a] dark:text-[#a5b7d1]">Workspaces</span></div><div className="mt-3 divide-y divide-[#edf0f5] dark:divide-[#303030]">{[
@@ -105,10 +243,30 @@ export default function Overview() {
           { icon: Workflow, label: "Automation settings", sub: "Review supported controls", to: "/dashboard/settings/automation" },
         ].map(({ icon: Icon, label, sub, to }) => <button key={label} onClick={() => navigate(to)} className="flex w-full items-center gap-3 py-3 text-left hover:bg-[#f8faff] dark:hover:bg-[#242424]"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#edf4ff] dark:bg-[#202020] text-[#0868ed]"><Icon className="h-4 w-4" /></span><span className="flex-1"><span className="block text-xs font-bold text-[#19243a] dark:text-[#f3f7ff]">{label}</span><span className="mt-0.5 block text-[11px] text-[#8490a1] dark:text-[#a5b7d1]">{sub}</span></span><ChevronRight className="h-4 w-4 text-[#9da9ba] dark:text-[#a5b7d1]" /></button>)}</div></section>
       </div>
+      )}
+      {!loading && (
+        connected && !storeLoadFailed ? (
+          <IntelligenceFindingsPanel />
+        ) : (
+          <section aria-label="Priority findings" className={`${card} p-5 sm:p-6`}>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#0868ed] dark:text-[#86b5ff]">
+              Evidence-backed intelligence
+            </p>
+            <h2 className="mt-2 text-base font-extrabold">Priority findings</h2>
+            <p className="mt-2 text-sm leading-6 text-[#69758b] dark:text-[#a5b7d1]">
+              {storeLoadFailed
+                ? "Findings cannot be assessed because store connection information is unavailable."
+                : "Connect your Shopify store to begin evaluating verified operational findings."}
+            </p>
+          </section>
+        )
+      )}
+      {SHOW_LEGACY_REPORTING && (
+        <>
       <div className="grid gap-3 xl:grid-cols-[1.2fr_.85fr_1fr]">
         <div className={`${card} min-w-0 overflow-hidden p-4`}><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-extrabold">Business performance</h2><span className="text-[10px] text-[#8190a4] dark:text-[#a5b7d1]">Live reporting</span></div><RevenueChart chartData={chart} loading={loading} /></div>
         <section className={`${card} p-5`}><div className="flex items-center justify-between"><h2 className="text-sm font-extrabold">Operational status</h2><button onClick={() => navigate("/dashboard/integrations")} className="text-[11px] font-semibold text-[#0868ed]">Manage →</button></div><div className="mt-4 space-y-3">{[
-          { icon: Store, label: "Store connection", value: !connected ? "Not connected" : needsAttention ? "Needs attention" : "Connected", good: Boolean(connected && !needsAttention) },
+          { icon: Store, label: "Store connection", value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : !connected ? "Not connected" : needsAttention ? "Needs attention" : "Connected", good: Boolean(!storeLoadFailed && connected && !needsAttention) },
           { icon: ShoppingCart, label: "Checkout records", value: recovery ? String(carts.length) : "Unavailable", good: Boolean(recovery) },
           { icon: CheckCircle2, label: "Recovered checkouts", value: recovery ? String(recovered) : "Unavailable", good: Boolean(recovery) },
         ].map(({ icon: Icon, label, value, good }) => <div key={label} className="flex items-center gap-2.5 border-b border-[#edf0f5] dark:border-[#303030] pb-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#edf4ff] dark:bg-[#202020] text-[#0868ed]"><Icon className="h-4 w-4" /></span><span className="flex-1 text-[11px] font-semibold">{label}</span><span className={`rounded-md px-2 py-1 text-[10px] font-bold ${good ? "bg-green-50 dark:bg-emerald-950 text-green-700 dark:text-emerald-300" : "bg-[#f1f4f8] dark:bg-[#252525] text-[#69758b] dark:text-[#a6b8d4]"}`}>{value}</span></div>)}<p className="pt-1 text-[11px] leading-5 text-[#8793a5] dark:text-[#a5b7d1]">Automation execution is not inferred from connection status.</p></div></section>
@@ -152,6 +310,8 @@ export default function Overview() {
         <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-xs"><thead className="bg-[#fafbfe] dark:bg-[#191919] text-[10px] uppercase tracking-wider text-[#8995a7] dark:text-[#a5b7d1]"><tr><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Cart value</th><th className="px-5 py-3">Classification</th><th className="px-5 py-3">Recorded at</th><th className="px-5 py-3">Action</th></tr></thead><tbody className="divide-y divide-[#edf0f5] dark:divide-[#303030]">{carts.slice(0, 5).map(row => <tr key={row.id} className="hover:bg-[#fafcff] dark:hover:bg-[#242424]"><td className="px-5 py-3 font-semibold text-[#26334b] dark:text-[#e7eefc]">{row.customer_name || "Guest checkout"}</td><td className="px-5 py-3 font-bold">{money(Number(row.cart_value), row.currency || "USD")}</td><td className="px-5 py-3"><span className="rounded-full bg-[#fff2df] dark:bg-[#29231b] px-2.5 py-1 text-[10px] font-bold capitalize text-[#9a5d0a] dark:text-[#f5c178]">{row.status.replace(/_/g, " ")}</span></td><td className="px-5 py-3 text-[#78869b] dark:text-[#a5b7d1]">{new Date(row.abandoned_at).toLocaleString()}</td><td className="px-5 py-3"><button onClick={() => navigate("/dashboard/cart-recovery")} className="rounded-lg border border-[#bfd7ff] px-3 py-1.5 font-semibold text-[#0868ed] hover:bg-[#eff6ff] dark:hover:bg-[#242424]">Review →</button></td></tr>)}{!loading && carts.length === 0 && <tr><td colSpan={5} className="px-5 py-10 text-center text-[#8190a4] dark:text-[#a5b7d1]">No checkout records available yet.</td></tr>}</tbody></table></div>
       </section>
       <button onClick={() => navigate("/dashboard/rev-intell")} className={`${card} flex w-full flex-wrap items-center justify-between gap-4 p-5 text-left transition hover:border-[#b7d2ff] dark:border-[#333333]`}><span className="flex items-center gap-3"><span className={iconBox}><BrainCircuit className="h-5 w-5" /></span><span><span className="block text-sm font-extrabold">Ask Rev Intell about your business</span><span className="mt-1 block text-xs text-[#8190a4] dark:text-[#a5b7d1]">Investigate the data available from your connected store.</span></span></span><span className="flex items-center gap-2 text-xs font-bold text-[#0868ed]">Start exploring <ArrowRight className="h-4 w-4" /></span></button>
+        </>
+      )}
     </div>
   );
 }

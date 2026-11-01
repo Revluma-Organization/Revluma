@@ -6,12 +6,14 @@ import {
 } from 'lucide-react';
 import { useUI } from '@/store/ui';
 import { useThemeStore } from '@/store';
-import { NAV } from '@/data/nav';
+import { MVP_NAV } from '@/data/nav';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useEffect, useState } from 'react';
 import revlumaIcon from '@/assets/brand/revluma-icon.png';
 import revIntellLogo from '@/assets/images/rev-intell-logo.png';
+
+const SHOW_DEFERRED_AUTOMATION_UPSELL = false;
 
 // Derive initials from a full name string
 function getInitials(fullName: string | undefined | null): string {
@@ -47,7 +49,7 @@ export function Sidebar() {
     return () => window.removeEventListener('resize', handleResize);
   }, [setSidebarCollapsed]);
 
-  const groups = NAV.reduce<Record<string, typeof NAV>>((acc, item) => {
+  const groups = MVP_NAV.reduce<Record<string, typeof MVP_NAV>>((acc, item) => {
     (acc[item.group] ||= []).push(item);
     return acc;
   }, {});
@@ -224,7 +226,7 @@ export function Sidebar() {
                          <motion.span
                      layoutId="sidebar-active-pill"
                       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                      className="absolute inset-0 rounded-md bg-[#007FFF]"
+                      className="absolute inset-0 rounded-md bg-[#0066cc]"
                        >
                        <span className="nav-active-rail absolute inset-y-1.5 left-0 w-[3px] rounded-full" />
                           </motion.span>
@@ -270,7 +272,7 @@ export function Sidebar() {
 
         {/* Upgrade banner */}
 <AnimatePresence>
-  {!sidebarCollapsed && (
+  {SHOW_DEFERRED_AUTOMATION_UPSELL && !sidebarCollapsed && (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}

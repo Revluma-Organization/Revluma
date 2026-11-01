@@ -9,6 +9,7 @@ import {
   LOGIN_PATH,
   type AuthBroadcastMessage,
 } from "./constants";
+import { invalidateSession } from './organization';
 
 let authChannel: BroadcastChannel | null = null;
 
@@ -24,6 +25,7 @@ function getChannel(): BroadcastChannel | null {
 
 /** Remove every auth-related key from localStorage and sessionStorage. */
 export function clearAuthStorage(): void {
+  invalidateSession();
   for (const key of AUTH_STORAGE_KEYS) {
     try {
       localStorage.removeItem(key);

@@ -34,6 +34,7 @@ router.post('/logout', optionalAuthenticate, authController.logout);
 // Protected routes
 router.post('/logout-all', authenticateToken, authController.logoutAll);
 router.post('/change-password', authenticateToken, validateChangePassword, passwordResetLimiter, authController.changePassword);
+router.post('/workspace', authenticateToken, authController.selectWorkspace);
 router.get('/me', authenticateToken, authController.getProfile);
 router.get('/getProfile', authenticateToken, authController.getProfile); // legacy alias
 router.patch("/profile", authenticateToken, authController.updateProfile);
