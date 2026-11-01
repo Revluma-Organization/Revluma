@@ -66,6 +66,33 @@ function resolveBaseUrl(): string {
 
 const BASE_URL = resolveBaseUrl();
 
+/** Base URL for callers that must build a custom request (e.g. SSE streaming). */
+export function getApiBaseUrl(): string {
+  return BASE_URL;
+}
+
+/**
+ * Resolve an access token for a streaming fetch, performing the same preflight
+ * refresh as the JSON client so a long-lived page does not open a stream with
+ * an expired token.
+ */
+export async function getStreamingAuthHeaders(): Promise<Record<string, string>> {
+  const generation = currentSessionGeneration();
+  assertCurrentSession(generation);
+  const token = getAccessToken();
+  if (token && isAccessTokenExpiring(token)) {
+    const refreshed = await refreshAccessToken();
+    assertCurrentSession(generation);
+    if (!refreshed) {
+      handleUnauthorized();
+      throw new ApiError(401, "Session expired – please sign in again");
+    }
+  }
+  assertCurrentSession(generation);
+  const current = getAccessToken();
+  return current ? { Authorization: `Bearer ${current}` } : {};
+}
+
 function updateStoredAccessToken(accessToken: string): void {
   for (const storage of [localStorage, sessionStorage]) {
     try {

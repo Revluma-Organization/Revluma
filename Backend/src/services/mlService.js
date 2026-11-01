@@ -21,6 +21,7 @@
 
 const axios = require('axios');
 const logger = require('../utils/logger');
+const { createSseParser } = require('./revStream');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
 const ML_INTERNAL_KEY = process.env.ML_INTERNAL_KEY;
@@ -1326,12 +1327,248 @@ async function checkPythonHealth() {
   }
 }
 
+
+
+/* -------------------------------------------------------------------------- */
+/* REV INTELLIGENCE — INVESTIGATION GATEWAY (read-only)                       */
+/* -------------------------------------------------------------------------- */
+
+const INVESTIGATION_CONTRACT = 'rev-investigation-v1';
+const STREAM_TIMEOUT_MS = parseInt(process.env.ML_STREAM_TIMEOUT_MS || '120000', 10);
+
+function validateInvestigationResponse(data) {
+  if (!isPlainObject(data) || data.success === false) return false;
+  if (data.read_only !== true) return false;
+  if (typeof data.text !== 'string') return false;
+  if (typeof data.response_type !== 'string' || !data.response_type.trim()) return false;
+  const investigation = data.investigation;
+  if (!isPlainObject(investigation)) return false;
+  if (typeof investigation.id !== 'string' || !investigation.id.trim()) return false;
+  if (typeof investigation.intent !== 'string' || !investigation.intent.trim()) return false;
+  if (typeof investigation.status !== 'string' || !investigation.status.trim()) return false;
+  if (!isPlainObject(investigation.period)) return false;
+  const evidence = data.evidence;
+  if (!isPlainObject(evidence) || !Array.isArray(evidence.items)) return false;
+  for (const item of evidence.items) {
+    if (!isPlainObject(item)) return false;
+    if (typeof item.id !== 'string' || !item.id.startsWith('ev-')) return false;
+    if (typeof item.metric !== 'string' || !item.metric) return false;
+    if (!['available', 'partial', 'unavailable', 'unsupported'].includes(item.status)) return false;
+    if (item.unit === 'currency' && item.status === 'available') {
+      if (!/^[A-Z]{3}$/.test(String(item.currency || ''))) return false;
+      if (item.value === null || item.value === undefined) return false;
+    }
+  }
+  if (data.facts !== undefined && !Array.isArray(data.facts)) return false;
+  if (data.hypotheses !== undefined && !Array.isArray(data.hypotheses)) return false;
+  if (data.unknowns !== undefined && !Array.isArray(data.unknowns)) return false;
+  if (data.recommendations !== undefined) {
+    if (!Array.isArray(data.recommendations)) return false;
+    if (data.recommendations.some((rec) => rec && rec.executed === true)) return false;
+  }
+  return true;
+}
+
+async function investigate({
+  organizationId, userId, message, conversationId, correlationId,
+  contextPayload = {},
+}) {
+  const validation = validateOrchestrateRequest({
+    organizationId, userId, message, triggerType: 'conversation',
+    triggerPriority: 'normal', contextPayload,
+  });
+  if (!validation.valid) {
+    return { success: false, error: { code: ML_ERRORS.INVALID_REQUEST, message: validation.message } };
+  }
+  const requestCorrelationId = getCorrelationId(correlationId);
+  const result = await pythonRequest({
+    path: '/rev/investigate',
+    body: {
+      contract_version: '1.0',
+      organization_id: organizationId,
+      user_id: userId,
+      message,
+      conversation_id: conversationId || null,
+      context_payload: contextPayload,
+    },
+    correlationId: requestCorrelationId,
+  });
+  if (!result.success) return result;
+  if (!validateInvestigationResponse(result.data)) {
+    logger.error('rev_investigation_invalid_response', {
+      correlationId: requestCorrelationId,
+    });
+    return {
+      success: false,
+      error: {
+        code: ML_ERRORS.INVALID_RESPONSE,
+        message: 'Intelligence service returned an invalid response.',
+      },
+    };
+  }
+  return { success: true, data: result.data, latencyMs: result.latencyMs };
+}
+
+/**
+ * Stream an investigation from Python to the caller.
+ *
+ * ``onEvent(name, payload)`` receives plan, step, evidence and final events.
+ * The final payload is returned so the controller can persist it. An external
+ * ``signal`` (browser disconnect / stop) aborts the upstream request.
+ */
+async function streamInvestigation({
+  organizationId, userId, message, conversationId, correlationId,
+  contextPayload = {}, signal, onEvent,
+}) {
+  if (!PYTHON_SERVICE_URL || !ML_INTERNAL_KEY) {
+    return {
+      success: false,
+      error: { code: ML_ERRORS.NOT_CONFIGURED,
+        message: 'Rev Intelligence is not configured. Contact support.' },
+    };
+  }
+  const validation = validateOrchestrateRequest({
+    organizationId, userId, message, triggerType: 'conversation',
+    triggerPriority: 'normal', contextPayload,
+  });
+  if (!validation.valid) {
+    return { success: false, error: { code: ML_ERRORS.INVALID_REQUEST, message: validation.message } };
+  }
+  const requestCorrelationId = getCorrelationId(correlationId);
+  const timeoutSignal = AbortSignal.timeout(STREAM_TIMEOUT_MS);
+  const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+
+  let response;
+  try {
+    response = await fetch(`${PYTHON_SERVICE_URL}/rev/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Key': ML_INTERNAL_KEY,
+        'X-Correlation-ID': requestCorrelationId,
+        'X-Contract-Version': CONTRACT_VERSION,
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify({
+        contract_version: '1.0',
+        organization_id: organizationId,
+        user_id: userId,
+        message,
+        conversation_id: conversationId || null,
+        context_payload: contextPayload,
+      }),
+      signal: combined,
+    });
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      return {
+        success: false,
+        error: {
+          code: signal && signal.aborted ? 'CANCELLED' : ML_ERRORS.TIMEOUT,
+          message: signal && signal.aborted
+            ? 'Generation stopped.'
+            : 'Intelligence service timed out.',
+        },
+      };
+    }
+    logger.warn('rev_stream_connection_failed', {
+      correlationId: requestCorrelationId, errorType: error.name,
+    });
+    return {
+      success: false,
+      error: { code: ML_ERRORS.UNAVAILABLE, message: 'Intelligence service is unavailable.' },
+    };
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return { success: false, error: { code: ML_ERRORS.AUTH_FAILED,
+      message: 'Intelligence service authentication failed.' } };
+  }
+  if (!response.ok || !response.body) {
+    return { success: false, error: { code: ML_ERRORS.UNAVAILABLE,
+      message: 'Intelligence service request failed.' } };
+  }
+
+  let finalPayload = null;
+  let streamError = null;
+  const parser = createSseParser((event, payload) => {
+    if (event === 'final') {
+      finalPayload = payload;
+      return;
+    }
+    if (event === 'error') {
+      streamError = payload;
+      return;
+    }
+    if (typeof onEvent === 'function') onEvent(event, payload);
+  });
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      parser.push(decoder.decode(value, { stream: true }));
+    }
+    parser.push(decoder.decode());
+    parser.flush();
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return {
+        success: false,
+        error: {
+          code: signal && signal.aborted ? 'CANCELLED' : ML_ERRORS.TIMEOUT,
+          message: signal && signal.aborted ? 'Generation stopped.' : 'Intelligence service timed out.',
+        },
+      };
+    }
+    logger.warn('rev_stream_read_failed', {
+      correlationId: requestCorrelationId, errorType: error.name,
+    });
+    return { success: false, error: { code: ML_ERRORS.UNAVAILABLE,
+      message: 'The intelligence stream was interrupted.' } };
+  } finally {
+    try { reader.releaseLock(); } catch { /* no-op */ }
+  }
+
+  if (streamError) {
+    return {
+      success: false,
+      error: {
+        code: streamError.code || ML_ERRORS.UNAVAILABLE,
+        message: streamError.message || 'Rev could not complete the investigation.',
+      },
+    };
+  }
+  if (!validateInvestigationResponse(finalPayload)) {
+    return { success: false, error: { code: ML_ERRORS.INVALID_RESPONSE,
+      message: 'Intelligence service returned an invalid response.' } };
+  }
+  return { success: true, data: finalPayload };
+}
+
+async function getToolCatalog({ correlationId } = {}) {
+  const result = await pythonRequest({
+    method: 'GET', path: '/rev/tools', correlationId: getCorrelationId(correlationId),
+  });
+  if (!result.success) return result;
+  if (!result.data || !Array.isArray(result.data.tools)) {
+    return { success: false, error: { code: ML_ERRORS.INVALID_RESPONSE,
+      message: 'Tool catalog unavailable.' } };
+  }
+  return { success: true, data: result.data };
+}
+
 /* -------------------------------------------------------------------------- */
 /* EXPORTS                                                                    */
 /* -------------------------------------------------------------------------- */
 
 module.exports = {
     orchestrate,
+    investigate,
+    streamInvestigation,
+    getToolCatalog,
     rfmSync,
     computeFeatures,
     predictAbandonment,
@@ -1349,4 +1586,6 @@ module.exports = {
     CHURN_FEATURES,
     _validateOrchestrateResponse: validateOrchestrateResponse,
     _validateOrchestrateRequest: validateOrchestrateRequest,
+    _validateInvestigationResponse: validateInvestigationResponse,
+    INVESTIGATION_CONTRACT,
 };

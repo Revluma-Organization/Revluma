@@ -1,0 +1,328 @@
+"""Rev Intelligence evidence contract.
+
+Every analytical statement Rev makes must be traceable to one or more evidence
+items produced by an authorised, organization-scoped tool.  This module defines
+the single contract used by the Python intelligence runtime, the Node gateway
+and the dashboard.
+
+Rules encoded here (not merely documented):
+
+* money is never mixed across currencies;
+* a verified zero is not the same as "no data";
+* missing data is never coerced to zero;
+* every monetary item carries currency, period, source and definition;
+* every item has a stable evidence identifier that answers can cite.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from typing import Any, Iterable
+
+EVIDENCE_SCHEMA_VERSION = "rev-evidence-v1"
+
+STATUS_AVAILABLE = "available"
+STATUS_PARTIAL = "partial"
+STATUS_UNAVAILABLE = "unavailable"
+STATUS_UNSUPPORTED = "unsupported"
+EVIDENCE_STATUSES = (STATUS_AVAILABLE, STATUS_PARTIAL, STATUS_UNAVAILABLE, STATUS_UNSUPPORTED)
+
+UNIT_CURRENCY = "currency"
+UNIT_COUNT = "count"
+UNIT_RATIO = "ratio"
+UNITS = (UNIT_CURRENCY, UNIT_COUNT, UNIT_RATIO)
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def ensure_utc(value: datetime | None, *, field: str = "timestamp") -> datetime:
+    if value is None:
+        raise ValueError(f"{field} is required")
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field} must be timezone-aware")
+    return value.astimezone(timezone.utc)
+
+
+def iso(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    return ensure_utc(value).isoformat().replace("+00:00", "Z")
+
+
+def normalize_currency(code: Any) -> str | None:
+    """Return an ISO-4217-shaped currency code or None.
+
+    Never substitutes a default currency: an unknown currency means the
+    monetary value cannot be used in a currency-explicit statement.
+    """
+    if not isinstance(code, str):
+        return None
+    candidate = code.strip().upper()
+    if len(candidate) != 3 or not candidate.isalpha():
+        return None
+    return candidate
+
+
+def money(value: Any) -> str | None:
+    """Format a decimal monetary amount to two decimal places.
+
+    Returns None for malformed values so callers cannot invent a number.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if not amount.is_finite():
+        return None
+    return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def decimal_value(value: Any) -> Decimal | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return amount if amount.is_finite() else None
+
+
+def period(start: datetime, end: datetime, *, comparison_start: datetime | None = None,
+           comparison_end: datetime | None = None, label: str | None = None,
+           timezone_label: str = "UTC") -> dict:
+    """A half-open UTC period, optionally with an equal-length comparison."""
+    start = ensure_utc(start, field="period start")
+    end = ensure_utc(end, field="period end")
+    if end <= start:
+        raise ValueError("period end must be after start")
+    result = {
+        "start": iso(start),
+        "end": iso(end),
+        "timezone": timezone_label,
+        "semantics": "[start, end)",
+    }
+    if label:
+        result["label"] = label
+    if comparison_start is not None and comparison_end is not None:
+        result["comparison_start"] = iso(comparison_start)
+        result["comparison_end"] = iso(comparison_end)
+    return result
+
+
+def previous_period(start: datetime, end: datetime) -> tuple[datetime, datetime]:
+    """Equal-length period immediately before ``start``."""
+    start = ensure_utc(start)
+    end = ensure_utc(end)
+    duration = end - start
+    return start - duration, start
+
+
+def _evidence_id(metric: str, currency: str | None, window: dict, source: str,
+                 discriminator: str = "") -> str:
+    payload = json.dumps(
+        [metric, currency, window.get("start"), window.get("end"), source, discriminator],
+        sort_keys=True,
+    )
+    return "ev-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def evidence_item(
+    metric: str,
+    *,
+    label: str,
+    value: Any,
+    unit: str = UNIT_COUNT,
+    currency: str | None = None,
+    window: dict | None = None,
+    source: str,
+    definition: str,
+    status: str = STATUS_AVAILABLE,
+    coverage: dict | None = None,
+    freshness: dict | None = None,
+    limitations: Iterable[str] | None = None,
+    store_scope: str = "organization",
+    discriminator: str = "",
+) -> dict:
+    """Build one validated evidence item.
+
+    Monetary items must carry a currency and a decimal-string value.  A
+    monetary item that cannot be attributed to a currency is ``unsupported``
+    with a null value, never a silent zero.
+    """
+    if unit not in UNITS:
+        raise ValueError(f"unsupported evidence unit: {unit}")
+    if status not in EVIDENCE_STATUSES:
+        raise ValueError(f"unsupported evidence status: {status}")
+    if not source or not definition:
+        raise ValueError("evidence source and definition are required")
+    if not window:
+        raise ValueError("evidence window is required")
+
+    normalized_currency = normalize_currency(currency)
+    normalized_value: Any = value
+    if unit == UNIT_CURRENCY:
+        if normalized_currency is None or status in (STATUS_UNAVAILABLE, STATUS_UNSUPPORTED):
+            if status == STATUS_AVAILABLE:
+                status = STATUS_UNSUPPORTED
+            normalized_value = None if status != STATUS_AVAILABLE else money(value)
+        else:
+            normalized_value = money(value)
+            if normalized_value is None:
+                status = STATUS_UNSUPPORTED
+    elif unit == UNIT_COUNT:
+        if normalized_value is not None:
+            if isinstance(normalized_value, bool) or not isinstance(normalized_value, int):
+                raise ValueError("count evidence must be an integer or None")
+            if normalized_value < 0:
+                normalized_value = None
+    elif unit == UNIT_RATIO:
+        normalized_value = None if normalized_value is None else float(normalized_value)
+
+    item = {
+        "id": _evidence_id(metric, normalized_currency, window, source, discriminator),
+        "metric": metric,
+        "label": label,
+        "value": normalized_value,
+        "unit": unit,
+        "currency": normalized_currency,
+        "status": status,
+        "period": window,
+        "source": source,
+        "definition": definition,
+        "store_scope": store_scope,
+        "coverage": coverage or {},
+        "freshness": freshness or {"state": "unknown", "as_of": None},
+        "limitations": list(limitations or []),
+    }
+    return item
+
+
+def availability_of(items: Iterable[dict]) -> str:
+    """Collapse item statuses into a single availability for a metric group."""
+    statuses = [item.get("status") for item in items]
+    if not statuses:
+        return STATUS_UNAVAILABLE
+    if all(status == STATUS_UNSUPPORTED for status in statuses):
+        return STATUS_UNSUPPORTED
+    if all(status == STATUS_UNAVAILABLE for status in statuses):
+        return STATUS_UNAVAILABLE
+    if any(status in (STATUS_PARTIAL, STATUS_UNAVAILABLE, STATUS_UNSUPPORTED) for status in statuses):
+        return STATUS_PARTIAL
+    return STATUS_AVAILABLE
+
+
+def group_by_currency(items: Iterable[dict]) -> dict:
+    """Money grouped per currency; never summed across codes."""
+    grouped: dict[str, dict] = {}
+    for item in items:
+        if item.get("unit") != UNIT_CURRENCY or not item.get("currency"):
+            continue
+        bucket = grouped.setdefault(item["currency"], {"items": [], "value": None})
+        bucket["items"].append(item["id"])
+        total = decimal_value(bucket["value"] or 0) + (decimal_value(item.get("value")) or Decimal(0))
+        bucket["value"] = str(total.quantize(Decimal("0.01")))
+    return grouped
+
+
+def validate_collection(items: Iterable[dict]) -> list[str]:
+    """Deterministic structural checks for a set of evidence items."""
+    errors: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        identifier = item.get("id")
+        if not identifier:
+            errors.append("missing_evidence_id")
+        elif identifier in seen:
+            errors.append("duplicate_evidence_id")
+        seen.add(identifier)
+        if item.get("status") not in EVIDENCE_STATUSES:
+            errors.append("invalid_evidence_status")
+        if item.get("unit") == UNIT_CURRENCY:
+            if item.get("status") == STATUS_AVAILABLE:
+                if not normalize_currency(item.get("currency")):
+                    errors.append("currency_missing")
+                if money(item.get("value")) is None:
+                    errors.append("currency_value_invalid")
+            elif item.get("value") is not None:
+                errors.append("unsupported_currency_has_value")
+        period_value = item.get("period") or {}
+        if not period_value.get("start") or not period_value.get("end"):
+            errors.append("missing_period")
+        if not item.get("source") or not item.get("definition"):
+            errors.append("missing_provenance")
+    return sorted(set(errors))
+
+
+def validate_attribution(
+    facts: Iterable[dict],
+    hypotheses: Iterable[dict],
+    items: Iterable[dict],
+) -> list[str]:
+    """Check that every claim cites evidence that actually exists.
+
+    A calculated observation or a hypothesis without a resolvable evidence id
+    is an attribution gap: the merchant cannot verify the number behind it.
+    Monetary facts must also carry the currency they are stated in.
+    """
+    known = {item.get("id") for item in (items or []) if item.get("id")}
+    errors: list[str] = []
+    for fact in facts or []:
+        identifiers = [value for value in (fact.get("evidence_ids") or []) if value]
+        if not identifiers:
+            errors.append("fact_without_evidence")
+        elif any(identifier not in known for identifier in identifiers):
+            errors.append("fact_cites_unknown_evidence")
+        if fact.get("unit") == UNIT_CURRENCY and normalize_currency(fact.get("currency")) is None:
+            errors.append("currency_fact_without_currency")
+    for hypothesis in hypotheses or []:
+        if hypothesis.get("verified") is True:
+            errors.append("hypothesis_claimed_verified")
+        basis = [value for value in
+                 (hypothesis.get("basis_evidence_ids") or hypothesis.get("evidence_ids") or [])
+                 if value]
+        if any(identifier not in known for identifier in basis):
+            errors.append("hypothesis_cites_unknown_evidence")
+    return sorted(set(errors))
+
+
+def money_percent_change(current: Any, previous: Any) -> dict:
+    """Percentage change with an explicit denominator; never fabricates one."""
+    current_decimal = decimal_value(current)
+    previous_decimal = decimal_value(previous)
+    if current_decimal is None or previous_decimal is None:
+        return {"status": STATUS_UNSUPPORTED, "reason": "missing_currency_value"}
+    if previous_decimal <= 0:
+        return {"status": STATUS_UNSUPPORTED, "reason": "previous_period_not_positive"}
+    change = (current_decimal - previous_decimal) / previous_decimal * Decimal(100)
+    return {
+        "status": STATUS_AVAILABLE,
+        "percent": str(change.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)),
+        "direction": "up" if change > 0 else "down" if change < 0 else "flat",
+    }
+
+
+def describe_period(window: dict) -> str:
+    start = window.get("start")
+    end = window.get("end")
+    if not start or not end:
+        return "an unspecified period"
+
+    def _parse(value: str) -> datetime:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    try:
+        start_dt, end_dt = _parse(start), _parse(end)
+    except ValueError:
+        return "an unspecified period"
+    if end_dt - start_dt == timedelta(days=7):
+        return f"{start_dt:%d %b} to {end_dt:%d %b %Y} (7 days, UTC)"
+    if end_dt - start_dt == timedelta(days=1):
+        return f"{start_dt:%d %b %Y} (1 day, UTC)"
+    return f"{start_dt:%d %b %Y %H:%M} to {end_dt:%d %b %Y %H:%M} (UTC)"

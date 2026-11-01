@@ -22,6 +22,7 @@ const { v4: uuidv4 }   = require('uuid');
 const { prisma }        = require('../configs/database');
 const mlService         = require('../services/mlService');
 const logger            = require('../utils/logger');
+const { formatSseFrame } = require('../services/revStream');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -111,9 +112,16 @@ exports.chat = async (req, res, next) => {
         error: { code: 'VALIDATION_ERROR', message: 'Message must not be empty.' },
       });
     }
+    if (req.body?.execute === true) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'READ_ONLY', message: 'Rev Intelligence is read-only. It cannot execute store changes.' },
+      });
+    }
     const conversationId  = req.body?.conversation_id || null;
     const imageBase64     = req.body?.image_base64     || null;
     const imageMediaType  = req.body?.image_media_type || null;
+    const reuseUserMessage = req.body?.reuse_user_message === true;
 
     // Validate image if provided
     const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -189,18 +197,22 @@ exports.chat = async (req, res, next) => {
     `;
     const nextSeq = (Number(seqResult[0]?.max_seq) || 0) + 1;
 
-    // 5. Persist user message BEFORE calling Python — message is never lost
-    const userMsgId     = uuidv4();
-    const userContent   = JSON.stringify({ text: message });
-    await prisma.$executeRaw`
-      INSERT INTO conversation_messages (
-        id, conversation_id, organization_id, user_id,
-        role, content, sequence_number, correlation_id, has_error
-      ) VALUES (
-        ${userMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
-        'user', ${userContent}::jsonb, ${nextSeq}, ${correlationId}::uuid, false
-      )
-    `;
+    // 5. Persist user message BEFORE calling Python — message is never lost.
+    // A retry reuses the existing user message instead of duplicating the turn.
+    if (!reuseUserMessage) {
+      const userMsgId     = uuidv4();
+      const userContent   = JSON.stringify({ text: message });
+      await prisma.$executeRaw`
+        INSERT INTO conversation_messages (
+          id, conversation_id, organization_id, user_id,
+          role, content, sequence_number, correlation_id, has_error
+        ) VALUES (
+          ${userMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
+          'user', ${userContent}::jsonb, ${nextSeq}, ${correlationId}::uuid, false
+        )
+      `;
+    }
+    const revSequence = reuseUserMessage ? nextSeq : nextSeq + 1;
 
     const merchantContext = await require('../services/revMerchantContext').buildMerchantContext(prisma, org.id);
 
@@ -227,13 +239,13 @@ exports.chat = async (req, res, next) => {
           has_error, error_code, error_message
         ) VALUES (
           ${failedMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
-          'rev', ${failedContent}::jsonb, ${nextSeq + 1}, ${correlationId}::uuid,
+          'rev', ${failedContent}::jsonb, ${revSequence}, ${correlationId}::uuid,
           true, ${mlResult.error.code}, ${mlResult.error.message}
         )
       `;
       await prisma.$executeRaw`
         UPDATE conversations
-        SET last_activity_at = NOW(), message_count = message_count + 1, updated_at = NOW()
+        SET last_activity_at = NOW(), message_count = message_count + ${reuseUserMessage ? 0 : 1}, updated_at = NOW()
         WHERE id = ${activeConvId}::uuid
       `;
 
@@ -251,7 +263,9 @@ exports.chat = async (req, res, next) => {
     }
 
     logger.info('rev_chat_python_succeeded', { correlationId, orgId: org.id, conversationId: activeConvId, latencyMs: Date.now() - startTime });
-    const revData = mlResult.data;
+    // Flatten the structured response contract for backwards-compatible
+    // consumers while preserving the evidence-bearing fields.
+    const revData = { ...mlResult.data, ...(mlResult.data?.response || {}) };
     const responseType = revData.response_type || 'analysis';
 
     // 8. Persist Rev response — structure depends on response type
@@ -279,6 +293,15 @@ exports.chat = async (req, res, next) => {
         actions:     revData.actions     || [],
         agents_used: revData.agents_used || [],
         warnings:    revData.warnings    || [],
+        evidence:       mlResult.data?.evidence      || null,
+        facts:          mlResult.data?.facts         || [],
+        comparison_facts: mlResult.data?.comparison_facts || [],
+        hypotheses:     mlResult.data?.hypotheses    || [],
+        unknowns:       mlResult.data?.unknowns       || [],
+        recommendations: mlResult.data?.recommendations || [],
+        investigation:  mlResult.data?.investigation || null,
+        specialists:    mlResult.data?.specialists    || [],
+        read_only:      mlResult.data?.read_only     ?? true,
       };
     }
 
@@ -294,7 +317,7 @@ exports.chat = async (req, res, next) => {
         correlation_id, confidence_score, has_error
       ) VALUES (
         ${revMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
-        'rev', ${revContentStr}::jsonb, ${nextSeq + 1},
+        'rev', ${revContentStr}::jsonb, ${revSequence},
         ${agentNameStr}, 'claude-sonnet-4-6', 'anthropic',
         ${correlationId}::uuid, ${confidenceScore}, false
       )
@@ -306,7 +329,7 @@ exports.chat = async (req, res, next) => {
       UPDATE conversations
       SET
         last_activity_at = NOW(),
-        message_count    = message_count + 2,
+        message_count    = message_count + ${reuseUserMessage ? 1 : 2},
         title            = COALESCE(title, ${titleHint}),
         updated_at       = NOW()
       WHERE id = ${activeConvId}::uuid
@@ -329,8 +352,17 @@ exports.chat = async (req, res, next) => {
       message_id:      revMsgId,
       response_type:   responseType,
       text:            revData.text || null,
-      intent:          revData.intent || null,
+      intent:          revData.intent || revData.investigation?.intent || null,
       response:        revContent,
+      evidence:        mlResult.data?.evidence      || null,
+      facts:           mlResult.data?.facts         || [],
+      comparison_facts: mlResult.data?.comparison_facts || [],
+      hypotheses:      mlResult.data?.hypotheses    || [],
+      unknowns:        mlResult.data?.unknowns      || [],
+      recommendations: mlResult.data?.recommendations || [],
+      investigation:   mlResult.data?.investigation || null,
+      specialists:     mlResult.data?.specialists    || [],
+      read_only:       mlResult.data?.read_only ?? true,
       meta: {
         correlation_id:             correlationId,
         business_state_age_minutes: revData.business_state_age_minutes,
@@ -351,20 +383,43 @@ exports.getConversations = async (req, res, next) => {
     const org    = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const limit  = Math.min(parseInt(req.query.limit  || '20', 10), 50);
     const offset = Math.max(parseInt(req.query.offset || '0',  10), 0);
+    // Conversation search is always scoped to the authenticated organization.
+    // Wildcards are escaped so a search term cannot broaden the tenant filter.
+    const rawSearch = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 80) : '';
+    const search = rawSearch ? `%${rawSearch.replace(/([%_\\])/g, '\\$1')}%` : null;
 
-    const conversations = await prisma.$queryRaw`
-      SELECT id, title, status, message_count, last_activity_at, created_at
-      FROM conversations
-      WHERE organization_id = ${org.id}::uuid
-        AND status = 'active'
-      ORDER BY last_activity_at DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
+    const conversations = search
+      ? await prisma.$queryRaw`
+          SELECT id, title, status, message_count, last_activity_at, created_at
+          FROM conversations c
+          WHERE organization_id = ${org.id}::uuid
+            AND status = 'active'
+            AND (
+              COALESCE(title, '') ILIKE ${search}
+              OR EXISTS (
+                SELECT 1 FROM conversation_messages cm
+                WHERE cm.conversation_id = c.id
+                  AND cm.organization_id = ${org.id}::uuid
+                  AND cm.content::text ILIKE ${search}
+              )
+            )
+          ORDER BY last_activity_at DESC
+          LIMIT ${limit} OFFSET ${offset}
+        `
+      : await prisma.$queryRaw`
+          SELECT id, title, status, message_count, last_activity_at, created_at
+          FROM conversations
+          WHERE organization_id = ${org.id}::uuid
+            AND status = 'active'
+          ORDER BY last_activity_at DESC
+          LIMIT ${limit} OFFSET ${offset}
+        `;
 
     return res.status(200).json({
       success: true,
       data: conversations,
       pagination: { limit, offset },
+      search: rawSearch || null,
     });
   } catch (error) {
     next(error);
@@ -700,4 +755,406 @@ exports.updateIntelligenceFinding = async (req, res, next) => {
     if (!result.changed) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND_OR_CLOSED' } });
     return res.status(200).json({ success: true, data: { status: req.body.status } });
   } catch (error) { next(error); }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Rev Intelligence — streaming workspace endpoints
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MAX_PERSISTED_EVIDENCE_ITEMS = 60;
+
+function _boundedResultForPersistence(data) {
+  const evidence = data?.evidence ? { ...data.evidence } : null;
+  if (evidence && Array.isArray(evidence.items)) {
+    evidence.items = evidence.items.slice(0, MAX_PERSISTED_EVIDENCE_ITEMS);
+  }
+  // Previous-period items are cited by comparison facts, so they must travel
+  // with the answer for those citations to resolve.
+  if (evidence && Array.isArray(evidence.comparison_items)) {
+    evidence.comparison_items = evidence.comparison_items.slice(0, MAX_PERSISTED_EVIDENCE_ITEMS);
+  }
+  return {
+    contract_version: data?.contract_version || 'rev-investigation-v1',
+    response_type: data?.response_type || 'analysis',
+    text: data?.text || '',
+    response: data?.response || null,
+    evidence,
+    facts: Array.isArray(data?.facts) ? data.facts.slice(0, 40) : [],
+    comparison_facts: Array.isArray(data?.comparison_facts) ? data.comparison_facts.slice(0, 20) : [],
+    hypotheses: Array.isArray(data?.hypotheses) ? data.hypotheses.slice(0, 10) : [],
+    unknowns: Array.isArray(data?.unknowns) ? data.unknowns.slice(0, 12) : [],
+    recommendations: Array.isArray(data?.recommendations) ? data.recommendations.slice(0, 12) : [],
+    investigation: data?.investigation || null,
+    specialists: Array.isArray(data?.specialists) ? data.specialists : [],
+    read_only: data?.read_only !== false,
+    warnings: Array.isArray(data?.warnings) ? data.warnings.slice(0, 12) : [],
+  };
+}
+
+async function _insertRevMessage({
+  organizationId, userId, conversationId, sequenceNumber, correlationId, content,
+  hasError = false, errorCode = null, errorMessage = null, investigation = null,
+  agentsUsed = [], confidenceScore = null, latencyMs = null,
+}) {
+  const messageId = uuidv4();
+  const contentStr = JSON.stringify(content);
+  const steps = investigation?.steps ? JSON.stringify(investigation.steps).slice(0, 100_000) : null;
+  const toolStatuses = investigation?.tools_used
+    ? JSON.stringify({ tools_used: investigation.tools_used }).slice(0, 10_000) : null;
+  await prisma.$executeRaw`
+    INSERT INTO conversation_messages (
+      id, conversation_id, organization_id, user_id, role, content,
+      sequence_number, agent_name, model_name, model_provider, correlation_id,
+      confidence_score, has_error, error_code, error_message, tool_calls,
+      tool_results, latency_ms, orchestrator_mode, confidence_basis
+    ) VALUES (
+      ${messageId}::uuid, ${conversationId}::uuid, ${organizationId}::uuid,
+      ${userId}::uuid, 'rev', ${contentStr}::jsonb, ${sequenceNumber},
+      ${(agentsUsed || []).join(',')}, 'claude-sonnet-4-6', 'anthropic',
+      ${correlationId}::uuid, ${confidenceScore}, ${hasError}, ${errorCode},
+      ${errorMessage}, ${steps}::jsonb, ${toolStatuses}::jsonb, ${latencyMs},
+      ${investigation?.intent || null}, ${content?.response?.confidence?.basis || null}
+    )
+  `;
+  return messageId;
+}
+
+async function _touchConversation(conversationId, { titleHint, increment = 2 }) {
+  await prisma.$executeRaw`
+    UPDATE conversations
+    SET last_activity_at = NOW(),
+        message_count = message_count + ${increment},
+        title = COALESCE(title, ${titleHint}),
+        updated_at = NOW()
+    WHERE id = ${conversationId}::uuid
+  `;
+}
+
+function _sseWriter(res) {
+  let closed = false;
+  return {
+    send(event, data) {
+      if (closed || res.writableEnded) return false;
+      try {
+        res.write(formatSseFrame(event, data));
+        return true;
+      } catch {
+        closed = true;
+        return false;
+      }
+    },
+    end() {
+      if (closed) return;
+      closed = true;
+      try { res.end(); } catch { /* noop */ }
+    },
+    get closed() { return closed; },
+  };
+}
+
+function _validateChatPayload(body) {
+  const rawMessage = body?.message;
+  if (!rawMessage) {
+    return { error: { status: 400, code: 'VALIDATION_ERROR', message: 'Message is required.' } };
+  }
+  const message = sanitiseMessage(rawMessage);
+  if (!message) {
+    return { error: { status: 400, code: 'VALIDATION_ERROR', message: 'Message must not be empty.' } };
+  }
+  if (body?.execute === true) {
+    return {
+      error: {
+        status: 403, code: 'READ_ONLY',
+        message: 'Rev Intelligence is read-only. It cannot execute store changes.',
+      },
+    };
+  }
+  return { message };
+}
+
+async function _resolveFindingMessage(req, org, message) {
+  if (req.body?.finding_id == null) return { message };
+  const { validFindingId, buildFindingContext } = require('../services/findingChatContext');
+  const findingId = req.body.finding_id;
+  if (!validFindingId(findingId)) return { error: { status: 400, code: 'INVALID_FINDING_ID' } };
+  const finding = await prisma.intelligence_findings.findFirst({
+    where: { id: findingId, organization_id: org.id },
+    select: { store_id: true, type: true, title: true, description: true, evidence: true, detected_at: true },
+  });
+  if (!finding) return { error: { status: 404, code: 'FINDING_NOT_FOUND' } };
+  const ownedStore = await prisma.stores.findFirst({
+    where: { id: finding.store_id, organization_id: org.id }, select: { id: true },
+  });
+  if (!ownedStore) return { error: { status: 404, code: 'FINDING_NOT_FOUND' } };
+  const contextual = buildFindingContext(message, finding);
+  if (!contextual) return { error: { status: 409, code: 'FINDING_EVIDENCE_UNVERIFIED' } };
+  return { message: contextual };
+}
+
+// ── POST /api/v1/rev/stream ───────────────────────────────────────────────────
+exports.chatStream = async (req, res, next) => {
+  const correlationId = uuidv4();
+  const startedAt = Date.now();
+  let sse = null;
+  let activeConvId = null;
+  let sequenceNumber = null;
+  let finished = false;
+
+  try {
+    const validated = _validateChatPayload(req.body);
+    if (validated.error) {
+      return res.status(validated.error.status).json({
+        success: false, error: { code: validated.error.code, message: validated.error.message },
+      });
+    }
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    const finding = await _resolveFindingMessage(req, org, validated.message);
+    if (finding.error) {
+      return res.status(finding.error.status).json({ success: false, error: finding.error });
+    }
+    const intelligenceMessage = finding.message;
+
+    const requestedConversationId = req.body?.conversation_id || null;
+    const reuseUserMessage = req.body?.reuse_user_message === true;
+    if (requestedConversationId) {
+      await verifyConversationOwnership(requestedConversationId, org.id);
+      activeConvId = requestedConversationId;
+    } else {
+      activeConvId = uuidv4();
+      await prisma.$executeRaw`
+        INSERT INTO conversations (id, organization_id, user_id, status, message_count, last_activity_at)
+        VALUES (${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid, 'active', 0, NOW())
+      `;
+    }
+
+    const seqResult = await prisma.$queryRaw`
+      SELECT COALESCE(MAX(sequence_number), 0)::int AS max_seq
+      FROM conversation_messages
+      WHERE conversation_id = ${activeConvId}::uuid
+    `;
+    const nextSeq = (Number(seqResult[0]?.max_seq) || 0) + 1;
+    sequenceNumber = nextSeq;
+
+    if (!reuseUserMessage) {
+      await prisma.$executeRaw`
+        INSERT INTO conversation_messages (
+          id, conversation_id, organization_id, user_id,
+          role, content, sequence_number, correlation_id, has_error
+        ) VALUES (
+          ${uuidv4()}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
+          'user', ${JSON.stringify({ text: validated.message })}::jsonb, ${nextSeq},
+          ${correlationId}::uuid, false
+        )
+      `;
+    }
+    const revSequence = reuseUserMessage ? nextSeq : nextSeq + 1;
+
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+    sse = _sseWriter(res);
+
+    const controller = new AbortController();
+    res.on('close', () => {
+      if (!finished) controller.abort();
+    });
+
+    sse.send('meta', {
+      conversation_id: activeConvId,
+      correlation_id: correlationId,
+      read_only: true,
+      started_at: new Date().toISOString(),
+    });
+
+    const merchantContext = await require('../services/revMerchantContext')
+      .buildMerchantContext(prisma, org.id);
+
+    const streamed = await mlService.streamInvestigation({
+      organizationId: org.id,
+      userId: req.user.id,
+      message: intelligenceMessage,
+      conversationId: activeConvId,
+      correlationId,
+      contextPayload: {
+        merchant_context: merchantContext,
+        _node_owns_chat_persistence: true,
+        conversation_context: { summary: null },
+      },
+      signal: controller.signal,
+      onEvent: (event, payload) => {
+        if (event === 'meta' || event === 'final' || event === 'error') return;
+        sse.send(event, {
+          ...((payload && typeof payload === 'object') ? payload : { value: payload }),
+          conversation_id: activeConvId,
+        });
+      },
+    });
+
+    if (streamed.success) {
+      const data = streamed.data;
+      const content = _boundedResultForPersistence(data);
+      const messageId = await _insertRevMessage({
+        organizationId: org.id,
+        userId: req.user.id,
+        conversationId: activeConvId,
+        sequenceNumber: revSequence,
+        correlationId,
+        content,
+        investigation: data.investigation,
+        agentsUsed: data.investigation?.tools_used || [],
+        confidenceScore: data.response?.confidence?.score ?? null,
+        latencyMs: Date.now() - startedAt,
+      });
+      await _touchConversation(activeConvId, {
+        titleHint: _generateTitle(validated.message),
+        increment: reuseUserMessage ? 1 : 2,
+      });
+      finished = true;
+      sse.send('final', {
+        success: true,
+        conversation_id: activeConvId,
+        message_id: messageId,
+        read_only: true,
+        ...content,
+      });
+      sse.end();
+      logger.info('rev_stream_complete', {
+        correlationId, orgId: org.id, conversationId: activeConvId,
+        intent: data.investigation?.intent, latencyMs: Date.now() - startedAt,
+      });
+      return undefined;
+    }
+
+    if (streamed.error?.code === 'CANCELLED') {
+      await _insertRevMessage({
+        organizationId: org.id, userId: req.user.id, conversationId: activeConvId,
+        sequenceNumber: revSequence, correlationId,
+        content: { response_type: 'cancelled', text: '', cancelled: true, read_only: true },
+        hasError: true, errorCode: 'CANCELLED',
+        errorMessage: 'Generation stopped by the merchant.',
+        latencyMs: Date.now() - startedAt,
+      });
+      await _touchConversation(activeConvId, {
+        titleHint: _generateTitle(validated.message), increment: reuseUserMessage ? 1 : 2,
+      });
+      finished = true;
+      sse.send('cancelled', { conversation_id: activeConvId, message_id: null });
+      sse.end();
+      return undefined;
+    }
+
+    const error = streamed.error || { code: 'INTELLIGENCE_UNAVAILABLE', message: 'Rev is unavailable.' };
+    await _insertRevMessage({
+      organizationId: org.id, userId: req.user.id, conversationId: activeConvId,
+      sequenceNumber: revSequence, correlationId,
+      content: { response_type: 'error', error: true, read_only: true },
+      hasError: true, errorCode: error.code, errorMessage: error.message,
+      latencyMs: Date.now() - startedAt,
+    });
+    await _touchConversation(activeConvId, {
+      titleHint: _generateTitle(validated.message), increment: reuseUserMessage ? 1 : 2,
+    });
+    finished = true;
+    sse.send('error', {
+      conversation_id: activeConvId,
+      code: error.code,
+      message: error.message,
+      retryable: true,
+    });
+    sse.end();
+    logger.warn('rev_stream_failed', {
+      correlationId, orgId: org.id, errorCode: error.code,
+      latencyMs: Date.now() - startedAt,
+    });
+    return undefined;
+  } catch (error) {
+    if (sse) {
+      finished = true;
+      sse.send('error', {
+        conversation_id: activeConvId,
+        code: 'STREAM_FAILED',
+        message: 'Rev could not complete this response. Please retry.',
+        retryable: true,
+      });
+      sse.end();
+      logger.error('rev_stream_unhandled', {
+        correlationId, errorType: error.name, statusCode: error.statusCode,
+      });
+      return undefined;
+    }
+    return next(error);
+  }
+};
+
+// ── GET /api/v1/rev/tools ─────────────────────────────────────────────────────
+let toolCatalogCache = { data: null, expiresAt: 0 };
+exports.getToolCatalog = async (req, res, next) => {
+  try {
+    await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    if (toolCatalogCache.data && toolCatalogCache.expiresAt > Date.now()) {
+      return res.status(200).json({ success: true, data: toolCatalogCache.data });
+    }
+    const result = await mlService.getToolCatalog({ correlationId: uuidv4() });
+    if (!result.success) {
+      return res.status(503).json({
+        success: false,
+        error: { code: 'TOOL_CATALOG_UNAVAILABLE', message: 'Tool catalog is unavailable.' },
+      });
+    }
+    const payload = { ...result.data, read_only: true };
+    toolCatalogCache = { data: payload, expiresAt: Date.now() + 5 * 60 * 1000 };
+    return res.status(200).json({ success: true, data: payload });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── POST /api/v1/rev/conversation/:id/retry ──────────────────────────────────
+exports.retryConversation = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    await verifyConversationOwnership(id, org.id);
+
+    const lastUser = await prisma.$queryRaw`
+      SELECT id, content, sequence_number
+      FROM conversation_messages
+      WHERE conversation_id = ${id}::uuid
+        AND organization_id = ${org.id}::uuid
+        AND role = 'user'
+      ORDER BY sequence_number DESC
+      LIMIT 1
+    `;
+    if (!lastUser.length) {
+      return res.status(409).json({ success: false, error: { code: 'NOTHING_TO_RETRY' } });
+    }
+    const content = lastUser[0].content;
+    const text = typeof content === 'object' && content !== null ? content.text : null;
+    if (!text) {
+      return res.status(409).json({ success: false, error: { code: 'NOTHING_TO_RETRY' } });
+    }
+    // Remove failed assistant attempts after the user message so a retry does
+    // not leave duplicate error turns in the merchant's history.
+    await prisma.$executeRaw`
+      DELETE FROM conversation_messages
+      WHERE conversation_id = ${id}::uuid
+        AND organization_id = ${org.id}::uuid
+        AND role = 'rev'
+        AND has_error = true
+        AND sequence_number > ${lastUser[0].sequence_number}
+    `;
+    req.body = {
+      ...req.body,
+      message: text,
+      conversation_id: id,
+      reuse_user_message: true,
+      finding_id: undefined,
+    };
+    return exports.chat(req, res, next);
+  } catch (error) {
+    next(error);
+  }
 };

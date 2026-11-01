@@ -56,8 +56,17 @@ const memoryLimiter = rateLimit({
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// Chat — the primary Rev Intelligence endpoint
+// Chat — the primary Rev Intelligence endpoint (non-streaming fallback)
 router.post('/chat',                      authenticateToken, chatLimiter,   revController.chat);
+
+// Streaming investigation — plan, progress, evidence and final answer
+router.post('/stream',                    authenticateToken, chatLimiter,   revController.chatStream);
+
+// Conversation retry — re-runs the last user message without duplicating it
+router.post('/conversation/:id/retry',    authenticateToken, chatLimiter,   revController.retryConversation);
+
+// Read-only tool catalog (authorised capabilities only)
+router.get('/tools',                      authenticateToken,               revController.getToolCatalog);
 
 // Conversation history — sidebar list
 router.get('/conversations',              authenticateToken,               revController.getConversations);

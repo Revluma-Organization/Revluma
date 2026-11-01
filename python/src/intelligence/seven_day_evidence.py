@@ -126,3 +126,7 @@ def retrieve_seven_day_evidence(organization_id: str, db, *, now: datetime | Non
         evidence["warnings"].append("Recovered-cart data could not be retrieved.")
         db.rollback()
     return evidence
+
+# Rev Intelligence revenue evidence lives in its own module so the verified
+# contract can be imported and tested in isolation.
+from .revenue_evidence import retrieve_revenue_evidence  # noqa: E402,F401

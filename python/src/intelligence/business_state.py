@@ -81,11 +81,26 @@ def _load_customer_ml_signals(db, store_params: dict[str, Any]) -> dict[str, Any
                 c.id AS customer_id,
                 c.rfm_segment,
                 COALESCE(c.orders_count, 0) AS past_orders_total,
-                COALESCE(c.ltv, 0) AS ltv,
-                GREATEST(
-                    COALESCE(c.ltv, 0) - COALESCE(latest.total, 0),
-                    0
-                ) AS previous_ltv,
+                -- A stored LTV is money only when a single currency is
+                -- verified for it. Mixed or unlabelled values stay NULL so
+                -- threshold comparisons cannot treat them as one currency.
+                CASE
+                    WHEN c.ltv_mixed_currency = TRUE THEN NULL
+                    WHEN c.ltv_currency IS NULL THEN NULL
+                    ELSE COALESCE(c.ltv, 0)
+                END AS ltv,
+                CASE
+                    WHEN c.ltv_mixed_currency = TRUE THEN NULL
+                    WHEN c.ltv_currency IS NULL THEN NULL
+                    ELSE GREATEST(
+                        COALESCE(c.ltv, 0) - COALESCE(latest.total, 0),
+                        0
+                    )
+                END AS previous_ltv,
+                CASE
+                    WHEN c.ltv_mixed_currency = TRUE THEN NULL
+                    ELSE c.ltv_currency
+                END AS ltv_currency,
                 CASE
                     WHEN latest.ordered_at IS NULL THEN NULL
                     ELSE FLOOR(
@@ -110,6 +125,7 @@ def _load_customer_ml_signals(db, store_params: dict[str, Any]) -> dict[str, Any
             past_orders_total,
             ltv,
             previous_ltv,
+            ltv_currency,
             days_inactive
         FROM customer_activity activity
         WHERE (
@@ -156,8 +172,12 @@ def _load_customer_ml_signals(db, store_params: dict[str, Any]) -> dict[str, Any
             "customer_id": str(row["customer_id"]),
             "rfm_segment": row["rfm_segment"],
             "past_orders_total": int(row["past_orders_total"] or 0),
-            "ltv": float(row["ltv"] or 0),
-            "previous_ltv": float(row["previous_ltv"] or 0),
+            # None means "not verified in one currency", not zero.
+            "ltv": float(row["ltv"]) if row["ltv"] is not None else None,
+            "previous_ltv": (
+                float(row["previous_ltv"]) if row["previous_ltv"] is not None else None
+            ),
+            "ltv_currency": row.get("ltv_currency") if hasattr(row, "get") else None,
             "days_inactive": (
                 int(row["days_inactive"])
                 if row["days_inactive"] is not None

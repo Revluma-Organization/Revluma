@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { shopifyNetOrderTotal } = require('../services/commerceWebhookService');
+const { shopifyNetOrderTotal } = require('../services/shopifyOrderFinancials');
 
 const order = refunds => ({ total_price: '100.00', refunds });
 const refund = (amount, status = 'success') => ({
