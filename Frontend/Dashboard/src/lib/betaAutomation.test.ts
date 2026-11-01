@@ -86,3 +86,25 @@ describe("beta automation API", () => {
     );
   });
 });
+
+describe('policy form validation', () => {
+  const valid: BetaAutomationPolicy = {
+    enabled: true, kill_switch: false, allowed_actions: ['cart_recovery_message', 'percentage_discount'],
+    allowed_channels: ['email'], max_discount_pct: 5, max_messages_per_customer_24h: 1, max_actions_per_store_24h: 25,
+  };
+  it('accepts valid whole-number limits and merchant acknowledgement', async () => {
+    const { validateAutomationPolicy } = await import('./betaAutomation');
+    expect(validateAutomationPolicy(valid, true)).toBeNull();
+    expect(validateAutomationPolicy(valid, false)).toMatch(/authorisation/);
+    expect(validateAutomationPolicy({ ...valid, enabled: false }, false)).toBeNull();
+  });
+  it.each([
+    ['max_messages_per_customer_24h', NaN], ['max_messages_per_customer_24h', 0],
+    ['max_messages_per_customer_24h', 11], ['max_messages_per_customer_24h', 1.5],
+    ['max_actions_per_store_24h', -1], ['max_actions_per_store_24h', 1001],
+    ['max_discount_pct', 0], ['max_discount_pct', 26], ['max_discount_pct', 2.5],
+  ])('rejects invalid %s = %s', async (key, value) => {
+    const { validateAutomationPolicy } = await import('./betaAutomation');
+    expect(validateAutomationPolicy({ ...valid, [key]: value }, true)).not.toBeNull();
+  });
+});

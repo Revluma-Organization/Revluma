@@ -16,7 +16,7 @@ class RevlumaAuth {
 
         const result = await response.json();
 
-        if (!response.ok) {
+        if (!response.ok || result.success !== true) {
             let errorMsg = result.error || result.message || 'Registration failed';
             if (result.errors && Array.isArray(result.errors)) {
                 errorMsg = result.errors.join(', ');
@@ -38,6 +38,29 @@ class RevlumaAuth {
         return result;
     }
 
+    async verificationRequest(path, payload) {
+        if (!this.apiBase) throw new Error('Authentication API is not configured.');
+        const response = await fetch(this.apiBase + path, {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (!response.ok || result.success !== true) {
+            throw new Error(result.error || result.message || 'Verification request failed.');
+        }
+        // Verification confirms an email; it does not establish a login session.
+        return result;
+    }
+
+    verifyEmail(email, code) {
+        return this.verificationRequest('/auth/verify-email', { email, code });
+    }
+
+    resendVerification(email) {
+        return this.verificationRequest('/auth/resend-verification', { email });
+    }
+
     async login(email, password) {
         const response = await fetch(`${this.apiBase}/auth/login`, {
             method: 'POST',
@@ -55,7 +78,7 @@ class RevlumaAuth {
 
         const result = await response.json();
 
-        if (!response.ok) {
+        if (!response.ok || result.success !== true) {
             let errorMsg = result.error || result.message || 'Login failed';
             if (result.errors && Array.isArray(result.errors)) {
                 errorMsg = result.errors.join(', ');
@@ -101,7 +124,7 @@ class RevlumaAuth {
 
         const result = await response.json();
 
-        if (!response.ok) {
+        if (!response.ok || result.success !== true) {
             let errorMsg = result.error || result.message || 'Invalid 2FA code';
             if (result.errors && Array.isArray(result.errors)) {
                 errorMsg = result.errors.join(', ');
@@ -150,7 +173,7 @@ class RevlumaAuth {
 
         const result = await response.json();
 
-        if (!response.ok) {
+        if (!response.ok || result.success !== true) {
             if (response.status === 409 && result.code === 'GOOGLE_ACCOUNT_LINK_REQUIRED') {
                 const linkError = new Error('This Google account is already registered with email/password. Please log in with your password first to link Google.');
                 linkError.code = 'GOOGLE_ACCOUNT_LINK_REQUIRED';
@@ -184,7 +207,7 @@ class RevlumaAuth {
         });
 
         const result = await response.json();
-        if (!response.ok) {
+        if (!response.ok || result.success !== true) {
             throw new Error(result.error || result.message || 'Failed to link Google account');
         }
         return result;
@@ -199,11 +222,13 @@ class RevlumaAuth {
         try {
             const response = await fetch(`${this.apiBase}/auth/refresh`, {
                 method: 'POST',
-                credentials: 'include'
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ organization_id: this.getUser()?.tenant_id || this.getUser()?.active_organization_id || undefined })
             });
 
             const result = await response.json();
-            if (!response.ok) {
+            if (!response.ok || result.success !== true) {
                 this.clearStoredToken();
                 return null;
             }
@@ -211,7 +236,13 @@ class RevlumaAuth {
             const tokenData = result.data || result;
             const newAccessToken = tokenData.access_token || tokenData.accessToken;
             if (newAccessToken) {
-                this._storeTokens(newAccessToken, tokenData.user || this.getUser());
+                const currentUser = tokenData.user || this.getUser();
+                this._storeTokens(newAccessToken, currentUser ? {
+                    ...currentUser,
+                    active_organization_id: tokenData.active_organization_id ?? null,
+                    tenant_id: tokenData.active_organization_id || '',
+                    role: tokenData.role || 'unknown'
+                } : null);
                 return newAccessToken;
             }
             return null;
@@ -346,16 +377,16 @@ class RevlumaAuth {
     }
 
     async requestPasswordReset(email) {
-        const response = await fetch(`${this.apiBase}/auth/reset-password`, {
+        const response = await fetch(`${this.apiBase}/auth/forgot-password`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
         });
-        if (!response.ok) {
-            const result = await response.json();
+        const result = await response.json();
+        if (!response.ok || result.success !== true) {
             throw new Error(result.error || result.message || 'Password reset failed');
         }
-        return { success: true };
+        return result;
     }
 }
 

@@ -9,7 +9,6 @@ import { CopilotPanel } from "./CopilotPanel";
 import { ProductTour } from "./ProductTour";
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "@/store/ui";
-import { useThemeStore } from "@/store";
 import { useRegisterCommands } from "@/store/commandRegistryStore";
 import type { PaletteCommand } from "@/lib/commandPalette/types";
 import { OnboardingPaywallModal } from "./OnboardingPaywallModal";
@@ -17,6 +16,8 @@ import { useAuth } from "@/context/AuthContext";
 
 const SECTION_TITLES: Record<string, string> = {
   "/dashboard/overview": "Overview",
+  "/dashboard/rev-intell": "Rev Intelligence",
+  "/dashboard/settings": "Settings",
   "/dashboard/intelligence": "Intelligence",
   "/dashboard/cart-recovery": "Cart Recovery",
   "/dashboard/campaigns": "Campaigns",
@@ -28,7 +29,6 @@ const SECTION_TITLES: Record<string, string> = {
 
 export function DashboardLayout() {
   const { startTour, setCmdOpen, setNotifOpen, setCopilotOpen } = useUI();
-  const theme = useThemeStore((s) => s.theme);
   const { pathname } = useLocation();
   // Use basePath for animation key to prevent re-mounting the entire layout for nested routes
   const basePath = pathname.split('/').slice(0, 3).join('/');
@@ -84,15 +84,11 @@ export function DashboardLayout() {
 
   useRegisterCommands(globalCommands);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("light", theme === "light");
-  }, [theme]);
-
   // Auto-start tour for first-time visitors on the Overview page
   useEffect(() => {
     if (pathname !== "/dashboard/overview") return;
     if (typeof window === "undefined") return;
-    if (localStorage.getItem("rv_tour_done") === "true") return;
+    if (localStorage.getItem("rv_tour_done") === "true" || localStorage.getItem("revluma_tour_completed") === "true") return;
     const t = window.setTimeout(() => startTour(), 700);
     return () => window.clearTimeout(t);
   }, [pathname, startTour]);
@@ -101,7 +97,7 @@ export function DashboardLayout() {
     <div className="flex h-screen w-full overflow-hidden bg-bg">
       <Sidebar />
       <main className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-bg">
-        <Topbar section={SECTION_TITLES[pathname] ?? "Overview"} />
+        <Topbar section={SECTION_TITLES[basePath] ?? "Overview"} />
         <div className="px-4 py-5 sm:px-6 sm:py-6">
           <AnimatePresence mode="wait">
             <motion.div

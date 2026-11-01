@@ -1,3 +1,4 @@
+const { requireMembership } = require('../utils/organizationContext');
 const dbConfig = require('../configs/database');
 const prisma = dbConfig.prisma;
 
@@ -9,23 +10,7 @@ const prisma = dbConfig.prisma;
  */
 async function attachOrgMembership(req, res, next) {
   try {
-    const membership = await prisma.organization_members.findFirst({
-      where: { user_id: req.user.id, status: 'active' },
-      select: {
-        id: true,
-        organization_id: true,
-        role: true,
-        status: true,
-      },
-      orderBy: { created_at: 'asc' }, // oldest org first (owner)
-    });
-
-    if (!membership) {
-      return res.status(403).json({
-        success: false,
-        error: 'You are not a member of any organization.',
-      });
-    }
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
 
     req.orgMembership = {
       membershipId: membership.id,

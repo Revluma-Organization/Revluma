@@ -1,3 +1,4 @@
+const { resolveMembership, requireMembership, membershipContext } = require('../utils/organizationContext');
 /**
  * Revluma Authentication Controller — Sprint 1 Security Hardening
  *
@@ -151,11 +152,7 @@ function setTrustedDevice(req, res, userId) {
 }
 
 async function issuePasswordSession(req, res, user) {
-  const membership = await prisma.organization_members.findFirst({
-    where: { user_id: user.id, status: 'active' },
-    select: { organization_id: true },
-    orderBy: { created_at: 'asc' },
-  });
+  const membership = await resolveMembership(prisma, user.id, req.body?.organization_id);
   const ip = getClientIp(req);
   const { raw: rawRefresh, hash: refreshHash, expiresAt } = generateRefreshToken();
   const refreshSession = await prisma.refresh_tokens.create({
@@ -181,7 +178,9 @@ async function issuePasswordSession(req, res, user) {
   });
   return {
     access_token: accessToken,
-    user: { id: user.id, email: user.email, full_name: user.full_name },
+    user: { id: user.id, email: user.email, full_name: user.full_name,
+      email_verified: user.email_verified, onboarding_completed: user.onboarding_completed,
+      ...membershipContext(membership) },
   };
 }
 
@@ -551,46 +550,9 @@ async function verifyGoogleCredential(credential) {
   };
 }
 
+// Password and Google sessions deliberately share identical organisation rules.
 async function issueGoogleSession(req, res, user) {
-  const membership = await prisma.organization_members.findFirst({
-    where: { user_id: user.id, status: 'active' },
-    select: { organization_id: true },
-    orderBy: { created_at: 'asc' },
-  });
-  const ip = getClientIp(req);
-  const { raw: rawRefresh, hash: refreshHash, expiresAt } = generateRefreshToken();
-  const refreshSession = await prisma.refresh_tokens.create({
-    data: {
-      user_id: user.id,
-      token_hash: refreshHash,
-      family_id: uuidv4(),
-      device_hint: getDeviceHint(req),
-      ip_address: ip,
-      expires_at: expiresAt,
-      last_used_at: new Date(),
-    },
-  });
-  const accessToken = generateAccessToken({
-    userId: user.id,
-    email: user.email,
-    tenantId: membership?.organization_id || null,
-    sessionId: refreshSession.id,
-  });
-
-  res.cookie('refresh_token', rawRefresh, {
-    ...buildCookieOptions(req),
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  return {
-    access_token: accessToken,
-    user: {
-      id: user.id,
-      full_name: user.full_name,
-      email: user.email,
-      onboarding_completed: user.onboarding_completed,
-    },
-  };
+  return issuePasswordSession(req, res, user);
 }
 
 exports.googleLogin = async (req, res, next) => {
@@ -814,11 +776,7 @@ exports.refresh = async (req, res, next) => {
       return res.status(401).json({ success: false, error: 'Account unavailable.' });
     }
 
-    const membership = await prisma.organization_members.findFirst({
-      where: { user_id: user.id, status: 'active' },
-      select: { organization_id: true },
-      orderBy: { created_at: 'asc' },
-    });
+    const membership = await resolveMembership(prisma, user.id, req.body?.organization_id);
 
     // ── Rotate tokens ─────────────────────────────────────────────────────────
     // Revoke old token, issue a new one in the same family
@@ -868,6 +826,7 @@ exports.refresh = async (req, res, next) => {
       success: true,
       data: {
         access_token: rotationResult.accessToken,
+        ...membershipContext(membership),
       },
     });
 
@@ -1213,6 +1172,7 @@ exports.getProfile = async (req, res) => {
         },
         organization_members: {
           where: { status: 'active' },
+          orderBy: { created_at: 'asc' },
           select: {
             id: true,
             role: true,
@@ -1230,10 +1190,11 @@ exports.getProfile = async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found.' });
     }
 
-    return res.status(200).json({ success: true, data: user });
+    const membership = await resolveMembership(prisma, user.id, req.user.tenantId);
+    return res.status(200).json({ success: true, data: { ...user, ...membershipContext(membership) } });
 
   } catch (error) {
-    return res.status(500).json({ success: false, error: 'Failed to fetch profile.' });
+    return res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Failed to fetch profile.' });
   }
 };
 
@@ -1560,4 +1521,18 @@ exports.disableTwoFactor = async (req, res, next) => {
   } catch(error) {
     next(error);
   }
+};
+
+// Workspace selection changes session context only; membership rows are untouched.
+exports.selectWorkspace = async (req, res, next) => {
+  try {
+    if (typeof req.body?.organization_id !== 'string' || !req.body.organization_id.trim()) {
+      return res.status(400).json({ success: false, error: 'Organisation selection required.' });
+    }
+    const membership = await requireMembership(prisma, req.user.id, req.body.organization_id);
+    return res.json({ success: true, data: {
+      access_token: generateAccessToken({ userId: req.user.id, email: req.user.email, tenantId: membership.organization_id, sessionId: req.user.sessionId }),
+      ...membershipContext(membership),
+    } });
+  } catch (error) { next(error); }
 };

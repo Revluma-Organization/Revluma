@@ -66,12 +66,6 @@ export function ProductTour() {
     endTour();
   }, [endTour]);
 
-  // If already completed in this browser, close immediately on mount
-  useEffect(() => {
-    if (tourOpen && localStorage.getItem("revluma_tour_completed") === "true") {
-      endTour();
-    }
-  }, [tourOpen, endTour]);
   const [rect, setRect] = useState<Rect | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number; arrow: string } | null>(null);
   const [missing, setMissing] = useState(false);
@@ -141,7 +135,7 @@ export function ProductTour() {
     if (tourStep > 0) setTourStep(tourStep - 1);
   };
 
-  if (!tourOpen || !step || !pos || localStorage.getItem("revluma_tour_completed") === "true") return null;
+  if (!tourOpen || !step || !pos) return null;
 
   const isLast = tourStep === total - 1;
 

@@ -4,6 +4,7 @@ import revIntellLogo from '@/assets/images/rev-intell-logo.png';
 import { useUI } from '@/store/ui';
 import { api } from '@/lib/api';
 import { useState, useEffect } from 'react';
+import { WorkspaceSelection } from '../WorkspaceSelection';
 import { cn } from '@/lib/utils';
 
 export function Topbar({ section = 'Overview' }: { section?: string }) {
@@ -37,6 +38,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
         </nav>
       </div>
 
+      <WorkspaceSelection compact />
       {/* Right Side: Actions & Buttons */}
       <div className="flex items-center gap-2">
         
@@ -54,6 +56,7 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
         {/* Rev Intell */}
         <Link
           to="/dashboard/rev-intell"
+          data-tour="topbar-rev"
           className="flex h-[34px] items-center gap-2 rounded-lg border px-3 text-[0.76rem] font-semibold transition-all hover:opacity-90"
           style={{ background: 'rgba(88,101,242,0.1)', borderColor: 'rgba(88,101,242,0.25)', color: '#5865f2' }}
           title="Rev Intelligence"

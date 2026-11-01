@@ -9,7 +9,7 @@ process.env.FRONTEND_URL ||= 'https://app.example.test';
 process.env.SHOPIFY_API_VERSION ||= '2026-10';
 
 const mockPrisma = {
-  organization_members: { findFirst: async () => null },
+  organization_members: { findMany: async () => [{ id: 'member-123', organization_id: 'org-123', role: 'owner', status: 'active' }] },
   organizations: { findFirst: async () => ({ id: 'org-123' }) },
   stores: {
     findFirst: async () => ({
@@ -202,7 +202,7 @@ async function verifyAuthorizationDenialAndRetrySetup() {
   const denied = callbackRequest({ error: 'access_denied' }, {});
   await denied.invoke();
   assert.strictEqual(new URL(denied.response.redirectUrl).searchParams.get('shopify'), 'cancelled');
-  assert.deepStrictEqual(denied.response.clearedCookies.sort(), ['oauth_user', 'shopify_shop', 'shopify_state', 'shopify_user']);
+  assert.deepStrictEqual(denied.response.clearedCookies.sort(), ['oauth_user', 'shopify_organization', 'shopify_shop', 'shopify_state', 'shopify_user']);
 
   let retryResponse;
   const res = {

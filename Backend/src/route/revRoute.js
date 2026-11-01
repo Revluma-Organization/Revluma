@@ -71,7 +71,13 @@ router.delete('/conversation/:id',        authenticateToken,               revCo
 // Rename a conversation
 router.patch('/conversation/:id/title',   authenticateToken,               revController.renameConversation);
 
-// Evidence-gated intelligence findings — organization scoped\nrouter.get('/findings',                   authenticateToken,               revController.getIntelligenceFindings);\nrouter.post('/findings/refresh',          authenticateToken,               revController.refreshIntelligenceFindings);\nrouter.get('/findings/:id',                authenticateToken,               revController.getIntelligenceFinding);\nrouter.patch('/findings/:id',              authenticateToken,               revController.updateIntelligenceFinding);\n\n// Morning briefing — called on first dashboard load each day
+// Evidence-gated intelligence findings — organization scoped
+router.get('/findings',                   authenticateToken,               revController.getIntelligenceFindings);
+router.post('/findings/refresh',          authenticateToken,               revController.refreshIntelligenceFindings);
+router.get('/findings/:id',                authenticateToken,               revController.getIntelligenceFinding);
+router.patch('/findings/:id',              authenticateToken,               revController.updateIntelligenceFinding);
+
+// Morning briefing — called on first dashboard load each day
 router.get('/briefing',                   authenticateToken,               revController.getMorningBriefing);
 
 // Anomaly alert check — called after every business state rebuild

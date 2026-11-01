@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+  <script src="../assets/js/theme.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="../assets/images/Revluma-icon.png">
@@ -13,6 +14,7 @@
     href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap"
     rel="stylesheet">
   <script src="../assets/js/apiConfig.js"></script>
+  <script src="../assets/js/auth-client.js"></script>
   <style>
     :root {
       --bg: #060608;
@@ -232,6 +234,7 @@
       window.history.replaceState(null, '', window.location.pathname.replace('.html', '') + window.location.search);
     }
   </script>
+  <link rel="stylesheet" href="../assets/css/auth-theme.css">
 </head>
 
 <body>
@@ -386,7 +389,7 @@
       // ================================================================
       //  STATE
       // ================================================================
-      const email = localStorage.getItem('signup_email') || 'user@example.com';
+      const email = localStorage.getItem('signup_email') || localStorage.getItem('revluma_pending_email') || '';
       document.getElementById('displayEmail').textContent = email;
 
       const codeInputs = document.querySelectorAll('.code-box');
@@ -397,6 +400,13 @@
       const resendBtn = document.getElementById('resendBtn');
       const resendCountdown = document.getElementById('resendCountdown');
       const expiryTimer = document.getElementById('expiryTimer');
+      if (!email) {
+        codeError.textContent = 'Email not found. Return to sign in or registration to continue.';
+        codeError.classList.remove('hidden');
+        verifyBtn.disabled = true;
+        resendBtn.disabled = true;
+        return;
+      }
 
       // ================================================================
       //  CODE INPUT LOGIC
@@ -470,35 +480,19 @@
         showGlassmorphismCard('loading', 'Verifying your code…', 'Just a moment.');
 
         try {
-          // --- Backend Integration Point ---
+          await window.revlumaAuth.verifyEmail(email, code);
 
-          // 1 & 2: Call the exact endpoint and send both email and code
-          const res = await fetch(`${API_BASE}/auth/verify-email`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email, code: code })
-          });
-
-          const data = await res.json();
-
-          // 3: Stop the redirect if the backend says the code is invalid
-          if (!res.ok) {
-            throw new Error(data.message || 'Invalid verification code.');
-          }
-
-          // 4: Success - show glassmorphism card then redirect to onboarding.
-          // NOTE: this MUST stay 'onboarding.html' — verification is followed
-          // by onboarding, not a direct-to-login redirect.
+          // Email verification does not create an authenticated session.
           showGlassmorphismCard('success',
             'Email Verified!',
-            'Your account has been successfully verified. Redirecting you to onboarding...',
-            () => window.location.href = 'onboarding.html',
-            'Continue to Onboarding'
+            'Your email is verified. Please sign in to continue.',
+            () => window.location.href = 'login.html',
+            'Continue to Sign In'
           );
 
           // Auto-redirect after 3 seconds in case the user doesn't click the button
           setTimeout(() => {
-            window.location.href = 'onboarding.html';
+            window.location.href = 'login.html';
           }, 3000);
 
         } catch (err) {
@@ -555,17 +549,11 @@
         }
 
         try {
-          const res = await fetch(`${API_BASE}/auth/resend-verification`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: resendEmail })
-          });
+          const data = await window.revlumaAuth.resendVerification(resendEmail);
 
-          const data = await res.json();
-
-          if (res.ok && data.success) {
+          if (data.success === true) {
             // Show success message
-            resendBtn.textContent = '✓ Code sent!';
+            resendBtn.textContent = 'Request accepted';
             resendBtn.style.color = '#4ade80';
 
             // Reset countdown after 2 seconds

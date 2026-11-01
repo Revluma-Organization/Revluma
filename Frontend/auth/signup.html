@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+  <script src="../assets/js/theme.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="../assets/images/Revluma-icon.png">
@@ -699,10 +700,8 @@
             const pendingVerification = registrationResult?.code === 'EMAIL_VERIFICATION_REQUIRED';
             showGlassmorphismCard(
               'success',
-              pendingVerification ? 'Verify your existing account' : 'Account Created!',
-              pendingVerification
-                ? 'An account with this email is awaiting verification. We have requested a new verification code; check your inbox and spam folder.'
-                : 'Check your email for a verification code to continue.',
+              pendingVerification ? 'Verify your existing account' : 'Check your registration',
+              registrationResult.message || 'Registration request accepted. Follow the verification instructions if a code arrives.',
               () => window.location.href = 'verifyemail.html',
               'Continue to Verification'
             );
@@ -853,6 +852,7 @@
       window.history.replaceState(null, '', window.location.pathname.replace('.html', '') + window.location.search);
     }
   </script>
+  <link rel="stylesheet" href="../assets/css/auth-theme.css">
 </head>
 
 <body class="min-h-screen" style="background: var(--bg); color: var(--text);">

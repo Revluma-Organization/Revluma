@@ -40,9 +40,9 @@
 
     /* Text */
     --t1: 0 0% 95%;
-    --t2: 0 0% 58%;
-    --t3: 0 0% 32%;
-    --t4: 0 0% 18%;
+    --t2: 0 0% 75%;
+    --t3: 0 0% 65%;
+    --t4: 0 0% 60%;
 
     /* Glass */
     --glass: 0 0% 100%;
@@ -55,7 +55,7 @@
     --card-foreground: var(--t1);
     --popover: var(--notif-bg);
     --popover-foreground: var(--t1);
-    --primary: var(--accent);
+    --primary: var(--accent-2);
     --primary-foreground: var(--accent-foreground);
     --secondary: var(--bg-3);
     --secondary-foreground: var(--t1);
@@ -78,7 +78,7 @@
     /* Active tab inverts to a LIGHT glass chip on the dark sidebar */
     --nav-active-surface: 0 0% 100%;
     --nav-active-border: 0 0% 100%;
-    --nav-active-fg: 0 0% 0%;
+    --nav-active-fg: 0 0% 100%;
 
     /* Retained for badges */
     --nav-blue: 217 91% 60%;
@@ -96,9 +96,9 @@
     --notif-bg: 0 0% 100%;
     --t1: 0 0% 10%;
     --t2: 0 0% 30%;
-    --t3: 0 0% 45%;
-    --t4: 0 0% 55%;
-    --accent: 210 100% 50%;
+    --t3: 0 0% 40%;
+    --t4: 0 0% 42%;
+    --accent: 210 100% 40%;
     --accent-2: 210 100% 40%;
     --green: 161 100% 31%;
     --amber: 35 100% 38%;
@@ -266,7 +266,7 @@
   }
 
   /* Active text + icon flip to the INVERSE foreground */
-  .nav-blue-text { color: hsl(var(--nav-active-fg)); }
+  .nav-blue-text { color: white; }
   .nav-blue-icon {
     color: hsl(var(--nav-active-fg));
     filter: drop-shadow(0 0 6px hsl(var(--nav-active-fg) / 0.35));

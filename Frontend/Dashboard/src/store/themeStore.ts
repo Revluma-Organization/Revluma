@@ -2,11 +2,27 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
 export type ThemeMode = 'dark' | 'light';
+export type ThemePreference = ThemeMode | 'system';
+
+export function resolveTheme(preference: ThemePreference): ThemeMode {
+  return preference === 'system'
+    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : preference;
+}
+
+function initialPreference(): ThemePreference {
+  try {
+    const stored = JSON.parse(localStorage.getItem('rv-theme') || 'null')?.state;
+    const preference = stored?.preference || stored?.theme || localStorage.getItem('theme');
+    if (['system', 'light', 'dark'].includes(preference)) return preference;
+  } catch { /* Use the system setting when storage is unavailable. */ }
+  return 'system';
+}
 export type SidebarDensity = 'default' | 'compact' | 'spacious';
 export type FontSize = 'small' | 'default' | 'large';
 
 export interface UserPreferences {
-  theme: ThemeMode;
+  theme: ThemePreference;
   date_format: string;
   time_format: string;
   currency: string;
@@ -18,51 +34,44 @@ export interface UserPreferences {
 
 interface ThemeState {
   theme: ThemeMode;
+  preference: ThemePreference;
   preferences: UserPreferences | null;
   synced: boolean;
 }
 
 interface ThemeActions {
-  setTheme: (theme: ThemeMode) => void;
+  setTheme: (theme: ThemePreference) => void;
   toggleTheme: () => void;
   setPreferences: (prefs: UserPreferences) => void;
   updatePreference: <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => void;
   fetchPreferences: () => Promise<void>;
   syncPreference: <K extends keyof UserPreferences>(key: K, value: UserPreferences[K]) => Promise<void>;
-  initializeTheme: () => void;
+  initializeTheme: () => () => void;
 }
 
 type ThemeStore = ThemeState & ThemeActions;
 
-function applyThemeClass(theme: ThemeMode) {
-  if (typeof document === 'undefined') return;
-  document.documentElement.classList.toggle('light', theme === 'light');
-  document.documentElement.classList.toggle('dark', theme === 'dark');
-}
-
 export const useThemeStore = create<ThemeStore>()(
   persist(
     (set, get) => ({
-      theme: 'dark',
+      theme: resolveTheme(initialPreference()),
+      preference: initialPreference(),
       preferences: null,
       synced: false,
 
       setTheme: (theme) => {
-        applyThemeClass(theme);
-        set({ theme });
+        set({ preference: theme, theme: resolveTheme(theme) });
       },
 
       toggleTheme: () => {
         const next = get().theme === 'dark' ? 'light' : 'dark';
-        applyThemeClass(next);
-        set({ theme: next });
+        get().setTheme(next);
       },
 
       setPreferences: (preferences) => {
         set({ preferences, synced: true });
         if (preferences.theme) {
-          applyThemeClass(preferences.theme);
-          set({ theme: preferences.theme });
+          get().setTheme(preferences.theme);
         }
       },
 
@@ -72,8 +81,7 @@ export const useThemeStore = create<ThemeStore>()(
         const updated = { ...prefs, [key]: value };
         set({ preferences: updated });
         if (key === 'theme') {
-          applyThemeClass(value as ThemeMode);
-          set({ theme: value as ThemeMode });
+          get().setTheme(value as ThemePreference);
         }
       },
 
@@ -86,14 +94,25 @@ export const useThemeStore = create<ThemeStore>()(
       },
 
       initializeTheme: () => {
-        const { theme } = get();
-        applyThemeClass(theme);
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        const update = () => set({ theme: resolveTheme(get().preference) });
+        update();
+        media.addEventListener('change', update);
+        return () => media.removeEventListener('change', update);
       }
     }),
     {
       name: 'rv-theme',
+      // Older records contain a resolved theme only. Preserve it as an explicit
+      // choice: we cannot infer whether an older dark preference was intentional.
+      merge: (persisted, current) => {
+        const stored = persisted as Partial<ThemeState> | undefined;
+        const preference = initialPreference();
+        return { ...current, preferences: stored?.preferences || null, preference, theme: resolveTheme(preference) };
+      },
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
+        preference: state.preference,
         theme: state.theme,
         preferences: state.preferences
       })

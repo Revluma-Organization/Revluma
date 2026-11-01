@@ -1,3 +1,4 @@
+const { requireMembership } = require('../utils/organizationContext');
 /**
  * Revluma Subscription Controller — Production Hardened
  *
@@ -81,9 +82,11 @@ function resolveAmount(plan, billing_cycle, currency) {
 }
 
 // ── Get authenticated org — throws if not found ───────────────────────────────
-async function getAuthenticatedOrg(userId) {
-  const org = await prisma.organizations.findFirst({
-    where: { owner_id: userId },
+async function getAuthenticatedOrg(userId, organizationId) {
+  const member = await requireMembership(prisma, userId, organizationId);
+  if (member.role !== 'owner') throw Object.assign(new Error('Owner access required.'), { statusCode: 403 });
+  const org = await prisma.organizations.findUnique({
+    where: { id: member.organization_id },
     select: { id: true, company_name: true },
   });
   if (!org) throw Object.assign(new Error('Organization not found. Complete onboarding first.'), { statusCode: 400 });
@@ -92,7 +95,7 @@ async function getAuthenticatedOrg(userId) {
 
 exports.startTrial = async (req, res, next) => {
   try {
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
     const existing = await prisma.subscriptions.findUnique({
       where: { organization_id: org.id },
       select: { status: true, trial_ends_at: true },
@@ -148,7 +151,7 @@ exports.initialize = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'User not found.' });
     }
 
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
 
     // Check for existing active subscription — prevent accidental duplicate initialization
     const existing = await prisma.subscriptions.findUnique({
@@ -260,7 +263,7 @@ exports.verify = async (req, res, next) => {
 
     // Verify that this reference belongs to this authenticated user's org
     // before calling Paystack — prevents probing other merchants' references
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
 
     const pendingTx = await prisma.payment_transactions.findUnique({
       where: { paystack_reference: reference },
@@ -509,7 +512,7 @@ exports.webhook = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getCurrent = async (req, res, next) => {
   try {
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
 
     const sub = await prisma.subscriptions.findUnique({
       where: { organization_id: org.id },
@@ -547,7 +550,7 @@ exports.getCurrent = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.cancel = async (req, res, next) => {
   try {
-    const org = await getAuthenticatedOrg(req.user.id);
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
 
     const sub = await prisma.subscriptions.findUnique({
       where: { organization_id: org.id },

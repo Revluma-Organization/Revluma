@@ -2,7 +2,7 @@ import {
   LogOut, Moon, Sun, Compass, Bell, Sparkles, KeyRound, ShieldCheck,
   CreditCard, UserCircle, Download, Search,
 } from "lucide-react";
-import { NAV } from "@/data/nav";
+import { MVP_NAV } from "@/data/nav";
 import { resolveDashboardRoute } from "./routes";
 import type { PaletteCommand, CommandContext } from "./types";
 
@@ -18,7 +18,7 @@ interface StaticCommandDeps {
 
 /** Pages — derived directly from NAV, the same source that drives the sidebar. */
 function buildPageCommands(): PaletteCommand[] {
-  return NAV.map((n) => ({
+  return MVP_NAV.map((n) => ({
     id: `page-${n.to}`,
     title: n.label,
     description: n.description,

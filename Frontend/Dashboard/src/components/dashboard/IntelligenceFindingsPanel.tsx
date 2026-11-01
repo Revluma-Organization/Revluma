@@ -9,12 +9,13 @@ type Finding = {
   action?: { label?: string; route?: string } | null;
   detected_at: string;
 };
-type Response = { success: boolean; data: { findings: Finding[]; diagnostics: { storeId: string; status: string }[] } };
+type FindingDiagnostic = { storeId: string; status: string };
+type Response = { success: boolean; data: { findings: Finding[]; diagnostics?: FindingDiagnostic[] } };
 
 export default function IntelligenceFindingsPanel() {
   const navigate = useNavigate();
   const [findings, setFindings] = useState<Finding[]>([]);
-  const [diagnostics, setDiagnostics] = useState<Response["data"]["diagnostics"]>([]);
+  const [diagnostics, setDiagnostics] = useState<FindingDiagnostic[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
@@ -110,10 +111,10 @@ export default function IntelligenceFindingsPanel() {
       </div>
       {error && <p role="alert" className="mt-4 text-xs text-red-600 dark:text-red-300">Findings could not be loaded or updated. Please retry later.</p>}
       {loading ? <p className="mt-4 text-sm text-[#667085] dark:text-[#aaa]">Checking verified records…</p> :
-        findings.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-[#d7e2f0] p-5 dark:border-[#333]">
+        error && findings.length === 0 ? null : findings.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-[#d7e2f0] p-5 dark:border-[#333]">
           <p className="text-sm font-semibold">No verified priority findings available</p>
           <p className="mt-2 text-xs leading-5 text-[#667085] dark:text-[#aaa]">
-            {diagnostics.length > 0 ? "Some intelligence checks are limited by unverified historical data or store synchronization. No conclusions have been inferred from incomplete records." : "Revluma has not detected a qualifying issue from the available verified evidence."}
+            {diagnostics.length > 0 ? "Some intelligence checks are limited by unverified historical data or store synchronization. No conclusions have been inferred from incomplete records." : "No open verified findings are currently available. This does not establish that the store has no issues; some checks may lack sufficient evidence."}
           </p>
         </div> : <div className="mt-4 space-y-2">{findings.map(item =>
           <button key={item.id} onClick={() => void investigate(item.id)} className="flex w-full items-start gap-3 rounded-xl border border-[#e7ebf2] p-4 text-left transition hover:border-[#0868ed] dark:border-[#303030] dark:hover:border-[#4b83d8]">
