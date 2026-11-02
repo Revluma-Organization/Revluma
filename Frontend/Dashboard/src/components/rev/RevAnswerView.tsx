@@ -47,15 +47,19 @@ export function RevAnswerView({
   return (
     <article className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span style={{
-          fontSize: "0.62rem", fontWeight: 750, letterSpacing: "0.04em",
-          textTransform: "uppercase", color: pill.fg, background: pill.bg,
-          padding: "3px 8px", borderRadius: 999,
-        }}>
-          {pill.label}
-        </span>
-        {investigation?.label && (
-          <span style={{ fontSize: "0.72rem", color: muted }}>{investigation.label}</span>
+        {state !== "conversational" && (
+          <>
+            <span style={{
+              fontSize: "0.62rem", fontWeight: 750, letterSpacing: "0.04em",
+              textTransform: "uppercase", color: pill.fg, background: pill.bg,
+              padding: "3px 8px", borderRadius: 999,
+            }}>
+              {pill.label}
+            </span>
+            {investigation?.label && (
+              <span style={{ fontSize: "0.72rem", color: muted }}>{investigation.label}</span>
+            )}
+          </>
         )}
         {confidence?.score !== undefined && (
           <span style={{ fontSize: "0.72rem", color: muted }}>
@@ -138,16 +142,16 @@ export function RevAnswerView({
               key={followUp}
               type="button"
               onClick={() => onFollowUp?.(followUp)}
-              className="inline-flex items-center gap-1"
+              className="inline-flex items-center"
               style={{
-                fontSize: "0.74rem", color: "#1F06AC",
-                background: dark ? "rgba(31,6,172,0.18)" : "rgba(31,6,172,0.06)",
-                border: "1px solid rgba(31,6,172,0.16)",
-                borderRadius: 999, padding: "5px 11px", cursor: "pointer",
+                fontSize: "0.78rem", fontWeight: 700, color: strong,
+                background: "transparent", border: "none", borderRadius: 0,
+                padding: "2px 0", textDecoration: "underline",
+                textUnderlineOffset: "3px", textDecorationThickness: "1px",
+                cursor: "pointer",
               }}
             >
               {followUp}
-              <ArrowRight size={11} />
             </button>
           ))}
         </div>
