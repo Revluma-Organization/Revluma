@@ -84,9 +84,9 @@ async def _lifespan(_: FastAPI):
     logger.info(
         "request_threadpool_capacity_configured",
         extra={
-            "max_concurrent_sync_handlers": 8,
+            "max_concurrent_sync_handlers": 4,
             "db_pool_capacity": 12,
-            "max_concurrent_http_requests": 8,
+            "max_concurrent_http_requests": 4,\n            "reserved_background_db_connections": 2,
             "request_gate_scope": "full_asgi_response_including_streams",
         },
     )
@@ -106,39 +106,62 @@ app = FastAPI(
 # Starlette's @app.middleware("http") releases after call_next returns a
 # StreamingResponse object, while its generator may still hold a DB session.
 # This middleware retains the permit until the final response body is sent.
-_REQUEST_CONCURRENCY_LIMIT = 8
+_REQUEST_CONCURRENCY_LIMIT = 4
 
 
 class RequestConcurrencyGate:
     def __init__(self, app, limit: int = _REQUEST_CONCURRENCY_LIMIT):
         self.app = app
+        self.limit = limit
         self.semaphore = asyncio.Semaphore(limit)
+        self._active_lock = threading.Lock()
+        self.active_requests = 0
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
+        wait_started = time.perf_counter()
         await self.semaphore.acquire()
+        wait_ms = (time.perf_counter() - wait_started) * 1000
+        with self._active_lock:
+            self.active_requests += 1
+            active = self.active_requests
+        if wait_ms >= 25 or active >= self.limit:
+            logger.info(
+                "http_request_gate_active",
+                extra={
+                    "active_requests": active,
+                    "limit": self.limit,
+                    "wait_ms": round(wait_ms, 1),
+                    "path": scope.get("path", ""),
+                },
+            )
+
         released = False
 
-        async def send_and_release(message):
+        def release_permit():
             nonlocal released
+            if released:
+                return
+            released = True
+            with self._active_lock:
+                self.active_requests = max(0, self.active_requests - 1)
+            self.semaphore.release()
+
+        async def send_and_release(message):
             await send(message)
             if (
-                not released
-                and message.get("type") == "http.response.body"
+                message.get("type") == "http.response.body"
                 and not message.get("more_body", False)
             ):
-                released = True
-                self.semaphore.release()
+                release_permit()
 
         try:
             await self.app(scope, receive, send_and_release)
         finally:
-            if not released:
-                released = True
-                self.semaphore.release()
+            release_permit()
 
 
 app.add_middleware(RequestConcurrencyGate, limit=_REQUEST_CONCURRENCY_LIMIT)
@@ -654,6 +677,19 @@ def _rebuild_business_state(organization_id: str) -> BusinessStateRebuildRespons
                 detail="Business-state rebuilding is temporarily unavailable because the shared lock service is unavailable.",
             ) from exc
         except BusinessStatePersistenceError as exc:
+            try:
+                pool = engine.pool
+                logger.error(
+                    "business_state_db_pool_snapshot",
+                    extra={
+                        "pool_status": pool.status(),
+                        "pool_checked_out": pool.checkedout(),
+                        "pool_size": pool.size(),
+                        "pool_overflow": pool.overflow(),
+                    },
+                )
+            except Exception:
+                logger.exception("business_state_db_pool_snapshot_failed")
             raise HTTPException(
                 status_code=503,
                 detail="Business-state snapshot persistence failed; retry is safe.",
