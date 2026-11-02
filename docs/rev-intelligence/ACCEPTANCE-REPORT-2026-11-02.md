@@ -2,7 +2,7 @@
 
 - **Date:** 2026-11-02
 - **Branch:** `arena/c85e524b-revluma`, based on `main@941640b`
-- **Head at time of writing:** `e295f2c`
+- **Head at time of writing:** `46c0827` (PR #245, all 8 CI checks green)
 - **Overall verdict:** **NOT PRODUCTION-READY. NOT LIVE-VERIFIED. NOT MERGED. NOT DEPLOYED.**
   Implementation and automated verification are complete; live merchant
   acceptance has **not** been executed and cannot be executed from this
@@ -32,8 +32,10 @@ All authored `Splendor <splendorbenjamin4@gmail.com>`, oldest first.
 | `5f9681db833eb9ad7442af09fddcc6adc216789b` | Release the read transaction held by Business State loading |
 | `5a99564fb071e80384973984f18ae92bf17c410c` | Fix Rev intent routing and quarantine untrusted store data |
 | `e295f2cfac4aca9083545b8e7dbb7edd5f67eed9` | Label Rev's answers by what they actually are |
+| `5e25ef8` | Record the Rev Intelligence decision, contract and acceptance evidence |
+| `46c0827` | Keep the diagnostics endpoint up while the database is not |
 
-Change set: **23 files, 2,673 insertions, 130 deletions.**
+Change set at `46c0827`: **23 code/test files plus 4 documents.**
 
 ---
 
@@ -207,6 +209,44 @@ This is an environment limitation, not a code failure. **Backend test status mus
 be read from CI.** `Backend/src/services/mlService.js` was syntax-checked with
 `node --check`.
 
+### Continuous integration on this branch (observed)
+
+PR #245, head `46c0827` — **all 8 checks green**:
+
+| Check | Result | Duration |
+| --- | --- | --- |
+| `python-regressions` (Rev Python regression tests) | **pass** | 1m29s |
+| `Backend test suite` | **pass** | 18s |
+| `backend` (Backend refresh regression) | **pass** | 25s |
+| `Dashboard suite and production build` | **pass** | 30s |
+| `dashboard` (Dashboard authentication regression) | **pass** | 45s |
+| `Prisma bootstrap, financial and security regressions` | **pass** | 2m2s |
+| `Vercel` | **pass** | — |
+| `Vercel Preview Comments` | **pass** | — |
+
+This closes gate 6 (Backend tests, which could not run locally) and gate 7 (CI
+observation) from section 9. `python-regressions` is the workflow that was
+**FAILED** on `941640b` and `541d132` and deployed anyway; it is green here.
+
+`Prisma bootstrap, financial and security regressions` initially **failed** on
+`e295f2c` and was fixed by `46c0827`. The failure was instructive: that workflow
+runs the Python suite against a **real bootstrapped PostgreSQL 16 with pgvector**,
+while `rev-python-tests.yml` uses a placeholder DSN.
+`test_diagnostics_reports_an_unreachable_database_honestly` assumed the ambient
+`DATABASE_URL` was unreachable, so it passed in one CI job and failed in the
+other — an environment-dependent test, which is a defect in the test rather than
+in the endpoint. Forcing the failure by monkeypatching then exposed a real bug
+beside it: `safe_query` *returning* an error tuple was handled, but `safe_query`
+*raising* escaped the `try/finally` and 500'd `/internal/db/diagnostics`,
+discarding the pool and request-gate counters at exactly the moment an operator
+needs them. Diagnostics now catches it, names the exception type in the reason,
+logs `db_diagnostics_activity_unavailable`, and still returns the rest of the
+snapshot. Three tests now pin that contract, including one asserting
+`database_activity` is all-or-nothing and never a zero-filled masquerade of an
+idle database.
+
+After that fix the local suite is **715 passed, 3 skipped** (up from 713).
+
 ### Pre-existing issues deliberately not touched
 ~15 TypeScript errors exist outside Rev paths (`Checkout.tsx`,
 `WooCommerceConnect.tsx`, a duplicate `toast` export in `components/ui/index.ts`,
@@ -289,8 +329,8 @@ reported as passed.
 | 3 | **Deploy to Vercel (frontend)** | **NOT DONE** | Follows merge. Current production remains `dpl_3mXszWAt3nJKUF6aFZyy8JrieNQb` at `941640b`, which contains the boot-breaking syntax error. |
 | 4 | **Deploy Node service to Render** | **NOT DONE** | Follows merge. Render redeploy cannot be triggered or observed from this environment. |
 | 5 | **Deploy Python service to Render** | **NOT DONE** | Follows merge. Render logs are the only way to confirm why Python stopped rebuilding at ~08:00 UTC; local lifespan boot succeeds, so the residual failure is deploy/config-side and remains **undiagnosed**. |
-| 6 | **Backend `npm test`** | **NOT EXECUTED** | `prisma generate` requires `binaries.prisma.sh`, outside the allowlist. CI-only. |
-| 7 | **CI run on this branch** | **NOT YET OBSERVED** | Push had not occurred when this report was written. Actions logs were also unobtainable for earlier SHAs (`gh run view --log-failed` returns EOF). |
+| 6 | **Backend `npm test`** | **CLOSED VIA CI** | Could not run locally (`prisma generate` requires `binaries.prisma.sh`, outside the allowlist). CI `Backend test suite` and `backend` both **pass** on `46c0827`, and `Prisma bootstrap, financial and security regressions` runs the Backend suite Prisma-backed and passes. |
+| 7 | **CI run on this branch** | **CLOSED — ALL GREEN** | All 8 checks pass on `46c0827`; see section 4. Note that Actions *log* download remains blocked (`results-receiver.actions.githubusercontent.com` is outside the allowlist, `gh run view --log-failed` returns EOF); failure detail was obtained from check-run **annotations** via `api.github.com` instead. |
 | 8 | **One-time prune of 33,712 superseded `business_states` rows** | **NOT PERFORMED** | Destructive production data operation. Requires explicit approval. The automatic retention policy is in place and draining, so this is an optimisation, not a correctness dependency. |
 | 9 | **Live provider generation against production configuration** | **NOT VERIFIED** | No authorized provider key is available in this environment, and none may be introduced. The narrative path is tested with a fake provider; when it is unavailable the deterministic composition is returned and the degradation is recorded. |
 
