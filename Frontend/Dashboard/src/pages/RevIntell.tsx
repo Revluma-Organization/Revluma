@@ -878,13 +878,6 @@ function ConversationRail({
             <p style={{ margin: 0, color: t2, fontSize: "0.68rem" }}>Conversation history</p>
           </div>
         </div>
-        <button type="button" onClick={() => onQuery(query)}
-          aria-label="Refresh conversation history"
-          title="Refresh history"
-          className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-black/5"
-          style={{ color: t2 }}>
-          <RefreshCw size={15} />
-        </button>
       </div>
 
       <div className="px-4 pt-4 pb-3">
