@@ -1004,7 +1004,8 @@ export default function RevIntell() {
   const [renameValue,    setRenameValue]    = useState("");
   const [renameStatus, setRenameStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [renameError, setRenameError] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);  const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [evidenceFor, setEvidenceFor] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1518,7 +1519,8 @@ export default function RevIntell() {
     } finally {
       setDeletingConvId(null);
     }
-  };  const renameConv = (id: string) => {
+  };
+  const renameConv = (id: string) => {
     const conv = conversations.find(c => c.id === id);
     setRenameValue(conv?.title ?? "");
     setRenameError(null);
