@@ -493,7 +493,8 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         db: SQLAlchemy connection or session.
 
     Returns:
-        BusinessState — always. Never raises to caller.
+        BusinessState. Raises BusinessStateBuildInProgress only when no current
+        snapshot exists and another worker already owns the organization's build.
     """
     state_id = str(uuid.uuid4())
     generated_at = datetime.now(timezone.utc)
