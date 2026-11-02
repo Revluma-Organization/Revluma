@@ -20,6 +20,7 @@ from src.intelligence.business_state import (
     VIP_INACTIVE_DAYS,
     _get_next_rebuild_interval,
     _load_customer_ml_signals,
+    _try_acquire_business_state_lock,
 )
 
 
@@ -250,3 +251,21 @@ def test_daily_revenue_sql_excludes_cancelled_orders():
     assert "recovery_status" in DAILY_REVENUE_SQL
     for status in ("cancelled", "canceled", "voided", "deleted"):
         assert status in DAILY_REVENUE_SQL
+
+
+def test_business_state_lock_is_transaction_scoped_and_organization_specific():
+    db = MagicMock()
+    db.execute.return_value.scalar.return_value = True
+
+    assert _try_acquire_business_state_lock(db, "org-123") is True
+
+    statement, params = db.execute.call_args.args
+    assert "pg_try_advisory_xact_lock" in str(statement)
+    assert params == {"lock_key": "revluma:business-state:org-123"}
+
+
+def test_business_state_lock_reports_when_another_worker_owns_it():
+    db = MagicMock()
+    db.execute.return_value.scalar.return_value = False
+
+    assert _try_acquire_business_state_lock(db, "org-456") is False
