@@ -91,6 +91,11 @@ const LOCK_TTL_SECONDS = parseInt(
     10
 );
 
+const BUSINESS_STATE_LOCK_TTL_SECONDS = parseInt(
+    process.env.BUSINESS_STATE_LOCK_TTL_SECONDS || '600',
+    10
+);
+
 const ALERT_QUEUE_BATCH_SIZE = Math.min(
     Math.max(
         parseInt(process.env.ALERT_QUEUE_BATCH_SIZE || '25', 10),
@@ -150,8 +155,20 @@ end
  * - null when another worker owns the lock
  * - null when Redis is unavailable
  */
-async function acquireLock(lockName) {
+async function acquireLock(lockName, options = {}) {
+    const {
+        requireDistributed = false,
+        ttlSeconds = LOCK_TTL_SECONDS,
+    } = options;
+
     if (!isRedisReady()) {
+        if (requireDistributed) {
+            logger.warn('scheduler_distributed_lock_unavailable', {
+                lock: lockName,
+                reason: 'redis_not_ready',
+            });
+            return null;
+        }
         logger.info('scheduler_local_lock_used', {
             lock: lockName,
             reason: 'redis_not_ready',
@@ -162,6 +179,7 @@ async function acquireLock(lockName) {
     const redis = getRedisClient();
 
     if (!redis) {
+        if (requireDistributed) return null;
         return { local: true, key: lockName, token: null };
     }
 
@@ -173,7 +191,7 @@ async function acquireLock(lockName) {
             key,
             token,
             'EX',
-            LOCK_TTL_SECONDS,
+            ttlSeconds,
             'NX'
         );
 
@@ -234,7 +252,12 @@ async function runBusinessStateRebuild() {
         return;
     }
 
-    const lock = await acquireLock('business-state');
+    // Business-state rebuilds are expensive and must never fall back to
+    // per-process locks: a rolling deploy can run more than one instance.
+    const lock = await acquireLock('business-state', {
+        requireDistributed: true,
+        ttlSeconds: BUSINESS_STATE_LOCK_TTL_SECONDS,
+    });
 
     if (!lock) {
         logger.debug?.('scheduler_business_state_lock_not_acquired');
@@ -248,11 +271,52 @@ async function runBusinessStateRebuild() {
     try {
         logger.info('scheduler_business_state_started');
 
-        const organizations = await prisma.organizations.findMany({
-            select: {
-                id: true,
+        const now = new Date();
+
+        // The production baseline table is not populated. The canonical
+        // schedule is the current snapshot's valid_until, written atomically
+        // with each successful Business State build.
+        let dueStates = await prisma.business_states.findMany({
+            where: {
+                is_current: true,
+                OR: [
+                    { valid_until: { lte: now } },
+                    { valid_until: null },
+                ],
             },
+            select: {
+                organization_id: true,
+                valid_until: true,
+            },
+            orderBy: [
+                { valid_until: 'asc' },
+            ],
+            take: 1,
         });
+
+        let organizations = dueStates.map((state) => ({
+            id: state.organization_id,
+        }));
+
+        // New organizations have no current snapshot yet; initialize one
+        // without scanning/rebuilding every organization on every minute tick.
+        if (organizations.length === 0) {
+            organizations = await prisma.organizations.findMany({
+                where: {
+                    business_states: {
+                        none: { is_current: true },
+                    },
+                },
+                select: { id: true },
+                orderBy: { created_at: 'asc' },
+                take: 1,
+            });
+        }
+
+        if (organizations.length === 0) {
+            logger.info('scheduler_business_state_no_due_organizations');
+            return;
+        }
 
         let succeeded = 0;
         let failed = 0;
