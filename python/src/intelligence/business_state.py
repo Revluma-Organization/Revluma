@@ -86,10 +86,12 @@ def _acquire_business_state_lock(organization_id: str):
         socket_timeout=3,
         max_connections=1,
     )
-    key = f"revluma:business-state:rebuild:{organization_id}"
+    # Version the key so an abandoned lease from the previous deployment
+    # cannot block the first rebuild after a worker is replaced.
+    key = f"revluma:business-state:rebuild:v2:{organization_id}"
     token = uuid.uuid4().hex
     try:
-        acquired = client.set(key, token, nx=True, ex=600)
+        acquired = client.set(key, token, nx=True, ex=300)
     except Exception as exc:
         client.close()
         logger.exception(
