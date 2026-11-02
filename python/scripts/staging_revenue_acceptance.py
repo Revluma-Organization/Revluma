@@ -51,9 +51,9 @@ def main() -> int:
             {"id": user, "email": f"staging-{user}@example.invalid"},
         )
         connection.execute(
-            text("INSERT INTO organizations (id, owner_id, company_name, industry, country) "
-                 "VALUES (:id, :owner, 'Staging Acceptance Org', 'test', 'NG')"),
-            {"id": org, "owner": user},
+            text("INSERT INTO organizations (id, owner_id, company_name, industry, country, slug) "
+                 "VALUES (:id, :owner, 'Staging Acceptance Org', 'test', 'NG', :slug)"),
+            {"id": org, "owner": user, "slug": f"staging-acceptance-{org}"},
         )
         connection.execute(
             text("INSERT INTO stores (id, organization_id, platform, shop_domain, status, last_synced_at) "
