@@ -840,12 +840,12 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
 // ── Conversation history drawer ──────────────────────────────────────────────
 function ConversationRail({
   conversations, activeId, loading, query, onQuery, onNew, onSelect,
-  onRename, onDelete, isDark, card, bdr, t1, t2, t4,
+  onRename, onDelete, onClose, isDark, card, bdr, t1, t2, t4,
 }: {
   conversations: Conversation[]; activeId: string | null; loading: boolean;
   query: string; onQuery: (value: string) => void;
   onNew: () => void; onSelect: (id: string) => void;
-  onRename: (id: string) => void; onDelete: (id: string) => void;
+  onRename: (id: string) => void; onDelete: (id: string) => void; onClose: () => void;
   isDark: boolean; card: string; bdr: string; t1: string; t2: string; t4: string;
 }) {
   return (
@@ -878,6 +878,11 @@ function ConversationRail({
             <p style={{ margin: 0, color: t2, fontSize: "0.68rem" }}>Conversation history</p>
           </div>
         </div>
+        <button type="button" onClick={onClose} aria-label="Close conversation history"
+          className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-black/5"
+          style={{ color: t2 }}>
+          <X size={17} />
+        </button>
       </div>
 
       <div className="px-4 pt-4 pb-3">
@@ -1618,6 +1623,7 @@ export default function RevIntell() {
               onSelect={openConversation}
               onRename={renameConv}
               onDelete={(id) => setDeleteConfirmId(id)}
+              onClose={() => setMenuOpen(false)}
               isDark={isDark}
               card={card}
               bdr={bdr}
