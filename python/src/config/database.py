@@ -47,8 +47,8 @@ class _LazyEngine:
                 # Keep the Python service's connection footprint bounded. The
                 # Node service and Supabase internal clients share the same
                 # project connection budget.
-                pool_size=10,
-                max_overflow=6,
+                pool_size=8,
+                max_overflow=4,
                 pool_timeout=30,
                 pool_recycle=300,
                 pool_pre_ping=True,
