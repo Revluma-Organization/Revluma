@@ -18,9 +18,10 @@ from src.intelligence.business_state import (
     LTV_APPROACH_BAND,
     LTV_THRESHOLDS,
     VIP_INACTIVE_DAYS,
+    _acquire_business_state_lock,
     _get_next_rebuild_interval,
     _load_customer_ml_signals,
-    _try_acquire_business_state_lock,
+    _release_business_state_lock,
 )
 
 
@@ -253,19 +254,42 @@ def test_daily_revenue_sql_excludes_cancelled_orders():
         assert status in DAILY_REVENUE_SQL
 
 
-def test_business_state_lock_is_transaction_scoped_and_organization_specific():
-    db = MagicMock()
-    db.execute.return_value.scalar.return_value = True
+def test_redis_business_state_lock_is_organization_scoped_and_expires(monkeypatch):
+    from src.intelligence import business_state
 
-    assert _try_acquire_business_state_lock(db, "org-123") is True
+    client = MagicMock()
+    client.set.return_value = True
+    monkeypatch.setattr(business_state.settings, "REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setattr(business_state.redis, "from_url", lambda *args, **kwargs: client)
 
-    statement, params = db.execute.call_args.args
-    assert "pg_try_advisory_xact_lock" in str(statement)
-    assert params == {"lock_key": "revluma:business-state:org-123"}
+    lock = _acquire_business_state_lock("org-123")
+
+    assert lock is not None
+    assert lock[1] == "revluma:business-state:rebuild:org-123"
+    assert lock[2]
+    client.set.assert_called_once_with(lock[1], lock[2], nx=True, ex=600)
 
 
-def test_business_state_lock_reports_when_another_worker_owns_it():
-    db = MagicMock()
-    db.execute.return_value.scalar.return_value = False
+def test_redis_business_state_lock_returns_none_when_already_owned(monkeypatch):
+    from src.intelligence import business_state
 
-    assert _try_acquire_business_state_lock(db, "org-456") is False
+    client = MagicMock()
+    client.set.return_value = None
+    monkeypatch.setattr(business_state.settings, "REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setattr(business_state.redis, "from_url", lambda *args, **kwargs: client)
+
+    assert _acquire_business_state_lock("org-456") is None
+    client.close.assert_called_once()
+
+
+def test_redis_business_state_lock_release_is_token_owned(monkeypatch):
+    from src.intelligence import business_state
+
+    client = MagicMock()
+    monkeypatch.setattr(business_state.redis, "from_url", lambda *args, **kwargs: client)
+
+    _release_business_state_lock((client, "lock:key", "token-123"))
+
+    client.eval.assert_called_once()
+    assert client.eval.call_args.args[1:] == (1, "lock:key", "token-123")
+    client.close.assert_called_once()
