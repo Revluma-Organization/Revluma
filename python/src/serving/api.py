@@ -54,7 +54,10 @@ from src.config.model_registry import (
     refresh_loaded_model_versions as _refresh_loaded_model_versions,
 )
 from src.automation.runner import run_automation_cycle as _run_automation_cycle
-from src.intelligence.business_state import build_business_state as _build_business_state
+from src.intelligence.business_state import (
+    BusinessStateBuildInProgress,
+    build_business_state as _build_business_state,
+)
 from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
 from src.learning.feedback_loop import run_due_outcome_checks as _run_due_outcome_checks
 from src.config.database import engine
@@ -577,7 +580,13 @@ async def internal_morning_briefings() -> MorningBriefingRunResponse:
 def _rebuild_business_state(organization_id: str) -> BusinessStateRebuildResponse:
     db = _Session()
     try:
-        state = _build_business_state(organization_id, db)
+        try:
+            state = _build_business_state(organization_id, db)
+        except BusinessStateBuildInProgress as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="A business-state rebuild is already running for this organization.",
+            ) from exc
         return BusinessStateRebuildResponse(
             organization_id=state.organization_id,
             state_id=state.id,
