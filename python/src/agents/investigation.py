@@ -429,11 +429,30 @@ def classify_investigation(message: str, context: dict | None = None) -> dict:
 # ── Context loading ───────────────────────────────────────────────────────────
 
 def load_conversation_context(organization_id: str, user_id: str,
-                              conversation_id: str | None, db) -> dict:
+                              conversation_id: str | None, db,
+                              context_payload: dict | None = None) -> dict:
     context = {"summary": None, "last_investigation": None, "recent_turns": [],
                "unresolved": []}
     if not conversation_id:
         return context
+
+    # Node has authenticated the merchant and verified conversation ownership.
+    # Prefer its bounded context payload; retain DB fallback for older callers.
+    supplied = (context_payload or {}).get("conversation_context")
+    if isinstance(supplied, dict):
+        summary = supplied.get("summary")
+        if isinstance(summary, str):
+            context["summary"] = summary[:500]
+        raw = supplied.get("context_window")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except ValueError:
+                raw = None
+        if isinstance(raw, dict):
+            context["last_investigation"] = raw.get("last_investigation")
+            context["unresolved"] = raw.get("unresolved") or []
+
     rows, error = safe_query(db, """
         SELECT summary, context_window
         FROM conversations
@@ -442,12 +461,14 @@ def load_conversation_context(organization_id: str, user_id: str,
     """, {"conversation_id": conversation_id, "org_id": organization_id})
     if not error and rows:
         row = rows[0]
-        summary = row["summary"] if isinstance(row, dict) or hasattr(row, "__getitem__") else None
-        context["summary"] = summary
+        if context["summary"] is None:
+            context["summary"] = _get(row, "summary")
         raw = _json(row, "context_window")
         if isinstance(raw, dict):
-            context["last_investigation"] = raw.get("last_investigation")
-            context["unresolved"] = raw.get("unresolved") or []
+            if context["last_investigation"] is None:
+                context["last_investigation"] = raw.get("last_investigation")
+            if not context["unresolved"]:
+                context["unresolved"] = raw.get("unresolved") or []
     history, history_error = safe_query(db, """
         SELECT role, content, created_at
         FROM conversation_messages
@@ -1388,7 +1409,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 pass
 
     conversation_context = load_conversation_context(
-        organization_id, user_id, conversation_id, db)
+        organization_id, user_id, conversation_id, db, context_payload=context_payload)
     store_context = resolve_store_context(organization_id, db)
     classification = classify_investigation(message, conversation_context)
     intent = classification["intent"]
