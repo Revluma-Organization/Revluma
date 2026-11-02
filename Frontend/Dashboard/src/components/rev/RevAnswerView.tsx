@@ -38,8 +38,11 @@ export function RevAnswerView({
       .map((item) => [item.id, item] as const),
   );
   const citedEvidenceIds = [...new Set([
-    ...(payload.facts ?? []), ...(payload.comparison_facts ?? []),
-  ].flatMap((fact) => fact.evidence_ids ?? []))].filter((id) => evidenceById.has(id)).slice(0, 6);
+    ...(payload.facts ?? []).flatMap((fact) => fact.evidence_ids ?? []),
+    ...(payload.comparison_facts ?? []).flatMap((fact) => fact.evidence_ids ?? []),
+    ...(payload.recommendations ?? []).flatMap((item) => item.evidence_ids ?? []),
+    ...(payload.hypotheses ?? []).flatMap((item) => item.basis_evidence_ids ?? []),
+  ])].filter((id) => evidenceById.has(id)).slice(0, 6);
   const warnings = [
     ...(payload.warnings ?? []),
     ...(payload.response?.warnings ?? []),
@@ -102,7 +105,7 @@ export function RevAnswerView({
                 onClick={() => onOpenEvidence?.(id)}
                 className="inline-flex items-center"
                 style={{
-                  fontSize: "0.7rem", color: "#1F06AC", background: "transparent",
+                  fontSize: "0.7rem", color: dark ? "#A5B4FC" : "#1F06AC", background: "transparent",
                   border: "none", padding: 0, cursor: "pointer",
                   textDecoration: "underline", textUnderlineOffset: 2,
                 }}
