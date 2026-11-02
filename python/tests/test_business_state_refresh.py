@@ -265,7 +265,7 @@ def test_redis_business_state_lock_is_organization_scoped_and_expires(monkeypatc
     lock = _acquire_business_state_lock("org-123")
 
     assert lock is not None
-    assert lock[1] == "revluma:business-state:rebuild:org-123"
+    assert lock[1] == "revluma:business-state:rebuild:v2:org-123"
     assert lock[2]
     client.set.assert_called_once_with(lock[1], lock[2], nx=True, ex=600)
 
