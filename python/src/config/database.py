@@ -44,8 +44,23 @@ class _LazyEngine:
                 )
             self._engine = create_engine(
                 self._url,
-                pool_size=10,
-                max_overflow=20,
+                # Keep the Python service's connection footprint bounded. The
+                # Node service and Supabase internal clients share the same
+                # project connection budget.
+                pool_size=5,
+                max_overflow=5,
+                pool_timeout=20,
+                pool_recycle=300,
+                pool_pre_ping=True,
+                pool_use_lifo=True,
+                pool_reset_on_return="rollback",
+                connect_args={
+                    "connect_timeout": 10,
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 3,
+                },
                 echo=settings.SQL_ECHO,
             )
             return self._engine
