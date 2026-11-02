@@ -61,6 +61,24 @@ def _store_query(statement: str):
     return text(statement).bindparams(bindparam("store_ids", expanding=True))
 
 
+class BusinessStateBuildInProgress(RuntimeError):
+    """Raised when another worker is already building this organization's state."""
+
+
+def _try_acquire_business_state_lock(db, organization_id: str) -> bool:
+    """Prevent overlapping rebuilds across every Python/Node service instance.
+
+    A transaction-scoped advisory lock is released automatically on commit,
+    rollback, or connection close. It avoids holding a separate lock connection
+    and protects both scheduler-triggered and on-demand rebuilds.
+    """
+    acquired = db.execute(
+        text("SELECT pg_try_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": f"revluma:business-state:{organization_id}"},
+    ).scalar()
+    return bool(acquired)
+
+
 def _table_exists(db, table_name: str) -> bool:
     """Allow Python to deploy before the matching backend migration is applied."""
     return bool(
@@ -475,12 +493,17 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         db: SQLAlchemy connection or session.
 
     Returns:
-        BusinessState — always. Never raises to caller.
+        BusinessState. Raises BusinessStateBuildInProgress only when no current
+        snapshot exists and another worker already owns the organization's build.
     """
     state_id = str(uuid.uuid4())
     generated_at = datetime.now(timezone.utc)
     warnings: list[str] = []
     computation_status = "complete"
+
+    # Read the current snapshot before the expensive source queries. The
+    # advisory lock is acquired only for the final persistence transaction so
+    # optional-source rollbacks cannot release it prematurely.
     previous_state = load_current_business_state(organization_id, db)
 
     logger.info("business_state_build_start", extra={
@@ -955,6 +978,49 @@ def build_business_state(organization_id: str, db) -> BusinessState:
 
     persistence_failed = False
     try:
+        # Serialize only the critical write section. This transaction-scoped
+        # lock survives no source-query rollback because it is acquired after
+        # all metric collection and immediately before persistence.
+        if not _try_acquire_business_state_lock(db, organization_id):
+            latest_state = load_current_business_state(organization_id, db)
+            if latest_state is not None:
+                logger.info(
+                    "business_state_duplicate_build_skipped",
+                    extra={"org_id": organization_id, "state_id": latest_state.id},
+                )
+                return latest_state
+            raise BusinessStateBuildInProgress(
+                "A business-state rebuild is already running for this organization."
+            )
+
+        # A competing build may have completed while this worker collected
+        # metrics. Read only its ID here: load_current_business_state() performs
+        # a defensive rollback on errors, which would release this transaction
+        # lock before the write.
+        latest_state_id = db.execute(
+            text("""
+                SELECT id
+                FROM business_states
+                WHERE organization_id = :org_id
+                  AND is_current = TRUE
+                LIMIT 1
+            """),
+            {"org_id": organization_id},
+        ).scalar()
+        previous_state_id = previous_state.id if previous_state is not None else None
+        if latest_state_id is not None and str(latest_state_id) != previous_state_id:
+            db.rollback()
+            latest_state = load_current_business_state(organization_id, db)
+            if latest_state is not None:
+                logger.info(
+                    "business_state_newer_snapshot_already_written",
+                    extra={"org_id": organization_id, "state_id": latest_state.id},
+                )
+                return latest_state
+            raise BusinessStateBuildInProgress(
+                "A newer business-state snapshot was written by another worker."
+            )
+
         # Step 1: mark existing current state as historical
         db.execute(
             text("""
@@ -1076,6 +1142,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             "warnings": len(warnings),
         })
 
+    except BusinessStateBuildInProgress:
+        _rollback_quietly(db)
+        raise
     except Exception as exc:
         logger.exception(
             "business_state_write_failed",

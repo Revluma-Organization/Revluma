@@ -744,11 +744,13 @@ Create `Backend/src/services/schedulerService.js`; register it only from
 
 Schedules:
 
-- Every minute: select due organizations from
-  `business_state_baselines.next_rebuild_at`, then call
-  `POST /internal/business-state/rebuild` once per organization with
-  `{ "organization_id": "<uuid>" }`. Python persists the next adaptive rebuild
-  time. After each rebuild, and every minute for recovery, the backend must
+- Every minute: select at most one due organization from the current
+  `business_states.valid_until` snapshot schedule (and initialize one
+  organization with no current snapshot), then call
+  `POST /internal/business-state/rebuild` with
+  `{ "organization_id": "<uuid>" }`. Python persists the next adaptive
+  rebuild time in the current snapshot. Do not scan/rebuild every organization
+  on every scheduler tick. After each rebuild, and every minute for recovery, the backend must
   transactionally drain pending `alert_queue` rows. Alert delivery is a backend
   job, not a separate Python endpoint; call `POST /orchestrate` with
   `trigger_type = "alert"` only when agent-generated output is required.
