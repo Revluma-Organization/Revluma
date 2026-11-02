@@ -969,7 +969,8 @@ def _follow_ups(intent: str, window: dict, segment: str | None,
 
     if not suggestions:
         suggestions.append("What should I investigate next?")
-    if len(suggestions) < 3 and window.get("compared_to") and not comparison_facts:
+    if (len(suggestions) < 3 and evidence_items and window.get("compared_to")
+            and not comparison_facts):
         suggestions.append("Can you compare this with the previous period?")
     if len(suggestions) < 3:
         suggestions.append("What should I investigate next?")
