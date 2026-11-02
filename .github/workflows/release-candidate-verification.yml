@@ -1,0 +1,173 @@
+name: Release candidate verification
+
+# Full Prisma bootstrap + schema drift check + live-PostgreSQL financial and
+# security regressions for the release candidate. Runs on a disposable,
+# localhost-only PostgreSQL 16 with pgvector; it never touches Supabase,
+# production, Shopify or a deployed service.
+
+on:
+  pull_request:
+    paths:
+      - 'Backend/**'
+      - 'python/**'
+      - '.github/workflows/release-candidate-verification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  database-financial-security:
+    name: Prisma bootstrap, financial and security regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: revluma_rc
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: postgres
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/revluma_rc?schema=public
+      TASK198_DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/revluma_rc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: Install backend dependencies and generate Prisma Client
+        working-directory: Backend
+        run: npm ci
+
+      - name: Validate the Prisma schema
+        working-directory: Backend
+        run: npx prisma validate
+
+      - name: Create pgvector, Supabase-shaped roles and auth stub
+        working-directory: Backend
+        run: |
+          psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS vector;
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE SCHEMA auth;
+          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE
+            AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', TRUE), '')::uuid $$;
+          SQL
+
+      - name: Bootstrap the full application schema (no migration replay)
+        working-directory: Backend
+        run: npx prisma db push --skip-generate --accept-data-loss
+
+      - name: Assert zero drift between Prisma and the bootstrapped database
+        working-directory: Backend
+        run: |
+          npx prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code
+
+      - name: Apply candidate migrations on top of the bootstrapped schema
+        working-directory: Backend
+        run: |
+          for migration in \
+            prisma/migrations/20261027140000_intelligence_findings/migration.sql \
+            prisma/migrations/20261101120000_rev_financial_integrity/migration.sql \
+            prisma/migrations/20261102090000_rev_supabase_function_hardening/migration.sql
+          do
+            echo "applying $migration"
+            psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 -f "$migration"
+          done
+
+      - name: Re-assert zero drift after the candidate migrations
+        working-directory: Backend
+        run: |
+          npx prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code
+
+      - name: Assert every Prisma model exists in PostgreSQL
+        working-directory: Backend
+        run: node scripts/staging/verify-prisma-models.js
+
+      - name: Backend test suite (Prisma-backed)
+        working-directory: Backend
+        run: npm test
+
+      - name: Financial integrity scenarios against real PostgreSQL
+        working-directory: Backend
+        env:
+          RELEASE_CANDIDATE_ISOLATED_DB: 'true'
+        run: node src/tests/financialIntegrity.integration.js
+
+      - name: Financial integrity SQL checks
+        working-directory: Backend
+        run: psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 -f scripts/staging/verify-financial-integrity.sql
+
+      - name: Data API isolation checks
+        working-directory: Backend
+        run: psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 -f scripts/staging/verify-data-api-isolation.sql
+
+      - name: Supabase function hardening checks
+        working-directory: Backend
+        run: psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 -f scripts/staging/verify-security-hardening.sql
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.9'
+          cache: pip
+          cache-dependency-path: python/requirements.txt
+
+      - name: Install Python dependencies
+        working-directory: python
+        run: python -m pip install -r requirements.txt
+
+      - name: Python suite against real PostgreSQL
+        working-directory: python
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/revluma_rc
+          PYTHONPATH: .
+        run: python -m pytest tests -q
+
+      - name: Revenue evidence acceptance on real PostgreSQL
+        working-directory: python
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/revluma_rc
+          PYTHONPATH: .
+        run: python scripts/staging_revenue_acceptance.py
+
+  dashboard:
+    name: Dashboard suite and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: Frontend/Dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Frontend/Dashboard/package-lock.json
+      - name: Install dashboard dependencies
+        run: npm ci --include=dev
+      - name: Vitest suite
+        run: npx vitest run
+      - name: Production build
+        run: npm run build

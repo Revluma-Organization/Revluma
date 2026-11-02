@@ -107,6 +107,46 @@ function verifiedCustomerLifetimeValue(customer) {
   return { value: amount, currency, mixed: false, verified: true };
 }
 
+
+/**
+ * Reconcile an incoming order money observation against what is already stored.
+ *
+ * Shopify delivery is not ordered: an `orders/create` snapshot taken before a
+ * refund can arrive after the refund was recorded. Overwriting the stored row
+ * with that older snapshot would resurrect refunded revenue, so the recorded
+ * refunded amount is treated as monotonic and any refund the incoming payload
+ * has not seen yet is still deducted from the incoming net total.
+ *
+ * Refund reversals are not modelled by Shopify's order total, so keeping the
+ * maximum refunded amount is the conservative choice: it can understate net
+ * revenue (never overstate it) and is reported as refunded evidence.
+ */
+function reconcileOrderMoney({ incomingNet, incomingRefunded, storedRefunded } = {}) {
+  const net = parseAmount(incomingNet);
+  const incoming = parseAmount(incomingRefunded, { allowNegative: true });
+  const stored = storedRefunded === null || storedRefunded === undefined || storedRefunded === ''
+    ? null
+    : parseAmount(storedRefunded, { allowNegative: true });
+
+  if (net === null) return { total: null, refunded_total: incoming };
+  if (incoming !== null && incoming < 0) return { total: null, refunded_total: null };
+
+  const effectiveRefunded = incoming === null
+    ? stored
+    : (stored === null ? incoming : Math.max(stored, incoming));
+
+  if (effectiveRefunded === null) {
+    // No refund evidence anywhere: the incoming net total stands on its own.
+    return { total: net, refunded_total: null };
+  }
+
+  const unseenRefund = Math.max(0, Math.round((effectiveRefunded - (incoming ?? 0)) * 100) / 100);
+  return {
+    total: Math.max(0, Math.round((net - unseenRefund) * 100) / 100),
+    refunded_total: effectiveRefunded,
+  };
+}
+
 /**
  * Compute a customer's lifetime value without mixing currencies.
  * Mixed-currency customers must surface as mixed rather than as one total.
@@ -166,6 +206,7 @@ module.exports = {
   financialError,
   normalizeCurrency,
   parseAmount,
+  reconcileOrderMoney,
   requireAmount,
   requireCurrency,
   resolveOrderRecoveryStatus,

@@ -83,6 +83,15 @@ the tables they touch (organizations, users, stores, customers, orders, coverage
 `prisma generate` / `prisma validate` and `prisma migrate deploy` remain **unverified locally**
 and are covered by CI's `npm ci` + `npm test` on the pushed head only.
 
+### 1d. Release-candidate hardening — 2026-11-02 (second pass)
+
+| Area | What was done | Evidence |
+| --- | --- | --- |
+| Refund ordering | A delayed pre-refund `orders/create` could overwrite a refunded order back to its gross total. Added `reconcileOrderMoney` (monotonic refunded amount, unseen refunds still deducted) and wired it into `upsertOrder`. | `src/tests/orderMoneyReconciliation.test.js` **12/12**; integration scenario in `financialIntegrity.integration.js` |
+| Supabase security | Read-only inspection of the production project (64 tables, 0 without RLS, 39 with no policy, 2 anon-executable `SECURITY DEFINER` functions, blanket CRUD grants). All findings classified; hardening migration added and verified on staging. | `docs/security/supabase-advisor-triage.md`; `verify-security-hardening.sql` **PASS** |
+| Full Prisma bootstrap | Cannot run locally (Prisma engines unreachable). Added `release-candidate-verification.yml`: real `prisma generate`, `validate`, `db push`, `migrate diff --exit-code` (twice), model/table assertion, `npm test`, DB-backed financial integration suite, SQL checks, Python suite and dashboard build on PostgreSQL 16 + pgvector. | Workflow added, YAML validated; **not executed** (commit unpushed) |
+| DB-backed financial suite | 19 scenarios through the production ingestion functions against real PostgreSQL (refunds, cancellations, delayed/duplicate/out-of-order delivery, missing evidence, currency, LTV, gross reconstruction). | `src/tests/financialIntegrity.integration.js`; **not executed locally** (needs Prisma Client) — runs in the workflow above |
+
 ## 2. What is not verified
 
 - **Backend `npm test` still cannot run locally.** Prisma Client is not installable in this
@@ -96,7 +105,11 @@ and are covered by CI's `npm ci` + `npm test` on the pushed head only.
   the backend server was never started against it.
 - **No Supabase verification.** The shared project was not touched; advisor findings are triaged
   in `docs/security/supabase-advisor-triage.md` with the three read-only queries that close them.
-- **The 2026-11-02 commits are not covered by CI** (not pushed, per instruction).
+- **The 2026-11-02 commits are not covered by CI** (not pushed, per instruction), so
+  `release-candidate-verification.yml` has never run.
+- **No Shopify webhook delivery, no Supabase credential access from the app, no deployed
+  streaming session.** The repository has no `.env` at all, so no provider key, Shopify token
+  or database URL exists in this workspace.
 - **No staging or production deployment, and no Shopify merchant-flow test** with a real store.
 - **Python 3.11.9 was not available locally** (interpreter is 3.11.2). The CI workflow is now
   pinned to `3.11.9` so the certified interpreter is the one that gates merges.
@@ -126,6 +139,9 @@ and are covered by CI's `npm ci` + `npm test` on the pushed head only.
 3. A Shopify test store to verify order/cart ingestion, refund reconciliation and currency
    capture with real webhooks.
 4. A deployed Python service to exercise streaming, timeouts and cancellation end-to-end.
+5. A push of the candidate commit so CI can execute `release-candidate-verification.yml`
+   (full Prisma bootstrap, schema-drift check, DB-backed financial suite) and the existing
+   backend/Python/dashboard/task workflows on the exact SHA.
 
 `docs/execution/STAGING-VERIFICATION-RUNBOOK.md` gives the exact commands and pass criteria for
 closing blockers 2–4, including the Shopify webhook scenarios (refund, cancel-then-delayed-create,

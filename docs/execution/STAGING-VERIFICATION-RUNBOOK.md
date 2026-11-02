@@ -174,6 +174,27 @@ TASK198_DATABASE_URL="postgresql+psycopg2://revluma_staging:<password>@127.0.0.1
   python -m pytest tests/test_revenue_evidence_postgres.py -q     # 2 passed
 ```
 
+### 4b. Ingestion-level financial regression (needs Prisma Client)
+
+`Backend/src/tests/financialIntegrity.integration.js` drives the production ingestion
+functions (`upsertOrder`, `cancelOrder`) against a disposable database and covers 19
+scenarios: full/partial/multiple refunds, failed and pending refund transactions, missing
+totals, currency-less payloads, cancellation before the order, delayed updates after
+cancellation, delayed pre-refund creates, unknown refund evidence, duplicate delivery,
+sync-shaped payloads, currency separation, revenue/gross aggregation and LTV.
+
+```bash
+createdb -h 127.0.0.1 -p 5432 -U postgres revluma_rc
+cd Backend
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/revluma_rc?schema=public" \
+  npx prisma db push --skip-generate --accept-data-loss
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/revluma_rc?schema=public" \
+  RELEASE_CANDIDATE_ISOLATED_DB=true node src/tests/financialIntegrity.integration.js
+```
+
+It refuses to run against anything that is not `127.0.0.1:5432/revluma_rc` with
+`RELEASE_CANDIDATE_ISOLATED_DB=true`. CI runs it in `release-candidate-verification.yml`.
+
 ---
 
 ## 5. Test suites
@@ -230,9 +251,20 @@ live-provider runs remain outstanding.
 
 ## 8. Security review
 
-Follow `docs/security/supabase-advisor-triage.md`. It contains the three read-only SQL
-queries that close the advisor findings. Do not change production policies before those
-queries are run.
+Follow `docs/security/supabase-advisor-triage.md`; the production project was inspected
+read-only and every finding is classified there. The candidate hardening migration is verified
+on staging with:
+
+```bash
+psql "$STAGING_DATABASE_URL" -v ON_ERROR_STOP=1 \
+  -f Backend/scripts/staging/verify-security-hardening.sql
+```
+
+It builds production-shaped stand-ins for `auth.uid()` and the three helper functions, applies
+`20261102090000_rev_supabase_function_hardening`, and asserts pinned `search_path`s, the
+revoked event-trigger grant and unchanged tenant-predicate answers.
+
+Do not change production policies or grants as part of this release.
 
 ---
 
@@ -250,6 +282,24 @@ rm -rf /tmp/revstaging /tmp/pgvector /tmp/stagingvenv
 Recreate by repeating sections 1–2. Nothing outside `/tmp` or the container is written.
 
 ---
+
+## 9b. CI gate
+
+`.github/workflows/release-candidate-verification.yml` performs, on a disposable
+PostgreSQL 16 + pgvector service:
+
+1. `npm ci` → real `prisma generate`, `prisma validate`;
+2. `prisma db push` → the **full** 64-model schema (no migration replay);
+3. `prisma migrate diff --from-url … --to-schema-datamodel … --exit-code` → zero drift;
+4. candidate migrations applied on top, then the drift check again;
+5. `verify-prisma-models.js` → every model has a table and no table is unexplained;
+6. `npm test` with Prisma Client present;
+7. the DB-backed financial integration suite;
+8. the three staging SQL checks (financial integrity, Data API isolation, security hardening);
+9. the full Python suite plus the revenue-evidence acceptance script against the same database;
+10. the dashboard Vitest suite and production build.
+
+It has not executed yet because the candidate commit has not been pushed.
 
 ## 10. Recording evidence
 

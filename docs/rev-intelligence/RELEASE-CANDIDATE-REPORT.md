@@ -2,12 +2,14 @@
 
 Date: 2026-11-02 (first issued 2026-11-01)
 Branch: `arena/bbc48aa5-revluma`, based on `main@93d9d42`
-Overall verdict: **STAGING VERIFIED, not ready for merge.** A zero-cost isolated staging
+Overall verdict: **STAGING VERIFIED, not ready for merge** (second pass, 2026-11-02). A zero-cost isolated staging
 database was built on 2026-11-02, the candidate migration was applied and verified with
 behavioural SQL checks, a release-blocking refund defect was found and fixed, and the live
 revenue-evidence path was executed against real PostgreSQL 16. CI is green on the pushed head
 `6d1a946`; the fixes made on 2026-11-02 are committed locally but **not pushed**, so CI has not
-yet run on them. A Shopify development store and a deployed streaming stack were still not
+yet run on them. The production Supabase project was inspected **read-only** through the
+connector: every advisory finding is now classified, and the two hardening defects are fixed in
+the candidate migration. A Shopify development store and a deployed streaming stack were still not
 available, so merchant-facing end-to-end behaviour remains unverified (sections 4, 5, 17).
 
 This report is deliberately structured into 17 parts. A part is marked **FULLY COMPLETED** only
@@ -193,6 +195,10 @@ briefing. Findings are evidence-gated before they can be investigated from chat.
 | `python/scripts/staging_revenue_acceptance.py` | local, **real PostgreSQL 16 staging** | **PASS** (`USD 120.00` / `EUR 25.00`, cancellations excluded) |
 | `Backend/scripts/staging/verify-financial-integrity.sql` | local, **real PostgreSQL 16 staging** | **PASS** (DDL + net/gross/tombstone/currency checks) |
 | `Backend/scripts/staging/verify-data-api-isolation.sql` | local, **real PostgreSQL 16 staging** | **PASS** (no grants to `anon`/`authenticated`) |
+| `Backend/scripts/staging/verify-security-hardening.sql` | local, **real PostgreSQL 16 staging** | **PASS** (4/4 helpers pinned, grant revoked, semantics unchanged) |
+| `node src/tests/orderMoneyReconciliation.test.js` (new) | local | **12/12** |
+| `src/tests/financialIntegrity.integration.js` (new, 19 scenarios) | **not run locally** (needs Prisma Client); runs in `release-candidate-verification.yml` | pending push |
+| `release-candidate-verification.yml` (Prisma bootstrap + drift + DB suites) | **CI only, not executed** | pending push |
 | Backend test suite | **CI, PR #236** | **pass** (`npm ci` + `npm test`, run 41364603543) |
 | Python regressions | **CI, PR #236** | **pass** on 3.11.9 (run 41364603644) |
 | Dashboard suite + build | **CI, PR #236** | **pass** (run 41364603544) |
@@ -220,7 +226,7 @@ downloadable from this environment, so CI results are recorded as step-level suc
    so `tsc` could not run at all → removed; the type check now runs (and exposes 17 pre-existing
    errors in unrelated pages, left untouched as out of scope).
 8. Python CI was unpinned → pinned to `3.11.9`; the dashboard workflow now runs the whole suite.
-9. **Release-blocking financial defect:** Shopify sync stored the pre-refund total whenever the
+9. **Release-blocking financial defect (fixed 2026-11-02):** Shopify sync stored the pre-refund total whenever the
    API omitted `currentTotalPriceSet` (and never read `totalRefundedSet`), so a fully refunded
    order could be counted at full gross. Fixed in `shopifySync.orderPayload` +
    `shopifyOrderFinancials.shopifyGraphqlOrderTotals`; 13 regression tests cover full, partial,
@@ -237,7 +243,18 @@ downloadable from this environment, so CI results are recorded as step-level suc
 
 **Status: FULLY COMPLETED** for the items above (each has a passing local test or a verified
 inspection).
-
+12. **Out-of-order refund regression (found and fixed 2026-11-02):** Shopify delivery is not
+    ordered. A delayed `orders/create` snapshot taken before a refund could overwrite the row
+    back to its pre-refund total, and a payload with no refund evidence could reset
+    `refunded_total` to 0. `reconcileOrderMoney()` now treats the recorded refunded amount as
+    monotonic and deducts any refund the incoming payload has not seen yet; 12 unit tests plus
+    an integration scenario cover it.
+13. **Supabase hardening defects (fixed 2026-11-02):** `public.rev_is_org_member` ran
+    `SECURITY DEFINER` with a mutable `search_path` and was executable by `anon`;
+    `public.rls_auto_enable()` was client-executable; the `app.current_*` GUC helpers called
+    `current_setting` unqualified. Migration `20261102090000_rev_supabase_function_hardening`
+    pins all three `search_path`s and revokes the event-trigger grant. Verified on staging with
+    production-shaped stand-ins.
 ## 16. Change inventory
 
 Modified: `Backend/prisma/schema.prisma`, `revController.js`, `revRoute.js`, `churnWorkerService.js`,
@@ -257,6 +274,17 @@ and this documentation set.
 
 **Status: FULLY COMPLETED** (inventory reviewed; nothing unexplained).
 
+## 16b. Supabase security verdict (read-only inspection, 2026-11-02)
+
+| Finding | Status |
+| --- | --- |
+| 39 tables with RLS enabled and no policy | Confirmed intentional and safe (deny-all; grants cannot bypass RLS) |
+| Blanket CRUD grants to `anon`/`authenticated` on all 64 tables | Not exploitable today (RLS gates every table; no Data API consumer exists); recommend revoking in a separate, authorised change |
+| Tenant policies keyed on `app.current_org_id()` | Safe against PostgREST (no exposed routine sets the GUC, `anon` cannot create schemas); replace with JWT-claim policies before ever enabling the Data API |
+| `rev_is_org_member` SECURITY DEFINER without pinned `search_path` | Hardening defect — **fixed in candidate**, verified on staging |
+| `rls_auto_enable()` executable by `anon`/`authenticated` | Hardening defect — **fixed in candidate**, verified on staging |
+| `app.current_*` mutable `search_path` | Hardening defect — **fixed in candidate**, verified on staging |
+
 ## 17. Blockers and next steps
 
 0. **Follow the staging runbook**: `docs/execution/STAGING-VERIFICATION-RUNBOOK.md`.
@@ -274,8 +302,12 @@ and this documentation set.
 4. **Deploy the Python service** and run a browser streaming session: plan → steps → evidence →
    final, cancel mid-flight, retry, and a forced specialist failure (partial results must
    survive).
-5. **Review the 17 pre-existing TypeScript errors** in unrelated pages (out of scope here).
-6. **Only then** upgrade any part of this report from PARTIALLY COMPLETED to FULLY COMPLETED.
+5. **Push the candidate and let CI certify it.** No push was performed. Required command:
+   `git push origin arena/bbc48aa5-revluma`, then the new
+   `.github/workflows/release-candidate-verification.yml` plus the existing backend, Python,
+   dashboard and task025–032 workflows must pass on the exact SHA.
+6. **Review the 17 pre-existing TypeScript errors** in unrelated pages (out of scope here).
+7. **Only then** upgrade any part of this report from PARTIALLY COMPLETED to FULLY COMPLETED.
 
 No production deployment, production migration, destructive git operation or dependency spend
 was performed.

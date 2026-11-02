@@ -7,6 +7,7 @@ const { shopifyNetOrderTotal, shopifyRefundedAmount } = require('./shopifyOrderF
 const {
   computeCustomerLifetimeValue,
   normalizeCurrency,
+  reconcileOrderMoney,
   parseAmount,
   requireCurrency,
   resolveOrderRecoveryStatus,
@@ -211,7 +212,6 @@ async function upsertOrder(store, provider, payload) {
   // gross value can be reconstructed (net + refunded) instead of guessed. A null
   // here means the payload carried no verifiable refund evidence.
   const refundedTotal = shopifyRefundedAmount(payload);
-  const refundedData = refundedTotal === null ? {} : { refunded_total: refundedTotal };
 
   return prisma.$transaction(async (tx) => {
     const dbCustomer = await tx.customers.upsert({
@@ -238,7 +238,10 @@ async function upsertOrder(store, provider, payload) {
 
     const existingOrder = await tx.orders.findFirst({
       where: { store_id: store.id, external_order_id: orderExternalId },
-      select: { source_checkout_id: true, source_checkout_token: true, source_cart_token: true, recovery_status: true },
+      select: {
+        source_checkout_id: true, source_checkout_token: true, source_cart_token: true,
+        recovery_status: true, total: true, refunded_total: true,
+      },
     });
     // A cancellation observed before the order row existed is a tombstone.
     // It must survive a delayed create/update and keep the order out of revenue.
@@ -261,6 +264,11 @@ async function upsertOrder(store, provider, payload) {
       sourceConflict = true;
       safeOrderEvidence = {};
     }
+    const reconciled = reconcileOrderMoney({
+      incomingNet: total,
+      incomingRefunded: refundedTotal,
+      storedRefunded: existingOrder?.refunded_total ?? null,
+    });
     const order = await tx.orders.upsert({
       where: { store_id_external_order_id: { store_id: store.id, external_order_id: orderExternalId } },
       create: {
@@ -282,9 +290,11 @@ async function upsertOrder(store, provider, payload) {
       update: {
         customer_id: dbCustomer.id,
         ...safeOrderEvidence,
-        total,
-        // Never overwrite a known refunded amount with "unknown".
-        ...refundedData,
+        // A delayed pre-refund snapshot must not resurrect refunded revenue:
+        // the recorded refunded amount is monotonic and any refund this payload
+        // has not seen yet is still deducted from its net total.
+        total: reconciled.total,
+        refunded_total: reconciled.refunded_total,
         currency,
         ordered_at: orderDate,
         subtotal,
