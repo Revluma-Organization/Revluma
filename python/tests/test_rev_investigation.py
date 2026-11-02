@@ -48,7 +48,8 @@ def coverage_rows():
 
 
 def workspace_db(*, order_rows=None, cart_rows=None, event_rows=None,
-                 fail=(), conversation_rows=None, memory_rows=None):
+                 line_item_rows=None, fail=(), conversation_rows=None,
+                 memory_rows=None):
     db = FakeDB(fail_patterns=tuple(fail))
     db.add("SELECT s.id, s.platform, s.status, s.last_synced_at", store_rows())
     db.add("SELECT id, last_synced_at, status", store_rows())
@@ -73,7 +74,10 @@ def workspace_db(*, order_rows=None, cart_rows=None, event_rows=None,
     db.add("completed_count", [{"completed_count": 5}])
     db.add("FROM customers c", [])
     db.add("FROM products p", [{"out_of_stock": 1, "low_stock": 2, "tracked_products": 10}])
-    db.add("FROM order_items oi", [
+    # ``FakeDB.execute`` returns the FIRST route matching a SQL substring, so a
+    # caller that re-adds "FROM order_items oi" afterwards would be silently
+    # ignored. Line-item rows are therefore overridable through the fixture.
+    db.add("FROM order_items oi", line_item_rows if line_item_rows is not None else [
         {"product_name": "Trail Jacket", "currency": "USD", "units": 4,
          "line_value": Decimal("260.00")},
     ])
