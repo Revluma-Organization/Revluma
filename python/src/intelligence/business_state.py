@@ -73,7 +73,7 @@ class BusinessStateLockUnavailable(RuntimeError):
 
 
 def _acquire_business_state_lock(organization_id: str):
-    """Acquire a token-owned Redis lock shared by every service instance."""
+    """Acquire a token-owned, organization-scoped Redis lease shared by all instances."""
     redis_url = (getattr(settings, "REDIS_URL", "") or "").strip()
     if not redis_url:
         logger.error("business_state_lock_unavailable", extra={"reason": "redis_url_missing"})
