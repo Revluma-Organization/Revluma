@@ -112,12 +112,16 @@ def _release_business_state_lock(lock) -> None:
         return
     client, key, token = lock
     try:
-        client.eval(
+        released = client.eval(
             "if redis.call('get', KEYS[1]) == ARGV[1] "
             "then return redis.call('del', KEYS[1]) else return 0 end",
             1,
             key,
             token,
+        )
+        logger.info(
+            "business_state_lock_released",
+            extra={"lock_key": key, "released": bool(released)},
         )
     except Exception:
         logger.exception("business_state_lock_release_failed")
@@ -1221,6 +1225,10 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             "A business-state rebuild is already running for this organization."
         )
 
+    logger.info(
+        "business_state_lock_acquired",
+        extra={"org_id": organization_id},
+    )
     try:
         return _build_business_state_unlocked(organization_id, db)
     finally:
