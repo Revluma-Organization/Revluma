@@ -59,6 +59,7 @@ from src.automation.runner import run_automation_cycle as _run_automation_cycle
 from src.intelligence.business_state import (
     BusinessStateBuildInProgress,
     BusinessStateLockUnavailable,
+    BusinessStatePersistenceError,
     build_business_state as _build_business_state,
 )
 from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
@@ -85,7 +86,7 @@ async def _lifespan(_: FastAPI):
         extra={
             "max_concurrent_sync_handlers": 8,
             "db_pool_capacity": 12,
-            "max_concurrent_http_requests": 8,
+            "max_concurrent_http_requests": 8,\n            "request_gate_scope": "full_asgi_response_including_streams",
         },
     )
 
@@ -100,17 +101,46 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 
-# Queue excess requests before FastAPI dependencies open SQLAlchemy sessions.
-# This caps all request types, including async endpoints that bypass AnyIO's
-# synchronous thread limiter.
+# Bound the complete ASGI response lifetime, not just route execution.
+# Starlette's @app.middleware("http") releases after call_next returns a
+# StreamingResponse object, while its generator may still hold a DB session.
+# This middleware retains the permit until the final response body is sent.
 _REQUEST_CONCURRENCY_LIMIT = 8
-_request_semaphore = asyncio.Semaphore(_REQUEST_CONCURRENCY_LIMIT)
 
 
-@app.middleware("http")
-async def limit_request_concurrency(request: Request, call_next):
-    async with _request_semaphore:
-        return await call_next(request)
+class RequestConcurrencyGate:
+    def __init__(self, app, limit: int = _REQUEST_CONCURRENCY_LIMIT):
+        self.app = app
+        self.semaphore = asyncio.Semaphore(limit)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        await self.semaphore.acquire()
+        released = False
+
+        async def send_and_release(message):
+            nonlocal released
+            await send(message)
+            if (
+                not released
+                and message.get("type") == "http.response.body"
+                and not message.get("more_body", False)
+            ):
+                released = True
+                self.semaphore.release()
+
+        try:
+            await self.app(scope, receive, send_and_release)
+        finally:
+            if not released:
+                released = True
+                self.semaphore.release()
+
+
+app.add_middleware(RequestConcurrencyGate, limit=_REQUEST_CONCURRENCY_LIMIT)
 
 
 _START_TIME = time.time()
@@ -621,6 +651,12 @@ def _rebuild_business_state(organization_id: str) -> BusinessStateRebuildRespons
             raise HTTPException(
                 status_code=503,
                 detail="Business-state rebuilding is temporarily unavailable because the shared lock service is unavailable.",
+            ) from exc
+        except BusinessStatePersistenceError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Business-state snapshot persistence failed; retry is safe.",
+                headers={"Retry-After": "30"},
             ) from exc
         return BusinessStateRebuildResponse(
             organization_id=state.organization_id,
