@@ -61,6 +61,24 @@ def _store_query(statement: str):
     return text(statement).bindparams(bindparam("store_ids", expanding=True))
 
 
+class BusinessStateBuildInProgress(RuntimeError):
+    """Raised when another worker is already building this organization's state."""
+
+
+def _try_acquire_business_state_lock(db, organization_id: str) -> bool:
+    """Prevent overlapping rebuilds across every Python/Node service instance.
+
+    A transaction-scoped advisory lock is released automatically on commit,
+    rollback, or connection close. It avoids holding a separate lock connection
+    and protects both scheduler-triggered and on-demand rebuilds.
+    """
+    acquired = db.execute(
+        text("SELECT pg_try_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+        {"lock_key": f"revluma:business-state:{organization_id}"},
+    ).scalar()
+    return bool(acquired)
+
+
 def _table_exists(db, table_name: str) -> bool:
     """Allow Python to deploy before the matching backend migration is applied."""
     return bool(
@@ -481,6 +499,19 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     generated_at = datetime.now(timezone.utc)
     warnings: list[str] = []
     computation_status = "complete"
+
+    if not _try_acquire_business_state_lock(db, organization_id):
+        previous_state = load_current_business_state(organization_id, db)
+        if previous_state is not None:
+            logger.info(
+                "business_state_duplicate_build_skipped",
+                extra={"org_id": organization_id, "state_id": previous_state.id},
+            )
+            return previous_state
+        raise BusinessStateBuildInProgress(
+            "A business-state build is already running for this organization."
+        )
+
     previous_state = load_current_business_state(organization_id, db)
 
     logger.info("business_state_build_start", extra={
