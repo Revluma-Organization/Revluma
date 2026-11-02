@@ -66,6 +66,9 @@ interface Message {
   isStreaming?: boolean;
   hasError?:   boolean;
   errorCode?:  string;
+  /** Only a pre-persistence rejection permits replacing a local failed attempt. */
+  persistence?: "persisted" | "not-persisted" | "unknown";
+  imageAssisted?: boolean;
   /** Full evidence-bearing payload for this turn (streamed or rehydrated). */
   payload?:    RevAnswerPayload;
   /** Live investigation steps while the turn is streaming. */
@@ -78,6 +81,22 @@ interface Conversation {
   title:            string;
   message_count:    number;
   last_activity_at: string;
+}
+
+interface FindingContext {
+  id: string;
+  title: string;
+  description: string;
+}
+
+const FINDING_ERRORS = ["INVALID_FINDING_ID", "FINDING_NOT_FOUND", "FINDING_EVIDENCE_UNVERIFIED"];
+function responseErrorCode(error: unknown): string | undefined {
+  if (error instanceof RevStreamError) return error.code;
+  if (error instanceof ApiError) {
+    const body = error.body as { error?: { code?: unknown } } | undefined;
+    if (typeof body?.error?.code === "string") return body.error.code;
+  }
+  return undefined;
 }
 
 // ── Error message mapper ──────────────────────────────────────────────────────
@@ -520,9 +539,10 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function Bubble({ msg, onCopy, onRetry, onSend, onOpenEvidence, evidenceOpen, isDark, t1, t2 }: {
+function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evidenceOpen, isDark, t1, t2 }: {
   msg: Message; onCopy: (t: string) => void;
   onRetry: () => void; onSend?: (text: string) => void;
+  retryLabel?: string;
   onOpenEvidence?: (messageId: string) => void; evidenceOpen?: boolean;
   isDark: boolean; t1: string; t2: string;
 }) {
@@ -569,7 +589,7 @@ function Bubble({ msg, onCopy, onRetry, onSend, onOpenEvidence, evidenceOpen, is
                 padding: "5px 12px", borderRadius: 999, fontSize: "0.76rem", fontWeight: 600,
                 background: "rgba(31,6,172,0.08)", color: "#1F06AC",
                 border: "1px solid rgba(31,6,172,0.2)", cursor: "pointer", fontFamily: "inherit" }}>
-              <RefreshCcw size={11} />Regenerate
+              <RefreshCcw size={11} />{retryLabel ?? "Regenerate"}
             </button>
           </div>
         )}
@@ -588,7 +608,7 @@ function Bubble({ msg, onCopy, onRetry, onSend, onOpenEvidence, evidenceOpen, is
                   padding: "5px 12px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 600,
                   background: "rgba(220,38,38,0.1)", color: "#dc2626",
                   border: "1px solid rgba(220,38,38,0.25)", cursor: "pointer", fontFamily: "inherit" }}>
-                <RefreshCcw size={12} />Try again
+                <RefreshCcw size={12} />{retryLabel ?? "Try again"}
               </button>
             </div>
           </div>
@@ -602,7 +622,7 @@ function Bubble({ msg, onCopy, onRetry, onSend, onOpenEvidence, evidenceOpen, is
             evidenceOpen={evidenceOpen}
             onOpenEvidence={() => onOpenEvidence?.(msg.id)}
             onFollowUp={(followUp) => onSend?.(followUp)}
-            onRetry={onRetry}
+            onRetry={retryLabel ? undefined : onRetry}
             canRetry={!msg.isStreaming}
             onCopy={() => onCopy(msg.payload?.text ?? (typeof msg.content === "string" ? msg.content : ""))}
           />
@@ -622,7 +642,7 @@ function Bubble({ msg, onCopy, onRetry, onSend, onOpenEvidence, evidenceOpen, is
               { icon: Copy,       label: "Copy",  fn: () => onCopy(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)) },
               { icon: ThumbsUp,   label: "Good",  fn: () => {} },
               { icon: ThumbsDown, label: "Bad",   fn: () => {} },
-              { icon: RotateCcw,  label: "Retry", fn: onRetry },
+              { icon: RotateCcw,  label: retryLabel ?? "Retry", fn: onRetry },
             ].map(({ icon: Icon, label, fn }) => (
               <button key={label} onClick={fn}
                 className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors"
@@ -697,12 +717,12 @@ function AttachMenu({ onFile, onMedia, card, border, t1, t2 }: {
 
 // ── Input toolbar ─────────────────────────────────────────────────────────────
 
-function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disabled,
+function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disabled, sendDisabled,
   onSend, onFile, onMedia, onVoice, onCall, onStop, thinking, card, border, t1, t2, isDark }: {
   inputRef: React.RefObject<HTMLTextAreaElement>;
   value: string; onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
-  placeholder: string; disabled?: boolean;
+  placeholder: string; disabled?: boolean; sendDisabled?: boolean;
   onSend: () => void; onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onMedia: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onVoice: () => void; onCall: () => void; onStop?: () => void; thinking: boolean;
@@ -734,7 +754,7 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
             </motion.button>
           ) : (
             <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
-              onClick={onSend} disabled={!value.trim() || thinking}
+              onClick={onSend} disabled={!value.trim() || thinking || disabled || sendDisabled}
               aria-label="Send message"
               className="w-8 h-8 rounded-xl flex items-center justify-center transition-all ml-1"
               style={{ background: value.trim() && !thinking ? "#1F06AC" : (isDark ? "#1f1f1f" : "#e5e7eb"),
@@ -986,19 +1006,13 @@ export default function RevIntell() {
   const [activeId,       setActiveId]       = useState<string | null>(urlConvId || null);
   const [messages,       setMessages]       = useState<Message[]>([]);
   const [input,          setInput]          = useState("");
-  useEffect(() => {
-    if (!findingId) return;
-    let active = true;
-    api.get<{ success: boolean; data: { finding: { title: string; description: string; evidence: Record<string, unknown> } } }>(
-      `/rev/findings/${encodeURIComponent(findingId)}`
-    ).then(response => {
-      if (!active) return;
-      const finding = response.data.data.finding;
-      const evidence = JSON.stringify(finding.evidence || {});
-      setInput(`Investigate this verified Revluma finding: ${finding.title}. ${finding.description}. Evidence: ${evidence.slice(0, 2500)}. Explain the observed change, limitations, and supported next steps. Do not invent causes.`);
-    }).catch(() => { /* Do not expose cross-tenant or unavailable evidence. */ });
-    return () => { active = false; };
-  }, [findingId]);
+  const [findingContext, setFindingContext] = useState<FindingContext | null>(null);
+  const [findingLoading, setFindingLoading] = useState(false);
+  const [findingError, setFindingError] = useState<string | null>(null);
+  const [findingRetryDraft, setFindingRetryDraft] = useState<{
+    messageId: string; recoverInPlace: boolean; requiresImage: boolean;
+    attachmentUnknown: boolean; persistenceUnknown: boolean;
+  } | null>(null);
 
   const [thinking,       setThinking]       = useState(false);
   const [menuOpen,       setMenuOpen]       = useState(false);
@@ -1030,10 +1044,41 @@ export default function RevIntell() {
   const turnRequestRef = useRef(0);
   const turnPendingRef = useRef(false);
   const searchQueryRef = useRef("");
+  const findingRequestRef = useRef(0);
+  const inputEditedRef = useRef(false);
   // Set right before we navigate() to a conversation we just created ourselves,
   // so the URL-sync effect below doesn't redundantly re-fetch and clobber the
   // (already correct) optimistic messages with a fresh server round trip.
   const justCreatedIdRef = useRef<string | null>(null);
+  const justCreatedFindingRef = useRef<string | null>(null);
+
+  const loadFinding = useCallback(async (id: string) => {
+    const request = ++findingRequestRef.current;
+    setFindingContext(null);
+    setFindingError(null);
+    if (!id) {
+      setFindingLoading(false);
+      setFindingError(cleanError("INVALID_FINDING_ID"));
+      return;
+    }
+    setFindingLoading(true);
+    try {
+      const result = await api.get<{ success: boolean; data: { finding: FindingContext } }>(`/rev/findings/${encodeURIComponent(id)}`);
+      if (request !== findingRequestRef.current) return;
+      const finding = result.data.data?.finding;
+      if (!result.data.success || !finding || typeof finding.id !== "string" || finding.id.toLowerCase() !== id.toLowerCase() || typeof finding.title !== "string" || !finding.title.trim()) {
+        throw new Error("Finding details are unavailable.");
+      }
+      setFindingContext({ id, title: finding.title, description: typeof finding.description === "string" ? finding.description : "" });
+      if (!inputEditedRef.current) setInput(`Help me investigate this finding: ${finding.title}. Explain the observed change, limitations and supported next steps.`);
+    } catch (error) {
+      if (request !== findingRequestRef.current) return;
+      const code = responseErrorCode(error) || (error instanceof ApiError && [403, 404].includes(error.status) ? "FINDING_NOT_FOUND" : undefined);
+      setFindingError(code && FINDING_ERRORS.includes(code) ? cleanError(code) : "Finding details could not be loaded. Please try again.");
+    } finally {
+      if (request === findingRequestRef.current) setFindingLoading(false);
+    }
+  }, []);
 
   // Scroll to bottom when messages change
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, thinking]);
@@ -1116,6 +1161,7 @@ export default function RevIntell() {
           content,
           timestamp: new Date(m.created_at),
           hasError:  m.has_error || false,
+          persistence: "persisted",
           payload,
         };
       });
@@ -1143,6 +1189,13 @@ export default function RevIntell() {
     abortRef.current?.abort();
     abortRef.current = null;
     justCreatedIdRef.current = null;
+    justCreatedFindingRef.current = null;
+    findingRequestRef.current += 1;
+    inputEditedRef.current = false;
+    setFindingContext(null);
+    setFindingLoading(false);
+    setFindingError(null);
+    setFindingRetryDraft(null);
     setThinking(false);
     setConvLoading(false);
     setConvNotFound(false);
@@ -1156,8 +1209,9 @@ export default function RevIntell() {
 
   useLayoutEffect(() => {
     // Adoption of a newly created thread keeps its optimistic turn and stream.
-    if (urlConvId && justCreatedIdRef.current === urlConvId) {
+    if (urlConvId && justCreatedIdRef.current === urlConvId && justCreatedFindingRef.current === findingId) {
       justCreatedIdRef.current = null;
+      justCreatedFindingRef.current = null;
       setActiveId(urlConvId);
       return;
     }
@@ -1168,12 +1222,14 @@ export default function RevIntell() {
     } else {
       setActiveId(null);
     }
-  }, [urlConvId, resetThread, loadConversation]);
+    if (findingId !== null) void loadFinding(findingId);
+  }, [urlConvId, findingId, resetThread, loadConversation, loadFinding]);
 
   useLayoutEffect(() => () => {
     historyRequestRef.current += 1;
     conversationRequestRef.current += 1;
     turnRequestRef.current += 1;
+    findingRequestRef.current += 1;
     abortRef.current?.abort();
   }, []);
 
@@ -1209,9 +1265,9 @@ export default function RevIntell() {
     setMenuOpen(false);
     setEvidenceFor(null);
     navigate(`/dashboard/rev-intell/${convId}`);
-    if (convId === urlConvId) void loadConversation(convId);
+    if (convId === urlConvId && findingId === null) void loadConversation(convId);
     // URL change triggers the useEffect above which loads the conversation
-  }, [navigate, urlConvId, resetThread, loadConversation]);
+  }, [navigate, urlConvId, findingId, resetThread, loadConversation]);
 
   // ── Turn normalisation ────────────────────────────────────────────────────
   // Node returns the persisted, bounded turn. We keep both the legacy
@@ -1255,39 +1311,44 @@ export default function RevIntell() {
   // investigation happen; the final frame is the persisted, validated turn.
   // Image turns fall back to the non-streaming endpoint, which is the only
   // path that carries attachments — never silently drop an attachment.
-  const send = useCallback(async (text: string, options?: { reuseUserMessage?: boolean }) => {
-    if (!text.trim() || turnPendingRef.current || convLoading || convError || convNotFound) return;
+  const send = useCallback(async (text: string) => {
+    if (!text.trim() || turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || (findingId !== null && !findingContext)) return;
+    if ((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment) return;
     const turn = ++turnRequestRef.current;
     turnPendingRef.current = true;
     const isCurrent = () => turn === turnRequestRef.current;
+    const turnFindingId = findingContext?.id;
+    const findingRejected = (code?: string) => {
+      if (isCurrent() && turnFindingId && code && FINDING_ERRORS.includes(code)) setFindingError(cleanError(code));
+    };
     let turnConversationId = activeId;
     const adoptConversation = (id?: string | null) => {
       if (!isCurrent() || !id || id === turnConversationId) return;
       turnConversationId = id;
       conversationRequestRef.current += 1;
       justCreatedIdRef.current = id;
+      justCreatedFindingRef.current = turnFindingId ?? null;
       setActiveId(id);
-      navigate(`/dashboard/rev-intell/${id}`, { replace: true });
+      navigate(`/dashboard/rev-intell/${id}${turnFindingId ? `?finding=${encodeURIComponent(turnFindingId)}` : ""}`, { replace: true });
     };
     const trimmed = text.trim();
 
-    if (!options?.reuseUserMessage) {
-      setLastUserMsg(trimmed);
-      setInput("");
-      if (inputRef.current) inputRef.current.style.height = "auto";
-      const capturedImg2 = imageAttachment;
-      const userContent: any = capturedImg2
-        ? { text: trimmed, imagePreview: capturedImg2.preview }
-        : trimmed;
-      setMessages(prev => [...prev, {
-        id: `u${Date.now()}`, role: "user", content: userContent, timestamp: new Date(),
-      }]);
-    }
-
-    const sid = `r${Date.now()}`;
-    setMessages(prev => [...prev, {
-      id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true, steps: [],
-    }]);
+    inputEditedRef.current = true;
+    setLastUserMsg(trimmed);
+    setInput("");
+    setFindingRetryDraft(null);
+    if (inputRef.current) inputRef.current.style.height = "auto";
+    const sid = `r${Date.now()}-${turn}`;
+    setMessages(prev => {
+      const placeholder: Message = { id: sid, role: "rev", content: "", timestamp: new Date(), isStreaming: true, steps: [], persistence: "unknown", imageAssisted: Boolean(imageAttachment) };
+      const question: Message = { id: `u${Date.now()}-${turn}`, role: "user", content: trimmed, timestamp: new Date() };
+      const index = findingRetryDraft?.recoverInPlace ? prev.findIndex(message => message.id === findingRetryDraft.messageId) : -1;
+      if (index === prev.length - 1 && index > 0 && prev[index].persistence === "not-persisted") {
+        return prev.map((message, position) => position === index ? placeholder
+          : position === index - 1 && message.role === "user" ? { ...message, content: trimmed } : message);
+      }
+      return [...prev, question, placeholder];
+    });
     setThinking(true);
 
     const patch = (updater: (message: Message) => Message) => {
@@ -1310,6 +1371,7 @@ export default function RevIntell() {
       try {
         const body: Record<string, unknown> = { message: trimmed };
         if (activeId) body.conversation_id = activeId;
+        if (turnFindingId) body.finding_id = turnFindingId;
         body.image_base64 = capturedImage.base64;
         body.image_media_type = capturedImage.mediaType;
 
@@ -1317,22 +1379,32 @@ export default function RevIntell() {
         if (!isCurrent()) return;
         const data = (res as any)?.data ?? (res as any);
         if (!data?.success) {
+          const persisted = typeof data?.conversation_id === "string";
+          if (persisted) adoptConversation(data.conversation_id);
+          findingRejected(data?.error?.code);
           patch(message => ({
             ...message, isStreaming: false, hasError: true,
             errorCode: data?.error?.code,
+            persistence: persisted ? "persisted" : FINDING_ERRORS.includes(data?.error?.code) ? "not-persisted" : "unknown",
             content: cleanError(data?.error?.code, data?.error?.message),
           }));
         } else {
           adoptConversation(data.conversation_id);
           void loadConversations();
           const { content, payload } = normaliseTurn(data);
-          patch(message => ({ ...message, isStreaming: false, content, payload }));
+          patch(message => ({ ...message, isStreaming: false, content, payload, persistence: "persisted" }));
         }
       } catch (err) {
-        const msg = err instanceof ApiError
+        const code = responseErrorCode(err);
+        const failedTurn = err instanceof ApiError ? err.body as { conversation_id?: unknown } | undefined : undefined;
+        const persisted = typeof failedTurn?.conversation_id === "string";
+        if (persisted) adoptConversation(failedTurn.conversation_id as string);
+        findingRejected(code);
+        const msg = code ? cleanError(code) : err instanceof ApiError
           ? cleanError(String((err as any).status), err.message)
           : "Rev is taking a moment. Please try again shortly.";
-        patch(message => ({ ...message, isStreaming: false, hasError: true, content: msg }));
+        patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code, content: msg,
+          persistence: persisted ? "persisted" : code && FINDING_ERRORS.includes(code) ? "not-persisted" : "unknown" }));
       } finally {
         if (isCurrent()) {
           turnPendingRef.current = false;
@@ -1344,15 +1416,18 @@ export default function RevIntell() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    let finalRejected = false;
 
     try {
       const result = await streamRevAnswer({
         message: trimmed,
         conversationId: activeId,
+        findingId: turnFindingId,
         signal: controller.signal,
         handlers: {
           onMeta: ({ conversation_id }) => {
             adoptConversation(conversation_id);
+            if (conversation_id) patch(message => ({ ...message, persistence: "persisted" }));
           },
           onPlan: (plan) => {
             if (plan.steps?.length) patch(message => ({ ...message, steps: plan.steps }));
@@ -1369,11 +1444,20 @@ export default function RevIntell() {
           },
           onFinal: (payload) => {
             if (!isCurrent()) return;
+            if (payload.success === false) {
+              finalRejected = true;
+              const code = (payload as RevAnswerPayload & { error?: { code?: string } }).error?.code;
+              findingRejected(code);
+              patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code, content: cleanError(code), payload: undefined,
+                persistence: message.persistence !== "persisted" && code && FINDING_ERRORS.includes(code) ? "not-persisted" : message.persistence }));
+              return;
+            }
             adoptConversation(payload.conversation_id);
             const { content } = normaliseTurn(payload);
             patch(message => ({
               ...message,
               isStreaming: false,
+              persistence: "persisted",
               content,
               payload: { ...payload, read_only: true },
               steps: payload.investigation?.steps?.length ? payload.investigation.steps : message.steps,
@@ -1383,7 +1467,7 @@ export default function RevIntell() {
       });
 
       if (!isCurrent()) return;
-      adoptConversation(result.conversationId);
+      if (!finalRejected) adoptConversation(result.conversationId);
       patch(message => {
         if (message.hasError) return { ...message, isStreaming: false };
         if (controller.signal.aborted) return { ...message, isStreaming: false, cancelled: true };
@@ -1400,13 +1484,15 @@ export default function RevIntell() {
       if (controller.signal.aborted) {
         patch(message => ({ ...message, isStreaming: false, cancelled: true }));
       } else {
-        const code = err instanceof RevStreamError ? err.code : "";
+        const code = responseErrorCode(err) ?? "";
+        findingRejected(code);
         const msg = err instanceof RevStreamError
           ? cleanError(err.code, err.message)
           : err instanceof ApiError
             ? cleanError(String((err as any).status), err.message)
             : "Rev is taking a moment. Please try again shortly.";
-        patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code, content: msg }));
+        patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code, content: msg,
+          persistence: message.persistence !== "persisted" && FINDING_ERRORS.includes(code) ? "not-persisted" : message.persistence }));
       }
     } finally {
       if (isCurrent()) {
@@ -1415,7 +1501,7 @@ export default function RevIntell() {
         setThinking(false);
       }
     }
-  }, [activeId, convLoading, convError, convNotFound, navigate, imageAttachment, loadConversations]);
+  }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations]);
 
   // ── Stop generation ───────────────────────────────────────────────────────
   const stopGeneration = useCallback(() => {
@@ -1427,11 +1513,28 @@ export default function RevIntell() {
     setMessages(previous => previous.map(message => message.isStreaming ? { ...message, isStreaming: false, cancelled: true } : message));
   }, []);
 
-  // ── Regenerate the previous turn ──────────────────────────────────────────
-  // Uses the server-side retry route so the user turn is reused (never
-  // duplicated) and stale error turns are cleared.
-  const handleRetry = useCallback(async () => {
-    if (turnPendingRef.current || convLoading || convError || convNotFound) return;
+  // Finding requests append new turns on the server. Only confirmed rejected,
+  // unpersisted attempts can be recovered in place in the local thread.
+  const handleRetry = useCallback(async (source?: Message) => {
+    if (turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError) return;
+    if (findingContext) {
+      const previous = source ?? [...messages].reverse().find(message => message.role === "rev");
+      if (!previous) return;
+      const index = messages.findIndex(message => message.id === previous?.id);
+      const question = messages.slice(0, index).reverse().find(message => message.role === "user")?.content;
+      if (typeof question !== "string" || !question.trim()) return;
+      setFindingRetryDraft({
+        messageId: previous.id,
+        recoverInPlace: previous?.persistence === "not-persisted" && index === messages.length - 1,
+        requiresImage: previous?.imageAssisted === true,
+        attachmentUnknown: previous?.imageAssisted === undefined,
+        persistenceUnknown: previous?.persistence !== "persisted" && previous?.persistence !== "not-persisted",
+      });
+      inputEditedRef.current = true;
+      setInput(question);
+      inputRef.current?.focus();
+      return;
+    }
     if (!activeId) {
       if (lastUserMsg) void send(lastUserMsg);
       return;
@@ -1487,12 +1590,13 @@ export default function RevIntell() {
         void loadConversations();
       }
     }
-  }, [activeId, convLoading, convError, convNotFound, lastUserMsg, send, loadConversations]);
+  }, [activeId, convLoading, convError, convNotFound, findingContext, findingLoading, findingError, messages, lastUserMsg, send, loadConversations]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); }
   };
   const resize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    inputEditedRef.current = true;
     setInput(e.target.value);
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px";
@@ -1596,6 +1700,8 @@ export default function RevIntell() {
     inputRef, value: input, onChange: resize, onKeyDown: handleKey,
     onSend: () => send(input), onFile: handleFile, onMedia: handleMedia,
     onVoice: handleVoice, onCall: handleCall, thinking,
+    disabled: findingLoading || Boolean(findingError),
+    sendDisabled: Boolean((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment),
     onStop: stopGeneration,
     card, border: bdr, t1, t2, isDark,
   };
@@ -1699,6 +1805,35 @@ export default function RevIntell() {
         )}
       </AnimatePresence>
 
+      {(findingId !== null || findingContext) && <section aria-label="Finding context"
+        className="mx-4 mt-4 shrink-0 rounded-xl border px-4 py-3" style={{ background: card, borderColor: bdr, color: t1 }}>
+        {findingLoading && <p role="status" className="text-sm" style={{ color: t2 }}>Loading finding details…</p>}
+        {findingContext && <>
+          <p className="mb-1 text-xs font-semibold" style={{ color: t2 }}>Finding to investigate</p>
+          <h2 className="text-sm font-semibold">{findingContext.title}</h2>
+          {findingContext.description && <p className="mt-1 line-clamp-2 text-xs" style={{ color: t2 }}>{findingContext.description}</p>}
+          {!findingError && <p className="mt-2 text-xs" style={{ color: t2 }}>Rev will verify this finding against your workspace records when you send. You can edit the question first.</p>}
+        </>}
+        {findingError && <div role="alert" className="text-sm">
+          <p>{findingError}</p>
+          <button onClick={() => void loadFinding(findingId ?? findingContext?.id ?? "")} className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold"
+            style={{ borderColor: bdr }} aria-label="Retry finding">Retry finding</button>
+        </div>}
+        {findingRetryDraft && <div role="status" aria-label="Question recovery" className="mt-2 text-xs" style={{ color: t1 }}>
+          <p>{findingRetryDraft.recoverInPlace
+            ? "This request was rejected before it was saved. Send to retry this question."
+            : findingRetryDraft.persistenceUnknown
+              ? "The previous request may have been saved. Sending again creates a new question and keeps the earlier attempt. Check conversation history if needed."
+              : "Sending again creates a new question and keeps the earlier messages."}</p>
+          {findingRetryDraft.requiresImage && <p className="mt-1">Reattach the original image before sending this question again.</p>}
+          {findingRetryDraft.attachmentUnknown && <>
+            <p className="mt-1">Attachments are not restored from history. Reattach any image used for this question, or explicitly continue with text only.</p>
+            <button className="mt-2 rounded-lg border px-3 py-2 font-semibold" style={{ borderColor: bdr }}
+              onClick={() => setFindingRetryDraft(current => current ? { ...current, attachmentUnknown: false } : null)}>Continue with text only</button>
+          </>}
+        </div>}
+      </section>}
+
       {/* Main content */}
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
 
@@ -1784,6 +1919,7 @@ export default function RevIntell() {
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 + i * 0.05 }}
                   onClick={() => send(s.sub)}
+                  disabled={findingLoading || Boolean(findingError)}
                   className="flex flex-col items-start p-4 rounded-xl text-left transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98]"
                   style={{ background: card, border: `1px solid ${bdr}` }}>
                   <s.icon size={18} className="mb-2.5" style={{ color: s.color }} />
@@ -1800,7 +1936,8 @@ export default function RevIntell() {
           <div className="max-w-2xl mx-auto px-5 pt-8 pb-4 lg:pt-6">
             {messages.map(msg => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
-                onRetry={handleRetry} onSend={send}
+                onRetry={() => void handleRetry(msg)} onSend={send}
+                retryLabel={findingContext ? (msg.persistence === "not-persisted" && msg === messages[messages.length - 1] ? "Try again" : "Ask again") : undefined}
                 onOpenEvidence={(messageId) => setEvidenceFor(current => (current === messageId ? null : messageId))}
                 evidenceOpen={evidenceFor === msg.id}
                 isDark={isDark} t1={t1} t2={t2} />
@@ -1828,7 +1965,7 @@ export default function RevIntell() {
                 <span className="text-[0.75rem]" style={{ color: t2 }}>{imageAttachment.name.slice(0, 40)}</span>
               </div>
             )}
-            <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking} />
+            <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking || findingLoading || Boolean(findingError)} />
             <p className="text-center text-[0.63rem] mt-2" style={{ color: t4 }}>
               Rev Intelligence · Powered by your store data · Responses grounded in evidence
             </p>

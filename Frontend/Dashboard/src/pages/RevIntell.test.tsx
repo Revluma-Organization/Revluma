@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import api, { ApiError } from '@/lib/api';
-import { streamRevAnswer, type RevAnswerPayload, type RevStreamRequest } from '@/lib/revStream';
+import { RevStreamError, streamRevAnswer, type RevAnswerPayload, type RevStreamRequest } from '@/lib/revStream';
 import RevIntell from './RevIntell';
 
 const theme = vi.hoisted(() => ({ value: 'dark' }));
@@ -10,12 +10,17 @@ vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { full_name: '
 vi.mock('@/store', () => ({ useThemeStore: (select: (state: { theme: string }) => unknown) => select({ theme: theme.value }) }));
 vi.mock('@/lib/api', () => {
   class FixtureApiError extends Error {
-    constructor(public status: number, message: string) { super(message); }
+    constructor(public status: number, message: string, public body?: unknown) { super(message); }
   }
   const mockedApi = { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() };
   return { api: mockedApi, default: mockedApi, ApiError: FixtureApiError };
 });
-vi.mock('@/lib/revStream', () => ({ streamRevAnswer: vi.fn(), RevStreamError: class extends Error {} }));
+vi.mock('@/lib/revStream', () => {
+  class FixtureStreamError extends Error {
+    constructor(public code: string, message: string, public status = 0) { super(message); }
+  }
+  return { streamRevAnswer: vi.fn(), RevStreamError: FixtureStreamError };
+});
 vi.mock('@/components/rev/RevAnswerView', () => ({ default: ({ payload }: { payload: RevAnswerPayload }) => <p>{payload.text}</p> }));
 
 function deferred<T>() {
@@ -31,6 +36,11 @@ const history = ['A', 'B'].map(conversation);
 const thread = (id: string) => ({ messages: [{ id: `message-${id}`, role: 'user', content: `Message from ${id}`, created_at: '2026-11-02T12:00:00Z' }] });
 const answer = (id: string, text: string): RevAnswerPayload => ({ success: true, conversation_id: id, read_only: true, response_type: 'chat', text });
 const turnReply = (data: RevAnswerPayload) => ({ ok: true, status: 200, data });
+const findingOne = '11111111-1111-4111-8111-111111111111';
+const findingTwo = '22222222-2222-4222-8222-222222222222';
+const findingReply = (id = findingOne, title = 'Revenue decline') => reply({ finding: {
+  id, title, description: 'Observed change in recorded revenue.', evidence: { private_marker: 'RAW_EVIDENCE_MUST_NOT_BE_SENT' },
+} });
 let replies: Map<string, Promise<Reply>>;
 let streams: Array<{ request: RevStreamRequest; result: ReturnType<typeof deferred<{ conversationId: string | null; completed: boolean }>> }>;
 
@@ -39,6 +49,8 @@ function LocationControls() {
   const location = useLocation();
   return <>
     <output aria-label="Current path">{location.pathname}</output>
+    <output aria-label="Current search">{location.search}</output>
+    <button onClick={() => navigate(`/dashboard/rev-intell?finding=${findingTwo}`)}>Open another finding</button>
     <button onClick={() => navigate(-1)}>Browser back</button>
     <button onClick={() => navigate(1)}>Browser forward</button>
   </>;
@@ -86,6 +98,278 @@ afterEach(async () => {
   await act(async () => { streams.forEach(stream => stream.result.resolve({ conversationId: null, completed: false })); });
   expect(fetch).not.toHaveBeenCalled();
   vi.restoreAllMocks(); vi.unstubAllGlobals();
+});
+
+describe('finding investigation handoff', () => {
+  async function openFinding() {
+    replies.set(`/rev/findings/${findingOne}`, Promise.resolve(findingReply()));
+    const view = renderPage(`/dashboard/rev-intell?finding=${findingOne}`);
+    await screen.findByRole('heading', { name: 'Revenue decline' });
+    return view;
+  }
+  async function finishFinding(text = 'Finding answer') {
+    await act(async () => {
+      streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' });
+      streams[0].request.handlers.onFinal?.(answer('Created', text));
+      streams[0].result.resolve({ conversationId: 'Created', completed: true });
+    });
+  }
+  it.each(['light', 'dark'])('loads finding context and an editable draft without sending or exposing evidence (%s)', async mode => {
+    theme.value = mode;
+    const pending = deferred<Reply>(); replies.set(`/rev/findings/${findingOne}`, pending.promise);
+    renderPage(`/dashboard/rev-intell?finding=${findingOne}`);
+    expect(screen.getByText('Loading finding details…')).toHaveAttribute('role', 'status');
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    await act(async () => pending.resolve(findingReply()));
+    expect(screen.getByRole('region', { name: 'Finding context' })).toHaveTextContent('Revenue decline');
+    const draft = screen.getByPlaceholderText(/Ask (me|Rev)/);
+    expect((draft as HTMLTextAreaElement).value).toContain('Revenue decline');
+    expect((draft as HTMLTextAreaElement).value).not.toContain('RAW_EVIDENCE');
+    expect(screen.getByText(/Rev will verify this finding/)).toBeInTheDocument();
+    expect(streamRevAnswer).not.toHaveBeenCalled(); expect(api.post).not.toHaveBeenCalled();
+    send('My edited investigation question');
+    expect(streams[0].request).toMatchObject({ message: 'My edited investigation question', findingId: findingOne });
+  });
+  it('preserves earlier finding answers when Ask again creates a new turn, then clears context for New Chat', async () => {
+    await openFinding(); send('Edited finding question'); await finishFinding();
+    expect(screen.getByLabelText('Current search')).toHaveTextContent(`?finding=${findingOne}`);
+    expect(screen.getAllByText('Edited finding question')).toHaveLength(1);
+    expect(screen.getAllByText('Finding answer')).toHaveLength(1);
+    expect(api.get).not.toHaveBeenCalledWith('/rev/conversation/Created');
+    expect(streams[0].request.signal?.aborted).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Ask again', exact: true }));
+    expect(streams).toHaveLength(1);
+    expect(screen.getByLabelText('Question recovery')).toHaveTextContent('creates a new question');
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(streams[1].request).toMatchObject({ findingId: findingOne, conversationId: 'Created' });
+    expect(streams[1].request.reuseUserMessage).not.toBe(true);
+    await act(async () => {
+      streams[1].request.handlers.onFinal?.(answer('Created', 'Regenerated finding answer'));
+      streams[1].result.resolve({ conversationId: 'Created', completed: true });
+    });
+    expect(screen.getAllByText('Edited finding question')).toHaveLength(2);
+    expect(screen.getAllByText('Finding answer')).toHaveLength(1);
+    expect(screen.getAllByText('Regenerated finding answer')).toHaveLength(1);
+    expect(api.post).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'New conversation' })); send('Unrelated question');
+    expect(streams[2].request.findingId).toBeUndefined();
+    expect(screen.queryByRole('region', { name: 'Finding context' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Edited finding question')).not.toBeInTheDocument();
+  });
+  it('forwards finding_id with the edited question through the attachment non-streaming path', async () => {
+    vi.mocked(api.post).mockResolvedValue(turnReply(answer('ImageCreated', 'Image finding answer')));
+    const view = await openFinding();
+    fireEvent.change(view.container.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['fixture image'], 'fixture.png', { type: 'image/png' })] },
+    });
+    await screen.findByAltText('attachment'); send('Explain the finding with this image');
+    await screen.findByText('Image finding answer');
+    expect(api.post).toHaveBeenCalledWith('/rev/chat', expect.objectContaining({ finding_id: findingOne, message: 'Explain the finding with this image', image_media_type: 'image/png' }));
+    expect(JSON.stringify(vi.mocked(api.post).mock.calls)).not.toContain('RAW_EVIDENCE');
+    expect(streamRevAnswer).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Current search')).toHaveTextContent(`?finding=${findingOne}`);
+  });
+  it.each([
+    ['INVALID_FINDING_ID', 400], ['FINDING_NOT_FOUND', 404], ['FINDING_EVIDENCE_UNVERIFIED', 409],
+  ] as const)('blocks sending when finding lookup rejects with %s and allows lookup retry', async (code, status) => {
+    replies.set(`/rev/findings/${findingOne}`, Promise.resolve(findingReply()));
+    // History also loads on mount; route finding failures explicitly rather than relying on effect order.
+    vi.mocked(api.get).mockImplementation(path => path.startsWith('/rev/findings/')
+      ? Promise.reject(new ApiError(status, 'Rejected', { error: { code } })) : Promise.resolve(reply(history)));
+    renderPage(`/dashboard/rev-intell?finding=${findingOne}`);
+    await screen.findByRole('button', { name: 'Retry finding' });
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    expect(streamRevAnswer).not.toHaveBeenCalled();
+    vi.mocked(api.get).mockImplementation(path => Promise.resolve(path.startsWith('/rev/findings/') ? findingReply() : reply(history)));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry finding' }));
+    await screen.findByRole('heading', { name: 'Revenue decline' });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    send(); expect(streams[0].request.findingId).toBe(findingOne);
+  });
+  it('rejects an empty identifier without fetching finding details', async () => {
+    renderPage('/dashboard/rev-intell?finding=');
+    await screen.findByRole('button', { name: 'Retry finding' });
+    expect(vi.mocked(api.get).mock.calls.some(([path]) => path.startsWith('/rev/findings/'))).toBe(false);
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+  it.each(['stream rejection', 'failed final', 'attachment rejection'])('does not display a successful investigation after %s', async failure => {
+    const view = await openFinding();
+    if (failure === 'attachment rejection') {
+      vi.mocked(api.post).mockRejectedValue(new ApiError(409, 'Unverified', { error: { code: 'FINDING_EVIDENCE_UNVERIFIED' } }));
+      fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['image'], 'fixture.png', { type: 'image/png' })] } });
+      await screen.findByAltText('attachment');
+    }
+    send('Check this finding');
+    if (failure !== 'attachment rejection') await act(async () => {
+      if (failure === 'stream rejection') streams[0].result.reject(new RevStreamError('FINDING_EVIDENCE_UNVERIFIED', 'Unverified', 409));
+      else {
+        streams[0].request.handlers.onFinal?.({ ...answer('Rejected', 'Unsupported success'), success: false, error: { code: 'FINDING_EVIDENCE_UNVERIFIED' } } as RevAnswerPayload);
+        streams[0].result.resolve({ conversationId: 'Rejected', completed: true });
+      }
+    });
+    await screen.findByRole('button', { name: 'Retry finding' });
+    expect(screen.queryByText('Unsupported success')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  });
+  it('retries a rejected finding turn with verification and without duplicating the local question', async () => {
+    await openFinding(); send('Rejected question');
+    await act(async () => streams[0].result.reject(new RevStreamError('FINDING_EVIDENCE_UNVERIFIED', 'Unverified', 409)));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry finding' }));
+    await screen.findByRole('heading', { name: 'Revenue decline' });
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByLabelText('Question recovery')).toHaveTextContent('rejected before it was saved');
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(streams[1].request).toMatchObject({ findingId: findingOne });
+    expect(streams[1].request.reuseUserMessage).not.toBe(true);
+    expect(screen.getAllByText('Rejected question')).toHaveLength(1);
+    await act(async () => {
+      streams[1].request.handlers.onFinal?.(answer('Recovered', 'Recovered finding answer'));
+      streams[1].result.resolve({ conversationId: 'Recovered', completed: true });
+    });
+    expect(screen.getAllByText('Rejected question')).toHaveLength(1);
+    expect(screen.getAllByText('Recovered finding answer')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+  it('prepares a distinct finding question from loaded history and discloses unavailable attachments', async () => {
+    replies.set(`/rev/findings/${findingOne}`, Promise.resolve(findingReply()));
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [...thread('A').messages,
+      { id: 'rev-A', role: 'rev', content: 'Previous finding answer', created_at: '2026-11-02T12:00:00Z' },
+    ] })));
+    renderPage(`/dashboard/rev-intell/A?finding=${findingOne}`);
+    await screen.findByText('Previous finding answer'); await screen.findByRole('heading', { name: 'Revenue decline' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask again', exact: true }));
+    expect(streams).toHaveLength(0);
+    expect(screen.getByLabelText('Question recovery')).toHaveTextContent('Attachments are not restored from history');
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with text only' }));
+    expect(streams).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(streams[0].request).toMatchObject({ findingId: findingOne, conversationId: 'A', message: 'Message from A' });
+    expect(streams[0].request.reuseUserMessage).not.toBe(true);
+    expect(screen.getAllByText('Message from A')).toHaveLength(2);
+    expect(screen.getByText('Previous finding answer')).toBeInTheDocument();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+  it.each([true, false])('keeps the earlier attempt when persistence is acknowledged or uncertain (acknowledged=%s)', async acknowledged => {
+    await openFinding(); send('Recoverable question');
+    await act(async () => {
+      if (acknowledged) streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' });
+      streams[0].result.reject(new RevStreamError('INTELLIGENCE_UNAVAILABLE', 'Unavailable', 503));
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask again' }));
+    if (!acknowledged) expect(screen.getByLabelText('Question recovery')).toHaveTextContent('may have been saved');
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(streams[1].request).toMatchObject({ findingId: findingOne });
+    expect(streams[1].request.reuseUserMessage).not.toBe(true);
+    expect(screen.getAllByText('Recoverable question')).toHaveLength(2);
+    expect(screen.getByText('Rev is momentarily unavailable. Try again in a moment.')).toBeInTheDocument();
+  });
+  it('shows the same two distinct finding turns after reloading persisted history', async () => {
+    const view = await openFinding(); send('Investigate this finding'); await finishFinding('First persisted answer');
+    fireEvent.click(screen.getByRole('button', { name: 'Ask again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await act(async () => {
+      streams[1].request.handlers.onFinal?.(answer('Created', 'Second persisted answer'));
+      streams[1].result.resolve({ conversationId: 'Created', completed: true });
+    });
+    expect(screen.getAllByText('Investigate this finding')).toHaveLength(2);
+    expect(screen.getAllByText('First persisted answer')).toHaveLength(1);
+    expect(screen.getAllByText('Second persisted answer')).toHaveLength(1);
+    expect(streams.every(({ request }) => request.findingId === findingOne && request.reuseUserMessage !== true)).toBe(true);
+    replies.set('/rev/conversation/Created', Promise.resolve(reply({ messages: [
+      { id: 'u1', role: 'user', content: { text: 'Investigate this finding' } },
+      { id: 'r1', role: 'rev', content: answer('Created', 'First persisted answer') },
+      { id: 'u2', role: 'user', content: { text: 'Investigate this finding' } },
+      { id: 'r2', role: 'rev', content: answer('Created', 'Second persisted answer') },
+    ].map(message => ({ ...message, created_at: '2026-11-02T12:00:00Z' })) })));
+    view.unmount(); renderPage(`/dashboard/rev-intell/Created?finding=${findingOne}`);
+    await screen.findByText('Second persisted answer');
+    expect(screen.getAllByText('Investigate this finding')).toHaveLength(2);
+    expect(screen.getAllByText('First persisted answer')).toHaveLength(1);
+    expect(screen.getAllByText('Second persisted answer')).toHaveLength(1);
+    expect(streams).toHaveLength(2);
+  });
+  it.each(['successful', 'rejected', 'uncertain', 'acknowledged failure'] as const)('requires reattachment before repeating an image-assisted %s finding turn', async outcome => {
+    const view = await openFinding();
+    if (outcome === 'successful') vi.mocked(api.post).mockResolvedValue(turnReply(answer('ImageCreated', 'Image finding answer')));
+    else vi.mocked(api.post).mockRejectedValue(outcome === 'rejected'
+      ? new ApiError(409, 'Unverified', { error: { code: 'FINDING_EVIDENCE_UNVERIFIED' } })
+      : outcome === 'acknowledged failure'
+        ? new ApiError(503, 'Unavailable', { conversation_id: 'ImageCreated', error: { code: 'INTELLIGENCE_UNAVAILABLE' } })
+        : new Error('Network interrupted'));
+    const attach = () => fireEvent.change(view.container.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['fixture image'], 'fixture.png', { type: 'image/png' })] },
+    });
+    attach(); await screen.findByAltText('attachment'); send('Investigate using this image');
+    if (outcome === 'rejected') {
+      fireEvent.click(await screen.findByRole('button', { name: 'Retry finding' }));
+      await screen.findByRole('heading', { name: 'Revenue decline' });
+    } else if (outcome === 'successful') await screen.findByText('Image finding answer');
+    else await screen.findByText(outcome === 'acknowledged failure'
+      ? 'Rev is momentarily unavailable. Try again in a moment.' : 'Rev is taking a moment. Please try again shortly.');
+    fireEvent.click(screen.getByRole('button', { name: outcome === 'rejected' ? 'Try again' : 'Ask again' }));
+    expect(screen.getByLabelText('Question recovery')).toHaveTextContent('Reattach the original image');
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    fireEvent.keyDown(screen.getByPlaceholderText(/Ask (me|Rev)/), { key: 'Enter' });
+    expect(api.post).toHaveBeenCalledTimes(1); expect(streamRevAnswer).not.toHaveBeenCalled();
+    attach(); await screen.findByAltText('attachment');
+    vi.mocked(api.post).mockResolvedValue(turnReply(answer('ImageCreated', 'Repeated image answer')));
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await screen.findByText('Repeated image answer');
+    expect(api.post).toHaveBeenCalledTimes(2);
+    if (outcome === 'successful' || outcome === 'acknowledged failure') {
+      expect(vi.mocked(api.post).mock.calls[1][1]).toMatchObject({ conversation_id: 'ImageCreated' });
+    }
+    for (const [path, body] of vi.mocked(api.post).mock.calls) {
+      expect(path).toBe('/rev/chat');
+      expect(body).toMatchObject({ finding_id: findingOne, message: 'Investigate using this image', image_media_type: 'image/png' });
+      expect(body).not.toHaveProperty('reuse_user_message');
+    }
+    expect(screen.getAllByText('Investigate using this image')).toHaveLength(outcome === 'rejected' ? 1 : 2);
+    if (outcome === 'successful') expect(screen.getByText('Image finding answer')).toBeInTheDocument();
+    expect(streamRevAnswer).not.toHaveBeenCalled();
+  });
+  it('asks the selected earlier question again without replacing either answer or using the latest question', async () => {
+    await openFinding(); send('First question'); await finishFinding('First answer');
+    send('Different follow-up');
+    await act(async () => {
+      streams[1].request.handlers.onFinal?.(answer('Created', 'Follow-up answer'));
+      streams[1].result.resolve({ conversationId: 'Created', completed: true });
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ask again' })[0]);
+    expect(screen.getByPlaceholderText(/Ask (me|Rev)/)).toHaveValue('First question');
+    send('Edited first question');
+    expect(streams[2].request).toMatchObject({ message: 'Edited first question', findingId: findingOne, conversationId: 'Created' });
+    expect(streams.every(({ request }) => request.findingId === findingOne && request.reuseUserMessage !== true)).toBe(true);
+    expect(screen.getByText('First answer')).toBeInTheDocument();
+    expect(screen.getByText('Follow-up answer')).toBeInTheDocument();
+  });
+  it.each(['new chat', 'conversation', 'another finding'])('ignores a late finding response after navigating to %s', async destination => {
+    const pending = deferred<Reply>(); replies.set(`/rev/findings/${findingOne}`, pending.promise);
+    replies.set(`/rev/findings/${findingTwo}`, Promise.resolve(findingReply(findingTwo, 'Orders decline')));
+    renderPage(`/dashboard/rev-intell?finding=${findingOne}`); await historyReady();
+    if (destination === 'new chat') fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+    else if (destination === 'conversation') { select('B'); await screen.findByText('Message from B'); }
+    else { fireEvent.click(screen.getByRole('button', { name: 'Open another finding' })); await screen.findByRole('heading', { name: 'Orders decline' }); }
+    await act(async () => pending.resolve(findingReply()));
+    expect(screen.queryByRole('heading', { name: 'Revenue decline' })).not.toBeInTheDocument();
+    send('Current question');
+    expect(streams[0].request.findingId).toBe(destination === 'another finding' ? findingTwo : undefined);
+  });
+  it.each([true, false])('updates the association after an investigation and ignores old stream callbacks (completed=%s)', async completed => {
+    await openFinding(); send('First finding question'); if (completed) await finishFinding();
+    replies.set(`/rev/findings/${findingTwo}`, Promise.resolve(findingReply(findingTwo, 'Orders decline')));
+    fireEvent.click(screen.getByRole('button', { name: 'Open another finding' }));
+    await screen.findByRole('heading', { name: 'Orders decline' }); send('Second finding question');
+    expect(streams[1].request.findingId).toBe(findingTwo);
+    if (!completed) expect(streams[0].request.signal?.aborted).toBe(true);
+    await act(async () => streams[0].request.handlers.onFinal?.(answer('Created', 'Late old finding answer')));
+    expect(screen.queryByText('Late old finding answer')).not.toBeInTheDocument();
+    expect(screen.queryByText('First finding question')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Second finding question')).toHaveLength(1);
+  });
 });
 
 describe('conversation history reliability', () => {
