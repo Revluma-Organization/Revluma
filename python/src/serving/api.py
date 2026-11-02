@@ -66,7 +66,7 @@ from src.intelligence.morning_briefing import run_briefings_for_all_merchants as
 from src.learning.feedback_loop import run_due_outcome_checks as _run_due_outcome_checks
 from src.agents.investigation import InvestigationCancelled
 from src.config.database import engine, pool_capacity as _db_pool_capacity
-from src.intelligence.query import release_read_transaction
+from src.intelligence.query import release_read_transaction, safe_query
 from sqlalchemy.orm import sessionmaker
 
 _Session = sessionmaker(bind=engine)
@@ -167,12 +167,44 @@ app = FastAPI(
 
 
 class RequestConcurrencyGate:
+    """Bound concurrent ASGI requests and report what the bound is costing.
+
+    The permit is held for the whole response body, not just route execution,
+    because a streaming investigation keeps a database session alive while its
+    generator runs. Counters here are the evidence for deciding whether the
+    limit is queueing real traffic or simply idle.
+    """
+
     def __init__(self, app, limit: int = _REQUEST_CONCURRENCY_LIMIT):
         self.app = app
         self.limit = limit
         self.semaphore = asyncio.Semaphore(limit)
         self._active_lock = threading.Lock()
         self.active_requests = 0
+        self.active_streams = 0
+        self.total_requests = 0
+        self.queued_requests = 0
+        self.total_wait_ms = 0.0
+        self.max_wait_ms = 0.0
+        self.saturated_at = 0
+        # Published so the diagnostics endpoint can read the live instance
+        # without depending on Starlette's middleware construction order.
+        global _ACTIVE_GATE
+        _ACTIVE_GATE = self
+
+    def snapshot(self) -> dict:
+        with self._active_lock:
+            queued = self.total_wait_ms
+            return {
+                "limit": self.limit,
+                "active_requests": self.active_requests,
+                "active_streams": self.active_streams,
+                "total_requests": self.total_requests,
+                "queued_requests": self.queued_requests,
+                "mean_wait_ms": round(queued / self.total_requests, 2) if self.total_requests else 0.0,
+                "max_wait_ms": round(self.max_wait_ms, 2),
+                "saturated_events": self.saturated_at,
+            }
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -184,7 +216,15 @@ class RequestConcurrencyGate:
         wait_ms = (time.perf_counter() - wait_started) * 1000
         with self._active_lock:
             self.active_requests += 1
+            self.total_requests += 1
+            self.total_wait_ms += wait_ms
+            if wait_ms > self.max_wait_ms:
+                self.max_wait_ms = wait_ms
+            if wait_ms >= 25:
+                self.queued_requests += 1
             active = self.active_requests
+            if active >= self.limit:
+                self.saturated_at += 1
         if wait_ms >= 25 or active >= self.limit:
             logger.info(
                 "http_request_gate_active",
@@ -197,20 +237,35 @@ class RequestConcurrencyGate:
             )
 
         released = False
+        is_stream = False
 
         def release_permit():
-            nonlocal released
+            nonlocal released, is_stream
             if released:
                 return
             released = True
             with self._active_lock:
                 self.active_requests = max(0, self.active_requests - 1)
+                if is_stream:
+                    self.active_streams = max(0, self.active_streams - 1)
             self.semaphore.release()
 
         async def send_and_release(message):
+            nonlocal is_stream
+            message_type = message.get("type")
+            if message_type == "http.response.start":
+                content_type = ""
+                for key, value in message.get("headers") or []:
+                    if key == b"content-type":
+                        content_type = value.decode("latin-1")
+                        break
+                if content_type.startswith("text/event-stream"):
+                    is_stream = True
+                    with self._active_lock:
+                        self.active_streams += 1
             await send(message)
             if (
-                message.get("type") == "http.response.body"
+                message_type == "http.response.body"
                 and not message.get("more_body", False)
             ):
                 release_permit()
@@ -220,6 +275,8 @@ class RequestConcurrencyGate:
         finally:
             release_permit()
 
+
+_ACTIVE_GATE: "RequestConcurrencyGate | None" = None
 
 app.add_middleware(RequestConcurrencyGate, limit=_REQUEST_CONCURRENCY_LIMIT)
 
@@ -866,6 +923,69 @@ async def health_check():
         "automation_last_result": _automation_status["last_result"],
         "automation_last_error": _automation_status["last_error"],
         "uptime_seconds": time.time() - _START_TIME,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Database and stream diagnostics
+# ---------------------------------------------------------------------------
+# Pool exhaustion was previously diagnosable only by reading crash logs after
+# the fact. These counters make the invariant checkable while the service is
+# running, and are behind the internal key because they describe capacity.
+_PG_ACTIVITY_SQL = """
+    SELECT
+        count(*) AS total_backends,
+        count(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_transaction,
+        count(*) FILTER (WHERE state = 'active') AS active_queries,
+        max(EXTRACT(EPOCH FROM (now() - xact_start)))
+            FILTER (WHERE xact_start IS NOT NULL) AS oldest_transaction_seconds
+    FROM pg_stat_activity
+    WHERE datname = current_database()
+"""
+
+
+def _pool_telemetry() -> dict:
+    try:
+        pool = engine.pool
+        return {
+            "pool_size": pool.size(),
+            "checked_out": pool.checkedout(),
+            "checked_in": pool.checkedin(),
+            "overflow": pool.overflow(),
+            "capacity": _db_pool_capacity(),
+        }
+    except Exception:  # pragma: no cover - pool without introspection
+        return {"error": "pool_telemetry_unavailable"}
+
+
+@app.get("/internal/db/diagnostics", dependencies=[Depends(verify_internal_caller)])
+def internal_db_diagnostics():
+    """Live connection, transaction and stream counters for operators."""
+    db = _Session()
+    try:
+        rows, error = safe_query(db, _PG_ACTIVITY_SQL)
+    finally:
+        db.close()
+
+    activity = dict(rows[0]) if rows and not error else {}
+    if error:
+        # Supabase may restrict pg_stat_activity for this role. Report that
+        # honestly rather than implying the database is idle.
+        activity = {"unavailable": True, "reason": error}
+
+    pool = _pool_telemetry()
+    checked_out = pool.get("checked_out")
+    capacity = pool.get("capacity")
+    return {
+        "pool": pool,
+        "database_activity": activity,
+        "request_gate": _ACTIVE_GATE.snapshot() if _ACTIVE_GATE else {"unavailable": True},
+        "capacity_budget_violation": _capacity_budget_violation(),
+        "saturated": bool(
+            isinstance(checked_out, int)
+            and isinstance(capacity, int)
+            and checked_out >= capacity
+        ),
     }
 
 
