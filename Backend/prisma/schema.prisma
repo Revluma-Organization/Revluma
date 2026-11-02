@@ -1557,4 +1557,5 @@ model order_cancellation_tombstones {
   stores            stores   @relation(fields: [store_id], references: [id], onDelete: Cascade)
 
   @@id([store_id, external_order_id])
+  @@index([observed_at(sort: Desc)], map: "idx_order_cancellations_observed")
 }
