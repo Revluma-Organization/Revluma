@@ -30,6 +30,7 @@ import redis
 from sqlalchemy import bindparam, text
 
 from src.config.settings import settings
+from src.intelligence.query import read_row
 
 logger = logging.getLogger("rev.business_state")
 
@@ -1344,8 +1345,10 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
     Returns None if no state exists yet.
     """
     try:
-        row = db.execute(
-            text("""
+        # read_row, not db.execute: this sits on the investigation hot path via
+        # _run_specialists, and a bare execute left the session idle in a
+        # transaction -- holding a pooled connection across the model call.
+        row = read_row(db, """
                 SELECT
                     id, organization_id, schema_version, generated_at,
                     data_freshness_at, staleness_threshold_mins, computation_status,
@@ -1359,9 +1362,7 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
                 WHERE organization_id = :org_id
                   AND is_current = TRUE
                 LIMIT 1
-            """),
-            {"org_id": organization_id},
-        ).fetchone()
+        """, {"org_id": organization_id})
 
         if not row:
             return None

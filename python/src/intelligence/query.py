@@ -108,6 +108,26 @@ def safe_query(db: Any, sql: str, params: dict | None = None) -> tuple[list, str
     return rows, None
 
 
+def read_row(db: Any, sql: str, params: dict | None = None) -> Any:
+    """Fetch a single row, preserving positional access, and release the read.
+
+    ``safe_query`` returns mappings, which do not support integer indexing, so
+    callers that read a wide row by position need this instead. It applies the
+    same connection discipline: a standalone read hands its connection straight
+    back rather than idling in a transaction, while a caller-owned transaction
+    is left intact.
+    """
+    outer_transaction = _in_transaction(db)
+    try:
+        return db.execute(text(sql), params or {}).fetchone()
+    except Exception as exc:
+        logger.warning("rev_read_row_failed error_type=%s", type(exc).__name__)
+        return None
+    finally:
+        if not outer_transaction:
+            _rollback(db)
+
+
 def release_read_transaction(db: Any) -> bool:
     """End any open read transaction so the connection returns to the pool.
 
