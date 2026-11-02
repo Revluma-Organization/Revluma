@@ -1,0 +1,159 @@
+name: Task 033 abandonment-then-purchase delivery diagnostic
+on:
+  pull_request:
+    paths:
+      - 'Backend/src/tests/task033AbandonmentThenPurchase.integration.js'
+      - 'Backend/src/tests/task024VerifiedPersistence.integration.js'
+      - 'Backend/src/services/commerceWebhookService.js'
+      - '.github/workflows/task033-abandonment-then-purchase.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  task033:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: task033
+          POSTGRES_PASSWORD: task033_local_only
+          POSTGRES_DB: task033
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U task033 -d task033"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    defaults:
+      run:
+        working-directory: Backend
+    env:
+      DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task033?schema=public
+      DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task033?schema=public
+      TASK033_ISOLATED_DB: 'true'
+      NODE_ENV: test
+      SHOPIFY_TOKEN_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - run: npm ci
+      - name: Enable pgvector
+        run: PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task033 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+      - name: Create disposable schema
+        run: npx prisma db push --skip-generate --accept-data-loss
+      - name: Execute abandonment-then-purchase diagnostic
+        run: node src/tests/task033AbandonmentThenPurchase.integration.js
+
+      - name: Execute Task 032 checkout-first regression in isolated database
+        env:
+          TASK032_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task032?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task032?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task032;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task032 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task032CheckoutFirst.integration.js
+      - name: Execute Task 024 verified-persistence regression in isolated database
+        env:
+          TASK024_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task024?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task024?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task024;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task024 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task024VerifiedPersistence.integration.js
+
+      - name: Execute Task 025 unresolved-reconciliation regression in isolated database
+        env:
+          TASK025_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task025?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task025?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task025;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task025 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task025 -c 'DROP TABLE "order_checkout_reconciliation_cases"; DROP INDEX "uq_orders_store_id";'
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task025 -f prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql
+          node src/tests/task025Unresolved.integration.js
+
+      - name: Execute Task 026 conflicting-identifier regression in isolated database
+        env:
+          TASK026_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task026?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task026?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task026;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task026 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task026 -c 'DROP TABLE "order_checkout_reconciliation_cases"; DROP INDEX "uq_orders_store_id";'
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task026 -f prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql
+          node src/tests/task026Conflicts.integration.js
+
+      - name: Execute Task 027 checkout-ownership regression in isolated database
+        env:
+          TASK027_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task027?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task027?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task027;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task027 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task027 -c 'DROP TABLE "order_checkout_reconciliation_cases"; DROP INDEX "uq_orders_store_id";'
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task027 -f prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql
+          node src/tests/task027Ownership.integration.js
+
+      - name: Execute Task 028 source-identifier regression in isolated database
+        env:
+          TASK028_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task028?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task028?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task028;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task028 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task028 -c 'DROP TABLE "order_checkout_reconciliation_cases"; DROP INDEX "uq_orders_store_id";'
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task028 -f prisma/migrations/20261030020000_task025_unresolved_reconciliation/migration.sql
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task028 -c 'DROP INDEX IF EXISTS idx_carts_store_checkout_id; DROP INDEX IF EXISTS idx_carts_store_checkout_token; DROP INDEX IF EXISTS idx_carts_store_cart_token; ALTER TABLE abandoned_carts DROP COLUMN source_checkout_id, DROP COLUMN source_checkout_token, DROP COLUMN source_cart_token; ALTER TABLE orders DROP COLUMN source_checkout_id, DROP COLUMN source_checkout_token, DROP COLUMN source_cart_token;'
+          PGPASSWORD=task033_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task033 -d task028 -f prisma/migrations/20261030093000_task028_source_identifiers/migration.sql
+          node src/tests/task028Identifiers.integration.js
+
+      - name: Execute Task 029 completion-precedence regression in isolated database
+        env:
+          TASK029_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task029?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task029?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task029;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task029 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task029Completion.integration.js
+
+      - name: Execute Task 030 delayed-event regression in isolated database
+        env:
+          TASK030_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task030?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task030?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task030;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task030 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task030DelayedEvents.integration.js
+
+      - name: Execute Task 031 order-first regression in isolated database
+        env:
+          TASK031_ISOLATED_DB: 'true'
+          DATABASE_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task031?schema=public
+          DIRECT_URL: postgresql://task033:task033_local_only@127.0.0.1:5432/task031?schema=public
+        run: |
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d postgres -c 'CREATE DATABASE task031;'
+          PGPASSWORD=task033_local_only psql -h 127.0.0.1 -U task033 -d task031 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+          npx prisma db push --skip-generate --accept-data-loss
+          node src/tests/task031OrderFirst.integration.js
+
