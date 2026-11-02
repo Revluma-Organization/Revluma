@@ -3,7 +3,7 @@ const { prisma } = require('../configs/database');
 const logger = require('../utils/logger');
 const { rfmSync } = require('./mlService');
 const { lastCheckoutActivity, nextCheckoutStatus } = require('./checkoutInactivity');
-const { shopifyNetOrderTotal } = require('./shopifyOrderFinancials');
+const { shopifyNetOrderTotal, shopifyRefundedAmount } = require('./shopifyOrderFinancials');
 const {
   computeCustomerLifetimeValue,
   normalizeCurrency,
@@ -207,6 +207,11 @@ async function upsertOrder(store, provider, payload) {
   const discountPct = subtotal > 0 ? Math.min(100, (discountAmount / subtotal) * 100) : 0;
   const couponCode = payload.discount_codes?.[0]?.code || payload.coupon_lines?.[0]?.code || null;
   const lineItems = payload.line_items || payload.products || [];
+  // `orders.total` is net of refunds; the refunded amount is kept alongside it so
+  // gross value can be reconstructed (net + refunded) instead of guessed. A null
+  // here means the payload carried no verifiable refund evidence.
+  const refundedTotal = shopifyRefundedAmount(payload);
+  const refundedData = refundedTotal === null ? {} : { refunded_total: refundedTotal };
 
   return prisma.$transaction(async (tx) => {
     const dbCustomer = await tx.customers.upsert({
@@ -264,6 +269,7 @@ async function upsertOrder(store, provider, payload) {
         external_order_id: orderExternalId,
         ...orderEvidence,
         total,
+        refunded_total: refundedTotal,
         subtotal,
         discount_amount: discountAmount,
         discount_pct: discountPct,
@@ -277,6 +283,8 @@ async function upsertOrder(store, provider, payload) {
         customer_id: dbCustomer.id,
         ...safeOrderEvidence,
         total,
+        // Never overwrite a known refunded amount with "unknown".
+        ...refundedData,
         currency,
         ordered_at: orderDate,
         subtotal,

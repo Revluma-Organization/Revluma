@@ -1,10 +1,14 @@
 # Rev Intelligence — release candidate completion report
 
-Date: 2026-11-01
+Date: 2026-11-02 (first issued 2026-11-01)
 Branch: `arena/bbc48aa5-revluma`, based on `main@93d9d42`
-Overall verdict: **PARTIALLY COMPLETED** — code, contract and tests are in place and green
-locally **and in CI (PR #236)**; staging, a staging database and a real Shopify store were not
-available, so no merchant-facing capability below is claimed as fully verified end-to-end.
+Overall verdict: **STAGING VERIFIED, not ready for merge.** A zero-cost isolated staging
+database was built on 2026-11-02, the candidate migration was applied and verified with
+behavioural SQL checks, a release-blocking refund defect was found and fixed, and the live
+revenue-evidence path was executed against real PostgreSQL 16. CI is green on the pushed head
+`6d1a946`; the fixes made on 2026-11-02 are committed locally but **not pushed**, so CI has not
+yet run on them. A Shopify development store and a deployed streaming stack were still not
+available, so merchant-facing end-to-end behaviour remains unverified (sections 4, 5, 17).
 
 This report is deliberately structured into 17 parts. A part is marked **FULLY COMPLETED** only
 where the evidence exists in this workspace; every other part is **PARTIALLY COMPLETED** with
@@ -33,10 +37,10 @@ database, no Shopify test-store interaction, no browser-driven streaming session
 
 ## 2. Repository and branch state
 
-- Branch `arena/bbc48aa5-revluma`, HEAD `93d9d42` (`Merge pull request #235 …`), dirty worktree.
-- 21 tracked files modified, 19 untracked source/test/migration paths. No build artefacts,
-  dependency trees or datasets are untracked (`Frontend/Dashboard/dist` is ignored).
-- No commit, push, merge, deployment or migration was performed in this session.
+- Branch `arena/bbc48aa5-revluma`, HEAD `6d1a946` (`docs(rev): record CI evidence for PR #236`).
+- 2026-11-02 changes (staging verification, refund fix, tests, docs) are committed on the same
+  branch and **not pushed**, per the standing instruction not to push without authorization.
+- No production deployment, production migration or destructive git operation was performed.
 
 **Status: FULLY COMPLETED** (state verified with `git status`, `git diff --stat`, `git log`).
 
@@ -99,9 +103,23 @@ a failing specialist never discards another's `partial` result.
 - New `validate_attribution()` rejects facts without evidence, unknown evidence ids, currency
   facts without currency, and hypotheses claimed as verified.
 - Refund reconciliation is a pure, testable helper; cancellation is terminal via tombstones.
+- `orders.total` stores the **net** value (Shopify `currentTotalPriceSet`, i.e. after returns and
+  refunds); `orders.refunded_total` (new, nullable) stores what was refunded, so gross is
+  `total + refunded_total`. Existing rows keep `refunded_total = NULL`, which is reported as
+  unknown — never as zero refunds.
+- Defect fixed: the sync path fell back to the **gross** `totalPriceSet` whenever Shopify did
+  not return `currentTotalPriceSet`, so a refunded order could be recorded at its pre-refund
+  value. It now requests `totalRefundedSet`, prefers the current total, otherwise computes
+  gross − refunded, and fails closed (typed error, sync marked incomplete) when neither route
+  yields a verifiable net.
+- Verified on real PostgreSQL 16 for the reported orders: `#1004` ($1,025 gross, fully
+  refunded) and `#1001` ($100 gross, fully refunded) contribute $0 to net revenue and $1,125
+  to gross; a partial refund stores net 70 of 100; a cancelled 999 order is excluded; USD and
+  EUR never mix.
 
-**Status: PARTIALLY COMPLETED.** Proven on synthetic evidence and unit tests; no live-store
-ingestion was exercised.
+**Status: PARTIALLY COMPLETED.** Proven on synthetic evidence, unit tests, behavioural SQL on
+staging Postgres and the live evidence service against staging data; no live-store webhook
+delivery was exercised.
 
 ## 8. Operational intelligence
 
@@ -169,7 +187,12 @@ briefing. Findings are evidence-gated before they can be investigated from chat.
 | `npx vitest run` (Dashboard) | local | 19 files, 120 tests |
 | `npx vite build` (Dashboard) | local | succeeded |
 | `npx tsc -p tsconfig.app.json --noEmit` | local | 17 pre-existing errors in unrelated pages, 0 in Rev files |
-| Backend `npm test` | local | **not run** (Prisma Client unavailable in sandbox) |
+| Backend `npm test` | local, per-file | 26 files pass, **8 blocked** on `Cannot find module '.prisma/client/default'`, **0 real failures** |
+| `node src/tests/shopifyGraphqlOrderTotals.test.js` (new) | local | **13/13** |
+| `python/tests/test_revenue_evidence_postgres.py` | local, **real PostgreSQL 16 staging** | **2/2** (fixture fixed: missing `customer_lifetime_verified`) |
+| `python/scripts/staging_revenue_acceptance.py` | local, **real PostgreSQL 16 staging** | **PASS** (`USD 120.00` / `EUR 25.00`, cancellations excluded) |
+| `Backend/scripts/staging/verify-financial-integrity.sql` | local, **real PostgreSQL 16 staging** | **PASS** (DDL + net/gross/tombstone/currency checks) |
+| `Backend/scripts/staging/verify-data-api-isolation.sql` | local, **real PostgreSQL 16 staging** | **PASS** (no grants to `anon`/`authenticated`) |
 | Backend test suite | **CI, PR #236** | **pass** (`npm ci` + `npm test`, run 41364603543) |
 | Python regressions | **CI, PR #236** | **pass** on 3.11.9 (run 41364603644) |
 | Dashboard suite + build | **CI, PR #236** | **pass** (run 41364603544) |
@@ -197,6 +220,20 @@ downloadable from this environment, so CI results are recorded as step-level suc
    so `tsc` could not run at all → removed; the type check now runs (and exposes 17 pre-existing
    errors in unrelated pages, left untouched as out of scope).
 8. Python CI was unpinned → pinned to `3.11.9`; the dashboard workflow now runs the whole suite.
+9. **Release-blocking financial defect:** Shopify sync stored the pre-refund total whenever the
+   API omitted `currentTotalPriceSet` (and never read `totalRefundedSet`), so a fully refunded
+   order could be counted at full gross. Fixed in `shopifySync.orderPayload` +
+   `shopifyOrderFinancials.shopifyGraphqlOrderTotals`; 13 regression tests cover full, partial,
+   mixed-currency, missing-field and malformed cases.
+10. **Schema/evidence gap:** no per-order refunded amount existed, so gross could not be
+    reconstructed. Added `orders.refunded_total` (candidate migration + Prisma schema), populated
+    from `totalRefundedSet` (sync) or successful refund transactions (webhooks), never
+    overwriting a known value with "unknown".
+11. **Gated integration test could never pass:** `test_revenue_evidence_postgres.py` created an
+    `intelligence_order_coverage` fixture without the production column
+    `customer_lifetime_verified`, so the coverage query silently failed and the evidence was
+    always `partial`. Fixture aligned with the schema; the test now runs green against staging
+    PostgreSQL.
 
 **Status: FULLY COMPLETED** for the items above (each has a passing local test or a verified
 inspection).
@@ -225,7 +262,12 @@ and this documentation set.
 0. **Follow the staging runbook**: `docs/execution/STAGING-VERIFICATION-RUNBOOK.md`.
 1. ~~Run CI on this branch.~~ **Closed** — PR #236 is green: `backend-tests.yml`,
    `rev-python-tests.yml` (3.11.9) and `dashboard-auth-regression.yml` (full suite + build).
-2. **Apply the migration** in staging: `20261101120000_rev_financial_integrity`.
+2. ~~Apply the migration in staging.~~ **Closed for staging** — applied to an isolated
+   PostgreSQL 16.2 + pgvector 0.8.0 database and verified behaviourally
+   (`Backend/scripts/staging/verify-financial-integrity.sql`). The migration is **not** applied
+   to the shared Supabase project, and the migration history still cannot bootstrap the full
+   schema (64 Prisma models vs 27 replayed tables): `prisma db push` + `migrate deploy` is the
+   sanctioned path and needs engines this sandbox cannot download.
 3. **Connect a Shopify test store** and verify: order/cart currency capture, refund
    reconciliation on webhook `orders/update`, cancelled-then-delayed-create ordering, coverage
    certification.

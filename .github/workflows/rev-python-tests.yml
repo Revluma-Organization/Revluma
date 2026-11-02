@@ -19,8 +19,25 @@ jobs:
   python-regressions:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # Disposable PostgreSQL so the gated revenue-evidence integration test runs
+    # instead of being skipped. Nothing outside this job uses the database.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: revluma
+          POSTGRES_PASSWORD: revluma_ci_local_only
+          POSTGRES_DB: revluma_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgresql+psycopg2://placeholder:placeholder@localhost:5432/placeholder
+      TASK198_DATABASE_URL: postgresql+psycopg2://revluma:revluma_ci_local_only@localhost:5432/revluma_test
     defaults:
       run:
         working-directory: python

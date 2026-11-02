@@ -5,6 +5,7 @@ const { cancelOrder, upsertOrder, upsertAbandonedCart } = require('./commerceWeb
 const { reconcileShopifyWebhooks } = require('./shopifyWebhookService');
 const logger = require('../utils/logger');
 const { getRedisClient, isRedisReady } = require('../configs/redis');
+const { shopifyGraphqlOrderTotals } = require('./shopifyOrderFinancials');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
 
 const PAGE_SIZE = 100;
@@ -117,6 +118,15 @@ async function syncCustomers(store) {
 }
 
 function orderPayload(order) {
+  // Money semantics (Shopify Admin GraphQL):
+  //   totalPriceSet ........ total before returns/refunds
+  //   currentTotalPriceSet . total after returns/refunds (authoritative net)
+  //   totalRefundedSet ..... amount refunded so far
+  // `orders.total` stores the net value, so a refunded order (e.g. #1004:
+  // $1,025 gross, $1,025 refunded) is persisted at $0 and contributes nothing
+  // to recorded revenue. The refunded amount is carried separately so gross can
+  // be reconstructed (net + refunded) without guessing.
+  const totals = shopifyGraphqlOrderTotals(order);
   return {
     id: externalId(order.id),
     checkout_token: order.checkoutToken || null,
@@ -124,16 +134,15 @@ function orderPayload(order) {
     created_at: order.createdAt,
     cancelled_at: order.cancelledAt,
     financial_status: order.displayFinancialStatus,
-    // Shopify GraphQL currentTotalPriceSet is already adjusted for refunds.
-    // The webhook refund reconciler must not subtract them a second time.
-    // currentTotalPriceSet is already refund-adjusted; refunds are intentionally
-    // not supplied to the webhook normaliser to avoid subtracting them twice.
-    total_price: money(order.currentTotalPriceSet || order.totalPriceSet),
+    total_price: totals.net,
+    total_refunded: totals.refunded,
+    // currentTotalPriceSet is already refund-adjusted, so the webhook normaliser
+    // must not subtract the same refunds again.
     refunds: [],
     subtotal_price: money(order.subtotalPriceSet),
     total_discounts: money(order.totalDiscountsSet),
     // No silent USD: a missing currency fails closed during ingestion.
-    currency: (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode ?? null,
+    currency: totals.currency,
     customer: order.customer ? {
       id: externalId(order.customer.id),
       email: order.customer.email,
@@ -198,6 +207,7 @@ async function syncOrders(store) {
           id checkoutToken cartToken createdAt cancelledAt displayFinancialStatus discountCodes
           currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
+          totalRefundedSet { shopMoney { amount currencyCode } }
           subtotalPriceSet { shopMoney { amount currencyCode } }
           totalDiscountsSet { shopMoney { amount currencyCode } }
           customer { id email firstName lastName phone }

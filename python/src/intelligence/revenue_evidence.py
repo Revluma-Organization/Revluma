@@ -247,10 +247,12 @@ def retrieve_revenue_evidence(
                     "recorded_order_value", label=f"Recorded order value ({code})",
                     value=value, unit=UNIT_CURRENCY, currency=code, window=window,
                     source="orders", coverage=coverage, freshness=freshness,
-                    definition=("Sum of persisted order totals for non-cancelled orders. "
-                                "Shopify sync stores the refund-adjusted current total; "
-                                "partial refunds are therefore reflected, not subtracted twice."),
-                    limitations=["Recorded order total, not recognised or settled revenue."],
+                    definition=("Sum of persisted net order totals for non-cancelled orders. "
+                                "Each order total is net of refunds: Shopify sync stores the "
+                                "refund-adjusted current total, so full and partial refunds are "
+                                "reflected once, not subtracted twice. Gross value is "
+                                "total + refunded_total where refunded_total is recorded."),
+                    limitations=["Recorded net order value (after refunds), not recognised or settled revenue."],
                 ))
             if not coverage["complete"]:
                 overall_status = STATUS_PARTIAL
@@ -262,11 +264,13 @@ def retrieve_revenue_evidence(
             "refund_adjustment", label="Itemised refund ledger", value=None,
             unit=UNIT_CURRENCY, window=window, source="orders",
             status=STATUS_UNAVAILABLE,
-            definition="Individual refund transactions stored per order.",
+            definition=("Per-order refunded amount (orders.refunded_total) recorded "
+                        "alongside the net order total. Individual refund transactions "
+                        "are not stored."),
             coverage=coverage, freshness=freshness,
-            limitations=["Refunds are reflected inside persisted order totals only; "
-                         "no separate refund ledger is stored, so gross refund amounts "
-                         "cannot be reported independently."],
+            limitations=["Refunds are reflected inside persisted net order totals and a "
+                         "per-order refunded_total; no per-transaction refund ledger is "
+                         "stored, and no aggregate refund total is exposed yet."],
             discriminator="refund-ledger",
         ))
 

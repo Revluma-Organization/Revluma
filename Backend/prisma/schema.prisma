@@ -412,6 +412,7 @@ model orders {
   source_checkout_token   String?
   source_cart_token       String?
   total                   Decimal          @db.Decimal(10, 2)
+  refunded_total          Decimal?         @db.Decimal(10, 2)
   subtotal                Decimal?         @db.Decimal(10, 2)
   discount_amount         Decimal?         @db.Decimal(10, 2)
   currency                String?          @default("USD")

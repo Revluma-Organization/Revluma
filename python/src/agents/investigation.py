@@ -651,8 +651,9 @@ def _unknowns(items: list[dict], intent: str, segment: str | None,
            for item in items) or "refund_adjustment" not in statuses:
         if intent in (INTENT_REVENUE, INTENT_REFUNDS, INTENT_OVERVIEW):
             unknowns.append(
-                "No itemised refund ledger is stored. Order totals are already refund-adjusted, "
-                "but the gross refunded amount cannot be reported separately.")
+                "No itemised refund ledger is stored. Order totals are already refund-adjusted "
+                "and a per-order refunded amount is recorded, but individual refund transactions "
+                "and an aggregate refunded total cannot be reported.")
     if intent in (INTENT_CHECKOUT, INTENT_TRAFFIC):
         unknowns.append(
             "Absence of a recorded event does not prove that no checkout or traffic occurred; "

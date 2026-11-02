@@ -654,23 +654,24 @@ def _traffic(org_id: str, db, params: dict, window: dict) -> ToolResult:
 
 
 def _refunds(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    # Existence check for an itemised refund ledger; the current schema folds
-    # refunds into the persisted order total.
-    rows, error = safe_query(db, "SELECT to_regclass(:table) AS present",
-                             {"table": "public.refunds"})
-    present = bool(rows and _row(rows[0], "present")) if not error else False
+    # The schema stores a per-order refunded amount (orders.refunded_total) and
+    # a net order total; individual refund transactions are not stored, so this
+    # tool stays unavailable and says exactly why.
     item = evidence_item(
         "refund_adjustment", label="Itemised refund ledger", value=None,
         unit=UNIT_CURRENCY, window=window, source="orders",
-        status=STATUS_UNAVAILABLE if present else STATUS_UNAVAILABLE,
-        definition="Individual refund transactions per order.",
-        limitations=["Refunds are reflected only inside persisted order totals; "
-                     "gross refund amounts cannot be reported independently."],
+        status=STATUS_UNAVAILABLE,
+        definition=("Per-order refunded amount stored with the net order total; "
+                    "individual refund transactions are not stored."),
+        limitations=["Refunds are reflected inside persisted net order totals and "
+                     "orders.refunded_total; no per-transaction refund ledger and no "
+                     "aggregate refund total are available."],
         discriminator="refund-ledger",
     )
     return ToolResult("refund_observations", STATUS_UNAVAILABLE, items=[item],
                       warnings=["No itemised refund ledger is available; refund-adjusted "
-                                "order totals are the only monetary source."],
+                                "order totals and per-order refunded amounts are the only "
+                                "monetary sources."],
                       data_sources=["orders"], row_count=0)
 
 
