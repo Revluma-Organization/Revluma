@@ -27,7 +27,7 @@ def compose_seven_day_briefing(evidence: dict) -> str:
     elif not orders["by_currency"]:
         lines.append("**Orders:** No orders were recorded in this seven-day window. This is not proof that Shopify had no sales if ingestion is incomplete.")
     else:
-        parts = [f'{r["order_count"]} orders totalling {r["gross_recorded_order_value"]} {r["currency"]} (average {r["average_order_value"]} {r["currency"]})' for r in orders["by_currency"]]
+        parts = [f'{r["order_count"]} orders totalling {r["net_recorded_order_value"]} {r["currency"]} (average {r["average_order_value"]} {r["currency"]})' for r in orders["by_currency"]]
         lines.append("**Recorded orders:** " + "; ".join(parts) + ". These are recorded order totals, not verified net revenue.")
 
     carts = evidence["abandoned_carts"]

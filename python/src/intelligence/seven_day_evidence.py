@@ -78,10 +78,14 @@ def retrieve_seven_day_evidence(organization_id: str, db, *, now: datetime | Non
             WHERE s.organization_id = :org_id
               AND s.status IN ('active', 'connected', 'syncing')
               AND o.ordered_at >= :start AND o.ordered_at < :end
+              AND (o.recovery_status IS NULL OR o.recovery_status NOT IN
+                   ('cancelled', 'canceled', 'voided', 'deleted'))
             GROUP BY o.currency ORDER BY o.currency
         """), params).mappings().all()
-        evidence["orders"] = {"status": "available", "by_currency": _rows_by_currency(rows, "order_count", "gross_recorded_order_value")}
-        evidence["warnings"].append("Order totals are recorded values; refunds/cancellations are not verified as net revenue.")
+        evidence["orders"] = {"status": "available", "by_currency": _rows_by_currency(rows, "order_count", "net_recorded_order_value")}
+        evidence["warnings"].append(
+            "Order totals are net of refunds and cancelled orders are excluded; "
+            "individual refund transactions are not stored.")
     except Exception:
         evidence["warnings"].append("Order data could not be retrieved.")
         db.rollback()

@@ -66,7 +66,7 @@ def test_currency_separation_and_recovered_definition():
     evidence = retrieve_seven_day_evidence("org-1", db)
     orders = evidence["orders"]["by_currency"]
     assert orders[0]["average_order_value"] == "1500"
-    assert orders[1]["gross_recorded_order_value"] == "20"
+    assert orders[1]["net_recorded_order_value"] == "20"
     assert evidence["abandoned_carts"]["by_currency"][0]["cart_count"] == 3
     assert evidence["recovered_carts"]["count"] == 1
     assert evidence["last_store_sync_at"] is None
@@ -112,3 +112,21 @@ def test_cart_query_deduplicates_per_store_and_external_id():
     assert evidence["abandoned_carts"]["by_currency"] == [
         {"currency": "USD", "cart_count": 10, "cart_value": "12551.40"}
     ]
+
+
+def test_order_value_is_net_of_refunds_and_excludes_cancellations():
+    db = Mock()
+    db.execute.side_effect = [
+        Result([{"id": "store-1", "last_synced_at": None}]),
+        Result([{"currency": "USD", "item_count": 1, "amount": Decimal("20")}]),
+        Result([]),
+        Result(scalar_value=0),
+    ]
+    evidence = retrieve_seven_day_evidence("org-1", db)
+    order_sql = str(db.execute.call_args_list[1].args[0])
+    # `orders.total` is net of refunds, so a cancelled order must be filtered out
+    # or the brief would report revenue that was never earned.
+    assert "recovery_status" in order_sql
+    assert "cancelled" in order_sql
+    assert "net_recorded_order_value" in evidence["orders"]["by_currency"][0]
+    assert "gross_recorded_order_value" not in evidence["orders"]["by_currency"][0]

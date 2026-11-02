@@ -199,6 +199,7 @@ briefing. Findings are evidence-gated before they can be investigated from chat.
 | `node src/tests/orderMoneyReconciliation.test.js` (new) | local | **12/12** |
 | `src/tests/financialIntegrity.integration.js` (new, 19 scenarios) | **not run locally** (needs Prisma Client); runs in `release-candidate-verification.yml` | pending push |
 | `release-candidate-verification.yml` (Prisma bootstrap + drift + DB suites) | **CI only, not executed** | pending push |
+| Python suite after revenue-semantics fixes | local + live Postgres for the gated module | **616 passed, 1 skipped** |
 | Backend test suite | **CI, PR #236** | **pass** (`npm ci` + `npm test`, run 41364603543) |
 | Python regressions | **CI, PR #236** | **pass** on 3.11.9 (run 41364603644) |
 | Dashboard suite + build | **CI, PR #236** | **pass** (run 41364603544) |
@@ -255,6 +256,13 @@ inspection).
     `current_setting` unqualified. Migration `20261102090000_rev_supabase_function_hardening`
     pins all three `search_path`s and revokes the event-trigger grant. Verified on staging with
     production-shaped stand-ins.
+14. **Cancellations leaked into four revenue calculations (found and fixed 2026-11-02):**
+    `business_state` daily revenue (anomaly detection and briefing), seven-day evidence,
+    historical-ingestion model features and the lab seed all summed `orders.total` without
+    excluding cancelled/voided/deleted orders. All four now apply the same exclusion, and the
+    seven-day briefing field is renamed `net_recorded_order_value` because the stored total is
+    already net of refunds. Regression tests assert the filters.
+
 ## 16. Change inventory
 
 Modified: `Backend/prisma/schema.prisma`, `revController.js`, `revRoute.js`, `churnWorkerService.js`,

@@ -163,6 +163,8 @@ def _establish_baselines(store_id: str, db, lookback_months: int) -> bool:
                 FROM orders
                 WHERE store_id = :store_id
                   AND ordered_at >= :cutoff_90d
+                  AND (recovery_status IS NULL OR recovery_status NOT IN
+                       ('cancelled', 'canceled', 'voided', 'deleted'))
                 GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
             )
             SELECT
@@ -218,6 +220,8 @@ def _establish_baselines(store_id: str, db, lookback_months: int) -> bool:
                 FROM orders
                 WHERE store_id = :store_id
                   AND ordered_at >= :cutoff_90d
+                  AND (recovery_status IS NULL OR recovery_status NOT IN
+                       ('cancelled', 'canceled', 'voided', 'deleted'))
                 GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
             )
             SELECT EXTRACT(DOW FROM order_day)::int AS day_of_week,
@@ -296,6 +300,8 @@ def _seed_strategic_memory(store_id: str, db, lookback_months: int) -> int:
             FROM orders
             WHERE store_id = :store_id
               AND ordered_at >= :cutoff
+              AND (recovery_status IS NULL OR recovery_status NOT IN
+                   ('cancelled', 'canceled', 'voided', 'deleted'))
             GROUP BY day_of_week
             ORDER BY revenue DESC
             LIMIT 1

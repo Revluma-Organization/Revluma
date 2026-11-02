@@ -29,6 +29,25 @@ from sqlalchemy import bindparam, text
 
 logger = logging.getLogger("rev.business_state")
 
+# Daily revenue drives anomaly detection and the morning briefing, so it must use
+# the same semantics as every other revenue surface: `orders.total` is net of
+# refunds and cancelled orders never contribute. Extracted so the filter is
+# directly testable.
+DAILY_REVENUE_SQL = """
+    SELECT
+        DATE(ordered_at AT TIME ZONE 'UTC') as order_date,
+        SUM(total) as daily_revenue,
+        COUNT(*) as order_count,
+        AVG(total) as avg_order_value
+    FROM orders
+    WHERE store_id IN :store_ids
+      AND ordered_at >= :cutoff
+      AND (recovery_status IS NULL OR recovery_status NOT IN
+           ('cancelled', 'canceled', 'voided', 'deleted'))
+    GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
+    ORDER BY order_date DESC
+"""
+
 SCHEMA_VERSION = "1.1"
 DEFAULT_STALENESS_MINS = 30
 VIP_INACTIVE_DAYS = 45
@@ -571,18 +590,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         fourteen_days_ago = today - timedelta(days=14)
 
         rev_result = db.execute(
-            _store_query("""
-                SELECT
-                    DATE(ordered_at AT TIME ZONE 'UTC') as order_date,
-                    SUM(total) as daily_revenue,
-                    COUNT(*) as order_count,
-                    AVG(total) as avg_order_value
-                FROM orders
-                WHERE store_id IN :store_ids
-                  AND ordered_at >= :cutoff
-                GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
-                ORDER BY order_date DESC
-            """),
+            _store_query(DAILY_REVENUE_SQL),
             {**store_params, "cutoff": fourteen_days_ago},
         ).fetchall()
 

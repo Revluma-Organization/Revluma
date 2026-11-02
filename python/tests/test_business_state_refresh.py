@@ -241,3 +241,12 @@ class TestCustomerAgentContext:
         payload = _load_customer_ml_signals(db, {"store_ids": ("store-1",)})
 
         assert payload["truncated"] is True
+
+
+def test_daily_revenue_sql_excludes_cancelled_orders():
+    from src.intelligence.business_state import DAILY_REVENUE_SQL
+
+    assert "SUM(total)" in DAILY_REVENUE_SQL
+    assert "recovery_status" in DAILY_REVENUE_SQL
+    for status in ("cancelled", "canceled", "voided", "deleted"):
+        assert status in DAILY_REVENUE_SQL

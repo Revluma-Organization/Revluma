@@ -10,7 +10,7 @@ def _evidence():
         "store_count": 1,
         "last_store_sync_at": None,
         "orders": {"status": "available", "by_currency": [
-            {"currency": "NGN", "order_count": 2, "gross_recorded_order_value": "3000", "average_order_value": "1500"}
+            {"currency": "NGN", "order_count": 2, "net_recorded_order_value": "3000", "average_order_value": "1500"}
         ]},
         "abandoned_carts": {"status": "available", "by_currency": [
             {"currency": "NGN", "cart_count": 3, "cart_value": "4500"}
