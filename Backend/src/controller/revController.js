@@ -215,13 +215,18 @@ exports.chat = async (req, res, next) => {
     const revSequence = reuseUserMessage ? nextSeq : nextSeq + 1;
 
     const merchantContext = await require('../services/revMerchantContext').buildMerchantContext(prisma, org.id);
+    const conversationContext = await _loadConversationContext(activeConvId, org.id);
 
     // 6. Call Python via mlService
     const mlResult = await mlService.orchestrate({
       organizationId: org.id,
       userId:         req.user.id,
       message: intelligenceMessage,
-      contextPayload: { merchant_context: merchantContext, _node_owns_chat_persistence: true },
+      contextPayload: {
+        merchant_context: merchantContext,
+        conversation_context: conversationContext,
+        _node_owns_chat_persistence: true,
+      },
       conversationId: activeConvId,
       correlationId,
       imageBase64,
@@ -830,6 +835,31 @@ async function _touchConversation(conversationId, { titleHint, increment = 2 }) 
   `;
 }
 
+async function _loadConversationContext(conversationId, organizationId) {
+  const rows = await prisma.$queryRaw`
+    SELECT summary, context_window
+    FROM conversations
+    WHERE id = ${conversationId}::uuid
+      AND organization_id = ${organizationId}::uuid
+    LIMIT 1
+  `;
+  const row = rows?.[0] || {};
+  let contextWindow = row.context_window ?? null;
+  if (typeof contextWindow === 'string') {
+    try { contextWindow = JSON.parse(contextWindow); } catch { contextWindow = null; }
+  }
+  const context = {
+    summary: typeof row.summary === 'string' ? row.summary.slice(0, 500) : null,
+    context_window: contextWindow && typeof contextWindow === 'object' && !Array.isArray(contextWindow)
+      ? contextWindow : null,
+  };
+  // Keep the approved context comfortably below the Python 16 KiB contract.
+  if (Buffer.byteLength(JSON.stringify(context), 'utf8') > 12 * 1024) {
+    return { summary: context.summary, context_window: null };
+  }
+  return context;
+}
+
 function _sseWriter(res) {
   let closed = false;
   return {
@@ -971,6 +1001,7 @@ exports.chatStream = async (req, res, next) => {
 
     const merchantContext = await require('../services/revMerchantContext')
       .buildMerchantContext(prisma, org.id);
+    const conversationContext = await _loadConversationContext(activeConvId, org.id);
 
     const streamed = await mlService.streamInvestigation({
       organizationId: org.id,
@@ -981,7 +1012,7 @@ exports.chatStream = async (req, res, next) => {
       contextPayload: {
         merchant_context: merchantContext,
         _node_owns_chat_persistence: true,
-        conversation_context: { summary: null },
+        conversation_context: conversationContext,
       },
       signal: controller.signal,
       onEvent: (event, payload) => {
