@@ -25,7 +25,10 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
+import redis
 from sqlalchemy import bindparam, text
+
+from src.config.settings import settings
 
 logger = logging.getLogger("rev.business_state")
 
@@ -65,18 +68,56 @@ class BusinessStateBuildInProgress(RuntimeError):
     """Raised when another worker is already building this organization's state."""
 
 
-def _try_acquire_business_state_lock(db, organization_id: str) -> bool:
-    """Prevent overlapping rebuilds across every Python/Node service instance.
+class BusinessStateLockUnavailable(RuntimeError):
+    """Raised when the shared lock service is unavailable; rebuilds fail closed."""
 
-    A transaction-scoped advisory lock is released automatically on commit,
-    rollback, or connection close. It avoids holding a separate lock connection
-    and protects both scheduler-triggered and on-demand rebuilds.
-    """
-    acquired = db.execute(
-        text("SELECT pg_try_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
-        {"lock_key": f"revluma:business-state:{organization_id}"},
-    ).scalar()
-    return bool(acquired)
+
+def _acquire_business_state_lock(organization_id: str):
+    """Acquire a token-owned Redis lock shared by every service instance."""
+    redis_url = (getattr(settings, "REDIS_URL", "") or "").strip()
+    if not redis_url:
+        raise BusinessStateLockUnavailable("REDIS_URL is not configured.")
+
+    client = redis.from_url(
+        redis_url,
+        decode_responses=True,
+        socket_connect_timeout=3,
+        socket_timeout=3,
+        max_connections=1,
+    )
+    key = f"revluma:business-state:rebuild:{organization_id}"
+    token = uuid.uuid4().hex
+    try:
+        acquired = client.set(key, token, nx=True, ex=600)
+    except Exception as exc:
+        client.close()
+        raise BusinessStateLockUnavailable(
+            "The shared Redis lock service is unavailable."
+        ) from exc
+
+    if not acquired:
+        client.close()
+        return None
+    return client, key, token
+
+
+def _release_business_state_lock(lock) -> None:
+    """Release only the lock token owned by this worker."""
+    if lock is None:
+        return
+    client, key, token = lock
+    try:
+        client.eval(
+            "if redis.call('get', KEYS[1]) == ARGV[1] "
+            "then return redis.call('del', KEYS[1]) else return 0 end",
+            1,
+            key,
+            token,
+        )
+    except Exception:
+        logger.exception("business_state_lock_release_failed")
+    finally:
+        client.close()
 
 
 def _table_exists(db, table_name: str) -> bool:
@@ -480,7 +521,7 @@ class BusinessState:
 
 # ── Main builder 
 
-def build_business_state(organization_id: str, db) -> BusinessState:
+def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     """
     Builds a complete BusinessState for an organization from real database data.
 
@@ -978,49 +1019,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
 
     persistence_failed = False
     try:
-        # Serialize only the critical write section. This transaction-scoped
-        # lock survives no source-query rollback because it is acquired after
-        # all metric collection and immediately before persistence.
-        if not _try_acquire_business_state_lock(db, organization_id):
-            latest_state = load_current_business_state(organization_id, db)
-            if latest_state is not None:
-                logger.info(
-                    "business_state_duplicate_build_skipped",
-                    extra={"org_id": organization_id, "state_id": latest_state.id},
-                )
-                return latest_state
-            raise BusinessStateBuildInProgress(
-                "A business-state rebuild is already running for this organization."
-            )
-
-        # A competing build may have completed while this worker collected
-        # metrics. Read only its ID here: load_current_business_state() performs
-        # a defensive rollback on errors, which would release this transaction
-        # lock before the write.
-        latest_state_id = db.execute(
-            text("""
-                SELECT id
-                FROM business_states
-                WHERE organization_id = :org_id
-                  AND is_current = TRUE
-                LIMIT 1
-            """),
-            {"org_id": organization_id},
-        ).scalar()
-        previous_state_id = previous_state.id if previous_state is not None else None
-        if latest_state_id is not None and str(latest_state_id) != previous_state_id:
-            db.rollback()
-            latest_state = load_current_business_state(organization_id, db)
-            if latest_state is not None:
-                logger.info(
-                    "business_state_newer_snapshot_already_written",
-                    extra={"org_id": organization_id, "state_id": latest_state.id},
-                )
-                return latest_state
-            raise BusinessStateBuildInProgress(
-                "A newer business-state snapshot was written by another worker."
-            )
-
+        # The outer Redis lock serializes this organization across all instances.
         # Step 1: mark existing current state as historical
         db.execute(
             text("""
@@ -1195,6 +1194,32 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         cart_delta_pct_vs_avg=cart_delta_pct_vs_avg,
         observed_drivers=observed_drivers,
     )
+
+
+def build_business_state(organization_id: str, db) -> BusinessState:
+    """Build one organization's state under a shared, rollback-safe Redis lock.
+
+    The lock is deliberately independent of the SQLAlchemy transaction because
+    optional source-query failures may roll that transaction back while the
+    overall build continues.
+    """
+    lock = _acquire_business_state_lock(organization_id)
+    if lock is None:
+        previous_state = load_current_business_state(organization_id, db)
+        if previous_state is not None:
+            logger.info(
+                "business_state_duplicate_build_skipped",
+                extra={"org_id": organization_id, "state_id": previous_state.id},
+            )
+            return previous_state
+        raise BusinessStateBuildInProgress(
+            "A business-state rebuild is already running for this organization."
+        )
+
+    try:
+        return _build_business_state_unlocked(organization_id, db)
+    finally:
+        _release_business_state_lock(lock)
 
 
 def load_current_business_state(organization_id: str, db) -> BusinessState | None:
