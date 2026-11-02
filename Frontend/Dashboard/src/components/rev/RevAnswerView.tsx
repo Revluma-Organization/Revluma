@@ -5,6 +5,7 @@ import {
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import type { RevAnswerPayload } from "@/lib/revStream";
+import { STATE_PILL, deriveAnswerState, isEvidenceBearing } from "@/lib/revAnswerState";
 
 interface Props {
   payload: RevAnswerPayload;
@@ -19,33 +20,11 @@ interface Props {
   dark?: boolean;
 }
 
-type AnswerState = "verified" | "partial" | "insufficient" | "streaming";
-
-const STATE_PILL: Record<AnswerState, { label: string; fg: string; bg: string }> = {
-  verified: { label: "Evidence verified", fg: "#067647", bg: "#ECFDF3" },
-  partial: { label: "Partial evidence", fg: "#B54708", bg: "#FFFAEB" },
-  insufficient: { label: "Insufficient store data", fg: "#475467", bg: "#F2F4F7" },
-  streaming: { label: "Investigating", fg: "#1F06AC", bg: "rgba(31,6,172,0.08)" },
-};
-
-function deriveState(payload: RevAnswerPayload, streaming: boolean): AnswerState {
-  if (streaming) return "streaming";
-  const items = payload.evidence?.items ?? [];
-  const validation = payload.evidence?.validation;
-  if (!items.length) return "insufficient";
-  const degraded = items.some((item) => item.status !== "available");
-  const invalid = validation ? !validation.valid : false;
-  const specialistsDegraded = (payload.specialists ?? []).some(
-    (specialist) => specialist.status === "partial" || specialist.status === "error" || specialist.status === "no_data",
-  );
-  return degraded || invalid || specialistsDegraded ? "partial" : "verified";
-}
-
 export function RevAnswerView({
   payload, streaming = false, evidenceOpen = false, onOpenEvidence, onFollowUp,
   onRetry, onCopy, copied = false, canRetry = false, dark = false,
 }: Props) {
-  const state = useMemo(() => deriveState(payload, streaming), [payload, streaming]);
+  const state = useMemo(() => deriveAnswerState(payload, streaming), [payload, streaming]);
   const pill = STATE_PILL[state];
   const strong = dark ? "#F2F4F7" : "#101828";
   const muted = dark ? "#98A2B3" : "#667085";
@@ -179,7 +158,7 @@ export function RevAnswerView({
           <button
             type="button"
             onClick={onOpenEvidence}
-            disabled={!evidenceCount && !(payload.hypotheses ?? []).length}
+            disabled={!isEvidenceBearing(payload)}
             className="inline-flex items-center gap-1.5"
             style={{
               fontSize: "0.74rem", fontWeight: 600,
