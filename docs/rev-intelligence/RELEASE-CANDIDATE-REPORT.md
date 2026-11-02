@@ -2,7 +2,9 @@
 
 Date: 2026-11-02 (first issued 2026-11-01; third pass 2026-11-02)
 Branch: `arena/bbc48aa5-revluma`, based on `main@93d9d42`
-Certified candidate: **`887ff9b`** (pushed; 13 of 13 workflows green on that exact SHA)
+Certified candidate: **`f662ab8`** (pushed; 13 of 13 workflows green on that exact SHA).
+`f662ab8` differs from the code-only candidate `887ff9b` **only in documentation**; both SHAs are
+green across the full workflow matrix, so either can be cited as the verified head.
 Overall verdict: **STAGING VERIFIED — not yet merge-ready** (third pass, 2026-11-02).
 The full Prisma bootstrap is now executed in CI, not replayed by hand: `release-candidate-verification.yml`
 runs `npm ci` → `prisma validate` → `db push` → `migrate diff --exit-code` → candidate migrations →
@@ -366,7 +368,8 @@ check.
 | Dashboard authentication regression (suite + production build) | **pass**, run 41407771671 |
 | task025–032 isolated scenario workflows (8) | **pass**, runs 41407771653–41407771790 |
 
-13 of 13 workflows are green on `887ff9b1d17e3a28114c33347998c841e51eb46f`.
+13 of 13 workflows are green on `f662ab81e7b1d42a1f165e048e6cce897aa48b38`, and equally on the
+code-only candidate `887ff9b1d17e3a28114c33347998c841e51eb46f` (identical code).
 
 ### Connected-service verified
 
