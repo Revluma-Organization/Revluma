@@ -53,10 +53,17 @@ class FakeDB:
     commits: int = 0
     rollbacks: int = 0
     closed: bool = False
+    # Models SQLAlchemy's autobegin: executing a statement opens a transaction
+    # that stays open until commit/rollback/close. Tests assert on this to
+    # prove reads do not hold a connection idle-in-transaction.
+    transaction_open: bool = False
 
     def add(self, pattern: str, rows):
         self.routes.append((pattern, rows))
         return self
+
+    def in_transaction(self) -> bool:
+        return self.transaction_open
 
     def execute(self, statement, params=None):
         sql = str(statement)
@@ -64,6 +71,7 @@ class FakeDB:
         for pattern in self.fail_patterns:
             if pattern in sql:
                 raise RuntimeError(f"simulated failure for {pattern}")
+        self.transaction_open = True
         for pattern, rows in self.routes:
             if pattern in sql:
                 value = rows(params or {}) if callable(rows) else rows
@@ -71,16 +79,20 @@ class FakeDB:
         return FakeMappings([])
 
     def begin_nested(self):
+        self.transaction_open = True
         return FakeSavepoint()
 
     def commit(self):
         self.commits += 1
+        self.transaction_open = False
 
     def rollback(self):
         self.rollbacks += 1
+        self.transaction_open = False
 
     def close(self):
         self.closed = True
+        self.transaction_open = False
 
     def scoped_organizations(self):
         orgs = set()

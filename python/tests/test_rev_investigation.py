@@ -357,3 +357,122 @@ def test_persistence_writes_scoped_context_and_verified_memory():
     assert context["last_investigation"]["intent"] == INTENT_REVENUE
     assert memories and memories[0][1]["org_id"] == ORG
     assert result["investigation"]["status"] in ("complete", "partial")
+
+
+# ---------------------------------------------------------------------------
+# Streaming reliability: cancellation, session ownership, pool invariant
+# ---------------------------------------------------------------------------
+
+def test_stream_requires_a_session_source():
+    with pytest.raises(ValueError):
+        list(stream_investigation(ORG, USER, "How is my store doing?", now=NOW))
+
+
+def test_stream_cancellation_stops_before_the_next_expensive_step():
+    """Stop/disconnect must abandon the work, not run it to completion."""
+    import threading
+
+    cancel = threading.Event()
+    cancel.set()
+    db = workspace_db()
+
+    events = list(stream_investigation(
+        ORG, USER, "Why did my revenue fall this week?", db=db, now=NOW,
+        cancel_event=cancel,
+    ))
+    names = [event["event"] for event in events]
+
+    # The turn is abandoned deliberately: no final answer and no error surfaced
+    # to a merchant who is no longer there.
+    assert "final" not in names
+    assert "error" not in names
+    assert names[0] == "accepted"
+
+
+def test_closing_the_generator_signals_cancellation_to_the_worker():
+    """A client disconnect closes the generator; the worker must be told."""
+    import threading
+
+    cancel = threading.Event()
+    db = workspace_db()
+    stream = stream_investigation(
+        ORG, USER, "Why did my revenue fall this week?", db=db, now=NOW,
+        cancel_event=cancel,
+    )
+
+    assert next(stream)["event"] == "accepted"
+    assert cancel.is_set() is False
+
+    stream.close()
+
+    assert cancel.is_set() is True
+
+
+def test_stream_worker_creates_and_closes_its_own_session_on_its_own_thread():
+    """A Session is not thread-safe, so it must never cross a thread boundary."""
+    import threading
+
+    consumer_thread = threading.get_ident()
+    seen: dict = {}
+    db = workspace_db()
+
+    class OwnedSession:
+        """Delegates to the fake while recording lifecycle thread identity."""
+
+        def __init__(self):
+            self._db = db
+            self.closed = False
+
+        def __getattr__(self, name):
+            return getattr(self._db, name)
+
+        def close(self):
+            self.closed = True
+            seen["close_thread"] = threading.get_ident()
+
+    def session_factory():
+        seen["create_thread"] = threading.get_ident()
+        session = OwnedSession()
+        seen["session"] = session
+        return session
+
+    events = list(stream_investigation(
+        ORG, USER, "Why did my revenue fall this week?", now=NOW,
+        session_factory=session_factory,
+    ))
+
+    assert events[0]["event"] == "accepted"
+    assert "create_thread" in seen and "close_thread" in seen
+    # Created and closed on the same (worker) thread, which is not the consumer.
+    assert seen["create_thread"] == seen["close_thread"]
+    assert seen["create_thread"] != consumer_thread
+    assert seen["session"].closed is True
+
+
+def test_no_read_transaction_is_open_at_the_model_provider_boundary(monkeypatch):
+    """The pool invariant: never hold a transaction across model generation."""
+    db = workspace_db()
+    observed: dict = {}
+
+    def _capture(*args, **kwargs):
+        observed["in_transaction"] = db.in_transaction()
+        return investigation._compose_text.__wrapped__(*args, **kwargs) \
+            if hasattr(investigation._compose_text, "__wrapped__") else "captured"
+
+    monkeypatch.setattr(investigation, "_compose_text", _capture)
+
+    run_investigation(ORG, USER, "Why did my revenue fall this week?",
+                      db=db, now=NOW, persist=False)
+
+    assert observed["in_transaction"] is False
+
+
+def test_read_transactions_do_not_accumulate_across_a_full_investigation():
+    """Every read in an investigation must hand its connection straight back."""
+    db = workspace_db()
+
+    run_investigation(ORG, USER, "Give me an overview of my store performance.",
+                      db=db, now=NOW, persist=False)
+
+    assert len(db.statements) > 5
+    assert db.in_transaction() is False

@@ -44,7 +44,7 @@ from ..intelligence.evidence import (
     validate_attribution,
     validate_collection,
 )
-from ..intelligence.query import safe_query
+from ..intelligence.query import release_read_transaction, safe_query
 from ..intelligence.revenue_evidence import retrieve_revenue_evidence
 from .base_agent import AgentResult, normalize_specialist_status
 from .tools import ToolAuthorizationError, catalog, run_tool
@@ -53,6 +53,24 @@ logger = logging.getLogger("rev.investigation")
 
 CONTRACT_VERSION = "rev-investigation-v1"
 MAX_MESSAGE_CHARS = 2000
+
+# Stream consumer settings. The poll interval bounds how long the generator
+# blocks on the queue so it can notice a client disconnect; the join timeout
+# bounds how long we wait for the worker to unwind.
+STREAM_QUEUE_POLL_SECONDS = 0.25
+STREAM_JOIN_TIMEOUT_SECONDS = 5.0
+
+
+class InvestigationCancelled(RuntimeError):
+    """Raised when the merchant stopped the turn or the browser went away.
+
+    Distinct from a failure: nothing is persisted, no error is shown to the
+    merchant, and the work is abandoned deliberately.
+    """
+
+    def __init__(self, investigation_id: str):
+        self.investigation_id = investigation_id
+        super().__init__(f"investigation {investigation_id} cancelled")
 
 # ── Intents ───────────────────────────────────────────────────────────────────
 
@@ -1226,8 +1244,18 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                       context_payload: dict | None = None,
                       now: datetime | None = None,
                       emit: Callable[[dict], None] | None = None,
-                      persist: bool = True) -> dict:
-    """Run one read-only investigation and return the structured result."""
+                      persist: bool = True,
+                      cancel_event: Any = None) -> dict:
+    """Run one read-only investigation and return the structured result.
+
+    ``cancel_event`` is an optional ``threading.Event``. When it is set — the
+    merchant pressed Stop, or the browser went away — the investigation stops
+    before the next expensive step instead of burning provider tokens and a
+    pooled connection on an answer nobody will read.
+    """
+
+    def _cancelled() -> bool:
+        return bool(cancel_event is not None and cancel_event.is_set())
     if not organization_id or not isinstance(organization_id, str):
         raise ValueError("Authenticated organization is required")
     if not user_id:
@@ -1337,6 +1365,17 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     for tool in tools:
         if tool == "store_health":
             continue
+        if _cancelled():
+            logger.info(
+                "rev_investigation_cancelled intent=%s investigation_id=%s completed_tools=%d",
+                intent, investigation_id, len(tool_results),
+            )
+            _emit({"event": "cancelled", "data": {
+                "investigation_id": investigation_id,
+                "reason": "client_disconnected_or_stopped",
+                "completed_tools": [name for name in tool_results_by_name],
+            }})
+            raise InvestigationCancelled(investigation_id)
         step = step_by_tool[tool]
         step["status"] = "running"
         _emit({"event": "step", "data": step})
@@ -1418,6 +1457,20 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         ]
         facts = _facts_from_items(items, intent)
         overall = "partial" if any(item.get("status") == STATUS_AVAILABLE for item in items) else "insufficient_data"
+
+    if _cancelled():
+        raise InvestigationCancelled(investigation_id)
+
+    # Pool invariant: no database transaction may stay open while Rev waits on
+    # a model provider. _compose_narrative can block for up to its provider
+    # timeout, so hand the connection back first. A transaction still open here
+    # means some read path leaked one, which is worth surfacing because that is
+    # how the production pool used to exhaust.
+    if release_read_transaction(db):
+        logger.warning(
+            "rev_read_transaction_open_before_model_call intent=%s investigation_id=%s",
+            intent, investigation_id,
+        )
 
     deterministic = _compose_text(
         intent=intent, label=INTENT_LABELS.get(intent, intent), window=window, facts=facts,
@@ -1518,26 +1571,54 @@ def _confidence(overall: str, items: list[dict]) -> float:
 
 
 def stream_investigation(organization_id: str, user_id: str, message: str, *,
-                         conversation_id: str | None = None, db: Any,
+                         conversation_id: str | None = None, db: Any = None,
                          context_payload: dict | None = None,
-                         now: datetime | None = None) -> Iterator[dict]:
+                         now: datetime | None = None,
+                         session_factory: Callable[[], Any] | None = None,
+                         cancel_event: Any = None) -> Iterator[dict]:
     """Yield SSE-ready events while the investigation runs.
 
     The investigation executes on a worker thread so the browser receives the
     plan and each step as it completes, rather than after the whole analysis.
+
+    Session ownership: a SQLAlchemy Session is not thread-safe, so when a
+    ``session_factory`` is supplied the worker thread creates and closes its
+    own session and no session ever crosses a thread boundary. Passing ``db``
+    instead is supported for tests and for callers that already own the
+    session, but then the caller keeps ownership and this generator will not
+    close it.
+
+    Cancellation: ``cancel_event`` is set when the client disconnects or the
+    merchant presses Stop. The worker checks it between investigation steps and
+    this consumer stops waiting, so an abandoned stream cannot keep holding a
+    request slot, a pooled connection or provider budget. Starlette closes the
+    generator on disconnect, which runs the ``finally`` below and sets the
+    event.
     """
     import queue as _queue
     import threading
 
+    if db is None and session_factory is None:
+        raise ValueError("stream_investigation requires either db or session_factory")
+
     events: "_queue.Queue[dict | None]" = _queue.Queue()
+    cancel = cancel_event if cancel_event is not None else threading.Event()
+    owns_session = session_factory is not None
 
     def worker() -> None:
+        thread_session = None
         try:
+            if owns_session:
+                thread_session = session_factory()
             run_investigation(
                 organization_id, user_id, message, conversation_id=conversation_id,
-                db=db, context_payload=context_payload, now=now,
+                db=thread_session if thread_session is not None else db,
+                context_payload=context_payload, now=now,
                 emit=lambda event: events.put(event),
+                cancel_event=cancel,
             )
+        except InvestigationCancelled as exc:
+            logger.info("rev_stream_cancelled investigation_id=%s", exc.investigation_id)
         except ValueError as exc:
             events.put({"event": "error", "data": {"code": "VALIDATION_ERROR",
                                                    "message": str(exc)}})
@@ -1549,19 +1630,49 @@ def stream_investigation(organization_id: str, user_id: str, message: str, *,
                 "message": "Rev could not complete the investigation. Please retry.",
             }})
         finally:
+            # Close the session on the thread that opened it, and never leave a
+            # read transaction open behind us.
+            if thread_session is not None:
+                try:
+                    release_read_transaction(thread_session)
+                finally:
+                    try:
+                        thread_session.close()
+                    except Exception:  # pragma: no cover - defensive
+                        logger.warning("rev_stream_session_close_failed")
             events.put(None)
 
-    yield {"event": "accepted", "data": {
-        "contract_version": CONTRACT_VERSION,
-        "read_only": True,
-    }}
-    thread = threading.Thread(target=worker, name="rev-investigation", daemon=True)
-    thread.start()
+    # The whole generator body is wrapped so that closing it at *any* yield --
+    # including the very first one, which is where a fast client disconnect
+    # lands -- still signals cancellation and accounts for the worker.
+    thread: threading.Thread | None = None
     try:
+        yield {"event": "accepted", "data": {
+            "contract_version": CONTRACT_VERSION,
+            "read_only": True,
+        }}
+        thread = threading.Thread(target=worker, name="rev-investigation", daemon=True)
+        thread.start()
         while True:
-            event = events.get()
+            if cancel.is_set():
+                break
+            try:
+                event = events.get(timeout=STREAM_QUEUE_POLL_SECONDS)
+            except _queue.Empty:
+                # Nothing yet: loop so a disconnect is noticed promptly instead
+                # of blocking here for the whole investigation.
+                continue
             if event is None:
                 break
             yield event
     finally:
-        thread.join(timeout=2)
+        cancel.set()
+        if thread is not None:
+            thread.join(timeout=STREAM_JOIN_TIMEOUT_SECONDS)
+            if thread.is_alive():
+                # Reported, not swallowed: a worker that outlives the stream is
+                # a resource leak the operator needs to see.
+                logger.warning(
+                    "rev_stream_worker_outlived_stream conversation_id=%s",
+                    conversation_id,
+                )

@@ -8,6 +8,7 @@ explicit configuration error the first time a connection is actually needed.
 
 from __future__ import annotations
 
+import os
 import threading
 
 from sqlalchemy import create_engine
@@ -17,6 +18,43 @@ from .settings import settings
 
 class DatabaseNotConfigured(RuntimeError):
     """Raised when database access is attempted without a configured URL."""
+
+
+def _int_env(name: str, default: int, *, minimum: int = 0) -> int:
+    """Read a positive integer env var, falling back on garbage input.
+
+    A malformed pool setting must never take the whole service down at import
+    time; the documented default is safer than a crash or a zero-size pool.
+    """
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value >= minimum else default
+
+
+def _pool_size() -> int:
+    return _int_env("REV_DB_POOL_SIZE", 8, minimum=1)
+
+
+def _max_overflow() -> int:
+    return _int_env("REV_DB_MAX_OVERFLOW", 4, minimum=0)
+
+
+def _pool_timeout() -> int:
+    return _int_env("REV_DB_POOL_TIMEOUT_SECONDS", 30, minimum=1)
+
+
+def pool_capacity() -> int:
+    """Maximum connections this service's pool can hand out.
+
+    Published so the serving layer, tests and diagnostics all report the same
+    number instead of each restating a literal that can drift.
+    """
+    return _pool_size() + _max_overflow()
 
 
 class _LazyEngine:
@@ -46,10 +84,12 @@ class _LazyEngine:
                 self._url,
                 # Keep the Python service's connection footprint bounded. The
                 # Node service and Supabase internal clients share the same
-                # project connection budget.
-                pool_size=8,
-                max_overflow=4,
-                pool_timeout=30,
+                # project connection budget. serving/api.py reads these same
+                # variables so the capacity it advertises and logs is always
+                # the capacity actually built here.
+                pool_size=_pool_size(),
+                max_overflow=_max_overflow(),
+                pool_timeout=_pool_timeout(),
                 pool_recycle=300,
                 pool_pre_ping=True,
                 pool_use_lifo=True,

@@ -64,7 +64,9 @@ from src.intelligence.business_state import (
 )
 from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
 from src.learning.feedback_loop import run_due_outcome_checks as _run_due_outcome_checks
-from src.config.database import engine
+from src.agents.investigation import InvestigationCancelled
+from src.config.database import engine, pool_capacity as _db_pool_capacity
+from src.intelligence.query import release_read_transaction
 from sqlalchemy.orm import sessionmaker
 
 _Session = sessionmaker(bind=engine)
@@ -74,22 +76,78 @@ _automation_lock = threading.Lock()
 _automation_status = {"running": False, "last_result": None, "last_error": None}
 
 
+# ---------------------------------------------------------------------------
+# Capacity budget
+# ---------------------------------------------------------------------------
+# This service shares one Supabase connection budget with the Node service and
+# Supabase's own internal clients, so every limit below is derived from a
+# single documented budget rather than tuned in isolation. config/database.py
+# reads the same REV_DB_POOL_SIZE / REV_DB_MAX_OVERFLOW values, so the pool
+# this module advertises is always the pool actually built.
+#
+#   db_pool_capacity = REV_DB_POOL_SIZE + REV_DB_MAX_OVERFLOW
+#
+# The ASGI request gate holds its permit for the entire response body, so a
+# streaming investigation may hold one pooled connection for its whole
+# lifetime. Background work (automation, business-state rebuild, briefings,
+# outcome evaluation) needs its own reserved headroom.
+#
+#   invariant: http_requests + reserved_background <= db_pool_capacity
+_RESERVED_BACKGROUND_DB_CONNECTIONS = int(
+    os.environ.get("REV_DB_RESERVED_BACKGROUND_CONNECTIONS", "2")
+)
+_REQUEST_CONCURRENCY_LIMIT = int(
+    os.environ.get("REV_MAX_CONCURRENT_HTTP_REQUESTS", "4")
+)
+# Synchronous handlers draw AnyIO threadpool tokens: streaming investigation
+# generators, run_in_threadpool endpoints and Starlette background tasks.
+_REQUEST_THREADPOOL_TOKENS = int(os.environ.get("REV_THREADPOOL_TOKENS", "8"))
+
+
+def _capacity_budget_violation() -> str | None:
+    """Explain why the connection budget cannot hold, or return None."""
+    capacity = _db_pool_capacity()
+    demand = _REQUEST_CONCURRENCY_LIMIT + _RESERVED_BACKGROUND_DB_CONNECTIONS
+    if demand > capacity:
+        return (
+            f"request_concurrency({_REQUEST_CONCURRENCY_LIMIT}) + "
+            f"reserved_background({_RESERVED_BACKGROUND_DB_CONNECTIONS}) = {demand} "
+            f"exceeds db_pool_capacity({capacity})"
+        )
+    if _REQUEST_THREADPOOL_TOKENS < _REQUEST_CONCURRENCY_LIMIT:
+        return (
+            f"threadpool_tokens({_REQUEST_THREADPOOL_TOKENS}) is below "
+            f"request_concurrency({_REQUEST_CONCURRENCY_LIMIT}); streaming "
+            "handlers could starve"
+        )
+    return None
+
+
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
     # Keep synchronous request handlers aligned with the bounded SQLAlchemy
     # pool. Without this cap, FastAPI's default 40 worker tokens can create
     # more concurrent DB sessions than this single Render instance should use.
     thread_limiter = anyio.to_thread.current_default_thread_limiter()
-    thread_limiter.total_tokens = 8
+    thread_limiter.total_tokens = _REQUEST_THREADPOOL_TOKENS
+    # Report the values actually in force. Hand-written literals here drifted
+    # from the real configuration, which made the startup log unusable for
+    # diagnosing pool exhaustion.
     logger.info(
         "request_threadpool_capacity_configured",
         extra={
-            "max_concurrent_sync_handlers": 4,
-            "db_pool_capacity": 12,
-            "max_concurrent_http_requests": 4,\n            "reserved_background_db_connections": 2,
+            "max_concurrent_sync_handlers": _REQUEST_THREADPOOL_TOKENS,
+            "db_pool_capacity": _db_pool_capacity(),
+            "max_concurrent_http_requests": _REQUEST_CONCURRENCY_LIMIT,
+            "reserved_background_db_connections": _RESERVED_BACKGROUND_DB_CONNECTIONS,
             "request_gate_scope": "full_asgi_response_including_streams",
         },
     )
+    violation = _capacity_budget_violation()
+    if violation:
+        # Misconfiguration must be loud at boot, not silent until a merchant
+        # request times out waiting for a connection.
+        logger.error("db_capacity_budget_violated detail=%s", violation)
 
     await _preload_models()
     yield
@@ -106,7 +164,6 @@ app = FastAPI(
 # Starlette's @app.middleware("http") releases after call_next returns a
 # StreamingResponse object, while its generator may still hold a DB session.
 # This middleware retains the permit until the final response body is sent.
-_REQUEST_CONCURRENCY_LIMIT = 4
 
 
 class RequestConcurrencyGate:
@@ -1100,16 +1157,31 @@ async def rev_investigate(req: InvestigateRequest):
 
     if req.contract_version != "1.0":
         raise HTTPException(status_code=400, detail="Intelligence contract version mismatch")
-    db = _Session()
-    try:
-        result = await run_in_threadpool(
-            lambda: run_investigation(
+
+    def _run():
+        # Create and close the session on the thread that uses it. A
+        # SQLAlchemy Session is not thread-safe, and run_in_threadpool moves
+        # execution off the event loop thread.
+        db = _Session()
+        try:
+            return run_investigation(
                 req.organization_id, req.user_id, req.message,
                 conversation_id=req.conversation_id, db=db,
                 context_payload=req.context_payload,
             )
-        )
+        finally:
+            try:
+                release_read_transaction(db)
+            finally:
+                db.close()
+
+    try:
+        result = await run_in_threadpool(_run)
         return {"contract_version": CONTRACT_VERSION, **result}
+    except InvestigationCancelled:
+        # The client went away mid-investigation. Nothing is persisted and
+        # there is nobody left to answer.
+        raise HTTPException(status_code=499, detail="Investigation cancelled")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception:
@@ -1118,29 +1190,34 @@ async def rev_investigate(req: InvestigateRequest):
             status_code=503,
             detail="Intelligence response unavailable; please retry.",
         )
-    finally:
-        db.close()
 
 
 @app.post("/rev/stream", dependencies=[Depends(verify_internal_caller)])
 def rev_stream(req: InvestigateRequest):
-    """Server-sent events for the dashboard: plan -> steps -> evidence -> final."""
+    """Server-sent events for the dashboard: plan -> steps -> evidence -> final.
+
+    The investigation runs on a worker thread, so the session is created and
+    closed *inside* that thread via ``session_factory``. A SQLAlchemy Session
+    is not thread-safe: the previous shape created it here and closed it in the
+    generator's ``finally``, which could run while the worker was still using
+    it after a client disconnect.
+    """
     from src.agents.investigation import stream_investigation
 
     if req.contract_version != "1.0":
         raise HTTPException(status_code=400, detail="Intelligence contract version mismatch")
-    db = _Session()
 
     def generate():
-        try:
-            for event in stream_investigation(
-                req.organization_id, req.user_id, req.message,
-                conversation_id=req.conversation_id, db=db,
-                context_payload=req.context_payload,
-            ):
-                yield _sse_frame(event)
-        finally:
-            db.close()
+        # Closing the generator (client disconnect, Stop) runs the finally in
+        # stream_investigation, which signals cancellation to the worker so it
+        # releases its session, its request slot and its provider budget.
+        for event in stream_investigation(
+            req.organization_id, req.user_id, req.message,
+            conversation_id=req.conversation_id,
+            context_payload=req.context_payload,
+            session_factory=_Session,
+        ):
+            yield _sse_frame(event)
 
     return StreamingResponse(
         generate(),
