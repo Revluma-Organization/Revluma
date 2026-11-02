@@ -114,7 +114,10 @@ export function EvidencePanel({
   const muted = dark ? "#98A2B3" : "#667085";
   const border = dark ? "rgba(255,255,255,0.09)" : "#EAECF0";
   const items = evidence?.items ?? [];
-  const grouped = items.reduce<Record<string, EvidenceItem[]>>((acc, item) => {
+  const orderedItems = focusEvidenceId
+    ? [...items].sort((a, b) => Number(b.id === focusEvidenceId) - Number(a.id === focusEvidenceId))
+    : items;
+  const grouped = orderedItems.reduce<Record<string, EvidenceItem[]>>((acc, item) => {
     const key = item.metric.replace(/(_count|_value)$/, "").replace(/_/g, " ");
     acc[key] = acc[key] || [];
     acc[key].push(item);
