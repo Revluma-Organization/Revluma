@@ -9,7 +9,7 @@ import pytest
 
 from src.agents import responder
 from src.agents.understanding import _safe_fallback
-from src.intelligence.business_state import build_business_state
+from src.intelligence.business_state import _build_business_state_unlocked
 from src.lab.evaluator.evaluate import (
     DEFAULT_GROUND_TRUTH_DIR,
     _priority_present,
@@ -144,7 +144,7 @@ def test_responder_failure_logs_only_the_exception_type(monkeypatch, caplog, cap
 
 
 def test_business_state_alert_insert_matches_current_schema_column():
-    source = inspect.getsource(build_business_state)
+    source = inspect.getsource(_build_business_state_unlocked)
 
     assert "business_state_id" in source
     assert "source_state_id" not in source
