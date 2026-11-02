@@ -791,9 +791,14 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
       onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"; }}
       onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
       <button onClick={onClick}
-        className="flex-1 text-left px-3 py-2.5 text-[0.8rem] font-medium truncate min-w-0"
+        className="flex-1 text-left px-3 py-2.5 text-[0.8rem] font-medium min-w-0"
         style={{ color: isActive ? "#1F06AC" : t1 }}>
-        {conv.title || "Untitled conversation"}
+        <span className="block truncate">{conv.title || "Untitled conversation"}</span>
+        <span className="block mt-0.5 text-[0.65rem] font-normal truncate"
+          style={{ color: isDark ? "#8992a3" : "#8791a2" }}>
+          {new Date(conv.last_activity_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+          {conv.message_count ? ` · ${conv.message_count} messages` : ""}
+        </span>
       </button>
       <div className="shrink-0 pr-1">
         <button ref={triggerRef} type="button" aria-label={`Actions for ${conv.title || "Untitled conversation"}`}
@@ -808,11 +813,11 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
         <AnimatePresence>
           {menuOpen && (
             <>
-              <div className="fixed inset-0 z-[150]" onClick={() => setMenuOpen(false)} />
+              <div className="fixed inset-0 z-[190]" onClick={() => setMenuOpen(false)} />
               <motion.div role="menu" aria-label="Conversation actions"
                 initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.12 }}
-                style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, zIndex: 151,
+                style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, zIndex: 191,
                   background: isDark ? "#1a1a1a" : "#fff",
                   border: `1px solid ${isDark ? "#2a2a2a" : "#e5e7eb"}`,
                   borderRadius: 10, padding: 4, width: 156,
@@ -838,113 +843,74 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
 }
 
 
-// ── Conversation rail (desktop) ───────────────────────────────────────────────
-// The conversation list is the navigation spine of the workspace: a persistent
-// dark rail on desktop, a drawer on mobile. History, search and New chat live
-// here so the conversation itself stays the primary surface.
-
+// ── Conversation history drawer content ───────────────────────────────────────
 function ConversationRail({
   conversations, activeId, loading, query, onQuery, onNew, onSelect,
-  onRename, onDelete, className,
+  onRename, onDelete, isDark, t1, t2, t4, border,
 }: {
   conversations: Conversation[]; activeId: string | null; loading: boolean;
   query: string; onQuery: (value: string) => void;
   onNew: () => void; onSelect: (id: string) => void;
   onRename: (id: string) => void; onDelete: (id: string) => void;
-  className?: string;
+  isDark: boolean; t1: string; t2: string; t4: string; border: string;
 }) {
   return (
-    <aside className={className} style={{
-      width: 268, flexShrink: 0, background: "#0B0B10",
-      borderRight: "1px solid rgba(255,255,255,0.07)",
-      display: "flex", flexDirection: "column", height: "100%",
-    }}>
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <img src={revIntellLogo} alt="" className="w-6 h-6 object-contain" />
-        <div style={{ minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: "0.82rem", fontWeight: 750, color: "#F5F6FA" }}>
-            Rev Intelligence
-          </p>
-          <p style={{ margin: 0, fontSize: "0.62rem", color: "#7C8494" }}>Read-only workspace</p>
+    <aside className="flex h-full min-h-0 w-full flex-col" style={{ background: isDark ? "#111116" : "#ffffff" }}>
+      <div className="flex items-center gap-2.5 px-5 pt-5 pb-4" style={{ borderBottom: `1px solid ${border}` }}>
+        <img src={revIntellLogo} alt="" className="h-7 w-7 object-contain" />
+        <div className="min-w-0">
+          <p className="m-0 truncate text-[0.9rem] font-bold" style={{ color: t1 }}>Rev Intelligence</p>
+          <p className="m-0 text-[0.66rem]" style={{ color: t2 }}>Conversation history</p>
         </div>
       </div>
-
-      <div className="px-3 pb-2">
+      <div className="px-4 pt-4 pb-3">
         <button onClick={onNew}
-          className="w-full flex items-center justify-center gap-2 rounded-xl text-[0.8rem] font-bold text-white transition-opacity hover:opacity-90"
-          style={{ background: "#1F06AC", padding: "9px 12px" }}>
-          <Plus size={15} />New conversation
+          className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[0.84rem] font-bold text-white transition-opacity hover:opacity-90"
+          style={{ background: "linear-gradient(135deg,#1F06AC,#17057F)", boxShadow: "0 4px 14px rgba(31,6,172,0.2)" }}>
+          <Plus size={16} />New conversation
         </button>
       </div>
-
-      <div className="px-3 pb-2">
-        <div className="flex items-center gap-2 rounded-lg px-2.5"
-          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
-          <Search size={13} color="#7C8494" />
-          <input
-            value={query}
-            onChange={(event) => onQuery(event.target.value)}
-            placeholder="Search conversations"
-            aria-label="Search conversations"
-            className="w-full bg-transparent outline-none text-[0.75rem]"
-            style={{ color: "#E7EAF3", padding: "7px 0" }}
-          />
-          {query && (
-            <button onClick={() => onQuery("")} aria-label="Clear search"
-              style={{ background: "transparent", border: "none", color: "#7C8494", cursor: "pointer", padding: 2 }}>
-              <X size={12} />
-            </button>
-          )}
+      <div className="px-4 pb-3">
+        <div className="flex items-center gap-2 rounded-xl px-3"
+          style={{ background: isDark ? "#1b1b23" : "#f5f6fa", border: `1px solid ${border}` }}>
+          <Search size={15} color={t2} />
+          <input value={query} onChange={event => onQuery(event.target.value)}
+            placeholder="Search conversations" aria-label="Search conversations"
+            className="w-full min-w-0 bg-transparent py-2.5 text-[0.78rem] outline-none" style={{ color: t1 }} />
+          {query && <button onClick={() => onQuery("")} aria-label="Clear search"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ color: t2 }}>
+            <X size={14} />
+          </button>}
         </div>
       </div>
-
-      <div className="flex-1 overflow-y-auto px-2 pb-3 [scrollbar-width:thin]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 [scrollbar-width:thin]">
         {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin"
+          <div className="flex items-center justify-center py-10">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-t-transparent"
               style={{ borderColor: "#1F06AC", borderTopColor: "transparent" }} />
           </div>
         ) : conversations.length === 0 ? (
-          <p className="text-center text-[0.72rem] py-8 px-3" style={{ color: "#6B7280" }}>
+          <p className="px-3 py-10 text-center text-[0.76rem]" style={{ color: t4 }}>
             {query ? "No conversations match this search." : "No conversations yet."}
           </p>
-        ) : conversations.map((conversation) => {
-          const active = activeId === conversation.id;
-          return (
-            <div key={conversation.id} className="group relative">
-              <button onClick={() => onSelect(conversation.id)}
-                className="w-full text-left rounded-lg px-2.5 py-2 transition-colors"
-                style={{
-                  background: active ? "rgba(31,6,172,0.45)" : "transparent",
-                  borderLeft: `2px solid ${active ? "#7B6BFF" : "transparent"}`,
-                }}>
-                <p className="truncate" style={{ margin: 0, fontSize: "0.76rem", color: active ? "#FFFFFF" : "#C5CAD6" }}>
-                  {conversation.title || "Untitled conversation"}
-                </p>
-                <p style={{ margin: "1px 0 0", fontSize: "0.62rem", color: "#6B7280" }}>
-                  {new Date(conversation.last_activity_at).toLocaleDateString([], { month: "short", day: "numeric" })}
-                  {conversation.message_count ? ` · ${conversation.message_count} messages` : ""}
-                </p>
-              </button>
-              <div className="absolute right-1 top-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => onRename(conversation.id)} aria-label="Rename conversation"
-                  style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
-                  <Pencil size={11} />
-                </button>
-                <button onClick={() => onDelete(conversation.id)} aria-label="Delete conversation"
-                  style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
-                  <Trash2 size={11} />
-                </button>
-              </div>
+        ) : (
+          <>
+            <p className="px-2 py-2 text-[0.64rem] font-bold uppercase tracking-[0.1em]" style={{ color: t4 }}>
+              Recent conversations
+            </p>
+            <div className="flex flex-col gap-1">
+              {conversations.map(conv => (
+                <ConvItem key={conv.id} conv={conv} isActive={activeId === conv.id}
+                  onClick={() => onSelect(conv.id)} onDelete={() => onDelete(conv.id)}
+                  onRename={() => onRename(conv.id)} isDark={isDark} t1={t1} t4={t4} />
+              ))}
             </div>
-          );
-        })}
+          </>
+        )}
       </div>
-
-      <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-        <p style={{ margin: 0, fontSize: "0.62rem", color: "#6B7280", lineHeight: 1.5 }}>
-          Rev observes and explains your store. It cannot change prices, orders, discounts,
-          themes or settings, and it never sends campaigns.
+      <div className="px-5 py-3" style={{ borderTop: `1px solid ${border}` }}>
+        <p className="m-0 text-[0.66rem] leading-relaxed" style={{ color: t2 }}>
+          Rev observes and explains your store. It cannot change prices, orders, discounts, themes or settings, and it never sends campaigns.
         </p>
       </div>
     </aside>
@@ -1169,6 +1135,21 @@ export default function RevIntell() {
     const handle = window.setTimeout(() => { void loadConversations(searchQuery); }, 250);
     return () => window.clearTimeout(handle);
   }, [searchQuery, loadConversations]);
+
+  // The history drawer is modal: Escape closes it and the workspace behind it cannot scroll.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
 
   // ── New chat ──────────────────────────────────────────────────────────────
   const newChat = useCallback(() => {
@@ -1545,101 +1526,26 @@ export default function RevIntell() {
   const starters = useMemo(() => buildStarters(storeContext), [storeContext]);
 
   return (
-    <div className="relative flex overflow-hidden"
+    <div className="relative flex flex-col overflow-hidden"
       style={{ height: "calc(100vh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
-
-      {/* Persistent conversation rail — desktop only; mobile uses the drawer. */}
-      <ConversationRail
-        className="hidden lg:flex"
-        conversations={conversations}
-        activeId={activeId}
-        loading={historyLoading}
-        query={searchQuery}
-        onQuery={setSearchQuery}
-        onNew={newChat}
-        onSelect={openConversation}
-        onRename={renameConv}
-        onDelete={(id) => setDeleteConfirmId(id)}
-      />
-
-      <div className="flex flex-col flex-1 min-w-0 h-full">
-
-      {/* Hamburger (mobile) */}
-      <div className="absolute top-4 right-4 z-30 lg:hidden">
-        <button onClick={() => setMenuOpen(v => !v)}
-          className="flex items-center justify-center w-9 h-9 rounded-xl transition-all hover:opacity-80"
-          style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: t2 }}>
-          {menuOpen ? <X size={18} /> : <Menu size={18} />}
-        </button>
-      </div>
-
-      {/* Sidebar */}
-      <AnimatePresence>
-        {menuOpen && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }} className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.3)", backdropFilter: "blur(2px)" }}
-              onClick={() => setMenuOpen(false)} />
-            <motion.div
-              initial={{ x: "100%", opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-              exit={{ x: "100%", opacity: 0 }}
-              transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className="absolute top-0 right-0 bottom-0 z-50 flex flex-col"
-              style={{ width: 300,
-                background: isDark ? "rgba(10,10,10,0.88)" : "rgba(255,255,255,0.9)",
-                backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
-                borderLeft: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)"}`,
-                boxShadow: "-16px 0 60px rgba(0,0,0,0.2)" }}>
-
-              <div className="flex items-center justify-between px-5 pt-5 pb-4"
-                style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
-                <div className="flex items-center gap-2.5">
-                  <img src={revIntellLogo} alt="Rev" className="w-6 h-6 object-contain"
-                    style={{ filter: "drop-shadow(0 0 5px rgba(100,160,255,0.6))" }} />
-                  <span className="text-[0.88rem] font-bold" style={{ color: t1 }}>Rev Intell</span>
-                </div>
-                <button onClick={() => setMenuOpen(false)}
-                  className="p-1 rounded-lg opacity-50 hover:opacity-100 transition-opacity" style={{ color: t1 }}>
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="px-4 pt-4 pb-3">
-                <button onClick={newChat}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[0.84rem] font-bold text-white"
-                  style={{ background: "linear-gradient(135deg,#1F06AC,#17057F)", boxShadow: "0 4px 14px rgba(31,6,172,0.3)" }}>
-                  <Plus size={16} />New chat
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-3 pb-4 [scrollbar-width:none]">
-                {historyLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-[#1F06AC] animate-spin" />
-                  </div>
-                ) : conversations.length === 0 ? (
-                  <p className="text-center text-[0.75rem] py-8" style={{ color: t4 }}>No conversations yet</p>
-                ) : (
-                  <>
-                    <p className="px-2 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.1em]" style={{ color: t4 }}>
-                      Recent
-                    </p>
-                    {conversations.map(conv => (
-                      <ConvItem key={conv.id} conv={conv}
-                        isActive={activeId === conv.id}
-                        onClick={() => openConversation(conv.id)}
-                        onDelete={() => setDeleteConfirmId(conv.id)}
-                        onRename={() => renameConv(conv.id)}
-                        isDark={isDark} t1={t1} t4={t4} />
-                    ))}
-                  </>
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <div className="flex h-full min-h-0 flex-1 flex-col">
+        {/* Rev Intelligence workspace header */}
+        <header className="z-10 flex shrink-0 items-center gap-3 px-5 py-3"
+          style={{ background: bg, borderBottom: `1px solid ${bdr}` }}>
+          <button type="button" onClick={() => setMenuOpen(true)}
+            aria-label="Open conversation history" title="Open conversation history"
+            aria-haspopup="dialog" aria-expanded={menuOpen}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1F06AC]"
+            style={{ color: t1, background: isDark ? "#1d1d25" : "#eef0f6", border: `1px solid ${bdr}` }}>
+            <Menu size={20} strokeWidth={2.2} />
+          </button>
+          <div className="min-w-0">
+            <p className="m-0 truncate text-[0.9rem] font-bold" style={{ color: t1 }}>Rev Intelligence</p>
+            <p className="m-0 text-[0.68rem]" style={{ color: t2 }}>
+              {activeId ? (conversations.find(conv => conv.id === activeId)?.title || "Your conversation") : "Your revenue intelligence workspace"}
+            </p>
+          </div>
+        </header>
 
       {/* Main content */}
       <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
@@ -1842,6 +1748,40 @@ export default function RevIntell() {
       )}
 
       </div>
+      {/* One theme-aware history drawer for desktop and mobile. */}
+      {createPortal(
+        <AnimatePresence>
+          {menuOpen && (
+            <motion.div className="fixed inset-0 z-[170] flex justify-end" role="presentation">
+              <motion.button type="button" aria-label="Close conversation history"
+                className="absolute inset-0 cursor-default"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.16 }}
+                style={{ background: "rgba(8,10,18,0.38)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
+                onClick={() => setMenuOpen(false)} />
+              <motion.div role="dialog" aria-modal="true" aria-label="Conversation history"
+                initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+                transition={{ type: "spring", stiffness: 360, damping: 36 }}
+                onClick={event => event.stopPropagation()}
+                className="relative z-10 h-full w-[min(390px,calc(100vw-12px))] max-w-full shadow-2xl"
+                style={{ background: isDark ? "#111116" : "#ffffff", borderLeft: `1px solid ${bdr}`, boxShadow: "-18px 0 56px rgba(0,0,0,0.24)" }}>
+                <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close conversation history"
+                  className="absolute right-4 top-5 z-20 flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:opacity-75"
+                  style={{ color: t1, background: isDark ? "#24242c" : "#f0f1f5" }}>
+                  <X size={16} />
+                </button>
+                <ConversationRail conversations={conversations} activeId={activeId}
+                  loading={historyLoading} query={searchQuery} onQuery={setSearchQuery}
+                  onNew={newChat} onSelect={openConversation} onRename={renameConv}
+                  onDelete={id => setDeleteConfirmId(id)}
+                  isDark={isDark} t1={t1} t2={t2} t4={t4} border={bdr} />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
       {/* Evidence drawer — verified facts, calculations and limits for one turn. */}
       {createPortal(
         <AnimatePresence>
