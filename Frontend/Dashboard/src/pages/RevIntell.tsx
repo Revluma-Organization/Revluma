@@ -31,6 +31,11 @@ import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
 import { parseVerifiedComparison } from "@/lib/revComparison";
+import {
+  UNKNOWN_STORE, buildStarters, hasWebhookGap, isSyncIncomplete, isSyncStale,
+  storeLabel, type StoreContext, type StoreListEnvelope, type StoreListResponse,
+  type StoreSummary,
+} from "@/lib/revStoreContext";
 import RevAnswerView from "@/components/rev/RevAnswerView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import EvidencePanel from "@/components/rev/EvidencePanel";
@@ -102,17 +107,6 @@ function cleanError(code?: string, _raw?: string): string {
     default:                          return "Rev couldn't process this right now. Try again in a moment.";
   }
 }
-
-// ── Starters ──────────────────────────────────────────────────────────────────
-
-const STARTERS = [
-  { icon: TrendingUp,   label: "Revenue",      sub: "What happened to my revenue this week?",       color: "#1F06AC" },
-  { icon: ShoppingCart, label: "Cart Recovery", sub: "Which carts should I prioritise recovering?",  color: "#059669" },
-  { icon: Users,        label: "Churn Risk",   sub: "Which customers are about to leave?",          color: "#d97706" },
-  { icon: BarChart2,    label: "Briefing",     sub: "What do I need to know today?",                color: "#7c3aed" },
-  { icon: Zap,          label: "Trends",       sub: "What's moving in my category right now?",      color: "#db2777" },
-  { icon: RefreshCw,    label: "Win-back",     sub: "Draft a sequence for inactive customers.",     color: "#0891b2" },
-];
 
 // ── Orb components ────────────────────────────────────────────────────────────
 
@@ -1008,6 +1002,7 @@ export default function RevIntell() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [evidenceFor, setEvidenceFor] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [storeContext, setStoreContext] = useState<StoreContext>(UNKNOWN_STORE);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
@@ -1019,6 +1014,48 @@ export default function RevIntell() {
 
   // Scroll to bottom when messages change
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, thinking]);
+
+  // ── Load store context ────────────────────────────────────────────────────
+  // Grounds the welcome suggestions and the data-health states in the
+  // merchant's real connection. Failure is non-fatal: Rev still works, the
+  // suggestions just fall back to the un-connected wording rather than
+  // inventing a store that may not exist.
+  const loadStoreContext = useCallback(async () => {
+    try {
+      const res = await api.get<StoreListResponse>("/store");
+      const payload = res?.data as StoreListEnvelope | undefined;
+      const stores = payload?.data?.stores ?? payload?.stores ?? [];
+      if (!Array.isArray(stores) || stores.length === 0) {
+        setStoreContext({ ...UNKNOWN_STORE, loaded: true });
+        return;
+      }
+      // Prefer a connected store, then the most recently updated one.
+      const rank = (store: StoreSummary) =>
+        (store?.connection_status === "connected" ? 2 : 0) +
+        (store?.sync_status === "complete" ? 1 : 0);
+      const chosen = [...stores].sort((a, b) => {
+        const delta = rank(b) - rank(a);
+        if (delta !== 0) return delta;
+        return Date.parse(b?.updated_at || "") - Date.parse(a?.updated_at || "");
+      })[0];
+      setStoreContext({
+        loaded: true,
+        connected: chosen?.connection_status === "connected",
+        shopDomain: chosen?.shop_domain ?? null,
+        platform: chosen?.platform ?? null,
+        syncStatus: chosen?.sync_status ?? null,
+        setupStatus: chosen?.setup_status ?? null,
+        monitoringMode: chosen?.monitoring_mode ?? null,
+        lastSyncedAt: chosen?.last_synced_at ?? null,
+        webhooksRegistered: chosen?.webhooks_registered ?? null,
+        webhooksRequired: chosen?.webhooks_required ?? null,
+      });
+    } catch {
+      setStoreContext({ ...UNKNOWN_STORE, loaded: true });
+    }
+  }, []);
+
+  useEffect(() => { void loadStoreContext(); }, [loadStoreContext]);
 
   // ── Load conversations list ───────────────────────────────────────────────
   const loadConversations = useCallback(async (searchText = "") => {
@@ -1505,6 +1542,7 @@ export default function RevIntell() {
   };
 
   const hasMessages = messages.length > 0;
+  const starters = useMemo(() => buildStarters(storeContext), [storeContext]);
 
   return (
     <div className="relative flex overflow-hidden"
@@ -1644,13 +1682,88 @@ export default function RevIntell() {
                 Hello, {firstName}
               </h2>
               <h3 className="text-[1.75rem] font-extrabold tracking-tight mb-3" style={{ color: t1 }}>
-                How can I help your revenue today?
+                {storeContext.connected
+                  ? `What do you want to know about ${storeLabel(storeContext)}?`
+                  : "How can I help your revenue today?"}
               </h3>
               <p className="text-[0.88rem] max-w-md mx-auto leading-relaxed" style={{ color: t2 }}>
-                I monitor your store 24/7, detect opportunities before your competitors,
-                and tell you exactly what action to take.
+                I investigate your connected store data, explain what changed and why it
+                matters, and recommend what to look at next. Rev is read-only: I never
+                send campaigns, change prices or edit your store.
               </p>
             </motion.div>
+
+            {/* Data-health states. A confident answer built on an incomplete or
+                stale feed misleads the merchant, so say so before they ask. */}
+            {storeContext.loaded && !storeContext.connected && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.25)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#dc2626" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    No store connected
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    Rev answers from your real Shopify data. Connect a store and finish the
+                    first sync before asking about revenue, products or customers.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {storeContext.connected && isSyncIncomplete(storeContext) && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.28)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    Initial sync in progress
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    {storeLabel(storeContext)} is connected but its first sync has not
+                    completed. Answers may be incomplete until it finishes.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {storeContext.connected && !isSyncIncomplete(storeContext) && hasWebhookGap(storeContext) && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.28)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    Incomplete webhook coverage
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    {storeContext.webhooksRegistered ?? 0} of {storeContext.webhooksRequired ?? 0} required
+                    Shopify webhooks are registered, so recent changes may not appear yet.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {storeContext.connected && !isSyncIncomplete(storeContext) && !hasWebhookGap(storeContext)
+              && isSyncStale(storeContext) && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(31,6,172,0.06)", border: `1px solid ${bdr}` }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#1F06AC" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    Data may be out of date
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    The last successful sync of {storeLabel(storeContext)} was{" "}
+                    {new Date(storeContext.lastSyncedAt as string).toLocaleString()}. Rev discloses
+                    freshness with every answer.
+                  </p>
+                </div>
+              </motion.div>
+            )}
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }} className="w-full mb-7">
@@ -1671,7 +1784,7 @@ export default function RevIntell() {
             </motion.div>
 
             <div className="grid grid-cols-3 gap-3 w-full">
-              {STARTERS.map((s, i) => (
+              {starters.map((s, i) => (
                 <motion.button key={s.label}
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 + i * 0.05 }}
