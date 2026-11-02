@@ -25,7 +25,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 017 | Phase 1 | Test order-to-checkout exact ID match. | NOT STARTED | — | — | — |
 | 018 | Phase 1 | Test checkout token matching independently. | NOT STARTED | — | — | — |
 | 019 | Phase 1 | Test cart token matching independently. | NOT STARTED | — | — | — |
-| 020 | Phase 1 | Reject matches based only on customer identity. | NOT STARTED | — | — | — |
+| 020 | Phase 1 | Reject matches based only on customer identity. | **PASS — ALREADY IMPLEMENTED, VERIFIED** in isolated Prisma/PostgreSQL (22 PASS / 0 FAIL); production correlation not independently verified | [TASK-020](validation/TASK-020.md) | PR #215; CI run 40985413612 job 123835169317; service blob 0a042e3; REV-FIND-020-01 OPEN missing production verification; Task 049; no production changes | 2026-10-30 |
 | 021 | Phase 1 | Reject matches based only on email. | NOT STARTED | — | — | — |
 | 022 | Phase 1 | Reject matches based only on amount or time. | NOT STARTED | — | — | — |
 | 023 | Phase 1 | Review coupon-based fallback for false matches. | NOT STARTED | — | — | — |
