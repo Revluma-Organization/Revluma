@@ -1,0 +1,48 @@
+name: Task 022 isolated amount-time reconciliation
+on:
+  pull_request:
+    paths:
+      - "Backend/src/tests/task022AmountTime.integration.js"
+      - ".github/workflows/task022-amount-time.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  task022:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: task022
+          POSTGRES_PASSWORD: task022_local_only
+          POSTGRES_DB: task022
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U task022 -d task022"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    defaults:
+      run:
+        working-directory: Backend
+    env:
+      DATABASE_URL: postgresql://task022:task022_local_only@127.0.0.1:5432/task022?schema=public
+      DIRECT_URL: postgresql://task022:task022_local_only@127.0.0.1:5432/task022?schema=public
+      TASK022_ISOLATED_DB: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - run: npm ci
+      - name: Enable vector extension
+        run: PGPASSWORD=task022_local_only psql -h 127.0.0.1 -U task022 -d task022 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+      - name: Initialize disposable Prisma schema
+        run: npx prisma db push --skip-generate --accept-data-loss
+      - name: Execute amount-time rejection tests
+        run: node src/tests/task022AmountTime.integration.js
