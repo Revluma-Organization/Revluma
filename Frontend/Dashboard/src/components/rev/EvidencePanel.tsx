@@ -18,6 +18,7 @@ interface Props {
   dark?: boolean;
   onClose?: () => void;
   asSheet?: boolean;
+  focusEvidenceId?: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -47,8 +48,8 @@ function formatValue(item: EvidenceItem): string {
   return String(item.value);
 }
 
-function EvidenceRow({ item, dark }: { item: EvidenceItem; dark: boolean }) {
-  const [open, setOpen] = useState(false);
+function EvidenceRow({ item, dark, defaultOpen = false }: { item: EvidenceItem; dark: boolean; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const status = STATUS_COLOR[item.status] || STATUS_COLOR.unsupported;
   const strong = dark ? "#F2F4F7" : "#101828";
   const muted = dark ? "#98A2B3" : "#667085";
@@ -107,13 +108,16 @@ function EvidenceRow({ item, dark }: { item: EvidenceItem; dark: boolean }) {
 
 export function EvidencePanel({
   evidence, facts, hypotheses, unknowns, recommendations, factsLabel = "Verified facts",
-  dark = false, onClose, asSheet = false,
+  dark = false, onClose, asSheet = false, focusEvidenceId = null,
 }: Props) {
   const strong = dark ? "#F2F4F7" : "#101828";
   const muted = dark ? "#98A2B3" : "#667085";
   const border = dark ? "rgba(255,255,255,0.09)" : "#EAECF0";
   const items = evidence?.items ?? [];
-  const grouped = items.reduce<Record<string, EvidenceItem[]>>((acc, item) => {
+  const orderedItems = focusEvidenceId
+    ? [...items].sort((a, b) => Number(b.id === focusEvidenceId) - Number(a.id === focusEvidenceId))
+    : items;
+  const grouped = orderedItems.reduce<Record<string, EvidenceItem[]>>((acc, item) => {
     const key = item.metric.replace(/(_count|_value)$/, "").replace(/_/g, " ");
     acc[key] = acc[key] || [];
     acc[key].push(item);
@@ -193,7 +197,7 @@ export function EvidencePanel({
             <h3 style={{ margin: "0 0 2px", fontSize: "0.72rem", fontWeight: 750, color: muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Previous period (cited by comparisons)
             </h3>
-            {(evidence?.comparison_items ?? []).map((item) => <EvidenceRow key={item.id} item={item} dark={dark} />)}
+            {(evidence?.comparison_items ?? []).map((item) => <EvidenceRow key={item.id} item={item} dark={dark} defaultOpen={item.id === focusEvidenceId} />)}
           </section>
         ) : null}
 
@@ -222,7 +226,7 @@ export function EvidencePanel({
                 <p style={{ margin: "0 0 2px", fontSize: "0.68rem", color: muted, textTransform: "capitalize" }}>
                   {group}
                 </p>
-                {groupItems.map((item) => <EvidenceRow key={item.id} item={item} dark={dark} />)}
+                {groupItems.map((item) => <EvidenceRow key={item.id} item={item} dark={dark} defaultOpen={item.id === focusEvidenceId} />)}
               </div>
             ))}
           </section>

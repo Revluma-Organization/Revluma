@@ -11,7 +11,7 @@ interface Props {
   payload: RevAnswerPayload;
   streaming?: boolean;
   evidenceOpen?: boolean;
-  onOpenEvidence?: () => void;
+  onOpenEvidence?: (evidenceId?: string) => void;
   onFollowUp?: (text: string) => void;
   onRetry?: () => void;
   onCopy?: () => void;
@@ -33,6 +33,16 @@ export function RevAnswerView({
   const investigation = payload.investigation;
   const steps = investigation?.steps ?? [];
   const evidenceCount = payload.evidence?.items?.length ?? 0;
+  const evidenceById = new Map(
+    [...(payload.evidence?.items ?? []), ...(payload.evidence?.comparison_items ?? [])]
+      .map((item) => [item.id, item] as const),
+  );
+  const citedEvidenceIds = [...new Set([
+    ...(payload.facts ?? []).flatMap((fact) => fact.evidence_ids ?? []),
+    ...(payload.comparison_facts ?? []).flatMap((fact) => fact.evidence_ids ?? []),
+    ...(payload.recommendations ?? []).flatMap((item) => item.evidence_ids ?? []),
+    ...(payload.hypotheses ?? []).flatMap((item) => item.basis_evidence_ids ?? []),
+  ])].filter((id) => evidenceById.has(id)).slice(0, 6);
   const warnings = [
     ...(payload.warnings ?? []),
     ...(payload.response?.warnings ?? []),
@@ -82,6 +92,31 @@ export function RevAnswerView({
       <div style={{ fontSize: "0.9rem", lineHeight: 1.65, color: strong }}>
         <RevMarkdown text={body} tone={dark ? "dark" : "light"} />
       </div>
+
+      {citedEvidenceIds.length > 0 && !streaming && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Evidence cited in this answer">
+          <span style={{ fontSize: "0.68rem", color: muted, fontWeight: 650 }}>Sources:</span>
+          {citedEvidenceIds.map((id) => {
+            const item = evidenceById.get(id)!;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onOpenEvidence?.(id)}
+                className="inline-flex items-center"
+                style={{
+                  fontSize: "0.7rem", color: dark ? "#A5B4FC" : "#1F06AC", background: "transparent",
+                  border: "none", padding: 0, cursor: "pointer",
+                  textDecoration: "underline", textUnderlineOffset: 2,
+                }}
+                aria-label={`Open evidence: ${item.label}`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {partialSpecialists.length > 0 && (
         <div style={{

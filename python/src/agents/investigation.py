@@ -429,11 +429,30 @@ def classify_investigation(message: str, context: dict | None = None) -> dict:
 # ── Context loading ───────────────────────────────────────────────────────────
 
 def load_conversation_context(organization_id: str, user_id: str,
-                              conversation_id: str | None, db) -> dict:
+                              conversation_id: str | None, db,
+                              context_payload: dict | None = None) -> dict:
     context = {"summary": None, "last_investigation": None, "recent_turns": [],
                "unresolved": []}
     if not conversation_id:
         return context
+
+    # Node has authenticated the merchant and verified conversation ownership.
+    # Prefer its bounded context payload; retain DB fallback for older callers.
+    supplied = (context_payload or {}).get("conversation_context")
+    if isinstance(supplied, dict):
+        summary = supplied.get("summary")
+        if isinstance(summary, str):
+            context["summary"] = summary[:500]
+        raw = supplied.get("context_window")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except ValueError:
+                raw = None
+        if isinstance(raw, dict):
+            context["last_investigation"] = raw.get("last_investigation")
+            context["unresolved"] = raw.get("unresolved") or []
+
     rows, error = safe_query(db, """
         SELECT summary, context_window
         FROM conversations
@@ -442,12 +461,14 @@ def load_conversation_context(organization_id: str, user_id: str,
     """, {"conversation_id": conversation_id, "org_id": organization_id})
     if not error and rows:
         row = rows[0]
-        summary = row["summary"] if isinstance(row, dict) or hasattr(row, "__getitem__") else None
-        context["summary"] = summary
+        if context["summary"] is None:
+            context["summary"] = _get(row, "summary")
         raw = _json(row, "context_window")
         if isinstance(raw, dict):
-            context["last_investigation"] = raw.get("last_investigation")
-            context["unresolved"] = raw.get("unresolved") or []
+            if context["last_investigation"] is None:
+                context["last_investigation"] = raw.get("last_investigation")
+            if not context["unresolved"]:
+                context["unresolved"] = raw.get("unresolved") or []
     history, history_error = safe_query(db, """
         SELECT role, content, created_at
         FROM conversation_messages
@@ -900,28 +921,60 @@ def _recommendations(intent: str, items: list[dict]) -> list[dict]:
     return recommendations
 
 
-def _follow_ups(intent: str, window: dict, segment: str | None) -> list[str]:
-    base = [
-        "Was this also happening last month?",
-        "What about returning customers?",
-        "What should I investigate next?",
-    ]
+def _follow_ups(intent: str, window: dict, segment: str | None,
+                evidence_items: list[dict] | None = None,
+                unknowns: list[str] | None = None,
+                comparison_facts: list[dict] | None = None) -> list[str]:
+    """Suggest follow-ups that fit the investigation and its returned evidence."""
+    metrics = {
+        str(item.get("metric", "")).lower()
+        for item in (evidence_items or []) if isinstance(item, dict)
+    }
+    unknown_text = " ".join(str(value).lower() for value in (unknowns or []))
+    suggestions: list[str] = []
+
+    if comparison_facts:
+        suggestions.append("Which verified metric changed the most against the previous period?")
+
     if intent == INTENT_REVENUE:
-        return ["Was this also happening last month?",
-                "What about mobile customers?",
-                "Which products drove the change?"]
-    if intent == INTENT_CHECKOUT:
-        return ["Does this differ for mobile customers?",
-                "Was this happening last month?",
-                "Which carts carry the most recorded value?"]
-    if intent == INTENT_CUSTOMERS:
-        return ["Are first-time customers changing?",
-                "Was this happening last month?",
-                "Which products do returning customers buy?"]
-    if intent == INTENT_COVERAGE:
-        return ["What data is missing?", "When was the last successful sync?",
-                "Can you analyse revenue anyway?"]
-    return base
+        if any("refund" in metric for metric in metrics):
+            suggestions.append("How did recorded refunds contribute to this change?")
+        if any("product" in metric for metric in metrics):
+            suggestions.append("Which products contributed most to recorded sales?")
+        if any("customer" in metric for metric in metrics):
+            suggestions.append("How did customer activity compare with order activity?")
+    elif intent == INTENT_CHECKOUT:
+        if any(("checkout" in metric or "cart" in metric) for metric in metrics):
+            suggestions.append("Where does the recorded checkout activity drop off?")
+        if "device" in unknown_text or "mobile" in unknown_text:
+            suggestions.append("What device-level data would be needed to verify a mobile difference?")
+    elif intent == INTENT_CUSTOMERS:
+        if any("customer" in metric for metric in metrics):
+            suggestions.append("What customer segments are distinguishable in this data?")
+        if any("repeat" in metric or "return" in metric for metric in metrics):
+            suggestions.append("How does returning-customer activity compare with first-time activity?")
+    elif intent == INTENT_REFUNDS:
+        if any("refund" in metric for metric in metrics):
+            suggestions.append("Which refund records account for the recorded total?")
+    elif intent == INTENT_PRODUCTS:
+        if any("product" in metric for metric in metrics):
+            suggestions.append("Which products account for the largest recorded sales value?")
+        if any("inventory" in metric or "stock" in metric for metric in metrics):
+            suggestions.append("Which recorded stockouts overlap with product sales?")
+    elif intent == INTENT_TRAFFIC:
+        if any("traffic" in metric or "event" in metric for metric in metrics):
+            suggestions.append("Which tracked events are missing or incomplete?")
+    elif intent == INTENT_COVERAGE:
+        suggestions.append("Which missing data source is limiting this investigation?")
+
+    if not suggestions:
+        suggestions.append("What should I investigate next?")
+    if (len(suggestions) < 3 and evidence_items and window.get("compared_to")
+            and not comparison_facts):
+        suggestions.append("Can you compare this with the previous period?")
+    if len(suggestions) < 3:
+        suggestions.append("What should I investigate next?")
+    return list(dict.fromkeys(suggestions))[:3]
 
 
 def _compose_text(*, intent: str, label: str, window: dict, facts: list[dict],
@@ -1388,7 +1441,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 pass
 
     conversation_context = load_conversation_context(
-        organization_id, user_id, conversation_id, db)
+        organization_id, user_id, conversation_id, db, context_payload=context_payload)
     store_context = resolve_store_context(organization_id, db)
     classification = classify_investigation(message, conversation_context)
     intent = classification["intent"]
@@ -1657,7 +1710,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     result["investigation"].update({
         "status": overall,
         "steps": plan,
-        "follow_ups": _follow_ups(intent, window, classification.get("segment")),
+        "follow_ups": _follow_ups(
+            intent, window, classification.get("segment"),
+            evidence_items=items, unknowns=unknowns,
+            comparison_facts=comparison_facts,
+        ),
         "tools_used": [name for name in tool_results_by_name],
         "evidence_count": len(items),
     })
