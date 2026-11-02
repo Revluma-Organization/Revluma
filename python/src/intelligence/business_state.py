@@ -993,17 +993,32 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             )
 
         # A competing build may have completed while this worker collected
-        # metrics. Preserve that newer snapshot instead of writing a duplicate.
-        latest_state = load_current_business_state(organization_id, db)
-        if latest_state is not None and (
-            previous_state is None or latest_state.id != previous_state.id
-        ):
+        # metrics. Read only its ID here: load_current_business_state() performs
+        # a defensive rollback on errors, which would release this transaction
+        # lock before the write.
+        latest_state_id = db.execute(
+            text("""
+                SELECT id
+                FROM business_states
+                WHERE organization_id = :org_id
+                  AND is_current = TRUE
+                LIMIT 1
+            """),
+            {"org_id": organization_id},
+        ).scalar()
+        previous_state_id = previous_state.id if previous_state is not None else None
+        if latest_state_id is not None and str(latest_state_id) != previous_state_id:
             db.rollback()
-            logger.info(
-                "business_state_newer_snapshot_already_written",
-                extra={"org_id": organization_id, "state_id": latest_state.id},
+            latest_state = load_current_business_state(organization_id, db)
+            if latest_state is not None:
+                logger.info(
+                    "business_state_newer_snapshot_already_written",
+                    extra={"org_id": organization_id, "state_id": latest_state.id},
+                )
+                return latest_state
+            raise BusinessStateBuildInProgress(
+                "A newer business-state snapshot was written by another worker."
             )
-            return latest_state
 
         # Step 1: mark existing current state as historical
         db.execute(
