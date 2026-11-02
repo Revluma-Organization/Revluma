@@ -78,12 +78,12 @@ async def _lifespan(_: FastAPI):
     # pool. Without this cap, FastAPI's default 40 worker tokens can create
     # more concurrent DB sessions than this single Render instance should use.
     thread_limiter = anyio.to_thread.current_default_thread_limiter()
-    thread_limiter.total_tokens = 16
+    thread_limiter.total_tokens = 8
     logger.info(
         "request_threadpool_capacity_configured",
         extra={
-            "max_concurrent_sync_handlers": 16,
-            "db_pool_capacity": 16,
+            "max_concurrent_sync_handlers": 8,
+            "db_pool_capacity": 12,
         },
     )
 
