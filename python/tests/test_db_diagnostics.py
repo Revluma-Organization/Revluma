@@ -67,16 +67,71 @@ def test_diagnostics_reports_pool_geometry_and_gate_counters(client):
     assert gate["active_requests"] >= 1
 
 
-def test_diagnostics_reports_an_unreachable_database_honestly(client):
-    """A failed pg_stat_activity read must not masquerade as an idle database."""
+ACTIVITY_KEYS = {"total_backends", "idle_in_transaction", "active_queries",
+                 "oldest_transaction_seconds"}
+
+
+def test_diagnostics_reports_an_unreachable_database_honestly(client, monkeypatch):
+    """A failed pg_stat_activity read must not masquerade as an idle database.
+
+    The failure is forced rather than assumed: whether the ambient DATABASE_URL
+    is reachable differs between CI jobs (a placeholder DSN in the Python
+    workflow, a bootstrapped PostgreSQL 16 in release-candidate verification),
+    so a test that depended on the environment passed in one and failed in the
+    other.
+    """
+    monkeypatch.setattr(serving_api, "safe_query", lambda db, sql, params=None: ([], "query_failed"))
+
     response = client.get("/internal/db/diagnostics", headers=_auth())
 
     assert response.status_code == 200
     activity = response.json()["database_activity"]
-
-    # No reachable PostgreSQL in this test run, so the reason is surfaced
-    # rather than zero-filled counters.
     assert activity == {"unavailable": True, "reason": "query_failed"}
+
+
+def test_diagnostics_survives_an_exception_from_the_activity_read(client, monkeypatch):
+    """A raising read must not take the whole endpoint down with it."""
+    def _explode(db, sql, params=None):
+        raise RuntimeError("connection reset")
+
+    monkeypatch.setattr(serving_api, "safe_query", _explode)
+
+    response = client.get("/internal/db/diagnostics", headers=_auth())
+    assert response.status_code == 200
+    body = response.json()
+
+    activity = body["database_activity"]
+    assert activity["unavailable"] is True
+    # The exception type is named so an operator can tell a permission problem
+    # from a connectivity problem without the endpoint leaking a DSN.
+    assert activity["reason"].startswith("query_failed")
+    assert "RuntimeError" in activity["reason"]
+
+    # The rest of the snapshot still arrives — that is the point of the endpoint.
+    assert body["pool"]["pool_size"] >= 1
+    assert body["request_gate"]["total_requests"] >= 1
+    assert "postgresql://" not in response.text
+    assert "placeholder" not in response.text
+
+
+def test_database_activity_is_never_partially_reported(client):
+    """Whatever the environment, the field is all-or-nothing and never invented.
+
+    Operators read these counters to decide whether the pool is wedged, so a
+    half-populated or zero-filled snapshot is worse than an explicit
+    unavailability: it implies a healthy idle database that was never observed.
+    """
+    activity = client.get("/internal/db/diagnostics",
+                          headers=_auth()).json()["database_activity"]
+
+    assert isinstance(activity, dict) and activity
+    if activity.get("unavailable") is True:
+        assert activity == {"unavailable": True, "reason": activity["reason"]}
+        assert activity["reason"]
+    else:
+        assert ACTIVITY_KEYS <= set(activity), activity
+        assert activity["total_backends"] >= 1, "this query is itself a backend"
+        assert "unavailable" not in activity and "reason" not in activity
 
 
 def test_diagnostics_flags_a_saturated_pool(client, monkeypatch):

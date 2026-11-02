@@ -960,12 +960,26 @@ def _pool_telemetry() -> dict:
 
 @app.get("/internal/db/diagnostics", dependencies=[Depends(verify_internal_caller)])
 def internal_db_diagnostics():
-    """Live connection, transaction and stream counters for operators."""
-    db = _Session()
+    """Live connection, transaction and stream counters for operators.
+
+    This endpoint must stay reachable while the database is unhealthy — that is
+    precisely when an operator needs it. A raising read is therefore reported as
+    an unavailable activity snapshot rather than allowed to 500 the endpoint and
+    take the pool and gate counters with it.
+    """
+    rows: list = []
+    error: str | None = None
+    db = None
     try:
+        db = _Session()
         rows, error = safe_query(db, _PG_ACTIVITY_SQL)
+    except Exception as exc:
+        error = error or f"query_failed:{type(exc).__name__}"
+        logger.warning("db_diagnostics_activity_unavailable error_type=%s",
+                       type(exc).__name__)
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
     activity = dict(rows[0]) if rows and not error else {}
     if error:
