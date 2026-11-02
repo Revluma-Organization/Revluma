@@ -76,6 +76,7 @@ def _acquire_business_state_lock(organization_id: str):
     """Acquire a token-owned Redis lock shared by every service instance."""
     redis_url = (getattr(settings, "REDIS_URL", "") or "").strip()
     if not redis_url:
+        logger.error("business_state_lock_unavailable", extra={"reason": "redis_url_missing"})
         raise BusinessStateLockUnavailable("REDIS_URL is not configured.")
 
     client = redis.from_url(
@@ -91,6 +92,10 @@ def _acquire_business_state_lock(organization_id: str):
         acquired = client.set(key, token, nx=True, ex=600)
     except Exception as exc:
         client.close()
+        logger.exception(
+            "business_state_lock_unavailable",
+            extra={"reason": "redis_connection_failed"},
+        )
         raise BusinessStateLockUnavailable(
             "The shared Redis lock service is unavailable."
         ) from exc
@@ -534,8 +539,8 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         db: SQLAlchemy connection or session.
 
     Returns:
-        BusinessState. Raises BusinessStateBuildInProgress only when no current
-        snapshot exists and another worker already owns the organization's build.
+        BusinessState. This internal worker assumes the shared Redis lock is
+        already held by the public build_business_state wrapper.
     """
     state_id = str(uuid.uuid4())
     generated_at = datetime.now(timezone.utc)
