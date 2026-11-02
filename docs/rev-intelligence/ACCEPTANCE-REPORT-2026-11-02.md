@@ -9,7 +9,9 @@
   production. The Render services are **not confirmed deployed**, live merchant
   acceptance has **not** been executed, and production evidence at 11:38 UTC
   shows the Python service still has not rebuilt a Business State snapshot since
-  08:00:20 UTC. Section 9 lists every unexecuted mandatory gate.
+  08:00:20 UTC — 3h49m at the last observation, 14 minutes after the merge,
+  while Node was actively syncing. Section 9 lists every unexecuted mandatory
+  gate and section 4b states the three hypotheses that remain open.
 
 This report separates what was measured from what was not. Nothing below is
 marked passed unless the evidence exists in this workspace.
@@ -294,9 +296,48 @@ Queried directly against Supabase project `jblpgqmbgdlzitprudgt`:
 
 The merge landed at 11:35:28 UTC, roughly three minutes before this query, so a
 Render build may simply not have finished. **This is not evidence that the fix
-failed** — but it is also not evidence that it worked. The question "is the
-Python service running `192b2d0` and rebuilding snapshots?" is **open** and can
-only be closed from Render logs and a later database observation.
+failed** — but it is also not evidence that it worked.
+
+### Second observation, 11:49:33 UTC (14 minutes after the merge)
+
+| Signal | Value | Reading |
+| --- | --- | --- |
+| `now()` | `2026-11-02 11:49:33+00` | 14m05s after the merge landed |
+| `max(business_states.generated_at)` | `2026-11-02 08:00:20+00` | **Unchanged — 3h49m without a rebuild** |
+| rows created in last 25 min | `0` | No rebuild activity |
+| current snapshots with `valid_until > now()` | `0` of 5 | Every snapshot still expired |
+| `count(*)` business_states | `33,717` (unchanged) | Retention pruning has not run |
+| `max(stores.last_synced_at)` | `2026-11-02 11:47:52+00` | **Node alive and actively syncing** |
+| `webhook_deliveries` in last 25 min | `0` | No inbound webhook traffic in the window |
+
+This is now stronger evidence than the first observation, because it removes the
+"the build may not have finished" excuse for Node while leaving it open only for
+Python: **Node is demonstrably running and doing work at 11:47:52 UTC, Python has
+produced nothing since 08:00:20 UTC.**
+
+The Business State scheduler polls every 60 seconds and all five snapshots are
+expired, so a Python service that had booted successfully on `192b2d0` would have
+found a due organization and written a snapshot within roughly a minute. Fourteen
+minutes with zero rows means one of the following, and **this environment cannot
+distinguish between them**:
+
+1. Render has not deployed `192b2d0` to the Python service (auto-deploy off, or
+   the deploy was never triggered);
+2. a Render Python build is still running (`pip install` of `requirements.txt`
+   including scikit-learn is slow, but 14 minutes is at the outer edge);
+3. the Python service deployed and is still failing to boot or to reach the
+   database for a reason **not addressed by this work**.
+
+Hypothesis 3 is the one that matters and it is **still undiagnosed**. Local
+lifespan boot succeeds and the full suite passes against both a placeholder DSN
+and a real bootstrapped PostgreSQL 16, so the residual failure — if that is what
+this is — lives in the deployed configuration or environment, and only Render
+logs can say which.
+
+**Required to close this out:** read the Render Python service logs for the
+deploy of `192b2d0`, confirm the running commit, and re-run the query above. A
+healthy service shows a new `generated_at` within ~60 s and `count(*)` beginning
+to fall from 33,717 as retention prunes.
 
 ---
 
