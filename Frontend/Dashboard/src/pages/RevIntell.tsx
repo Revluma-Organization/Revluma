@@ -517,7 +517,7 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
 function Bubble({ msg, onCopy, onRetry, onSend, onOpenEvidence, evidenceOpen, isDark, t1, t2 }: {
   msg: Message; onCopy: (t: string) => void;
   onRetry: () => void; onSend?: (text: string) => void;
-  onOpenEvidence?: (messageId: string) => void; evidenceOpen?: boolean;
+  onOpenEvidence?: (messageId: string, evidenceId?: string) => void; evidenceOpen?: boolean;
   isDark: boolean; t1: string; t2: string;
 }) {
   const isRev = msg.role === "rev";
@@ -594,7 +594,7 @@ function Bubble({ msg, onCopy, onRetry, onSend, onOpenEvidence, evidenceOpen, is
             streaming={msg.isStreaming}
             dark={isDark}
             evidenceOpen={evidenceOpen}
-            onOpenEvidence={() => onOpenEvidence?.(msg.id)}
+            onOpenEvidence={(evidenceId) => onOpenEvidence?.(msg.id, evidenceId)}
             onFollowUp={(followUp) => onSend?.(followUp)}
             onRetry={onRetry}
             canRetry={!msg.isStreaming}
@@ -967,6 +967,7 @@ export default function RevIntell() {
   const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [evidenceFor, setEvidenceFor] = useState<string | null>(null);
+  const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [storeContext, setStoreContext] = useState<StoreContext>(UNKNOWN_STORE);
 
@@ -1712,7 +1713,10 @@ export default function RevIntell() {
             {messages.map(msg => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
                 onRetry={handleRetry} onSend={send}
-                onOpenEvidence={(messageId) => setEvidenceFor(current => (current === messageId ? null : messageId))}
+                onOpenEvidence={(messageId, evidenceId) => {
+                  setEvidenceFor(messageId);
+                  setFocusedEvidenceId(evidenceId ?? null);
+                }}
                 evidenceOpen={evidenceFor === msg.id}
                 isDark={isDark} t1={t1} t2={t2} />
             ))}
@@ -1792,7 +1796,7 @@ export default function RevIntell() {
               <motion.div key="rev-evidence" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="fixed inset-0 z-[180] flex justify-end">
                 <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.35)" }}
-                  onClick={() => setEvidenceFor(null)} />
+                  onClick={() => { setEvidenceFor(null); setFocusedEvidenceId(null); }} />
                 <motion.div
                   initial={{ x: 32, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 32, opacity: 0 }}
                   transition={{ duration: 0.18 }}
@@ -1800,6 +1804,8 @@ export default function RevIntell() {
                   className="relative h-full w-full max-w-[460px] shadow-2xl"
                   style={{ background: card, borderLeft: `1px solid ${bdr}` }}>
                   <EvidencePanel
+                    key={`${message.id}:${focusedEvidenceId ?? "all"}`}
+                    focusEvidenceId={focusedEvidenceId}
                     evidence={message.payload.evidence}
                     facts={message.payload.facts}
                     hypotheses={message.payload.hypotheses}
@@ -1807,7 +1813,7 @@ export default function RevIntell() {
                     recommendations={message.payload.recommendations}
                     dark={isDark}
                     asSheet
-                    onClose={() => setEvidenceFor(null)}
+                    onClose={() => { setEvidenceFor(null); setFocusedEvidenceId(null); }}
                   />
                 </motion.div>
               </motion.div>
