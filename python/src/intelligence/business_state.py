@@ -72,6 +72,10 @@ class BusinessStateLockUnavailable(RuntimeError):
     """Raised when the shared lock service is unavailable; rebuilds fail closed."""
 
 
+class BusinessStatePersistenceError(RuntimeError):
+    """Raised when a new business-state snapshot could not be persisted."""
+
+
 def _acquire_business_state_lock(organization_id: str):
     """Acquire a token-owned, organization-scoped Redis lease shared by all instances."""
     redis_url = (getattr(settings, "REDIS_URL", "") or "").strip()
@@ -1163,10 +1167,13 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         computation_status = "partial"
         persistence_failed = True
 
-    if persistence_failed and previous_state:
-        previous_state.warnings.extend(warnings)
-        previous_state.computation_status = "partial"
-        return previous_state
+    if persistence_failed:
+        # Never report the old snapshot as if this rebuild succeeded. The
+        # serving layer must return a retryable failure so scheduler telemetry
+        # and operators see the persistence failure accurately.
+        raise BusinessStatePersistenceError(
+            "Business-state snapshot persistence failed."
+        )
 
     return BusinessState(
         id=state_id,
