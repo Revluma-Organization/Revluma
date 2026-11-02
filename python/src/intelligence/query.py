@@ -44,7 +44,7 @@ def safe_query(db: Any, sql: str, params: dict | None = None) -> tuple[list, str
             savepoint = None
     try:
         result = db.execute(text(sql), params)
-        return _as_rows(result), None
+        rows = _as_rows(result)
     except Exception as exc:
         if savepoint is not None:
             try:
@@ -60,13 +60,15 @@ def safe_query(db: Any, sql: str, params: dict | None = None) -> tuple[list, str
                     pass
         logger.warning("rev_query_failed error_type=%s", type(exc).__name__)
         return [], "query_failed"
-    else:
-        if savepoint is not None:
-            try:
-                savepoint.__exit__(None, None, None)
-            except Exception:  # pragma: no cover - defensive
-                pass
-        return _as_rows(result), None
+
+    # Release each successful savepoint immediately. Returning inside the try
+    # block previously bypassed the old try/except/else cleanup entirely.
+    if savepoint is not None:
+        try:
+            savepoint.__exit__(None, None, None)
+        except Exception:  # pragma: no cover - defensive
+            logger.warning("rev_query_savepoint_release_failed")
+    return rows, None
 
 
 def table_exists(db: Any, table_name: str) -> bool:
