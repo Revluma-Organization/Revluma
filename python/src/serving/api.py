@@ -8,6 +8,7 @@ and delegates inference without duplicating those rules.
 Run locally with ``uvicorn src.serving.api:app --reload --port 8000``.
 """
 
+import anyio
 import ipaddress
 import base64
 import binascii
@@ -72,6 +73,19 @@ _automation_status = {"running": False, "last_result": None, "last_error": None}
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
+    # Keep synchronous request handlers aligned with the bounded SQLAlchemy
+    # pool. Without this cap, FastAPI's default 40 worker tokens can create
+    # more concurrent DB sessions than this single Render instance should use.
+    thread_limiter = anyio.to_thread.current_default_thread_limiter()
+    thread_limiter.total_tokens = 16
+    logger.info(
+        "request_threadpool_capacity_configured",
+        extra={
+            "max_concurrent_sync_handlers": 16,
+            "db_pool_capacity": 16,
+        },
+    )
+
     await _preload_models()
     yield
 
