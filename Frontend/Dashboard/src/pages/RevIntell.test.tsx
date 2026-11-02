@@ -6,6 +6,7 @@ import { RevStreamError, streamRevAnswer, type RevAnswerPayload, type RevStreamR
 import RevIntell from './RevIntell';
 
 const theme = vi.hoisted(() => ({ value: 'dark' }));
+const answerView = vi.hoisted(() => vi.fn());
 vi.mock('@/context/AuthContext', () => ({ useAuth: () => ({ user: { full_name: 'Test Owner' } }) }));
 vi.mock('@/store', () => ({ useThemeStore: (select: (state: { theme: string }) => unknown) => select({ theme: theme.value }) }));
 vi.mock('@/lib/api', () => {
@@ -21,7 +22,10 @@ vi.mock('@/lib/revStream', () => {
   }
   return { streamRevAnswer: vi.fn(), RevStreamError: FixtureStreamError };
 });
-vi.mock('@/components/rev/RevAnswerView', () => ({ default: ({ payload }: { payload: RevAnswerPayload }) => <p>{payload.text}</p> }));
+vi.mock('@/components/rev/RevAnswerView', () => ({ default: ({ payload, onOpenEvidence }: { payload: RevAnswerPayload; onOpenEvidence?: () => void }) => {
+  answerView(payload);
+  return <><p>{payload.text}</p><button onClick={onOpenEvidence}>Open evidence fixture</button></>;
+} }));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -75,6 +79,7 @@ function send(text = 'Investigate revenue') {
 
 beforeEach(() => {
   replies = new Map(); streams = [];
+  answerView.mockClear();
   theme.value = 'dark';
   vi.mocked(api.get).mockReset(); vi.mocked(api.post).mockReset(); vi.mocked(streamRevAnswer).mockReset();
   vi.mocked(api.delete).mockReset(); vi.mocked(api.patch).mockReset();
@@ -98,6 +103,44 @@ afterEach(async () => {
   await act(async () => { streams.forEach(stream => stream.result.resolve({ conversationId: null, completed: false })); });
   expect(fetch).not.toHaveBeenCalled();
   vi.restoreAllMocks(); vi.unstubAllGlobals();
+});
+
+describe('structured conversation rehydration', () => {
+  it.each(['current object', 'current JSON', 'legacy object', 'legacy JSON'])('retains sections, evidence and comparison facts from %s', async format => {
+    const sections = { situation: 'Stored situation', insight: 'Stored insight', implication: 'Stored implication', recommendation: 'Stored recommendation' };
+    const content = {
+      response_type: 'analysis', text: '', read_only: true,
+      ...(format.startsWith('legacy') ? sections : { response: sections }),
+      evidence: { items: [], comparison_items: [], validation: { valid: false, errors: ['missing_provenance'] } },
+      facts: [{ text: 'Recorded fact', evidence_ids: [] }],
+      comparison_facts: [{ text: 'Recorded comparison', evidence_ids: ['ev-prior'] }],
+    };
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+      { id: 'stored-user', role: 'user', content: { text: 'Stored question' }, created_at: '2026-11-02T12:00:00Z' },
+      { id: 'stored-answer', role: 'rev', content: format.endsWith('JSON') ? JSON.stringify(content) : content, created_at: '2026-11-02T12:00:00Z' },
+    ] })));
+    renderPage('/dashboard/rev-intell/A');
+    await waitFor(() => expect(answerView).toHaveBeenCalledWith(expect.objectContaining({ response: expect.objectContaining(sections), comparison_facts: content.comparison_facts })));
+    expect(screen.getAllByText('Stored question')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Open evidence fixture' }));
+    await screen.findByRole('heading', { name: 'Comparison facts' });
+    expect(screen.getByText('Recorded comparison')).toBeInTheDocument();
+    expect(screen.getByText('ev-prior')).toBeInTheDocument();
+    expect(screen.getByText(/record unavailable/)).toBeInTheDocument();
+    expect(screen.getByText('Evidence unavailable.')).toBeInTheDocument();
+  });
+  it('normalises a legacy structured attachment response before rendering it', async () => {
+    vi.mocked(api.post).mockResolvedValue({ ok: true, status: 200, data: {
+      success: true, conversation_id: 'ImageCreated', response_type: 'analysis', text: null,
+      response: { situation: 'Attachment situation', insight: 'Attachment insight', implication: 'Attachment implication', recommendation: 'Attachment recommendation' },
+    } });
+    const view = renderPage();
+    fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['fixture'], 'fixture.png', { type: 'image/png' })] } });
+    await screen.findByAltText('attachment'); send('Read this attachment');
+    await waitFor(() => expect(answerView).toHaveBeenCalledWith(expect.objectContaining({ response: expect.objectContaining({ situation: 'Attachment situation', insight: 'Attachment insight', implication: 'Attachment implication', recommendation: 'Attachment recommendation' }) })));
+    expect(screen.getAllByText('Read this attachment')).toHaveLength(1);
+    expect(streamRevAnswer).not.toHaveBeenCalled();
+  });
 });
 
 describe('finding investigation handoff', () => {

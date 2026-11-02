@@ -34,6 +34,7 @@ import { parseVerifiedComparison } from "@/lib/revComparison";
 import RevAnswerView from "@/components/rev/RevAnswerView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import EvidencePanel from "@/components/rev/EvidencePanel";
+import { normaliseRevAnswer } from "@/lib/revPresentation";
 import {
   streamRevAnswer, RevStreamError,
   type RevAnswerPayload, type InvestigationStep,
@@ -1128,18 +1129,13 @@ export default function RevIntell() {
 
       const parsed: Message[] = msgs.map((m: any) => {
         let content: string | RevResponse = "";
-        let payload: RevAnswerPayload | undefined;
+        const payload = m.role === "rev" ? normaliseRevAnswer(m.content) : undefined;
         const raw = m.content;
-        const attachPayload = (value: any) => {
-          if (value && typeof value === "object" &&
-              ("evidence" in value || "investigation" in value || "hypotheses" in value || "recommendations" in value)) {
-            payload = value as RevAnswerPayload;
-          }
-        };
-        if (typeof raw === "object" && raw !== null) {
+        if (payload) {
+          content = payload.text;
+        } else if (typeof raw === "object" && raw !== null) {
           if ("response_type" in raw) {
             content = raw as RevResponse;
-            attachPayload(raw);
           } else if ("text" in raw) {
             content = (raw as any).text || "";
           } else if ("situation" in raw) {
@@ -1150,7 +1146,7 @@ export default function RevIntell() {
         } else if (typeof raw === "string") {
           try {
             const parsed2 = JSON.parse(raw);
-            if ("response_type" in parsed2) { content = parsed2 as RevResponse; attachPayload(parsed2); }
+            if ("response_type" in parsed2) { content = parsed2 as RevResponse; }
             else if ("text" in parsed2) content = parsed2.text || "";
             else content = raw;
           } catch { content = raw; }
@@ -1278,10 +1274,10 @@ export default function RevIntell() {
     const revResponse: RevResponse = {
       response_type: responseType,
       text: data?.text ?? data?.response?.text,
-      situation: data?.response?.situation,
-      insight: data?.response?.insight,
-      implication: data?.response?.implication,
-      recommendation: data?.response?.recommendation,
+      situation: data?.response?.situation ?? data?.situation,
+      insight: data?.response?.insight ?? data?.insight,
+      implication: data?.response?.implication ?? data?.implication,
+      recommendation: data?.response?.recommendation ?? data?.recommendation,
       confidence: data?.response?.confidence ?? (
         data?.confidence_score !== undefined
           ? { score: data.confidence_score, basis: data.confidence_basis || "" }
@@ -1291,18 +1287,7 @@ export default function RevIntell() {
       agents_used: data?.meta?.agents_used || data?.agents_used || [],
       warnings: data?.response?.warnings || data?.warnings || [],
     };
-    const hasEvidence = Boolean(
-      data?.evidence || data?.investigation || data?.hypotheses || data?.recommendations,
-    );
-    const payload: RevAnswerPayload | undefined = hasEvidence
-      ? {
-          ...(data as RevAnswerPayload),
-          read_only: true,
-          response_type: responseType,
-          text: data?.text ?? revResponse.text ?? "",
-          response: data?.response ?? null,
-        }
-      : undefined;
+    const payload = normaliseRevAnswer(data);
     return { content: revResponse, payload };
   }
 
@@ -1453,13 +1438,13 @@ export default function RevIntell() {
               return;
             }
             adoptConversation(payload.conversation_id);
-            const { content } = normaliseTurn(payload);
+            const { content, payload: normalised } = normaliseTurn(payload);
             patch(message => ({
               ...message,
               isStreaming: false,
               persistence: "persisted",
               content,
-              payload: { ...payload, read_only: true },
+              payload: normalised,
               steps: payload.investigation?.steps?.length ? payload.investigation.steps : message.steps,
             }));
           },
@@ -1994,6 +1979,7 @@ export default function RevIntell() {
                   <EvidencePanel
                     evidence={message.payload.evidence}
                     facts={message.payload.facts}
+                    comparisonFacts={message.payload.comparison_facts}
                     hypotheses={message.payload.hypotheses}
                     unknowns={message.payload.unknowns}
                     recommendations={message.payload.recommendations}

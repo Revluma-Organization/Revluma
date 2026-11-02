@@ -1,0 +1,131 @@
+import type { EvidenceItem, EvidencePeriod, RevAnswerPayload } from "./revStream";
+
+export const textValue = (value: unknown): string => typeof value === "string" ? value : "";
+export const stringList = (value: unknown): string[] => Array.isArray(value)
+  ? value.filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim())) : [];
+export const recordList = <T extends object>(value: unknown): T[] => Array.isArray(value)
+  ? value.filter((entry): entry is T => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry)) : [];
+const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value)
+  ? value as Record<string, unknown> : {};
+
+/** Both gateway response formats are retained; no evidence is certified here. */
+export function normaliseRevAnswer(value: unknown): RevAnswerPayload | undefined {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed); } catch { return undefined; }
+  }
+  const outer = record(parsed);
+  if (!["text", "response_type", "response", "situation", "insight", "implication", "recommendation", "evidence", "facts", "comparison_facts", "investigation"].some(key => key in outer)) return undefined;
+  const nested = record(outer.response);
+  const response = { ...outer, ...nested } as Partial<NonNullable<RevAnswerPayload["response"]>>;
+  return {
+    ...nested, ...outer,
+    response_type: textValue(outer.response_type) || "analysis",
+    read_only: true,
+    text: textValue(outer.text) || textValue(nested.text),
+    response: {
+      situation: textValue(nested.situation) || textValue(outer.situation),
+      insight: textValue(nested.insight) || textValue(outer.insight),
+      implication: textValue(nested.implication) || textValue(outer.implication),
+      recommendation: textValue(nested.recommendation) || textValue(outer.recommendation),
+      confidence: response.confidence,
+      warnings: stringList(nested.warnings),
+    },
+  };
+}
+
+// Deduplicate only matching content, never infer that a summary covers a section.
+export const comparableText = (value: string): string => value.toLowerCase().replace(/\*\*|__|`/g, "").replace(/\s+/g, " ").trim();
+export function coveredBy(body: string, value: string): boolean {
+  const normalise = (text: string) => comparableText(text).replace(/\s+([.!?])/g, "$1").replace(/\.$/, "").trim();
+  const candidate = normalise(value);
+  if (!candidate) return false;
+  const blocks = [body];
+  const sentences = (text: string) => {
+    const chunks = text.split(/([.!?])\s+/);
+    return chunks.filter((_chunk, index) => index % 2 === 0).map((chunk, index) => chunk + (chunks[index * 2 + 1] || ""));
+  };
+  const paragraphs: string[] = [];
+  let pending: string[] = [];
+  const flush = () => { if (pending.length) paragraphs.push(pending.join(" ")); pending = []; };
+  for (const original of body.split("\n")) {
+    if (!original.trim()) { flush(); continue; }
+    const heading = original.match(/^\s*#{1,6}\s+(.*)$/);
+    if (heading) { flush(); paragraphs.push(heading[1]); continue; }
+    const entry = original.match(/^\s*(?:[-*+]\s+|\d+[.)]\s+)(.*)$/);
+    if (entry) { flush(); pending.push(entry[1]); }
+    else pending.push(original.trim());
+  }
+  flush();
+  for (const line of paragraphs) {
+    blocks.push(line);
+    // The backend's numbered recommendations use a bold label and an em dash.
+    // Recognise those explicit fields, without treating arbitrary substrings
+    // (including statements within a negation) as independent claims.
+    const recommendation = line.match(/^\*\*([^*]+)\*\*\s*[—–]\s*(.*)$/);
+    if (recommendation) blocks.push(recommendation[1], recommendation[2]);
+    blocks.push(...sentences(line));
+    if (recommendation) blocks.push(...sentences(recommendation[2]).map(sentence => sentence.replace(/^Measure:\s*/, "")));
+  }
+  return blocks.some(block => normalise(block) === candidate);
+}
+
+export function numericValue(value: unknown): number | null {
+  if (typeof value !== "number" && (typeof value !== "string" || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim()))) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+export function formatEvidenceValue(item: EvidenceItem): string {
+  if (!["available", "partial"].includes(item.status)) return "Unavailable";
+  const numeric = numericValue(item.value);
+  if (numeric === null) return "Unavailable";
+  if (item.unit === "currency") {
+    if (typeof item.currency !== "string" || !/^[A-Z]{3}$/.test(item.currency)) return "Unavailable (currency missing or invalid)";
+    return `${item.currency} ${numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+  if (item.unit === "ratio") return Number.isFinite(numeric * 100) ? `${Math.round(numeric * 100)}%` : "Unavailable";
+  return item.unit === "count" && Number.isInteger(numeric) && numeric >= 0 ? String(numeric) : "Unavailable";
+}
+
+export type EvidenceState = "verified" | "partial" | "unverified" | "unavailable";
+export function validationSucceeded(evidence?: RevAnswerPayload["evidence"]): boolean {
+  return evidence?.validation?.valid === true && Array.isArray(evidence.validation.errors) && evidence.validation.errors.length === 0;
+}
+export function evidenceItemWellFormed(item: EvidenceItem): boolean {
+  return [item.id, item.metric, item.label, item.source, item.definition, item.period?.start, item.period?.end]
+    .every(value => typeof value === "string" && Boolean(value.trim()))
+    && validTimestamp(item.period?.start) && validTimestamp(item.period?.end);
+}
+export function evidenceState(evidence?: RevAnswerPayload["evidence"]): EvidenceState {
+  const collections = [evidence?.items, evidence?.comparison_items];
+  const malformed = collections.some((collection, index) => {
+    // comparison_items is optional; items is required by the evidence contract.
+    if (index === 1 && collection === undefined) return false;
+    return !Array.isArray(collection) || collection.some(entry => !entry || typeof entry !== "object" || Array.isArray(entry));
+  });
+  const items = [...recordList<EvidenceItem>(evidence?.items), ...recordList<EvidenceItem>(evidence?.comparison_items)];
+  const usable = items.filter(item => !formatEvidenceValue(item).startsWith("Unavailable"));
+  if (!usable.length) return "unavailable";
+  if (malformed || !validationSucceeded(evidence) || items.some(item => !evidenceItemWellFormed(item))
+    || new Set(items.map(item => item.id)).size !== items.length) return "unverified";
+  return usable.length !== items.length || items.some(item => item.status !== "available") || evidence?.coverage?.complete === false ? "partial" : "verified";
+}
+
+function validTimestamp(value: unknown): boolean {
+  const text = textValue(value);
+  return /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?$/.test(text)
+    && Number.isFinite(Date.parse(text))
+    && new Date(`${text.slice(0, 10)}T00:00:00Z`).toISOString().slice(0, 10) === text.slice(0, 10);
+}
+export function formatTimestamp(value: unknown): string {
+  const text = textValue(value);
+  if (!validTimestamp(text)) return "Not supplied or invalid";
+  return text.replace("T", " ") + (text.includes("T") && !/(?:Z|[+-]\d{2}:\d{2})$/.test(text) ? " (timezone not supplied)" : "");
+}
+
+export function formatPeriod(period?: EvidencePeriod): string {
+  const bounds = `${formatTimestamp(period?.start)} → ${formatTimestamp(period?.end)}`;
+  const metadata = [textValue(period?.timezone), textValue(period?.semantics)].filter(Boolean);
+  return bounds + (metadata.length ? ` (${metadata.join(", ")})` : " (timezone and interval semantics not supplied)");
+}
