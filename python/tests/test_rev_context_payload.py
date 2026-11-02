@@ -12,9 +12,10 @@ def test_node_context_payload_is_used_and_recent_turns_are_loaded():
         "summary": "Old summary",
         "context_window": {"last_investigation": {"intent": "store_overview"}, "unresolved": []},
     }])
+    # The query orders newest-first; the loader reverses it for chronological context.
     db.add("FROM conversation_messages", [
-        {"role": "user", "content": {"text": "Why did revenue fall?"}},
         {"role": "rev", "content": {"text": "I verified an order-value change."}},
+        {"role": "user", "content": {"text": "Why did revenue fall?"}},
     ])
     supplied = {
         "conversation_context": {
