@@ -1,10 +1,15 @@
 /* Shared authentication colours; the synchronous theme bootstrap precedes paint. */
-html.dark { --muted: #b0b0c1; --muted2: #a0a0b3; }
+html.dark {
+  --bg: #060608; --surface: #111116; --surface-md: #18181f;
+  --surface-hover: #202029; --border: #454552; --border-focus: #a3a3ba;
+  --text: #f0f0f5; --muted: #b0b0c1; --muted2: #a0a0b3;
+}
 html.light {
   --bg: #f8fafc;
   --surface: #ffffff;
   --surface-md: #eef2f6;
   --surface-hover: #e8edf4;
+  --surface-deep: #eef2f6;
   --border: #cbd5e1;
   --border-focus: #64748b;
   --text: #172033;
@@ -14,10 +19,13 @@ html.light {
   --red: #b91c1c;
   --red-bg: #fef2f2;
   --red-border: #fca5a5;
+  --border-error: #b91c1c;
+  --border-ok: #047857;
   --green: #047857;
   --yellow: #854d0e;
+  --amber: #854d0e;
 }
-html.light body { background: var(--bg); color: var(--text); }
+html.dark body, html.light body { background: var(--bg); color: var(--text); }
 html.light .text-white, html.light .social-auth-icon-button { color: var(--text); }
 html.light input, html.light select, html.light .social-auth-icon-button {
   background-color: var(--surface); color: var(--text); border-color: var(--border);
@@ -29,3 +37,31 @@ html.light .btn-secondary, html.light .btn-secondary-sm, html.light .btn-ghost {
 }
 html.light .text-zinc-400, html.light .text-gray-400, html.light .text-gray-500 { color: var(--muted); }
 html.light .social-auth-icon-button:hover { background: var(--surface-hover); border-color: var(--border-focus); }
+html.light .checkbox-custom:checked { background: var(--text); border-color: var(--text); }
+html.light .checkbox-custom:checked::after { color: var(--surface); }
+html.light .sel-card.selected, html.light .platform-card.selected, html.light .pill-btn.selected {
+  background: var(--surface-hover); border-color: var(--border-focus);
+}
+html.light .toast-error { background: var(--red-bg); color: var(--red); border-color: var(--red-border); }
+html.light .toast-success { background: #ecfdf5; color: var(--green); border-color: var(--green); }
+html.light .toast-info { background: #f3f0ff; color: var(--accent); border-color: var(--accent); }
+html.light #loadingOverlay { background: rgba(248,250,252,.95) !important; }
+html.light .glassmorphism-card { background: var(--surface); color: var(--text); border-color: var(--border); }
+html.light .glassmorphism-card .card-title { color: var(--text); }
+html.light .glassmorphism-card .card-message { color: var(--muted); }
+html.light .glassmorphism-card .card-button { background: var(--surface-md); color: var(--text); border-color: var(--border); }
+html.light .glassmorphism-card .success-btn, html.light .glassmorphism-card .card-icon.success {
+  background: var(--text); color: var(--surface); border-color: var(--text);
+}
+html.light .glassmorphism-card .card-icon.error { background: var(--surface-md); color: var(--text); border-color: var(--border); }
+html.light .card-spinner { border-color: var(--border); border-top-color: var(--text); }
+html.dark .auth-plans .nav { background: var(--surface); border-color: var(--border); }
+html.dark .auth-plans .nav-logo span, html.dark .auth-plans .header h1,
+html.dark .auth-plans .card:not(.featured) .card-price, html.dark .auth-plans .card:not(.featured) .card-name,
+html.dark .auth-plans .card:not(.featured) .features li { color: var(--text); }
+html.dark .auth-plans .card:not(.featured) { background: var(--surface); }
+html.dark .auth-plans .header p, html.dark .auth-plans .nav-steps,
+html.dark .auth-plans .card:not(.featured) .card-desc, html.dark .auth-plans .sub-note { color: var(--muted); }
+html.dark .auth-plans .card:not(.featured) .card-divider { background: var(--border); }
+html.dark .auth-plans .btn-outline { color: #b4acff; border-color: var(--border); }
+html.dark .auth-plans .btn-outline:hover { background: var(--surface-hover); }

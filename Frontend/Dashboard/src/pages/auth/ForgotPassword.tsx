@@ -537,6 +537,25 @@ export default function ForgotPassword() {
           box-shadow: none;
         }
         .recovery-page .recovery-hero-icon { width: 32px; height: 32px; }
+        html.light .recovery-page { background: #f8fafc; color: #172033; }
+        html.light .recovery-page h1, html.light .recovery-page h3,
+        html.light .recovery-page .text-slate-950, html.light .recovery-page .text-slate-900,
+        html.light .recovery-page .text-slate-800 { color: #172033 !important; }
+        html.light .recovery-page .text-slate-700 { color: #334155 !important; }
+        html.light .recovery-page .text-slate-600,
+        html.light .recovery-page .text-slate-500 { color: #475569 !important; }
+        html.light .recovery-page .text-blue-700,
+        html.light .recovery-page .text-blue-900 { color: #1d4ed8 !important; }
+        html.light .recovery-page .recovery-card { background: #fff; border-color: #cbd5e1; }
+        html.light .recovery-page .recovery-back,
+        html.light .recovery-page .recovery-destination { background: #eef2f6; color: #334155; border-color: #cbd5e1; }
+        html.light .recovery-page .recovery-input,
+        html.light .recovery-page .recovery-otp { background: #fff; color: #172033; border-color: #64748b; }
+        html.light .recovery-page .recovery-input::placeholder { color: #526176; }
+        html.light .recovery-page .recovery-primary { background: #172033; color: #fff; }
+        html.light .recovery-page .recovery-primary:hover:not(:disabled) { background: #334155; color: #fff; }
+        html.light .recovery-page .recovery-alert-error { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
+        html.light .recovery-page .recovery-alert-success { background: #ecfdf5; color: #047857; border-color: #6ee7b7; }
         .recovery-page .recovery-illustration-large { width: 72px; height: 72px; margin: 0 auto 12px; }
         .recovery-page .recovery-card .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem; }
         @media (max-height: 760px) {
