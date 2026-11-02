@@ -1,28 +1,73 @@
 import asyncio
 
+from src.serving.api import RequestConcurrencyGate
 
-def test_request_concurrency_gate_queues_before_handler_execution(monkeypatch):
-    from src.serving import api
 
+def test_request_gate_holds_permit_until_streaming_body_finishes():
     async def scenario():
-        gate = asyncio.Semaphore(1)
-        monkeypatch.setattr(api, "_request_semaphore", gate)
-        active = 0
-        peak_active = 0
+        first_stream_body_sent = asyncio.Event()
+        finish_first_stream = asyncio.Event()
+        second_started = asyncio.Event()
+        calls = []
 
-        async def call_next(_request):
-            nonlocal active, peak_active
-            active += 1
-            peak_active = max(peak_active, active)
-            await asyncio.sleep(0.01)
-            active -= 1
-            return "ok"
+        async def app(scope, receive, send):
+            route = scope["path"]
+            calls.append(route)
+            if route == "/first":
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"part", "more_body": True})
+                first_stream_body_sent.set()
+                await finish_first_stream.wait()
+                await send({"type": "http.response.body", "body": b"done", "more_body": False})
+            else:
+                second_started.set()
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"done", "more_body": False})
 
-        results = await asyncio.gather(
-            *(api.limit_request_concurrency(None, call_next) for _ in range(5))
-        )
+        middleware = RequestConcurrencyGate(app, limit=1)
 
-        assert results == ["ok"] * 5
-        assert peak_active == 1
+        async def invoke(path):
+            async def receive():
+                return {"type": "http.request", "body": b"", "more_body": False}
+
+            async def send(_message):
+                return None
+
+            await middleware({"type": "http", "path": path}, receive, send)
+
+        first = asyncio.create_task(invoke("/first"))
+        await first_stream_body_sent.wait()
+        second = asyncio.create_task(invoke("/second"))
+        await asyncio.sleep(0.02)
+        assert not second_started.is_set()
+        finish_first_stream.set()
+        await asyncio.gather(first, second)
+        assert second_started.is_set()
+        assert calls == ["/first", "/second"]
+
+    asyncio.run(scenario())
+
+
+def test_request_gate_releases_permit_when_app_raises():
+    async def scenario():
+        async def failing_app(scope, receive, send):
+            raise RuntimeError("synthetic failure")
+
+        middleware = RequestConcurrencyGate(failing_app, limit=1)
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(_message):
+            return None
+
+        try:
+            await middleware({"type": "http", "path": "/"}, receive, send)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("Expected synthetic failure")
+
+        assert middleware.semaphore._value == 1
 
     asyncio.run(scenario())
