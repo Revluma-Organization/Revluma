@@ -34,6 +34,27 @@ test('amounts reject malformed and negative values instead of coercing to zero',
   assert.equal(parseAmount(Number.POSITIVE_INFINITY), null);
 });
 
+test('PostgreSQL NUMERIC values (Prisma Decimal) are read exactly', () => {
+  const decimal = { toString: () => '364.50' };
+  assert.equal(parseAmount(decimal), 364.5);
+  assert.equal(parseAmount({ toString: () => '-5.00' }), null);
+  assert.equal(parseAmount({ toString: () => 'nope' }), null);
+  assert.equal(parseAmount({}), null);
+  assert.equal(parseAmount([100]), null);
+  const ltv = computeCustomerLifetimeValue([{ total: decimal, currency: 'USD', recovery_status: 'completed' }]);
+  assert.equal(ltv.ltv, 364.5);
+  assert.equal(ltv.ltv_currency, 'USD');
+});
+
+test('a mixed-currency customer never receives a combined total', () => {
+  const ltv = computeCustomerLifetimeValue([
+    { total: '10.00', currency: 'USD', recovery_status: 'completed' },
+    { total: '20.00', currency: 'EUR', recovery_status: 'completed' },
+  ]);
+  assert.equal(ltv.ltv, null);
+  assert.equal(ltv.mixed_currency, true);
+});
+
 test('totals never mix currencies and report rejected rows', () => {
   const { currencies, rejected } = totalsByCurrency([
     { currency: 'USD', total: '10.10' },

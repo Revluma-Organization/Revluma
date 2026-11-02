@@ -46,6 +46,17 @@ function parseAmount(value, { allowNegative = false } = {}) {
     if (!allowNegative && parsed < 0) return null;
     return Math.round(parsed * 100) / 100;
   }
+  // Prisma returns NUMERIC columns as Decimal objects. They carry an exact
+  // string form, so reading them is safe; any other object stays unverified.
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)
+      && typeof value.toString === 'function') {
+    const text = value.toString();
+    if (typeof text !== 'string' || text === '[object Object]') return null;
+    const parsed = Number(text);
+    if (!Number.isFinite(parsed)) return null;
+    if (!allowNegative && parsed < 0) return null;
+    return Math.round(parsed * 100) / 100;
+  }
   return null;
 }
 

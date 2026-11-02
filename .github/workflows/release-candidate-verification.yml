@@ -113,7 +113,17 @@ jobs:
         working-directory: Backend
         env:
           RELEASE_CANDIDATE_ISOLATED_DB: 'true'
-        run: node src/tests/financialIntegrity.integration.js
+        run: |
+          set +e
+          node src/tests/financialIntegrity.integration.js 2>&1 | tee /tmp/financial.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # Surface the failing scenarios as a check annotation: job logs are
+            # not always retrievable from automation, annotations are.
+            summary=$(tail -n 25 /tmp/financial.log | tr '\n' ' ' | tr -s ' ')
+            echo "::error title=financial-integration::${summary:0:1200}"
+            exit "$status"
+          fi
 
       - name: Financial integrity SQL checks
         working-directory: Backend

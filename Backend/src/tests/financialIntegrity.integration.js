@@ -209,14 +209,21 @@ async function main() {
 
   await record('customer lifetime value uses net totals and separate currencies', async () => {
     const rows = await prisma.orders.findMany({ where: { customer_id: customerId }, select: { total: true, currency: true, recovery_status: true } });
-    const ltv = computeCustomerLifetimeValue(rows);
+    // NUMERIC comes back as Prisma Decimal objects; the service accepts their
+    // exact string form (production callers normalise the same way).
+    const ltv = computeCustomerLifetimeValue(rows.map((row) => ({
+      total: row.total == null ? null : String(row.total),
+      currency: row.currency,
+      recovery_status: row.recovery_status,
+    })));
     assert.equal(ltv.mixed_currency, false);
     assert.equal(ltv.ltv_currency, 'USD');
     assert.equal(ltv.ltv, 364.5);
   });
 
   await record('a customer with two currencies reports mixed instead of a total', async () => {
-    const usd = await prisma.orders.findMany({ where: { customer_id: customerId }, select: { total: true, currency: true, recovery_status: true } });
+    const usd = (await prisma.orders.findMany({ where: { customer_id: customerId }, select: { total: true, currency: true, recovery_status: true } }))
+      .map((row) => ({ total: String(row.total), currency: row.currency, recovery_status: row.recovery_status }));
     const ltv = computeCustomerLifetimeValue([
       ...usd,
       { total: 40, currency: 'EUR', recovery_status: 'completed' },
