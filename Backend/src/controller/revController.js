@@ -836,28 +836,33 @@ async function _touchConversation(conversationId, { titleHint, increment = 2 }) 
 }
 
 async function _loadConversationContext(conversationId, organizationId) {
-  const rows = await prisma.$queryRaw`
-    SELECT summary, context_window
-    FROM conversations
-    WHERE id = ${conversationId}::uuid
-      AND organization_id = ${organizationId}::uuid
-    LIMIT 1
-  `;
-  const row = rows?.[0] || {};
-  let contextWindow = row.context_window ?? null;
-  if (typeof contextWindow === 'string') {
-    try { contextWindow = JSON.parse(contextWindow); } catch { contextWindow = null; }
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT summary, context_window
+      FROM conversations
+      WHERE id = ${conversationId}::uuid
+        AND organization_id = ${organizationId}::uuid
+      LIMIT 1
+    `;
+    const row = rows?.[0] || {};
+    let contextWindow = row.context_window ?? null;
+    if (typeof contextWindow === 'string') {
+      try { contextWindow = JSON.parse(contextWindow); } catch { contextWindow = null; }
+    }
+    const context = {
+      summary: typeof row.summary === 'string' ? row.summary.slice(0, 500) : null,
+      context_window: contextWindow && typeof contextWindow === 'object' && !Array.isArray(contextWindow)
+        ? contextWindow : null,
+    };
+    // Leave room for merchant context within the Python 16 KiB request limit.
+    if (Buffer.byteLength(JSON.stringify(context), 'utf8') > 8 * 1024) {
+      return { summary: context.summary, context_window: null };
+    }
+    return context;
+  } catch (error) {
+    logger.warn('rev_conversation_context_unavailable', { errorType: error.name });
+    return { summary: null, context_window: null };
   }
-  const context = {
-    summary: typeof row.summary === 'string' ? row.summary.slice(0, 500) : null,
-    context_window: contextWindow && typeof contextWindow === 'object' && !Array.isArray(contextWindow)
-      ? contextWindow : null,
-  };
-  // Keep the approved context comfortably below the Python 16 KiB contract.
-  if (Buffer.byteLength(JSON.stringify(context), 'utf8') > 12 * 1024) {
-    return { summary: context.summary, context_window: null };
-  }
-  return context;
 }
 
 function _sseWriter(res) {
