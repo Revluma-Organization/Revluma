@@ -86,7 +86,8 @@ async def _lifespan(_: FastAPI):
         extra={
             "max_concurrent_sync_handlers": 8,
             "db_pool_capacity": 12,
-            "max_concurrent_http_requests": 8,\n            "request_gate_scope": "full_asgi_response_including_streams",
+            "max_concurrent_http_requests": 8,
+            "request_gate_scope": "full_asgi_response_including_streams",
         },
     )
 
