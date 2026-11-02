@@ -14,7 +14,7 @@
  */
 
 import {
-  useState, useRef, useEffect, useCallback, FC,
+  useState, useRef, useEffect, useLayoutEffect, useCallback, FC,
   useMemo,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -849,11 +849,30 @@ function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 
 // dark rail on desktop, a drawer on mobile. History, search and New chat live
 // here so the conversation itself stays the primary surface.
 
+function HistoryStatus({ loading, error, count, query, onRetry, color }: {
+  loading: boolean; error: string | null; count: number; query: string;
+  onRetry: () => void; color: string;
+}) {
+  return <>
+    {loading && <p role="status" className="px-3 py-4 text-center text-xs" style={{ color }}>Loading conversation history…</p>}
+    {error && <div role="alert" className="px-3 py-4 text-center text-xs" style={{ color }}>
+      <p>{error}</p>
+      <button onClick={onRetry} disabled={loading} aria-label="Retry conversation history"
+        className="mt-2 rounded-lg border border-current px-3 py-2 font-semibold">Retry</button>
+    </div>}
+    {(loading || error) && count > 0 && <p className="px-3 pb-2 text-xs" style={{ color }}>Showing previously loaded conversations.</p>}
+    {!loading && !error && count === 0 && <p className="px-3 py-8 text-center text-xs" style={{ color }}>
+      {query.trim() ? "No conversations match this search." : "No conversations yet."}
+    </p>}
+  </>;
+}
+
 function ConversationRail({
-  conversations, activeId, loading, query, onQuery, onNew, onSelect,
+  conversations, activeId, loading, error, onRetry, query, onQuery, onNew, onSelect,
   onRename, onDelete, className,
 }: {
   conversations: Conversation[]; activeId: string | null; loading: boolean;
+  error: string | null; onRetry: () => void;
   query: string; onQuery: (value: string) => void;
   onNew: () => void; onSelect: (id: string) => void;
   onRename: (id: string) => void; onDelete: (id: string) => void;
@@ -904,17 +923,9 @@ function ConversationRail({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-3 [scrollbar-width:thin]">
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin"
-              style={{ borderColor: "#1F06AC", borderTopColor: "transparent" }} />
-          </div>
-        ) : conversations.length === 0 ? (
-          <p className="text-center text-[0.72rem] py-8 px-3" style={{ color: "#6B7280" }}>
-            {query ? "No conversations match this search." : "No conversations yet."}
-          </p>
-        ) : conversations.map((conversation) => {
+      <div aria-busy={loading} className="flex-1 overflow-y-auto px-2 pb-3 [scrollbar-width:thin]">
+        <HistoryStatus loading={loading} error={error} count={conversations.length} query={query} onRetry={onRetry} color="#C5CAD6" />
+        {conversations.map((conversation) => {
           const active = activeId === conversation.id;
           return (
             <div key={conversation.id} className="group relative">
@@ -992,8 +1003,10 @@ export default function RevIntell() {
   const [thinking,       setThinking]       = useState(false);
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [copied,         setCopied]         = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError,   setHistoryError]   = useState<string | null>(null);
   const [convLoading,    setConvLoading]    = useState(false);
+  const [convError,      setConvError]      = useState<string | null>(null);
   const [lastUserMsg,    setLastUserMsg]    = useState<string>("");
   const [convNotFound,   setConvNotFound]   = useState(false);
   const [imageAttachment, setImageAttachment] = useState<{
@@ -1012,6 +1025,11 @@ export default function RevIntell() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
+  const historyRequestRef = useRef(0);
+  const conversationRequestRef = useRef(0);
+  const turnRequestRef = useRef(0);
+  const turnPendingRef = useRef(false);
+  const searchQueryRef = useRef("");
   // Set right before we navigate() to a conversation we just created ourselves,
   // so the URL-sync effect below doesn't redundantly re-fetch and clobber the
   // (already correct) optimistic messages with a fresh server round trip.
@@ -1021,41 +1039,47 @@ export default function RevIntell() {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, thinking]);
 
   // ── Load conversations list ───────────────────────────────────────────────
-  const loadConversations = useCallback(async (searchText = "") => {
+  const loadConversations = useCallback(async (searchText = searchQueryRef.current) => {
+    const query = searchText.trim().slice(0, 120);
+    if (query !== searchQueryRef.current.trim().slice(0, 120)) return;
+    const request = ++historyRequestRef.current;
     setHistoryLoading(true);
+    setHistoryError(null);
     try {
-      const query = searchText.trim();
-      const res = await api.get<{ data: Conversation[] }>(
-        `/rev/conversations${query ? `?q=${encodeURIComponent(query.slice(0, 120))}` : ""}`,
+      const res = await api.get<{ success: boolean; data: Conversation[] }>(
+        `/rev/conversations${query ? `?q=${encodeURIComponent(query)}` : ""}`,
       );
-      const data = (res as any)?.data?.data ?? (res as any)?.data ?? [];
-      setConversations(Array.isArray(data) ? data : []);
+      if (request !== historyRequestRef.current) return;
+      if (res.data.success !== true || !Array.isArray(res.data.data)) throw new Error('Invalid conversation history response.');
+      setConversations(res.data.data);
     } catch {
-      // Silent fail — sidebar just shows empty
+      if (request === historyRequestRef.current) setHistoryError("Conversation history is unavailable. Please try again.");
     } finally {
-      setHistoryLoading(false);
+      if (request === historyRequestRef.current) setHistoryLoading(false);
     }
   }, []);
 
   // ── Load specific conversation ────────────────────────────────────────────
   const loadConversation = useCallback(async (convId: string) => {
+    const request = ++conversationRequestRef.current;
     setConvNotFound(false);
+    setConvError(null);
     setConvLoading(true);
-    setMessages([]);
 
     try {
       const res = await api.get<{
+        success: boolean;
         data: {
           messages: Array<{
             id: string; role: string; content: unknown;
             created_at: string; has_error?: boolean;
           }>;
         };
-      }>(`/rev/conversation/${convId}`);
+      }>(`/rev/conversation/${encodeURIComponent(convId)}`);
 
-      const msgs = (res as any)?.data?.data?.messages
-                ?? (res as any)?.data?.messages
-                ?? [];
+      if (request !== conversationRequestRef.current) return;
+      const msgs = res.data.data?.messages;
+      if (res.data.success !== true || !Array.isArray(msgs)) throw new Error('Invalid conversation response.');
 
       const parsed: Message[] = msgs.map((m: any) => {
         let content: string | RevResponse = "";
@@ -1098,34 +1122,68 @@ export default function RevIntell() {
 
       setMessages(parsed);
     } catch (err: any) {
+      if (request !== conversationRequestRef.current) return;
       if (err?.status === 404 || err?.status === 403) {
         setConvNotFound(true);
+      } else {
+        setConvError("This conversation could not be loaded. Please try again.");
       }
     } finally {
-      setConvLoading(false);
+      if (request === conversationRequestRef.current) setConvLoading(false);
     }
   }, []);
 
   // ── URL → state sync (on mount and when URL changes) ─────────────────────
   // Run on mount (to handle refresh) and whenever the URL conversationId changes.
   // Do NOT gate on activeId — on refresh they start equal so the check would skip loading.
-  useEffect(() => {
+  const resetThread = useCallback(() => {
+    conversationRequestRef.current += 1;
+    turnRequestRef.current += 1;
+    turnPendingRef.current = false;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    justCreatedIdRef.current = null;
+    setThinking(false);
+    setConvLoading(false);
+    setConvNotFound(false);
+    setConvError(null);
+    setMessages([]);
+    setLastUserMsg("");
+    setEvidenceFor(null);
+    setImageAttachment(null);
+    setInput("");
+  }, []);
+
+  useLayoutEffect(() => {
+    // Adoption of a newly created thread keeps its optimistic turn and stream.
+    if (urlConvId && justCreatedIdRef.current === urlConvId) {
+      justCreatedIdRef.current = null;
+      setActiveId(urlConvId);
+      return;
+    }
+    resetThread();
     if (urlConvId) {
       setActiveId(urlConvId);
-      // If this URL change is us navigating to a conversation we just created
-      // in send() below, our local messages are already the authoritative
-      // copy — skip the reload so it can't overwrite them with a duplicate.
-      if (justCreatedIdRef.current === urlConvId) {
-        justCreatedIdRef.current = null;
-        return;
-      }
-      loadConversation(urlConvId);
+      void loadConversation(urlConvId);
     } else {
       setActiveId(null);
-      setMessages([]);
-      setConvNotFound(false);
     }
-  }, [urlConvId]); // loadConversation is stable (useCallback with no deps that change)
+  }, [urlConvId, resetThread, loadConversation]);
+
+  useLayoutEffect(() => () => {
+    historyRequestRef.current += 1;
+    conversationRequestRef.current += 1;
+    turnRequestRef.current += 1;
+    abortRef.current?.abort();
+  }, []);
+
+  const changeSearch = useCallback((value: string) => {
+    searchQueryRef.current = value;
+    historyRequestRef.current += 1;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    setSearchQuery(value);
+  }, []);
 
   // Sidebar search is server-side (titles and message content) and debounced.
   useEffect(() => {
@@ -1135,21 +1193,25 @@ export default function RevIntell() {
 
   // ── New chat ──────────────────────────────────────────────────────────────
   const newChat = useCallback(() => {
+    resetThread();
+    setActiveId(null);
     setMenuOpen(false);
     setEvidenceFor(null);
     setInput("");
     setMessages([]);
     setConvNotFound(false);
     navigate("/dashboard/rev-intell");
-  }, [navigate]);
+  }, [navigate, resetThread]);
 
   // ── Navigate to conversation ──────────────────────────────────────────────
   const openConversation = useCallback((convId: string) => {
+    resetThread();
     setMenuOpen(false);
     setEvidenceFor(null);
     navigate(`/dashboard/rev-intell/${convId}`);
+    if (convId === urlConvId) void loadConversation(convId);
     // URL change triggers the useEffect above which loads the conversation
-  }, [navigate]);
+  }, [navigate, urlConvId, resetThread, loadConversation]);
 
   // ── Turn normalisation ────────────────────────────────────────────────────
   // Node returns the persisted, bounded turn. We keep both the legacy
@@ -1194,7 +1256,19 @@ export default function RevIntell() {
   // Image turns fall back to the non-streaming endpoint, which is the only
   // path that carries attachments — never silently drop an attachment.
   const send = useCallback(async (text: string, options?: { reuseUserMessage?: boolean }) => {
-    if (!text.trim() || thinking) return;
+    if (!text.trim() || turnPendingRef.current || convLoading || convError || convNotFound) return;
+    const turn = ++turnRequestRef.current;
+    turnPendingRef.current = true;
+    const isCurrent = () => turn === turnRequestRef.current;
+    let turnConversationId = activeId;
+    const adoptConversation = (id?: string | null) => {
+      if (!isCurrent() || !id || id === turnConversationId) return;
+      turnConversationId = id;
+      conversationRequestRef.current += 1;
+      justCreatedIdRef.current = id;
+      setActiveId(id);
+      navigate(`/dashboard/rev-intell/${id}`, { replace: true });
+    };
     const trimmed = text.trim();
 
     if (!options?.reuseUserMessage) {
@@ -1217,7 +1291,7 @@ export default function RevIntell() {
     setThinking(true);
 
     const patch = (updater: (message: Message) => Message) => {
-      setMessages(prev => prev.map(message => (message.id === sid ? updater(message) : message)));
+      if (isCurrent()) setMessages(prev => isCurrent() ? prev.map(message => (message.id === sid ? updater(message) : message)) : prev);
     };
     const upsertStep = (step: InvestigationStep) => {
       patch(message => {
@@ -1240,6 +1314,7 @@ export default function RevIntell() {
         body.image_media_type = capturedImage.mediaType;
 
         const res = await api.post<any>("/rev/chat", body);
+        if (!isCurrent()) return;
         const data = (res as any)?.data ?? (res as any);
         if (!data?.success) {
           patch(message => ({
@@ -1248,13 +1323,8 @@ export default function RevIntell() {
             content: cleanError(data?.error?.code, data?.error?.message),
           }));
         } else {
-          const convId = data.conversation_id;
-          if (convId && convId !== activeId) {
-            justCreatedIdRef.current = convId;
-            setActiveId(convId);
-            navigate(`/dashboard/rev-intell/${convId}`, { replace: true });
-            void loadConversations(searchQuery);
-          }
+          adoptConversation(data.conversation_id);
+          void loadConversations();
           const { content, payload } = normaliseTurn(data);
           patch(message => ({ ...message, isStreaming: false, content, payload }));
         }
@@ -1264,7 +1334,10 @@ export default function RevIntell() {
           : "Rev is taking a moment. Please try again shortly.";
         patch(message => ({ ...message, isStreaming: false, hasError: true, content: msg }));
       } finally {
-        setThinking(false);
+        if (isCurrent()) {
+          turnPendingRef.current = false;
+          setThinking(false);
+        }
       }
       return;
     }
@@ -1279,11 +1352,7 @@ export default function RevIntell() {
         signal: controller.signal,
         handlers: {
           onMeta: ({ conversation_id }) => {
-            if (conversation_id && conversation_id !== activeId) {
-              justCreatedIdRef.current = conversation_id;
-              setActiveId(conversation_id);
-              navigate(`/dashboard/rev-intell/${conversation_id}`, { replace: true });
-            }
+            adoptConversation(conversation_id);
           },
           onPlan: (plan) => {
             if (plan.steps?.length) patch(message => ({ ...message, steps: plan.steps }));
@@ -1299,6 +1368,8 @@ export default function RevIntell() {
             }));
           },
           onFinal: (payload) => {
+            if (!isCurrent()) return;
+            adoptConversation(payload.conversation_id);
             const { content } = normaliseTurn(payload);
             patch(message => ({
               ...message,
@@ -1311,6 +1382,8 @@ export default function RevIntell() {
         },
       });
 
+      if (!isCurrent()) return;
+      adoptConversation(result.conversationId);
       patch(message => {
         if (message.hasError) return { ...message, isStreaming: false };
         if (controller.signal.aborted) return { ...message, isStreaming: false, cancelled: true };
@@ -1322,7 +1395,7 @@ export default function RevIntell() {
             : "This response was interrupted. You can generate it again.",
         };
       });
-      void loadConversations(searchQuery);
+      void loadConversations();
     } catch (err) {
       if (controller.signal.aborted) {
         patch(message => ({ ...message, isStreaming: false, cancelled: true }));
@@ -1336,25 +1409,36 @@ export default function RevIntell() {
         patch(message => ({ ...message, isStreaming: false, hasError: true, errorCode: code, content: msg }));
       }
     } finally {
-      if (abortRef.current === controller) abortRef.current = null;
-      setThinking(false);
+      if (isCurrent()) {
+        if (abortRef.current === controller) abortRef.current = null;
+        turnPendingRef.current = false;
+        setThinking(false);
+      }
     }
-  }, [activeId, thinking, navigate, imageAttachment, loadConversations, searchQuery]);
+  }, [activeId, convLoading, convError, convNotFound, navigate, imageAttachment, loadConversations]);
 
   // ── Stop generation ───────────────────────────────────────────────────────
   const stopGeneration = useCallback(() => {
+    turnRequestRef.current += 1;
+    turnPendingRef.current = false;
     abortRef.current?.abort();
+    abortRef.current = null;
+    setThinking(false);
+    setMessages(previous => previous.map(message => message.isStreaming ? { ...message, isStreaming: false, cancelled: true } : message));
   }, []);
 
   // ── Regenerate the previous turn ──────────────────────────────────────────
   // Uses the server-side retry route so the user turn is reused (never
   // duplicated) and stale error turns are cleared.
   const handleRetry = useCallback(async () => {
-    if (thinking) return;
+    if (turnPendingRef.current || convLoading || convError || convNotFound) return;
     if (!activeId) {
       if (lastUserMsg) void send(lastUserMsg);
       return;
     }
+    const turn = ++turnRequestRef.current;
+    turnPendingRef.current = true;
+    const isCurrent = () => turn === turnRequestRef.current;
     const sid = `r${Date.now()}`;
     setMessages(prev => {
       const next = [...prev];
@@ -1373,6 +1457,7 @@ export default function RevIntell() {
     setThinking(true);
     try {
       const res = await api.post<any>(`/rev/conversation/${encodeURIComponent(activeId)}/retry`, {});
+      if (!isCurrent()) return;
       const data = (res as any)?.data ?? (res as any);
       if (!data?.success) {
         setMessages(prev => prev.map(message => message.id === sid ? {
@@ -1388,6 +1473,7 @@ export default function RevIntell() {
         } : message));
       }
     } catch (err) {
+      if (!isCurrent()) return;
       const message = err instanceof ApiError
         ? cleanError(String((err as any).status), err.message)
         : "Rev could not regenerate this response. Try again.";
@@ -1395,10 +1481,13 @@ export default function RevIntell() {
         ...entry, isStreaming: false, hasError: true, content: message,
       } : entry));
     } finally {
-      setThinking(false);
-      void loadConversations(searchQuery);
+      if (isCurrent()) {
+        turnPendingRef.current = false;
+        setThinking(false);
+        void loadConversations();
+      }
     }
-  }, [activeId, thinking, lastUserMsg, send, loadConversations, searchQuery]);
+  }, [activeId, convLoading, convError, convNotFound, lastUserMsg, send, loadConversations]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); }
@@ -1417,8 +1506,10 @@ export default function RevIntell() {
     const f = e.target.files?.[0]; if (!f) return;
     // For images, convert to base64 for Rev to see
     if (f.type.startsWith("image/")) {
+      const request = conversationRequestRef.current;
       const reader = new FileReader();
       reader.onload = () => {
+        if (request !== conversationRequestRef.current) return;
         const base64 = (reader.result as string).split(",")[1];
         setImageAttachment({ base64, mediaType: f.type, preview: reader.result as string, name: f.name });
       };
@@ -1431,8 +1522,10 @@ export default function RevIntell() {
   const handleMedia = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (!f) return;
     if (f.type.startsWith("image/")) {
+      const request = conversationRequestRef.current;
       const reader = new FileReader();
       reader.onload = () => {
+        if (request !== conversationRequestRef.current) return;
         const base64 = (reader.result as string).split(",")[1];
         setImageAttachment({ base64, mediaType: f.type, preview: reader.result as string, name: f.name });
       };
@@ -1448,13 +1541,15 @@ export default function RevIntell() {
 
   const deleteConv = async (id: string) => {
     if (deletingConvId) return;
+    const request = conversationRequestRef.current;
     setDeletingConvId(id);
     setDeleteError(null);
     try {
       await api.delete(`/rev/conversation/${encodeURIComponent(id)}`);
+      void loadConversations();
       setConversations(prev => prev.filter(c => c.id !== id));
       setDeleteConfirmId(null);
-      if (activeId === id) newChat();
+      if (activeId === id && request === conversationRequestRef.current) newChat();
     } catch {
       setDeleteError("Could not delete this conversation. Please try again.");
     } finally {
@@ -1476,6 +1571,7 @@ export default function RevIntell() {
     setRenameStatus("saving");
     try {
       await api.patch(`/rev/conversation/${encodeURIComponent(id)}/title`, { title });
+      void loadConversations();
       setConversations(prev => prev.map(c => c.id === id ? { ...c, title } : c));
       setRenameStatus("saved");
       window.setTimeout(() => {
@@ -1516,8 +1612,10 @@ export default function RevIntell() {
         conversations={conversations}
         activeId={activeId}
         loading={historyLoading}
+        error={historyError}
+        onRetry={() => void loadConversations()}
         query={searchQuery}
-        onQuery={setSearchQuery}
+        onQuery={changeSearch}
         onNew={newChat}
         onSelect={openConversation}
         onRename={renameConv}
@@ -1529,6 +1627,7 @@ export default function RevIntell() {
       {/* Hamburger (mobile) */}
       <div className="absolute top-4 right-4 z-30 lg:hidden">
         <button onClick={() => setMenuOpen(v => !v)}
+          aria-label={menuOpen ? "Close conversation history" : "Open conversation history"} aria-expanded={menuOpen}
           className="flex items-center justify-center w-9 h-9 rounded-xl transition-all hover:opacity-80"
           style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)", color: t2 }}>
           {menuOpen ? <X size={18} /> : <Menu size={18} />}
@@ -1562,6 +1661,7 @@ export default function RevIntell() {
                   <span className="text-[0.88rem] font-bold" style={{ color: t1 }}>Rev Intell</span>
                 </div>
                 <button onClick={() => setMenuOpen(false)}
+                  aria-label="Close conversation history"
                   className="p-1 rounded-lg opacity-50 hover:opacity-100 transition-opacity" style={{ color: t1 }}>
                   <X size={16} />
                 </button>
@@ -1575,14 +1675,10 @@ export default function RevIntell() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-3 pb-4 [scrollbar-width:none]">
-                {historyLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-[#1F06AC] animate-spin" />
-                  </div>
-                ) : conversations.length === 0 ? (
-                  <p className="text-center text-[0.75rem] py-8" style={{ color: t4 }}>No conversations yet</p>
-                ) : (
+              <div aria-busy={historyLoading} className="flex-1 overflow-y-auto px-3 pb-4 [scrollbar-width:none]">
+                <HistoryStatus loading={historyLoading} error={historyError} count={conversations.length}
+                  query={searchQuery} onRetry={() => void loadConversations()} color={t2} />
+                {conversations.length > 0 && (
                   <>
                     <p className="px-2 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.1em]" style={{ color: t4 }}>
                       Recent
@@ -1608,7 +1704,7 @@ export default function RevIntell() {
 
         {/* Conversation loading */}
         {convLoading && (
-          <div className="flex items-center justify-center h-full">
+          <div role="status" className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center gap-3">
               <div className="w-6 h-6 rounded-full border-2 border-t-transparent border-[#1F06AC] animate-spin" />
               <p className="text-[0.8rem]" style={{ color: t2 }}>Loading conversation...</p>
@@ -1629,6 +1725,18 @@ export default function RevIntell() {
               </button>
             </div>
           </div>
+        )}
+
+        {convError && !convLoading && <div role="alert" className="flex h-full items-center justify-center px-6">
+          <div className="text-center" style={{ color: t1 }}>
+            <p className="mb-4 text-sm">{convError}</p>
+            <button onClick={() => activeId && void loadConversation(activeId)} aria-label="Retry conversation"
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ background: "#1F06AC" }}>Retry</button>
+          </div>
+        </div>}
+
+        {activeId && !hasMessages && !convLoading && !convNotFound && !convError && (
+          <p role="status" className="px-6 py-8 text-center text-sm" style={{ color: t2 }}>No messages in this conversation yet.</p>
         )}
 
         {/* Welcome screen */}
@@ -1688,7 +1796,7 @@ export default function RevIntell() {
         )}
 
         {/* Message thread */}
-        {hasMessages && !convLoading && (
+        {hasMessages && !convLoading && !convNotFound && !convError && (
           <div className="max-w-2xl mx-auto px-5 pt-8 pb-4 lg:pt-6">
             {messages.map(msg => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
@@ -1703,7 +1811,7 @@ export default function RevIntell() {
       </div>
 
       {/* Sticky input — active conversation */}
-      {hasMessages && !convLoading && (
+      {(hasMessages || activeId) && !convLoading && !convNotFound && !convError && (
         <div className="shrink-0 px-4 pb-4 pt-2 border-t" style={{ borderColor: bdr, background: bg }}>
           <div className="max-w-2xl mx-auto">
             {/* Image attachment preview */}
