@@ -179,14 +179,30 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/revluma_rc
           PYTHONPATH: .
-        run: python -m pytest tests -q
+        run: |
+          set +e
+          python -m pytest tests -q --tb=short 2>&1 | tee /tmp/pytest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            failed=$(grep -E '^(FAILED|ERROR) ' /tmp/pytest.log | head -n 8 | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=python-suite::${failed:-pytest exited $status}"
+            exit "$status"
+          fi
 
       - name: Revenue evidence acceptance on real PostgreSQL
         working-directory: python
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/revluma_rc
           PYTHONPATH: .
-        run: python scripts/staging_revenue_acceptance.py
+        run: |
+          set +e
+          python scripts/staging_revenue_acceptance.py 2>&1 | tee /tmp/acceptance.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 12 /tmp/acceptance.log | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=revenue-acceptance::${summary:-exited $status}"
+            exit "$status"
+          fi
 
   dashboard:
     name: Dashboard suite and production build
