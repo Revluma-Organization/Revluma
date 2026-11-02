@@ -127,15 +127,42 @@ jobs:
 
       - name: Financial integrity SQL checks
         working-directory: Backend
-        run: psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 -f scripts/staging/verify-financial-integrity.sql
+        run: |
+          set +e
+          psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 \
+            -f scripts/staging/verify-financial-integrity.sql 2>&1 | tee /tmp/verify-financial-integrity.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -E 'ERROR|EXCEPTION' /tmp/verify-financial-integrity.log | tail -n 3 | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=financial-sql::${summary:-psql exited $status with no ERROR line}"
+            exit "$status"
+          fi
 
       - name: Data API isolation checks
         working-directory: Backend
-        run: psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 -f scripts/staging/verify-data-api-isolation.sql
+        run: |
+          set +e
+          psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 \
+            -f scripts/staging/verify-data-api-isolation.sql 2>&1 | tee /tmp/verify-data-api-isolation.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -E 'ERROR|EXCEPTION' /tmp/verify-data-api-isolation.log | tail -n 3 | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=data-api-isolation::${summary:-psql exited $status with no ERROR line}"
+            exit "$status"
+          fi
 
       - name: Supabase function hardening checks
         working-directory: Backend
-        run: psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 -f scripts/staging/verify-security-hardening.sql
+        run: |
+          set +e
+          psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 \
+            -f scripts/staging/verify-security-hardening.sql 2>&1 | tee /tmp/verify-security-hardening.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -E 'ERROR|EXCEPTION' /tmp/verify-security-hardening.log | tail -n 3 | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=security-hardening::${summary:-psql exited $status with no ERROR line}"
+            exit "$status"
+          fi
 
       - uses: actions/setup-python@v5
         with:

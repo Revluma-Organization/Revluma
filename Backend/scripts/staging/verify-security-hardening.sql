@@ -78,8 +78,8 @@ BEGIN
   VALUES (member, 'Staging Member', 'member-' || member || '@example.invalid', 'staging-only'),
          (outsider, 'Staging Outsider', 'outsider-' || outsider || '@example.invalid', 'staging-only');
 
-  INSERT INTO organizations (id, owner_id, company_name, industry, country)
-  VALUES (org, member, 'Staging Security Org', 'test', 'NG');
+  INSERT INTO organizations (id, owner_id, company_name, industry, country, slug)
+  VALUES (org, member, 'Staging Security Org', 'test', 'NG', 'staging-security-' || org);
 
   INSERT INTO organization_members (organization_id, user_id, role, status)
   VALUES (org, member, 'owner', 'active');

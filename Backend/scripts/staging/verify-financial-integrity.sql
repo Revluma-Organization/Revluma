@@ -77,8 +77,8 @@ BEGIN
   INSERT INTO users (id, full_name, email, password_hash)
   VALUES (usr, 'Staging Verification', 'staging-' || usr || '@example.invalid', 'not-a-real-hash');
 
-  INSERT INTO organizations (id, owner_id, company_name, industry, country)
-  VALUES (org, usr, 'Staging Verification Org', 'test', 'NG');
+  INSERT INTO organizations (id, owner_id, company_name, industry, country, slug)
+  VALUES (org, usr, 'Staging Verification Org', 'test', 'NG', 'staging-verify-' || org);
 
   INSERT INTO stores (id, organization_id, platform, shop_domain, status, last_synced_at)
   VALUES (store_usd, org, 'shopify', 'staging-verify-usd.myshopify.com', 'active', now()),
