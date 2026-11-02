@@ -93,3 +93,40 @@ Still NOT done, in dependency order: CI observation on this branch → merge to
 close out why rebuilds stopped at ~08:00 UTC (still undiagnosed) → LIVE-001…015
 against a real authorized merchant → one-time prune of the 33,712 superseded rows
 (destructive; needs explicit approval).
+
+### Merge and deployment — 2026-11-02
+
+PR #245 merged to `origin/main` as **`192b2d0`** after all 8 CI checks passed on
+`9936caa` (`python-regressions`, `Backend test suite`, `backend`, `Dashboard suite
+and production build`, `dashboard`, `Prisma bootstrap, financial and security
+regressions`, `Vercel`, `Vercel Preview Comments`). Branch protection not
+bypassed; all 8 commits verified as ancestors of `origin/main`.
+
+Vercel production **`dpl_65xZ4GTEWcmevzd5dMQhW5eGCFbe`** at `192b2d0` —
+`READY` / `PROMOTED`, aliased to `revluma.vercel.app`, `timeToReady` 96,594 ms,
+region `iad1`. **Frontend only.**
+
+Render Node and Python: **not confirmed deployed**; neither can be triggered nor
+observed from this environment. Production database observation at 11:41:43 UTC
+(read-only): newest Business State snapshot still `08:00:20 UTC`, 0 rows in the
+last 20 minutes, **0 of 5 current snapshots valid**, while Node synced a store at
+`11:33:55 UTC`. The scheduler polls every 60 s and all five snapshots are
+expired, so a healthy Python service would have rebuilt within about a minute of
+boot. It has not. The merge landed at 11:35:28 UTC and a Render Python build
+(`pip install` including scikit-learn) can take many minutes, so this is
+**inconclusive rather than proof of failure** — but "Python is healthy in
+production" is unproven and on current evidence still false.
+
+Open items requiring action outside this environment:
+1. Confirm the Render Python service deployed `192b2d0` and read its boot logs —
+   this also closes out why rebuilds stopped at ~08:00 UTC, which is still
+   undiagnosed (local lifespan boot succeeds).
+2. Confirm the Render Node service deployed `192b2d0`.
+3. Re-observe `business_states`: expect a new snapshot within ~60 s of a healthy
+   Python boot, and `count(*)` to begin falling from 33,717 as retention prunes.
+4. Execute LIVE-001…LIVE-015 read-only against the real authorized merchant
+   (candidate: store `3ed79446-cb6d-4a1c-b174-9ec1ab91fe15`, organization
+   `1dc6aa19-9737-4770-a340-ff812a8b139a`, `revluma-test-store-v1.myshopify.com`,
+   all 24 scopes granted).
+5. Decide on the one-time prune of 33,712 superseded rows (destructive; needs
+   explicit approval).

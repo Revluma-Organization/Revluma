@@ -3,10 +3,13 @@
 - **Date:** 2026-11-02
 - **Branch:** `arena/c85e524b-revluma`, based on `main@941640b`
 - **Head at time of writing:** `46c0827` (PR #245, all 8 CI checks green)
-- **Overall verdict:** **NOT PRODUCTION-READY. NOT LIVE-VERIFIED. NOT MERGED. NOT DEPLOYED.**
-  Implementation and automated verification are complete; live merchant
-  acceptance has **not** been executed and cannot be executed from this
-  environment. Section 9 lists every unexecuted mandatory gate.
+- **Overall verdict:** **MERGED and frontend DEPLOYED. NOT production-ready and
+  NOT live-verified.** Implementation, automated verification and CI are green;
+  the work is on `origin/main` and the Vercel frontend is promoted to
+  production. The Render services are **not confirmed deployed**, live merchant
+  acceptance has **not** been executed, and production evidence at 11:38 UTC
+  shows the Python service still has not rebuilt a Business State snapshot since
+  08:00:20 UTC. Section 9 lists every unexecuted mandatory gate.
 
 This report separates what was measured from what was not. Nothing below is
 marked passed unless the evidence exists in this workspace.
@@ -255,6 +258,48 @@ build, and fixing them would be unrelated collateral change.
 
 ---
 
+## 4b. Merge and deployment evidence
+
+| Item | Value |
+| --- | --- |
+| Pull request | #245, `arena/c85e524b-revluma` → `main` |
+| Merge commit on `origin/main` | **`192b2d0ed7596796fe6aaabc6bb13e2e0a647d5d`** |
+| Merge strategy | `gh pr merge 245 --merge` (no branch protection bypass) |
+| All 8 branch commits verified ancestors of `origin/main` | `c888117`, `9782d88`, `80b2765`, `5f9681d`, `5a99564`, `e295f2c`, `46c0827`, `9936caa` — all **IN MAIN** |
+| Vercel production deployment | **`dpl_65xZ4GTEWcmevzd5dMQhW5eGCFbe`** |
+| Vercel state | `status: READY`, `ready_state: READY`, `readySubstate: PROMOTED`, `target: production` |
+| Vercel git source | `github / main / 192b2d0ed7596796fe6aaabc6bb13e2e0a647d5d` |
+| Vercel aliases | `revluma.vercel.app`, `revluma-splendor-dev01s-projects.vercel.app`, `revluma-git-main-splendor-dev01s-projects.vercel.app` (`aliasAssigned: true`) |
+| Vercel build | `timeToReady` 96,594 ms, region `iad1`, build cache hit |
+| Previous production (rollback target) | `dpl_3mXszWAt3nJKUF6aFZyy8JrieNQb` at `941640b` |
+| Render Node service | **NOT CONFIRMED** — cannot be triggered or observed from this environment |
+| Render Python service | **NOT CONFIRMED** — cannot be triggered or observed from this environment |
+
+Vercel hosts the **frontend only**. A green Vercel promotion says nothing about
+whether the Node or Python services are running the merged code, and it must not
+be read as an end-to-end deployment.
+
+### Production database observation after the merge (read-only, 11:38:25 UTC)
+
+Queried directly against Supabase project `jblpgqmbgdlzitprudgt`:
+
+| Signal | Value | Reading |
+| --- | --- | --- |
+| `now()` | `2026-11-02 11:38:25+00` | — |
+| `max(stores.last_synced_at)` | `2026-11-02 11:33:55+00` | **Node is alive and syncing normally** |
+| `max(business_states.generated_at)` | `2026-11-02 08:00:20+00` | **Python has not rebuilt in 3h38m** |
+| rows created in last 30 min | `0` | No rebuild activity |
+| current snapshots with `valid_until > now()` | `0` of 5 | Every snapshot is expired |
+| `count(*)` business_states | `33,717` (unchanged) | Retention pruning has not yet run, consistent with Python being down |
+
+The merge landed at 11:35:28 UTC, roughly three minutes before this query, so a
+Render build may simply not have finished. **This is not evidence that the fix
+failed** — but it is also not evidence that it worked. The question "is the
+Python service running `192b2d0` and rebuilding snapshots?" is **open** and can
+only be closed from Render logs and a later database observation.
+
+---
+
 ## 5. Live production state observed (read-only)
 
 Supabase project `jblpgqmbgdlzitprudgt`, inspected read-only on 2026-11-02
@@ -325,10 +370,10 @@ reported as passed.
 | # | Gate | Status | Exact blocker |
 | --- | --- | --- | --- |
 | 1 | **LIVE-001 … LIVE-015** merchant acceptance (≥ 5 must pass, including follow-up, evidence, freshness and unknown-question cases) | **NOT EXECUTED** | No outbound HTTP from this environment to `revluma-backend-vrsd.onrender.com` or `revluma.vercel.app`. Allowlisted hosts are github.com, codeload.github.com, api.github.com, registry.npmjs.org, pypi.org, files.pythonhosted.org only. Requires a human or CI runner with network access to the deployed stack and a real authorized connected merchant. |
-| 2 | **Merge to `origin/main`** | **NOT DONE** | Deliberate: the mandate requires gates to pass first, and gate 1 cannot be executed here. A pull request is the correct next step; branch protection must not be bypassed. |
-| 3 | **Deploy to Vercel (frontend)** | **NOT DONE** | Follows merge. Current production remains `dpl_3mXszWAt3nJKUF6aFZyy8JrieNQb` at `941640b`, which contains the boot-breaking syntax error. |
-| 4 | **Deploy Node service to Render** | **NOT DONE** | Follows merge. Render redeploy cannot be triggered or observed from this environment. |
-| 5 | **Deploy Python service to Render** | **NOT DONE** | Follows merge. Render logs are the only way to confirm why Python stopped rebuilding at ~08:00 UTC; local lifespan boot succeeds, so the residual failure is deploy/config-side and remains **undiagnosed**. |
+| 2 | **Merge to `origin/main`** | **DONE** | Merged as `192b2d0` via `gh pr merge 245 --merge` after all 8 CI checks passed on `9936caa`. Branch protection was not bypassed. See section 4b. |
+| 3 | **Deploy to Vercel (frontend)** | **DONE — READY/PROMOTED** | `dpl_65xZ4GTEWcmevzd5dMQhW5eGCFbe` at `192b2d0`, aliased to `revluma.vercel.app`. Frontend only; see section 4b. |
+| 4 | **Deploy Node service to Render** | **NOT CONFIRMED** | Render cannot be triggered or observed from this environment (host outside the allowlist; no Render connector). Node was already healthy before the merge (store sync 11:33:55 UTC) but whether it runs `192b2d0` is unverified. **User action required.** |
+| 5 | **Deploy Python service to Render** | **NOT CONFIRMED — and production still shows it down** | As of 11:38:25 UTC the newest Business State snapshot is still 08:00:20 UTC and 0 of 5 current snapshots are valid, while Node synced at 11:33:55 UTC. The merge landed only ~3 minutes earlier, so a Render build may not have completed. Render logs are required both to confirm the deploy and to close out why rebuilds stopped at ~08:00 UTC — local lifespan boot succeeds, so any residual failure is deploy/config-side and remains **undiagnosed**. **User action required.** |
 | 6 | **Backend `npm test`** | **CLOSED VIA CI** | Could not run locally (`prisma generate` requires `binaries.prisma.sh`, outside the allowlist). CI `Backend test suite` and `backend` both **pass** on `46c0827`, and `Prisma bootstrap, financial and security regressions` runs the Backend suite Prisma-backed and passes. |
 | 7 | **CI run on this branch** | **CLOSED — ALL GREEN** | All 8 checks pass on `46c0827`; see section 4. Note that Actions *log* download remains blocked (`results-receiver.actions.githubusercontent.com` is outside the allowlist, `gh run view --log-failed` returns EOF); failure detail was obtained from check-run **annotations** via `api.github.com` instead. |
 | 8 | **One-time prune of 33,712 superseded `business_states` rows** | **NOT PERFORMED** | Destructive production data operation. Requires explicit approval. The automatic retention policy is in place and draining, so this is an optimisation, not a correctness dependency. |
@@ -350,10 +395,20 @@ Per the mandate's rules, explicitly:
 - **Not live-verified.** Every test result in section 4 comes from local runs
   against fixtures, in-memory fakes or SQLite. No result in this report was
   produced against a live merchant, a live Shopify connection or a live provider.
-- **Not merged.** A pull request is the next step. Nothing is on `main`.
-- **Not deployed.** No Vercel deployment, Render build or Render service was
-  created, promoted or observed by this work. Production still runs `941640b`,
-  which contains the boot-breaking syntax error.
+- **Merged — this claim is now true and evidenced.** PR #245 was merged to
+  `origin/main` as `192b2d0` after all 8 CI checks passed, without bypassing
+  branch protection. All 8 commits were verified as ancestors of `origin/main`.
+- **Partially deployed.** The **Vercel frontend** is `READY`/`PROMOTED` at
+  `192b2d0` (`dpl_65xZ4GTEWcmevzd5dMQhW5eGCFbe`, aliased to `revluma.vercel.app`)
+  — that is a verified fact read from the Vercel API, not an inference. The
+  **Render Node and Python services are NOT confirmed deployed**: they could be
+  neither triggered nor observed from this environment. Vercel hosts the frontend
+  only, so its green promotion is **not** an end-to-end deployment claim.
+- **The production symptom is not confirmed resolved.** At 11:38:25 UTC the
+  newest Business State snapshot was still 08:00:20 UTC and 0 of 5 current
+  snapshots were valid. The boot fix is merged and the frontend is live, but
+  "Python is healthy in production" is **unproven** and, on the evidence
+  available, still false at the time of writing.
 - **No migration claim.** No migration was added, run or verified.
 - **Tenant isolation** passed as *automated fixture tests only* — not as a live
   cross-tenant verification.
