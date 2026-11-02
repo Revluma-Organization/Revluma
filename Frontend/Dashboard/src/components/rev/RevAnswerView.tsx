@@ -35,7 +35,7 @@ export function RevAnswerView({
   const evidenceCount = payload.evidence?.items?.length ?? 0;
   const evidenceById = new Map(
     [...(payload.evidence?.items ?? []), ...(payload.evidence?.comparison_items ?? [])]
-      .map((item) => [item.id, item]),
+      .map((item) => [item.id, item] as const),
   );
   const citedEvidenceIds = [...new Set([
     ...(payload.facts ?? []), ...(payload.comparison_facts ?? []),
