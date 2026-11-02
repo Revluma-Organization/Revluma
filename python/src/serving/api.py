@@ -57,6 +57,7 @@ from src.config.model_registry import (
 from src.automation.runner import run_automation_cycle as _run_automation_cycle
 from src.intelligence.business_state import (
     BusinessStateBuildInProgress,
+    BusinessStateLockUnavailable,
     build_business_state as _build_business_state,
 )
 from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
@@ -77,12 +78,12 @@ async def _lifespan(_: FastAPI):
     # pool. Without this cap, FastAPI's default 40 worker tokens can create
     # more concurrent DB sessions than this single Render instance should use.
     thread_limiter = anyio.to_thread.current_default_thread_limiter()
-    thread_limiter.total_tokens = 16
+    thread_limiter.total_tokens = 8
     logger.info(
         "request_threadpool_capacity_configured",
         extra={
-            "max_concurrent_sync_handlers": 16,
-            "db_pool_capacity": 16,
+            "max_concurrent_sync_handlers": 8,
+            "db_pool_capacity": 12,
         },
     )
 
@@ -600,6 +601,11 @@ def _rebuild_business_state(organization_id: str) -> BusinessStateRebuildRespons
             raise HTTPException(
                 status_code=409,
                 detail="A business-state rebuild is already running for this organization.",
+            ) from exc
+        except BusinessStateLockUnavailable as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Business-state rebuilding is temporarily unavailable because the shared lock service is unavailable.",
             ) from exc
         return BusinessStateRebuildResponse(
             organization_id=state.organization_id,
