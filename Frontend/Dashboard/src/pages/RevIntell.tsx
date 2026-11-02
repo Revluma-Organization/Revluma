@@ -537,7 +537,7 @@ function Bubble({ msg, onCopy, onRetry, onSend, onOpenEvidence, evidenceOpen, is
       className="flex gap-3 mb-7 group">
       <OrbAvatar />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-1">
           <span className="text-[0.73rem] font-bold" style={{ color: t1 }}>Rev Intelligence</span>
           <span className="text-[0.65rem]" style={{ color: isDark ? "#374151" : "#c4c9d4" }}>
             {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
