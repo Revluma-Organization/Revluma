@@ -1,6 +1,7 @@
 const { prisma } = require('../configs/database');
 const logger = require('../utils/logger');
 const { predictChurnRisk } = require('./mlService');
+const { verifiedCustomerLifetimeValue } = require('./financialIntegrity');
 
 function average(values) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
@@ -65,11 +66,18 @@ async function buildChurnFeatures(customer) {
   const couponPrior = rate(orders31to90.filter((order) => order.coupon_used).length, orders31to90.length);
   const currentAov = average(recentOrders.map((order) => Number(order.total)));
   const priorAov = average(priorOrders.map((order) => Number(order.total)));
+  // Lifetime value is a stored merchant figure. It is only usable when a
+  // single currency is verified for it; mixed or unlabelled values are sent as
+  // null so the model cannot treat a currency-less total as USD.
+  const lifetime = verifiedCustomerLifetimeValue(customer);
+  const orderCount = Math.max(1, Number(customer.orders_count || 0));
 
   return {
     past_orders_total: Number(customer.orders_count || orders.length),
     days_since_last_purchase: lastOrderAt ? Math.max(0, Math.floor((now - lastOrderAt.getTime()) / day)) : -1,
-    avg_order_value: Number(customer.ltv || 0) / Math.max(1, Number(customer.orders_count || 0)),
+    avg_order_value: lifetime.value === null
+      ? null
+      : Number((lifetime.value / orderCount).toFixed(2)),
     purchase_frequency_trend: trend(orders30.length, orders31to90.length / 2),
     rfm_recency_score: rfmScore(customer.rfm_recency),
     rfm_frequency_score: rfmScore(customer.rfm_frequency),
@@ -88,7 +96,10 @@ async function buildChurnFeatures(customer) {
     support_contact_frequency_90d: 0,
     discount_seeking_escalation: coupon30 - couponPrior,
     unsubscribe_risk_score: customer.consent_email === false ? 1 : 0,
-    customer_ltv: Number(customer.ltv || 0),
+    customer_ltv: lifetime.value,
+    customer_ltv_currency: lifetime.currency,
+    customer_ltv_mixed_currency: lifetime.mixed,
+    customer_ltv_verified: lifetime.verified,
   };
 }
 

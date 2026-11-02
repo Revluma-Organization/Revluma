@@ -3,6 +3,15 @@ const { prisma } = require('../configs/database');
 const logger = require('../utils/logger');
 const { rfmSync } = require('./mlService');
 const { lastCheckoutActivity, nextCheckoutStatus } = require('./checkoutInactivity');
+const { shopifyNetOrderTotal, shopifyRefundedAmount } = require('./shopifyOrderFinancials');
+const {
+  computeCustomerLifetimeValue,
+  normalizeCurrency,
+  reconcileOrderMoney,
+  parseAmount,
+  requireCurrency,
+  resolveOrderRecoveryStatus,
+} = require('./financialIntegrity');
 
 function safeCompareHex(actual, expected) {
   if (!actual || !expected || actual.length !== expected.length) return false;
@@ -72,46 +81,33 @@ function customerData(provider, payload) {
 }
 
 async function recalculateCustomerTotals(tx, customerId) {
-  const aggregate = await tx.orders.aggregate({
+  // Lifetime value must never mix currencies. The aggregate is computed in
+  // application code from currency-tagged orders; a mixed-currency customer is
+  // stored with a null LTV and an explicit mixed-currency marker.
+  const orders = await tx.orders.findMany({
     where: {
       customer_id: customerId,
       OR: [{ recovery_status: null }, { recovery_status: { not: 'cancelled' } }],
     },
-    _count: { id: true },
-    _sum: { total: true },
+    select: { total: true, currency: true, recovery_status: true },
   });
+  const normalised = orders.map((order) => ({
+    total: order.total == null ? null : String(order.total),
+    currency: order.currency,
+    recovery_status: order.recovery_status,
+  }));
+  const ltv = computeCustomerLifetimeValue(normalised);
   await tx.customers.update({
     where: { id: customerId },
     data: {
-      orders_count: aggregate._count.id,
-      ltv: aggregate._sum.total || 0,
+      orders_count: ltv.orders_count,
+      ltv: ltv.ltv,
+      ltv_currency: ltv.ltv_currency,
+      ltv_mixed_currency: ltv.mixed_currency,
       updated_at: new Date(),
     },
   });
-}
-
-/**
- * Shopify orders/update webhooks retain the original total_price after refunds.
- * Refund transactions are authoritative for cash refunded; ignore pending or
- * failed transactions and do not subtract the order's current_total_price twice.
- * Return null for malformed refund evidence rather than inventing net revenue.
- */
-function shopifyNetOrderTotal(payload) {
-  const gross = Number(payload.total_price);
-  if (!Number.isFinite(gross) || gross < 0) return null;
-  if (!Array.isArray(payload.refunds) || payload.refunds.length === 0) return gross;
-  let refunded = 0;
-  for (const refund of payload.refunds) {
-    if (!Array.isArray(refund.transactions)) return null;
-    for (const transaction of refund.transactions) {
-      if (String(transaction.kind || '').toLowerCase() !== 'refund') continue;
-      if (String(transaction.status || '').toLowerCase() !== 'success') continue;
-      const amount = Number(transaction.amount);
-      if (!Number.isFinite(amount) || amount < 0) return null;
-      refunded += amount;
-    }
-  }
-  return Math.max(0, Math.round((gross - refunded) * 100) / 100);
+  return ltv;
 }
 
 // Task 025: safe, bounded diagnostic identity. Never persist customer details or raw payloads.
@@ -179,19 +175,43 @@ async function upsertOrder(store, provider, payload) {
   const customer = customerData(provider, payload);
   const orderExternalId = String(payload.id || payload.order_id);
   const orderDate = new Date(payload.created_at || payload.date_created || Date.now());
-  const calculated = provider === 'shopify' ? shopifyNetOrderTotal(payload) : Number(payload.total_price ?? payload.total ?? 0);
+  const calculated = provider === 'shopify'
+    ? shopifyNetOrderTotal(payload)
+    : parseAmount(payload.total_price ?? payload.total);
   if (calculated === null || !Number.isFinite(calculated)) {
     const error = new Error('Order financial totals cannot be verified');
     error.code = 'ORDER_FINANCIAL_TOTAL_UNVERIFIED';
     throw error;
   }
   const total = calculated;
-  const subtotal = Number(payload.subtotal_price ?? payload.subtotal ?? total);
-  const discountAmount = Math.max(0, Number(payload.total_discounts ?? payload.discount_total ?? 0));
+  // Never substitute USD or zero for a missing currency/amount. A malformed
+  // financial record fails closed rather than corrupting revenue or LTV.
+  const currency = requireCurrency(payload.currency ?? payload.currency_code, {
+    code: 'ORDER_CURRENCY_UNVERIFIED', context: 'order',
+  });
+  const rawSubtotal = payload.subtotal_price ?? payload.subtotal;
+  const subtotalValue = rawSubtotal == null ? total : parseAmount(rawSubtotal);
+  if (subtotalValue === null) {
+    const error = new Error('Order subtotal cannot be verified');
+    error.code = 'ORDER_SUBTOTAL_UNVERIFIED';
+    throw error;
+  }
+  const rawDiscount = payload.total_discounts ?? payload.discount_total;
+  const discountValue = rawDiscount == null ? 0 : parseAmount(rawDiscount);
+  if (discountValue === null) {
+    const error = new Error('Order discount cannot be verified');
+    error.code = 'ORDER_DISCOUNT_UNVERIFIED';
+    throw error;
+  }
+  const subtotal = subtotalValue;
+  const discountAmount = Math.max(0, discountValue);
   const discountPct = subtotal > 0 ? Math.min(100, (discountAmount / subtotal) * 100) : 0;
   const couponCode = payload.discount_codes?.[0]?.code || payload.coupon_lines?.[0]?.code || null;
-  const currency = payload.currency || 'USD';
   const lineItems = payload.line_items || payload.products || [];
+  // `orders.total` is net of refunds; the refunded amount is kept alongside it so
+  // gross value can be reconstructed (net + refunded) instead of guessed. A null
+  // here means the payload carried no verifiable refund evidence.
+  const refundedTotal = shopifyRefundedAmount(payload);
 
   return prisma.$transaction(async (tx) => {
     const dbCustomer = await tx.customers.upsert({
@@ -216,7 +236,22 @@ async function upsertOrder(store, provider, payload) {
       },
     });
 
-    const existingOrder = await tx.orders.findFirst({ where: { store_id: store.id, external_order_id: orderExternalId }, select: { source_checkout_id: true, source_checkout_token: true, source_cart_token: true } });
+    const existingOrder = await tx.orders.findFirst({
+      where: { store_id: store.id, external_order_id: orderExternalId },
+      select: {
+        source_checkout_id: true, source_checkout_token: true, source_cart_token: true,
+        recovery_status: true, total: true, refunded_total: true,
+      },
+    });
+    // A cancellation observed before the order row existed is a tombstone.
+    // It must survive a delayed create/update and keep the order out of revenue.
+    const cancellationTombstone = await tx.order_cancellation_tombstones.findUnique({
+      where: { store_id_external_order_id: { store_id: store.id, external_order_id: orderExternalId } },
+      select: { observed_at: true },
+    });
+    const recoveryStatus = resolveOrderRecoveryStatus({
+      existing: existingOrder, tombstone: cancellationTombstone,
+    });
     const orderEvidence = sourceIdentifiers(payload, 'order');
     let sourceConflict = false;
     let safeOrderEvidence;
@@ -229,6 +264,11 @@ async function upsertOrder(store, provider, payload) {
       sourceConflict = true;
       safeOrderEvidence = {};
     }
+    const reconciled = reconcileOrderMoney({
+      incomingNet: total,
+      incomingRefunded: refundedTotal,
+      storedRefunded: existingOrder?.refunded_total ?? null,
+    });
     const order = await tx.orders.upsert({
       where: { store_id_external_order_id: { store_id: store.id, external_order_id: orderExternalId } },
       create: {
@@ -237,6 +277,7 @@ async function upsertOrder(store, provider, payload) {
         external_order_id: orderExternalId,
         ...orderEvidence,
         total,
+        refunded_total: refundedTotal,
         subtotal,
         discount_amount: discountAmount,
         discount_pct: discountPct,
@@ -244,12 +285,16 @@ async function upsertOrder(store, provider, payload) {
         coupon_used: Boolean(payload.discount_codes?.length || payload.coupon_lines?.length),
         coupon_code: couponCode,
         ordered_at: orderDate,
-        recovery_status: 'completed',
+        recovery_status: recoveryStatus,
       },
       update: {
         customer_id: dbCustomer.id,
         ...safeOrderEvidence,
-        total,
+        // A delayed pre-refund snapshot must not resurrect refunded revenue:
+        // the recorded refunded amount is monotonic and any refund this payload
+        // has not seen yet is still deducted from its net total.
+        total: reconciled.total,
+        refunded_total: reconciled.refunded_total,
         currency,
         ordered_at: orderDate,
         subtotal,
@@ -257,13 +302,22 @@ async function upsertOrder(store, provider, payload) {
         discount_pct: discountPct,
         coupon_used: Boolean(payload.discount_codes?.length || payload.coupon_lines?.length),
         coupon_code: couponCode,
+        recovery_status: recoveryStatus,
       },
     });
 
     for (const item of lineItems) {
       const externalLineItemId = String(item.id || item.line_item_id || `${orderExternalId}:${item.product_id || item.name}`);
-      const quantity = Math.max(1, Number(item.quantity || 1));
-      const unitPrice = Number(item.price || item.unit_price || 0);
+      const quantity = Number(item.quantity);
+      const unitPrice = parseAmount(item.price ?? item.unit_price);
+      // A malformed line item is skipped rather than persisted as a zero-value
+      // sale. The order's validated total is unaffected.
+      if (!Number.isInteger(quantity) || quantity < 1 || unitPrice === null) {
+        logger.warn('shopify_line_item_financials_unverified', {
+          store_id: store.id, external_order_id: orderExternalId,
+        });
+        continue;
+      }
       await tx.order_items.upsert({
         where: { store_id_external_line_item_id: { store_id: store.id, external_line_item_id: externalLineItemId } },
         create: {
@@ -423,12 +477,33 @@ async function upsertOrder(store, provider, payload) {
 async function cancelOrder(store, payload) {
   const externalOrderId = String(payload.id || payload.order_id || '');
   if (!externalOrderId) return null;
+  const cancelledAt = payload.cancelled_at ? new Date(payload.cancelled_at) : null;
+  const currency = normalizeCurrency(payload.currency ?? payload.currency_code);
+  const total = parseAmount(payload.total_price ?? payload.total);
   return prisma.$transaction(async (tx) => {
+    // Persist the cancellation before touching the order. If the cancellation
+    // arrives before the order itself (delayed webhook / sync ordering), the
+    // tombstone prevents the later create from resurrecting cancelled revenue.
+    await tx.order_cancellation_tombstones.upsert({
+      where: { store_id_external_order_id: { store_id: store.id, external_order_id: externalOrderId } },
+      create: {
+        store_id: store.id, external_order_id: externalOrderId,
+        cancelled_at: cancelledAt, currency, total, observed_at: new Date(),
+      },
+      update: {
+        observed_at: new Date(),
+        cancelled_at: cancelledAt || undefined,
+        currency: currency || undefined,
+        total: total === null ? undefined : total,
+      },
+    });
     const order = await tx.orders.findUnique({
       where: { store_id_external_order_id: { store_id: store.id, external_order_id: externalOrderId } },
     });
     if (!order) return null;
-    await tx.orders.update({ where: { id: order.id }, data: { recovery_status: 'cancelled' } });
+    if (order.recovery_status !== 'cancelled') {
+      await tx.orders.update({ where: { id: order.id }, data: { recovery_status: 'cancelled' } });
+    }
     await recalculateCustomerTotals(tx, order.customer_id);
     return order;
   });
@@ -564,6 +639,32 @@ async function upsertAbandonedCart(store, payload) {
   const activityAt = lastCheckoutActivity(payload);
   const isStaleEvent = Boolean(existing?.updated_at && activityAt < existing.updated_at);
   if (isStaleEvent && !payload.completed_at) return existing;
+  const incomingCartValue = parseAmount(payload.total_price ?? payload.total);
+  const incomingCartCurrency = normalizeCurrency(payload.currency ?? payload.currency_code);
+  let cartValue;
+  let cartCurrency;
+  if (incomingCartValue !== null) {
+    if (!incomingCartCurrency) {
+      const error = new Error('Checkout currency cannot be verified');
+      error.code = 'CART_CURRENCY_UNVERIFIED';
+      throw error;
+    }
+    cartValue = incomingCartValue;
+    cartCurrency = incomingCartCurrency;
+  } else if (existing) {
+    // Preserve previously verified financial evidence instead of writing zero.
+    cartValue = parseAmount(String(existing.cart_value ?? ''));
+    cartCurrency = normalizeCurrency(existing.currency);
+    if (cartValue === null || !cartCurrency) {
+      const error = new Error('Checkout financial evidence is unavailable');
+      error.code = 'CART_VALUE_UNVERIFIED';
+      throw error;
+    }
+  } else {
+    const error = new Error('Checkout value cannot be verified');
+    error.code = 'CART_VALUE_UNVERIFIED';
+    throw error;
+  }
   const safeCheckoutEvidence = mergeSourceEvidence(existing, sourceIdentifiers(payload, 'checkout'));
   const data = {
     store_id: store.id,
@@ -571,8 +672,8 @@ async function upsertAbandonedCart(store, payload) {
     external_cart_id: externalId,
     ...safeCheckoutEvidence,
     recovery_url: payload.abandoned_checkout_url || payload.recovery_url || null,
-    cart_value: Number(payload.total_price ?? payload.total ?? 0),
-    currency: payload.currency || 'USD',
+    cart_value: cartValue,
+    currency: cartCurrency,
     status: nextCheckoutStatus({ completedAt: payload.completed_at, existingStatus: existing?.status, isStale: isStaleEvent }),
     abandoned_at: existing?.abandoned_at || new Date(payload.created_at || Date.now()),
     recovered_at: payload.completed_at ? new Date(payload.completed_at) : (existing?.recovered_at || null),
@@ -588,16 +689,22 @@ async function upsertAbandonedCart(store, payload) {
   const items = Array.isArray(payload.line_items) ? payload.line_items : [];
   if (items.length) {
     await tx.abandoned_cart_items.deleteMany({ where: { abandoned_cart_id: cart.id } });
-    await tx.abandoned_cart_items.createMany({
-      data: items.map((item) => ({
+    const validatedItems = items.map((item) => {
+      const price = parseAmount(item.price ?? item.unit_price);
+      const quantity = Number(item.quantity);
+      if (price === null || !Number.isInteger(quantity) || quantity < 1) return null;
+      return {
         abandoned_cart_id: cart.id,
         external_product_id: String(item.product_id || 'unknown'),
         external_variant_id: item.variant_id ? String(item.variant_id) : null,
         product_name: String(item.title || item.name || 'Unknown product'),
-        price: Number(item.price || 0),
-        quantity: Math.max(1, Number(item.quantity || 1)),
-      })),
-    });
+        price,
+        quantity,
+      };
+    }).filter(Boolean);
+    if (validatedItems.length) {
+      await tx.abandoned_cart_items.createMany({ data: validatedItems });
+    }
   }
   return cart;
   });

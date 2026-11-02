@@ -27,3 +27,17 @@ Do not mark VERIFIED without the above evidence. Continue fixing within Phase 01
 - Added test ensuring history and memories excluded from grounded prompt: commit d495565.
 - Validation remains unverified: no runnable GitHub Actions workflow results returned; local environment cannot clone the private repository; no full Python suite results obtained.
 - Phase 01 remains IN_PROGRESS. Do not mark VERIFIED.
+
+## Execution update — 2026-11-01
+
+This table is superseded for the current release candidate by
+`docs/execution/EXECUTION_STATUS.md`, which records the verified local evidence and the exact
+blockers. Phase numbering and task IDs above are unchanged.
+
+- Local verification: Python 612 passed / 3 skipped; Node gateway suites 21/21 (revStream,
+  financialIntegrity, revInvestigation contract, shopifyRefundTotals); Dashboard 120 tests and a
+  production build.
+- Streaming, cancel, retry, evidence drawer and the conversation-first workspace are implemented.
+- CI, staging, a staging database and a Shopify test store were **not** available, so no phase is
+  marked verified and the release candidate is **PARTIALLY COMPLETED**.
+- Pre-merge defect audit: `docs/mvp-execution/TASK-199-PRE-MERGE-AUDIT.md`.

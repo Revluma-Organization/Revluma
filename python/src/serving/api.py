@@ -25,6 +25,7 @@ from typing import Literal
 import pandas as pd
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
@@ -929,3 +930,119 @@ async def trigger_rfm_sync(payload: RfmSyncRequest):
     """
     result = await run_in_threadpool(rfm_sync.run, payload.store_id)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Rev Intelligence — investigation and streaming endpoints
+# ---------------------------------------------------------------------------
+class InvestigateRequest(BaseModel):
+    """Contract for the Rev Intelligence investigation gateway.
+
+    ``organization_id`` is supplied by the Node backend from the authenticated
+    session, never by the browser. Every tool execution is scoped to it.
+    """
+    contract_version: Literal["1.0"] = "1.0"
+    organization_id: str = Field(..., min_length=36, max_length=36)
+    user_id: str = Field(..., min_length=36, max_length=36)
+    message: str = Field(..., min_length=1, max_length=2000)
+    conversation_id: str | None = Field(None, min_length=36, max_length=36)
+    context_payload: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_context(self):
+        if len(json.dumps(self.context_payload, default=str).encode("utf-8")) > 16_384:
+            raise ValueError("context_payload must not exceed 16 KiB.")
+        return self
+
+
+class InvalidateMemoryRequest(BaseModel):
+    organization_id: str = Field(..., min_length=36, max_length=36)
+    reason: str = Field("user_correction", max_length=120)
+
+
+def _sse_frame(event: dict) -> str:
+    payload = json.dumps(event.get("data"), default=str)
+    return f"event: {event.get('event', 'message')}\ndata: {payload}\n\n"
+
+
+@app.get("/rev/tools", dependencies=[Depends(verify_internal_caller)])
+def rev_tool_catalog():
+    """Read-only tool catalog. Exposes capabilities, never credentials or SQL."""
+    from src.agents.tools import catalog
+    from src.agents.investigation import CONTRACT_VERSION
+    return {
+        "contract_version": CONTRACT_VERSION,
+        "read_only": True,
+        "tools": catalog(),
+    }
+
+
+@app.post("/rev/investigate", dependencies=[Depends(verify_internal_caller)])
+async def rev_investigate(req: InvestigateRequest):
+    from src.agents.investigation import CONTRACT_VERSION, run_investigation
+
+    if req.contract_version != "1.0":
+        raise HTTPException(status_code=400, detail="Intelligence contract version mismatch")
+    db = _Session()
+    try:
+        result = await run_in_threadpool(
+            lambda: run_investigation(
+                req.organization_id, req.user_id, req.message,
+                conversation_id=req.conversation_id, db=db,
+                context_payload=req.context_payload,
+            )
+        )
+        return {"contract_version": CONTRACT_VERSION, **result}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("rev_investigation_unhandled_error")
+        raise HTTPException(
+            status_code=503,
+            detail="Intelligence response unavailable; please retry.",
+        )
+    finally:
+        db.close()
+
+
+@app.post("/rev/stream", dependencies=[Depends(verify_internal_caller)])
+def rev_stream(req: InvestigateRequest):
+    """Server-sent events for the dashboard: plan -> steps -> evidence -> final."""
+    from src.agents.investigation import stream_investigation
+
+    if req.contract_version != "1.0":
+        raise HTTPException(status_code=400, detail="Intelligence contract version mismatch")
+    db = _Session()
+
+    def generate():
+        try:
+            for event in stream_investigation(
+                req.organization_id, req.user_id, req.message,
+                conversation_id=req.conversation_id, db=db,
+                context_payload=req.context_payload,
+            ):
+                yield _sse_frame(event)
+        finally:
+            db.close()
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.post("/rev/memory/invalidate", dependencies=[Depends(verify_internal_caller)])
+def rev_invalidate_memory(req: InvalidateMemoryRequest):
+    from src.agents.investigation import invalidate_investigation_memory
+
+    db = _Session()
+    try:
+        invalidated = invalidate_investigation_memory(req.organization_id, db)
+        return {"success": invalidated, "reason": req.reason}
+    finally:
+        db.close()

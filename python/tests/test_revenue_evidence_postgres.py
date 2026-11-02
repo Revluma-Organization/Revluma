@@ -38,7 +38,8 @@ def revenue_postgres():
                 coverage_end timestamptz NOT NULL,
                 certified_at timestamptz NOT NULL,
                 source text NOT NULL,
-                source_run_id text NOT NULL
+                source_run_id text NOT NULL,
+                customer_lifetime_verified boolean NOT NULL DEFAULT true
             )
         """))
         connection.execute(text("""

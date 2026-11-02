@@ -164,11 +164,37 @@ def _early_warning_probability(feature_vector: dict, decay_score: float, merchan
         return None
 
 
+def _verified_currency(value) -> str | None:
+    """Return an ISO-4217 style code, or None when the currency is unverified."""
+    currency = str(value or "").strip().upper()
+    return currency if len(currency) == 3 and currency.isalpha() else None
+
+
 def _customer_ltv(feature_vector: dict) -> float:
-    """Lifetime value, falling back to orders x AOV when it is not supplied."""
-    ltv = float(feature_vector.get("customer_ltv") or 0.0)
-    if ltv > 0:
-        return ltv
+    """Lifetime value, only when a single currency is verified for it.
+
+    A stored LTV that spans currencies is marked mixed by ingestion; an
+    unlabelled legacy value has no currency at all. Both are unusable as a
+    money figure, so they return 0.0 (unavailable) instead of a number that
+    would silently be read as one currency. The orders x AOV fallback is also
+    currency-gated: it must not combine amounts of unknown currency.
+    """
+    if feature_vector.get("customer_ltv_mixed_currency") is True:
+        return 0.0
+    currency = _verified_currency(feature_vector.get("customer_ltv_currency"))
+    supplied = feature_vector.get("customer_ltv")
+    if supplied is not None:
+        try:
+            value = float(supplied)
+        except (TypeError, ValueError):
+            return 0.0
+        if value > 0 and currency is not None:
+            return value
+        return 0.0
+    if currency is None and _verified_currency(
+        feature_vector.get("avg_order_value_currency")
+    ) is None:
+        return 0.0
     return float(feature_vector.get("past_orders_total", 0) or 0) * float(
         feature_vector.get("avg_order_value", 0.0) or 0.0
     )
@@ -268,7 +294,17 @@ def _build_result(tier: str, churn_probability: float, decay_score: float,
         "engagement_decay_score": round(float(decay_score), 2),
         "recommended_channel":    _recommended_channel(tier, feature_vector),
         "offer_required":         tier in OFFER_REQUIRED_TIERS or (tier == "AT_RISK" and _num(feature_vector, "coupon_dependency_score", 0.0) > 0.4),
-        "escalate_to_human":      bool(ltv > ESCALATION_LTV_THRESHOLD and tier in ("HIGH_RISK", "CRITICAL")),
+        # Escalation compares a money figure against a fixed threshold, so it
+        # only applies when the LTV carries a verified currency.
+        "escalate_to_human":      bool(
+            ltv > ESCALATION_LTV_THRESHOLD
+            and tier in ("HIGH_RISK", "CRITICAL")
+            and not feature_vector.get("customer_ltv_mixed_currency")
+            and _verified_currency(
+                feature_vector.get("customer_ltv_currency")
+                or feature_vector.get("avg_order_value_currency")
+            )
+        ),
         "fallback":               fallback,
         "model_version":          "fallback" if fallback else MODEL_VERSION,
     }

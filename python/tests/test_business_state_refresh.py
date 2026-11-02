@@ -165,6 +165,7 @@ class TestCustomerAgentContext:
                 "past_orders_total": 3,
                 "ltv": Decimal("520.00"),
                 "previous_ltv": Decimal("480.00"),
+                "ltv_currency": "USD",
                 "days_inactive": 45,
             }
         ]
@@ -190,12 +191,37 @@ class TestCustomerAgentContext:
                     "past_orders_total": 3,
                     "ltv": 520.0,
                     "previous_ltv": 480.0,
+                    "ltv_currency": "USD",
                     "days_inactive": 45,
                 }
             ],
             "limit": CUSTOMER_CONTEXT_LIMIT,
             "truncated": False,
         }
+
+    def test_mixed_or_unlabelled_ltv_is_never_returned_as_a_number(self):
+        db = MagicMock()
+        db.execute.return_value.mappings.return_value.all.return_value = [
+            {
+                "customer_id": "customer-mixed",
+                "rfm_segment": "champion",
+                "past_orders_total": 3,
+                "ltv": None,
+                "previous_ltv": None,
+                "ltv_currency": None,
+                "days_inactive": 50,
+            },
+        ]
+
+        payload = _load_customer_ml_signals(db, {"store_ids": ("store-1",)})
+
+        # Row selection must not treat an unverified LTV as a money value.
+        sql = str(db.execute.call_args.args[0])
+        assert "c.ltv_mixed_currency = TRUE THEN NULL" in sql
+        assert "c.ltv_currency IS NULL THEN NULL" in sql
+        assert payload["customers"][0]["ltv"] is None
+        assert payload["customers"][0]["previous_ltv"] is None
+        assert payload["customers"][0]["ltv_currency"] is None
 
     def test_context_marks_a_full_page_as_possibly_truncated(self):
         db = MagicMock()
@@ -215,3 +241,12 @@ class TestCustomerAgentContext:
         payload = _load_customer_ml_signals(db, {"store_ids": ("store-1",)})
 
         assert payload["truncated"] is True
+
+
+def test_daily_revenue_sql_excludes_cancelled_orders():
+    from src.intelligence.business_state import DAILY_REVENUE_SQL
+
+    assert "SUM(total)" in DAILY_REVENUE_SQL
+    assert "recovery_status" in DAILY_REVENUE_SQL
+    for status in ("cancelled", "canceled", "voided", "deleted"):
+        assert status in DAILY_REVENUE_SQL

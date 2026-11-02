@@ -8,6 +8,15 @@ FACTS  →  directly in the data
 SIGNALS →  patterns computed from data
 DIAGNOSIS →  inferences explaining signals
 RECOMMENDATIONS →  specific actions backed by diagnosis
+
+Status contract (single source of truth for every specialist):
+    success  sufficient, supported results
+    partial  some useful results, but incomplete coverage or limits
+    no_data  no usable results
+    error    the specialist failed and returned no usable results
+
+A specialist is never reported as ``success`` merely because it emitted a
+recommendation: success requires at least one fact or signal.
 """
 
 from __future__ import annotations
@@ -15,6 +24,22 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+
+SPECIALIST_STATUSES = ("success", "partial", "no_data", "error")
+
+
+def normalize_specialist_status(status, *, facts=None, signals=None) -> str:
+    """Map a specialist status onto the shared contract.
+
+    Unknown or missing statuses become ``error`` (fail closed). ``success``
+    without any fact or signal is downgraded to ``partial``.
+    """
+    value = str(status or "").strip().lower()
+    if value not in SPECIALIST_STATUSES:
+        return "error"
+    if value == "success" and not (facts or signals):
+        return "partial"
+    return value
 
 
 @dataclass
@@ -35,10 +60,18 @@ class AgentResult:
     warnings: list[str]                  # missing data, stale fields, caveats
     generated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
+    @property
+    def normalized_status(self) -> str:
+        return normalize_specialist_status(
+            self.status, facts=self.facts, signals=self.signals
+        )
+
     def to_dict(self) -> dict:
         return {
             "agent": self.agent,
-            "status": self.status,
+            "status": self.normalized_status,
+            "status_raw": self.status,
+            "status_contract": list(SPECIALIST_STATUSES),
             "confidence": self.confidence,
             "facts": self.facts,
             "signals": self.signals,

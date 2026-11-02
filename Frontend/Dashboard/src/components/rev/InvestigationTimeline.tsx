@@ -1,0 +1,87 @@
+import { useState } from "react";
+import { Check, ChevronDown, CircleAlert, Circle, Loader2, ShieldCheck } from "lucide-react";
+import type { InvestigationStep, RevInvestigationMeta } from "@/lib/revStream";
+
+interface Props {
+  steps: InvestigationStep[];
+  investigation?: RevInvestigationMeta | null;
+  streaming?: boolean;
+  dark?: boolean;
+}
+
+function StepIcon({ status }: { status: InvestigationStep["status"] }) {
+  if (status === "completed") return <Check size={13} strokeWidth={3} color="#067647" />;
+  if (status === "running") return <Loader2 size={13} className="animate-spin" color="#1F06AC" />;
+  if (status === "failed") return <CircleAlert size={13} color="#B42318" />;
+  return <Circle size={10} color="#98A2B3" />;
+}
+
+export function InvestigationTimeline({ steps, investigation, streaming = false, dark = false }: Props) {
+  const [open, setOpen] = useState(false);
+  if (!steps.length) return null;
+  const complete = steps.filter((step) => step.status === "completed").length;
+  const failed = steps.filter((step) => step.status === "failed").length;
+  const running = streaming || steps.some((step) => step.status === "running");
+
+  const border = dark ? "rgba(255,255,255,0.1)" : "#EAECF0";
+  const muted = dark ? "#98A2B3" : "#667085";
+  const strong = dark ? "#F2F4F7" : "#101828";
+
+  return (
+    <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: "hidden" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+        style={{ background: dark ? "rgba(255,255,255,0.03)" : "#FAFAFB", color: strong }}
+      >
+        {running ? (
+          <Loader2 size={14} className="animate-spin" color="#1F06AC" />
+        ) : failed ? (
+          <CircleAlert size={14} color="#B42318" />
+        ) : (
+          <ShieldCheck size={14} color="#067647" />
+        )}
+        <span style={{ fontSize: "0.78rem", fontWeight: 650 }}>
+          {running ? "Investigating your store evidence" : "Investigation complete"}
+        </span>
+        <span style={{ fontSize: "0.72rem", color: muted, marginLeft: 2 }}>
+          {complete}/{steps.length} checks
+          {failed ? ` · ${failed} unavailable` : ""}
+        </span>
+        <ChevronDown
+          size={14}
+          color={muted}
+          style={{ marginLeft: "auto", transform: open ? "rotate(180deg)" : "none", transition: "transform 150ms" }}
+        />
+      </button>
+      {open && (
+        <ol className="flex flex-col gap-0 px-3.5 pb-2 pt-1" style={{ listStyle: "none", margin: 0 }}>
+          {steps.map((step) => (
+            <li key={step.id || step.tool} className="flex items-start gap-2.5 py-1.5">
+              <span style={{ marginTop: 2 }}><StepIcon status={step.status} /></span>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: "0.78rem", color: strong, lineHeight: 1.4 }}>
+                  {step.label}
+                </p>
+                {step.detail && (
+                  <p style={{ margin: "1px 0 0", fontSize: "0.7rem", color: muted, lineHeight: 1.45 }}>
+                    {step.detail}
+                  </p>
+                )}
+              </div>
+            </li>
+          ))}
+          {investigation?.period?.start && (
+            <li style={{ fontSize: "0.7rem", color: muted, paddingTop: 6, borderTop: `1px solid ${border}`, marginTop: 6 }}>
+              Reporting period: {investigation.period.start} → {investigation.period.end} (UTC, half-open)
+            </li>
+          )}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+export default InvestigationTimeline;

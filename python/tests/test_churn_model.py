@@ -350,3 +350,36 @@ def test_production_registration_requires_the_early_warning_model():
         meets_high_risk_precision=True,
         early_warning_model_available=False,
     )
+
+
+class TestLifetimeValueCurrencyIntegrity:
+    """LTV is money: never mix currencies, never assume one."""
+
+    def test_mixed_currency_ltv_is_unavailable(self):
+        assert churn_predict._customer_ltv({
+            "customer_ltv": 900.0,
+            "customer_ltv_currency": None,
+            "customer_ltv_mixed_currency": True,
+        }) == 0.0
+
+    def test_currencyless_ltv_is_not_assumed_to_be_usd(self):
+        assert churn_predict._customer_ltv({"customer_ltv": 750.0}) == 0.0
+        assert churn_predict._customer_ltv({"customer_ltv": 750.0, "customer_ltv_currency": "US"}) == 0.0
+
+    def test_verified_single_currency_ltv_is_used(self):
+        assert churn_predict._customer_ltv({
+            "customer_ltv": 750.0,
+            "customer_ltv_currency": "NGN",
+            "customer_ltv_mixed_currency": False,
+        }) == 750.0
+
+    def test_aov_fallback_requires_a_verified_currency(self):
+        assert churn_predict._customer_ltv({
+            "past_orders_total": 3,
+            "avg_order_value": 200.0,
+        }) == 0.0
+        assert churn_predict._customer_ltv({
+            "past_orders_total": 3,
+            "avg_order_value": 200.0,
+            "avg_order_value_currency": "USD",
+        }) == 600.0

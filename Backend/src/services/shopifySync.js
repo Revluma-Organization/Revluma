@@ -5,6 +5,7 @@ const { cancelOrder, upsertOrder, upsertAbandonedCart } = require('./commerceWeb
 const { reconcileShopifyWebhooks } = require('./shopifyWebhookService');
 const logger = require('../utils/logger');
 const { getRedisClient, isRedisReady } = require('../configs/redis');
+const { shopifyGraphqlOrderTotals } = require('./shopifyOrderFinancials');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
 
 const PAGE_SIZE = 100;
@@ -37,7 +38,10 @@ function externalId(gid) {
 }
 
 function money(value) {
-  return Number(value?.shopMoney?.amount || 0);
+  const amount = value?.shopMoney?.amount;
+  if (amount === null || amount === undefined || amount === '') return null;
+  const parsed = Number(amount);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function nextConnectionCursor(connection, previousCursor, rootName) {
@@ -114,6 +118,15 @@ async function syncCustomers(store) {
 }
 
 function orderPayload(order) {
+  // Money semantics (Shopify Admin GraphQL):
+  //   totalPriceSet ........ total before returns/refunds
+  //   currentTotalPriceSet . total after returns/refunds (authoritative net)
+  //   totalRefundedSet ..... amount refunded so far
+  // `orders.total` stores the net value, so a refunded order (e.g. #1004:
+  // $1,025 gross, $1,025 refunded) is persisted at $0 and contributes nothing
+  // to recorded revenue. The refunded amount is carried separately so gross can
+  // be reconstructed (net + refunded) without guessing.
+  const totals = shopifyGraphqlOrderTotals(order);
   return {
     id: externalId(order.id),
     checkout_token: order.checkoutToken || null,
@@ -121,13 +134,15 @@ function orderPayload(order) {
     created_at: order.createdAt,
     cancelled_at: order.cancelledAt,
     financial_status: order.displayFinancialStatus,
-    // Shopify GraphQL currentTotalPriceSet is already adjusted for refunds.
-    // The webhook refund reconciler must not subtract them a second time.
-    total_price: money(order.currentTotalPriceSet || order.totalPriceSet),
+    total_price: totals.net,
+    total_refunded: totals.refunded,
+    // currentTotalPriceSet is already refund-adjusted, so the webhook normaliser
+    // must not subtract the same refunds again.
     refunds: [],
     subtotal_price: money(order.subtotalPriceSet),
     total_discounts: money(order.totalDiscountsSet),
-    currency: (order.currentTotalPriceSet || order.totalPriceSet)?.shopMoney?.currencyCode || 'USD',
+    // No silent USD: a missing currency fails closed during ingestion.
+    currency: totals.currency,
     customer: order.customer ? {
       id: externalId(order.customer.id),
       email: order.customer.email,
@@ -192,6 +207,7 @@ async function syncOrders(store) {
           id checkoutToken cartToken createdAt cancelledAt displayFinancialStatus discountCodes
           currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
+          totalRefundedSet { shopMoney { amount currencyCode } }
           subtotalPriceSet { shopMoney { amount currencyCode } }
           totalDiscountsSet { shopMoney { amount currencyCode } }
           customer { id email firstName lastName phone }
@@ -208,14 +224,32 @@ async function syncOrders(store) {
   `;
   const orders = await fetchConnection(store, query, 'orders');
   let completed = 0;
+  const failures = [];
   for (const order of orders) {
     const payload = orderPayload(order);
-    if (payload.cancelled_at || ['CANCELLED', 'FAILED', 'VOIDED'].includes(payload.financial_status)) {
-      await cancelOrder(store, payload);
-    } else {
-      await upsertOrder(store, 'shopify', payload);
+    try {
+      if (payload.cancelled_at || ['CANCELLED', 'FAILED', 'VOIDED'].includes(payload.financial_status)) {
+        await cancelOrder(store, payload);
+      } else {
+        await upsertOrder(store, 'shopify', payload);
+      }
+      completed += 1;
+    } catch (error) {
+      // Never persist an unverified monetary record as a valid sale. Keep
+      // processing other orders, then fail the sync so freshness is not
+      // reported as complete while records are missing.
+      failures.push({ external_order_id: payload.id, code: error.code || error.name || 'ORDER_INGESTION_FAILED' });
+      logger.warn('shopify_order_ingestion_failed', {
+        store_id: store.id, external_order_id: payload.id,
+        error_code: error.code || error.name || 'order_ingestion_failed',
+      });
     }
-    completed += 1;
+  }
+  if (failures.length) {
+    const error = new Error('Shopify order ingestion was incomplete');
+    error.code = 'SHOPIFY_ORDER_INGESTION_INCOMPLETE';
+    error.failed_orders = failures.length;
+    throw error;
   }
   return completed;
 }
@@ -229,7 +263,7 @@ function abandonedPayload(checkout) {
     completed_at: checkout.completedAt,
     abandoned_checkout_url: checkout.abandonedCheckoutUrl,
     total_price: money(checkout.totalPriceSet),
-    currency: checkout.totalPriceSet?.shopMoney?.currencyCode || 'USD',
+    currency: checkout.totalPriceSet?.shopMoney?.currencyCode ?? null,
     customer: checkout.customer ? {
       id: externalId(checkout.customer.id),
       email: checkout.customer.email,
@@ -275,17 +309,28 @@ async function syncAbandonedCheckouts(store) {
     if (!cart) continue;
     await prisma.$transaction(async (tx) => {
       if (payload.line_items.length) {
-        await tx.abandoned_cart_items.deleteMany({ where: { abandoned_cart_id: cart.id } });
-        await tx.abandoned_cart_items.createMany({
-          data: payload.line_items.map((item) => ({
+        const validatedItems = payload.line_items.map((item) => {
+          const price = Number(item.price);
+          const quantity = Number(item.quantity);
+          if (!Number.isFinite(price) || price < 0 || !Number.isInteger(quantity) || quantity < 1) {
+            logger.warn('shopify_checkout_item_financials_unverified', {
+              store_id: store.id, checkout_id: externalId(checkout.id),
+            });
+            return null;
+          }
+          return {
             abandoned_cart_id: cart.id,
             external_product_id: item.product_id || 'unknown',
             external_variant_id: item.variant_id || null,
             product_name: item.title,
-            price: item.price,
-            quantity: Math.max(1, Number(item.quantity || 1)),
-          })),
-        });
+            price,
+            quantity,
+          };
+        }).filter(Boolean);
+        if (validatedItems.length) {
+          await tx.abandoned_cart_items.deleteMany({ where: { abandoned_cart_id: cart.id } });
+          await tx.abandoned_cart_items.createMany({ data: validatedItems });
+        }
       }
     });
     logger.info('shopify_checkout_sync_processing', { store_id: store.id, checkout_id: externalId(checkout.id), stage: 'persisted' });

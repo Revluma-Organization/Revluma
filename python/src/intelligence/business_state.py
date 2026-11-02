@@ -29,6 +29,25 @@ from sqlalchemy import bindparam, text
 
 logger = logging.getLogger("rev.business_state")
 
+# Daily revenue drives anomaly detection and the morning briefing, so it must use
+# the same semantics as every other revenue surface: `orders.total` is net of
+# refunds and cancelled orders never contribute. Extracted so the filter is
+# directly testable.
+DAILY_REVENUE_SQL = """
+    SELECT
+        DATE(ordered_at AT TIME ZONE 'UTC') as order_date,
+        SUM(total) as daily_revenue,
+        COUNT(*) as order_count,
+        AVG(total) as avg_order_value
+    FROM orders
+    WHERE store_id IN :store_ids
+      AND ordered_at >= :cutoff
+      AND (recovery_status IS NULL OR recovery_status NOT IN
+           ('cancelled', 'canceled', 'voided', 'deleted'))
+    GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
+    ORDER BY order_date DESC
+"""
+
 SCHEMA_VERSION = "1.1"
 DEFAULT_STALENESS_MINS = 30
 VIP_INACTIVE_DAYS = 45
@@ -81,11 +100,26 @@ def _load_customer_ml_signals(db, store_params: dict[str, Any]) -> dict[str, Any
                 c.id AS customer_id,
                 c.rfm_segment,
                 COALESCE(c.orders_count, 0) AS past_orders_total,
-                COALESCE(c.ltv, 0) AS ltv,
-                GREATEST(
-                    COALESCE(c.ltv, 0) - COALESCE(latest.total, 0),
-                    0
-                ) AS previous_ltv,
+                -- A stored LTV is money only when a single currency is
+                -- verified for it. Mixed or unlabelled values stay NULL so
+                -- threshold comparisons cannot treat them as one currency.
+                CASE
+                    WHEN c.ltv_mixed_currency = TRUE THEN NULL
+                    WHEN c.ltv_currency IS NULL THEN NULL
+                    ELSE COALESCE(c.ltv, 0)
+                END AS ltv,
+                CASE
+                    WHEN c.ltv_mixed_currency = TRUE THEN NULL
+                    WHEN c.ltv_currency IS NULL THEN NULL
+                    ELSE GREATEST(
+                        COALESCE(c.ltv, 0) - COALESCE(latest.total, 0),
+                        0
+                    )
+                END AS previous_ltv,
+                CASE
+                    WHEN c.ltv_mixed_currency = TRUE THEN NULL
+                    ELSE c.ltv_currency
+                END AS ltv_currency,
                 CASE
                     WHEN latest.ordered_at IS NULL THEN NULL
                     ELSE FLOOR(
@@ -110,6 +144,7 @@ def _load_customer_ml_signals(db, store_params: dict[str, Any]) -> dict[str, Any
             past_orders_total,
             ltv,
             previous_ltv,
+            ltv_currency,
             days_inactive
         FROM customer_activity activity
         WHERE (
@@ -156,8 +191,12 @@ def _load_customer_ml_signals(db, store_params: dict[str, Any]) -> dict[str, Any
             "customer_id": str(row["customer_id"]),
             "rfm_segment": row["rfm_segment"],
             "past_orders_total": int(row["past_orders_total"] or 0),
-            "ltv": float(row["ltv"] or 0),
-            "previous_ltv": float(row["previous_ltv"] or 0),
+            # None means "not verified in one currency", not zero.
+            "ltv": float(row["ltv"]) if row["ltv"] is not None else None,
+            "previous_ltv": (
+                float(row["previous_ltv"]) if row["previous_ltv"] is not None else None
+            ),
+            "ltv_currency": row.get("ltv_currency") if hasattr(row, "get") else None,
             "days_inactive": (
                 int(row["days_inactive"])
                 if row["days_inactive"] is not None
@@ -551,18 +590,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         fourteen_days_ago = today - timedelta(days=14)
 
         rev_result = db.execute(
-            _store_query("""
-                SELECT
-                    DATE(ordered_at AT TIME ZONE 'UTC') as order_date,
-                    SUM(total) as daily_revenue,
-                    COUNT(*) as order_count,
-                    AVG(total) as avg_order_value
-                FROM orders
-                WHERE store_id IN :store_ids
-                  AND ordered_at >= :cutoff
-                GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
-                ORDER BY order_date DESC
-            """),
+            _store_query(DAILY_REVENUE_SQL),
             {**store_params, "cutoff": fourteen_days_ago},
         ).fetchall()
 

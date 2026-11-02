@@ -1,0 +1,226 @@
+name: Release candidate verification
+
+# Full Prisma bootstrap + schema drift check + live-PostgreSQL financial and
+# security regressions for the release candidate. Runs on a disposable,
+# localhost-only PostgreSQL 16 with pgvector; it never touches Supabase,
+# production, Shopify or a deployed service.
+
+on:
+  pull_request:
+    paths:
+      - 'Backend/**'
+      - 'python/**'
+      - '.github/workflows/release-candidate-verification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  database-financial-security:
+    name: Prisma bootstrap, financial and security regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: revluma_rc
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGPASSWORD: postgres
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/revluma_rc?schema=public
+      TASK198_DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/revluma_rc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+
+      - name: Install backend dependencies and generate Prisma Client
+        working-directory: Backend
+        run: npm ci
+
+      - name: Validate the Prisma schema
+        working-directory: Backend
+        run: npx prisma validate
+
+      - name: Create pgvector, Supabase-shaped roles and auth stub
+        working-directory: Backend
+        run: |
+          psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE EXTENSION IF NOT EXISTS vector;
+          CREATE ROLE anon NOLOGIN;
+          CREATE ROLE authenticated NOLOGIN;
+          CREATE SCHEMA auth;
+          CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE
+            AS $$ SELECT NULLIF(current_setting('request.jwt.claim.sub', TRUE), '')::uuid $$;
+          SQL
+
+      - name: Bootstrap the full application schema (no migration replay)
+        working-directory: Backend
+        run: npx prisma db push --skip-generate --accept-data-loss
+
+      - name: Assert zero drift between Prisma and the bootstrapped database
+        working-directory: Backend
+        run: |
+          npx prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code
+
+      - name: Apply candidate migrations on top of the bootstrapped schema
+        working-directory: Backend
+        run: |
+          for migration in \
+            prisma/migrations/20261027140000_intelligence_findings/migration.sql \
+            prisma/migrations/20261101120000_rev_financial_integrity/migration.sql \
+            prisma/migrations/20261102090000_rev_supabase_function_hardening/migration.sql
+          do
+            echo "applying $migration"
+            psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 -f "$migration"
+          done
+
+      - name: Re-assert zero drift after the candidate migrations
+        working-directory: Backend
+        run: |
+          npx prisma migrate diff \
+            --from-url "$DATABASE_URL" \
+            --to-schema-datamodel prisma/schema.prisma \
+            --exit-code
+
+      - name: Assert every Prisma model exists in PostgreSQL
+        working-directory: Backend
+        run: node scripts/staging/verify-prisma-models.js
+
+      - name: Backend test suite (Prisma-backed)
+        working-directory: Backend
+        run: npm test
+
+      - name: Financial integrity scenarios against real PostgreSQL
+        working-directory: Backend
+        env:
+          RELEASE_CANDIDATE_ISOLATED_DB: 'true'
+        run: |
+          set +e
+          node src/tests/financialIntegrity.integration.js 2>&1 | tee /tmp/financial.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # Surface the failing scenarios as a check annotation: job logs are
+            # not always retrievable from automation, annotations are.
+            summary=$(tail -n 25 /tmp/financial.log | tr '\n' ' ' | tr -s ' ')
+            echo "::error title=financial-integration::${summary:0:1200}"
+            exit "$status"
+          fi
+
+      - name: Financial integrity SQL checks
+        working-directory: Backend
+        run: |
+          set +e
+          psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 \
+            -f scripts/staging/verify-financial-integrity.sql 2>&1 | tee /tmp/verify-financial-integrity.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -E 'ERROR|EXCEPTION' /tmp/verify-financial-integrity.log | tail -n 3 | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=financial-sql::${summary:-psql exited $status with no ERROR line}"
+            exit "$status"
+          fi
+
+      - name: Data API isolation checks
+        working-directory: Backend
+        run: |
+          set +e
+          psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 \
+            -f scripts/staging/verify-data-api-isolation.sql 2>&1 | tee /tmp/verify-data-api-isolation.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -E 'ERROR|EXCEPTION' /tmp/verify-data-api-isolation.log | tail -n 3 | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=data-api-isolation::${summary:-psql exited $status with no ERROR line}"
+            exit "$status"
+          fi
+
+      - name: Supabase function hardening checks
+        working-directory: Backend
+        run: |
+          set +e
+          psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 \
+            -f scripts/staging/verify-security-hardening.sql 2>&1 | tee /tmp/verify-security-hardening.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(grep -E 'ERROR|EXCEPTION' /tmp/verify-security-hardening.log | tail -n 3 | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=security-hardening::${summary:-psql exited $status with no ERROR line}"
+            exit "$status"
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.9'
+          cache: pip
+          cache-dependency-path: python/requirements.txt
+
+      - name: Install Python dependencies
+        working-directory: python
+        # pytest is a test-only dependency; the runtime requirements file stays lean.
+        run: python -m pip install -r requirements.txt pytest
+
+      - name: Python suite against real PostgreSQL
+        working-directory: python
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/revluma_rc
+          PYTHONPATH: .
+        run: |
+          set +e
+          python -m pytest tests -q --tb=short --junitxml=/tmp/junit.xml 2>&1 | tee /tmp/pytest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            python scripts/report_junit.py /tmp/junit.xml
+            exit "$status"
+          fi
+
+      - name: Revenue evidence acceptance on real PostgreSQL
+        working-directory: python
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/revluma_rc
+          PYTHONPATH: .
+        run: |
+          set +e
+          python scripts/staging_revenue_acceptance.py 2>&1 | tee /tmp/acceptance.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 12 /tmp/acceptance.log | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=revenue-acceptance::${summary:-exited $status}"
+            exit "$status"
+          fi
+
+  dashboard:
+    name: Dashboard suite and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: Frontend/Dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Frontend/Dashboard/package-lock.json
+      - name: Install dashboard dependencies
+        run: npm ci --include=dev
+      - name: Vitest suite
+        run: npx vitest run
+      - name: Production build
+        run: npm run build

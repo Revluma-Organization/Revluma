@@ -269,6 +269,8 @@ def build_seed_sql(
             "         COALESCE(SUM(total), 0) AS lifetime_value",
             "  FROM orders",
             f"  WHERE store_id = '{store_id}'",
+            "    AND (recovery_status IS NULL OR recovery_status NOT IN",
+            "         ('cancelled', 'canceled', 'voided', 'deleted'))",
             "  GROUP BY customer_id",
             ") AS aggregate",
             "WHERE customer.id = aggregate.customer_id",

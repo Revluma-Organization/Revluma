@@ -279,6 +279,7 @@ model stores {
   @@unique([organization_id, shop_domain], map: "uq_stores_org_domain")
   intelligence_findings intelligence_findings[]
   intelligence_order_coverage intelligence_order_coverage?
+  order_cancellation_tombstones order_cancellation_tombstones[]
 }
 
 /// Shopper profile synced from Shopify or WooCommerce.
@@ -296,6 +297,8 @@ model customers {
   consent_sms                       Boolean?                            @default(false)
   consent_updated_at                DateTime?                           @db.Timestamptz(6)
   ltv                               Decimal?                            @default(0) @db.Decimal(10, 2)
+  ltv_currency                      String?                             @db.VarChar(3)
+  ltv_mixed_currency                Boolean                             @default(false)
   orders_count                      Int?                                @default(0)
   rfm_recency                       Int?
   rfm_frequency                     Int?
@@ -409,6 +412,7 @@ model orders {
   source_checkout_token   String?
   source_cart_token       String?
   total                   Decimal          @db.Decimal(10, 2)
+  refunded_total          Decimal?         @db.Decimal(10, 2)
   subtotal                Decimal?         @db.Decimal(10, 2)
   discount_amount         Decimal?         @db.Decimal(10, 2)
   currency                String?          @default("USD")
@@ -1539,4 +1543,19 @@ model order_checkout_reconciliation_cases {
 
   @@unique([store_id, order_id], map: "uq_order_checkout_reconciliation_case_store_order")
   @@index([store_id, status, last_observed_at], map: "idx_order_checkout_reconciliation_case_status")
+}
+
+/// A cancellation observed before (or without) a persisted order. Prevents a
+/// delayed order create/update from resurrecting cancelled revenue.
+model order_cancellation_tombstones {
+  store_id          String   @db.Uuid
+  external_order_id String   @db.VarChar(255)
+  cancelled_at      DateTime? @db.Timestamptz(6)
+  currency          String?  @db.VarChar(3)
+  total             Decimal? @db.Decimal(10, 2)
+  observed_at       DateTime @default(now()) @db.Timestamptz(6)
+  stores            stores   @relation(fields: [store_id], references: [id], onDelete: Cascade)
+
+  @@id([store_id, external_order_id])
+  @@index([observed_at(sort: Desc)], map: "idx_order_cancellations_observed")
 }

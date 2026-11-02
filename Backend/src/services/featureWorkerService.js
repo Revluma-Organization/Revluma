@@ -7,6 +7,7 @@ const {
   predictOfferValue,
 } = require('./mlService');
 const { enqueueRecoveryAction } = require('./recoveryActionService');
+const { verifiedCustomerLifetimeValue } = require('./financialIntegrity');
 const { createSensitivityObservation } = require('./trainingObservationService');
 
 const MAX_ATTEMPTS = 5;
@@ -117,6 +118,8 @@ function abandonmentFeatures(features) {
 }
 
 function offerFeatures(features, sensitivity, customer, cart) {
+  // Offer-value features must not carry a currency-less or mixed-currency LTV.
+  const lifetime = verifiedCustomerLifetimeValue(customer);
   return {
     pss_score: sensitivity.pss_score,
     css_score: sensitivity.css_score,
@@ -126,7 +129,9 @@ function offerFeatures(features, sensitivity, customer, cart) {
     visited_coupon_page: features.visited_coupon_page,
     searched_discount_terms: features.searched_discount_terms,
     failed_coupon_count: features.failed_coupon_count,
-    ltv: Number(customer?.ltv || 0),
+    ltv: lifetime.value,
+    ltv_currency: lifetime.currency,
+    ltv_verified: lifetime.verified,
     past_orders_total: features.past_orders_total,
     cart_value: cart ? Number(cart.cart_value) : null,
     churn_tier: customer?.churn_tier || 'HEALTHY',
