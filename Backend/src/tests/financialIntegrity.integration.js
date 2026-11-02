@@ -44,7 +44,12 @@ async function main() {
   const mixedCustomerId = randomUUID();
 
   await prisma.users.create({ data: { id: userId, full_name: 'RC Test', email: `rc-${suffix}@example.invalid`, password_hash: 'x' } });
-  await prisma.organizations.create({ data: { id: orgId, owner_id: userId, company_name: `RC ${suffix}`, industry: 'test', country: 'NG' } });
+  await prisma.organizations.create({
+    data: {
+      id: orgId, owner_id: userId, company_name: `RC ${suffix}`,
+      slug: `rc-${suffix}`, industry: 'test', country: 'NG',
+    },
+  });
   await prisma.stores.createMany({
     data: [
       { id: storeId, organization_id: orgId, platform: 'shopify', shop_domain: `rc-usd-${suffix}.myshopify.com`, status: 'active' },
