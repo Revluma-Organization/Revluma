@@ -1835,7 +1835,6 @@ export default function RevIntell() {
         </div>
       )}
 
-      </div>
       {/* Evidence drawer — verified facts, calculations and limits for one turn. */}
       {createPortal(
         <AnimatePresence>
