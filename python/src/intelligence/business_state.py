@@ -1141,6 +1141,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
             "warnings": len(warnings),
         })
 
+    except BusinessStateBuildInProgress:
+        _rollback_quietly(db)
+        raise
     except Exception as exc:
         logger.exception(
             "business_state_write_failed",
