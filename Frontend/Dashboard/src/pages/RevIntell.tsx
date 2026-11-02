@@ -1530,8 +1530,14 @@ export default function RevIntell() {
       style={{ height: "calc(100vh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
       <div className="flex h-full min-h-0 flex-1 flex-col">
         {/* Rev Intelligence workspace header */}
-        <header className="z-10 flex shrink-0 items-center gap-3 px-5 py-3"
+        <header className="z-10 flex shrink-0 items-center justify-between gap-3 px-5 py-3"
           style={{ background: bg, borderBottom: `1px solid ${bdr}` }}>
+          <div className="min-w-0 flex-1">
+            <p className="m-0 truncate text-[0.9rem] font-bold" style={{ color: t1 }}>Rev Intelligence</p>
+            <p className="m-0 text-[0.68rem]" style={{ color: t2 }}>
+              {activeId ? (conversations.find(conv => conv.id === activeId)?.title || "Your conversation") : "Your revenue intelligence workspace"}
+            </p>
+          </div>
           <button type="button" onClick={() => setMenuOpen(true)}
             aria-label="Open conversation history" title="Open conversation history"
             aria-haspopup="dialog" aria-expanded={menuOpen}
@@ -1539,12 +1545,6 @@ export default function RevIntell() {
             style={{ color: t1, background: isDark ? "#1d1d25" : "#eef0f6", border: `1px solid ${bdr}` }}>
             <Menu size={20} strokeWidth={2.2} />
           </button>
-          <div className="min-w-0">
-            <p className="m-0 truncate text-[0.9rem] font-bold" style={{ color: t1 }}>Rev Intelligence</p>
-            <p className="m-0 text-[0.68rem]" style={{ color: t2 }}>
-              {activeId ? (conversations.find(conv => conv.id === activeId)?.title || "Your conversation") : "Your revenue intelligence workspace"}
-            </p>
-          </div>
         </header>
 
       {/* Main content */}
