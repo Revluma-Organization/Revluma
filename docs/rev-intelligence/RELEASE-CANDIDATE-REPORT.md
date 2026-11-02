@@ -200,6 +200,7 @@ briefing. Findings are evidence-gated before they can be investigated from chat.
 | `src/tests/financialIntegrity.integration.js` (new, 19 scenarios) | **not run locally** (needs Prisma Client); runs in `release-candidate-verification.yml` | pending push |
 | `release-candidate-verification.yml` (Prisma bootstrap + drift + DB suites) | **CI only, not executed** | pending push |
 | Python suite after revenue-semantics fixes | local + live Postgres for the gated module | **616 passed, 1 skipped** |
+| `src/tests/revTenantIsolation.test.js` (new) | local, database mocked only | **8/8** |
 | Backend test suite | **CI, PR #236** | **pass** (`npm ci` + `npm test`, run 41364603543) |
 | Python regressions | **CI, PR #236** | **pass** on 3.11.9 (run 41364603644) |
 | Dashboard suite + build | **CI, PR #236** | **pass** (run 41364603544) |
