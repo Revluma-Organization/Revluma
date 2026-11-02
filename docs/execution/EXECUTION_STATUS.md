@@ -11,32 +11,24 @@ or deletes a task. Where a phase is not verified, it stays unverified.
 
 ## 1. What is verified now
 
-### 1a. CI — pull request #236 (all checks pass)
+### 1a. CI — pull request #236 (13/13 workflows green)
 
 PR: https://github.com/Revluma-Organization/Revluma/pull/236
-Branch `arena/bbc48aa5-revluma`, commit `19ddba0`.
+Branch `arena/bbc48aa5-revluma`, **certified candidate `887ff9b`** (pushed; `origin` matches).
 
-| Check | Run | Conclusion | Steps observed |
-| --- | --- | --- | --- |
-| Backend test suite (`backend-tests.yml`) | [41364603543](https://github.com/Revluma-Organization/Revluma/actions/runs/41364603543) | **pass** | `npm ci` (Prisma generate), `npm test` — the Prisma-backed suites execute here |
-| backend (`backend-refresh-regression.yml`) | [41364603470](https://github.com/Revluma-Organization/Revluma/actions/runs/41364603470) | **pass** | `node --check authController`, `npm test` |
-| python-regressions (`rev-python-tests.yml`) | [41364603644](https://github.com/Revluma-Organization/Revluma/actions/runs/41364603644) | **pass** | `compileall`, Gemini/routing regressions, full `pytest tests` on **Python 3.11.9** |
-| dashboard (`dashboard-auth-regression.yml`) | [41364603544](https://github.com/Revluma-Organization/Revluma/actions/runs/41364603544) | **pass** | `npm ci`, full `vitest run`, production build |
-| task025–task032 isolated reconciliation workflows | individual runs | **pass** | 8/8 |
-| Vercel preview | PR deployment | **pass** | Preview build only; no production deployment |
+| Check | Run | Conclusion |
+| --- | --- | --- |
+| Release candidate verification (see 1e) | [41407771654](https://github.com/Revluma-Organization/Revluma/actions/runs/41407771654) | **pass**, all 21 steps |
+| Backend test suite (`backend-tests.yml`) | [41407771652](https://github.com/Revluma-Organization/Revluma/actions/runs/41407771652) | **pass** |
+| Rev Python regression tests (`rev-python-tests.yml`) | [41407771755](https://github.com/Revluma-Organization/Revluma/actions/runs/41407771755) | **pass** on 3.11.9 |
+| Dashboard authentication regression (suite + production build) | [41407771671](https://github.com/Revluma-Organization/Revluma/actions/runs/41407771671) | **pass** |
+| task025–task032 isolated reconciliation workflows | 41407771653, 41407771667, 41407771707, 41407771670, 41407771669, 41407771708, 41407771774, 41407771790 | **pass**, 8/8 |
+| `backend-refresh-regression.yml` | [41407771753](https://github.com/Revluma-Organization/Revluma/actions/runs/41407771753) | **pass** |
 
-Latest check run for the pushed head (`6d1a946`): every check still green — `Backend test
-suite` ([41364809071](https://github.com/Revluma-Organization/Revluma/actions/runs/41364809071)),
-`backend` ([41364808184](https://github.com/Revluma-Organization/Revluma/actions/runs/41364808184)),
-`python-regressions` ([41364808174](https://github.com/Revluma-Organization/Revluma/actions/runs/41364808174)),
-`dashboard` ([41364808227](https://github.com/Revluma-Organization/Revluma/actions/runs/41364808227)),
-task025–032 (8/8), Vercel preview. **The 2026-11-02 changes are not pushed**, so no CI run
-exists for them yet; treat local results below as the only evidence for those commits.
-
-Note: CI job **logs** could not be downloaded from this sandbox (`results-receiver.actions.githubusercontent.com`
-is not reachable); the conclusions and per-step results above were read from the GitHub API
-(`repos/.../actions/jobs/:id`). Test counts on CI are therefore asserted by step success, not by
-a quoted log line.
+Note: CI job **logs** still cannot be downloaded from this sandbox (the signed blob URL returns
+`EOF`), so results are read from the jobs/steps API. To keep failures diagnosable, every
+verification step now emits its failing assertion as a **check-run annotation**; that mechanism is
+what made defects 15–18 visible and fixable.
 
 ### 1b. Local evidence
 
@@ -89,10 +81,29 @@ and are covered by CI's `npm ci` + `npm test` on the pushed head only.
 | --- | --- | --- |
 | Refund ordering | A delayed pre-refund `orders/create` could overwrite a refunded order back to its gross total. Added `reconcileOrderMoney` (monotonic refunded amount, unseen refunds still deducted) and wired it into `upsertOrder`. | `src/tests/orderMoneyReconciliation.test.js` **12/12**; integration scenario in `financialIntegrity.integration.js` |
 | Supabase security | Read-only inspection of the production project (64 tables, 0 without RLS, 39 with no policy, 2 anon-executable `SECURITY DEFINER` functions, blanket CRUD grants). All findings classified; hardening migration added and verified on staging. | `docs/security/supabase-advisor-triage.md`; `verify-security-hardening.sql` **PASS** |
-| Full Prisma bootstrap | Cannot run locally (Prisma engines unreachable). Added `release-candidate-verification.yml`: real `prisma generate`, `validate`, `db push`, `migrate diff --exit-code` (twice), model/table assertion, `npm test`, DB-backed financial integration suite, SQL checks, Python suite and dashboard build on PostgreSQL 16 + pgvector. | Workflow added, YAML validated; **not executed** (commit unpushed) |
-| Downstream revenue consumers | Four other revenue queries ignored cancellations (`business_state` daily revenue/anomaly detection, seven-day evidence, historical ingestion features, lab seed LTV). All now exclude cancelled/voided/deleted orders; the seven-day field is renamed `net_recorded_order_value` because `orders.total` is net of refunds. | `pytest` **616 passed, 1 skipped**; new SQL-filter regression tests |
+| Full Prisma bootstrap | Cannot run locally (Prisma engines unreachable). `release-candidate-verification.yml` does it in CI: real `prisma generate`, `validate`, `db push`, `migrate diff --exit-code` (twice), model/table assertion, `npm test`, 19 DB-backed financial scenarios, SQL checks, Python suite and dashboard build on PostgreSQL 16 + pgvector. | **Green on `887ff9b`** (run 41407771654); surfaced and closed defects 15–18 |
+| Downstream revenue consumers | Four other revenue queries ignored cancellations (`business_state` daily revenue/anomaly detection, seven-day evidence, historical ingestion features, lab seed LTV). All now exclude cancelled/voided/deleted orders; the seven-day field is renamed `net_recorded_order_value` because `orders.total` is net of refunds. | `pytest` **614 passed, 3 skipped** on staging PostgreSQL (616 passed, 1 skipped without it); new SQL-filter regression tests |
 | Tenant isolation (API boundary) | New `revTenantIsolation.test.js` mocks only the database and exercises the real controller: cross-tenant read/rename/delete → 403, no message query executes for another tenant, listing is org-scoped, missing/foreign membership → 403, `execute: true` → 403 before any DB access. | **8/8 local**; DB-backed ownership suites (`task027Ownership.integration.js`) run in CI |
 | DB-backed financial suite | 19 scenarios through the production ingestion functions against real PostgreSQL (refunds, cancellations, delayed/duplicate/out-of-order delivery, missing evidence, currency, LTV, gross reconstruction). | `src/tests/financialIntegrity.integration.js`; **not executed locally** (needs Prisma Client) — runs in the workflow above |
+
+### 1e. Full Prisma bootstrap executed in CI — 2026-11-02 (third pass)
+
+`release-candidate-verification.yml` now performs the bootstrap that this sandbox cannot:
+PostgreSQL 16 + pgvector service container → `npm ci` (real `prisma generate`) → `prisma validate`
+→ `prisma db push` (full 64-model schema) → `prisma migrate diff --exit-code` → apply both
+candidate migrations → drift re-asserted → every Prisma model asserted present in PostgreSQL →
+`npm test` → 19 financial-integrity scenarios against the live database → three behavioural SQL
+check scripts → Python suite on real PostgreSQL → revenue acceptance.
+
+Four real defects were surfaced and closed in the process; see
+`docs/rev-intelligence/RELEASE-CANDIDATE-REPORT.md` §15 items 15–18:
+
+| # | Defect | Fix |
+| --- | --- | --- |
+| 15 | Migration created `idx_order_cancellations_observed`, `schema.prisma` never declared it → drift | `@@index([observed_at(sort: Desc)], map: …)` |
+| 16 | `parseAmount()` rejected Prisma `Decimal`, so every `NUMERIC` read was dropped | exact decimal-string read; arrays/objects still fail closed |
+| 17 | Verification fixtures predated `organizations.slug` (`NOT NULL UNIQUE`) | fixtures in both psql scripts and the Python acceptance script supply it |
+| 18 | The Python suite step never installed `pytest` and had never run | `pip install -r requirements.txt pytest` |
 
 ## 2. What is not verified
 
@@ -102,13 +113,13 @@ and are covered by CI's `npm ci` + `npm test` on the pushed head only.
   working offline still cannot run the Prisma suites without a Prisma install.
 - **CI test counts are not recorded.** The jobs pass; their log files are unreachable from this
   environment, so the exact number of executed tests on CI is unknown.
-- **The full application schema was never bootstrapped.** No `prisma db push`/`migrate deploy`
-  ran, because the CLI cannot download engines here; 38 of 64 models are absent from staging and
-  the backend server was never started against it.
+- **Local schema bootstrap is still impossible** (Prisma engines unreachable from this sandbox),
+  and the hand-replayed staging database still holds 27 of 64 models. This is now covered in CI,
+  which builds the full schema with `prisma db push` on every run.
 - **No Supabase verification.** The shared project was not touched; advisor findings are triaged
   in `docs/security/supabase-advisor-triage.md` with the three read-only queries that close them.
-- **The 2026-11-02 commits are not covered by CI** (not pushed, per instruction), so
-  `release-candidate-verification.yml` has never run.
+- **Connected-service behaviour remains unverified**: no real Shopify webhook delivery, no
+  credential access from the app, no deployed streaming session, no live merchant flow.
 - **No Shopify webhook delivery, no Supabase credential access from the app, no deployed
   streaming session.** The repository has no `.env` at all, so no provider key, Shopify token
   or database URL exists in this workspace.
@@ -136,14 +147,13 @@ and are covered by CI's `npm ci` + `npm test` on the pushed head only.
 1. ~~One green CI run of `backend-tests.yml`, `rev-python-tests.yml` and
    `dashboard-auth-regression.yml` on this branch.~~ **Closed** — all checks pass on PR #236.
 2. ~~A staging database with the `20261101120000_rev_financial_integrity` migration applied.~~
-   **Closed for the migration itself** (1c); the remaining gap is a fully bootstrapped schema
-   via `prisma db push`, which needs engine downloads.
+   **Closed** (1c locally, and 1e on every CI run with the full schema).
 3. A Shopify test store to verify order/cart ingestion, refund reconciliation and currency
-   capture with real webhooks.
+   capture with real webhooks. **Open — requires operator-supplied store credentials.**
 4. A deployed Python service to exercise streaming, timeouts and cancellation end-to-end.
-5. A push of the candidate commit so CI can execute `release-candidate-verification.yml`
-   (full Prisma bootstrap, schema-drift check, DB-backed financial suite) and the existing
-   backend/Python/dashboard/task workflows on the exact SHA.
+   **Open — requires a deployment authorization.**
+5. ~~A push of the candidate commit so CI can execute `release-candidate-verification.yml`.~~
+   **Closed** — 13/13 workflows green on `887ff9b`.
 
 `docs/execution/STAGING-VERIFICATION-RUNBOOK.md` gives the exact commands and pass criteria for
 closing blockers 2–4, including the Shopify webhook scenarios (refund, cancel-then-delayed-create,
