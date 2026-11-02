@@ -191,7 +191,7 @@ async function main() {
     const rows = await prisma.$queryRawUnsafe(
       `SELECT COALESCE(SUM(total), 0)::text AS total, COUNT(*)::int AS count
          FROM orders
-        WHERE store_id = $1 AND currency = 'USD'
+        WHERE store_id = $1::uuid AND currency = 'USD'
           AND (recovery_status IS NULL OR recovery_status NOT IN ('cancelled','canceled','voided','deleted'))`,
       storeId,
     );
@@ -204,7 +204,7 @@ async function main() {
     const rows = await prisma.$queryRawUnsafe(
       `SELECT COALESCE(SUM(total + COALESCE(refunded_total, 0)), 0)::text AS gross
          FROM orders
-        WHERE store_id = $1 AND currency = 'USD'
+        WHERE store_id = $1::uuid AND currency = 'USD'
           AND (recovery_status IS NULL OR recovery_status <> 'cancelled')`,
       storeId,
     );
