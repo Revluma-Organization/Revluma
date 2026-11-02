@@ -3,8 +3,8 @@
 Date: 2026-11-01
 Branch: `arena/bbc48aa5-revluma`, based on `main@93d9d42`
 Overall verdict: **PARTIALLY COMPLETED** — code, contract and tests are in place and green
-locally; CI, staging, a staging database and a real Shopify store were not available, so no
-capability below is claimed as fully verified end-to-end.
+locally **and in CI (PR #236)**; staging, a staging database and a real Shopify store were not
+available, so no merchant-facing capability below is claimed as fully verified end-to-end.
 
 This report is deliberately structured into 17 parts. A part is marked **FULLY COMPLETED** only
 where the evidence exists in this workspace; every other part is **PARTIALLY COMPLETED** with
@@ -169,10 +169,15 @@ briefing. Findings are evidence-gated before they can be investigated from chat.
 | `npx vitest run` (Dashboard) | local | 19 files, 120 tests |
 | `npx vite build` (Dashboard) | local | succeeded |
 | `npx tsc -p tsconfig.app.json --noEmit` | local | 17 pre-existing errors in unrelated pages, 0 in Rev files |
-| Backend `npm test` | — | **not run** (Prisma Client unavailable in sandbox) |
-| Any CI workflow | — | **not observed** |
+| Backend `npm test` | local | **not run** (Prisma Client unavailable in sandbox) |
+| Backend test suite | **CI, PR #236** | **pass** (`npm ci` + `npm test`, run 41364603543) |
+| Python regressions | **CI, PR #236** | **pass** on 3.11.9 (run 41364603644) |
+| Dashboard suite + build | **CI, PR #236** | **pass** (run 41364603544) |
+| task025–032 workflows | **CI, PR #236** | **8/8 pass** |
 
-**Status: PARTIALLY COMPLETED** — no CI evidence, no live database evidence.
+**Status: PARTIALLY COMPLETED** — CI is green (backend, Python 3.11.9, dashboard, 8 task
+workflows); no live-database, Shopify-store or staging evidence yet. CI job logs are not
+downloadable from this environment, so CI results are recorded as step-level success.
 
 ## 15. Defects found, fixed and covered
 
@@ -218,8 +223,8 @@ and this documentation set.
 ## 17. Blockers and next steps
 
 0. **Follow the staging runbook**: `docs/execution/STAGING-VERIFICATION-RUNBOOK.md`.
-1. **Run CI** on this branch: `backend-tests.yml` (needs Prisma binaries), `rev-python-tests.yml`
-   (now pinned to 3.11.9) and `dashboard-auth-regression.yml` (full suite + build).
+1. ~~Run CI on this branch.~~ **Closed** — PR #236 is green: `backend-tests.yml`,
+   `rev-python-tests.yml` (3.11.9) and `dashboard-auth-regression.yml` (full suite + build).
 2. **Apply the migration** in staging: `20261101120000_rev_financial_integrity`.
 3. **Connect a Shopify test store** and verify: order/cart currency capture, refund
    reconciliation on webhook `orders/update`, cancelled-then-delayed-create ordering, coverage

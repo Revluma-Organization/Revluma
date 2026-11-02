@@ -23,8 +23,22 @@ unit coverage exists, but the end-to-end path needs a live database, service or 
 | 9 | Mixed-currency handling | `totalsByCurrency` and `computeCustomerLifetimeValue` never sum across codes (mixed → `ltv: null`, `mixed_currency: true`); evidence grouping is per currency; LTV totals are refused in `agents/tools.py`. Node and Python tests both assert the mixed case. | **FIXED (unit-verified)** |
 | 10 | Evidence-to-metric attribution gaps | Period-comparison facts previously carried `evidence_ids: []`. Changes now carry `current_evidence_id` / `previous_evidence_id`, comparison facts cite both, and previous-period items travel in `evidence.comparison_items` (bounded to 60 by the Node gateway). New `validate_attribution()` rejects facts with no evidence, unknown evidence ids, currency facts without a currency, and hypotheses marked verified; it runs inside the investigation and feeds `evidence.validation`. Covered by 5 new tests in `python/tests/test_rev_evidence_contract.py`. | **FIXED (unit-verified)** |
 | 11 | Unreviewed diff / untracked files | 21 tracked files modified and 19 untracked paths, all source, migration or test files; no build output, dependency tree or dataset is staged (`Frontend/Dashboard/dist` is git-ignored). Inventory recorded in the release-candidate report, §16. | **FIXED (inventory reviewed)** |
-| 12 | Python 3.11.9 | Local interpreter is 3.11.2, so 3.11.9 could not be established here. `.github/workflows/rev-python-tests.yml` is now pinned to `python-version: '3.11.9'`; the dashboard workflow runs the full Vitest suite rather than two files. | **PARTIAL (CI pin added, CI not run)** |
+| 12 | Python 3.11.9 | Local interpreter is 3.11.2. `.github/workflows/rev-python-tests.yml` is pinned to `python-version: '3.11.9'`, and the `python-regressions` job on PR #236 passed `compileall`, the Gemini/routing regressions and the full `pytest tests` suite on that interpreter. The dashboard workflow now runs the full Vitest suite plus a production build, also green. | **FIXED (CI-verified)** |
 | 13 | Live staging verification | No staging environment, staging database or connected Shopify test store was available. No deployment, migration or merchant-flow action was performed. | **BLOCKED** |
+
+## CI evidence — PR #236 (2026-11-01)
+
+All checks pass, including the Prisma-backed backend suite that cannot run in this sandbox:
+
+- Backend test suite (`npm ci` + `npm test`) — pass (run 41364603543)
+- backend refresh regression (`node --check` + `npm test`) — pass (run 41364603470)
+- python-regressions (`compileall`, targeted regressions, full `pytest tests`, Python 3.11.9) — pass (run 41364603644)
+- dashboard (full `vitest run` + `vite build`) — pass (run 41364603544)
+- task025–task032 isolated workflows — 8/8 pass
+- Vercel preview build — pass (preview only)
+
+Job logs are not downloadable from this environment, so CI evidence is step-level success from the
+GitHub API rather than quoted test counts.
 
 ## Locally executed evidence (2026-11-01)
 
