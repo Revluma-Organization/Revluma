@@ -1,0 +1,48 @@
+name: Task 019 isolated cart token matching
+on:
+  pull_request:
+    paths:
+      - "Backend/src/tests/task019CartToken.integration.js"
+      - ".github/workflows/task019-cart-token.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  task019:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: task019
+          POSTGRES_PASSWORD: task019_local_only
+          POSTGRES_DB: task019
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U task019 -d task019"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    defaults:
+      run:
+        working-directory: Backend
+    env:
+      DATABASE_URL: postgresql://task019:task019_local_only@127.0.0.1:5432/task019?schema=public
+      DIRECT_URL: postgresql://task019:task019_local_only@127.0.0.1:5432/task019?schema=public
+      TASK019_ISOLATED_DB: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: Backend/package-lock.json
+      - run: npm ci
+      - name: Enable vector extension
+        run: PGPASSWORD=task019_local_only psql -h 127.0.0.1 -U task019 -d task019 -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+      - name: Initialize disposable Prisma schema
+        run: npx prisma db push --skip-generate --accept-data-loss
+      - name: Execute independent cart token tests
+        run: node src/tests/task019CartToken.integration.js
