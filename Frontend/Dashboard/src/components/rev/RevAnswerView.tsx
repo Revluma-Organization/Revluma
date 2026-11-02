@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import {
-  ArrowRight, Check, Copy, Database, RefreshCw, ShieldCheck, TriangleAlert,
+  Check, Copy, Database, RefreshCw, ShieldCheck, TriangleAlert,
 } from "lucide-react";
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
