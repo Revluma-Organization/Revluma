@@ -8,6 +8,7 @@ and delegates inference without duplicating those rules.
 Run locally with ``uvicorn src.serving.api:app --reload --port 8000``.
 """
 
+import asyncio
 import anyio
 import ipaddress
 import base64
@@ -84,6 +85,7 @@ async def _lifespan(_: FastAPI):
         extra={
             "max_concurrent_sync_handlers": 8,
             "db_pool_capacity": 12,
+            "max_concurrent_http_requests": 8,
         },
     )
 
@@ -97,6 +99,19 @@ app = FastAPI(
     version="0.4.0",
     lifespan=_lifespan,
 )
+
+# Queue excess requests before FastAPI dependencies open SQLAlchemy sessions.
+# This caps all request types, including async endpoints that bypass AnyIO's
+# synchronous thread limiter.
+_REQUEST_CONCURRENCY_LIMIT = 8
+_request_semaphore = asyncio.Semaphore(_REQUEST_CONCURRENCY_LIMIT)
+
+
+@app.middleware("http")
+async def limit_request_concurrency(request: Request, call_next):
+    async with _request_semaphore:
+        return await call_next(request)
+
 
 _START_TIME = time.time()
 
