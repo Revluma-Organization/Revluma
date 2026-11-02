@@ -500,18 +500,9 @@ def build_business_state(organization_id: str, db) -> BusinessState:
     warnings: list[str] = []
     computation_status = "complete"
 
-    if not _try_acquire_business_state_lock(db, organization_id):
-        previous_state = load_current_business_state(organization_id, db)
-        if previous_state is not None:
-            logger.info(
-                "business_state_duplicate_build_skipped",
-                extra={"org_id": organization_id, "state_id": previous_state.id},
-            )
-            return previous_state
-        raise BusinessStateBuildInProgress(
-            "A business-state build is already running for this organization."
-        )
-
+    # Read the current snapshot before the expensive source queries. The
+    # advisory lock is acquired only for the final persistence transaction so
+    # optional-source rollbacks cannot release it prematurely.
     previous_state = load_current_business_state(organization_id, db)
 
     logger.info("business_state_build_start", extra={
@@ -986,6 +977,34 @@ def build_business_state(organization_id: str, db) -> BusinessState:
 
     persistence_failed = False
     try:
+        # Serialize only the critical write section. This transaction-scoped
+        # lock survives no source-query rollback because it is acquired after
+        # all metric collection and immediately before persistence.
+        if not _try_acquire_business_state_lock(db, organization_id):
+            latest_state = load_current_business_state(organization_id, db)
+            if latest_state is not None:
+                logger.info(
+                    "business_state_duplicate_build_skipped",
+                    extra={"org_id": organization_id, "state_id": latest_state.id},
+                )
+                return latest_state
+            raise BusinessStateBuildInProgress(
+                "A business-state rebuild is already running for this organization."
+            )
+
+        # A competing build may have completed while this worker collected
+        # metrics. Preserve that newer snapshot instead of writing a duplicate.
+        latest_state = load_current_business_state(organization_id, db)
+        if latest_state is not None and (
+            previous_state is None or latest_state.id != previous_state.id
+        ):
+            db.rollback()
+            logger.info(
+                "business_state_newer_snapshot_already_written",
+                extra={"org_id": organization_id, "state_id": latest_state.id},
+            )
+            return latest_state
+
         # Step 1: mark existing current state as historical
         db.execute(
             text("""
