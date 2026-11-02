@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -29,6 +30,7 @@ import redis
 from sqlalchemy import bindparam, text
 
 from src.config.settings import settings
+from src.intelligence.query import read_row
 
 logger = logging.getLogger("rev.business_state")
 
@@ -53,6 +55,32 @@ DAILY_REVENUE_SQL = """
 
 SCHEMA_VERSION = "1.1"
 DEFAULT_STALENESS_MINS = 30
+
+def _int_setting(name: str, default: int, *, minimum: int = 0) -> int:
+    """Read an integer setting, falling back on garbage instead of crashing.
+
+    These are evaluated at import time, so a malformed value must never stop
+    the service from booting.
+    """
+    raw = (os.environ.get(name) or "").strip()
+    try:
+        value = int(raw) if raw else default
+    except ValueError:
+        return default
+    return value if value >= minimum else default
+
+
+# Snapshot retention. Superseded snapshots are near-write-only history: the
+# observed-change reader caps at 48 rows per organization, so a generous window
+# preserves every query that exists today while bounding the table. Without
+# retention the production table reached 33,717 rows / 33 MB in five days, of
+# which only 5 were still current.
+#
+# The observed-change reader caps at 48 snapshots, so never retain fewer.
+SNAPSHOT_HISTORY_RETENTION = _int_setting(
+    "REV_BUSINESS_STATE_HISTORY_RETENTION", 200, minimum=48
+)
+SNAPSHOT_PRUNE_BATCH = _int_setting("REV_BUSINESS_STATE_PRUNE_BATCH", 500, minimum=1)
 VIP_INACTIVE_DAYS = 45
 LTV_THRESHOLDS = (100.0, 500.0, 1000.0, 2500.0)
 LTV_APPROACH_BAND = 0.15
@@ -148,6 +176,70 @@ def _rollback_quietly(db) -> None:
         db.rollback()
     except Exception:
         logger.exception("business_state_rollback_failed")
+
+
+def prune_superseded_snapshots(
+    db,
+    organization_id: str,
+    *,
+    keep: int = SNAPSHOT_HISTORY_RETENTION,
+    batch: int = SNAPSHOT_PRUNE_BATCH,
+) -> int:
+    """Delete superseded snapshots beyond the retained history window.
+
+    Only ``is_current = FALSE`` rows for this organization are eligible, so the
+    live snapshot can never be removed. The delete is batched so a large
+    backlog drains gradually across rebuilds instead of one long-running
+    statement that holds locks and blows the request budget.
+
+    Retention is housekeeping: a failure here is logged and swallowed so it can
+    never turn a successful Business State build into a reported failure.
+    Returns the number of rows deleted.
+    """
+    keep = max(48, int(keep))
+    batch = max(1, int(batch))
+    try:
+        result = db.execute(
+            text("""
+                DELETE FROM business_states
+                WHERE id IN (
+                    SELECT id
+                    FROM business_states
+                    WHERE organization_id = :org_id
+                      AND is_current = FALSE
+                      AND id NOT IN (
+                          SELECT retained.id
+                          FROM business_states retained
+                          WHERE retained.organization_id = :org_id
+                            AND retained.is_current = FALSE
+                          ORDER BY retained.generated_at DESC, retained.id DESC
+                          LIMIT :keep
+                      )
+                    LIMIT :batch
+                )
+            """),
+            {"org_id": organization_id, "keep": keep, "batch": batch},
+        )
+        deleted = int(getattr(result, "rowcount", 0) or 0)
+        db.commit()
+        if deleted:
+            logger.info(
+                "business_state_snapshots_pruned",
+                extra={
+                    "org_id": organization_id,
+                    "deleted": deleted,
+                    "retained": keep,
+                    "batch": batch,
+                },
+            )
+        return deleted
+    except Exception as exc:
+        _rollback_quietly(db)
+        logger.warning(
+            "business_state_prune_failed",
+            extra={"org_id": organization_id, "error_type": type(exc).__name__},
+        )
+        return 0
 
 
 def _json_value(value: Any, default: Any) -> Any:
@@ -1154,6 +1246,11 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
             "warnings": len(warnings),
         })
 
+        # Bound the table now that the snapshot is safely committed. Running
+        # this outside the write transaction keeps a retention failure from
+        # invalidating a successful build.
+        prune_superseded_snapshots(db, organization_id)
+
     except BusinessStateBuildInProgress:
         _rollback_quietly(db)
         raise
@@ -1248,8 +1345,10 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
     Returns None if no state exists yet.
     """
     try:
-        row = db.execute(
-            text("""
+        # read_row, not db.execute: this sits on the investigation hot path via
+        # _run_specialists, and a bare execute left the session idle in a
+        # transaction -- holding a pooled connection across the model call.
+        row = read_row(db, """
                 SELECT
                     id, organization_id, schema_version, generated_at,
                     data_freshness_at, staleness_threshold_mins, computation_status,
@@ -1263,9 +1362,7 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
                 WHERE organization_id = :org_id
                   AND is_current = TRUE
                 LIMIT 1
-            """),
-            {"org_id": organization_id},
-        ).fetchone()
+        """, {"org_id": organization_id})
 
         if not row:
             return None

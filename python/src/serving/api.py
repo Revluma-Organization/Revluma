@@ -64,7 +64,9 @@ from src.intelligence.business_state import (
 )
 from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
 from src.learning.feedback_loop import run_due_outcome_checks as _run_due_outcome_checks
-from src.config.database import engine
+from src.agents.investigation import InvestigationCancelled
+from src.config.database import engine, pool_capacity as _db_pool_capacity
+from src.intelligence.query import release_read_transaction, safe_query
 from sqlalchemy.orm import sessionmaker
 
 _Session = sessionmaker(bind=engine)
@@ -74,22 +76,78 @@ _automation_lock = threading.Lock()
 _automation_status = {"running": False, "last_result": None, "last_error": None}
 
 
+# ---------------------------------------------------------------------------
+# Capacity budget
+# ---------------------------------------------------------------------------
+# This service shares one Supabase connection budget with the Node service and
+# Supabase's own internal clients, so every limit below is derived from a
+# single documented budget rather than tuned in isolation. config/database.py
+# reads the same REV_DB_POOL_SIZE / REV_DB_MAX_OVERFLOW values, so the pool
+# this module advertises is always the pool actually built.
+#
+#   db_pool_capacity = REV_DB_POOL_SIZE + REV_DB_MAX_OVERFLOW
+#
+# The ASGI request gate holds its permit for the entire response body, so a
+# streaming investigation may hold one pooled connection for its whole
+# lifetime. Background work (automation, business-state rebuild, briefings,
+# outcome evaluation) needs its own reserved headroom.
+#
+#   invariant: http_requests + reserved_background <= db_pool_capacity
+_RESERVED_BACKGROUND_DB_CONNECTIONS = int(
+    os.environ.get("REV_DB_RESERVED_BACKGROUND_CONNECTIONS", "2")
+)
+_REQUEST_CONCURRENCY_LIMIT = int(
+    os.environ.get("REV_MAX_CONCURRENT_HTTP_REQUESTS", "4")
+)
+# Synchronous handlers draw AnyIO threadpool tokens: streaming investigation
+# generators, run_in_threadpool endpoints and Starlette background tasks.
+_REQUEST_THREADPOOL_TOKENS = int(os.environ.get("REV_THREADPOOL_TOKENS", "8"))
+
+
+def _capacity_budget_violation() -> str | None:
+    """Explain why the connection budget cannot hold, or return None."""
+    capacity = _db_pool_capacity()
+    demand = _REQUEST_CONCURRENCY_LIMIT + _RESERVED_BACKGROUND_DB_CONNECTIONS
+    if demand > capacity:
+        return (
+            f"request_concurrency({_REQUEST_CONCURRENCY_LIMIT}) + "
+            f"reserved_background({_RESERVED_BACKGROUND_DB_CONNECTIONS}) = {demand} "
+            f"exceeds db_pool_capacity({capacity})"
+        )
+    if _REQUEST_THREADPOOL_TOKENS < _REQUEST_CONCURRENCY_LIMIT:
+        return (
+            f"threadpool_tokens({_REQUEST_THREADPOOL_TOKENS}) is below "
+            f"request_concurrency({_REQUEST_CONCURRENCY_LIMIT}); streaming "
+            "handlers could starve"
+        )
+    return None
+
+
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
     # Keep synchronous request handlers aligned with the bounded SQLAlchemy
     # pool. Without this cap, FastAPI's default 40 worker tokens can create
     # more concurrent DB sessions than this single Render instance should use.
     thread_limiter = anyio.to_thread.current_default_thread_limiter()
-    thread_limiter.total_tokens = 8
+    thread_limiter.total_tokens = _REQUEST_THREADPOOL_TOKENS
+    # Report the values actually in force. Hand-written literals here drifted
+    # from the real configuration, which made the startup log unusable for
+    # diagnosing pool exhaustion.
     logger.info(
         "request_threadpool_capacity_configured",
         extra={
-            "max_concurrent_sync_handlers": 4,
-            "db_pool_capacity": 12,
-            "max_concurrent_http_requests": 4,\n            "reserved_background_db_connections": 2,
+            "max_concurrent_sync_handlers": _REQUEST_THREADPOOL_TOKENS,
+            "db_pool_capacity": _db_pool_capacity(),
+            "max_concurrent_http_requests": _REQUEST_CONCURRENCY_LIMIT,
+            "reserved_background_db_connections": _RESERVED_BACKGROUND_DB_CONNECTIONS,
             "request_gate_scope": "full_asgi_response_including_streams",
         },
     )
+    violation = _capacity_budget_violation()
+    if violation:
+        # Misconfiguration must be loud at boot, not silent until a merchant
+        # request times out waiting for a connection.
+        logger.error("db_capacity_budget_violated detail=%s", violation)
 
     await _preload_models()
     yield
@@ -106,16 +164,47 @@ app = FastAPI(
 # Starlette's @app.middleware("http") releases after call_next returns a
 # StreamingResponse object, while its generator may still hold a DB session.
 # This middleware retains the permit until the final response body is sent.
-_REQUEST_CONCURRENCY_LIMIT = 4
 
 
 class RequestConcurrencyGate:
+    """Bound concurrent ASGI requests and report what the bound is costing.
+
+    The permit is held for the whole response body, not just route execution,
+    because a streaming investigation keeps a database session alive while its
+    generator runs. Counters here are the evidence for deciding whether the
+    limit is queueing real traffic or simply idle.
+    """
+
     def __init__(self, app, limit: int = _REQUEST_CONCURRENCY_LIMIT):
         self.app = app
         self.limit = limit
         self.semaphore = asyncio.Semaphore(limit)
         self._active_lock = threading.Lock()
         self.active_requests = 0
+        self.active_streams = 0
+        self.total_requests = 0
+        self.queued_requests = 0
+        self.total_wait_ms = 0.0
+        self.max_wait_ms = 0.0
+        self.saturated_at = 0
+        # Published so the diagnostics endpoint can read the live instance
+        # without depending on Starlette's middleware construction order.
+        global _ACTIVE_GATE
+        _ACTIVE_GATE = self
+
+    def snapshot(self) -> dict:
+        with self._active_lock:
+            queued = self.total_wait_ms
+            return {
+                "limit": self.limit,
+                "active_requests": self.active_requests,
+                "active_streams": self.active_streams,
+                "total_requests": self.total_requests,
+                "queued_requests": self.queued_requests,
+                "mean_wait_ms": round(queued / self.total_requests, 2) if self.total_requests else 0.0,
+                "max_wait_ms": round(self.max_wait_ms, 2),
+                "saturated_events": self.saturated_at,
+            }
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -127,7 +216,15 @@ class RequestConcurrencyGate:
         wait_ms = (time.perf_counter() - wait_started) * 1000
         with self._active_lock:
             self.active_requests += 1
+            self.total_requests += 1
+            self.total_wait_ms += wait_ms
+            if wait_ms > self.max_wait_ms:
+                self.max_wait_ms = wait_ms
+            if wait_ms >= 25:
+                self.queued_requests += 1
             active = self.active_requests
+            if active >= self.limit:
+                self.saturated_at += 1
         if wait_ms >= 25 or active >= self.limit:
             logger.info(
                 "http_request_gate_active",
@@ -140,20 +237,35 @@ class RequestConcurrencyGate:
             )
 
         released = False
+        is_stream = False
 
         def release_permit():
-            nonlocal released
+            nonlocal released, is_stream
             if released:
                 return
             released = True
             with self._active_lock:
                 self.active_requests = max(0, self.active_requests - 1)
+                if is_stream:
+                    self.active_streams = max(0, self.active_streams - 1)
             self.semaphore.release()
 
         async def send_and_release(message):
+            nonlocal is_stream
+            message_type = message.get("type")
+            if message_type == "http.response.start":
+                content_type = ""
+                for key, value in message.get("headers") or []:
+                    if key == b"content-type":
+                        content_type = value.decode("latin-1")
+                        break
+                if content_type.startswith("text/event-stream"):
+                    is_stream = True
+                    with self._active_lock:
+                        self.active_streams += 1
             await send(message)
             if (
-                message.get("type") == "http.response.body"
+                message_type == "http.response.body"
                 and not message.get("more_body", False)
             ):
                 release_permit()
@@ -163,6 +275,8 @@ class RequestConcurrencyGate:
         finally:
             release_permit()
 
+
+_ACTIVE_GATE: "RequestConcurrencyGate | None" = None
 
 app.add_middleware(RequestConcurrencyGate, limit=_REQUEST_CONCURRENCY_LIMIT)
 
@@ -812,6 +926,83 @@ async def health_check():
     }
 
 
+# ---------------------------------------------------------------------------
+# Database and stream diagnostics
+# ---------------------------------------------------------------------------
+# Pool exhaustion was previously diagnosable only by reading crash logs after
+# the fact. These counters make the invariant checkable while the service is
+# running, and are behind the internal key because they describe capacity.
+_PG_ACTIVITY_SQL = """
+    SELECT
+        count(*) AS total_backends,
+        count(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_transaction,
+        count(*) FILTER (WHERE state = 'active') AS active_queries,
+        max(EXTRACT(EPOCH FROM (now() - xact_start)))
+            FILTER (WHERE xact_start IS NOT NULL) AS oldest_transaction_seconds
+    FROM pg_stat_activity
+    WHERE datname = current_database()
+"""
+
+
+def _pool_telemetry() -> dict:
+    try:
+        pool = engine.pool
+        return {
+            "pool_size": pool.size(),
+            "checked_out": pool.checkedout(),
+            "checked_in": pool.checkedin(),
+            "overflow": pool.overflow(),
+            "capacity": _db_pool_capacity(),
+        }
+    except Exception:  # pragma: no cover - pool without introspection
+        return {"error": "pool_telemetry_unavailable"}
+
+
+@app.get("/internal/db/diagnostics", dependencies=[Depends(verify_internal_caller)])
+def internal_db_diagnostics():
+    """Live connection, transaction and stream counters for operators.
+
+    This endpoint must stay reachable while the database is unhealthy — that is
+    precisely when an operator needs it. A raising read is therefore reported as
+    an unavailable activity snapshot rather than allowed to 500 the endpoint and
+    take the pool and gate counters with it.
+    """
+    rows: list = []
+    error: str | None = None
+    db = None
+    try:
+        db = _Session()
+        rows, error = safe_query(db, _PG_ACTIVITY_SQL)
+    except Exception as exc:
+        error = error or f"query_failed:{type(exc).__name__}"
+        logger.warning("db_diagnostics_activity_unavailable error_type=%s",
+                       type(exc).__name__)
+    finally:
+        if db is not None:
+            db.close()
+
+    activity = dict(rows[0]) if rows and not error else {}
+    if error:
+        # Supabase may restrict pg_stat_activity for this role. Report that
+        # honestly rather than implying the database is idle.
+        activity = {"unavailable": True, "reason": error}
+
+    pool = _pool_telemetry()
+    checked_out = pool.get("checked_out")
+    capacity = pool.get("capacity")
+    return {
+        "pool": pool,
+        "database_activity": activity,
+        "request_gate": _ACTIVE_GATE.snapshot() if _ACTIVE_GATE else {"unavailable": True},
+        "capacity_budget_violation": _capacity_budget_violation(),
+        "saturated": bool(
+            isinstance(checked_out, int)
+            and isinstance(capacity, int)
+            and checked_out >= capacity
+        ),
+    }
+
+
 @app.post("/predict/abandonment-probability", response_model=AbandonmentResponse,
           dependencies=[Depends(verify_internal_caller)])
 async def predict_abandonment(features: AbandonmentFeatures):
@@ -1100,16 +1291,31 @@ async def rev_investigate(req: InvestigateRequest):
 
     if req.contract_version != "1.0":
         raise HTTPException(status_code=400, detail="Intelligence contract version mismatch")
-    db = _Session()
-    try:
-        result = await run_in_threadpool(
-            lambda: run_investigation(
+
+    def _run():
+        # Create and close the session on the thread that uses it. A
+        # SQLAlchemy Session is not thread-safe, and run_in_threadpool moves
+        # execution off the event loop thread.
+        db = _Session()
+        try:
+            return run_investigation(
                 req.organization_id, req.user_id, req.message,
                 conversation_id=req.conversation_id, db=db,
                 context_payload=req.context_payload,
             )
-        )
+        finally:
+            try:
+                release_read_transaction(db)
+            finally:
+                db.close()
+
+    try:
+        result = await run_in_threadpool(_run)
         return {"contract_version": CONTRACT_VERSION, **result}
+    except InvestigationCancelled:
+        # The client went away mid-investigation. Nothing is persisted and
+        # there is nobody left to answer.
+        raise HTTPException(status_code=499, detail="Investigation cancelled")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception:
@@ -1118,29 +1324,34 @@ async def rev_investigate(req: InvestigateRequest):
             status_code=503,
             detail="Intelligence response unavailable; please retry.",
         )
-    finally:
-        db.close()
 
 
 @app.post("/rev/stream", dependencies=[Depends(verify_internal_caller)])
 def rev_stream(req: InvestigateRequest):
-    """Server-sent events for the dashboard: plan -> steps -> evidence -> final."""
+    """Server-sent events for the dashboard: plan -> steps -> evidence -> final.
+
+    The investigation runs on a worker thread, so the session is created and
+    closed *inside* that thread via ``session_factory``. A SQLAlchemy Session
+    is not thread-safe: the previous shape created it here and closed it in the
+    generator's ``finally``, which could run while the worker was still using
+    it after a client disconnect.
+    """
     from src.agents.investigation import stream_investigation
 
     if req.contract_version != "1.0":
         raise HTTPException(status_code=400, detail="Intelligence contract version mismatch")
-    db = _Session()
 
     def generate():
-        try:
-            for event in stream_investigation(
-                req.organization_id, req.user_id, req.message,
-                conversation_id=req.conversation_id, db=db,
-                context_payload=req.context_payload,
-            ):
-                yield _sse_frame(event)
-        finally:
-            db.close()
+        # Closing the generator (client disconnect, Stop) runs the finally in
+        # stream_investigation, which signals cancellation to the worker so it
+        # releases its session, its request slot and its provider budget.
+        for event in stream_investigation(
+            req.organization_id, req.user_id, req.message,
+            conversation_id=req.conversation_id,
+            context_payload=req.context_payload,
+            session_factory=_Session,
+        ):
+            yield _sse_frame(event)
 
     return StreamingResponse(
         generate(),

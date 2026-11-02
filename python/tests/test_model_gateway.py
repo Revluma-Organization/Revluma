@@ -208,3 +208,91 @@ def test_retired_primary_model_404_fails_over_to_configured_gemini(monkeypatch):
     assert model_gateway.generate("merchant question", timeout=10) == "Recovered"
     assert "retired-model" in calls[0]
     assert "gemini-2.5-flash" in calls[1]
+
+
+def test_grounding_sources_are_separated_by_real_newlines(monkeypatch):
+    """The source list is rendered to the merchant, so it must use real newlines.
+
+    The suffix was built with escaped ``\\\\n`` sequences in a non-raw string,
+    which emitted literal backslash-n characters into merchant-facing answers.
+    """
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, url, **kwargs):
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "candidates": [{
+                    "content": {"parts": [{"text": "Recent update."}]},
+                    "groundingMetadata": {"groundingChunks": [
+                        {"web": {"uri": "https://example.org/first"}},
+                        {"web": {"uri": "https://example.org/second"}},
+                    ]}}]})
+
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    output = model_gateway.generate("research", web_search=True)
+
+    assert "\\n" not in output, "escaped newline leaked into merchant-facing text"
+    assert "\n\nSources:\n" in output
+    assert "- https://example.org/first\n- https://example.org/second" in output
+
+
+def test_web_search_without_verifiable_sources_says_so(monkeypatch):
+    """Grounding must not be implied when no usable source came back."""
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, url, **kwargs):
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "candidates": [{
+                    "content": {"parts": [{"text": "Recent update."}]},
+                    "groundingMetadata": {"groundingChunks": [
+                        {"web": {"uri": "http://insecure.example.org/x"}},
+                    ]}}]})
+
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    output = model_gateway.generate("research", web_search=True)
+
+    assert "\\n" not in output
+    assert "(Web search returned no verifiable sources.)" in output
+    assert "http://insecure.example.org/x" not in output
+
+
+def test_grounding_source_list_is_capped(monkeypatch):
+    """A long grounding list must not flood the merchant's answer."""
+    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-only")
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            pass
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def post(self, url, **kwargs):
+            return SimpleNamespace(status_code=200, json=lambda: {
+                "candidates": [{
+                    "content": {"parts": [{"text": "Recent update."}]},
+                    "groundingMetadata": {"groundingChunks": [
+                        {"web": {"uri": f"https://example.org/s{i}"}} for i in range(12)
+                    ]}}]})
+
+    monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
+    output = model_gateway.generate("research", web_search=True)
+
+    assert "https://example.org/s4" in output
+    assert "https://example.org/s5" not in output
