@@ -30,7 +30,13 @@ from typing import Any
 from sqlalchemy import bindparam, text
 
 from src.config.settings import settings
-from src.intelligence.query import begin_read_scope, end_read_scope, read_row
+from src.intelligence.query import (
+    begin_read_scope,
+    begin_write_scope,
+    commit_write_scope,
+    end_read_scope,
+    read_row,
+)
 
 logger = logging.getLogger("rev.business_state")
 
@@ -1285,6 +1291,18 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     # invisible to anyone without access to the application logs.
     persistence_cause: str | None = None
     persistence_exc: BaseException | None = None
+
+    # Hold ONE transaction across the whole persistence block. Without it each
+    # statement becomes its own transaction behind Supavisor, which silently
+    # defeats every safeguard below: set_config('lock_timeout', ..., true) is
+    # transaction-local, pg_advisory_xact_lock is released the moment its own
+    # transaction ends, and the UPDATE and INSERT stop being atomic. Production
+    # caught all four statements on four separate backends in the same second,
+    # with the INSERT then blocked on the unique partial index
+    # idx_bstate_org_current until the 2-minute statement_timeout cancelled it.
+    # See begin_write_scope for the full evidence.
+    write_scope = begin_write_scope(db)
+
     try:
         # Serialize persistence per organization *at the database level*.
         #
@@ -1424,7 +1442,10 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
                         "dedupe_key": f"{state_id}:{anomaly['metric']}",
                     },
                 )
-        db.commit()
+        # Commits the single transaction that spans set_config, the advisory
+        # lock, the UPDATE, the INSERT and the alert inserts - so the advisory
+        # lock is genuinely held across the critical section and released here.
+        commit_write_scope(db, write_scope)
 
         logger.info("business_state_written", extra={
             "org_id": organization_id,

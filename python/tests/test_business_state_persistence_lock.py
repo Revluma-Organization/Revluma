@@ -24,15 +24,23 @@ from src.intelligence import business_state
 from src.intelligence.business_state import _build_business_state_unlocked
 
 
+# Executable-SQL needles. Deliberately prefixed with SELECT / SET so they can
+# never match the prose comments that explain these fixes.
+LOCK_SQL = "SELECT pg_advisory_xact_lock("
+TIMEOUT_SQL = "SELECT set_config('lock_timeout'"
+UPDATE_SQL = "SET is_current = FALSE"
+INSERT_SQL = "INSERT INTO business_states ("
+
+
 @pytest.fixture(scope="module")
 def build_source() -> str:
     return inspect.getsource(_build_business_state_unlocked)
 
 
 def test_the_advisory_lock_is_taken_before_the_first_write(build_source):
-    lock_at = build_source.index("pg_advisory_xact_lock")
-    update_at = build_source.index("UPDATE business_states")
-    insert_at = build_source.index("INSERT INTO business_states")
+    lock_at = build_source.index(LOCK_SQL)
+    update_at = build_source.index(UPDATE_SQL)
+    insert_at = build_source.index(INSERT_SQL)
 
     assert lock_at < update_at, "the lock must precede the UPDATE"
     assert lock_at < insert_at, "the lock must precede the INSERT"
@@ -47,7 +55,7 @@ def test_the_lock_is_transaction_scoped_so_it_cannot_leak(build_source):
     ``pg_advisory_xact_lock`` is released by the transaction ending, on commit
     *and* on rollback, so it cannot outlive the build.
     """
-    assert "pg_advisory_xact_lock" in build_source
+    assert LOCK_SQL in build_source
     # Guard against a regression to the session-scoped variant.
     assert "pg_advisory_lock(" not in build_source
     assert "pg_try_advisory_lock" not in build_source
@@ -55,11 +63,11 @@ def test_the_lock_is_transaction_scoped_so_it_cannot_leak(build_source):
 
 def test_lock_timeout_is_bounded_and_transaction_local(build_source):
     """Waiting for a stuck peer must fail loudly, not hang to the HTTP timeout."""
-    assert "set_config('lock_timeout'" in build_source
+    assert TIMEOUT_SQL in build_source
 
     # The third argument makes the setting local to this transaction, so it
     # cannot leak into the session and silently apply to unrelated queries.
-    idx = build_source.index("set_config('lock_timeout'")
+    idx = build_source.index(TIMEOUT_SQL)
     assert build_source[idx:idx + 90].count("true") >= 1
 
     assert business_state.PERSIST_LOCK_TIMEOUT_SECONDS > 0
@@ -69,14 +77,12 @@ def test_lock_timeout_is_bounded_and_transaction_local(build_source):
 
 def test_the_lock_timeout_is_set_before_the_lock_is_requested(build_source):
     """Otherwise the wait for the lock itself is unbounded."""
-    assert build_source.index("set_config('lock_timeout'") < build_source.index(
-        "pg_advisory_xact_lock"
-    )
+    assert build_source.index(TIMEOUT_SQL) < build_source.index(LOCK_SQL)
 
 
 def test_the_lock_is_scoped_to_one_organization(build_source):
     """A global lock would serialize every merchant behind every other merchant."""
-    idx = build_source.index("pg_advisory_xact_lock")
+    idx = build_source.index(LOCK_SQL)
     statement = build_source[idx:idx + 120]
     assert "_build_lock_job_name(organization_id)" in statement or ":lock_key" in statement
 
