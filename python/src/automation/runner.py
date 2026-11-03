@@ -10,6 +10,7 @@ from typing import Any
 from mlflow.tracking import MlflowClient
 from sqlalchemy import text
 
+from src.jobs.historical_ingestion import establish_missing_baselines
 from src.memory.vector_store import process_embedding_jobs
 from src.monitoring.drift_detector import (
     DriftCheckResult,
@@ -185,6 +186,14 @@ def run_automation_cycle(session, raw_connection) -> dict[str, Any]:
         raw_connection, "large_dataset_probe", timedelta(days=7),
         lambda: _large_dataset_probe(raw_connection),
     )
+    # business_state_baselines had no producer that production could reach: its
+    # only INSERT sat behind a CLI cold-start script. Claiming it here gives it
+    # the same durable, observable cadence as the model jobs, and the pass is
+    # bounded and self-gating so it stays cheap between refreshes.
+    baselines = _run_due(
+        raw_connection, "business_state_baselines", timedelta(hours=6),
+        lambda: establish_missing_baselines(session, limit=5),
+    )
     lifecycle_result = lifecycle.get("result") or {}
     return {
         "status": "completed",
@@ -193,5 +202,6 @@ def run_automation_cycle(session, raw_connection) -> dict[str, Any]:
         "monthly_monitoring": monthly["status"],
         "model_lifecycle": lifecycle["status"],
         "large_dataset_probe": benchmark["status"],
+        "business_state_baselines": baselines["status"],
         "reload_required": bool(lifecycle_result.get("reload_required")),
     }
