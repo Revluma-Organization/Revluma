@@ -30,7 +30,7 @@ import redis
 from sqlalchemy import bindparam, text
 
 from src.config.settings import settings
-from src.intelligence.query import read_row
+from src.intelligence.query import begin_read_scope, end_read_scope, read_row
 
 logger = logging.getLogger("rev.business_state")
 
@@ -655,6 +655,17 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     warnings: list[str] = []
     computation_status = "complete"
 
+    # One transaction for the whole read phase, so the twelve source queries
+    # share a single pooled connection instead of each pinning its own. Behind
+    # Supavisor's transaction pooler a per-read transaction is assigned a
+    # distinct server backend that stays idle-in-transaction until reset, and a
+    # full build therefore consumed the entire 12-connection pool before it
+    # reached persistence. See begin_read_scope for the production evidence.
+    #
+    # This is closed again before persistence so the advisory lock, the commit
+    # and the existing rollback paths keep exactly their current semantics.
+    read_scope = begin_read_scope(db)
+
     # Read the current snapshot before the expensive source queries. The
     # advisory lock is acquired only for the final persistence transaction so
     # optional-source rollbacks cannot release it prematurely.
@@ -1129,6 +1140,11 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
 
     # Capture warnings raised during availability checks as well as metric collection.
     state_metadata["warnings"] = list(warnings)
+
+    # Every source read is done. Release the single connection the read phase
+    # held so persistence starts from the same transaction semantics it has
+    # always had: its own transaction, its own advisory lock, its own commit.
+    end_read_scope(db, read_scope)
 
     persistence_failed = False
     try:
