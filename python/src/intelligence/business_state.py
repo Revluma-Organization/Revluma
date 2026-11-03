@@ -1336,29 +1336,38 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         # and be inherited by an unrelated borrower. lock_timeout is set
         # transaction-locally so waiting for a stuck peer fails loudly instead of
         # hanging until the caller's HTTP timeout.
-        db.execute(
-            text("SELECT set_config('lock_timeout', :lock_timeout, true)"),
-            {"lock_timeout": f"{PERSIST_LOCK_TIMEOUT_SECONDS}s"},
-        )
-        db.execute(
-            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)"),
-            {"lock_key": _build_lock_job_name(organization_id)},
-        )
-
-        # Step 1: mark existing current state as historical
-        db.execute(
-            text("""
+        # ONE statement, not four. Production measured the reason: with the block
+        # split across separate executes, Supavisor ran each on its OWN server
+        # backend in its OWN transaction even though begin_write_scope had opened
+        # an explicit client transaction (diag scope_opened=True, and the four
+        # statements appeared on four distinct pids in pg_stat_activity). That
+        # silently defeats every transaction-scoped safeguard at once:
+        #
+        #   * set_config('lock_timeout', ..., true) applied only to the
+        #     transaction containing the set_config itself.
+        #   * pg_advisory_xact_lock was released the moment its own transaction
+        #     ended, i.e. before the UPDATE ran - zero mutual exclusion.
+        #   * the UPDATE and the INSERT were not atomic, so the INSERT of an
+        #     is_current = TRUE row had to wait on the UPDATE's uncommitted row
+        #     via the unique partial index idx_bstate_org_current
+        #     (organization_id) WHERE is_current = true, until the database's
+        #     2-minute statement_timeout cancelled it: QueryCanceled "while
+        #     inserting index tuple in relation idx_bstate_org_current".
+        #
+        # psycopg2 interpolates bound parameters client side and dispatches the
+        # mogrified string with PQexec, so a semicolon-separated batch is one
+        # round trip and PostgreSQL runs it as a single implicit transaction.
+        # One statement therefore means one backend, one transaction: the
+        # lock_timeout genuinely bounds the advisory wait, the advisory lock is
+        # genuinely held across the UPDATE and INSERT, and the two writes are
+        # genuinely atomic.
+        critical_section_sql = """
+                SELECT set_config('lock_timeout', :lock_timeout, true);
+                SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint);
                 UPDATE business_states
                 SET is_current = FALSE
                 WHERE organization_id = :org_id
-                  AND is_current = TRUE
-            """),
-            {"org_id": organization_id},
-        )
-
-        # Step 2: insert new current state
-        db.execute(
-            text("""
+                  AND is_current = TRUE;
                 INSERT INTO business_states (
                     id, organization_id, is_current, schema_version,
                     generated_at, data_freshness_at, valid_until,
@@ -1384,8 +1393,12 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
                     CAST(:ml_signals AS JSONB), CAST(:source_data AS JSONB),
                     CAST(:metadata AS JSONB)
                 )
-            """),
+        """
+        db.execute(
+            text(critical_section_sql),
             {
+                "lock_timeout": f"{PERSIST_LOCK_TIMEOUT_SECONDS}s",
+                "lock_key": _build_lock_job_name(organization_id),
                 "id": state_id,
                 "org_id": organization_id,
                 "schema_version": SCHEMA_VERSION,

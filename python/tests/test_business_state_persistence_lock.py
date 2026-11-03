@@ -84,10 +84,16 @@ def test_the_lock_is_scoped_to_one_organization(build_source):
     """A global lock would serialize every merchant behind every other merchant."""
     idx = build_source.index(LOCK_SQL)
     statement = build_source[idx:idx + 120]
-    assert "_build_lock_job_name(organization_id)" in statement or ":lock_key" in statement
+    # The key is bound, not inlined, now that the lock is part of a batch.
+    assert ":lock_key" in statement
 
-    # The key must be derived from the organization, not a constant.
-    assert "_build_lock_job_name" in statement or "organization_id" in statement
+    # The real guarantee: the value bound to :lock_key is derived from the
+    # organization, so two merchants can never contend on one lock.
+    # A fixed window, not "up to the first }": the params dict opens with an
+    # f-string whose own braces would end the slice early and hide the binding.
+    call_at = build_source.index("text(critical_section_sql)")
+    call = build_source[call_at:call_at + 600]
+    assert "_build_lock_job_name(organization_id)" in call
 
 
 def test_lock_keys_are_stable_and_organization_scoped():
