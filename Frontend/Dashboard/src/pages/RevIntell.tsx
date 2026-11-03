@@ -35,8 +35,7 @@ import api, { ApiError } from "@/lib/api";
 import { parseVerifiedComparison } from "@/lib/revComparison";
 import {
   UNKNOWN_STORE, buildStarters, hasWebhookGap, isSyncIncomplete, isSyncStale,
-  storeLabel, type StoreContext, type StoreListEnvelope, type StoreListResponse,
-  type StoreSummary,
+  storeContextFromResponse, storeLabel, type StoreContext, type StoreListResponse,
 } from "@/lib/revStoreContext";
 import RevAnswerView from "@/components/rev/RevAnswerView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
@@ -1050,42 +1049,14 @@ export default function RevIntell() {
   }, [messages, thinking, reducedMotion]);
 
   // ── Load store context ────────────────────────────────────────────────────
-  // Grounds the welcome suggestions and the data-health states in the
-  // merchant's real connection. Failure is non-fatal: Rev still works, the
-  // suggestions just fall back to the un-connected wording rather than
-  // inventing a store that may not exist.
+  // The registered backend route is /stores (plural). A failed request is
+  // deliberately represented as unverifiable, never as a disconnected store.
   const loadStoreContext = useCallback(async () => {
     try {
-      const res = await api.get<StoreListResponse>("/store");
-      const payload = res?.data as StoreListEnvelope | undefined;
-      const stores = payload?.data?.stores ?? payload?.stores ?? [];
-      if (!Array.isArray(stores) || stores.length === 0) {
-        setStoreContext({ ...UNKNOWN_STORE, loaded: true });
-        return;
-      }
-      // Prefer a connected store, then the most recently updated one.
-      const rank = (store: StoreSummary) =>
-        (store?.connection_status === "connected" ? 2 : 0) +
-        (store?.sync_status === "complete" ? 1 : 0);
-      const chosen = [...stores].sort((a, b) => {
-        const delta = rank(b) - rank(a);
-        if (delta !== 0) return delta;
-        return Date.parse(b?.updated_at || "") - Date.parse(a?.updated_at || "");
-      })[0];
-      setStoreContext({
-        loaded: true,
-        connected: chosen?.connection_status === "connected",
-        shopDomain: chosen?.shop_domain ?? null,
-        platform: chosen?.platform ?? null,
-        syncStatus: chosen?.sync_status ?? null,
-        setupStatus: chosen?.setup_status ?? null,
-        monitoringMode: chosen?.monitoring_mode ?? null,
-        lastSyncedAt: chosen?.last_synced_at ?? null,
-        webhooksRegistered: chosen?.webhooks_registered ?? null,
-        webhooksRequired: chosen?.webhooks_required ?? null,
-      });
+      const res = await api.get<StoreListResponse>("/stores");
+      setStoreContext(storeContextFromResponse(res.data));
     } catch {
-      setStoreContext({ ...UNKNOWN_STORE, loaded: true });
+      setStoreContext({ ...UNKNOWN_STORE, loaded: true, loadError: true });
     }
   }, []);
 
