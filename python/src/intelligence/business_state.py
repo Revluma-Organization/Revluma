@@ -26,7 +26,6 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-import redis
 from sqlalchemy import bindparam, text
 
 from src.config.settings import settings
@@ -112,61 +111,147 @@ OUTCOME_REBUILT = "rebuilt"
 OUTCOME_DUPLICATE_SKIPPED = "duplicate_skipped"
 
 
-def _acquire_business_state_lock(organization_id: str):
-    """Acquire a token-owned, organization-scoped Redis lease shared by all instances."""
-    redis_url = (getattr(settings, "REDIS_URL", "") or "").strip()
-    if not redis_url:
-        logger.error("business_state_lock_unavailable", extra={"reason": "redis_url_missing"})
-        raise BusinessStateLockUnavailable("REDIS_URL is not configured.")
+#: The per-organization build lease lives in Postgres, in the same table the
+#: Node scheduler already uses for its own distributed lock. One coordination
+#: primitive, one dependency, and the TTL is enforced by SQL rather than by a
+#: second datastore that can disagree with the database.
+BUILD_LOCK_TABLE = "automation_job_state"
 
-    client = redis.from_url(
-        redis_url,
-        decode_responses=True,
-        socket_connect_timeout=3,
-        socket_timeout=3,
-        max_connections=1,
-    )
-    key = f"revluma:business-state:rebuild:{organization_id}"
-    token = uuid.uuid4().hex
+#: Lease length for a build. Long enough to cover a slow build, short enough
+#: that a process killed mid-build stops blocking its organization promptly.
+DEFAULT_BUILD_LOCK_TTL_SECONDS = 600
+
+
+def _build_lock_ttl_seconds() -> int:
+    """Read the lease TTL, falling back on garbage rather than failing closed."""
+    raw = (os.environ.get("BUSINESS_STATE_LOCK_TTL_SECONDS") or "").strip()
+    if not raw:
+        return DEFAULT_BUILD_LOCK_TTL_SECONDS
     try:
-        acquired = client.set(key, token, nx=True, ex=600)
-    except Exception as exc:
-        client.close()
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_BUILD_LOCK_TTL_SECONDS
+    # A lease shorter than the build itself would let two builds overlap.
+    return value if value >= 30 else DEFAULT_BUILD_LOCK_TTL_SECONDS
+
+
+def _build_lock_job_name(organization_id: str) -> str:
+    """Namespace the lease so it can never collide with a scheduler job row."""
+    return f"business-state-build:{organization_id}"
+
+
+def _acquire_business_state_lock(organization_id: str, db):
+    """Claim an organization-scoped build lease in Postgres.
+
+    Returns ``(job_name, token)`` when the lease was claimed, or ``None`` when
+    another build already holds it. Raises :class:`BusinessStateLockUnavailable`
+    when the claim itself could not be made, so rebuilds fail closed rather than
+    running uncoordinated.
+
+    The claim is a single atomic statement: the row is inserted, or updated only
+    when the current holder's lease has expired. That makes a lease left behind
+    by a killed process self-healing after its TTL, which a lease that can only
+    be released by its owner is not.
+
+    This replaces a Redis ``SET NX EX`` lease. Two properties of that lease
+    failed in production: release required a Lua ``EVAL``, which the managed
+    Redis in use does not support, so a lease was never released by its owner;
+    and once stuck it blocked that organization's rebuilds indefinitely, which
+    is why ``business_states.generated_at`` stayed frozen while every pass
+    reported a duplicate-build skip.
+    """
+    job_name = _build_lock_job_name(organization_id)
+    token = uuid.uuid4().hex
+    ttl = _build_lock_ttl_seconds()
+
+    try:
+        row = db.execute(
+            text(f"""
+                INSERT INTO {BUILD_LOCK_TABLE}
+                    (job_name, status, last_started_at, last_result, updated_at)
+                VALUES
+                    (:job_name, 'running', now(),
+                     jsonb_build_object('lock_token', :token), now())
+                ON CONFLICT (job_name) DO UPDATE
+                    SET status = 'running',
+                        last_started_at = now(),
+                        last_result = jsonb_build_object('lock_token', :token),
+                        updated_at = now()
+                    WHERE {BUILD_LOCK_TABLE}.status IS DISTINCT FROM 'running'
+                       OR {BUILD_LOCK_TABLE}.last_started_at IS NULL
+                       OR {BUILD_LOCK_TABLE}.last_started_at
+                          < now() - make_interval(secs => :ttl)
+                RETURNING last_result ->> 'lock_token' AS lock_token
+            """),
+            {"job_name": job_name, "token": token, "ttl": ttl},
+        ).fetchone()
+        # Commit so other instances see the claim immediately. Holding it in an
+        # uncommitted transaction would let a second builder claim it too.
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("business_state_lock_rollback_failed")
         logger.exception(
             "business_state_lock_unavailable",
-            extra={"reason": "redis_connection_failed"},
+            extra={"reason": "db_lock_claim_failed", "org_id": organization_id},
         )
         raise BusinessStateLockUnavailable(
-            "The shared Redis lock service is unavailable."
-        ) from exc
+            "The shared build lock could not be claimed."
+        )
 
-    if not acquired:
-        client.close()
+    if row is None:
         return None
-    return client, key, token
+
+    claimed = str(row[0] or "")
+    if claimed != token:  # pragma: no cover - another writer won the race
+        return None
+
+    return job_name, token
 
 
-def _release_business_state_lock(lock) -> None:
-    """Release only the lock token owned by this worker."""
+def _release_business_state_lock(lock, db) -> None:
+    """Release only the lease this worker owns.
+
+    Token-matched, so a worker whose lease already expired and was re-claimed
+    by another builder can never release the new holder's lease. A failure here
+    is logged and swallowed: the lease expires on its own TTL, and turning
+    cleanup into a build failure would be worse than waiting it out.
+    """
     if lock is None:
         return
-    client, key, token = lock
+
     try:
-        released = client.eval(
-            "if redis.call('get', KEYS[1]) == ARGV[1] "
-            "then return redis.call('del', KEYS[1]) else return 0 end",
-            1,
-            key,
-            token,
+        job_name, token = lock
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        logger.error("business_state_lock_release_invalid_handle")
+        return
+
+    try:
+        db.execute(
+            text(f"""
+                UPDATE {BUILD_LOCK_TABLE}
+                   SET status = 'idle',
+                       last_result = COALESCE(last_result, '{{}}'::jsonb) - 'lock_token',
+                       last_completed_at = now(),
+                       updated_at = now()
+                 WHERE job_name = :job_name
+                   AND last_result ->> 'lock_token' = :token
+            """),
+            {"job_name": job_name, "token": token},
         )
+        db.commit()
         logger.info(
             "business_state_lock_released",
-            extra={"lock_key": key, "released": bool(released)},
+            extra={"lock_key": job_name},
         )
     except Exception:
+        try:
+            db.rollback()
+        except Exception:  # pragma: no cover - defensive
+            pass
         logger.exception("business_state_lock_release_failed")
-    finally:
-        client.close()
 
 
 def _table_exists(db, table_name: str) -> bool:
@@ -1352,7 +1437,7 @@ def build_business_state_with_status(
     optional source-query failures may roll that transaction back while the
     overall build continues.
     """
-    lock = _acquire_business_state_lock(organization_id)
+    lock = _acquire_business_state_lock(organization_id, db)
     if lock is None:
         previous_state = load_current_business_state(organization_id, db)
         if previous_state is not None:
@@ -1372,7 +1457,7 @@ def build_business_state_with_status(
     try:
         return _build_business_state_unlocked(organization_id, db), OUTCOME_REBUILT
     finally:
-        _release_business_state_lock(lock)
+        _release_business_state_lock(lock, db)
 
 
 def build_business_state(organization_id: str, db) -> BusinessState:

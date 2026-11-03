@@ -24,11 +24,11 @@ def lock(monkeypatch):
     """Track lock acquisition and release."""
     calls = {"acquired": 0, "released": []}
 
-    def fake_acquire(_organization_id):
+    def fake_acquire(_organization_id, _db):
         calls["acquired"] += 1
-        return {"token": "lock-token"}
+        return ("business-state-build:org-1", "lock-token")
 
-    def fake_release(handle):
+    def fake_release(handle, _db):
         calls["released"].append(handle)
 
     monkeypatch.setattr(business_state, "_acquire_business_state_lock", fake_acquire)
@@ -51,11 +51,11 @@ def test_a_build_that_writes_a_snapshot_reports_rebuilt(monkeypatch, lock):
 
     assert outcome == business_state.OUTCOME_REBUILT
     assert state is built
-    assert lock["released"] == [{"token": "lock-token"}]
+    assert lock["released"] == [("business-state-build:org-1", "lock-token")]
 
 
 def test_a_duplicate_build_reports_skipped_and_does_not_rebuild(monkeypatch, lock):
-    monkeypatch.setattr(business_state, "_acquire_business_state_lock", lambda _o: None)
+    monkeypatch.setattr(business_state, "_acquire_business_state_lock", lambda _o, _db: None)
     previous = FakeState("previous")
     monkeypatch.setattr(
         business_state, "load_current_business_state", lambda _org, _db: previous
@@ -75,7 +75,7 @@ def test_a_duplicate_build_reports_skipped_and_does_not_rebuild(monkeypatch, loc
 
 
 def test_a_duplicate_build_with_no_previous_snapshot_raises(monkeypatch, lock):
-    monkeypatch.setattr(business_state, "_acquire_business_state_lock", lambda _o: None)
+    monkeypatch.setattr(business_state, "_acquire_business_state_lock", lambda _o, _db: None)
     monkeypatch.setattr(
         business_state, "load_current_business_state", lambda _org, _db: None
     )
@@ -97,7 +97,7 @@ def test_the_lock_is_released_even_when_the_build_raises(monkeypatch, lock):
         business_state.build_business_state_with_status("org-1", db=None)
 
     # A leaked lock would block this organization for the full TTL.
-    assert lock["released"] == [{"token": "lock-token"}]
+    assert lock["released"] == [("business-state-build:org-1", "lock-token")]
 
 
 def test_build_business_state_keeps_its_original_contract(monkeypatch, lock):

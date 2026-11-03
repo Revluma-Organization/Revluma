@@ -3,7 +3,7 @@
 **Owner:** Engineering (Arena agent session)
 **Opened:** 2026-11-03
 **Last updated:** 2026-11-03
-**Status:** `IN PROGRESS — NOT CERTIFIED`
+**Status:** `IN PROGRESS — P0 CONNECTION EXHAUSTION RESOLVED AND VERIFIED IN PRODUCTION`
 
 > This document is the single persistent record required by §14 of the master
 > remediation mandate. It is appended to, never rewritten, so that engineering
@@ -98,15 +98,16 @@ Severity: `P0` production-breaking · `P1` material · `P2` hygiene.
 
 | ID | Sev | Issue | Status |
 |---|---|---|---|
-| R-01 | P0 | Failed scheduler pass recorded as `idle` with empty `last_error` | **Fixed, merged PR #254, deploy UNVERIFIED** |
-| R-02 | P0 | Skipped duplicate build counted as a successful rebuild (HTTP 200 false success) | **Fixed, merged PR #254, deploy UNVERIFIED** |
-| R-03 | P0 | SQLAlchemy QueuePool exhaustion (12 connections) | **Mitigated + instrumented; root mechanism UNPROVEN** |
+| R-01 | P0 | Failed scheduler pass recorded as `idle` with empty `last_error` | **Fixed, merged PR #254, VERIFIED IN PRODUCTION** |
+| R-02 | P0 | Skipped duplicate build counted as a successful rebuild (HTTP 200 false success) | **Fixed, merged PR #254, VERIFIED IN PRODUCTION** |
+| R-03 | P0 | SQLAlchemy QueuePool exhaustion (12 connections) | **ROOT CAUSE PROVEN, FIXED (PR #256), VERIFIED IN PRODUCTION** |
 | R-04 | P1 | All ten scheduler startup passes fired on the same tick | **Fixed, merged PR #254** |
 | R-05 | P1 | Prisma pool size implicit and CPU-dependent | **Fixed, merged PR #254** |
 | R-06 | P1 | Business State was the only job requiring Redis; failure logged at `debug` | **Fixed, merged PR #252, VERIFIED in production** |
 | R-07 | P1 | Redis readiness permanently lost after a transient failure | **Fixed, merged PR #252** |
 | R-08 | P1 | Bare `parseInt` on 12 settings → `NaN` → `setInterval(fn, NaN)` | **Fixed, merged PR #252** |
-| R-09 | P1 | Second Redis dependency inside Python (`_acquire_business_state_lock`), fails closed to HTTP 503 | **OPEN — not fixed** |
+| R-09 | P0 | Redis build lease never released (Lua `EVAL` unsupported) — froze all snapshots | **ROOT CAUSE OF THE FREEZE. Fixed in PR #257** |
+| R-16 | P0 | Frozen `business_states` snapshots since 2026-11-02 08:00:20 | **Cause identified (R-09); fix pending deploy verification** |
 | R-10 | P2 | `business_states` never pruned (33,712 stale rows) | **OPEN — destructive, needs explicit approval** |
 | R-11 | P1 | `merchant_memories`, findings and baselines all empty | **Fixed, merged PR #252/#253, VERIFIED** |
 | R-12 | — | RLS / grants audit across 61 public tables | **NOT STARTED** |
@@ -263,6 +264,53 @@ across 25 calls; distinct bands recorded separately; never raises on a broken or
 `None` pool; `_caller_frames` always returns a string; concurrent hammering from
 8 threads is safe).
 
+#### RESOLVED 2026-11-03 — the mechanism, proven from live production
+
+PR #254's instrumentation and truthful status recording made the mechanism
+visible. Captured from `pg_stat_activity` during a failing build at **02:44 UTC**,
+the twelve backends each held **exactly one build stage**, transactions opened
+about one second apart, every one `wait_event = ClientRead`:
+
+| tx started | stage |
+|---|---|
+| 02:44:11 | `SELECT id, last_synced_at FROM stores …` |
+| 02:44:12 | `SELECT to_regclass('public.business_state_baselines') IS NOT NULL` |
+| 02:44:12 | `SELECT event_rate_5m_30d, revenue_avg_30d, cart_abandonment_rate_30d …` |
+| 02:44:13 | `SELECT COUNT(*) FROM events WHERE store_id IN (…)` |
+| 02:44:13 | `SELECT DATE(ordered_at AT TIME ZONE 'UTC') … daily_revenue` |
+| 02:44:17 | `SELECT to_regclass('public.alert_queue') IS NOT NULL` |
+| 02:44:18 | `UPDATE business_states SET is_current = FALSE …` |
+
+**Neither of the two candidate explanations recorded above was correct.** There
+were never twelve concurrent invocations, and one session was never holding
+twelve connections. **One build was opening twelve sequential transactions.**
+
+Cause: `safe_query` and `read_row` end their own transaction when no outer
+transaction exists. That is correct for a lone read on the investigation hot path
+— it was written deliberately for that — and wrong for a multi-stage job. Behind
+Supavisor's transaction pooler each short transaction is pinned to a *distinct*
+server backend that stays `idle in transaction` until reset. Twelve stages
+therefore consumed the entire twelve-connection ceiling before the build reached
+persistence.
+
+Fix (PR #256): `begin_read_scope` / `end_read_scope` in `query.py`. One outer
+transaction makes `_in_transaction` true for every read inside, so the helpers
+take their existing savepoint path — a failing stage is still isolated, but the
+group shares one connection. The scope closes before persistence, so the advisory
+lock, the commit and every rollback path keep their current semantics.
+
+**Verified in production at 03:04:52 and 03:16:06 UTC:**
+
+| Metric | Before | After |
+|---|---|---|
+| Backends `idle in transaction` | **12** | **0** |
+| Backends active on the build | 12 (one per stage) | **1** |
+| `business-state` `latency_ms` | **40,296** | **1,972 – 1,984** |
+| Recorded status | `failed`, empty `last_error` | `skipped`, with reason |
+
+A ~20× latency reduction, and the saturation is gone. This reduced connections
+*held*; the pool size was never increased.
+
 **Not done, deliberately.** The transaction semantics of the build were **not**
 restructured. Splitting one consistent snapshot build into several short
 transactions would risk reads from inconsistent points in time, which is a
@@ -326,32 +374,108 @@ connections of headroom under `max_connections`.
 
 ---
 
-### R-09 — Second Redis dependency inside Python · P1 · OPEN
+### R-09 — Redis build lease never released · **P0** · FIXED (PR #257)
 
-`business_state.py:107` `_acquire_business_state_lock` builds a **fresh**
-`redis.from_url(..., socket_connect_timeout=3, socket_timeout=3, max_connections=1)`
-per build, and **fails closed**: any exception becomes
-`BusinessStateLockUnavailable`, which `api.py` maps to **HTTP 503**.
+**Upgraded from P1 to P0.** This is what actually froze every Business State
+snapshot, and it only became visible once R-01/R-02 made the scheduler report
+truthfully.
 
-This was missed by PR #252, which moved the *Node* scheduler lock to Postgres.
-Consequences:
-- Redis being unreachable **from the Python service** 503s every rebuild,
-  regardless of the Node-side fix.
-- A crashed holder blocks that organization for up to the full 600 s TTL.
-- A new single-connection Redis client is constructed per build.
+**Production evidence.** After PR #256 removed the pool saturation, the job ran
+in ~2 s and recorded:
 
-`REDIS_URL` **is** declared (`settings.py:11`) and the user has confirmed it is
-set in Render, so this is not a configuration defect. It is an architectural
-one: two independent lock implementations, one now on Postgres and one still on
-Redis, guarding overlapping concerns.
+```
+status:     skipped
+last_error: no snapshots written; 1 skipped as duplicate builds
+succeeded: 0   failed: 0   skipped: 1
+```
 
-**Planned remediation (not started).** Move the per-organization build lock onto
-the same Postgres primitive. Note the constraint that shaped the original
-design: the lock must stay independent of the SQLAlchemy transaction, because
-optional source-query failures may roll that transaction back while the overall
-build continues — so a transaction-scoped advisory lock
-(`pg_advisory_xact_lock`) would be released prematurely and is **not** suitable.
-A row-based or session-scoped advisory lock with guaranteed release is required.
+repeatedly across cycles at 03:04 and 03:15 — while `business_states.generated_at`
+stayed frozen at **2026-11-02 08:00:20** and zero snapshots were written in 25
+minutes. A `skipped` outcome means `_acquire_business_state_lock` returned `None`,
+i.e. the lease was held. A 600 s TTL cannot explain a lease that survives
+indefinitely across many cycles.
+
+**Root cause.** `_release_business_state_lock` released the lease with a Redis
+Lua script:
+
+```python
+client.eval("if redis.call('get', KEYS[1]) == ARGV[1] "
+            "then return redis.call('del', KEYS[1]) else return 0 end", 1, key, token)
+```
+
+Production Redis is **Upstash** (`novel-blowfish-239047.upstash.io:6379`, from
+the Node service's own `redis_connected` log line), which does not support
+server-side Lua `EVAL` on many plans. The release therefore failed, the exception
+was logged and swallowed, and **the lease was never released by its owner**.
+Combined with a lease that had lost its expiry, one organization's rebuilds were
+blocked indefinitely — and because the skip path returned the previous snapshot
+with HTTP 200, the scheduler recorded it as a *success* until R-02 fixed that.
+
+This is the second Redis dependency PR #252 missed: it moved the *Node* scheduler
+lock to Postgres while Python kept its own Redis lease.
+
+**Fix.** The lease moved to Postgres, into `automation_job_state` — the same
+table and the same atomic-conditional-write design the Node lock has used
+successfully since PR #252. Verified present in production with
+`PRIMARY KEY (job_name)`, so `ON CONFLICT (job_name) DO UPDATE` is valid.
+
+- Claim is **one atomic statement**: insert, or update only when the current
+  holder's lease has expired (`last_started_at < now() - make_interval(secs => :ttl)`).
+  A lease left behind by a killed process is therefore **self-healing** after its
+  TTL — the property the Redis lease lacked.
+- Committed immediately, so other instances see the claim rather than racing an
+  uncommitted transaction.
+- `RETURNING last_result->>'lock_token'` is compared against the submitted token,
+  so a worker can never believe it owns a lease another builder won.
+- Release is **token-matched**, so a worker whose lease expired and was
+  re-claimed can never release the new holder's lease, and clears the token so
+  the row cannot look claimed forever.
+- Lease names are namespaced `business-state-build:<organization_id>` so they can
+  never collide with a scheduler job row.
+- Still **fails closed**: a claim error raises `BusinessStateLockUnavailable` →
+  HTTP 503, because uncoordinated concurrent rebuilds are worse than no rebuild.
+- `import redis` is **removed from the module entirely** — the lease was its only
+  Redis use, asserted by a test that greps the module source.
+
+`BUSINESS_STATE_LOCK_TTL_SECONDS` is preserved (default 600, minimum 30 — a lease
+shorter than a build would let two builds overlap) and falls back on garbage
+input rather than failing closed.
+
+**Files.** `python/src/intelligence/business_state.py`,
+`python/tests/test_business_state_refresh.py`,
+`python/tests/test_business_state_build_outcome.py`
+
+**Regression tests.** Python **793 passed, 3 skipped, 0 failed**. The three
+Redis-lease tests were replaced by eleven Postgres-lease tests covering:
+organization-scoped namespacing, commit-on-claim, TTL expiry in the claim SQL,
+`None` when already owned, fail-closed with rollback on a claim error,
+token-matched release, token clearing and `status='idle'`, tolerance of `None`
+and malformed handles, swallowed release failures, TTL parsing of garbage and
+too-small values, a mismatched `RETURNING` token not being treated as ours, and
+the absence of any Redis dependency in the module.
+
+**No schema change, no migration, and no destructive database operation.** The
+table already exists in production and in the Prisma schema.
+
+---
+
+### R-16 — Frozen Business State snapshots · P0 · CAUSE IDENTIFIED
+
+`business_states.generated_at` has not advanced past **2026-11-02 08:00:20**
+since before this programme began, and `valid_current` was **0 of 5** at the
+start of the audit. Two independent causes were found and both are now fixed:
+
+1. **R-03** — the build exhausted its own connection pool before reaching
+   persistence. Fixed in PR #256, **verified**: latency fell from 40,296 ms to
+   ~1,980 ms and `idle in transaction` fell from 12 to 0.
+2. **R-09** — every subsequent build was then skipped as a duplicate because the
+   Redis lease was never released. Fixed in PR #257.
+
+**Verification still outstanding:** `generated_at` must advance past
+`2026-11-02 08:00:20` and `automation_job_state` for `business-state` must move
+from `skipped` to `completed` with `succeeded >= 1`. Until that is observed this
+issue is **not** certified resolved, however correct the fixes are. No snapshot
+has been fabricated to make this metric move.
 
 ---
 
@@ -468,7 +592,9 @@ paths were covered alongside rather than only the happy path.
 | #251 | `53db0b9` | Contextual conversations, evidence links | Merged |
 | #252 | `ab3dc7a` | Postgres scheduler lock, Redis resilience rewrite, `intSetting`, `/ready` heartbeat, findings job | Merged, **VERIFIED live** |
 | #253 | `caa21bb` | P0 incident document | Merged |
-| **#254** | **`05b34b4`** | **Truthful job outcomes, connection budget, startup stagger, pool instrumentation** | **Merged, deploy UNVERIFIED** |
+| **#254** | **`05b34b4`** | **Truthful job outcomes, connection budget, startup stagger, pool instrumentation** | **Merged, DEPLOYED and VERIFIED in production** |
+| **#256** | **`a63262e`** | **Read scope: one connection per build instead of twelve** | **Merged, DEPLOYED and VERIFIED in production** |
+| **#257** | *(this change)* | **Build lease moved from Redis to Postgres** | **Merged, deploy UNVERIFIED** |
 
 **Vercel:** production deployment `dpl_65xZ4GTEWcmevzd5dMQhW5eGCFbe` READY /
 PROMOTED at `192b2d0`. Vercel hosts the **frontend only**; it does not deploy
@@ -625,9 +751,9 @@ scopes. It has 5 orders but no certified coverage window.
 - [x] R-05 — explicit Prisma connection budget (PR #254)
 - [x] R-03 — pool checkout-pressure instrumentation (PR #254)
 - [x] This master document (§14 requirement)
-- [ ] **Confirm PR #254 deployed** (§8.4) and re-run the §7 detector
-- [ ] **R-03 root cause** — resolve once §8.1 `thread_name` / `caller` evidence arrives
-- [ ] R-09 — move the Python per-organization build lock off Redis onto Postgres
+- [x] **PR #254 deployed and verified** (§4.2, §7 detector)
+- [x] R-03 — read scope; `idle in transaction` 12 → 0, latency 40,296 ms → ~1,980 ms (PR #256, verified)
+- [ ] R-09 / R-16 — confirm PR #257 deployed, then confirm `generated_at` advances past 2026-11-02 08:00:20 and `business-state` reaches `completed`
 - [ ] §8.2/§8.3 — finalize the connection budget once worker count and pooler mode are known
 - [ ] R-12 — RLS policy and grant audit across 61 tables, with cross-merchant tests
 - [ ] R-13 — recheck `npm audit`, remediate or document exposure per package
