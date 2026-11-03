@@ -1163,7 +1163,13 @@ def persist_investigation_context(organization_id: str, user_id: str,
                f"for {result['investigation']['period'].get('label', 'the period')}; "
                f"status {result['investigation']['status']}; "
                f"currencies {', '.join(context_window['last_investigation']['currencies']) or 'none verified'}.")
-    ok = True
+    # Two independent writes, each committed separately.
+    #
+    # They used to share a single commit, so a failure in the memory INSERT also
+    # rolled back the conversation context: the merchant lost contextual
+    # follow-ups and the memory together, reported only as a warning with no
+    # indication of which write failed. Production showed 0 of 122 conversations
+    # with a context_window and 0 memories, and nothing explained why.
     try:
         db.execute(
             _text("""
@@ -1176,42 +1182,69 @@ def persist_investigation_context(organization_id: str, user_id: str,
             {"context": json.dumps(context_window), "summary": summary[:500],
              "conversation_id": conversation_id, "org_id": organization_id},
         )
-        has_verified_evidence = any(
-            item.get("status") == STATUS_AVAILABLE for item in result["evidence"]["items"])
-        if has_verified_evidence:
-            db.execute(
-                _text("""
-                    INSERT INTO merchant_memories (
-                        organization_id, user_id, memory_type, memory_key, memory_value,
-                        memory_source, authority_level, importance, is_active, expires_at,
-                        source_conv_id
-                    ) VALUES (
-                        :org_id::uuid, :user_id::uuid, 'context', 'rev.last_verified_investigation',
-                        :value::jsonb, 'inferred', 2, 3, true, NOW() + INTERVAL '30 days',
-                        :conversation_id::uuid
-                    )
-                    ON CONFLICT (organization_id, memory_key)
-                    DO UPDATE SET
-                        memory_value = EXCLUDED.memory_value,
-                        memory_source = EXCLUDED.memory_source,
-                        is_active = true,
-                        expires_at = EXCLUDED.expires_at,
-                        source_conv_id = EXCLUDED.source_conv_id,
-                        updated_at = NOW()
-                """),
-                {"org_id": organization_id, "user_id": user_id,
-                 "value": json.dumps(context_window["last_investigation"]),
-                 "conversation_id": conversation_id},
-            )
         db.commit()
     except Exception as exc:
-        logger.warning("rev_context_persist_failed error_type=%s", type(exc).__name__)
+        logger.error(
+            "rev_context_persist_failed stage=conversation_context error_type=%s "
+            "organization_id=%s conversation_id=%s",
+            type(exc).__name__, organization_id, conversation_id,
+        )
         try:
             db.rollback()
         except Exception:
             pass
-        ok = False
-    return ok
+        return False
+
+    has_verified_evidence = any(
+        item.get("status") == STATUS_AVAILABLE for item in result["evidence"]["items"])
+    if not has_verified_evidence:
+        # The context window is still worth keeping for follow-ups, but a memory
+        # without verified evidence would be a fabricated record.
+        logger.info(
+            "rev_memory_skipped_no_verified_evidence organization_id=%s "
+            "conversation_id=%s", organization_id, conversation_id,
+        )
+        return True
+
+    try:
+        db.execute(
+            _text("""
+                INSERT INTO merchant_memories (
+                    organization_id, user_id, memory_type, memory_key, memory_value,
+                    memory_source, authority_level, importance, is_active, expires_at,
+                    source_conv_id
+                ) VALUES (
+                    :org_id::uuid, :user_id::uuid, 'context', 'rev.last_verified_investigation',
+                    :value::jsonb, 'inferred', 2, 3, true, NOW() + INTERVAL '30 days',
+                    :conversation_id::uuid
+                )
+                ON CONFLICT (organization_id, memory_key)
+                DO UPDATE SET
+                    memory_value = EXCLUDED.memory_value,
+                    memory_source = EXCLUDED.memory_source,
+                    is_active = true,
+                    expires_at = EXCLUDED.expires_at,
+                    source_conv_id = EXCLUDED.source_conv_id,
+                    updated_at = NOW()
+            """),
+            {"org_id": organization_id, "user_id": user_id,
+             "value": json.dumps(context_window["last_investigation"]),
+             "conversation_id": conversation_id},
+        )
+        db.commit()
+    except Exception as exc:
+        logger.error(
+            "rev_memory_persist_failed stage=merchant_memory error_type=%s "
+            "organization_id=%s conversation_id=%s",
+            type(exc).__name__, organization_id, conversation_id,
+        )
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return False
+
+    return True
 
 
 def invalidate_investigation_memory(organization_id: str, db) -> bool:

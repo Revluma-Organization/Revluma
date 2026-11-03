@@ -288,6 +288,168 @@ def _establish_baselines(store_id: str, db, lookback_months: int) -> bool:
     return True
 
 
+def establish_missing_baselines(
+    db,
+    limit: int = 5,
+    refresh_after_days: int = 7,
+    lookback_months: int = 12,
+) -> dict:
+    """Establish or refresh business-state baselines for connected stores.
+
+    This is the scheduled producer for ``business_state_baselines``. The table
+    drives anomaly detection (weekday revenue average and standard deviation,
+    cart-abandonment and returning-customer comparisons) and the adaptive rebuild
+    cadence, but its only INSERT lived inside ``run_historical_ingestion`` — a
+    CLI-only cold-start workflow that production never invoked. The table had
+    therefore never held a row, and every anomaly comparison silently fell back
+    to its degraded path.
+
+    Selection is bounded and self-gating so the job is cheap and cannot write
+    meaningless rows:
+
+      * only stores that are connected and have actually synced are considered;
+      * an organization is processed only when it has no baseline, or when its
+        baseline is older than ``refresh_after_days``;
+      * a store must have observable trading history in the lookback window, so
+        an organization with no orders or abandoned carts gets no baseline
+        rather than a row of fabricated zeros.
+
+    Every value written is computed from that store's own orders, abandoned carts
+    and events. Nothing is estimated, seeded from another tenant, or invented to
+    make the table non-empty.
+    """
+    result = {
+        "status": "complete",
+        "established": 0,
+        "refreshed": 0,
+        "failed": 0,
+        "candidates": 0,
+        "warnings": [],
+    }
+
+    if not _table_exists(db, "business_state_baselines"):
+        result["status"] = "skipped"
+        result["warnings"].append(
+            "business_state_baselines is pending the backend Phase 2 migration."
+        )
+        return result
+
+    if not isinstance(limit, int) or limit < 1:
+        limit = 5
+    limit = min(limit, 50)
+
+    if not isinstance(refresh_after_days, int) or refresh_after_days < 1:
+        refresh_after_days = 7
+
+    try:
+        rows = db.execute(
+            text("""
+                SELECT store.id,
+                       (baseline.organization_id IS NOT NULL) AS had_baseline
+                FROM stores AS store
+                LEFT JOIN business_state_baselines AS baseline
+                       ON baseline.organization_id = store.organization_id
+                WHERE store.platform = 'shopify'
+                  AND store.status IN ('active', 'connected')
+                  AND store.last_synced_at IS NOT NULL
+                  AND store.organization_id IS NOT NULL
+                  AND (
+                        baseline.organization_id IS NULL
+                     OR baseline.computed_at IS NULL
+                     OR baseline.computed_at
+                        < NOW() - (:refresh_days * INTERVAL '1 day')
+                  )
+                  AND (
+                        EXISTS (
+                            SELECT 1 FROM orders AS order_row
+                            WHERE order_row.store_id = store.id
+                              AND order_row.ordered_at
+                                  >= NOW() - (:lookback_days * INTERVAL '1 day')
+                        )
+                     OR EXISTS (
+                            SELECT 1 FROM abandoned_carts AS cart
+                            WHERE cart.store_id = store.id
+                              AND cart.abandoned_at
+                                  >= NOW() - (:lookback_days * INTERVAL '1 day')
+                        )
+                  )
+                ORDER BY baseline.computed_at ASC NULLS FIRST,
+                         store.last_synced_at DESC
+                LIMIT :limit
+            """),
+            {
+                "refresh_days": refresh_after_days,
+                "lookback_days": max(30, lookback_months * 30),
+                "limit": limit,
+            },
+        ).fetchall()
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("baseline_selection_rollback_failed")
+        logger.exception(
+            "baseline_candidate_selection_failed",
+            extra={"error_type": type(exc).__name__},
+        )
+        result["status"] = "failed"
+        result["warnings"].append(f"candidate_selection: {type(exc).__name__}")
+        return result
+
+    result["candidates"] = len(rows)
+
+    for row in rows:
+        store_id = str(row[0])
+        had_baseline = bool(row[1])
+
+        step_result = {
+            "store_id": store_id,
+            "baseline_established": False,
+            "warnings": [],
+        }
+        completed = _run_db_step(
+            db,
+            step_result,
+            "baseline_refresh_failed",
+            lambda store_id=store_id: _establish_baselines(
+                store_id, db, lookback_months
+            ),
+        )
+
+        if completed:
+            if had_baseline:
+                result["refreshed"] += 1
+            else:
+                result["established"] += 1
+            logger.info(
+                "business_state_baseline_established",
+                extra={
+                    "store_id": store_id,
+                    "refreshed": had_baseline,
+                },
+            )
+        else:
+            result["failed"] += 1
+            result["warnings"].extend(step_result["warnings"])
+
+    if result["failed"] and not (result["established"] or result["refreshed"]):
+        result["status"] = "failed"
+    elif result["failed"]:
+        result["status"] = "partial"
+
+    logger.info(
+        "business_state_baselines_pass_complete",
+        extra={
+            "status": result["status"],
+            "candidates": result["candidates"],
+            "established": result["established"],
+            "refreshed": result["refreshed"],
+            "failed": result["failed"],
+        },
+    )
+    return result
+
+
 def _seed_strategic_memory(store_id: str, db, lookback_months: int) -> int:
     organization_id = _get_organization_id(store_id, db)
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_months * 30)

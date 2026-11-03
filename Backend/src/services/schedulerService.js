@@ -36,71 +36,70 @@ const { runFeatureJobs } = require('./featureWorkerService');
 const { runRecoveryActions } = require('./recoveryActionService');
 const { runDailyChurnScoring } = require('./churnWorkerService');
 const { runTrainingObservationFinalization } = require('./trainingObservationService');
+const {
+    BUSINESS_STATE_JOB,
+    acquireDbLock,
+    releaseDbLock,
+    recordJobSkip,
+} = require('./schedulerLocks');
+const { intSetting } = require('../utils/intSetting');
+const {
+    evaluateOrganizationFindings,
+} = require('./intelligenceFindingsAggregator');
+const {
+    persistVerifiedFindings,
+} = require('./intelligenceFindingsRepository');
 
 // -----------------------------------------------------------------------------
 // Configuration
 // -----------------------------------------------------------------------------
 
-const BUSINESS_STATE_INTERVAL_MS = parseInt(
-    process.env.BUSINESS_STATE_INTERVAL_MS || '60000',
-    10
+const BUSINESS_STATE_INTERVAL_MS = intSetting('BUSINESS_STATE_INTERVAL_MS', '60000', 5000);
+
+const RECOMMENDATION_OUTCOMES_INTERVAL_MS = intSetting('RECOMMENDATION_OUTCOMES_INTERVAL_MS', '60000', 5000);
+
+const ALERT_QUEUE_INTERVAL_MS = intSetting('ALERT_QUEUE_INTERVAL_MS', '60000', 5000);
+
+const MORNING_BRIEFINGS_INTERVAL_MS = intSetting('MORNING_BRIEFINGS_INTERVAL_MS', '60000', 5000);
+
+const STORE_SYNC_INTERVAL_MS = intSetting('STORE_SYNC_INTERVAL_MS', String(15 * 60 * 1000), 5000);
+
+const FEATURE_JOB_INTERVAL_MS = intSetting('FEATURE_JOB_INTERVAL_MS', '15000', 5000);
+
+const RECOVERY_ACTION_INTERVAL_MS = intSetting('RECOVERY_ACTION_INTERVAL_MS', '30000', 5000);
+
+const CHURN_SCORING_INTERVAL_MS = intSetting('CHURN_SCORING_INTERVAL_MS', String(60 * 60 * 1000), 5000);
+
+const INTELLIGENCE_AUTOMATION_INTERVAL_MS = intSetting('INTELLIGENCE_AUTOMATION_INTERVAL_MS', String(5 * 60 * 1000), 5000);
+
+const LOCK_TTL_SECONDS = intSetting('SCHEDULER_LOCK_TTL_SECONDS', '300', 30);
+
+const BUSINESS_STATE_LOCK_TTL_SECONDS = intSetting('BUSINESS_STATE_LOCK_TTL_SECONDS', '600', 60);
+
+// Findings are evaluated over 7-day windows, so this pass does not need the
+// minute-level cadence of the Business State rebuild. It is scheduled at all
+// because previously the only way to evaluate findings was a merchant pressing
+// refresh, which meant qualifying conditions were never detected on their own.
+const INTELLIGENCE_FINDINGS_INTERVAL_MS = intSetting(
+    'INTELLIGENCE_FINDINGS_INTERVAL_MS',
+    String(60 * 60 * 1000),
+    60000
 );
 
-const RECOMMENDATION_OUTCOMES_INTERVAL_MS = parseInt(
-    process.env.RECOMMENDATION_OUTCOMES_INTERVAL_MS || '60000',
-    10
+const FINDINGS_LOCK_TTL_SECONDS = intSetting(
+    'INTELLIGENCE_FINDINGS_LOCK_TTL_SECONDS',
+    '900',
+    60
 );
 
-const ALERT_QUEUE_INTERVAL_MS = parseInt(
-    process.env.ALERT_QUEUE_INTERVAL_MS || '60000',
-    10
-);
-
-const MORNING_BRIEFINGS_INTERVAL_MS = parseInt(
-    process.env.MORNING_BRIEFINGS_INTERVAL_MS || '60000',
-    10
-);
-
-const STORE_SYNC_INTERVAL_MS = parseInt(
-    process.env.STORE_SYNC_INTERVAL_MS || String(15 * 60 * 1000),
-    10
-);
-
-const FEATURE_JOB_INTERVAL_MS = parseInt(
-    process.env.FEATURE_JOB_INTERVAL_MS || '15000',
-    10
-);
-
-const RECOVERY_ACTION_INTERVAL_MS = parseInt(
-    process.env.RECOVERY_ACTION_INTERVAL_MS || '30000',
-    10
-);
-
-const CHURN_SCORING_INTERVAL_MS = parseInt(
-    process.env.CHURN_SCORING_INTERVAL_MS || String(60 * 60 * 1000),
-    10
-);
-
-const INTELLIGENCE_AUTOMATION_INTERVAL_MS = parseInt(
-    process.env.INTELLIGENCE_AUTOMATION_INTERVAL_MS || String(5 * 60 * 1000),
-    10
-);
-
-const LOCK_TTL_SECONDS = parseInt(
-    process.env.SCHEDULER_LOCK_TTL_SECONDS || '300',
-    10
-);
-
-const BUSINESS_STATE_LOCK_TTL_SECONDS = parseInt(
-    process.env.BUSINESS_STATE_LOCK_TTL_SECONDS || '600',
-    10
+// Bounds a single pass so evaluation time stays predictable as tenants grow.
+const FINDINGS_ORG_BATCH_SIZE = Math.min(
+    intSetting('INTELLIGENCE_FINDINGS_ORG_BATCH_SIZE', 50, 1),
+    500
 );
 
 const ALERT_QUEUE_BATCH_SIZE = Math.min(
-    Math.max(
-        parseInt(process.env.ALERT_QUEUE_BATCH_SIZE || '25', 10),
-        1
-    ),
+    intSetting('ALERT_QUEUE_BATCH_SIZE', 25, 1),
     100
 );
 
@@ -118,6 +117,7 @@ let recoveryActionTimer = null;
 let churnScoringTimer = null;
 let intelligenceAutomationTimer = null;
 let trainingObservationTimer = null;
+let intelligenceFindingsTimer = null;
 
 let businessStateRunning = false;
 let recommendationOutcomesRunning = false;
@@ -129,6 +129,7 @@ let recoveryActionRunning = false;
 let churnScoringRunning = false;
 let intelligenceAutomationRunning = false;
 let trainingObservationRunning = false;
+let intelligenceFindingsRunning = false;
 
 let started = false;
 
@@ -254,12 +255,38 @@ async function runBusinessStateRebuild() {
 
     // Business-state rebuilds are expensive and must never fall back to
     // per-process locks: a rolling deploy can run more than one instance.
-    const lock = await acquireLock('business-state', {
-        requireDistributed: true,
-        ttlSeconds: BUSINESS_STATE_LOCK_TTL_SECONDS,
-    });
+    //
+    // The claim lives in Postgres, not Redis. Redis readiness is lost
+    // permanently after a transient failure — ioredis stops retrying after five
+    // attempts and nothing reconnects — and because this was the only job
+    // demanding a distributed lock, one blip silently stopped *every* rebuild
+    // until the next process restart, while the rest of the scheduler carried on
+    // with local locks. That made a Node-side lock outage look like a Python
+    // outage for 16+ hours.
+    //
+    // Postgres is already a hard dependency and is the system of record for the
+    // snapshots being rebuilt, so it is the correct coordinator. The claim is
+    // also visible in automation_job_state, so "did this job run?" is answerable
+    // from the database without application logs.
+    let lock = null;
+
+    try {
+        lock = await acquireDbLock(prisma, BUSINESS_STATE_JOB, {
+            ttlSeconds: BUSINESS_STATE_LOCK_TTL_SECONDS,
+        });
+    } catch (error) {
+        const errorType = error.code || error.name || 'lock_error';
+
+        // This is the case that used to be invisible: the job cannot run, and
+        // nothing downstream would ever notice.
+        logger.error('scheduler_business_state_lock_error', { error_type: errorType });
+        await recordJobSkip(prisma, BUSINESS_STATE_JOB, 'lock_error', { error_type: errorType });
+        return;
+    }
 
     if (!lock) {
+        // Another instance holds a live claim. Normal during a rolling deploy,
+        // and self-healing because the claim expires after its TTL.
         logger.debug?.('scheduler_business_state_lock_not_acquired');
         return;
     }
@@ -267,6 +294,9 @@ async function runBusinessStateRebuild() {
     businessStateRunning = true;
 
     const startedAt = Date.now();
+    let succeeded = 0;
+    let failed = 0;
+    let processed = 0;
 
     try {
         logger.info('scheduler_business_state_started');
@@ -318,8 +348,7 @@ async function runBusinessStateRebuild() {
             return;
         }
 
-        let succeeded = 0;
-        let failed = 0;
+        processed = organizations.length;
 
         for (const organization of organizations) {
             const correlationId =
@@ -354,7 +383,7 @@ async function runBusinessStateRebuild() {
         }
 
         logger.info('scheduler_business_state_completed', {
-            organizations: organizations.length,
+            organizations: processed,
             succeeded,
             failed,
             latency_ms: Date.now() - startedAt,
@@ -366,7 +395,19 @@ async function runBusinessStateRebuild() {
         });
     } finally {
         businessStateRunning = false;
-        await releaseLock(lock);
+
+        // Release only our own claim, and leave the run's outcome behind so the
+        // heartbeat shows what the last pass actually did.
+        await releaseDbLock(prisma, lock, {
+            result: {
+                job: BUSINESS_STATE_JOB,
+                organizations: processed,
+                succeeded,
+                failed,
+                latency_ms: Date.now() - startedAt,
+                finished_at: new Date().toISOString(),
+            },
+        });
     }
 }
 
@@ -763,6 +804,121 @@ async function runAutomationQueue() {
     }
 }
 
+const INTELLIGENCE_FINDINGS_JOB = 'intelligence-findings';
+
+/**
+ * Evaluate and persist intelligence findings for every tenant that has a store.
+ *
+ * Findings were previously evaluated only when a merchant called the refresh
+ * endpoint, so a qualifying condition could exist for weeks and never be
+ * recorded — intelligence_findings had never held a row in production. The
+ * detection rules and their evidence gates are deliberately untouched: this
+ * supplies only the missing automated caller.
+ *
+ * Writes stay controlled because persistVerifiedFindings skips any candidate
+ * whose evidence is not verified, rechecks store ownership per row, and upserts
+ * on organization_id_dedupe_key — so repeated passes update a finding instead
+ * of duplicating it.
+ */
+async function runIntelligenceFindingsRefresh() {
+    if (intelligenceFindingsRunning) {
+        return;
+    }
+
+    let lock = null;
+    const startedAt = Date.now();
+
+    try {
+        lock = await acquireDbLock(prisma, INTELLIGENCE_FINDINGS_JOB, {
+            ttlSeconds: FINDINGS_LOCK_TTL_SECONDS,
+        });
+    } catch (error) {
+        const errorType = error?.code || error?.name || 'unknown';
+
+        // A lock failure must be visible. The Business State rebuild was
+        // silently skipped for 16 hours because this case only logged at debug.
+        logger.error('scheduler_findings_lock_error', { error_type: errorType });
+        await recordJobSkip(prisma, INTELLIGENCE_FINDINGS_JOB, 'lock_error', {
+            error_type: errorType,
+        });
+        return;
+    }
+
+    if (!lock) {
+        // Another instance holds this pass. Expected in a multi-instance deploy.
+        return;
+    }
+
+    intelligenceFindingsRunning = true;
+
+    let organizationsEvaluated = 0;
+    let findingsPersisted = 0;
+    let organizationFailures = 0;
+
+    try {
+        // Only tenants that actually have a store can produce findings. distinct
+        // keeps this to one bounded query rather than loading every store row.
+        const organizations = await prisma.stores.findMany({
+            select: { organization_id: true },
+            distinct: ['organization_id'],
+            orderBy: { organization_id: 'asc' },
+            take: FINDINGS_ORG_BATCH_SIZE,
+        });
+
+        for (const row of organizations) {
+            const organizationId = row?.organization_id;
+            if (!organizationId) continue;
+
+            // One tenant failing must not stop the remaining tenants, and must
+            // not leak another tenant's data into this evaluation.
+            try {
+                const evaluated = await evaluateOrganizationFindings(
+                    prisma,
+                    organizationId
+                );
+                const saved = await persistVerifiedFindings(
+                    prisma,
+                    organizationId,
+                    evaluated.findings
+                );
+
+                organizationsEvaluated += 1;
+                findingsPersisted += Number.isInteger(saved) ? saved : 0;
+            } catch (error) {
+                organizationFailures += 1;
+                logger.error('scheduler_findings_organization_failed', {
+                    organization_id: organizationId,
+                    error_type: error?.code || error?.name || 'unknown',
+                });
+            }
+        }
+
+        logger.info('scheduler_intelligence_findings_completed', {
+            organizations_evaluated: organizationsEvaluated,
+            findings_persisted: findingsPersisted,
+            organization_failures: organizationFailures,
+            latency_ms: Date.now() - startedAt,
+        });
+    } catch (error) {
+        logger.error('scheduler_intelligence_findings_failed', {
+            error_type: error?.code || error?.name || 'unknown',
+        });
+    } finally {
+        intelligenceFindingsRunning = false;
+
+        await releaseDbLock(prisma, lock, {
+            result: {
+                job: INTELLIGENCE_FINDINGS_JOB,
+                organizations_evaluated: organizationsEvaluated,
+                findings_persisted: findingsPersisted,
+                organization_failures: organizationFailures,
+                latency_ms: Date.now() - startedAt,
+                finished_at: new Date().toISOString(),
+            },
+        });
+    }
+}
+
 async function runTrainingObservationQueue() {
     if (trainingObservationRunning) return;
     const lock = await acquireLock('training-observations');
@@ -867,6 +1023,9 @@ function startScheduler() {
 
         morning_briefings_check_interval_ms:
             MORNING_BRIEFINGS_INTERVAL_MS,
+
+        intelligence_findings_interval_ms:
+            INTELLIGENCE_FINDINGS_INTERVAL_MS,
     });
 
     /*
@@ -882,6 +1041,7 @@ function startScheduler() {
     void runChurnQueue();
     void runAutomationQueue();
     void runTrainingObservationQueue();
+    void runIntelligenceFindingsRefresh();
 
     businessStateTimer = setInterval(
         runBusinessStateRebuild,
@@ -913,6 +1073,11 @@ function startScheduler() {
     trainingObservationTimer = setInterval(
         runTrainingObservationQueue,
         CHURN_SCORING_INTERVAL_MS
+    );
+
+    intelligenceFindingsTimer = setInterval(
+        runIntelligenceFindingsRefresh,
+        INTELLIGENCE_FINDINGS_INTERVAL_MS
     );
 
     /*
@@ -986,6 +1151,11 @@ function stopScheduler() {
         trainingObservationTimer = null;
     }
 
+    if (intelligenceFindingsTimer) {
+        clearInterval(intelligenceFindingsTimer);
+        intelligenceFindingsTimer = null;
+    }
+
     started = false;
 
     logger.info('scheduler_stopped');
@@ -1004,5 +1174,6 @@ module.exports = {
     runRecoveryQueue,
     runAutomationQueue,
     runTrainingObservationQueue,
+    runIntelligenceFindingsRefresh,
     promoteInactiveCheckouts,
 };
