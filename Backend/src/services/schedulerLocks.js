@@ -122,11 +122,90 @@ async function acquireDbLock(prisma, jobName, options = {}) {
  *
  * @returns {Promise<boolean>} true when this instance released the lock.
  */
+/**
+ * Counter keys that mean "this unit failed" and "this unit succeeded".
+ *
+ * Different jobs report different shapes, so the derivation reads whichever
+ * counters are present rather than requiring one canonical result schema.
+ */
+const FAILURE_COUNT_KEYS = Object.freeze(['failed', 'organization_failures']);
+const SUCCESS_COUNT_KEYS = Object.freeze(['succeeded', 'organizations_evaluated']);
+
+function sumCounts(result, keys) {
+    let total = 0;
+    let seen = false;
+
+    for (const key of keys) {
+        const value = result[key];
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            total += value;
+            seen = true;
+        }
+    }
+
+    return { total, seen };
+}
+
+/**
+ * Derive a job status from the run's own outcome counters.
+ *
+ * This exists because a failed run was being recorded as `status = 'idle'` with
+ * an empty `last_error`. Production showed a Business State pass that processed
+ * one organization and failed it — `{"failed": 1, "succeeded": 0}` — stored as
+ * idle with no error, which is indistinguishable from a healthy job that simply
+ * had nothing to do. An HTTP 200 from Python and a released lock both looked
+ * like success.
+ *
+ * The rule is deliberately conservative: a pass with nothing due is
+ * `completed`, not `failed`, because "no work was required" is not an error.
+ *
+ * @returns {'completed'|'partial'|'failed'|'idle'}
+ */
+function deriveJobStatus(result) {
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+        return 'idle';
+    }
+
+    const failures = sumCounts(result, FAILURE_COUNT_KEYS);
+    const successes = sumCounts(result, SUCCESS_COUNT_KEYS);
+
+    if (!failures.seen && !successes.seen) {
+        // No recognised counters. Anything the caller recorded is still an
+        // outcome, so treat a populated result as a completed pass.
+        return Object.keys(result).length > 0 ? 'completed' : 'idle';
+    }
+
+    if (failures.total > 0 && successes.total === 0) {
+        return 'failed';
+    }
+
+    if (failures.total > 0) {
+        return 'partial';
+    }
+
+    return 'completed';
+}
+
 async function releaseDbLock(prisma, lock, options = {}) {
-    const { status = 'idle', error = null, result = null } = options;
+    const { error = null, result = null } = options;
 
     if (!lock || !lock.token) {
         return false;
+    }
+
+    // An explicit status always wins; otherwise derive it from the outcome so a
+    // failed pass can never be stored as though it were idle or successful.
+    const status = typeof options.status === 'string' && options.status.trim()
+        ? options.status
+        : deriveJobStatus(result);
+
+    // A failure with no stated reason is how this stayed invisible before, so
+    // fall back to the counters rather than storing an empty last_error.
+    let lastError = error;
+    if (lastError === null && status !== 'completed' && status !== 'idle') {
+        const failures = sumCounts(result || {}, FAILURE_COUNT_KEYS);
+        const successes = sumCounts(result || {}, SUCCESS_COUNT_KEYS);
+        lastError = `job_${status}: failed=${failures.total} succeeded=${successes.total}`;
     }
 
     // Serialised separately so the outcome is stored as structured JSON and the
@@ -147,7 +226,7 @@ async function releaseDbLock(prisma, lock, options = {}) {
             updated_at = now(),
             last_result = (COALESCE(last_result, '{}'::jsonb) - ${LOCK_TOKEN_KEY})
                           || ${resultJson}::jsonb,
-            last_error = ${error}
+            last_error = ${lastError}
         WHERE job_name = ${lock.jobName}
           AND last_result->>${LOCK_TOKEN_KEY} = ${lock.token}
     `;
@@ -194,9 +273,72 @@ async function readJobState(prisma, jobName) {
     });
 }
 
+/*
+ * Classify the outcome of a single Python Business State rebuild call.
+ *
+ * Python answers HTTP 200 both when it writes a new snapshot and when it skips
+ * a duplicate build and hands back the previous snapshot. Counting that skip as
+ * a success is how a stuck lock came to look like a healthy scheduler, so the
+ * distinction is made here, in one tested place, instead of inline in the loop.
+ *
+ * An absent `rebuilt` field means an older Python build is answering. The call
+ * succeeded and there is no evidence of a skip, so it counts as a rebuild
+ * rather than being silently discarded during a rolling deploy.
+ *
+ * @param {{success?: boolean, data?: {rebuilt?: boolean, skip_reason?: string}|null, error?: {code?: string}|null}|null|undefined} result
+ * @returns {{outcome: 'failed'|'skipped'|'rebuilt', reason: string}}
+ */
+function classifyRebuildOutcome(result) {
+    if (!result || result.success === false) {
+        return { outcome: 'failed', reason: result?.error?.code || 'unknown' };
+    }
+
+    const data = result.data;
+
+    if (data && data.rebuilt === false) {
+        return { outcome: 'skipped', reason: data.skip_reason || 'duplicate_build' };
+    }
+
+    return { outcome: 'rebuilt', reason: '' };
+}
+
+/*
+ * Decide the status and error a whole Business State pass should be recorded
+ * with.
+ *
+ * A pass that only skipped work wrote no snapshot, so it must not read as a
+ * success in the heartbeat. A pass with failures carries the failure reasons
+ * and lets `deriveJobStatus` choose between `failed` and `partial` from the
+ * counters it is given.
+ *
+ * @param {{succeeded: number, skipped: number, failed: number, failureReasons?: string[]}} counts
+ * @returns {{status: string|undefined, error: string|null}}
+ */
+function resolvePassOutcome({ succeeded = 0, skipped = 0, failed = 0, failureReasons = [] } = {}) {
+    const reasons = Array.isArray(failureReasons) ? failureReasons : [];
+
+    if (reasons.length > 0) {
+        // Bound the stored reason so a large tenant count cannot produce an
+        // unbounded column value.
+        return { status: undefined, error: reasons.join('; ').slice(0, 500) };
+    }
+
+    if (failed === 0 && succeeded === 0 && skipped > 0) {
+        return {
+            status: 'skipped',
+            error: `no snapshots written; ${skipped} skipped as duplicate builds`,
+        };
+    }
+
+    return { status: undefined, error: null };
+}
+
 module.exports = {
     BUSINESS_STATE_JOB,
     acquireDbLock,
+    classifyRebuildOutcome,
+    deriveJobStatus,
+    resolvePassOutcome,
     releaseDbLock,
     recordJobSkip,
     readJobState,

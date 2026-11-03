@@ -104,6 +104,14 @@ class BusinessStatePersistenceError(RuntimeError):
     """Raised when a new business-state snapshot could not be persisted."""
 
 
+#: A new snapshot was computed and persisted by this call.
+OUTCOME_REBUILT = "rebuilt"
+
+#: Another build held the lock, so the previous snapshot was returned instead.
+#: Callers must not record this as a successful rebuild.
+OUTCOME_DUPLICATE_SKIPPED = "duplicate_skipped"
+
+
 def _acquire_business_state_lock(organization_id: str):
     """Acquire a token-owned, organization-scoped Redis lease shared by all instances."""
     redis_url = (getattr(settings, "REDIS_URL", "") or "").strip()
@@ -1309,8 +1317,20 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     )
 
 
-def build_business_state(organization_id: str, db) -> BusinessState:
-    """Build one organization's state under a shared, rollback-safe Redis lock.
+def build_business_state_with_status(
+    organization_id: str, db
+) -> tuple["BusinessState", str]:
+    """Build one organization's state and report whether a snapshot was written.
+
+    Returns ``(state, outcome)`` where outcome is ``"rebuilt"`` when this call
+    computed and persisted a new snapshot, or ``"duplicate_skipped"`` when
+    another build already held the lock and the previous snapshot was returned
+    instead.
+
+    The distinction matters because both cases previously looked identical to
+    the caller: an HTTP 200 carrying a valid state. The Node scheduler counted
+    the skip as a success, so a lock stuck for ten minutes produced a heartbeat
+    reporting healthy rebuilds while no snapshot was being written at all.
 
     The lock is deliberately independent of the SQLAlchemy transaction because
     optional source-query failures may roll that transaction back while the
@@ -1324,7 +1344,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                 "business_state_duplicate_build_skipped",
                 extra={"org_id": organization_id, "state_id": previous_state.id},
             )
-            return previous_state
+            return previous_state, OUTCOME_DUPLICATE_SKIPPED
         raise BusinessStateBuildInProgress(
             "A business-state rebuild is already running for this organization."
         )
@@ -1334,9 +1354,20 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         extra={"org_id": organization_id},
     )
     try:
-        return _build_business_state_unlocked(organization_id, db)
+        return _build_business_state_unlocked(organization_id, db), OUTCOME_REBUILT
     finally:
         _release_business_state_lock(lock)
+
+
+def build_business_state(organization_id: str, db) -> BusinessState:
+    """Build one organization's state under a shared, rollback-safe lock.
+
+    Retained for callers that only need the state. Prefer
+    :func:`build_business_state_with_status` where a skipped build must not be
+    mistaken for a completed one.
+    """
+    state, _outcome = build_business_state_with_status(organization_id, db)
+    return state
 
 
 def load_current_business_state(organization_id: str, db) -> BusinessState | None:
