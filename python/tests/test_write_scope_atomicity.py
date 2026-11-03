@@ -277,3 +277,89 @@ def test_retention_pruning_still_runs_after_the_commit(build_source):
     assert build_source.index("commit_write_scope(db, write_scope)") < build_source.index(
         "prune_superseded_snapshots(db, organization_id)"
     )
+
+
+# ---------------------------------------------------------------------------
+# The decisive fix: ONE statement, because the pooler splits separate executes
+# onto separate server backends even inside an explicit client transaction.
+#
+# Production measurement, 11:56:54 UTC:
+#   diag scope_opened=True in_tx_before=True pid_before=1220162
+#        pid_after_insert=None
+# scope_opened=True proves db.begin() succeeded, and pid_before had its own
+# backend while the four statements earlier appeared on four distinct pids.
+# ---------------------------------------------------------------------------
+
+
+CRITICAL_SECTION_ORDER = (
+    "SELECT set_config('lock_timeout', :lock_timeout, true);",
+    "SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint);",
+    "UPDATE business_states",
+    "INSERT INTO business_states (",
+)
+
+
+def test_the_critical_section_is_a_single_batched_statement(build_source):
+    assert "critical_section_sql" in build_source
+    # One execute for the whole critical section: no separate call per statement.
+    assert build_source.count("text(critical_section_sql)") == 1
+
+
+def test_the_batch_carries_all_four_statements_in_order(build_source):
+    start = build_source.index('critical_section_sql = """')
+    batch = build_source[start:start + 2600]
+
+    positions = []
+    for fragment in CRITICAL_SECTION_ORDER:
+        assert fragment in batch, f"missing from the batch: {fragment}"
+        positions.append(batch.index(fragment))
+
+    assert positions == sorted(positions), (
+        "lock_timeout must precede the advisory lock, which must precede the "
+        "UPDATE, which must precede the INSERT"
+    )
+
+
+def test_the_batch_is_semicolon_separated_so_postgres_runs_it_as_one_transaction(build_source):
+    start = build_source.index('critical_section_sql = """')
+    batch = build_source[start:start + 2600]
+    # psycopg2 mogrifies bound parameters client side and dispatches with PQexec,
+    # so a semicolon-separated batch is one round trip and one implicit
+    # transaction. Without the separators it would be four statements again.
+    assert batch.count(";") >= 3
+
+
+def test_the_old_separate_executes_are_gone(build_source):
+    """Each of these was its own round trip, and each got its own backend."""
+    start = build_source.index('critical_section_sql = """')
+    tail = build_source[start:]
+    for needle in (
+        'text("SELECT set_config(\'lock_timeout\', :lock_timeout, true)")',
+        'text("SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)")',
+    ):
+        assert needle not in tail, f"still executed separately: {needle}"
+
+
+def test_the_batch_binds_the_lock_key_and_timeout(build_source):
+    start = build_source.index("text(critical_section_sql)")
+    call = build_source[start:start + 400]
+    assert '"lock_timeout"' in call
+    assert '"lock_key"' in call
+    assert "_build_lock_job_name(organization_id)" in call
+
+
+def test_one_execute_means_one_backend_even_when_the_pooler_splits_statements():
+    """The property the fix depends on, modelled directly.
+
+    SplittingSession gives every *execute call* its own backend, which is what
+    production measured. Batching four statements into one call therefore yields
+    one backend no matter how the pooler behaves.
+    """
+    db = SplittingSession()
+    scope = begin_write_scope(db)
+    db.execute("SELECT set_config(...); SELECT pg_advisory_xact_lock(...); "
+               "UPDATE business_states ...; INSERT INTO business_states (...)")
+    commit_write_scope(db, scope)
+
+    assert len(db.backends) == 1
+    assert db.backends[0][0].count(";") == 3
