@@ -10,6 +10,11 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from sqlalchemy import text
 
+from src.intelligence.metric_registry import (
+    average_order_value as registry_average_order_value,
+)
+from src.intelligence.metric_registry import definition_for, limitations_for
+
 
 def _money(value):
     return str(Decimal(str(value or 0)))
@@ -20,12 +25,21 @@ def _rows_by_currency(rows, count_key, total_key):
     for row in rows:
         count = int(row["item_count"])
         total = Decimal(str(row["amount"] or 0))
-        result.append({
+        entry = {
             "currency": row["currency"] or "UNKNOWN",
             count_key: count,
             total_key: str(total),
-            **({"average_order_value": str(total / count)} if count_key == "order_count" and count else {}),
-        })
+        }
+        if count_key == "order_count":
+            # Average order value now comes from the metric registry instead of an
+            # inline division, so the value and its definition cannot drift apart.
+            # The arithmetic is unchanged: exact decimal division, and the key is
+            # still omitted entirely when there are no orders, because zero orders
+            # means AOV is undefined rather than zero.
+            aov = registry_average_order_value(total, count)
+            if aov is not None:
+                entry["average_order_value"] = aov
+        result.append(entry)
     return result
 
 
@@ -54,6 +68,20 @@ def retrieve_seven_day_evidence(organization_id: str, db, *, now: datetime | Non
         "recovered_carts": {"status": "unavailable", "count": None},
         "checkout_activity": {"status": "unavailable", "reason": "No verified checkout-event query is configured."},
         "warnings": [],
+        # The definitions that produced the numbers above travel with the numbers.
+        # A consumer can therefore see which formula, window semantics and
+        # limitations apply, instead of inferring them from a metric name.
+        "metric_definitions": {
+            key: {
+                "definition": definition_for(key),
+                "limitations": limitations_for(key),
+            }
+            for key in (
+                "order_count",
+                "net_recorded_order_value",
+                "average_order_value",
+            )
+        },
     }
     stores = db.execute(text("""
         SELECT id, last_synced_at FROM stores
