@@ -28,7 +28,7 @@ export interface StoreContext {
   webhooksRequired: number | null;
 }
 
-/** Shape returned by GET /store (access_token is stripped server-side). */
+/** Shape returned by GET /stores (access_token is stripped server-side). */
 export interface StoreSummary {
   id?: string;
   platform?: string | null;
