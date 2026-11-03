@@ -1713,7 +1713,7 @@ export default function RevIntell() {
   return (
     <MotionConfig reducedMotion="user">
     <style>{`
-      .rev-workspace :is(button,input,textarea):focus-visible, [data-rev-modal] :is(button,input):focus-visible { outline: 2px solid #8b7cff; outline-offset: 3px; }
+      .rev-workspace :is(button,input):focus-visible, [data-rev-modal] :is(button,input):focus-visible { outline: 2px solid #8b7cff; outline-offset: 3px; }
       @media (prefers-reduced-motion: reduce) { .rev-workspace *, [data-rev-modal], [data-rev-modal] * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
     `}</style>
     <div className="rev-workspace relative flex overflow-hidden"
