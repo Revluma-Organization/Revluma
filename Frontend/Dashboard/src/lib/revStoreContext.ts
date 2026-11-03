@@ -141,6 +141,15 @@ export interface Starter {
 
 /** Build suggestions from this merchant's actual store and sync state. */
 export function buildStarters(ctx: StoreContext): Starter[] {
+  // A failed status lookup must not be presented as a disconnected store.
+  if (ctx.loadError) {
+    return [
+      { icon: RefreshCw, label: "Retry", sub: "Can you check my Shopify connection again?", color: "#d97706" },
+      { icon: FileText, label: "Data", sub: "What data can Rev use once my store is verified?", color: "#7c3aed" },
+      { icon: Zap, label: "Capability", sub: "What can Rev do, and what can't it do?", color: "#db2777" },
+    ];
+  }
+
   // No usable store data yet: the only honest suggestions are about the
   // connection itself, not about revenue Rev cannot see.
   if (!ctx.connected) {
