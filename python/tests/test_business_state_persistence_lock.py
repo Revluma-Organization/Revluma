@@ -124,12 +124,15 @@ def test_the_lease_and_the_persistence_lock_share_one_key_space():
 
 
 def test_the_persistence_failure_carries_its_underlying_cause(build_source):
-    cause_at = build_source.index("persistence_cause = f\"{type(exc).__name__}")
+    cause_at = build_source.index("persistence_cause = (")
     flag_at = build_source.index("persistence_failed = True")
     raise_at = build_source.index("raise BusinessStatePersistenceError")
 
     # Captured in the handler, before the flag that triggers the raise.
     assert cause_at < flag_at < raise_at
+    # And it still names the underlying driver exception, not just the wrapper.
+    statement = build_source[cause_at:cause_at + 400]
+    assert "{type(exc).__name__}" in statement
 
 
 def test_the_cause_is_interpolated_into_the_raised_message(build_source):
@@ -147,10 +150,36 @@ def test_the_exception_chain_is_preserved(build_source):
 
 
 def test_the_cause_is_bounded_before_it_reaches_a_database_column(build_source):
-    idx = build_source.index("persistence_cause = f\"{type(exc).__name__}")
-    statement = build_source[idx:idx + 160]
+    idx = build_source.index("persistence_cause = (")
+    statement = build_source[idx:idx + 400]
     # Stored in automation_job_state.last_error and read by operators.
-    assert "[:280]" in statement or "[:300]" in statement
+    assert any(bound in statement for bound in ("[:200]", "[:280]", "[:300]"))
+
+
+def test_diagnostics_precede_the_driver_message_so_truncation_cannot_eat_them(build_source):
+    """The lesson from production, encoded as a test.
+
+    The caller bounds the reported string to 280 characters before it reaches
+    automation_job_state.last_error. The first run of the backend-pid diagnostic
+    put the measurements at the END, so production recorded a 311-character string
+    ending mid-word at "in_tx_befo": scope_opened survived and the two backend
+    pids - the only decisive values - were truncated away.
+    """
+    idx = build_source.index("persistence_cause = (")
+    statement = build_source[idx:idx + 400]
+
+    diag_at = statement.index("diag scope_opened=")
+    driver_at = statement.index("{type(exc).__name__}")
+    assert diag_at < driver_at, "diagnostics must come first to survive the 280-char bound"
+
+    # The prefix has to fit inside what actually survives truncation.
+    wrapper = "Business-state snapshot persistence failed ("
+    surviving_budget = 280 - len(wrapper)
+    measured_prefix = (
+        "diag scope_opened=True in_tx_before=False "
+        "pid_before=1215449 pid_after_insert=1216237 | "
+    )
+    assert len(measured_prefix) < surviving_budget
 
 
 def test_the_cause_is_recorded_even_when_the_caller_swallows_the_exception():
