@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -218,7 +219,16 @@ def _acquire_business_state_lock(organization_id: str, db):
     return job_name, token
 
 
-def _release_business_state_lock(lock, db) -> None:
+def _release_business_state_lock(
+    lock,
+    db,
+    *,
+    outcome: str | None = None,
+    state_id: str | None = None,
+    computation_status: str | None = None,
+    duration_ms: int | None = None,
+    error: str | None = None,
+) -> None:
     """Release only the lease this worker owns.
 
     Token-matched, so a worker whose lease already expired and was re-claimed
@@ -236,22 +246,50 @@ def _release_business_state_lock(lock, db) -> None:
         return
 
     try:
+        # The release doubles as the build's own report card. The orchestrator
+        # path wraps this build in `except Exception: logger.error(...)`, so a
+        # persistence failure there is swallowed and leaves no trace anywhere an
+        # operator - or an engineer without access to the application logs - can
+        # see. Production showed exactly that: a lease held for 134 seconds and
+        # released cleanly with an empty error, while no snapshot was written.
+        # Recording the outcome, the state id and the exception here makes the
+        # failure readable straight from SQL.
         db.execute(
             text(f"""
                 UPDATE {BUILD_LOCK_TABLE}
                    SET status = 'idle',
-                       last_result = COALESCE(last_result, '{{}}'::jsonb) - 'lock_token',
+                       last_result = (COALESCE(last_result, '{{}}'::jsonb) - 'lock_token')
+                                     || jsonb_strip_nulls(jsonb_build_object(
+                                            'outcome', :outcome,
+                                            'state_id', :state_id,
+                                            'computation_status', :computation_status,
+                                            'duration_ms', :duration_ms
+                                        )),
+                       last_error = :error,
                        last_completed_at = now(),
                        updated_at = now()
                  WHERE job_name = :job_name
                    AND last_result ->> 'lock_token' = :token
             """),
-            {"job_name": job_name, "token": token},
+            {
+                "job_name": job_name,
+                "token": token,
+                "outcome": outcome,
+                "state_id": state_id,
+                "computation_status": computation_status,
+                "duration_ms": duration_ms,
+                "error": error,
+            },
         )
         db.commit()
         logger.info(
             "business_state_lock_released",
-            extra={"lock_key": job_name},
+            extra={
+                "lock_key": job_name,
+                "outcome": outcome,
+                "duration_ms": duration_ms,
+                "error": error,
+            },
         )
     except Exception:
         try:
@@ -1487,10 +1525,35 @@ def build_business_state_with_status(
         "business_state_lock_acquired",
         extra={"org_id": organization_id},
     )
+
+    started = time.monotonic()
+    outcome: str | None = None
+    state_id: str | None = None
+    computation_status: str | None = None
+    error_text: str | None = None
+
     try:
-        return _build_business_state_unlocked(organization_id, db), OUTCOME_REBUILT
+        state = _build_business_state_unlocked(organization_id, db)
+        outcome = OUTCOME_REBUILT
+        state_id = getattr(state, "id", None)
+        computation_status = getattr(state, "computation_status", None)
+        return state, outcome
+    except Exception as exc:
+        # Bounded, and the exception type first: this string is stored in a
+        # database column and read by operators, so it must never carry a
+        # traceback, a token, or an unbounded driver message.
+        error_text = f"{type(exc).__name__}: {str(exc)[:280]}"
+        raise
     finally:
-        _release_business_state_lock(lock, db)
+        _release_business_state_lock(
+            lock,
+            db,
+            outcome=outcome,
+            state_id=state_id,
+            computation_status=computation_status,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            error=error_text,
+        )
 
 
 def build_business_state(organization_id: str, db) -> BusinessState:

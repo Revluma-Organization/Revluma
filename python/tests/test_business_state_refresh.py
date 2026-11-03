@@ -355,7 +355,8 @@ def test_postgres_build_lock_release_is_token_owned():
     # Token-matched: a worker whose lease expired and was re-claimed must never
     # release the new holder's lease.
     assert "last_result ->> 'lock_token' = :token" in sql
-    assert params == {"job_name": "business-state-build:org-123", "token": "token-123"}
+    assert params["job_name"] == "business-state-build:org-123"
+    assert params["token"] == "token-123"
     assert db.commits == 1
     # The token must be cleared so the row does not look claimed forever.
     assert "- 'lock_token'" in sql
