@@ -39,8 +39,10 @@ const { runTrainingObservationFinalization } = require('./trainingObservationSer
 const {
     BUSINESS_STATE_JOB,
     acquireDbLock,
+    classifyRebuildOutcome,
     releaseDbLock,
     recordJobSkip,
+    resolvePassOutcome,
 } = require('./schedulerLocks');
 const { intSetting } = require('../utils/intSetting');
 const {
@@ -92,6 +94,23 @@ const FINDINGS_LOCK_TTL_SECONDS = intSetting(
     60
 );
 
+/*
+ * Startup passes are staggered rather than fired simultaneously.
+ *
+ * All ten jobs used to start on the same tick via `void run...()`. Several of
+ * them call Python, and every Python request opens its own SQLAlchemy session,
+ * so a boot or a restart produced an immediate burst of concurrent sessions
+ * against a pool whose ceiling is 12. Spreading the starts costs a few seconds
+ * of warm-up and removes the spike. Completion is deliberately NOT awaited:
+ * serialising the passes would make startup take as long as the slowest job,
+ * which was measured at 40s for a single Business State organization.
+ */
+const SCHEDULER_STARTUP_STAGGER_MS = intSetting(
+    'SCHEDULER_STARTUP_STAGGER_MS',
+    '1500',
+    0
+);
+
 // Bounds a single pass so evaluation time stays predictable as tenants grow.
 const FINDINGS_ORG_BATCH_SIZE = Math.min(
     intSetting('INTELLIGENCE_FINDINGS_ORG_BATCH_SIZE', 50, 1),
@@ -118,6 +137,7 @@ let churnScoringTimer = null;
 let intelligenceAutomationTimer = null;
 let trainingObservationTimer = null;
 let intelligenceFindingsTimer = null;
+let startupPassTimers = [];
 
 let businessStateRunning = false;
 let recommendationOutcomesRunning = false;
@@ -297,6 +317,17 @@ async function runBusinessStateRebuild() {
     let succeeded = 0;
     let failed = 0;
     let processed = 0;
+    let skipped = 0;
+
+    // The failure reason used to be logged and thrown away, so the heartbeat
+    // could say "failed: 1" without saying why. Bounded so a pass over many
+    // organizations cannot grow this without limit.
+    const failureReasons = [];
+    const recordFailureReason = (organizationId, reason) => {
+        if (failureReasons.length < 10) {
+            failureReasons.push(`${organizationId}:${reason}`);
+        }
+    };
 
     try {
         logger.info('scheduler_business_state_started');
@@ -360,12 +391,33 @@ async function runBusinessStateRebuild() {
                     correlationId,
                 });
 
-                if (!result.success) {
+                /*
+                 * One tested helper decides failed / skipped / rebuilt, so a
+                 * duplicate build that Python answers with HTTP 200 can never be
+                 * counted as a snapshot that was written.
+                 */
+                const outcome = classifyRebuildOutcome(result);
+
+                if (outcome.outcome === 'failed') {
                     failed++;
+                    recordFailureReason(organization.id, outcome.reason);
 
                     logger.warn('scheduler_business_state_org_failed', {
                         organization_id: organization.id,
-                        code: result.error?.code,
+                        code: outcome.reason,
+                        correlation_id: correlationId,
+                    });
+
+                    continue;
+                }
+
+                if (outcome.outcome === 'skipped') {
+                    skipped++;
+
+                    logger.warn('scheduler_business_state_org_skipped', {
+                        organization_id: organization.id,
+                        reason: outcome.reason,
+                        correlation_id: correlationId,
                     });
 
                     continue;
@@ -375,9 +427,14 @@ async function runBusinessStateRebuild() {
             } catch (error) {
                 failed++;
 
+                const errorType =
+                    error.code || error.name || 'processing_error';
+                recordFailureReason(organization.id, errorType);
+
                 logger.error('scheduler_business_state_org_exception', {
                     organization_id: organization.id,
-                    error_type: error.code || error.name || 'processing_error',
+                    error_type: errorType,
+                    correlation_id: correlationId,
                 });
             }
         }
@@ -385,6 +442,7 @@ async function runBusinessStateRebuild() {
         logger.info('scheduler_business_state_completed', {
             organizations: processed,
             succeeded,
+            skipped,
             failed,
             latency_ms: Date.now() - startedAt,
         });
@@ -398,11 +456,23 @@ async function runBusinessStateRebuild() {
 
         // Release only our own claim, and leave the run's outcome behind so the
         // heartbeat shows what the last pass actually did.
+        // A pass that only skipped work is not a success: no snapshot was
+        // written, so the heartbeat must not read as though one was.
+        const passOutcome = resolvePassOutcome({
+            succeeded,
+            skipped,
+            failed,
+            failureReasons,
+        });
+
         await releaseDbLock(prisma, lock, {
+            status: passOutcome.status,
+            error: passOutcome.error,
             result: {
                 job: BUSINESS_STATE_JOB,
                 organizations: processed,
                 succeeded,
+                skipped,
                 failed,
                 latency_ms: Date.now() - startedAt,
                 finished_at: new Date().toISOString(),
@@ -1029,19 +1099,58 @@ function startScheduler() {
     });
 
     /*
-     * Run the minute-based jobs immediately so the application does not
-     * wait one full minute after startup.
+     * Run the minute-based jobs immediately so the application does not wait
+     * one full minute after startup — but staggered, so a restart does not
+     * open a burst of concurrent Python sessions against a 12-connection pool.
+     *
+     * Order matters: the jobs that produce intelligence other jobs read come
+     * first, and the hourly findings pass comes last because nothing depends
+     * on it during warm-up.
      */
-    void runBusinessStateRebuild();
-    void runRecommendationOutcomeEvaluation();
-    void runAlertQueue();
-    void runStoreSync();
-    void runFeatureQueue();
-    void runRecoveryQueue();
-    void runChurnQueue();
-    void runAutomationQueue();
-    void runTrainingObservationQueue();
-    void runIntelligenceFindingsRefresh();
+    const startupPasses = [
+        ['business-state', runBusinessStateRebuild],
+        ['recommendation-outcomes', runRecommendationOutcomeEvaluation],
+        ['alert-queue', runAlertQueue],
+        ['store-sync', runStoreSync],
+        ['feature-queue', runFeatureQueue],
+        ['recovery-queue', runRecoveryQueue],
+        ['churn-queue', runChurnQueue],
+        ['intelligence-automation', runAutomationQueue],
+        ['training-observations', runTrainingObservationQueue],
+        ['intelligence-findings', runIntelligenceFindingsRefresh],
+    ];
+
+    startupPasses.forEach(([jobName, runPass], index) => {
+        const delay = index * SCHEDULER_STARTUP_STAGGER_MS;
+
+        const timer = setTimeout(() => {
+            startupPassTimers = startupPassTimers.filter(
+                (candidate) => candidate !== timer
+            );
+
+            // A startup pass must never reject unhandled: an uncaught rejection
+            // during warm-up would take the process down before it served traffic.
+            Promise.resolve()
+                .then(runPass)
+                .catch((error) => {
+                    logger.error('scheduler_startup_pass_failed', {
+                        job: jobName,
+                        error_type: error?.code || error?.name || 'startup_error',
+                    });
+                });
+        }, delay);
+
+        // Never hold the event loop open for warm-up alone.
+        timer.unref?.();
+        startupPassTimers.push(timer);
+    });
+
+    logger.info('scheduler_startup_passes_scheduled', {
+        passes: startupPasses.length,
+        stagger_ms: SCHEDULER_STARTUP_STAGGER_MS,
+        warmup_window_ms:
+            Math.max(0, startupPasses.length - 1) * SCHEDULER_STARTUP_STAGGER_MS,
+    });
 
     businessStateTimer = setInterval(
         runBusinessStateRebuild,
@@ -1155,6 +1264,13 @@ function stopScheduler() {
         clearInterval(intelligenceFindingsTimer);
         intelligenceFindingsTimer = null;
     }
+
+    // Cancel any warm-up pass that has not fired yet, so a stop during start-up
+    // cannot leave a job running after the scheduler reports itself stopped.
+    for (const timer of startupPassTimers) {
+        clearTimeout(timer);
+    }
+    startupPassTimers = [];
 
     started = false;
 

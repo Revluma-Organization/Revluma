@@ -60,7 +60,8 @@ from src.intelligence.business_state import (
     BusinessStateBuildInProgress,
     BusinessStateLockUnavailable,
     BusinessStatePersistenceError,
-    build_business_state as _build_business_state,
+    build_business_state_with_status as _build_business_state_with_status,
+    OUTCOME_REBUILT as _BUSINESS_STATE_OUTCOME_REBUILT,
 )
 from src.intelligence.morning_briefing import run_briefings_for_all_merchants as _run_briefing_job
 from src.learning.feedback_loop import run_due_outcome_checks as _run_due_outcome_checks
@@ -636,6 +637,12 @@ class BusinessStateRebuildResponse(BaseModel):
     computation_status: str
     next_rebuild_at: datetime
     warnings: list[str] = Field(default_factory=list)
+    # A skipped duplicate build returns HTTP 200 with a valid previous state,
+    # which the scheduler used to count as a successful rebuild. These two
+    # fields let the caller tell "a snapshot was written" apart from "nothing
+    # happened". Defaulted so every existing construction stays valid.
+    rebuilt: bool = True
+    skip_reason: str | None = None
 
 
 class RecommendationOutcomeEvaluationRequest(BaseModel):
@@ -779,7 +786,7 @@ def _rebuild_business_state(organization_id: str) -> BusinessStateRebuildRespons
     db = _Session()
     try:
         try:
-            state = _build_business_state(organization_id, db)
+            state, outcome = _build_business_state_with_status(organization_id, db)
         except BusinessStateBuildInProgress as exc:
             raise HTTPException(
                 status_code=409,
@@ -809,12 +816,15 @@ def _rebuild_business_state(organization_id: str) -> BusinessStateRebuildRespons
                 detail="Business-state snapshot persistence failed; retry is safe.",
                 headers={"Retry-After": "30"},
             ) from exc
+        skipped = outcome != _BUSINESS_STATE_OUTCOME_REBUILT
         return BusinessStateRebuildResponse(
             organization_id=state.organization_id,
             state_id=state.id,
             computation_status=state.computation_status,
             next_rebuild_at=state.next_rebuild_at,
             warnings=state.warnings,
+            rebuilt=not skipped,
+            skip_reason=outcome if skipped else None,
         )
     finally:
         db.close()

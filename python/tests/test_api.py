@@ -222,6 +222,11 @@ def test_internal_business_state_rebuild_returns_job_result(monkeypatch):
         "computation_status": "complete",
         "next_rebuild_at": "2026-09-13T12:15:00Z",
         "warnings": [],
+        # A rebuild that actually wrote a snapshot says so explicitly. The
+        # scheduler relies on this to avoid counting a skipped duplicate build
+        # as a success.
+        "rebuilt": True,
+        "skip_reason": None,
     }
     monkeypatch.setattr(
         serving_api,
@@ -236,6 +241,75 @@ def test_internal_business_state_rebuild_returns_job_result(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == expected
+
+
+def test_business_state_rebuild_marks_a_duplicate_skip_as_not_rebuilt(monkeypatch):
+    """
+    A skipped duplicate build returns HTTP 200 carrying the previous snapshot.
+    That used to be indistinguishable from a real rebuild, so the Node scheduler
+    counted it as a success and a stuck lock looked like a healthy pipeline.
+    """
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock
+
+    organization_id = "11111111-1111-1111-1111-111111111111"
+    previous_state = MagicMock()
+    previous_state.organization_id = organization_id
+    previous_state.id = "22222222-2222-2222-2222-222222222222"
+    previous_state.computation_status = "complete"
+    previous_state.next_rebuild_at = datetime(2026, 9, 13, 12, 15, tzinfo=timezone.utc)
+    previous_state.warnings = []
+
+    session = MagicMock()
+    monkeypatch.setattr(serving_api, "_Session", lambda: session)
+    monkeypatch.setattr(
+        serving_api,
+        "_build_business_state_with_status",
+        lambda _org, _db: (previous_state, "duplicate_skipped"),
+    )
+
+    response = client.post(
+        "/internal/business-state/rebuild",
+        json={"organization_id": organization_id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rebuilt"] is False
+    assert body["skip_reason"] == "duplicate_skipped"
+    assert body["organization_id"] == organization_id
+    session.close.assert_called_once()
+
+
+def test_business_state_rebuild_marks_a_real_build_as_rebuilt(monkeypatch):
+    from datetime import datetime, timezone
+    from unittest.mock import MagicMock
+
+    organization_id = "11111111-1111-1111-1111-111111111111"
+    state = MagicMock()
+    state.organization_id = organization_id
+    state.id = "22222222-2222-2222-2222-222222222222"
+    state.computation_status = "complete"
+    state.next_rebuild_at = datetime(2026, 9, 13, 12, 15, tzinfo=timezone.utc)
+    state.warnings = []
+
+    session = MagicMock()
+    monkeypatch.setattr(serving_api, "_Session", lambda: session)
+    monkeypatch.setattr(
+        serving_api,
+        "_build_business_state_with_status",
+        lambda _org, _db: (state, "rebuilt"),
+    )
+
+    response = client.post(
+        "/internal/business-state/rebuild",
+        json={"organization_id": organization_id},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rebuilt"] is True
+    assert body["skip_reason"] is None
 
 
 def test_internal_business_state_rebuild_requires_organization_id():

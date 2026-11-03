@@ -23,7 +23,10 @@ const assert = require('node:assert/strict');
 const {
   acquireDbLock,
   releaseDbLock,
+  classifyRebuildOutcome,
+  deriveJobStatus,
   recordJobSkip,
+  resolvePassOutcome,
   readJobState,
 } = require('../services/schedulerLocks');
 
@@ -198,7 +201,11 @@ test('release clears the claim token and records the run outcome', async () => {
   assert.equal(released, true);
 
   const row = db.row(JOB);
-  assert.equal(row.status, 'idle');
+  // A pass that succeeded is recorded as completed, not left at the release
+  // default. Storing 'idle' here was what made a failed pass indistinguishable
+  // from a healthy job that had nothing to do.
+  assert.equal(row.status, 'completed');
+  assert.equal(row.last_error, null, 'a clean pass records no error');
   assert.equal(row.last_result.lock_token, undefined, 'token must not linger');
   assert.equal(row.last_result.succeeded, 1);
   assert.equal(row.last_result.failed, 0);
@@ -263,4 +270,273 @@ test('two jobs do not interfere with each other', async () => {
   assert.equal(await acquireDbLock(db, 'business-state', { ttlSeconds: 600 }), null);
   assert.equal(await releaseDbLock(db, a), true);
   assert.equal(db.row('alert-queue').status, 'running');
+});
+
+const FINDINGS_JOB = 'intelligence-findings';
+
+test('a failed pass is recorded as failed, with a reason, never as idle', async () => {
+  const db = fakePrisma();
+  const lock = await acquireDbLock(db, JOB, { ttlSeconds: 600 });
+
+  await releaseDbLock(db, lock, {
+    result: { job: JOB, organizations: 1, succeeded: 0, failed: 1 },
+  });
+
+  const row = db.row(JOB);
+  // This is the exact production shape that was stored as status 'idle' with an
+  // empty last_error: one organization processed, one failed.
+  assert.equal(row.status, 'failed');
+  assert.ok(row.last_error, 'a failure must carry a reason');
+  assert.match(row.last_error, /failed=1/);
+  assert.match(row.last_error, /succeeded=0/);
+  assert.equal(row.last_result.failed, 1);
+  assert.equal(row.last_result.lock_token, undefined);
+});
+
+test('a mixed pass is recorded as partial rather than completed', async () => {
+  const db = fakePrisma();
+  const lock = await acquireDbLock(db, JOB, { ttlSeconds: 600 });
+
+  await releaseDbLock(db, lock, {
+    result: { organizations: 4, succeeded: 3, failed: 1 },
+  });
+
+  const row = db.row(JOB);
+  assert.equal(row.status, 'partial');
+  assert.ok(row.last_error);
+});
+
+test('a pass with nothing due is completed, not failed', async () => {
+  const db = fakePrisma();
+  const lock = await acquireDbLock(db, JOB, { ttlSeconds: 600 });
+
+  await releaseDbLock(db, lock, {
+    result: { organizations: 0, succeeded: 0, failed: 0 },
+  });
+
+  const row = db.row(JOB);
+  assert.equal(row.status, 'completed', '"no work required" is not an error');
+  assert.equal(row.last_error, null);
+});
+
+test('an explicit status overrides the derived one', async () => {
+  const db = fakePrisma();
+  const lock = await acquireDbLock(db, JOB, { ttlSeconds: 600 });
+
+  await releaseDbLock(db, lock, {
+    status: 'skipped',
+    error: 'no snapshots written; 1 skipped as duplicate builds',
+    result: { organizations: 1, succeeded: 0, skipped: 1, failed: 0 },
+  });
+
+  const row = db.row(JOB);
+  assert.equal(row.status, 'skipped');
+  assert.match(row.last_error, /duplicate builds/);
+});
+
+test('organization_failures counts as a failure for the findings job', async () => {
+  const db = fakePrisma();
+  const lock = await acquireDbLock(db, FINDINGS_JOB, { ttlSeconds: 600 });
+
+  await releaseDbLock(db, lock, {
+    result: {
+      organizations_evaluated: 0,
+      findings_persisted: 0,
+      organization_failures: 3,
+    },
+  });
+
+  const row = db.row(FINDINGS_JOB);
+  assert.equal(row.status, 'failed');
+  assert.match(row.last_error, /failed=3/);
+});
+
+test('a findings pass that evaluated tenants but found nothing is a success', async () => {
+  const db = fakePrisma();
+  const lock = await acquireDbLock(db, FINDINGS_JOB, { ttlSeconds: 600 });
+
+  await releaseDbLock(db, lock, {
+    result: {
+      organizations_evaluated: 5,
+      findings_persisted: 0,
+      organization_failures: 0,
+    },
+  });
+
+  // No qualifying findings is a correct outcome, not a failure.
+  assert.equal(db.row(FINDINGS_JOB).status, 'completed');
+});
+
+test('releasing with no outcome at all stays idle', async () => {
+  const db = fakePrisma();
+  const lock = await acquireDbLock(db, JOB, { ttlSeconds: 600 });
+
+  await releaseDbLock(db, lock);
+
+  assert.equal(db.row(JOB).status, 'idle');
+  assert.equal(db.row(JOB).last_error, null);
+});
+
+test('deriveJobStatus classifies outcomes without touching the database', () => {
+  assert.equal(deriveJobStatus(null), 'idle');
+  assert.equal(deriveJobStatus({}), 'idle');
+  assert.equal(deriveJobStatus({ succeeded: 0, failed: 0 }), 'completed');
+  assert.equal(deriveJobStatus({ succeeded: 2, failed: 0 }), 'completed');
+  assert.equal(deriveJobStatus({ succeeded: 0, failed: 2 }), 'failed');
+  assert.equal(deriveJobStatus({ succeeded: 2, failed: 1 }), 'partial');
+  assert.equal(
+    deriveJobStatus({ organizations_evaluated: 5, organization_failures: 0 }),
+    'completed'
+  );
+  assert.equal(
+    deriveJobStatus({ organizations_evaluated: 0, organization_failures: 2 }),
+    'failed'
+  );
+  // A result with no recognised counters is still an outcome.
+  assert.equal(deriveJobStatus({ note: 'nothing to do' }), 'completed');
+  // Non-finite counters must not be trusted.
+  assert.equal(deriveJobStatus({ succeeded: NaN, failed: NaN }), 'completed');
+});
+
+test('classifyRebuildOutcome treats a duplicate build as skipped, not rebuilt', () => {
+  // Python answers HTTP 200 for a skipped duplicate build and hands back the
+  // previous snapshot. That is the false-success path.
+  assert.deepEqual(
+    classifyRebuildOutcome({
+      success: true,
+      data: { rebuilt: false, skip_reason: 'duplicate_skipped' },
+    }),
+    { outcome: 'skipped', reason: 'duplicate_skipped' }
+  );
+
+  // A skip without a reason still must not be counted as a rebuild.
+  assert.deepEqual(
+    classifyRebuildOutcome({ success: true, data: { rebuilt: false } }),
+    { outcome: 'skipped', reason: 'duplicate_build' }
+  );
+});
+
+test('classifyRebuildOutcome accepts a real rebuild', () => {
+  assert.deepEqual(
+    classifyRebuildOutcome({ success: true, data: { rebuilt: true } }),
+    { outcome: 'rebuilt', reason: '' }
+  );
+});
+
+test('classifyRebuildOutcome reports failures with their code', () => {
+  assert.deepEqual(
+    classifyRebuildOutcome({ success: false, error: { code: 'pool_timeout' } }),
+    { outcome: 'failed', reason: 'pool_timeout' }
+  );
+  assert.deepEqual(classifyRebuildOutcome({ success: false }), {
+    outcome: 'failed',
+    reason: 'unknown',
+  });
+  assert.deepEqual(classifyRebuildOutcome(null), {
+    outcome: 'failed',
+    reason: 'unknown',
+  });
+  assert.deepEqual(classifyRebuildOutcome(undefined), {
+    outcome: 'failed',
+    reason: 'unknown',
+  });
+});
+
+test('classifyRebuildOutcome is backwards compatible during a rolling deploy', () => {
+  // An older Python build answers without the `rebuilt` field. The call
+  // succeeded and there is no evidence of a skip, so it must still count.
+  for (const result of [
+    { success: true },
+    { success: true, data: null },
+    { success: true, data: {} },
+    { success: true, data: { state_id: 'x' } },
+  ]) {
+    assert.deepEqual(
+      classifyRebuildOutcome(result),
+      { outcome: 'rebuilt', reason: '' },
+      JSON.stringify(result)
+    );
+  }
+});
+
+test('resolvePassOutcome records a skip-only pass as skipped with a reason', () => {
+  const outcome = resolvePassOutcome({ succeeded: 0, skipped: 3, failed: 0 });
+
+  assert.equal(outcome.status, 'skipped');
+  assert.match(outcome.error, /no snapshots written/);
+  assert.match(outcome.error, /3 skipped/);
+});
+
+test('resolvePassOutcome leaves a successful pass to be derived', () => {
+  for (const counts of [
+    { succeeded: 1, skipped: 0, failed: 0 },
+    { succeeded: 5, skipped: 2, failed: 0 },
+    // Nothing was due: not an error, and deriveJobStatus calls it completed.
+    { succeeded: 0, skipped: 0, failed: 0 },
+  ]) {
+    const outcome = resolvePassOutcome(counts);
+    assert.equal(outcome.status, undefined, JSON.stringify(counts));
+    assert.equal(outcome.error, null, JSON.stringify(counts));
+  }
+});
+
+test('resolvePassOutcome always carries failure reasons', () => {
+  const outcome = resolvePassOutcome({
+    succeeded: 0,
+    skipped: 0,
+    failed: 2,
+    failureReasons: ['org-a:pool_timeout', 'org-b:redis_unavailable'],
+  });
+
+  // status stays undefined so deriveJobStatus chooses failed vs partial.
+  assert.equal(outcome.status, undefined);
+  assert.equal(outcome.error, 'org-a:pool_timeout; org-b:redis_unavailable');
+});
+
+test('resolvePassOutcome prefers real reasons over a skip summary', () => {
+  const outcome = resolvePassOutcome({
+    succeeded: 0,
+    skipped: 2,
+    failed: 1,
+    failureReasons: ['org-a:timeout'],
+  });
+
+  assert.equal(outcome.status, undefined);
+  assert.equal(outcome.error, 'org-a:timeout');
+});
+
+test('resolvePassOutcome bounds the stored error', () => {
+  const many = Array.from({ length: 200 }, (_v, i) => `organization-${i}:pool_timeout`);
+  const outcome = resolvePassOutcome({ succeeded: 0, skipped: 0, failed: 200, failureReasons: many });
+
+  assert.ok(outcome.error.length <= 500, `expected <=500 got ${outcome.error.length}`);
+});
+
+test('resolvePassOutcome tolerates missing and malformed input', () => {
+  assert.deepEqual(resolvePassOutcome(), { status: undefined, error: null });
+  assert.deepEqual(resolvePassOutcome({}), { status: undefined, error: null });
+  // A non-array failureReasons must not throw inside the finally block, which
+  // would leave the lock claimed until TTL expiry.
+  assert.deepEqual(
+    resolvePassOutcome({ succeeded: 0, skipped: 0, failed: 1, failureReasons: null }),
+    { status: undefined, error: null }
+  );
+});
+
+test('a skip-only pass reaches the database as status skipped', async () => {
+  const db = fakePrisma();
+  const lock = await acquireDbLock(db, JOB, { ttlSeconds: 600 });
+  const counts = { succeeded: 0, skipped: 2, failed: 0 };
+  const passOutcome = resolvePassOutcome(counts);
+
+  await releaseDbLock(db, lock, {
+    status: passOutcome.status,
+    error: passOutcome.error,
+    result: { job: JOB, organizations: 2, ...counts },
+  });
+
+  const row = db.row(JOB);
+  assert.equal(row.status, 'skipped');
+  assert.match(row.last_error, /2 skipped/);
+  assert.equal(row.last_result.succeeded, 0);
 });
