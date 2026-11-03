@@ -1786,9 +1786,11 @@ export default function RevIntell() {
                 Hello, {firstName}
               </h2>
               <h3 className="text-[1.75rem] font-extrabold tracking-tight mb-3" style={{ color: t1 }}>
-                {storeContext.connected
-                  ? `What do you want to know about ${storeLabel(storeContext)}?`
-                  : "How can I help your revenue today?"}
+                {storeContext.loadError
+                  ? "I couldn't verify your store connection"
+                  : storeContext.connected
+                    ? `What do you want to know about ${storeLabel(storeContext)}?`
+                    : "How can I help your revenue today?"}
               </h3>
               <p className="text-[0.88rem] max-w-md mx-auto leading-relaxed" style={{ color: t2 }}>
                 I explain your available store data, investigate findings,
@@ -1798,7 +1800,7 @@ export default function RevIntell() {
 
             {/* Data-health states. A confident answer built on an incomplete or
                 stale feed misleads the merchant, so say so before they ask. */}
-            {storeContext.loaded && !storeContext.connected && (
+            {storeContext.loaded && !storeContext.loadError && !storeContext.connected && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
                 style={{ background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.25)" }}>
@@ -1811,6 +1813,27 @@ export default function RevIntell() {
                     Rev answers from your real Shopify data. Connect a store and finish the
                     first sync before asking about revenue, products or customers.
                   </p>
+                </div>
+              </motion.div>
+            )}
+
+            {storeContext.loaded && storeContext.loadError && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.28)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    Store connection couldn't be verified
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    This status check failed. It does not mean your Shopify store is disconnected.
+                  </p>
+                  <button type="button" onClick={() => void loadStoreContext()}
+                    className="mt-2 rounded-md text-xs font-semibold underline underline-offset-2"
+                    style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>
+                    Retry connection check
+                  </button>
                 </div>
               </motion.div>
             )}
