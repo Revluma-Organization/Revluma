@@ -88,6 +88,11 @@ beforeEach(() => {
     if (pending) return pending;
     if (path.startsWith('/rev/conversations')) return Promise.resolve(reply(history));
     if (path.startsWith('/rev/conversation/')) return Promise.resolve(reply(thread(path.split('/').pop()!)));
+    // The page also grounds its welcome suggestions in the merchant's real store
+    // connection. Stubbing it keeps an unrelated request from satisfying
+    // `waitFor(() => expect(api.get).toHaveBeenCalled())` before the debounced
+    // history load has even been issued.
+    if (path === '/store') return Promise.resolve(reply({ stores: [] }));
     throw new Error('Unexpected mocked API request.');
   });
   vi.mocked(streamRevAnswer).mockImplementation(request => {
@@ -429,14 +434,16 @@ describe('conversation history reliability', () => {
     expect(screen.getByText('Loading conversation history…')).toBeInTheDocument();
     await act(async () => next.resolve(reply([])));
     expect(screen.getByText('No conversations yet.')).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledTimes(2);
+    // One initial history load plus the one visible retry. Scoped to the history
+    // path because the page also fetches store context on mount.
+    expect(vi.mocked(api.get).mock.calls.filter(([path]) => path === '/rev/conversations')).toHaveLength(2);
   });
   it('shows verified empty only after a successful empty response', async () => {
     const pending = deferred<Reply>(); replies.set('/rev/conversations', pending.promise);
     renderPage();
     expect(screen.getByText('Loading conversation history…')).toBeInTheDocument();
     expect(screen.queryByText('No conversations yet.')).not.toBeInTheDocument();
-    await waitFor(() => expect(api.get).toHaveBeenCalled());
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
     await act(async () => pending.resolve(reply([])));
     expect(screen.getByText('No conversations yet.')).toBeInTheDocument();
   });

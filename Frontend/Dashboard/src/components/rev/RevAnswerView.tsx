@@ -263,7 +263,10 @@ export function RevAnswerView({
         <div className="flex flex-wrap items-center gap-3" style={{ paddingTop: 2 }}>
           <button
             type="button"
-            onClick={onOpenEvidence}
+            // This button toggles the whole panel, so it must not report an
+            // evidence id. Wired straight to onClick it handed the handler a
+            // MouseEvent where the contract declares `evidenceId?: string`.
+            onClick={() => onOpenEvidence?.()}
             disabled={!hasEvidence || !onOpenEvidence}
             aria-expanded={evidenceOpen}
             className="inline-flex min-h-11 items-center gap-1.5"

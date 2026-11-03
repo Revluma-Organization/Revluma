@@ -847,101 +847,170 @@ function HistoryStatus({ loading, error, count, query, onRetry, color }: {
   </>;
 }
 
+// One conversation-history surface, rendered in two variants: the persistent
+// desktop rail and the modal mobile drawer. They share a single list, search and
+// failure state so a merchant can never be shown two contradictory histories.
+// The row actions differ on purpose — the rail uses compact inline buttons, the
+// drawer uses a 44px dropdown whose trigger is also the focus-return target for
+// the nested rename/delete dialog.
 function ConversationRail({
   conversations, activeId, loading, error, onRetry, query, onQuery, onNew, onSelect,
   onRename, onDelete, className, pagination,
   isDark, t1, t2, border,
+  variant = "rail", onClose,
 }: {
   conversations: Conversation[]; activeId: string | null; loading: boolean;
   error: string | null; onRetry: () => void;
   query: string; onQuery: (value: string) => void;
   onNew: () => void; onSelect: (id: string) => void;
-  onRename: (id: string) => void; onDelete: (id: string) => void;
-  // Theme values this component's own markup already used. Both call sites are
-  // inside RevIntell(), where isDark/t1/t2/bdr are in scope; the desktop rail
-  // simply never received them, so it threw "isDark is not defined" at render.
+  // A drawer row action passes the element that opened it, so focus can return
+  // there once the nested rename/delete dialog closes. The rail has no nested
+  // layer to return through, so it passes no trigger.
+  onRename: (id: string, trigger?: HTMLButtonElement | null) => void;
+  onDelete: (id: string, trigger?: HTMLButtonElement | null) => void;
   isDark: boolean; t1: string; t2: string; border: string;
   className?: string;
   pagination?: React.ReactNode;
+  variant?: "rail" | "drawer";
+  onClose?: () => void;
 }) {
-  return (
+  const drawer = variant === "drawer";
+
+  const header = drawer ? (
+    <div className="flex items-center justify-between px-5 pt-5 pb-4"
+      style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
+      <div className="flex items-center gap-2.5">
+        <img src={revIntellLogo} alt="" className="w-6 h-6 object-contain" />
+        <span className="text-[0.88rem] font-bold" style={{ color: t1 }}>Rev Intelligence</span>
+      </div>
+      <button type="button" onClick={onClose} aria-label="Close conversation history"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg" style={{ color: t1 }}>
+        <X size={16} />
+      </button>
+    </div>
+  ) : (
+    <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
+      <img src={revIntellLogo} alt="" className="w-6 h-6 object-contain" />
+      <div style={{ minWidth: 0 }}>
+        <p style={{ margin: 0, fontSize: "0.82rem", fontWeight: 750, color: "#F5F6FA" }}>
+          Rev Intelligence
+        </p>
+        <p style={{ margin: 0, fontSize: "0.62rem", color: "#7C8494" }}>Read-only workspace</p>
+      </div>
+    </div>
+  );
+
+  const startChat = (
+    <div className="px-4 pt-4 pb-3">
+      <button onClick={onNew}
+        className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[0.84rem] font-bold text-white transition-opacity hover:opacity-90"
+        style={{ background: "linear-gradient(135deg,#1F06AC,#17057F)", boxShadow: "0 4px 14px rgba(31,6,172,0.2)" }}>
+        <Plus size={16} />New conversation
+      </button>
+    </div>
+  );
+
+  const search = drawer ? (
+    <div className="px-4 pb-3">
+      <input aria-label="Search conversations" value={query} onChange={event => onQuery(event.target.value)}
+        placeholder="Search conversations"
+        className="w-full min-w-0 rounded-lg border bg-transparent px-3 py-2.5 text-[0.8rem] outline-none"
+        style={{ borderColor: border, color: t1 }} />
+    </div>
+  ) : (
+    <div className="px-4 pb-3">
+      <div className="flex items-center gap-2 rounded-xl px-3"
+        style={{ background: isDark ? "#1b1b23" : "#f5f6fa", border: `1px solid ${border}` }}>
+        <Search size={15} color={t2} />
+        <input value={query} onChange={event => onQuery(event.target.value)}
+          placeholder="Search conversations" aria-label="Search conversations"
+          className="w-full min-w-0 bg-transparent py-2.5 text-[0.78rem] outline-none" style={{ color: t1 }} />
+        {query && <button onClick={() => onQuery("")} aria-label="Clear search"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ color: t2 }}>
+          <X size={14} />
+        </button>}
+      </div>
+    </div>
+  );
+
+  const list = (
+    <div aria-busy={loading}
+      className={drawer ? "flex-1 overflow-y-auto px-3 pb-4 [scrollbar-width:none]" : "flex-1 overflow-y-auto px-2 pb-3 [scrollbar-width:thin]"}>
+      <HistoryStatus loading={loading} error={error} count={conversations.length} query={query}
+        onRetry={onRetry} color={drawer ? t2 : "#C5CAD6"} />
+      {drawer && conversations.length > 0 && (
+        <p className="px-2 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.1em]" style={{ color: t2 }}>
+          Recent
+        </p>
+      )}
+      {conversations.map((conversation) => {
+        const active = activeId === conversation.id;
+        if (drawer) {
+          return <ConvItem key={conversation.id} conv={conversation} isActive={active}
+            onClick={() => onSelect(conversation.id)}
+            onDelete={trigger => onDelete(conversation.id, trigger)}
+            onRename={trigger => onRename(conversation.id, trigger)}
+            isDark={isDark} t1={t1} />;
+        }
+        return (
+          <div key={conversation.id} className="group relative">
+            <button aria-current={active ? "page" : undefined} onClick={() => onSelect(conversation.id)}
+              className="w-full text-left rounded-lg pl-2.5 pr-20 py-2 transition-colors"
+              style={{
+                background: active ? "rgba(31,6,172,0.45)" : "transparent",
+                borderLeft: `2px solid ${active ? "#7B6BFF" : "transparent"}`,
+              }}>
+              <p className="truncate" style={{ margin: 0, fontSize: "0.76rem", color: active ? "#FFFFFF" : "#C5CAD6" }}>
+                {conversation.title || "Untitled conversation"}
+              </p>
+              <p style={{ margin: "1px 0 0", fontSize: "0.62rem", color: "#9CA3AF" }}>
+                {new Date(conversation.last_activity_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+                {conversation.message_count ? ` · ${conversation.message_count} messages` : ""}
+              </p>
+            </button>
+            <div className="absolute right-1 top-1.5 flex gap-0.5 opacity-100 transition-opacity">
+              <button onClick={() => onRename(conversation.id)} aria-label="Rename conversation"
+                className="min-h-8 min-w-8 rounded-md"
+                style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
+                <Pencil size={11} />
+              </button>
+              <button onClick={() => onDelete(conversation.id)} aria-label="Delete conversation"
+                className="min-h-8 min-w-8 rounded-md"
+                style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
+                <Trash2 size={11} />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      {pagination}
+    </div>
+  );
+
+  const readOnlyNotice = (
+    <div className="px-5 py-3" style={{ borderTop: `1px solid ${border}` }}>
+      <p className="m-0 text-[0.66rem] leading-relaxed" style={{ color: t2 }}>
+        Rev observes and explains your store. It cannot change prices, orders, discounts, themes or settings, and it never sends campaigns.
+      </p>
+    </div>
+  );
+
+  const body = <>{header}{startChat}{search}{list}{readOnlyNotice}</>;
+
+  return drawer ? (
+    <div className={className} style={{
+      display: "flex", flexDirection: "column", height: "100%", width: "100%", minWidth: 0,
+      background: isDark ? "#111116" : "#ffffff",
+    }}>
+      {body}
+    </div>
+  ) : (
     <aside className={className} style={{
       width: 268, flexShrink: 0, background: "#0B0B10",
       borderRight: "1px solid rgba(255,255,255,0.07)",
       flexDirection: "column", height: "100%",
     }}>
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <img src={revIntellLogo} alt="" className="w-6 h-6 object-contain" />
-        <div style={{ minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: "0.82rem", fontWeight: 750, color: "#F5F6FA" }}>
-            Rev Intelligence
-          </p>
-          <p style={{ margin: 0, fontSize: "0.62rem", color: "#7C8494" }}>Read-only workspace</p>
-        </div>
-      </div>
-      <div className="px-4 pt-4 pb-3">
-        <button onClick={onNew}
-          className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[0.84rem] font-bold text-white transition-opacity hover:opacity-90"
-          style={{ background: "linear-gradient(135deg,#1F06AC,#17057F)", boxShadow: "0 4px 14px rgba(31,6,172,0.2)" }}>
-          <Plus size={16} />New conversation
-        </button>
-      </div>
-      <div className="px-4 pb-3">
-        <div className="flex items-center gap-2 rounded-xl px-3"
-          style={{ background: isDark ? "#1b1b23" : "#f5f6fa", border: `1px solid ${border}` }}>
-          <Search size={15} color={t2} />
-          <input value={query} onChange={event => onQuery(event.target.value)}
-            placeholder="Search conversations" aria-label="Search conversations"
-            className="w-full min-w-0 bg-transparent py-2.5 text-[0.78rem] outline-none" style={{ color: t1 }} />
-          {query && <button onClick={() => onQuery("")} aria-label="Clear search"
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ color: t2 }}>
-            <X size={14} />
-          </button>}
-        </div>
-      </div>
-
-      <div aria-busy={loading} className="flex-1 overflow-y-auto px-2 pb-3 [scrollbar-width:thin]">
-        <HistoryStatus loading={loading} error={error} count={conversations.length} query={query} onRetry={onRetry} color="#C5CAD6" />
-        {conversations.map((conversation) => {
-          const active = activeId === conversation.id;
-          return (
-            <div key={conversation.id} className="group relative">
-              <button aria-current={active ? "page" : undefined} onClick={() => onSelect(conversation.id)}
-                className="w-full text-left rounded-lg pl-2.5 pr-20 py-2 transition-colors"
-                style={{
-                  background: active ? "rgba(31,6,172,0.45)" : "transparent",
-                  borderLeft: `2px solid ${active ? "#7B6BFF" : "transparent"}`,
-                }}>
-                <p className="truncate" style={{ margin: 0, fontSize: "0.76rem", color: active ? "#FFFFFF" : "#C5CAD6" }}>
-                  {conversation.title || "Untitled conversation"}
-                </p>
-                <p style={{ margin: "1px 0 0", fontSize: "0.62rem", color: "#9CA3AF" }}>
-                  {new Date(conversation.last_activity_at).toLocaleDateString([], { month: "short", day: "numeric" })}
-                  {conversation.message_count ? ` · ${conversation.message_count} messages` : ""}
-                </p>
-              </button>
-              <div className="absolute right-1 top-1.5 flex gap-0.5 opacity-100 transition-opacity">
-                <button onClick={() => onRename(conversation.id)} aria-label="Rename conversation"
-                  className="min-h-8 min-w-8 rounded-md"
-                  style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
-                  <Pencil size={11} />
-                </button>
-                <button onClick={() => onDelete(conversation.id)} aria-label="Delete conversation"
-                  className="min-h-8 min-w-8 rounded-md"
-                  style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-        {pagination}
-      </div>
-      <div className="px-5 py-3" style={{ borderTop: `1px solid ${border}` }}>
-        <p className="m-0 text-[0.66rem] leading-relaxed" style={{ color: t2 }}>
-          Rev observes and explains your store. It cannot change prices, orders, discounts, themes or settings, and it never sends campaigns.
-        </p>
-      </div>
+      {body}
     </aside>
   );
 }
@@ -1760,75 +1829,6 @@ export default function RevIntell() {
         </button>
       </div>
 
-      {/* Sidebar */}
-      <AnimatePresence>
-        {menuOpen && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }} className="absolute inset-0 z-40"
-              style={{ background: "rgba(0,0,0,0.3)", backdropFilter: "blur(2px)" }}
-              onClick={() => setMenuOpen(false)} />
-            <ModalSurface onClose={() => setMenuOpen(false)} aria-label="Conversation history"
-              initial={{ x: "100%", opacity: 0 }} animate={{ x: 0, opacity: 1 }}
-              exit={{ x: "100%", opacity: 0 }}
-              transition={{ type: "spring", stiffness: 320, damping: 32 }}
-              className="absolute top-0 right-0 bottom-0 z-50 flex flex-col"
-              style={{ width: "min(300px, 100%)",
-                background: isDark ? "rgba(10,10,10,0.88)" : "rgba(255,255,255,0.9)",
-                backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
-                borderLeft: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)"}`,
-                boxShadow: "-16px 0 60px rgba(0,0,0,0.2)" }}>
-
-              <div className="flex items-center justify-between px-5 pt-5 pb-4"
-                style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
-                <div className="flex items-center gap-2.5">
-                  <img src={revIntellLogo} alt="Rev" className="w-6 h-6 object-contain"
-                    style={{ filter: "drop-shadow(0 0 5px rgba(100,160,255,0.6))" }} />
-                  <span className="text-[0.88rem] font-bold" style={{ color: t1 }}>Rev Intell</span>
-                </div>
-                <button onClick={() => setMenuOpen(false)}
-                  aria-label="Close conversation history"
-                  className="flex h-11 w-11 items-center justify-center rounded-lg" style={{ color: t1 }}>
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="px-4 pt-4 pb-3">
-                <button onClick={newChat}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[0.84rem] font-bold text-white"
-                  style={{ background: "linear-gradient(135deg,#1F06AC,#17057F)", boxShadow: "0 4px 14px rgba(31,6,172,0.3)" }}>
-                  <Plus size={16} />New chat
-                </button>
-              </div>
-
-              <label className="px-4 pb-3 text-xs" style={{ color: t2 }}>Search conversations
-                <input aria-label="Search conversations" value={searchQuery} onChange={event => changeSearch(event.target.value)}
-                  className="mt-1 w-full rounded-lg border bg-transparent p-2" style={{ borderColor: bdr, color: t1 }} />
-              </label>
-              <div aria-busy={historyLoading} className="flex-1 overflow-y-auto px-3 pb-4 [scrollbar-width:none]">
-                <HistoryStatus loading={historyLoading} error={historyError} count={conversations.length}
-                  query={searchQuery} onRetry={() => void loadConversations()} color={t2} />
-                {conversations.length > 0 && (
-                  <>
-                    <p className="px-2 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.1em]" style={{ color: t4 }}>
-                      Recent
-                    </p>
-                    {conversations.map(conv => (
-                      <ConvItem key={conv.id} conv={conv}
-                        isActive={activeId === conv.id}
-                        onClick={() => openConversation(conv.id)}
-                        onDelete={trigger => { dialogReturnRef.current = trigger; setDeleteConfirmId(conv.id); }}
-                        onRename={trigger => { dialogReturnRef.current = trigger; renameConv(conv.id); }}
-                        isDark={isDark} t1={t1} />
-                    ))}
-                  </>
-                )}
-                <LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" />
-              </div>
-            </ModalSurface>
-          </>
-        )}
-      </AnimatePresence>
 
       {(findingId !== null || findingContext) && <section aria-label="Finding context"
         className="mx-4 mt-4 max-h-[28dvh] shrink-0 overflow-y-auto rounded-xl border px-4 py-3 pr-14 lg:pr-4" style={{ background: card, borderColor: bdr, color: t1 }}>
@@ -2077,34 +2077,40 @@ export default function RevIntell() {
       )}
 
       </div>
-      {/* One theme-aware history drawer for desktop and mobile. */}
+      {/* The single history drawer, for touch and narrow viewports.
+          It must be a Radix ModalSurface, not a bare positioned div: the dialog
+          primitive is what aria-hides the workspace behind it. Without that the
+          desktop rail stays reachable while the drawer is open, and a merchant
+          offered a failing history sees two independent retry controls for the
+          same request. Escape and focus restoration come from the same layer,
+          which is what lets a rename/delete dialog open on top of the drawer and
+          return focus to the row that launched it. */}
       {createPortal(
         <AnimatePresence>
           {menuOpen && (
             <motion.div className="fixed inset-0 z-[170] flex justify-end" role="presentation">
-              <motion.button type="button" aria-label="Close conversation history"
-                className="absolute inset-0 cursor-default"
+              <motion.div className="absolute inset-0"
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 transition={{ duration: 0.16 }}
                 style={{ background: "rgba(8,10,18,0.38)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
                 onClick={() => setMenuOpen(false)} />
-              <motion.div role="dialog" aria-modal="true" aria-label="Conversation history"
+              <ModalSurface onClose={() => setMenuOpen(false)} aria-label="Conversation history"
+                role="dialog" aria-modal="true"
                 initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
                 transition={{ type: "spring", stiffness: 360, damping: 36 }}
-                onClick={event => event.stopPropagation()}
-                className="relative z-10 h-full w-[min(390px,calc(100vw-12px))] max-w-full shadow-2xl"
+                className="relative z-10 h-full w-[min(390px,calc(100vw-12px))] max-w-full overflow-hidden shadow-2xl"
                 style={{ background: isDark ? "#111116" : "#ffffff", borderLeft: `1px solid ${bdr}`, boxShadow: "-18px 0 56px rgba(0,0,0,0.24)" }}>
-                <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close conversation history"
-                  className="absolute right-4 top-5 z-20 flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:opacity-75"
-                  style={{ color: t1, background: isDark ? "#24242c" : "#f0f1f5" }}>
-                  <X size={16} />
-                </button>
-                <ConversationRail conversations={conversations} activeId={activeId}
-                  loading={historyLoading} query={searchQuery} onQuery={setSearchQuery}
-                  onNew={newChat} onSelect={openConversation} onRename={renameConv}
-                  onDelete={id => setDeleteConfirmId(id)}
-                  isDark={isDark} t1={t1} t2={t2} t4={t4} border={bdr} />
-              </motion.div>
+                <ConversationRail variant="drawer" onClose={() => setMenuOpen(false)}
+                  conversations={conversations} activeId={activeId}
+                  loading={historyLoading} error={historyError}
+                  onRetry={() => void loadConversations()}
+                  query={searchQuery} onQuery={changeSearch}
+                  onNew={newChat} onSelect={openConversation}
+                  onRename={(id, trigger) => { dialogReturnRef.current = trigger ?? null; renameConv(id); }}
+                  onDelete={(id, trigger) => { dialogReturnRef.current = trigger ?? null; setDeleteConfirmId(id); }}
+                  pagination={<LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" />}
+                  isDark={isDark} t1={t1} t2={t2} border={bdr} />
+              </ModalSurface>
             </motion.div>
           )}
         </AnimatePresence>,
