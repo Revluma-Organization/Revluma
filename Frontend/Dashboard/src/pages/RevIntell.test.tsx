@@ -128,7 +128,7 @@ beforeEach(() => {
     // connection. Stubbing it keeps an unrelated request from satisfying
     // `waitFor(() => expect(api.get).toHaveBeenCalled())` before the debounced
     // history load has even been issued.
-    if (path === '/store') return Promise.resolve(reply({ stores: [] }));
+    if (path === '/stores') return Promise.resolve(reply({ stores: [] }));
     throw new Error('Unexpected mocked API request.');
   });
   vi.mocked(streamRevAnswer).mockImplementation(request => {
