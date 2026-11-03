@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, ChevronDown, CircleAlert, Circle, Loader2, ShieldCheck } from "lucide-react";
 import type { InvestigationStep, RevInvestigationMeta } from "@/lib/revStream";
+import { formatPeriod, recordList, textValue } from "@/lib/revPresentation";
 
 interface Props {
   steps: InvestigationStep[];
@@ -16,35 +17,39 @@ function StepIcon({ status }: { status: InvestigationStep["status"] }) {
   return <Circle size={10} color="#98A2B3" />;
 }
 
-export function InvestigationTimeline({ steps, investigation, streaming = false, dark = false }: Props) {
+export function InvestigationTimeline({ steps: originalSteps, investigation, streaming = false, dark = false }: Props) {
   const [open, setOpen] = useState(false);
+  const steps = recordList<InvestigationStep>(originalSteps);
   if (!steps.length) return null;
   const complete = steps.filter((step) => step.status === "completed").length;
   const failed = steps.filter((step) => step.status === "failed").length;
-  const running = streaming || steps.some((step) => step.status === "running");
+  const completeInvestigation = complete === steps.length && (!investigation?.status || investigation.status === "complete");
+  const label = streaming ? "Investigating your store evidence"
+    : failed ? "Investigation has failed checks"
+    : completeInvestigation ? "Investigation complete" : "Investigation incomplete";
 
   const border = dark ? "rgba(255,255,255,0.1)" : "#EAECF0";
   const muted = dark ? "#98A2B3" : "#667085";
   const strong = dark ? "#F2F4F7" : "#101828";
 
   return (
-    <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: "hidden" }}>
+    <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: "hidden", overflowWrap: "anywhere" }}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+        className="flex min-h-11 w-full flex-wrap items-center gap-2 px-3.5 py-2.5 text-left"
         style={{ background: dark ? "rgba(255,255,255,0.03)" : "#FAFAFB", color: strong }}
       >
-        {running ? (
+        {streaming ? (
           <Loader2 size={14} className="animate-spin" color="#1F06AC" />
-        ) : failed ? (
+        ) : !completeInvestigation ? (
           <CircleAlert size={14} color="#B42318" />
         ) : (
           <ShieldCheck size={14} color="#067647" />
         )}
         <span style={{ fontSize: "0.78rem", fontWeight: 650 }}>
-          {running ? "Investigating your store evidence" : "Investigation complete"}
+          {label}
         </span>
         <span style={{ fontSize: "0.72rem", color: muted, marginLeft: 2 }}>
           {complete}/{steps.length} checks
@@ -63,11 +68,11 @@ export function InvestigationTimeline({ steps, investigation, streaming = false,
               <span style={{ marginTop: 2 }}><StepIcon status={step.status} /></span>
               <div style={{ minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: "0.78rem", color: strong, lineHeight: 1.4 }}>
-                  {step.label}
+                {textValue(step.label) || "Unnamed check"} <span style={{ color: muted }}>({textValue(step.status) || "unknown"})</span>
                 </p>
                 {step.detail && (
                   <p style={{ margin: "1px 0 0", fontSize: "0.7rem", color: muted, lineHeight: 1.45 }}>
-                    {step.detail}
+                    {textValue(step.detail)}
                   </p>
                 )}
               </div>
@@ -75,7 +80,7 @@ export function InvestigationTimeline({ steps, investigation, streaming = false,
           ))}
           {investigation?.period?.start && (
             <li style={{ fontSize: "0.7rem", color: muted, paddingTop: 6, borderTop: `1px solid ${border}`, marginTop: 6 }}>
-              Reporting period: {investigation.period.start} → {investigation.period.end} (UTC, half-open)
+              Reporting period: {formatPeriod(investigation.period)}
             </li>
           )}
         </ol>

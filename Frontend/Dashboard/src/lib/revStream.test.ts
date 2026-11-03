@@ -119,6 +119,19 @@ describe("streamRevAnswer", () => {
       .rejects.toMatchObject({ code: "READ_ONLY", status: 403 });
   });
 
+  it("sends the finding identifier and retry options without client-provided evidence", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(streamResponse([frame("final", finalPayload)]));
+    vi.stubGlobal("fetch", fetchMock);
+    await streamRevAnswer({
+      message: "My edited question", conversationId: "conv-9",
+      findingId: "11111111-1111-4111-8111-111111111111", reuseUserMessage: true, handlers: {},
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toEqual({
+      message: "My edited question", conversation_id: "conv-9",
+      finding_id: "11111111-1111-4111-8111-111111111111", reuse_user_message: true,
+    });
+  });
+
   it("raises a typed error for an in-stream error frame", async () => {
     const fetchMock = vi.fn().mockResolvedValue(streamResponse([
       frame("meta", { conversation_id: "conv-2" }),

@@ -41,7 +41,7 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
       if (linkMatch && href) {
         nodes.push(
           <a key={key} href={href} target="_blank" rel="noopener noreferrer"
-            style={{ color: "#1F06AC", textDecoration: "underline", textUnderlineOffset: 2 }}>
+            style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: 2 }}>
             {linkMatch[1]}
           </a>,
         );

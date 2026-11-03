@@ -1,22 +1,25 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import '../../../assets/js/theme.js';
 
 export type ThemeMode = 'dark' | 'light';
 export type ThemePreference = ThemeMode | 'system';
 
+declare global {
+  interface Window {
+    RevlumaTheme: {
+      preference: () => ThemePreference;
+      resolve: (preference: ThemePreference) => ThemeMode;
+    };
+  }
+}
+
 export function resolveTheme(preference: ThemePreference): ThemeMode {
-  return preference === 'system'
-    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    : preference;
+  return window.RevlumaTheme.resolve(preference);
 }
 
 function initialPreference(): ThemePreference {
-  try {
-    const stored = JSON.parse(localStorage.getItem('rv-theme') || 'null')?.state;
-    const preference = stored?.preference || stored?.theme || localStorage.getItem('theme');
-    if (['system', 'light', 'dark'].includes(preference)) return preference;
-  } catch { /* Use the system setting when storage is unavailable. */ }
-  return 'system';
+  return window.RevlumaTheme.preference();
 }
 export type SidebarDensity = 'default' | 'compact' | 'spacious';
 export type FontSize = 'small' | 'default' | 'large';
@@ -94,11 +97,15 @@ export const useThemeStore = create<ThemeStore>()(
       },
 
       initializeTheme: () => {
-        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        const media = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
         const update = () => set({ theme: resolveTheme(get().preference) });
         update();
-        media.addEventListener('change', update);
-        return () => media.removeEventListener('change', update);
+        if (media?.addEventListener) {
+          media.addEventListener('change', update);
+          return () => media.removeEventListener('change', update);
+        }
+        media?.addListener?.(update);
+        return () => media?.removeListener?.(update);
       }
     }),
     {
