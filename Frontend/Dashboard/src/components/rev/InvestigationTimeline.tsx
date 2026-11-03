@@ -33,12 +33,12 @@ export function InvestigationTimeline({ steps: originalSteps, investigation, str
   const strong = dark ? "#F2F4F7" : "#101828";
 
   return (
-    <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: "hidden" }}>
+    <div style={{ border: `1px solid ${border}`, borderRadius: 12, overflow: "hidden", overflowWrap: "anywhere" }}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
+        className="flex min-h-11 w-full flex-wrap items-center gap-2 px-3.5 py-2.5 text-left"
         style={{ background: dark ? "rgba(255,255,255,0.03)" : "#FAFAFB", color: strong }}
       >
         {streaming ? (

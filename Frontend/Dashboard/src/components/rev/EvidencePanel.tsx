@@ -142,6 +142,7 @@ export function EvidencePanel({
         width: "100%",
         height: "100%",
         overflowY: "auto",
+        overflowWrap: "anywhere",
         background: dark ? "#0F1420" : "#FFFFFF",
         borderLeft: asSheet ? "none" : `1px solid ${border}`,
         display: "flex",
@@ -154,7 +155,7 @@ export function EvidencePanel({
           Evidence
         </h2>
         <span style={{
-          fontSize: "0.62rem", fontWeight: 700, color: "#1F06AC",
+          fontSize: "0.62rem", fontWeight: 700, color: dark ? "#b4a8ff" : "#1F06AC",
           background: "rgba(31,6,172,0.08)", padding: "2px 7px", borderRadius: 999,
         }}>
           {items.length + comparisons.length} record{items.length + comparisons.length === 1 ? "" : "s"}
@@ -164,7 +165,7 @@ export function EvidencePanel({
             type="button"
             onClick={onClose}
             aria-label="Close evidence"
-            style={{ marginLeft: "auto", color: muted, background: "transparent", border: "none", padding: 4, cursor: "pointer" }}
+            style={{ marginLeft: "auto", flexShrink: 0, minWidth: 44, minHeight: 44, display: "grid", placeItems: "center", color: muted, background: "transparent", border: "none", padding: 4, cursor: "pointer" }}
           >
             <X size={16} />
           </button>
@@ -295,7 +296,7 @@ export function EvidencePanel({
                 <p style={{ margin: "2px 0 0", fontSize: "0.72rem", color: muted, lineHeight: 1.5 }}>
                   {textValue(recommendation.why)}{textValue(recommendation.measure) ? ` Measure: ${recommendation.measure}` : ""}
                 </p>
-                <p style={{ margin: "2px 0 0", fontSize: "0.68rem", color: "#1F06AC" }}>
+                <p style={{ margin: "2px 0 0", fontSize: "0.68rem", color: dark ? "#b4a8ff" : "#1F06AC" }}>
                   Recommendation only — nothing was changed.
                 </p>
               </div>

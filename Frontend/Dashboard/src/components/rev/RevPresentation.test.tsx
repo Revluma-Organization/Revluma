@@ -238,3 +238,21 @@ describe("investigation status", () => {
     const { container } = render(<InvestigationTimeline steps={null} />); expect(container).toBeEmptyDOMElement();
   });
 });
+
+describe('Phase 5.4 answer controls', () => {
+  it('exposes unavailable callbacks as disabled rather than dead controls', () => {
+    render(<RevAnswerView payload={payload({ investigation: {
+      id: "fixture", question: "Explain", intent: "analysis", status: "completed",
+      period: { start: "2026-10-01", end: "2026-11-01" }, steps: [], follow_ups: ['Explain these figures'],
+    } })} />);
+    expect(screen.getByRole('button', { name: 'Explain these figures' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Evidence \(/ })).toBeDisabled();
+  });
+  it.each([false, true])('exposes the evidence expansion state (%s) and invokes its callback', open => {
+    const onOpen = vi.fn();
+    render(<RevAnswerView payload={payload()} evidenceOpen={open} onOpenEvidence={onOpen} />);
+    const button = screen.getByRole('button', { name: /Evidence \(/ });
+    expect(button).toHaveAttribute('aria-expanded', String(open));
+    fireEvent.click(button); expect(onOpen).toHaveBeenCalledOnce();
+  });
+});

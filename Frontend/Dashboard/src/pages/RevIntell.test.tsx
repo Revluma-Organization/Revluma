@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import api, { ApiError } from '@/lib/api';
@@ -69,7 +69,7 @@ const title = (id: string) => new RegExp(`^Conversation ${id}\\b`);
 async function historyReady() { await screen.findByRole('button', { name: title('A') }); }
 function select(id: string) { fireEvent.click(screen.getByRole('button', { name: title(id) })); }
 async function searched(query: string) {
-  fireEvent.change(screen.getByRole('textbox', { name: 'Search conversations' }), { target: { value: query } });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search conversations', hidden: true }), { target: { value: query } });
   await waitFor(() => expect(api.get).toHaveBeenCalledWith(`/rev/conversations?q=${query}`));
 }
 function send(text = 'Investigate revenue') {
@@ -180,7 +180,7 @@ describe('finding investigation handoff', () => {
     expect(screen.getAllByText('Finding answer')).toHaveLength(1);
     expect(api.get).not.toHaveBeenCalledWith('/rev/conversation/Created');
     expect(streams[0].request.signal?.aborted).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Ask again', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask again' }));
     expect(streams).toHaveLength(1);
     expect(screen.getByLabelText('Question recovery')).toHaveTextContent('creates a new question');
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
@@ -282,7 +282,7 @@ describe('finding investigation handoff', () => {
     ] })));
     renderPage(`/dashboard/rev-intell/A?finding=${findingOne}`);
     await screen.findByText('Previous finding answer'); await screen.findByRole('heading', { name: 'Revenue decline' });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask again', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask again' }));
     expect(streams).toHaveLength(0);
     expect(screen.getByLabelText('Question recovery')).toHaveTextContent('Attachments are not restored from history');
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
@@ -483,9 +483,9 @@ describe('conversation history reliability', () => {
     vi.mocked(api.get).mockRejectedValue(new Error('offline'));
     renderPage(); await screen.findByRole('alert');
     fireEvent.click(screen.getByRole('button', { name: 'Open conversation history' }));
-    expect(screen.getAllByRole('button', { name: 'Retry conversation history' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Retry conversation history' })).toHaveLength(1);
     vi.mocked(api.get).mockResolvedValue(reply([]));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Retry conversation history' })[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry conversation history' }));
     await waitFor(() => expect(screen.queryAllByRole('alert')).toHaveLength(0));
     expect(screen.getAllByText('No conversations yet.')).toHaveLength(2);
   });
@@ -504,25 +504,26 @@ describe('history requests overlapping successful mutations', () => {
     replies.set('/rev/conversations?q=before', oldSearch.promise);
     await searched('before');
     if (mutation === 'delete') {
-      fireEvent.click(screen.getAllByRole('button', { name: 'Delete conversation' })[0]);
-      fireEvent.click(screen.getByRole('button', { name: 'Delete', exact: true }));
+      fireEvent.click(screen.getAllByRole('button', { name: 'Delete conversation', hidden: true })[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete', hidden: true }));
     } else {
-      fireEvent.click(screen.getAllByRole('button', { name: 'Rename conversation' })[0]);
-      fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), { target: { value: 'Renamed A' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Save', exact: true }));
+      fireEvent.click(screen.getAllByRole('button', { name: 'Rename conversation', hidden: true })[0]);
+      fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name', hidden: true }), { target: { value: 'Renamed A' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save', hidden: true }));
     }
     replies.set('/rev/conversations?q=latest', oldLatestSearch.promise);
     await searched('latest');
     replies.set('/rev/conversations?q=latest', refresh.promise);
     await act(async () => pendingMutation.resolve(reply(null)));
 
+    // Queries with hidden:true simulate external updates while merchant interaction is correctly restricted.
     // An unrelated dialog and active thread must survive history reconciliation.
-    if (mutation === 'delete') fireEvent.click(screen.getAllByRole('button', { name: 'Rename conversation' })[0]);
-    else fireEvent.click(screen.getAllByRole('button', { name: 'Delete conversation' })[1]);
+    if (mutation === 'delete') fireEvent.click(screen.getAllByRole('button', { name: 'Rename conversation', hidden: true })[0]);
+    else fireEvent.click(screen.getAllByRole('button', { name: 'Delete conversation', hidden: true })[1]);
     const unrelatedDialog = mutation === 'delete' ? 'dialog' : 'alertdialog';
     await act(async () => { oldSearch.resolve(reply(history)); oldLatestSearch.resolve(reply(history)); });
-    expect(screen.queryByRole('button', { name: title('A') })).not.toBeInTheDocument();
-    if (mutation === 'rename') expect(screen.getByRole('button', { name: /^Renamed A\b/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: title('A'), hidden: true })).not.toBeInTheDocument();
+    if (mutation === 'rename') expect(screen.getByRole('button', { name: /^Renamed A\b/, hidden: true })).toBeInTheDocument();
     expect(screen.getByText('Loading conversation history…')).toBeInTheDocument();
     expect(screen.getByRole(unrelatedDialog)).toBeInTheDocument();
     expect(screen.getByText('Message from B')).toBeInTheDocument();
@@ -532,14 +533,14 @@ describe('history requests overlapping successful mutations', () => {
     const updated = mutation === 'delete' ? [conversation('B')] : [{ ...conversation('A'), title: 'Renamed A' }, conversation('B')];
     if (outcome === 'failure') {
       await act(async () => refresh.reject(new Error('refresh unavailable')));
-      expect(screen.getByRole('alert')).toHaveTextContent('Conversation history is unavailable');
-      expect(screen.queryByRole('button', { name: title('A') })).not.toBeInTheDocument();
-      if (mutation === 'rename') expect(screen.getByRole('button', { name: /^Renamed A\b/ })).toBeInTheDocument();
+      expect(screen.getByRole('alert', { hidden: true })).toHaveTextContent('Conversation history is unavailable');
+      expect(screen.queryByRole('button', { name: title('A'), hidden: true })).not.toBeInTheDocument();
+      if (mutation === 'rename') expect(screen.getByRole('button', { name: /^Renamed A\b/, hidden: true })).toBeInTheDocument();
       replies.set('/rev/conversations?q=latest', Promise.resolve(reply(updated)));
-      fireEvent.click(screen.getByRole('button', { name: 'Retry conversation history' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry conversation history', hidden: true }));
     } else await act(async () => refresh.resolve(reply(updated)));
     await waitFor(() => expect(screen.queryByText('Loading conversation history…')).not.toBeInTheDocument());
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert', { hidden: true })).not.toBeInTheDocument();
     expect(screen.getByRole(unrelatedDialog)).toBeInTheDocument();
     expect(screen.getByText('Message from B')).toBeInTheDocument();
     expect(api.get).toHaveBeenLastCalledWith('/rev/conversations?q=latest');
@@ -619,8 +620,8 @@ describe('URL-scoped conversation retrieval', () => {
     renderPage('/dashboard/rev-intell/A'); await historyReady(); select('B'); await screen.findByText('Message from B');
     fireEvent.click(screen.getByRole('button', { name: 'Browser back' })); await screen.findByText('Message from A');
     fireEvent.click(screen.getAllByRole('button', { name: 'Delete conversation' })[0]);
-    fireEvent.click(screen.getByRole('button', { name: 'Delete', exact: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'Browser forward' })); await screen.findByText('Message from B');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Browser forward', hidden: true })); await screen.findByText('Message from B');
     await act(async () => pending.resolve(reply(null)));
     expect(screen.getByText('Message from B')).toBeInTheDocument();
     expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/B');
@@ -675,13 +676,14 @@ describe('turn callbacks remain in their originating thread', () => {
     expect(streams[0].request.signal?.aborted).toBe(false);
     expect(api.get).not.toHaveBeenCalledWith('/rev/conversation/Created');
   });
-  it('ignores late regeneration after another conversation starts streaming', async () => {
+  it('ignores a late Ask again response after another conversation starts streaming', async () => {
     replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [...thread('A').messages, { id: 'rev-A', role: 'rev', content: 'Old response', created_at: '2026-11-02T12:00:00Z' }] })));
-    const pending = deferred<ReturnType<typeof turnReply>>(); vi.mocked(api.post).mockReturnValue(pending.promise);
     renderPage('/dashboard/rev-intell/A'); await screen.findByText('Old response'); await historyReady();
-    fireEvent.click(screen.getByRole('button', { name: 'Retry', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with text only' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     select('B'); await screen.findByText('Message from B'); send();
-    await act(async () => pending.resolve(turnReply(answer('A', 'Outdated retry'))));
+    await act(async () => { streams[0].request.handlers.onFinal?.(answer('A', 'Outdated retry')); streams[0].result.resolve({ conversationId: 'A', completed: true }); });
     expect(screen.getByRole('button', { name: 'Stop generating' })).toBeInTheDocument();
     expect(screen.queryByText('Outdated retry')).not.toBeInTheDocument();
   });
@@ -727,5 +729,355 @@ describe('turn callbacks remain in their originating thread', () => {
     await act(async () => streams[0].result.resolve({ conversationId: 'Late', completed: true }));
     expect(api.get).toHaveBeenCalledTimes(calls);
     expect(streams[0].request.signal?.aborted).toBe(true);
+  });
+});
+
+describe('Phase 5.4 bounded pagination', () => {
+  const firstHistory = () => Array.from({ length: 20 }, (_, i) => conversation(`H${i}`));
+  const firstMessages = () => Array.from({ length: 50 }, (_, i) => ({ id: `m${i}`, role: 'user', content: `Paged question ${i}`, created_at: '2026-11-02T12:00:00Z' }));
+  it('loads only requested history pages, deduplicates overlap and prevents duplicate submissions', async () => {
+    replies.set('/rev/conversations', Promise.resolve(reply(firstHistory())));
+    const pending = deferred<Reply>(); replies.set('/rev/conversations?limit=20&offset=20', pending.promise);
+    renderPage();
+    const more = (await screen.findByText('Load more conversations')).closest('button')!;
+    expect(api.get).not.toHaveBeenCalledWith('/rev/conversations?limit=20&offset=20');
+    fireEvent.click(more); fireEvent.click(more);
+    expect(more).toBeDisabled();
+    expect(vi.mocked(api.get).mock.calls.filter(([path]) => path.includes('offset=20'))).toHaveLength(1);
+    await act(async () => pending.resolve(reply([conversation('H19'), conversation('H20')])));
+    expect(screen.getAllByRole('button', { name: title('H19') })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: title('H20') })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Load more conversations' })).not.toBeInTheDocument();
+  });
+  it('retries a failed search page with the same query and preserves already loaded results', async () => {
+    replies.set('/rev/conversations?q=orders', Promise.resolve(reply(firstHistory())));
+    const pending = deferred<Reply>(); replies.set('/rev/conversations?limit=20&offset=20&q=orders', pending.promise);
+    renderPage(); await historyReady(); await searched('orders');
+    fireEvent.click((await screen.findByText('Load more conversations')).closest('button')!);
+    await act(async () => pending.reject(new Error('offline')));
+    expect(screen.getByRole('alert')).toHaveTextContent('More conversations could not be loaded');
+    expect(screen.getByText('Conversation H0').closest('button')!).toBeInTheDocument();
+    replies.set('/rev/conversations?limit=20&offset=20&q=orders', Promise.resolve(reply([conversation('Extra')])));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry load more conversations' }));
+    await screen.findByRole('button', { name: title('Extra') });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it.each(['resolve', 'reject'] as const)('ignores a history page %s after the search changes', async completion => {
+    replies.set('/rev/conversations', Promise.resolve(reply(firstHistory())));
+    const pending = deferred<Reply>(); replies.set('/rev/conversations?limit=20&offset=20', pending.promise);
+    renderPage(); fireEvent.click((await screen.findByText('Load more conversations')).closest('button')!);
+    replies.set('/rev/conversations?q=current', Promise.resolve(reply([conversation('Current')])));
+    await searched('current'); await screen.findByRole('button', { name: title('Current') });
+    await act(async () => completion === 'resolve' ? pending.resolve(reply([conversation('Outdated')])) : pending.reject(new Error('late')));
+    expect(screen.queryByRole('button', { name: title('Outdated') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it.each(['delete', 'rename'] as const)('invalidates a pending page after a successful %s', async mutation => {
+    replies.set('/rev/conversations', Promise.resolve(reply(firstHistory())));
+    const pending = deferred<Reply>(); replies.set('/rev/conversations?limit=20&offset=20', pending.promise);
+    vi.mocked(api.delete).mockResolvedValue(reply(null)); vi.mocked(api.patch).mockResolvedValue(reply(null));
+    renderPage(); fireEvent.click((await screen.findByText('Load more conversations')).closest('button')!);
+    const updated = mutation === 'delete' ? firstHistory().slice(1) : firstHistory().map((item, i) => i ? item : { ...item, title: 'Changed title' });
+    replies.set('/rev/conversations', Promise.resolve(reply(updated)));
+    if (mutation === 'delete') {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Delete conversation' })[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    } else {
+      fireEvent.click(screen.getAllByRole('button', { name: 'Rename conversation' })[0]);
+      fireEvent.change(screen.getByRole('textbox', { name: 'Conversation name' }), { target: { value: 'Changed title' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    }
+    await waitFor(() => expect(vi.mocked(api.get).mock.calls.filter(([path]) => path === '/rev/conversations')).toHaveLength(2));
+    await act(async () => pending.resolve(reply(firstHistory())));
+    expect(screen.queryByText('Conversation H0')).not.toBeInTheDocument();
+    if (mutation === 'rename') expect(screen.getByText('Changed title')).toBeInTheDocument();
+  });
+  it('loads subsequent chronological messages once, retries failures and blocks writing into a partial thread', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: firstMessages() })));
+    const pending = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&offset=50', pending.promise);
+    renderPage('/dashboard/rev-intell/A');
+    const more = await screen.findByRole('button', { name: 'Load more messages' });
+    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeDisabled();
+    send('Do not send into partial history'); expect(streamRevAnswer).not.toHaveBeenCalled();
+    fireEvent.click(more); fireEvent.click(more);
+    expect(vi.mocked(api.get).mock.calls.filter(([path]) => path.includes('offset=50'))).toHaveLength(1);
+    await act(async () => pending.reject(new Error('offline')));
+    expect(screen.getByText('Paged question 0')).toBeInTheDocument();
+    replies.set('/rev/conversation/A?limit=50&offset=50', Promise.resolve(reply({ messages: [firstMessages()[49], { ...firstMessages()[0], id: 'm50', content: 'Paged question 50' }] })));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry load more messages' }));
+    await screen.findByText('Paged question 50');
+    expect(screen.getAllByText('Paged question 49')).toHaveLength(1);
+    expect(screen.getByText('Paged question 0').compareDocumentPosition(screen.getByText('Paged question 50')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    send('New question after all messages'); expect(streams[0].request.conversationId).toBe('A');
+  });
+  it.each(['New Chat', 'B'])('ignores pending message pages after navigation to %s', async destination => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: firstMessages() })));
+    const pending = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&offset=50', pending.promise);
+    renderPage('/dashboard/rev-intell/A'); fireEvent.click(await screen.findByRole('button', { name: 'Load more messages' }));
+    await historyReady();
+    if (destination === 'B') { select('B'); await screen.findByText('Message from B'); }
+    else fireEvent.click(screen.getByRole('button', { name: 'New conversation' }));
+    await act(async () => pending.resolve(reply({ messages: [{ ...firstMessages()[0], id: 'late', content: 'Outdated page message' }] })));
+    expect(screen.queryByText('Outdated page message')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Load more messages' })).not.toBeInTheDocument();
+    send('Current thread question'); expect(streams[0].request.conversationId).toBe(destination === 'B' ? 'B' : null);
+  });
+});
+
+describe('Phase 5.4 interaction and honest capabilities', () => {
+  it('focuses and traps the rename dialog, restricts the background and restores focus on Escape', async () => {
+    renderPage(); await historyReady();
+    const trigger = screen.getAllByRole('button', { name: 'Rename conversation' })[0]; trigger.focus(); fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Rename conversation' });
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Conversation name' })).toHaveFocus());
+    expect(screen.queryByRole('button', { name: 'New conversation' })).not.toBeInTheDocument();
+    const save = within(dialog).getByRole('button', { name: 'Save' }); save.focus(); fireEvent.keyDown(save, { key: 'Tab' });
+    expect(screen.getByRole('textbox', { name: 'Conversation name' })).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(api.patch).not.toHaveBeenCalled();
+  });
+  it('provides the delete dialog with keyboard cancellation and a safe initial focus', async () => {
+    renderPage(); await historyReady();
+    const trigger = screen.getAllByRole('button', { name: 'Delete conversation' })[0]; trigger.focus(); fireEvent.click(trigger);
+    const dialog = screen.getByRole('alertdialog', { name: 'Delete conversation?' });
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus());
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus()); expect(api.delete).not.toHaveBeenCalled();
+  });
+  it('focuses evidence and restores its trigger on Escape', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [{ id: 'answer', role: 'rev', content: { text: 'Evidence answer', response_type: 'analysis', evidence: { items: [] } }, created_at: '2026-11-02T12:00:00Z' }] })));
+    renderPage('/dashboard/rev-intell/A'); const trigger = await screen.findByRole('button', { name: 'Open evidence fixture' });
+    trigger.focus(); fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Investigation evidence' });
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Close evidence' })).toHaveFocus());
+    expect(screen.queryByRole('textbox', { name: 'Message Rev' })).not.toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+  it('supports mobile history search, selected state and Escape with focus restoration', async () => {
+    renderPage('/dashboard/rev-intell/A'); await historyReady();
+    const trigger = screen.getByRole('button', { name: 'Open conversation history' }); trigger.focus(); fireEvent.click(trigger);
+    const drawer = screen.getByRole('dialog', { name: 'Conversation history' });
+    expect(within(drawer).getByRole('button', { name: 'Conversation A' })).toHaveAttribute('aria-current', 'page');
+    replies.set('/rev/conversations?q=mobile', Promise.resolve(reply([conversation('Mobile')])));
+    fireEvent.change(within(drawer).getByRole('textbox', { name: 'Search conversations' }), { target: { value: 'mobile' } });
+    await within(drawer).findByRole('button', { name: 'Conversation Mobile' });
+    fireEvent.keyDown(drawer, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+  it.each(['application/pdf', 'video/mp4', 'image/svg+xml'])('rejects unsupported %s files without sending placeholder messages', async type => {
+    const view = renderPage();
+    fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['fixture'], 'unsupported', { type })] } });
+    expect(screen.getByRole('alert')).toHaveTextContent('not supported');
+    expect(api.post).not.toHaveBeenCalled(); expect(streamRevAnswer).not.toHaveBeenCalled();
+  });
+  it('rejects oversized images and exposes voice and calls as unavailable', () => {
+    const view = renderPage(); const file = new File(['fixture'], 'large.png', { type: 'image/png' });
+    Object.defineProperty(file, 'size', { value: 6 * 1024 * 1024 });
+    fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    expect(screen.getByRole('alert')).toHaveTextContent('under 5 MB');
+    expect(screen.getByRole('button', { name: 'Voice messages unavailable in this release' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Audio calls unavailable in this release' })).toBeDisabled();
+    expect(api.post).not.toHaveBeenCalled(); expect(streamRevAnswer).not.toHaveBeenCalled();
+  });
+  it.each(['resolve', 'reject'] as const)('announces clipboard %s only after the browser result', async completion => {
+    const pending = deferred<void>(); Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => pending.promise) } });
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [{ id: 'r', role: 'rev', content: 'Copy this answer', created_at: '2026-11-02T12:00:00Z' }] })));
+    renderPage('/dashboard/rev-intell/A'); fireEvent.click(await screen.findByRole('button', { name: 'Copy' }));
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument();
+    await act(async () => completion === 'resolve' ? pending.resolve() : pending.reject(new Error('denied')));
+    if (completion === 'resolve') expect(screen.getByText('Copied')).toHaveAttribute('role', 'status');
+    else { expect(screen.getByRole('alert')).toHaveTextContent('could not be copied'); expect(screen.queryByText('Copied')).not.toBeInTheDocument(); }
+  });
+  it('keeps a persisted non-finding answer when Ask again sends a distinct turn', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [...thread('A').messages, { id: 'r', role: 'rev', content: 'Original persisted answer', created_at: '2026-11-02T12:00:00Z' }] })));
+    renderPage('/dashboard/rev-intell/A'); fireEvent.click(await screen.findByRole('button', { name: 'Ask again' }));
+    expect(streamRevAnswer).not.toHaveBeenCalled();
+    expect(screen.getByText('Original persisted answer')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Continue with text only' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(streams[0].request).toMatchObject({ message: 'Message from A', conversationId: 'A' });
+    expect(streams[0].request.findingId).toBeUndefined(); expect(streams[0].request.reuseUserMessage).not.toBe(true);
+    await act(async () => { streams[0].request.handlers.onFinal?.(answer('A', 'Distinct answer')); streams[0].result.resolve({ conversationId: 'A', completed: true }); });
+    expect(screen.getByText('Original persisted answer')).toBeInTheDocument(); expect(screen.getByText('Distinct answer')).toBeInTheDocument();
+    expect(screen.getAllByText('Message from A')).toHaveLength(2); expect(api.post).not.toHaveBeenCalled();
+  });
+});
+
+describe('Phase 5.4 follow-up mobile modal stack', () => {
+  it.each(['Rename', 'Delete'] as const)('opens %s from mobile history with one interactive modal and restores focus through both layers', async action => {
+    renderPage('/dashboard/rev-intell/A'); await historyReady();
+    const historyTrigger = screen.getByRole('button', { name: 'Open conversation history' });
+    act(() => historyTrigger.focus()); fireEvent.click(historyTrigger);
+    const drawer = screen.getByRole('dialog', { name: 'Conversation history' });
+    const actions = within(drawer).getByRole('button', { name: 'Actions for Conversation A' });
+    act(() => actions.focus()); fireEvent.keyDown(actions, { key: 'Enter' });
+    const item = await screen.findByRole('menuitem', { name: action });
+    act(() => item.focus()); fireEvent.keyDown(item, { key: 'Enter' });
+    const role = action === 'Rename' ? 'dialog' : 'alertdialog';
+    const dialog = await screen.findByRole(role, { name: action === 'Rename' ? 'Rename conversation' : 'Delete conversation?' });
+    const first = action === 'Rename' ? within(dialog).getByRole('textbox', { name: 'Conversation name' }) : within(dialog).getByRole('button', { name: 'Cancel' });
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(screen.queryByRole('dialog', { name: 'Conversation history' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    const last = within(dialog).getByRole('button', { name: action === 'Rename' ? 'Save' : 'Delete' });
+    act(() => last.focus()); fireEvent.keyDown(last, { key: 'Tab' }); expect(first).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole(role, { name: action === 'Rename' ? 'Rename conversation' : 'Delete conversation?' })).not.toBeInTheDocument());
+    await screen.findByRole('dialog', { name: 'Conversation history' });
+    await waitFor(() => expect(actions).toHaveFocus());
+    fireEvent.keyDown(actions, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(historyTrigger).toHaveFocus());
+    expect(api.patch).not.toHaveBeenCalled(); expect(api.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('Phase 5.4 follow-up long history', () => {
+  const page = (offset: number) => Array.from({ length: 50 }, (_, i) => ({ id: `long-${offset + i}`, role: 'user', content: `Long history message ${offset + i}`, created_at: '2026-11-02T12:00:00Z' }));
+  it('retrieves all three 50-message pages in order, retries safely and enables sending only at the verified end', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: page(0) })));
+    const second = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&offset=50', second.promise);
+    replies.set('/rev/conversation/A?limit=50&offset=100', Promise.resolve(reply({ messages: page(100) })));
+    replies.set('/rev/conversation/A?limit=50&offset=150', Promise.resolve(reply({ messages: [] })));
+    renderPage('/dashboard/rev-intell/A'); await screen.findByText('Long history message 49');
+    expect(screen.getByText(/Load the remaining messages before continuing/)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeDisabled();
+    fireEvent.click(screen.getByText('Load more messages').closest('button')!);
+    await act(async () => second.reject(new Error('temporary failure')));
+    expect(screen.getByRole('alert')).toHaveTextContent('More messages could not be loaded');
+    expect(screen.getAllByText(/^Long history message \d+$/)).toHaveLength(50);
+    replies.set('/rev/conversation/A?limit=50&offset=50', Promise.resolve(reply({ messages: page(50) })));
+    fireEvent.click(screen.getByLabelText('Retry load more messages'));
+    await screen.findByText('Long history message 99');
+    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeDisabled();
+    fireEvent.click(screen.getByText('Load more messages').closest('button')!);
+    await screen.findByText('Long history message 149');
+    expect(screen.getAllByText(/^Long history message \d+$/).map(node => node.textContent)).toEqual(Array.from({ length: 150 }, (_, i) => `Long history message ${i}`));
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
+    fireEvent.click(screen.getByText('Load more messages').closest('button')!);
+    await waitFor(() => expect(screen.queryByText('Load more messages')).not.toBeInTheDocument());
+    expect(screen.queryByText(/Load the remaining messages before continuing/)).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Message Rev' })).toBeEnabled();
+    expect(vi.mocked(api.get).mock.calls.filter(([path]) => path.startsWith('/rev/conversation/A')).map(([path]) => path)).toEqual([
+      '/rev/conversation/A', '/rev/conversation/A?limit=50&offset=50', '/rev/conversation/A?limit=50&offset=50', '/rev/conversation/A?limit=50&offset=100', '/rev/conversation/A?limit=50&offset=150',
+    ]);
+    send('Continue after complete history'); expect(streams[0].request.conversationId).toBe('A');
+  });
+  it.each(['resolve', 'reject'] as const)('ignores a late third-page %s after navigation', async completion => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: page(0) })));
+    replies.set('/rev/conversation/A?limit=50&offset=50', Promise.resolve(reply({ messages: page(50) })));
+    const third = deferred<Reply>(); replies.set('/rev/conversation/A?limit=50&offset=100', third.promise);
+    renderPage('/dashboard/rev-intell/A'); await screen.findByText('Long history message 49');
+    fireEvent.click(screen.getByText('Load more messages').closest('button')!); await screen.findByText('Long history message 99');
+    fireEvent.click(screen.getByText('Load more messages').closest('button')!);
+    await historyReady(); select('B'); await screen.findByText('Message from B'); send('Current question');
+    await act(async () => completion === 'resolve' ? third.resolve(reply({ messages: page(100) })) : third.reject(new Error('late failure')));
+    expect(screen.queryByText(/^Long history message/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Load more messages')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stop generating' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/B');
+  });
+});
+
+describe('Phase 5.4 follow-up answer copying', () => {
+  async function openAnswer(content: unknown) {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [{ id: 'copy-answer', role: 'rev', content, created_at: '2026-11-02T12:00:00Z' }] })));
+    renderPage('/dashboard/rev-intell/A');
+    const button = await screen.findByRole('button', { name: 'Copy' });
+    return { writeText, button };
+  }
+  it('copies a plain text response unchanged', async () => {
+    const { writeText, button } = await openAnswer('A plain explanation.'); await act(async () => { fireEvent.click(button); });
+    expect(writeText).toHaveBeenCalledWith('A plain explanation.');
+  });
+  it.each(['current object', 'current JSON', 'legacy object', 'legacy JSON'])('copies all narrative sections from a %s response without internal fields', async format => {
+    const sections = { situation: 'Recorded situation.', insight: 'Supported insight.', implication: 'Possible implication.', recommendation: 'Suggested review.' };
+    const content = { response_type: 'analysis', text: 'An introductory explanation.', ...(format.startsWith('current') ? { response: sections } : sections), evidence: { internal_marker: 'PRIVATE_EVIDENCE' }, conversation_id: 'INTERNAL_CONVERSATION', meta: { private: 'INTERNAL_META' } };
+    const { writeText, button } = await openAnswer(format.endsWith('JSON') ? JSON.stringify(content) : content);
+    await act(async () => { fireEvent.click(button); });
+    expect(writeText).toHaveBeenCalledWith('An introductory explanation.\n\nSituation\nRecorded situation.\n\nInsight\nSupported insight.\n\nImplication\nPossible implication.\n\nRecommendation\nSuggested review.');
+    expect(writeText.mock.calls[0][0]).not.toMatch(/PRIVATE_EVIDENCE|INTERNAL_|response_type/);
+  });
+  it('omits missing and malformed optional fields without inventing sections', async () => {
+    const { writeText, button } = await openAnswer({ response_type: 'analysis', response: { insight: 'Only a supplied insight.', situation: null, implication: 42 } });
+    await act(async () => { fireEvent.click(button); }); expect(writeText).toHaveBeenCalledWith('Insight\nOnly a supplied insight.');
+  });
+  it('preserves complete text without duplicating sections already covered by it', async () => {
+    const text = '## Situation\nRecorded result.\n\n## Insight\nRecorded explanation.';
+    const { writeText, button } = await openAnswer({ text, response: { situation: 'Recorded result.', insight: 'Recorded explanation.' } });
+    await act(async () => { fireEvent.click(button); }); expect(writeText).toHaveBeenCalledWith(text);
+  });
+  it('keeps visible facts, hypotheses, limits, warnings and recommendations while excluding raw evidence', async () => {
+    const { writeText, button } = await openAnswer({ text: 'Answer body.', facts: [{ text: 'Recorded fact.', evidence_ids: ['PRIVATE_ID'] }], comparison_facts: [{ text: 'Comparison fact.' }], hypotheses: [{ statement: 'A possible explanation.', internal: 'PRIVATE_HYPOTHESIS' }], unknowns: ['Missing records.'], warnings: ['Limited coverage.'], recommendations: [{ label: 'Review the segment.', why: 'It changed.', measure: 'Compare recorded orders.', tool: 'PRIVATE_TOOL' }], evidence: { private: 'RAW_JSON' } });
+    await act(async () => { fireEvent.click(button); }); const copied = writeText.mock.calls[0][0];
+    for (const text of ['Answer body.', 'Facts', 'Recorded fact.', 'Comparison fact.', 'Hypotheses — not verified', 'A possible explanation.', 'Unknowns and limits', 'Missing records.', 'Limited coverage.', 'Review the segment.', 'It changed.', 'Compare recorded orders.', 'nothing was changed or sent']) expect(copied).toContain(text);
+    expect(copied).not.toMatch(/PRIVATE_|RAW_JSON|evidence_ids/);
+  });
+});
+
+describe('Phase 5.4 follow-up clipboard attempt ownership', () => {
+  async function openCopy() {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [{ id: 'copy-answer', role: 'rev', content: 'Copyable answer.', created_at: '2026-11-02T12:00:00Z' }] })));
+    const writeText = vi.fn<() => Promise<void>>();
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const view = renderPage('/dashboard/rev-intell/A');
+    const button = await screen.findByRole('button', { name: 'Copy' });
+    return { writeText, button, view };
+  }
+  it.each(['resolve', 'reject'] as const)('ignores an older %s after the latest copy has completed', async oldCompletion => {
+    const { writeText, button } = await openCopy();
+    const old = deferred<void>(), latest = deferred<void>(); writeText.mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
+    fireEvent.click(button); fireEvent.click(button);
+    await act(async () => oldCompletion === 'resolve' ? latest.reject(new Error('current denied')) : latest.resolve());
+    await act(async () => oldCompletion === 'resolve' ? old.resolve() : old.reject(new Error('old denied')));
+    if (oldCompletion === 'resolve') {
+      expect(screen.getByRole('alert')).toHaveTextContent('could not be copied'); expect(screen.queryByText('Copied')).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByText('Copied')).toHaveAttribute('role', 'status'); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    }
+  });
+  it.each(['success', 'failure'])('clears previous %s feedback immediately when another copy starts', async previous => {
+    const { writeText, button } = await openCopy(); const first = deferred<void>(), second = deferred<void>();
+    writeText.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    fireEvent.click(button); await act(async () => previous === 'success' ? first.resolve() : first.reject(new Error('denied')));
+    expect(previous === 'success' ? screen.getByText('Copied') : screen.getByRole('alert')).toBeInTheDocument();
+    fireEvent.click(button);
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument(); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await act(async () => second.resolve()); expect(screen.getByText('Copied')).toBeInTheDocument();
+  });
+  it.each(['resolve', 'reject'] as const)('ignores a clipboard %s after unmount without scheduling feedback', async completion => {
+    const { writeText, button, view } = await openCopy(); const pending = deferred<void>(); writeText.mockReturnValue(pending.promise);
+    const timer = vi.spyOn(globalThis, 'setTimeout');
+    fireEvent.click(button); view.unmount();
+    const scheduled = timer.mock.calls.filter(([, delay]) => delay === 2000).length;
+    await act(async () => completion === 'resolve' ? pending.resolve() : pending.reject(new Error('late denial')));
+    expect(timer.mock.calls.filter(([, delay]) => delay === 2000)).toHaveLength(scheduled);
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument(); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it.each(['resolve', 'reject'] as const)('ignores a clipboard %s after switching conversations', async completion => {
+    const { writeText, button } = await openCopy(); const pending = deferred<void>(); writeText.mockReturnValue(pending.promise);
+    fireEvent.click(button); await historyReady(); select('B'); await screen.findByText('Message from B');
+    await act(async () => completion === 'resolve' ? pending.resolve() : pending.reject(new Error('late denial')));
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument(); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it('prevents an earlier success timer from clearing current feedback', async () => {
+    const { writeText, button } = await openCopy(); writeText.mockResolvedValue();
+    const timer = vi.spyOn(globalThis, 'setTimeout');
+    fireEvent.click(button); await screen.findByText('Copied');
+    const oldTimer = timer.mock.calls.find(([, delay]) => delay === 2000)![0];
+    fireEvent.click(button); await screen.findByText('Copied');
+    act(() => { if (typeof oldTimer === 'function') oldTimer(); });
+    expect(screen.getByText('Copied')).toBeInTheDocument();
   });
 });

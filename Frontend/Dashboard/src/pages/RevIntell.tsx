@@ -17,14 +17,16 @@ import {
   useState, useRef, useEffect, useLayoutEffect, useCallback, FC,
   useMemo,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-motion";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { createPortal } from "react-dom";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Send, Plus, Menu, X, Copy, ThumbsUp, ThumbsDown,
+  Send, Plus, Menu, X, Copy,
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
   Zap, RefreshCw, Mic, Phone, MoreHorizontal, Pencil,
-  Trash2, FileText, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
+  Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
 } from "lucide-react";
 import revIntellLogo from "@/assets/images/rev-intell-logo.png";
 import { useAuth } from "@/context/AuthContext";
@@ -34,7 +36,7 @@ import { parseVerifiedComparison } from "@/lib/revComparison";
 import RevAnswerView from "@/components/rev/RevAnswerView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import EvidencePanel from "@/components/rev/EvidencePanel";
-import { normaliseRevAnswer } from "@/lib/revPresentation";
+import { normaliseRevAnswer, coveredBy, recordList, stringList, textValue } from "@/lib/revPresentation";
 import {
   streamRevAnswer, RevStreamError,
   type RevAnswerPayload, type InvestigationStep,
@@ -91,6 +93,40 @@ interface FindingContext {
 }
 
 const FINDING_ERRORS = ["INVALID_FINDING_ID", "FINDING_NOT_FOUND", "FINDING_EVIDENCE_UNVERIFIED"];
+const HISTORY_PAGE_SIZE = 20;
+const MESSAGE_PAGE_SIZE = 50;
+
+// Use the installed dialog primitive for focus trapping and background isolation.
+function ModalSurface({ children, onClose, hasDescription = false, returnFocusTo, ...props }: Omit<React.ComponentProps<typeof motion.div>, "children"> & {
+  children: React.ReactNode; onClose: () => void; hasDescription?: boolean; returnFocusTo?: HTMLElement | null;
+}) {
+  const returnTo = useRef(returnFocusTo ?? document.activeElement as HTMLElement | null);
+  return <DialogPrimitive.Root open onOpenChange={open => { if (!open) onClose(); }}>
+    <DialogPrimitive.Content asChild {...(hasDescription ? {} : { "aria-describedby": undefined })}
+      onCloseAutoFocus={event => {
+        event.preventDefault();
+        const target = returnTo.current;
+        if (target?.isConnected) target.focus();
+        else Array.from(document.querySelectorAll<HTMLElement>('button[aria-current="page"], button[aria-label="Open conversation history"], .rev-history-rail button'))
+          .find(element => element.getClientRects().length > 0)?.focus();
+      }}>
+      <motion.div data-rev-modal="" {...props}><DialogPrimitive.Title className="sr-only">{props["aria-label"] || "Conversation options"}</DialogPrimitive.Title>{children}</motion.div>
+    </DialogPrimitive.Content>
+  </DialogPrimitive.Root>;
+}
+
+function LoadMore({ available, loading, error, onLoad, label }: {
+  available: boolean; loading: boolean; error: string | null; onLoad: () => void; label: string;
+}) {
+  return <div className="px-3 py-2 text-xs">
+    {error && <p role="alert">{error}</p>}
+    {available && <button onClick={onLoad} disabled={loading}
+      className="min-h-11 rounded-lg border border-current px-3 py-2"
+      aria-label={error ? `Retry ${label.toLowerCase()}` : label}>
+      {loading ? <span role="status">Loading…</span> : error ? 'Retry' : label}
+    </button>}
+  </div>;
+}
 function responseErrorCode(error: unknown): string | undefined {
   if (error instanceof RevStreamError) return error.code;
   if (error instanceof ApiError) {
@@ -480,12 +516,12 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
               view_analytics:   "/dashboard/analytics",
               view_products:    "/dashboard/analytics",
               view_checkout:    "/dashboard/checkout",
-              create_campaign:  "/dashboard/campaign",
               view_retention:   "/dashboard/customers",
             };
             const route = action.tool ? toolRoutes[action.tool] : null;
+            const available = Boolean(route || (action.tool === "ask_rev" && typeof action.params?.message === "string" && onSend));
             return (
-              <button key={i} style={{
+              <button key={i} disabled={!available} title={available ? undefined : "Unavailable in this read-only release"} style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
                 padding: "7px 14px", borderRadius: 999, fontSize: "0.8rem", fontWeight: 600,
                 background: "rgba(31,6,172,0.1)", color: "#1F06AC",
@@ -511,7 +547,7 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
                   // Other tool types will be wired as capabilities are built
                 }}
               >
-                <Zap size={11} />{action.label}
+                <Zap size={11} />{action.label}{!available && " (unavailable)"}
               </button>
             );
           })}
@@ -519,7 +555,7 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
       )}
 
       {response.agents_used && response.agents_used.length > 0 && (
-        <p style={{ fontSize: "0.65rem", color: isDark ? "#374151" : "#c4c9d4", margin: 0 }}>
+        <p style={{ fontSize: "0.65rem", color: t2, margin: 0 }}>
           Analysed by: {response.agents_used.join(", ")} agent{response.agents_used.length > 1 ? "s" : ""}
         </p>
       )}
@@ -540,10 +576,38 @@ const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2:
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
-function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evidenceOpen, isDark, t1, t2 }: {
+function answerCopyText(message: Message): string {
+  const payload = normaliseRevAnswer(message.payload ?? message.content);
+  if (!payload) return textValue(message.content);
+  const blocks = [textValue(payload.text)].filter(Boolean);
+  let shown = blocks.join("\n\n");
+  for (const key of ["situation", "insight", "implication", "recommendation"] as const) {
+    const text = textValue(payload.response?.[key]);
+    if (!text || coveredBy(shown, text)) continue;
+    blocks.push(`${key[0].toUpperCase() + key.slice(1)}\n${text}`);
+    shown += `\n${text}`;
+  }
+  const appendList = (label: string, values: string[]) => {
+    const entries = [...new Set(values.filter(text => text.trim() && !coveredBy(shown, text)))];
+    if (entries.length) blocks.push(`${label}\n${entries.map(text => `- ${text}`).join("\n")}`);
+  };
+  appendList("Facts", [...recordList<{ text?: unknown }>(payload.facts), ...recordList<{ text?: unknown }>(payload.comparison_facts)].map(item => textValue(item.text)));
+  appendList("Hypotheses — not verified", recordList<{ statement?: unknown }>(payload.hypotheses).map(item => textValue(item.statement)));
+  appendList("Unknowns and limits", stringList(payload.unknowns));
+  appendList("Warnings", [...stringList(payload.warnings), ...stringList(payload.response?.warnings)]);
+  const recommendations = recordList<{ label?: unknown; why?: unknown; measure?: unknown }>(payload.recommendations).flatMap(item => {
+    const parts = [item.label, item.why, item.measure].map(textValue).filter(Boolean);
+    return parts.length && !parts.every(text => coveredBy(shown, text)) ? [parts.join("\n")] : [];
+  });
+  if (recommendations.length) blocks.push(`Recommended next steps\nRecommendations only — nothing was changed or sent.\n${recommendations.join("\n\n")}`);
+  return blocks.join("\n\n");
+}
+
+function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evidenceOpen, actionsDisabled, isDark, t1, t2 }: {
   msg: Message; onCopy: (t: string) => void;
   onRetry: () => void; onSend?: (text: string) => void;
   retryLabel?: string;
+  actionsDisabled?: boolean;
   onOpenEvidence?: (messageId: string) => void; evidenceOpen?: boolean;
   isDark: boolean; t1: string; t2: string;
 }) {
@@ -566,12 +630,12 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-[0.73rem] font-bold" style={{ color: t1 }}>Rev Intelligence</span>
-          <span className="text-[0.65rem]" style={{ color: isDark ? "#374151" : "#c4c9d4" }}>
+            <span className="text-[0.65rem]" style={{ color: t2 }}>
             {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
 
-        {msg.isStreaming && <LoadingBar isDark={isDark} />}
+        {msg.isStreaming && <div role="status" aria-label="Rev is preparing a response"><LoadingBar isDark={isDark} /></div>}
 
         {msg.isStreaming && !msg.payload && msg.steps && msg.steps.length > 0 && (
           <div style={{ marginTop: 10 }}>
@@ -580,15 +644,15 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
         )}
 
         {msg.cancelled && !msg.isStreaming && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+          <div role="status" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
             padding: "10px 12px", borderRadius: 12,
             background: isDark ? "rgba(255,255,255,0.04)" : "#F9FAFB",
             border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "#EAECF0"}` }}>
             <span style={{ fontSize: "0.82rem", color: t2 }}>Generation stopped.</span>
-            <button onClick={onRetry}
+            <button onClick={onRetry} disabled={actionsDisabled}
               style={{ display: "inline-flex", alignItems: "center", gap: 5,
                 padding: "5px 12px", borderRadius: 999, fontSize: "0.76rem", fontWeight: 600,
-                background: "rgba(31,6,172,0.08)", color: "#1F06AC",
+                background: "rgba(31,6,172,0.08)", color: isDark ? "#b4a8ff" : "#1F06AC",
                 border: "1px solid rgba(31,6,172,0.2)", cursor: "pointer", fontFamily: "inherit" }}>
               <RefreshCcw size={11} />{retryLabel ?? "Regenerate"}
             </button>
@@ -596,18 +660,18 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
         )}
 
         {msg.hasError && !msg.isStreaming && (
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 10,
+          <div role="alert" style={{ display: "flex", alignItems: "flex-start", gap: 10,
             padding: "12px 14px", borderRadius: 12,
             background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.18)" }}>
             <AlertCircle size={15} color="#dc2626" style={{ flexShrink: 0, marginTop: 1 }} />
             <div style={{ flex: 1 }}>
-              <p style={{ fontSize: "0.86rem", color: "#dc2626", margin: "0 0 8px", fontWeight: 600 }}>
+              <p style={{ fontSize: "0.86rem", color: isDark ? "#fca5a5" : "#b91c1c", margin: "0 0 8px", fontWeight: 600 }}>
                 {typeof msg.content === "string" ? msg.content : "Rev encountered an issue."}
               </p>
-              <button onClick={onRetry}
+              <button onClick={onRetry} disabled={actionsDisabled}
                 style={{ display: "inline-flex", alignItems: "center", gap: 5,
                   padding: "5px 12px", borderRadius: 999, fontSize: "0.78rem", fontWeight: 600,
-                  background: "rgba(220,38,38,0.1)", color: "#dc2626",
+                  background: "rgba(220,38,38,0.1)", color: isDark ? "#fca5a5" : "#b91c1c",
                   border: "1px solid rgba(220,38,38,0.25)", cursor: "pointer", fontFamily: "inherit" }}>
                 <RefreshCcw size={12} />{retryLabel ?? "Try again"}
               </button>
@@ -622,10 +686,7 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
             dark={isDark}
             evidenceOpen={evidenceOpen}
             onOpenEvidence={() => onOpenEvidence?.(msg.id)}
-            onFollowUp={(followUp) => onSend?.(followUp)}
-            onRetry={retryLabel ? undefined : onRetry}
-            canRetry={!msg.isStreaming}
-            onCopy={() => onCopy(msg.payload?.text ?? (typeof msg.content === "string" ? msg.content : ""))}
+            onFollowUp={actionsDisabled ? undefined : onSend}
           />
         )}
 
@@ -637,19 +698,17 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
               </p>
         )}
 
-        {!msg.isStreaming && !msg.hasError && (
-          <div className="flex items-center gap-0.5 mt-3 opacity-0 group-hover:opacity-100 transition-opacity">
+        {!msg.isStreaming && !msg.hasError && !msg.cancelled && (
+          <div className="flex items-center gap-0.5 mt-3 opacity-100 transition-opacity">
             {[
-              { icon: Copy,       label: "Copy",  fn: () => onCopy(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)) },
-              { icon: ThumbsUp,   label: "Good",  fn: () => {} },
-              { icon: ThumbsDown, label: "Bad",   fn: () => {} },
+              { icon: Copy,       label: "Copy",  fn: () => onCopy(answerCopyText(msg)) },
               { icon: RotateCcw,  label: retryLabel ?? "Retry", fn: onRetry },
             ].map(({ icon: Icon, label, fn }) => (
-              <button key={label} onClick={fn}
-                className="flex items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors"
-                style={{ color: isDark ? "#374151" : "#c4c9d4", fontFamily: "inherit" }}
+              <button key={label} onClick={fn} disabled={fn === onRetry && actionsDisabled}
+                className="flex min-h-11 items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors disabled:opacity-50"
+                style={{ color: t2, fontFamily: "inherit" }}
                 onMouseEnter={e => (e.currentTarget.style.color = t1)}
-                onMouseLeave={e => (e.currentTarget.style.color = isDark ? "#374151" : "#c4c9d4")}>
+                onMouseLeave={e => (e.currentTarget.style.color = t2)}>
                 <Icon size={11} />{label}
               </button>
             ))}
@@ -662,94 +721,55 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
 
 // ── Attach dropdown ───────────────────────────────────────────────────────────
 
-function AttachMenu({ onFile, onMedia, card, border, t1, t2 }: {
-  onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onMedia: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  card: string; border: string; t1: string; t2: string;
+function AttachMenu({ onFile, t1 }: {
+  onFile: (event: React.ChangeEvent<HTMLInputElement>) => void; t1: string;
 }) {
-  const [open, setOpen] = useState(false);
-  // Keep file inputs OUTSIDE the animated menu so they are never unmounted
-  // when the dropdown closes. Unmounting the <input> before onChange fires
-  // silently drops the file selection on Chrome/Safari.
-  const fileRef  = useRef<HTMLInputElement>(null);
-  const mediaRef = useRef<HTMLInputElement>(null);
-
-  const triggerFile  = () => { setOpen(false); setTimeout(() => fileRef.current?.click(),  50); };
-  const triggerMedia = () => { setOpen(false); setTimeout(() => mediaRef.current?.click(), 50); };
-
-  return (
-    <div style={{ position: "relative" }}>
-      {/* Persistent file inputs — never unmounted */}
-      <input ref={fileRef}  type="file" accept="*/*"               className="hidden" onChange={onFile} />
-      <input ref={mediaRef} type="file" accept="image/*,video/*"   className="hidden" onChange={onMedia} />
-
-      <button onClick={() => setOpen(v => !v)} title="Attach"
-        className="p-1.5 rounded-lg transition-colors opacity-60 hover:opacity-100" style={{ color: t2 }}>
-        <Plus size={17} />
-      </button>
-      <AnimatePresence>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-            <motion.div initial={{ opacity: 0, y: 6, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 6, scale: 0.95 }} transition={{ duration: 0.15 }}
-              style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, zIndex: 20,
-                background: card, border: `1px solid ${border}`, borderRadius: 14,
-                boxShadow: "0 8px 32px rgba(0,0,0,0.15)", padding: "6px", minWidth: 180 }}>
-              <button onClick={triggerFile}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[0.8rem] font-medium cursor-pointer transition-colors hover:bg-black/5 w-full text-left"
-                style={{ color: t1, background: "transparent", border: "none", fontFamily: "inherit" }}>
-                <FileText size={15} style={{ color: "#1F06AC" }} />
-                Attach file
-              </button>
-              <button onClick={triggerMedia}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-[0.8rem] font-medium cursor-pointer transition-colors hover:bg-black/5 w-full text-left"
-                style={{ color: t1, background: "transparent", border: "none", fontFamily: "inherit" }}>
-                <ImageIcon size={15} style={{ color: "#db2777" }} />
-                Photos & Videos
-              </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+  const fileRef = useRef<HTMLInputElement>(null);
+  return <>
+    <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={onFile} />
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild><button aria-label="Attach image" title="Attach image"
+        className="flex h-11 w-11 items-center justify-center rounded-lg" style={{ color: t1 }}><Plus size={17} /></button></DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem onSelect={() => fileRef.current?.click()} className="min-h-11"><ImageIcon size={15} className="mr-2" />Attach image (up to 5 MB)</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </>;
 }
 
 // ── Input toolbar ─────────────────────────────────────────────────────────────
 
 function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disabled, sendDisabled,
-  onSend, onFile, onMedia, onVoice, onCall, onStop, thinking, card, border, t1, t2, isDark }: {
+  onSend, onFile, onStop, thinking, card, border, t1, t2, isDark }: {
   inputRef: React.RefObject<HTMLTextAreaElement>;
   value: string; onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
   placeholder: string; disabled?: boolean; sendDisabled?: boolean;
   onSend: () => void; onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onMedia: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onVoice: () => void; onCall: () => void; onStop?: () => void; thinking: boolean;
+  onStop?: () => void; thinking: boolean;
   card: string; border: string; t1: string; t2: string; isDark: boolean;
 }) {
   return (
     <div className="rounded-2xl shadow-sm overflow-visible" style={{ background: card, border: `1px solid ${border}` }}>
       <textarea ref={inputRef} value={value} onChange={onChange} onKeyDown={onKeyDown}
-        placeholder={placeholder} rows={2} disabled={disabled}
+        placeholder={placeholder} aria-label="Message Rev" rows={2} disabled={disabled}
         className="w-full bg-transparent text-[0.9rem] outline-none resize-none px-5 pt-4 pb-2 max-h-36 [scrollbar-width:none] leading-relaxed"
         style={{ color: t1, minHeight: 26 }} />
       <div className="flex items-center justify-between px-3 pb-3">
-        <AttachMenu onFile={onFile} onMedia={onMedia} card={card} border={border} t1={t1} t2={t2} />
+        <AttachMenu onFile={onFile} t1={t1} />
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <button title="Voice message" onClick={onVoice}
-            className="p-1.5 rounded-lg transition-colors opacity-60 hover:opacity-100" style={{ color: t2 }}>
+          <button title="Voice messages unavailable in this release" aria-label="Voice messages unavailable in this release" disabled
+            className="h-11 w-11 flex items-center justify-center rounded-lg opacity-60" style={{ color: t2 }}>
             <Mic size={15} />
           </button>
-          <button title="Book audio call" onClick={onCall}
+          <button title="Audio calls unavailable in this release" aria-label="Audio calls unavailable in this release" disabled
             className="p-1.5 rounded-lg transition-colors opacity-60 hover:opacity-100" style={{ color: t2 }}>
             <Phone size={15} />
           </button>
           {thinking && onStop ? (
             <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
               onClick={onStop} aria-label="Stop generating" title="Stop generating"
-              className="w-8 h-8 rounded-xl flex items-center justify-center transition-all ml-1"
+              className="w-11 h-11 rounded-xl flex items-center justify-center transition-all ml-1"
               style={{ background: isDark ? "#26262b" : "#111827", color: "#fff" }}>
               <Square size={11} fill="currentColor" />
             </motion.button>
@@ -771,110 +791,34 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
 
 // ── Conversation history item ─────────────────────────────────────────────────
 
-function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1, t4 }: {
+function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1 }: {
   conv: Conversation; isActive: boolean;
-  onClick: () => void; onDelete: () => void; onRename: () => void;
-  isDark: boolean; t1: string; t4: string;
+  onClick: () => void; onDelete: (trigger: HTMLButtonElement | null) => void; onRename: (trigger: HTMLButtonElement | null) => void;
+  isDark: boolean; t1: string;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
-  const triggerRef = useRef<HTMLButtonElement>(null);
-
-  const openActions = () => {
-    if (menuOpen) { setMenuOpen(false); return; }
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const menuHeight = 104;
-    const menuWidth = 156;
-    const gap = 6;
-    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-    const viewportTop = window.visualViewport?.offsetTop ?? 0;
-    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
-    const roomBelow = viewportTop + viewportHeight - rect.bottom;
-    const top = roomBelow >= menuHeight + gap
-      ? rect.bottom + gap
-      : rect.top - menuHeight - gap;
-    setMenuPosition({
-      top: Math.max(viewportTop + 8, Math.min(top, viewportTop + viewportHeight - menuHeight - 8)),
-      left: Math.max(8, Math.min(rect.right - menuWidth, viewportWidth - menuWidth - 8)),
-    });
-    setMenuOpen(true);
-  };
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [menuOpen]);
-
-  return (
-    <div className="relative group/item flex items-center rounded-lg transition-all"
-      style={{ background: isActive ? (isDark ? "rgba(31,6,172,0.15)" : "rgba(31,6,172,0.08)") : "transparent" }}
-      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.04)"; }}
-      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}>
-      <button onClick={onClick}
-        className="flex-1 text-left px-3 py-2.5 text-[0.8rem] font-medium truncate min-w-0"
-        style={{ color: isActive ? "#1F06AC" : t1 }}>
-        {conv.title || "Untitled conversation"}
-      </button>
-      <div className="shrink-0 pr-1">
-        <button ref={triggerRef} type="button" aria-label={`Actions for ${conv.title || "Untitled conversation"}`}
-          aria-haspopup="menu" aria-expanded={menuOpen}
-          onClick={e => { e.stopPropagation(); openActions(); }}
-          className="flex items-center justify-center w-9 h-9 rounded-md transition-colors hover:bg-black/5"
-          style={{ color: t1 }}>
-          <MoreHorizontal size={20} strokeWidth={2.5} />
-        </button>
-      </div>
-      {createPortal(
-        <AnimatePresence>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-[150]" onClick={() => setMenuOpen(false)} />
-              <motion.div role="menu" aria-label="Conversation actions"
-                initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.12 }}
-                style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, zIndex: 151,
-                  background: isDark ? "#1a1a1a" : "#fff",
-                  border: `1px solid ${isDark ? "#2a2a2a" : "#e5e7eb"}`,
-                  borderRadius: 10, padding: 4, width: 156,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.15)" }}>
-                <button role="menuitem" onClick={() => { setMenuOpen(false); onRename(); }}
-                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[0.78rem] font-medium transition-colors hover:bg-black/5 text-left"
-                  style={{ color: isDark ? "#e5e7eb" : "#1a1a2e", fontFamily: "inherit" }}>
-                  <Pencil size={13} style={{ color: "#1F06AC" }} />Rename
-                </button>
-                <button role="menuitem" onClick={() => { setMenuOpen(false); onDelete(); }}
-                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[0.78rem] font-medium transition-colors text-left hover:bg-red-500/10"
-                  style={{ color: "#dc2626", fontFamily: "inherit" }}>
-                  <Trash2 size={13} />Delete
-                </button>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
-    </div>
-  );
+  const actionsRef = useRef<HTMLButtonElement>(null);
+  return <div className="flex items-center rounded-lg" style={{ background: isActive ? (isDark ? "#24203c" : "#eeebff") : "transparent" }}>
+    <button onClick={onClick} aria-current={isActive ? "page" : undefined}
+      className="min-h-11 flex-1 min-w-0 truncate px-3 text-left text-sm" style={{ color: t1 }}>
+      {conv.title || "Untitled conversation"}
+    </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild><button ref={actionsRef} aria-label={`Actions for ${conv.title || "Untitled conversation"}`}
+        className="flex h-11 w-11 shrink-0 items-center justify-center" style={{ color: t1 }}><MoreHorizontal size={20} /></button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="z-[190]" style={{ background: isDark ? "#171717" : "#fff", color: t1 }}>
+        <DropdownMenuItem onSelect={() => onRename(actionsRef.current)} className="min-h-11"><Pencil size={14} className="mr-2" />Rename</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onDelete(actionsRef.current)} className="min-h-11"><Trash2 size={14} className="mr-2" />Delete</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </div>;
 }
-
-
-// ── Conversation rail (desktop) ───────────────────────────────────────────────
-// The conversation list is the navigation spine of the workspace: a persistent
-// dark rail on desktop, a drawer on mobile. History, search and New chat live
-// here so the conversation itself stays the primary surface.
 
 function HistoryStatus({ loading, error, count, query, onRetry, color }: {
   loading: boolean; error: string | null; count: number; query: string;
   onRetry: () => void; color: string;
 }) {
   return <>
+    {!loading && !error && count > 0 && <p role="status" className="sr-only">{count} conversations loaded{query.trim() ? ` for ${query.trim()}` : ""}.</p>}
     {loading && <p role="status" className="px-3 py-4 text-center text-xs" style={{ color }}>Loading conversation history…</p>}
     {error && <div role="alert" className="px-3 py-4 text-center text-xs" style={{ color }}>
       <p>{error}</p>
@@ -882,7 +826,7 @@ function HistoryStatus({ loading, error, count, query, onRetry, color }: {
         className="mt-2 rounded-lg border border-current px-3 py-2 font-semibold">Retry</button>
     </div>}
     {(loading || error) && count > 0 && <p className="px-3 pb-2 text-xs" style={{ color }}>Showing previously loaded conversations.</p>}
-    {!loading && !error && count === 0 && <p className="px-3 py-8 text-center text-xs" style={{ color }}>
+    {!loading && !error && count === 0 && <p role="status" className="px-3 py-8 text-center text-xs" style={{ color }}>
       {query.trim() ? "No conversations match this search." : "No conversations yet."}
     </p>}
   </>;
@@ -890,7 +834,7 @@ function HistoryStatus({ loading, error, count, query, onRetry, color }: {
 
 function ConversationRail({
   conversations, activeId, loading, error, onRetry, query, onQuery, onNew, onSelect,
-  onRename, onDelete, className,
+  onRename, onDelete, className, pagination,
 }: {
   conversations: Conversation[]; activeId: string | null; loading: boolean;
   error: string | null; onRetry: () => void;
@@ -898,12 +842,13 @@ function ConversationRail({
   onNew: () => void; onSelect: (id: string) => void;
   onRename: (id: string) => void; onDelete: (id: string) => void;
   className?: string;
+  pagination?: React.ReactNode;
 }) {
   return (
     <aside className={className} style={{
       width: 268, flexShrink: 0, background: "#0B0B10",
       borderRight: "1px solid rgba(255,255,255,0.07)",
-      display: "flex", flexDirection: "column", height: "100%",
+      flexDirection: "column", height: "100%",
     }}>
       <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
         <img src={revIntellLogo} alt="" className="w-6 h-6 object-contain" />
@@ -950,8 +895,8 @@ function ConversationRail({
           const active = activeId === conversation.id;
           return (
             <div key={conversation.id} className="group relative">
-              <button onClick={() => onSelect(conversation.id)}
-                className="w-full text-left rounded-lg px-2.5 py-2 transition-colors"
+              <button aria-current={active ? "page" : undefined} onClick={() => onSelect(conversation.id)}
+                className="w-full text-left rounded-lg pl-2.5 pr-20 py-2 transition-colors"
                 style={{
                   background: active ? "rgba(31,6,172,0.45)" : "transparent",
                   borderLeft: `2px solid ${active ? "#7B6BFF" : "transparent"}`,
@@ -959,17 +904,19 @@ function ConversationRail({
                 <p className="truncate" style={{ margin: 0, fontSize: "0.76rem", color: active ? "#FFFFFF" : "#C5CAD6" }}>
                   {conversation.title || "Untitled conversation"}
                 </p>
-                <p style={{ margin: "1px 0 0", fontSize: "0.62rem", color: "#6B7280" }}>
+                <p style={{ margin: "1px 0 0", fontSize: "0.62rem", color: "#9CA3AF" }}>
                   {new Date(conversation.last_activity_at).toLocaleDateString([], { month: "short", day: "numeric" })}
                   {conversation.message_count ? ` · ${conversation.message_count} messages` : ""}
                 </p>
               </button>
-              <div className="absolute right-1 top-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute right-1 top-1.5 flex gap-0.5 opacity-100 transition-opacity">
                 <button onClick={() => onRename(conversation.id)} aria-label="Rename conversation"
+                  className="min-h-8 min-w-8 rounded-md"
                   style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
                   <Pencil size={11} />
                 </button>
                 <button onClick={() => onDelete(conversation.id)} aria-label="Delete conversation"
+                  className="min-h-8 min-w-8 rounded-md"
                   style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
                   <Trash2 size={11} />
                 </button>
@@ -977,6 +924,7 @@ function ConversationRail({
             </div>
           );
         })}
+        {pagination}
       </div>
 
       <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
@@ -1018,11 +966,23 @@ export default function RevIntell() {
   const [thinking,       setThinking]       = useState(false);
   const [menuOpen,       setMenuOpen]       = useState(false);
   const [copied,         setCopied]         = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError,   setHistoryError]   = useState<string | null>(null);
+  const [historyMore, setHistoryMore] = useState(false);
+  const [historyMoreLoading, setHistoryMoreLoading] = useState(false);
+  const [historyMoreError, setHistoryMoreError] = useState<string | null>(null);
+  const historyOffset = useRef(0);
+  const historyPagePending = useRef(false);
+  const [messagesMore, setMessagesMore] = useState(false);
+  const [messagesMoreLoading, setMessagesMoreLoading] = useState(false);
+  const [messagesMoreError, setMessagesMoreError] = useState<string | null>(null);
+  const messagesOffset = useRef(0);
+  const messagesPagePending = useRef(false);
+  const reducedMotion = useReducedMotion();
   const [convLoading,    setConvLoading]    = useState(false);
   const [convError,      setConvError]      = useState<string | null>(null);
-  const [lastUserMsg,    setLastUserMsg]    = useState<string>("");
   const [convNotFound,   setConvNotFound]   = useState(false);
   const [imageAttachment, setImageAttachment] = useState<{
     base64: string; mediaType: string; preview: string; name: string;
@@ -1047,6 +1007,9 @@ export default function RevIntell() {
   const searchQueryRef = useRef("");
   const findingRequestRef = useRef(0);
   const inputEditedRef = useRef(false);
+  const dialogReturnRef = useRef<HTMLElement | null>(null);
+  const copyRequestRef = useRef(0);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set right before we navigate() to a conversation we just created ourselves,
   // so the URL-sync effect below doesn't redundantly re-fetch and clobber the
   // (already correct) optimistic messages with a fresh server round trip.
@@ -1082,35 +1045,67 @@ export default function RevIntell() {
   }, []);
 
   // Scroll to bottom when messages change
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, thinking]);
+  useEffect(() => {
+    if (!messagesPagePending.current) bottomRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
+  }, [messages, thinking, reducedMotion]);
 
   // ── Load conversations list ───────────────────────────────────────────────
-  const loadConversations = useCallback(async (searchText = searchQueryRef.current) => {
-    const query = searchText.trim().slice(0, 120);
-    if (query !== searchQueryRef.current.trim().slice(0, 120)) return;
+  const loadConversations = useCallback(async (searchText = searchQueryRef.current, append = false) => {
+    const query = searchText.trim().slice(0, 80);
+    if (query !== searchQueryRef.current.trim().slice(0, 80) || (append && historyPagePending.current)) return;
     const request = ++historyRequestRef.current;
-    setHistoryLoading(true);
-    setHistoryError(null);
+    historyPagePending.current = true;
+    const offset = append ? historyOffset.current : 0;
+    if (append) {
+      setHistoryMoreLoading(true);
+      setHistoryMoreError(null);
+    } else {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      setHistoryMore(false);
+      setHistoryMoreLoading(false);
+      setHistoryMoreError(null);
+    }
     try {
       const res = await api.get<{ success: boolean; data: Conversation[] }>(
-        `/rev/conversations${query ? `?q=${encodeURIComponent(query)}` : ""}`,
+        `/rev/conversations${append ? `?limit=${HISTORY_PAGE_SIZE}&offset=${offset}${query ? `&q=${encodeURIComponent(query)}` : ""}` : query ? `?q=${encodeURIComponent(query)}` : ""}`,
       );
       if (request !== historyRequestRef.current) return;
       if (res.data.success !== true || !Array.isArray(res.data.data)) throw new Error('Invalid conversation history response.');
-      setConversations(res.data.data);
+      const page = res.data.data;
+      historyOffset.current = offset + page.length;
+      setHistoryMore(page.length === HISTORY_PAGE_SIZE);
+      setConversations(previous => [...new Map([...(append ? previous : []), ...page].map(item => [item.id, item])).values()]);
     } catch {
-      if (request === historyRequestRef.current) setHistoryError("Conversation history is unavailable. Please try again.");
+      if (request === historyRequestRef.current) {
+        if (append) setHistoryMoreError("More conversations could not be loaded. Please try again.");
+        else setHistoryError("Conversation history is unavailable. Please try again.");
+      }
     } finally {
-      if (request === historyRequestRef.current) setHistoryLoading(false);
+      if (request === historyRequestRef.current) {
+        historyPagePending.current = false;
+        setHistoryLoading(false);
+        setHistoryMoreLoading(false);
+      }
     }
   }, []);
 
   // ── Load specific conversation ────────────────────────────────────────────
-  const loadConversation = useCallback(async (convId: string) => {
+  const loadConversation = useCallback(async (convId: string, append = false) => {
+    if (append && messagesPagePending.current) return;
     const request = ++conversationRequestRef.current;
-    setConvNotFound(false);
-    setConvError(null);
-    setConvLoading(true);
+    messagesPagePending.current = true;
+    const offset = append ? messagesOffset.current : 0;
+    if (append) {
+      setMessagesMoreLoading(true);
+      setMessagesMoreError(null);
+    } else {
+      setConvNotFound(false);
+      setConvError(null);
+      setConvLoading(true);
+      setMessagesMore(false);
+      setMessagesMoreError(null);
+    }
 
     try {
       const res = await api.get<{
@@ -1121,7 +1116,7 @@ export default function RevIntell() {
             created_at: string; has_error?: boolean;
           }>;
         };
-      }>(`/rev/conversation/${encodeURIComponent(convId)}`);
+      }>(`/rev/conversation/${encodeURIComponent(convId)}${append ? `?limit=${MESSAGE_PAGE_SIZE}&offset=${offset}` : ""}`);
 
       if (request !== conversationRequestRef.current) return;
       const msgs = res.data.data?.messages;
@@ -1162,16 +1157,24 @@ export default function RevIntell() {
         };
       });
 
-      setMessages(parsed);
+      messagesOffset.current = offset + msgs.length;
+      setMessagesMore(msgs.length === MESSAGE_PAGE_SIZE);
+      setMessages(previous => [...new Map([...(append ? previous : []), ...parsed].map(item => [item.id, item])).values()]);
     } catch (err: any) {
       if (request !== conversationRequestRef.current) return;
-      if (err?.status === 404 || err?.status === 403) {
+      if (append) {
+        setMessagesMoreError("More messages could not be loaded. Please try again.");
+      } else if (err?.status === 404 || err?.status === 403) {
         setConvNotFound(true);
       } else {
         setConvError("This conversation could not be loaded. Please try again.");
       }
     } finally {
-      if (request === conversationRequestRef.current) setConvLoading(false);
+      if (request === conversationRequestRef.current) {
+        messagesPagePending.current = false;
+        setConvLoading(false);
+        setMessagesMoreLoading(false);
+      }
     }
   }, []);
 
@@ -1179,6 +1182,10 @@ export default function RevIntell() {
   // Run on mount (to handle refresh) and whenever the URL conversationId changes.
   // Do NOT gate on activeId — on refresh they start equal so the check would skip loading.
   const resetThread = useCallback(() => {
+    copyRequestRef.current += 1;
+    if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = null;
+    setCopied(false);
     conversationRequestRef.current += 1;
     turnRequestRef.current += 1;
     turnPendingRef.current = false;
@@ -1197,9 +1204,15 @@ export default function RevIntell() {
     setConvNotFound(false);
     setConvError(null);
     setMessages([]);
-    setLastUserMsg("");
+    messagesPagePending.current = false;
+    messagesOffset.current = 0;
+    setMessagesMore(false);
+    setMessagesMoreLoading(false);
+    setMessagesMoreError(null);
     setEvidenceFor(null);
     setImageAttachment(null);
+    setAttachmentError(null);
+    setCopyError(null);
     setInput("");
   }, []);
 
@@ -1222,6 +1235,8 @@ export default function RevIntell() {
   }, [urlConvId, findingId, resetThread, loadConversation, loadFinding]);
 
   useLayoutEffect(() => () => {
+    copyRequestRef.current += 1;
+    if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
     historyRequestRef.current += 1;
     conversationRequestRef.current += 1;
     turnRequestRef.current += 1;
@@ -1232,6 +1247,10 @@ export default function RevIntell() {
   const changeSearch = useCallback((value: string) => {
     searchQueryRef.current = value;
     historyRequestRef.current += 1;
+    historyPagePending.current = false;
+    setHistoryMore(false);
+    setHistoryMoreLoading(false);
+    setHistoryMoreError(null);
     setHistoryLoading(true);
     setHistoryError(null);
     setSearchQuery(value);
@@ -1297,7 +1316,7 @@ export default function RevIntell() {
   // Image turns fall back to the non-streaming endpoint, which is the only
   // path that carries attachments — never silently drop an attachment.
   const send = useCallback(async (text: string) => {
-    if (!text.trim() || turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || (findingId !== null && !findingContext)) return;
+    if (!text.trim() || turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || messagesMore || messagesPagePending.current || (findingId !== null && !findingContext)) return;
     if ((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment) return;
     const turn = ++turnRequestRef.current;
     turnPendingRef.current = true;
@@ -1319,7 +1338,6 @@ export default function RevIntell() {
     const trimmed = text.trim();
 
     inputEditedRef.current = true;
-    setLastUserMsg(trimmed);
     setInput("");
     setFindingRetryDraft(null);
     if (inputRef.current) inputRef.current.style.height = "auto";
@@ -1486,7 +1504,7 @@ export default function RevIntell() {
         setThinking(false);
       }
     }
-  }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations]);
+  }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations, messagesMore]);
 
   // ── Stop generation ───────────────────────────────────────────────────────
   const stopGeneration = useCallback(() => {
@@ -1501,81 +1519,23 @@ export default function RevIntell() {
   // Finding requests append new turns on the server. Only confirmed rejected,
   // unpersisted attempts can be recovered in place in the local thread.
   const handleRetry = useCallback(async (source?: Message) => {
-    if (turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError) return;
-    if (findingContext) {
-      const previous = source ?? [...messages].reverse().find(message => message.role === "rev");
-      if (!previous) return;
-      const index = messages.findIndex(message => message.id === previous?.id);
-      const question = messages.slice(0, index).reverse().find(message => message.role === "user")?.content;
-      if (typeof question !== "string" || !question.trim()) return;
-      setFindingRetryDraft({
-        messageId: previous.id,
-        recoverInPlace: previous?.persistence === "not-persisted" && index === messages.length - 1,
-        requiresImage: previous?.imageAssisted === true,
-        attachmentUnknown: previous?.imageAssisted === undefined,
-        persistenceUnknown: previous?.persistence !== "persisted" && previous?.persistence !== "not-persisted",
-      });
-      inputEditedRef.current = true;
-      setInput(question);
-      inputRef.current?.focus();
-      return;
-    }
-    if (!activeId) {
-      if (lastUserMsg) void send(lastUserMsg);
-      return;
-    }
-    const turn = ++turnRequestRef.current;
-    turnPendingRef.current = true;
-    const isCurrent = () => turn === turnRequestRef.current;
-    const sid = `r${Date.now()}`;
-    setMessages(prev => {
-      const next = [...prev];
-      for (let index = next.length - 1; index >= 0; index -= 1) {
-        if (next[index].role === "rev") {
-          next[index] = {
-            id: sid, role: "rev", content: "", timestamp: new Date(),
-            isStreaming: true, steps: [],
-          };
-          break;
-        }
-      }
-      return next;
+    if (turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || messagesMore) return;
+    const previous = source ?? [...messages].reverse().find(message => message.role === "rev");
+    if (!previous) return;
+    const index = messages.findIndex(message => message.id === previous?.id);
+    const question = messages.slice(0, index).reverse().find(message => message.role === "user")?.content;
+    if (typeof question !== "string" || !question.trim()) return;
+    setFindingRetryDraft({
+      messageId: previous.id,
+      recoverInPlace: previous?.persistence === "not-persisted" && index === messages.length - 1,
+      requiresImage: previous?.imageAssisted === true,
+      attachmentUnknown: previous?.imageAssisted === undefined,
+      persistenceUnknown: previous?.persistence !== "persisted" && previous?.persistence !== "not-persisted",
     });
-
-    setThinking(true);
-    try {
-      const res = await api.post<any>(`/rev/conversation/${encodeURIComponent(activeId)}/retry`, {});
-      if (!isCurrent()) return;
-      const data = (res as any)?.data ?? (res as any);
-      if (!data?.success) {
-        setMessages(prev => prev.map(message => message.id === sid ? {
-          ...message, isStreaming: false, hasError: true,
-          content: cleanError(data?.error?.code, data?.error?.message),
-          errorCode: data?.error?.code,
-        } : message));
-      } else {
-        const { content, payload } = normaliseTurn(data);
-        setMessages(prev => prev.map(message => message.id === sid ? {
-          ...message, isStreaming: false, content, payload,
-          steps: payload?.investigation?.steps ?? [],
-        } : message));
-      }
-    } catch (err) {
-      if (!isCurrent()) return;
-      const message = err instanceof ApiError
-        ? cleanError(String((err as any).status), err.message)
-        : "Rev could not regenerate this response. Try again.";
-      setMessages(prev => prev.map(entry => entry.id === sid ? {
-        ...entry, isStreaming: false, hasError: true, content: message,
-      } : entry));
-    } finally {
-      if (isCurrent()) {
-        turnPendingRef.current = false;
-        setThinking(false);
-        void loadConversations();
-      }
-    }
-  }, [activeId, convLoading, convError, convNotFound, findingContext, findingLoading, findingError, messages, lastUserMsg, send, loadConversations]);
+    inputEditedRef.current = true;
+    setInput(question);
+    inputRef.current?.focus();
+  }, [convLoading, convError, convNotFound, findingLoading, findingError, messages, messagesMore]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); }
@@ -1586,47 +1546,46 @@ export default function RevIntell() {
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px";
   };
-  const copy = (t: string) => {
-    navigator.clipboard.writeText(t);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    // For images, convert to base64 for Rev to see
-    if (f.type.startsWith("image/")) {
-      const request = conversationRequestRef.current;
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (request !== conversationRequestRef.current) return;
-        const base64 = (reader.result as string).split(",")[1];
-        setImageAttachment({ base64, mediaType: f.type, preview: reader.result as string, name: f.name });
-      };
-      reader.readAsDataURL(f);
-    } else {
-      send(`[File attached: ${f.name.slice(0, 60)}]`);
+  const copy = async (text: string) => {
+    const request = ++copyRequestRef.current;
+    if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = null;
+    setCopied(false);
+    setCopyError(null);
+    try {
+      await navigator.clipboard.writeText(text);
+      if (request !== copyRequestRef.current) return;
+      setCopied(true);
+      copyTimerRef.current = setTimeout(() => {
+        if (request !== copyRequestRef.current) return;
+        setCopied(false);
+        copyTimerRef.current = null;
+      }, 2000);
+    } catch {
+      if (request === copyRequestRef.current) setCopyError("The answer could not be copied. Select the text and copy it manually.");
     }
-    e.target.value = "";
   };
-  const handleMedia = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; if (!f) return;
-    if (f.type.startsWith("image/")) {
-      const request = conversationRequestRef.current;
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (request !== conversationRequestRef.current) return;
-        const base64 = (reader.result as string).split(",")[1];
-        setImageAttachment({ base64, mediaType: f.type, preview: reader.result as string, name: f.name });
-      };
-      reader.readAsDataURL(f);
-    } else {
-      send(`[Media: ${f.name.slice(0, 40)}]`);
+  const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setAttachmentError(null);
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      setAttachmentError("Choose a JPEG, PNG, WebP or GIF image under 5 MB. Other files and videos are not supported.");
+      return;
     }
-    e.target.value = "";
+    const request = conversationRequestRef.current;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (request !== conversationRequestRef.current) return;
+      const preview = typeof reader.result === "string" ? reader.result : "";
+      if (!preview.includes(",")) { setAttachmentError("This image could not be read. Please try again."); return; }
+      setImageAttachment({ base64: preview.split(",")[1], mediaType: file.type, preview, name: file.name });
+    };
+    reader.onerror = () => { if (request === conversationRequestRef.current) setAttachmentError("This image could not be read. Please try again."); };
+    reader.readAsDataURL(file);
   };
   const removeAttachment = () => setImageAttachment(null);
-  const handleVoice = () => alert("Voice messages coming soon.");
-  const handleCall  = () => alert("Audio call booking coming soon.");
 
   const deleteConv = async (id: string) => {
     if (deletingConvId) return;
@@ -1679,13 +1638,13 @@ export default function RevIntell() {
   const bdr  = isDark ? "#222"    : "#e8eaf0";
   const t1   = isDark ? "#f1f5f9" : "#1a1a2e";
   const t2   = isDark ? "#94a3b8" : "#64748b";
-  const t4   = isDark ? "#374151" : "#d1d5db";
+  const t4   = t2;
 
   const inputProps = {
     inputRef, value: input, onChange: resize, onKeyDown: handleKey,
-    onSend: () => send(input), onFile: handleFile, onMedia: handleMedia,
-    onVoice: handleVoice, onCall: handleCall, thinking,
-    disabled: findingLoading || Boolean(findingError),
+    onSend: () => send(input), onFile: handleFile,
+    thinking,
+    disabled: findingLoading || Boolean(findingError) || messagesMore || messagesMoreLoading,
     sendDisabled: Boolean((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment),
     onStop: stopGeneration,
     card, border: bdr, t1, t2, isDark,
@@ -1694,12 +1653,18 @@ export default function RevIntell() {
   const hasMessages = messages.length > 0;
 
   return (
-    <div className="relative flex overflow-hidden"
-      style={{ height: "calc(100vh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
+    <MotionConfig reducedMotion="user">
+    <style>{`
+      .rev-workspace :is(button,input,textarea):focus-visible, [data-rev-modal] :is(button,input):focus-visible { outline: 2px solid #8b7cff; outline-offset: 3px; }
+      @media (prefers-reduced-motion: reduce) { .rev-workspace *, [data-rev-modal], [data-rev-modal] * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+    `}</style>
+    <div className="rev-workspace relative flex overflow-hidden"
+      style={{ height: "calc(100dvh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
 
       {/* Persistent conversation rail — desktop only; mobile uses the drawer. */}
       <ConversationRail
-        className="hidden lg:flex"
+        className="rev-history-rail hidden lg:flex"
+        pagination={<LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" />}
         conversations={conversations}
         activeId={activeId}
         loading={historyLoading}
@@ -1709,8 +1674,8 @@ export default function RevIntell() {
         onQuery={changeSearch}
         onNew={newChat}
         onSelect={openConversation}
-        onRename={renameConv}
-        onDelete={(id) => setDeleteConfirmId(id)}
+        onRename={id => { dialogReturnRef.current = null; renameConv(id); }}
+        onDelete={id => { dialogReturnRef.current = null; setDeleteConfirmId(id); }}
       />
 
       <div className="flex flex-col flex-1 min-w-0 h-full">
@@ -1733,12 +1698,12 @@ export default function RevIntell() {
               transition={{ duration: 0.2 }} className="absolute inset-0 z-40"
               style={{ background: "rgba(0,0,0,0.3)", backdropFilter: "blur(2px)" }}
               onClick={() => setMenuOpen(false)} />
-            <motion.div
+            <ModalSurface onClose={() => setMenuOpen(false)} aria-label="Conversation history"
               initial={{ x: "100%", opacity: 0 }} animate={{ x: 0, opacity: 1 }}
               exit={{ x: "100%", opacity: 0 }}
               transition={{ type: "spring", stiffness: 320, damping: 32 }}
               className="absolute top-0 right-0 bottom-0 z-50 flex flex-col"
-              style={{ width: 300,
+              style={{ width: "min(300px, 100%)",
                 background: isDark ? "rgba(10,10,10,0.88)" : "rgba(255,255,255,0.9)",
                 backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)",
                 borderLeft: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)"}`,
@@ -1753,7 +1718,7 @@ export default function RevIntell() {
                 </div>
                 <button onClick={() => setMenuOpen(false)}
                   aria-label="Close conversation history"
-                  className="p-1 rounded-lg opacity-50 hover:opacity-100 transition-opacity" style={{ color: t1 }}>
+                  className="flex h-11 w-11 items-center justify-center rounded-lg" style={{ color: t1 }}>
                   <X size={16} />
                 </button>
               </div>
@@ -1766,6 +1731,10 @@ export default function RevIntell() {
                 </button>
               </div>
 
+              <label className="px-4 pb-3 text-xs" style={{ color: t2 }}>Search conversations
+                <input aria-label="Search conversations" value={searchQuery} onChange={event => changeSearch(event.target.value)}
+                  className="mt-1 w-full rounded-lg border bg-transparent p-2" style={{ borderColor: bdr, color: t1 }} />
+              </label>
               <div aria-busy={historyLoading} className="flex-1 overflow-y-auto px-3 pb-4 [scrollbar-width:none]">
                 <HistoryStatus loading={historyLoading} error={historyError} count={conversations.length}
                   query={searchQuery} onRetry={() => void loadConversations()} color={t2} />
@@ -1778,20 +1747,21 @@ export default function RevIntell() {
                       <ConvItem key={conv.id} conv={conv}
                         isActive={activeId === conv.id}
                         onClick={() => openConversation(conv.id)}
-                        onDelete={() => setDeleteConfirmId(conv.id)}
-                        onRename={() => renameConv(conv.id)}
-                        isDark={isDark} t1={t1} t4={t4} />
+                        onDelete={trigger => { dialogReturnRef.current = trigger; setDeleteConfirmId(conv.id); }}
+                        onRename={trigger => { dialogReturnRef.current = trigger; renameConv(conv.id); }}
+                        isDark={isDark} t1={t1} />
                     ))}
                   </>
                 )}
+                <LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" />
               </div>
-            </motion.div>
+            </ModalSurface>
           </>
         )}
       </AnimatePresence>
 
       {(findingId !== null || findingContext) && <section aria-label="Finding context"
-        className="mx-4 mt-4 shrink-0 rounded-xl border px-4 py-3" style={{ background: card, borderColor: bdr, color: t1 }}>
+        className="mx-4 mt-4 max-h-[28dvh] shrink-0 overflow-y-auto rounded-xl border px-4 py-3 pr-14 lg:pr-4" style={{ background: card, borderColor: bdr, color: t1 }}>
         {findingLoading && <p role="status" className="text-sm" style={{ color: t2 }}>Loading finding details…</p>}
         {findingContext && <>
           <p className="mb-1 text-xs font-semibold" style={{ color: t2 }}>Finding to investigate</p>
@@ -1804,7 +1774,8 @@ export default function RevIntell() {
           <button onClick={() => void loadFinding(findingId ?? findingContext?.id ?? "")} className="mt-2 rounded-lg border px-3 py-2 text-xs font-semibold"
             style={{ borderColor: bdr }} aria-label="Retry finding">Retry finding</button>
         </div>}
-        {findingRetryDraft && <div role="status" aria-label="Question recovery" className="mt-2 text-xs" style={{ color: t1 }}>
+      </section>}
+        {findingRetryDraft && <div role="status" aria-label="Question recovery" className="max-h-[25dvh] shrink-0 overflow-y-auto px-4 py-2 text-xs" style={{ color: t1 }}>
           <p>{findingRetryDraft.recoverInPlace
             ? "This request was rejected before it was saved. Send to retry this question."
             : findingRetryDraft.persistenceUnknown
@@ -1817,10 +1788,10 @@ export default function RevIntell() {
               onClick={() => setFindingRetryDraft(current => current ? { ...current, attachmentUnknown: false } : null)}>Continue with text only</button>
           </>}
         </div>}
-      </section>}
+      {attachmentError && <p role="alert" className="px-4 py-2 text-sm" style={{ color: isDark ? "#fca5a5" : "#b91c1c" }}>{attachmentError}</p>}
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+      <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
 
         {/* Conversation loading */}
         {convLoading && (
@@ -1834,7 +1805,7 @@ export default function RevIntell() {
 
         {/* Conversation not found */}
         {convNotFound && !convLoading && (
-          <div className="flex items-center justify-center h-full">
+          <div role="alert" className="flex items-center justify-center h-full">
             <div className="text-center">
               <p className="text-[1rem] font-semibold mb-2" style={{ color: t1 }}>Conversation not found</p>
               <p className="text-[0.85rem] mb-4" style={{ color: t2 }}>This conversation doesn't exist or you don't have access.</p>
@@ -1868,15 +1839,15 @@ export default function RevIntell() {
             </motion.div>
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }} className="text-center mb-8">
-              <h2 className="text-[1.55rem] font-bold mb-1" style={{ color: "#1F06AC" }}>
+              <h2 className="text-[1.55rem] font-bold mb-1" style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>
                 Hello, {firstName}
               </h2>
               <h3 className="text-[1.75rem] font-extrabold tracking-tight mb-3" style={{ color: t1 }}>
                 How can I help your revenue today?
               </h3>
               <p className="text-[0.88rem] max-w-md mx-auto leading-relaxed" style={{ color: t2 }}>
-                I monitor your store 24/7, detect opportunities before your competitors,
-                and tell you exactly what action to take.
+                I explain your available store data, investigate findings,
+                and suggest next steps for you to review.
               </p>
             </motion.div>
 
@@ -1888,7 +1859,7 @@ export default function RevIntell() {
                     <img src={imageAttachment.preview} alt="attachment"
                       className="h-14 w-14 rounded-xl object-cover border"
                       style={{ borderColor: bdr }} />
-                    <button onClick={removeAttachment}
+                    <button onClick={removeAttachment} aria-label="Remove attachment"
                       className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold"
                       style={{ background: "#dc2626" }}>×</button>
                   </div>
@@ -1898,7 +1869,7 @@ export default function RevIntell() {
               <InputToolbar {...inputProps} placeholder="Ask me anything about your business..." />
             </motion.div>
 
-            <div className="grid grid-cols-3 gap-3 w-full">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full">
               {STARTERS.map((s, i) => (
                 <motion.button key={s.label}
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
@@ -1918,15 +1889,18 @@ export default function RevIntell() {
 
         {/* Message thread */}
         {hasMessages && !convLoading && !convNotFound && !convError && (
-          <div className="max-w-2xl mx-auto px-5 pt-8 pb-4 lg:pt-6">
+          <div className="w-full max-w-2xl mx-auto px-4 pt-14 pb-4 lg:pt-6">
             {messages.map(msg => (
               <Bubble key={msg.id} msg={msg} onCopy={copy}
+                actionsDisabled={thinking || messagesMore || messagesMoreLoading}
                 onRetry={() => void handleRetry(msg)} onSend={send}
-                retryLabel={findingContext ? (msg.persistence === "not-persisted" && msg === messages[messages.length - 1] ? "Try again" : "Ask again") : undefined}
+                retryLabel={msg.persistence === "not-persisted" && msg === messages[messages.length - 1] ? "Try again" : "Ask again"}
                 onOpenEvidence={(messageId) => setEvidenceFor(current => (current === messageId ? null : messageId))}
                 evidenceOpen={evidenceFor === msg.id}
                 isDark={isDark} t1={t1} t2={t2} />
             ))}
+            {messagesMore && <p role="status" className="mt-3 text-xs" style={{ color: t2 }}>Showing the start of this conversation. Load the remaining messages before continuing.</p>}
+            <LoadMore available={messagesMore} loading={messagesMoreLoading} error={messagesMoreError} onLoad={() => activeId && void loadConversation(activeId, true)} label="Load more messages" />
             <div ref={bottomRef} />
           </div>
         )}
@@ -1943,14 +1917,14 @@ export default function RevIntell() {
                   <img src={imageAttachment.preview} alt="attachment"
                     className="h-14 w-14 rounded-xl object-cover border"
                     style={{ borderColor: bdr }} />
-                  <button onClick={removeAttachment}
+                  <button onClick={removeAttachment} aria-label="Remove attachment"
                     className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold"
                     style={{ background: "#dc2626" }}>×</button>
                 </div>
                 <span className="text-[0.75rem]" style={{ color: t2 }}>{imageAttachment.name.slice(0, 40)}</span>
               </div>
             )}
-            <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking || findingLoading || Boolean(findingError)} />
+            <InputToolbar {...inputProps} placeholder="Ask Rev anything..." disabled={thinking || findingLoading || Boolean(findingError) || messagesMore || messagesMoreLoading} />
             <p className="text-center text-[0.63rem] mt-2" style={{ color: t4 }}>
               Rev Intelligence · Powered by your store data · Responses grounded in evidence
             </p>
@@ -1970,11 +1944,11 @@ export default function RevIntell() {
                 className="fixed inset-0 z-[180] flex justify-end">
                 <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.35)" }}
                   onClick={() => setEvidenceFor(null)} />
-                <motion.div
+                <ModalSurface onClose={() => setEvidenceFor(null)}
                   initial={{ x: 32, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 32, opacity: 0 }}
                   transition={{ duration: 0.18 }}
                   role="dialog" aria-modal="true" aria-label="Investigation evidence"
-                  className="relative h-full w-full max-w-[460px] shadow-2xl"
+                  className="relative h-full w-full max-w-[460px] shadow-2xl overflow-hidden"
                   style={{ background: card, borderLeft: `1px solid ${bdr}` }}>
                   <EvidencePanel
                     evidence={message.payload.evidence}
@@ -1987,7 +1961,7 @@ export default function RevIntell() {
                     asSheet
                     onClose={() => setEvidenceFor(null)}
                   />
-                </motion.div>
+                </ModalSurface>
               </motion.div>
             ) : null;
           })()}
@@ -2003,12 +1977,12 @@ export default function RevIntell() {
               className="fixed inset-0 z-[200] flex items-center justify-center p-4">
               <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.5)" }}
                 onClick={() => { if (renameStatus === "idle") setRenameModalId(null); }} />
-              <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              <ModalSurface returnFocusTo={dialogReturnRef.current} onClose={() => { if (renameStatus === "idle") setRenameModalId(null); }} initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 transition={{ duration: 0.15 }}
                 role="dialog" aria-modal="true" aria-labelledby="rev-rename-title"
-                className="relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-2xl"
+                className="relative z-10 w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-2xl p-6 shadow-2xl"
                 style={{ background: card, border: `1px solid ${bdr}` }}>
                 <p id="rev-rename-title" className="text-[0.9rem] font-bold mb-4" style={{ color: t1 }}>Rename conversation</p>
                 <form onSubmit={e => { e.preventDefault(); void submitRename(); }}>
@@ -2023,18 +1997,18 @@ export default function RevIntell() {
                   <div className="flex gap-2 justify-end">
                     <button type="button" disabled={renameStatus !== "idle"}
                       onClick={() => setRenameModalId(null)}
-                      className="px-4 py-2 rounded-xl text-[0.82rem] font-medium disabled:opacity-50"
+                      className="min-h-11 px-4 py-2 rounded-xl text-[0.82rem] font-medium disabled:opacity-50"
                       style={{ color: t2, background: isDark ? "#1f1f1f" : "#f3f4f6", fontFamily: "inherit" }}>
                       Cancel
                     </button>
                     <button type="submit" disabled={!renameValue.trim() || renameStatus !== "idle"}
-                      className="min-w-[100px] px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white flex items-center justify-center gap-2 disabled:cursor-wait"
+                      className="min-w-[100px] min-h-11 px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white flex items-center justify-center gap-2 disabled:cursor-wait"
                       style={{ background: renameStatus === "idle" ? "#1F06AC" : renameStatus === "saved" ? "#16a34a" : "#9ca3af", fontFamily: "inherit" }}>
                       {renameStatus === "saving" ? <><RefreshCw size={14} className="animate-spin" />Saving...</> : renameStatus === "saved" ? "Saved ✓" : "Save"}
                     </button>
                   </div>
                 </form>
-              </motion.div>
+              </ModalSurface>
             </motion.div>
           )}
         </AnimatePresence>,
@@ -2050,51 +2024,50 @@ export default function RevIntell() {
               role="presentation">
               <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.5)" }}
                 onClick={() => { if (!deletingConvId) { setDeleteConfirmId(null); setDeleteError(null); } }} />
-              <motion.div initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              <ModalSurface hasDescription returnFocusTo={dialogReturnRef.current} onClose={() => { if (!deletingConvId) setDeleteConfirmId(null); }} initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 transition={{ duration: 0.15 }}
                 role="alertdialog" aria-modal="true" aria-labelledby="rev-delete-title"
-                aria-describedby="rev-delete-description"
-                className="relative z-10 w-full max-w-sm rounded-2xl p-6 shadow-2xl"
+                className="relative z-10 w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-2xl p-6 shadow-2xl"
                 style={{ background: card, border: `1px solid ${bdr}` }}>
                 <p id="rev-delete-title" className="text-[0.9rem] font-bold mb-2" style={{ color: t1 }}>Delete conversation?</p>
-                <p id="rev-delete-description" className="text-[0.82rem] mb-6" style={{ color: t2 }}>
+                <DialogPrimitive.Description className="text-[0.82rem] mb-6" style={{ color: t2 }}>
                   This conversation will be permanently deleted and cannot be recovered.
-                </p>
+                </DialogPrimitive.Description>
                 {deleteError && <p role="alert" className="text-[0.78rem] mb-3 text-red-500">{deleteError}</p>}
                 <div className="flex gap-2 justify-end">
                   <button type="button" disabled={!!deletingConvId}
                     onClick={() => { setDeleteConfirmId(null); setDeleteError(null); }}
-                    className="px-4 py-2 rounded-xl text-[0.82rem] font-medium disabled:opacity-50"
+                    className="min-h-11 px-4 py-2 rounded-xl text-[0.82rem] font-medium disabled:opacity-50"
                     style={{ color: t2, background: isDark ? "#1f1f1f" : "#f3f4f6", fontFamily: "inherit" }}>
                     Cancel
                   </button>
                   <button type="button" disabled={!!deletingConvId}
                     onClick={() => deleteConv(deleteConfirmId)}
-                    className="min-w-[98px] px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white flex items-center justify-center gap-2 disabled:cursor-wait"
+                    className="min-w-[98px] min-h-11 px-4 py-2 rounded-xl text-[0.82rem] font-bold text-white flex items-center justify-center gap-2 disabled:cursor-wait"
                     style={{ background: deletingConvId ? "#9ca3af" : "#dc2626", fontFamily: "inherit" }}>
                     {deletingConvId ? <><RefreshCw size={14} className="animate-spin" />Deleting...</> : "Delete"}
                   </button>
                 </div>
-              </motion.div>
+              </ModalSurface>
             </motion.div>
           )}
         </AnimatePresence>,
         document.body
       )}
 
+      {copyError && <p role="alert" className="fixed bottom-6 left-4 right-4 z-50 rounded-xl border p-3 text-sm" style={{ background: card, color: t1 }}>{copyError}</p>}
       {/* Copy toast */}
-      <AnimatePresence>
         {copied && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full text-[0.8rem] shadow-lg"
+            role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full text-[0.8rem] shadow-lg"
             style={{ background: card, border: `1px solid ${bdr}`, color: t1 }}>
             <Copy size={12} />Copied
           </motion.div>
         )}
-      </AnimatePresence>
     </div>
+    </MotionConfig>
   );
 }

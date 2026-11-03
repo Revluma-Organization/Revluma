@@ -86,11 +86,11 @@ export function RevAnswerView({
   ];
 
   return (
-    <article className="flex flex-col gap-3">
+    <article className="flex min-w-0 flex-col gap-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center gap-2">
         <span style={{
           fontSize: "0.62rem", fontWeight: 750, letterSpacing: "0.04em",
-          textTransform: "uppercase", color: pill.fg, background: pill.bg,
+          textTransform: "uppercase", color: dark && state === "streaming" ? "#b4a8ff" : pill.fg, background: pill.bg,
           padding: "3px 8px", borderRadius: 999,
         }}>
           {pill.label}
@@ -189,9 +189,10 @@ export function RevAnswerView({
               key={followUp}
               type="button"
               onClick={() => onFollowUp?.(followUp)}
-              className="inline-flex items-center gap-1"
+              disabled={!onFollowUp}
+              className="inline-flex min-h-11 max-w-full items-center gap-1 text-left disabled:opacity-50"
               style={{
-                fontSize: "0.74rem", color: "#1F06AC",
+                fontSize: "0.74rem", color: dark ? "#b4a8ff" : "#1F06AC",
                 background: dark ? "rgba(31,6,172,0.18)" : "rgba(31,6,172,0.06)",
                 border: "1px solid rgba(31,6,172,0.16)",
                 borderRadius: 999, padding: "5px 11px", cursor: "pointer",
@@ -209,11 +210,12 @@ export function RevAnswerView({
           <button
             type="button"
             onClick={onOpenEvidence}
-            disabled={!hasEvidence}
-            className="inline-flex items-center gap-1.5"
+            disabled={!hasEvidence || !onOpenEvidence}
+            aria-expanded={evidenceOpen}
+            className="inline-flex min-h-11 items-center gap-1.5"
             style={{
               fontSize: "0.74rem", fontWeight: 600,
-              color: evidenceOpen ? "#1F06AC" : muted,
+              color: evidenceOpen ? (dark ? "#b4a8ff" : "#1F06AC") : muted,
               background: "transparent", border: "none",
               cursor: hasEvidence ? "pointer" : "not-allowed", padding: 0,
               opacity: hasEvidence ? 1 : 0.5,
