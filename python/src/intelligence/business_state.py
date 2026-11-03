@@ -1482,13 +1482,17 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     except Exception as exc:
         # Bounded, type first: this string ends up in a database column read by
         # operators, so it must never carry a traceback or an unbounded message.
-        persistence_cause = f"{type(exc).__name__}: {str(exc)[:280]}"
-        # Appended so the split-backend question is answered by production itself
-        # rather than by reading code. Bounded: this lands in a database column.
+        # Diagnostics go FIRST. The caller bounds this string to 280 characters
+        # before it reaches automation_job_state.last_error, and putting the
+        # measurements at the end meant production truncated them away: the first
+        # run of this diagnostic recorded length 311 ending mid-word at
+        # "in_tx_befo", so scope_opened survived and the two backend pids - the
+        # only decisive values - were cut off.
         persistence_cause = (
-            f"{persistence_cause[:200]} | diag scope_opened={diag_scope_opened} "
+            f"diag scope_opened={diag_scope_opened} "
             f"in_tx_before={diag_in_tx_before} pid_before={diag_pid_before} "
-            f"pid_after_insert={diag_pid_after_insert}"
+            f"pid_after_insert={diag_pid_after_insert} | "
+            f"{type(exc).__name__}: {str(exc)[:200]}"
         )
         persistence_exc = exc
         logger.exception(
