@@ -1278,6 +1278,13 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     end_read_scope(db, read_scope)
 
     persistence_failed = False
+    # The underlying driver error, kept because the exception raised below is a
+    # deliberate wrapper: the serving layer maps it to a retryable 503 and must
+    # not leak a raw database message to a caller. Discarding the cause meant the
+    # only record of *why* persistence failed was a single log line, which is
+    # invisible to anyone without access to the application logs.
+    persistence_cause: str | None = None
+    persistence_exc: BaseException | None = None
     try:
         # Serialize persistence per organization *at the database level*.
         #
@@ -1435,9 +1442,17 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         _rollback_quietly(db)
         raise
     except Exception as exc:
+        # Bounded, type first: this string ends up in a database column read by
+        # operators, so it must never carry a traceback or an unbounded message.
+        persistence_cause = f"{type(exc).__name__}: {str(exc)[:280]}"
+        persistence_exc = exc
         logger.exception(
             "business_state_write_failed",
-            extra={"org_id": organization_id, "error_type": type(exc).__name__},
+            extra={
+                "org_id": organization_id,
+                "error_type": type(exc).__name__,
+                "cause": persistence_cause,
+            },
         )
         _rollback_quietly(db)
         warnings.append("Failed to persist business state to database.")
@@ -1448,9 +1463,15 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         # Never report the old snapshot as if this rebuild succeeded. The
         # serving layer must return a retryable failure so scheduler telemetry
         # and operators see the persistence failure accurately.
+        #
+        # The cause travels with the wrapper so the build's own report - written
+        # to automation_job_state when the lease is released - names the real
+        # failure rather than only the fact that there was one. `from` preserves
+        # the chain for anyone who does have the traceback.
         raise BusinessStatePersistenceError(
-            "Business-state snapshot persistence failed."
-        )
+            "Business-state snapshot persistence failed"
+            + (f" ({persistence_cause})" if persistence_cause else ".")
+        ) from persistence_exc
 
     return BusinessState(
         id=state_id,
