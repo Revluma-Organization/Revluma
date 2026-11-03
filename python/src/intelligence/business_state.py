@@ -122,6 +122,13 @@ BUILD_LOCK_TABLE = "automation_job_state"
 DEFAULT_BUILD_LOCK_TTL_SECONDS = 600
 
 
+#: How long the persistence phase will wait for another build of the same
+#: organization to finish before giving up. Bounded so a stuck peer produces a
+#: reported failure instead of an open-ended hang that the caller can only see
+#: as a timeout.
+PERSIST_LOCK_TIMEOUT_SECONDS = 10
+
+
 def _build_lock_ttl_seconds() -> int:
     """Read the lease TTL, falling back on garbage rather than failing closed."""
     raw = (os.environ.get("BUSINESS_STATE_LOCK_TTL_SECONDS") or "").strip()
@@ -747,13 +754,14 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     # full build therefore consumed the entire 12-connection pool before it
     # reached persistence. See begin_read_scope for the production evidence.
     #
-    # This is closed again before persistence so the advisory lock, the commit
-    # and the existing rollback paths keep exactly their current semantics.
+    # This is closed again before persistence so the persistence transaction,
+    # its advisory lock and the existing rollback paths keep exactly their
+    # current semantics.
     read_scope = begin_read_scope(db)
 
     # Read the current snapshot before the expensive source queries. The
-    # advisory lock is acquired only for the final persistence transaction so
-    # optional-source rollbacks cannot release it prematurely.
+    # The persistence advisory lock is taken only for the final persistence
+    # transaction, so optional-source rollbacks cannot release it prematurely.
     previous_state = load_current_business_state(organization_id, db)
 
     logger.info("business_state_build_start", extra={
@@ -1227,13 +1235,38 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     state_metadata["warnings"] = list(warnings)
 
     # Every source read is done. Release the single connection the read phase
-    # held so persistence starts from the same transaction semantics it has
-    # always had: its own transaction, its own advisory lock, its own commit.
+    # held so persistence runs in its own transaction, takes its own advisory
+    # lock, and commits on its own terms.
     end_read_scope(db, read_scope)
 
     persistence_failed = False
     try:
-        # The outer Redis lock serializes this organization across all instances.
+        # Serialize persistence per organization *at the database level*.
+        #
+        # Comments here have always claimed an advisory lock guards this
+        # transaction, but no such call existed - the only coordination was the
+        # application-level lease. Production proved that is not sufficient: at
+        # 03:37 UTC on 2026-11-03 two builds for one organization reached this
+        # phase one second apart. One ran the UPDATE below and then sat idle in
+        # an open transaction; the other blocked behind it on a transactionid
+        # lock for 64+ seconds. Neither could finish, the caller timed out, and
+        # no snapshot was written.
+        #
+        # A transaction-scoped advisory lock is the right primitive here: it is
+        # released automatically on commit *and* on rollback, so unlike a
+        # session-scoped pg_advisory_lock it cannot leak onto a pooled connection
+        # and be inherited by an unrelated borrower. lock_timeout is set
+        # transaction-locally so waiting for a stuck peer fails loudly instead of
+        # hanging until the caller's HTTP timeout.
+        db.execute(
+            text("SELECT set_config('lock_timeout', :lock_timeout, true)"),
+            {"lock_timeout": f"{PERSIST_LOCK_TIMEOUT_SECONDS}s"},
+        )
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)"),
+            {"lock_key": _build_lock_job_name(organization_id)},
+        )
+
         # Step 1: mark existing current state as historical
         db.execute(
             text("""
