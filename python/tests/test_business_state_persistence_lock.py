@@ -105,3 +105,61 @@ def test_the_lease_and_the_persistence_lock_share_one_key_space():
     assert business_state._build_lock_job_name(org) == f"business-state-build:{org}"
     source = inspect.getsource(_build_business_state_unlocked)
     assert "_build_lock_job_name(organization_id)" in source
+
+
+# ---------------------------------------------------------------------------
+# The persistence failure must name its underlying cause.
+#
+# Production proved why: the lease row reported
+# "BusinessStatePersistenceError: Business-state snapshot persistence failed."
+# - true, but useless. The driver error that caused it was logged and discarded,
+# so the only record of *why* was a log line nobody could read.
+# ---------------------------------------------------------------------------
+
+
+def test_the_persistence_failure_carries_its_underlying_cause(build_source):
+    cause_at = build_source.index("persistence_cause = f\"{type(exc).__name__}")
+    flag_at = build_source.index("persistence_failed = True")
+    raise_at = build_source.index("raise BusinessStatePersistenceError")
+
+    # Captured in the handler, before the flag that triggers the raise.
+    assert cause_at < flag_at < raise_at
+
+
+def test_the_cause_is_interpolated_into_the_raised_message(build_source):
+    idx = build_source.index("raise BusinessStatePersistenceError")
+    statement = build_source[idx:idx + 320]
+    assert "persistence_cause" in statement, "the message must name the real failure"
+
+
+def test_the_exception_chain_is_preserved(build_source):
+    idx = build_source.index("raise BusinessStatePersistenceError")
+    statement = build_source[idx:idx + 320]
+    # `from` keeps __cause__ so a traceback shows the driver error, not just the
+    # wrapper. Without it the original exception is lost entirely.
+    assert "from persistence_exc" in statement
+
+
+def test_the_cause_is_bounded_before_it_reaches_a_database_column(build_source):
+    idx = build_source.index("persistence_cause = f\"{type(exc).__name__}")
+    statement = build_source[idx:idx + 160]
+    # Stored in automation_job_state.last_error and read by operators.
+    assert "[:280]" in statement or "[:300]" in statement
+
+
+def test_the_cause_is_recorded_even_when_the_caller_swallows_the_exception():
+    """The report is written in the build's finally, not by the caller.
+
+    orchestrator.py:976 wraps this build in `except Exception: logger.error(...)`
+    and swallows it. Reporting from the caller would therefore never happen for
+    the path that matters most.
+    """
+    import inspect as _inspect
+
+    from src.intelligence.business_state import build_business_state_with_status
+
+    source = _inspect.getsource(build_business_state_with_status)
+    assert "finally:" in source
+    finally_at = source.index("finally:")
+    assert "_release_business_state_lock" in source[finally_at:]
+    assert "error=error_text" in source[finally_at:]
