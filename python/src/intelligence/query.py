@@ -128,6 +128,78 @@ def read_row(db: Any, sql: str, params: dict | None = None) -> Any:
             _rollback(db)
 
 
+def begin_read_scope(db: Any) -> Any:
+    """Begin one transaction so a *group* of reads shares a single connection.
+
+    ``safe_query`` and ``read_row`` deliberately end their own transaction when
+    no outer transaction exists, which returns the connection to the pool after
+    every statement. That is correct for a lone read on the investigation hot
+    path, and it is wrong for a multi-stage job.
+
+    Behind a transaction-pooling proxy each of those short transactions is pinned
+    to a *different* server backend, and the backend stays ``idle in transaction``
+    waiting on ``ClientRead`` until it is reset. Production evidence on
+    2026-11-03 showed a single Business State build occupying twelve server
+    backends at once - one per read stage, transactions opened roughly one second
+    apart, each holding exactly one statement:
+
+        SELECT id, last_synced_at FROM stores ...
+        SELECT to_regclass('public.business_state_baselines') ...
+        SELECT COUNT(*) FROM events ...
+        ...
+        UPDATE business_states SET is_current = FALSE ...
+
+    Twelve is the Python pool ceiling (pool_size 8 + max_overflow 4), so the
+    build exhausted its own pool before it could persist, and surfaced as
+    ``QueuePool limit of size 8 overflow 4 reached, timeout 30.00``.
+
+    Opening one outer transaction makes ``_in_transaction`` true for every read
+    inside the scope, so the helpers take their existing savepoint path instead:
+    a failing stage is still isolated, but the whole group shares one connection.
+
+    Returns a transaction handle to pass to :func:`end_read_scope`, or ``None``
+    when the caller already owns a transaction or the session cannot begin one.
+    A ``None`` return is not an error - it means "nothing to manage".
+    """
+    if _in_transaction(db):
+        return None
+
+    begin = getattr(db, "begin", None)
+    if not callable(begin):
+        return None
+
+    try:
+        return begin()
+    except Exception:
+        # Falling back to today's per-read behaviour is always safe; failing the
+        # caller's job over an optimisation is not.
+        logger.warning("rev_read_scope_begin_failed")
+        return None
+
+
+def end_read_scope(db: Any, scope: Any) -> bool:
+    """Release a scope opened by :func:`begin_read_scope`.
+
+    Reads need no commit, so the scope is rolled back: that releases the single
+    connection it pinned and guarantees no write is left behind for a later
+    transaction to inherit. Always safe to call, including with ``None``.
+    """
+    if scope is None:
+        return False
+
+    try:
+        rollback = getattr(scope, "rollback", None)
+        if callable(rollback):
+            rollback()
+        else:
+            _rollback(db)
+        return True
+    except Exception:
+        logger.warning("rev_read_scope_release_failed")
+        _rollback(db)
+        return False
+
+
 def release_read_transaction(db: Any) -> bool:
     """End any open read transaction so the connection returns to the pool.
 
