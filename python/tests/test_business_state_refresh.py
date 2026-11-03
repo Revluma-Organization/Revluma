@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import pytest
 from unittest.mock import MagicMock
 
 from src.intelligence.business_state import (
@@ -254,42 +255,185 @@ def test_daily_revenue_sql_excludes_cancelled_orders():
         assert status in DAILY_REVENUE_SQL
 
 
-def test_redis_business_state_lock_is_organization_scoped_and_expires(monkeypatch):
+class FakeLockDB:
+    """Minimal session double that records the lock SQL and its lifecycle."""
+
+    #: Sentinal: fetchone() echoes the token this worker actually submitted,
+    #: which is what the real RETURNING clause hands back when the claim wins.
+    ECHO_TOKEN = "__echo_token__"
+
+    def __init__(self, returning=None, fail=False):
+        self.statements = []
+        self.commits = 0
+        self.rollbacks = 0
+        self._returning = returning
+        self._fail = fail
+        self._last_params = {}
+
+    def execute(self, statement, params=None):
+        self.statements.append((str(statement), params or {}))
+        self._last_params = params or {}
+        if self._fail:
+            raise RuntimeError("database unavailable")
+        return self
+
+    def fetchone(self):
+        if self._returning == self.ECHO_TOKEN:
+            return (self._last_params.get("token"),)
+        return self._returning
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+
+def test_postgres_build_lock_is_organization_scoped_and_committed():
     from src.intelligence import business_state
 
-    client = MagicMock()
-    client.set.return_value = True
-    monkeypatch.setattr(business_state.settings, "REDIS_URL", "redis://localhost:6379/0")
-    monkeypatch.setattr(business_state.redis, "from_url", lambda *args, **kwargs: client)
-
-    lock = _acquire_business_state_lock("org-123")
+    db = FakeLockDB(returning=FakeLockDB.ECHO_TOKEN)
+    lock = _acquire_business_state_lock("org-123", db)
 
     assert lock is not None
-    assert lock[1] == "revluma:business-state:rebuild:org-123"
-    assert lock[2]
-    client.set.assert_called_once_with(lock[1], lock[2], nx=True, ex=600)
+    job_name, token = lock
+    # Namespaced so it can never collide with a scheduler job row.
+    assert job_name == "business-state-build:org-123"
+    assert token
+    assert db.commits == 1, "the claim must be committed so other instances see it"
+
+    sql, params = db.statements[0]
+    assert "INSERT INTO automation_job_state" in sql
+    assert "ON CONFLICT (job_name) DO UPDATE" in sql
+    assert params["job_name"] == job_name
+    assert params["token"] == token
+    # The returned token must be ours, proving this worker won the claim.
+    assert params["token"] == token
 
 
-def test_redis_business_state_lock_returns_none_when_already_owned(monkeypatch):
+def test_postgres_build_lock_lease_expires_so_a_killed_process_self_heals():
     from src.intelligence import business_state
 
-    client = MagicMock()
-    client.set.return_value = None
-    monkeypatch.setattr(business_state.settings, "REDIS_URL", "redis://localhost:6379/0")
-    monkeypatch.setattr(business_state.redis, "from_url", lambda *args, **kwargs: client)
+    db = FakeLockDB(returning=FakeLockDB.ECHO_TOKEN)
+    _acquire_business_state_lock("org-123", db)
 
-    assert _acquire_business_state_lock("org-456") is None
-    client.close.assert_called_once()
+    sql, params = db.statements[0]
+    # A lease left behind by a killed process must be stealable after its TTL,
+    # which is the property the previous Redis lease lacked in production.
+    assert "make_interval(secs => :ttl)" in sql
+    assert "last_started_at" in sql
+    assert params["ttl"] == business_state.DEFAULT_BUILD_LOCK_TTL_SECONDS
+    assert "IS DISTINCT FROM 'running'" in sql
 
 
-def test_redis_business_state_lock_release_is_token_owned(monkeypatch):
+def test_postgres_build_lock_returns_none_when_already_owned():
+    db = FakeLockDB(returning=None)
+
+    assert _acquire_business_state_lock("org-456", db) is None
+    assert db.commits == 1
+
+
+def test_postgres_build_lock_fails_closed_when_the_claim_errors():
+    from src.intelligence.business_state import BusinessStateLockUnavailable
+
+    db = FakeLockDB(fail=True)
+
+    # Uncoordinated rebuilds are worse than no rebuild: fail closed.
+    with pytest.raises(BusinessStateLockUnavailable):
+        _acquire_business_state_lock("org-789", db)
+
+    assert db.rollbacks == 1
+
+
+def test_postgres_build_lock_release_is_token_owned():
+    db = FakeLockDB()
+
+    _release_business_state_lock(("business-state-build:org-123", "token-123"), db)
+
+    sql, params = db.statements[0]
+    assert "UPDATE automation_job_state" in sql
+    # Token-matched: a worker whose lease expired and was re-claimed must never
+    # release the new holder's lease.
+    assert "last_result ->> 'lock_token' = :token" in sql
+    assert params["job_name"] == "business-state-build:org-123"
+    assert params["token"] == "token-123"
+    assert db.commits == 1
+    # The token must be cleared so the row does not look claimed forever.
+    assert "- 'lock_token'" in sql
+
+
+def test_postgres_build_lock_release_clears_the_token_and_marks_idle():
+    db = FakeLockDB()
+
+    _release_business_state_lock(("business-state-build:org-1", "tok"), db)
+
+    sql, _ = db.statements[0]
+    assert "status = 'idle'" in sql
+    assert "last_completed_at = now()" in sql
+
+
+def test_postgres_build_lock_release_tolerates_none_and_bad_handles():
+    db = FakeLockDB()
+
+    _release_business_state_lock(None, db)
+    assert db.statements == []
+
+    # A malformed handle must not raise inside the build's finally block.
+    _release_business_state_lock("not-a-tuple", db)
+    assert db.statements == []
+
+
+def test_postgres_build_lock_release_swallows_failures():
+    db = FakeLockDB(fail=True)
+
+    # The lease expires on its own TTL; failing the build over cleanup is worse.
+    _release_business_state_lock(("business-state-build:org-1", "tok"), db)
+    assert db.rollbacks == 1
+
+
+def test_build_lock_ttl_falls_back_on_garbage(monkeypatch):
     from src.intelligence import business_state
 
-    client = MagicMock()
-    monkeypatch.setattr(business_state.redis, "from_url", lambda *args, **kwargs: client)
+    default = business_state.DEFAULT_BUILD_LOCK_TTL_SECONDS
 
-    _release_business_state_lock((client, "lock:key", "token-123"))
+    for raw in ["", "   ", "not-a-number", "12.5"]:
+        monkeypatch.setenv("BUSINESS_STATE_LOCK_TTL_SECONDS", raw)
+        assert business_state._build_lock_ttl_seconds() == default, raw
 
-    client.eval.assert_called_once()
-    assert client.eval.call_args.args[1:] == (1, "lock:key", "token-123")
-    client.close.assert_called_once()
+    # A lease shorter than a build would let two builds overlap.
+    monkeypatch.setenv("BUSINESS_STATE_LOCK_TTL_SECONDS", "5")
+    assert business_state._build_lock_ttl_seconds() == default
+
+    monkeypatch.setenv("BUSINESS_STATE_LOCK_TTL_SECONDS", "120")
+    assert business_state._build_lock_ttl_seconds() == 120
+
+    monkeypatch.delenv("BUSINESS_STATE_LOCK_TTL_SECONDS", raising=False)
+    assert business_state._build_lock_ttl_seconds() == default
+
+
+def test_business_state_module_has_no_redis_dependency():
+    """The build lock was the module's only Redis use.
+
+    Keeping Redis out of this module matters: the previous lease required a Lua
+    EVAL that the managed Redis in use does not support, so leases were never
+    released and rebuilds stayed blocked.
+    """
+    import inspect
+
+    from src.intelligence import business_state
+
+    source = inspect.getsource(business_state)
+    assert "import redis" not in source
+    assert "redis.from_url" not in source
+    assert ".eval(" not in source
+
+
+def test_a_claim_that_returns_someone_elses_token_is_not_treated_as_ours():
+    """The RETURNING token must match, or this worker did not win the claim.
+
+    Without that check a worker could believe it holds a lease that another
+    builder actually owns, and both would write snapshots concurrently.
+    """
+    db = FakeLockDB(returning=("some-other-workers-token",))
+
+    assert _acquire_business_state_lock("org-123", db) is None

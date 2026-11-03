@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import {
-  ArrowRight, Check, Copy, Database, RefreshCw, ShieldCheck, TriangleAlert,
+  ArrowUpRight, Check, Copy, Database, RefreshCw, TriangleAlert,
 } from "lucide-react";
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
@@ -11,7 +11,7 @@ interface Props {
   payload: RevAnswerPayload;
   streaming?: boolean;
   evidenceOpen?: boolean;
-  onOpenEvidence?: () => void;
+  onOpenEvidence?: (evidenceId?: string) => void;
   onFollowUp?: (text: string) => void;
   onRetry?: () => void;
   onCopy?: () => void;
@@ -131,6 +131,31 @@ export function RevAnswerView({
         </section>)}
       </div>
 
+      {citedEvidenceIds.length > 0 && !streaming && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Evidence cited in this answer">
+          <span style={{ fontSize: "0.68rem", color: muted, fontWeight: 650 }}>Sources:</span>
+          {citedEvidenceIds.map((id) => {
+            const item = evidenceById.get(id)!;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => onOpenEvidence?.(id)}
+                className="inline-flex items-center"
+                style={{
+                  fontSize: "0.7rem", color: dark ? "#A5B4FC" : "#1F06AC", background: "transparent",
+                  border: "none", padding: 0, cursor: "pointer",
+                  textDecoration: "underline", textUnderlineOffset: 2,
+                }}
+                aria-label={`Open evidence: ${item.label}`}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {partialSpecialists.length > 0 && (
         <div style={{
           display: "flex", gap: 8, alignItems: "flex-start",
@@ -199,7 +224,7 @@ export function RevAnswerView({
               }}
             >
               {followUp}
-              <ArrowRight size={11} />
+              <ArrowUpRight size={13} strokeWidth={1.8} aria-hidden="true" />
             </button>
           ))}
         </div>

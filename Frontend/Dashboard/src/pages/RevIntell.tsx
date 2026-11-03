@@ -33,6 +33,11 @@ import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
 import { parseVerifiedComparison } from "@/lib/revComparison";
+import {
+  UNKNOWN_STORE, buildStarters, hasWebhookGap, isSyncIncomplete, isSyncStale,
+  storeLabel, type StoreContext, type StoreListEnvelope, type StoreListResponse,
+  type StoreSummary,
+} from "@/lib/revStoreContext";
 import RevAnswerView from "@/components/rev/RevAnswerView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import EvidencePanel from "@/components/rev/EvidencePanel";
@@ -158,17 +163,6 @@ function cleanError(code?: string, _raw?: string): string {
     default:                          return "Rev couldn't process this right now. Try again in a moment.";
   }
 }
-
-// ── Starters ──────────────────────────────────────────────────────────────────
-
-const STARTERS = [
-  { icon: TrendingUp,   label: "Revenue",      sub: "What happened to my revenue this week?",       color: "#1F06AC" },
-  { icon: ShoppingCart, label: "Cart Recovery", sub: "Which carts should I prioritise recovering?",  color: "#059669" },
-  { icon: Users,        label: "Churn Risk",   sub: "Which customers are about to leave?",          color: "#d97706" },
-  { icon: BarChart2,    label: "Briefing",     sub: "What do I need to know today?",                color: "#7c3aed" },
-  { icon: Zap,          label: "Trends",       sub: "What's moving in my category right now?",      color: "#db2777" },
-  { icon: RefreshCw,    label: "Win-back",     sub: "Draft a sequence for inactive customers.",     color: "#0891b2" },
-];
 
 // ── Orb components ────────────────────────────────────────────────────────────
 
@@ -628,7 +622,7 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
       className="flex gap-3 mb-7 group">
       <OrbAvatar />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-1">
           <span className="text-[0.73rem] font-bold" style={{ color: t1 }}>Rev Intelligence</span>
             <span className="text-[0.65rem]" style={{ color: t2 }}>
             {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -859,33 +853,24 @@ function ConversationRail({
           <p style={{ margin: 0, fontSize: "0.62rem", color: "#7C8494" }}>Read-only workspace</p>
         </div>
       </div>
-
-      <div className="px-3 pb-2">
+      <div className="px-4 pt-4 pb-3">
         <button onClick={onNew}
-          className="w-full flex items-center justify-center gap-2 rounded-xl text-[0.8rem] font-bold text-white transition-opacity hover:opacity-90"
-          style={{ background: "#1F06AC", padding: "9px 12px" }}>
-          <Plus size={15} />New conversation
+          className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[0.84rem] font-bold text-white transition-opacity hover:opacity-90"
+          style={{ background: "linear-gradient(135deg,#1F06AC,#17057F)", boxShadow: "0 4px 14px rgba(31,6,172,0.2)" }}>
+          <Plus size={16} />New conversation
         </button>
       </div>
-
-      <div className="px-3 pb-2">
-        <div className="flex items-center gap-2 rounded-lg px-2.5"
-          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
-          <Search size={13} color="#7C8494" />
-          <input
-            value={query}
-            onChange={(event) => onQuery(event.target.value)}
-            placeholder="Search conversations"
-            aria-label="Search conversations"
-            className="w-full bg-transparent outline-none text-[0.75rem]"
-            style={{ color: "#E7EAF3", padding: "7px 0" }}
-          />
-          {query && (
-            <button onClick={() => onQuery("")} aria-label="Clear search"
-              style={{ background: "transparent", border: "none", color: "#7C8494", cursor: "pointer", padding: 2 }}>
-              <X size={12} />
-            </button>
-          )}
+      <div className="px-4 pb-3">
+        <div className="flex items-center gap-2 rounded-xl px-3"
+          style={{ background: isDark ? "#1b1b23" : "#f5f6fa", border: `1px solid ${border}` }}>
+          <Search size={15} color={t2} />
+          <input value={query} onChange={event => onQuery(event.target.value)}
+            placeholder="Search conversations" aria-label="Search conversations"
+            className="w-full min-w-0 bg-transparent py-2.5 text-[0.78rem] outline-none" style={{ color: t1 }} />
+          {query && <button onClick={() => onQuery("")} aria-label="Clear search"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ color: t2 }}>
+            <X size={14} />
+          </button>}
         </div>
       </div>
 
@@ -926,11 +911,9 @@ function ConversationRail({
         })}
         {pagination}
       </div>
-
-      <div className="px-4 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-        <p style={{ margin: 0, fontSize: "0.62rem", color: "#6B7280", lineHeight: 1.5 }}>
-          Rev observes and explains your store. It cannot change prices, orders, discounts,
-          themes or settings, and it never sends campaigns.
+      <div className="px-5 py-3" style={{ borderTop: `1px solid ${border}` }}>
+        <p className="m-0 text-[0.66rem] leading-relaxed" style={{ color: t2 }}>
+          Rev observes and explains your store. It cannot change prices, orders, discounts, themes or settings, and it never sends campaigns.
         </p>
       </div>
     </aside>
@@ -995,7 +978,9 @@ export default function RevIntell() {
   const [deletingConvId, setDeletingConvId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [evidenceFor, setEvidenceFor] = useState<string | null>(null);
+  const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [storeContext, setStoreContext] = useState<StoreContext>(UNKNOWN_STORE);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef  = useRef<AbortController | null>(null);
@@ -1048,6 +1033,48 @@ export default function RevIntell() {
   useEffect(() => {
     if (!messagesPagePending.current) bottomRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
   }, [messages, thinking, reducedMotion]);
+
+  // ── Load store context ────────────────────────────────────────────────────
+  // Grounds the welcome suggestions and the data-health states in the
+  // merchant's real connection. Failure is non-fatal: Rev still works, the
+  // suggestions just fall back to the un-connected wording rather than
+  // inventing a store that may not exist.
+  const loadStoreContext = useCallback(async () => {
+    try {
+      const res = await api.get<StoreListResponse>("/store");
+      const payload = res?.data as StoreListEnvelope | undefined;
+      const stores = payload?.data?.stores ?? payload?.stores ?? [];
+      if (!Array.isArray(stores) || stores.length === 0) {
+        setStoreContext({ ...UNKNOWN_STORE, loaded: true });
+        return;
+      }
+      // Prefer a connected store, then the most recently updated one.
+      const rank = (store: StoreSummary) =>
+        (store?.connection_status === "connected" ? 2 : 0) +
+        (store?.sync_status === "complete" ? 1 : 0);
+      const chosen = [...stores].sort((a, b) => {
+        const delta = rank(b) - rank(a);
+        if (delta !== 0) return delta;
+        return Date.parse(b?.updated_at || "") - Date.parse(a?.updated_at || "");
+      })[0];
+      setStoreContext({
+        loaded: true,
+        connected: chosen?.connection_status === "connected",
+        shopDomain: chosen?.shop_domain ?? null,
+        platform: chosen?.platform ?? null,
+        syncStatus: chosen?.sync_status ?? null,
+        setupStatus: chosen?.setup_status ?? null,
+        monitoringMode: chosen?.monitoring_mode ?? null,
+        lastSyncedAt: chosen?.last_synced_at ?? null,
+        webhooksRegistered: chosen?.webhooks_registered ?? null,
+        webhooksRequired: chosen?.webhooks_required ?? null,
+      });
+    } catch {
+      setStoreContext({ ...UNKNOWN_STORE, loaded: true });
+    }
+  }, []);
+
+  useEffect(() => { void loadStoreContext(); }, [loadStoreContext]);
 
   // ── Load conversations list ───────────────────────────────────────────────
   const loadConversations = useCallback(async (searchText = searchQueryRef.current, append = false) => {
@@ -1261,6 +1288,21 @@ export default function RevIntell() {
     const handle = window.setTimeout(() => { void loadConversations(searchQuery); }, 250);
     return () => window.clearTimeout(handle);
   }, [searchQuery, loadConversations]);
+
+  // The history drawer is modal: Escape closes it and the workspace behind it cannot scroll.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
 
   // ── New chat ──────────────────────────────────────────────────────────────
   const newChat = useCallback(() => {
@@ -1651,6 +1693,7 @@ export default function RevIntell() {
   };
 
   const hasMessages = messages.length > 0;
+  const starters = useMemo(() => buildStarters(storeContext), [storeContext]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -1843,13 +1886,87 @@ export default function RevIntell() {
                 Hello, {firstName}
               </h2>
               <h3 className="text-[1.75rem] font-extrabold tracking-tight mb-3" style={{ color: t1 }}>
-                How can I help your revenue today?
+                {storeContext.connected
+                  ? `What do you want to know about ${storeLabel(storeContext)}?`
+                  : "How can I help your revenue today?"}
               </h3>
               <p className="text-[0.88rem] max-w-md mx-auto leading-relaxed" style={{ color: t2 }}>
                 I explain your available store data, investigate findings,
                 and suggest next steps for you to review.
               </p>
             </motion.div>
+
+            {/* Data-health states. A confident answer built on an incomplete or
+                stale feed misleads the merchant, so say so before they ask. */}
+            {storeContext.loaded && !storeContext.connected && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.25)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#dc2626" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    No store connected
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    Rev answers from your real Shopify data. Connect a store and finish the
+                    first sync before asking about revenue, products or customers.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {storeContext.connected && isSyncIncomplete(storeContext) && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.28)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    Initial sync in progress
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    {storeLabel(storeContext)} is connected but its first sync has not
+                    completed. Answers may be incomplete until it finishes.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {storeContext.connected && !isSyncIncomplete(storeContext) && hasWebhookGap(storeContext) && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.28)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    Incomplete webhook coverage
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    {storeContext.webhooksRegistered ?? 0} of {storeContext.webhooksRequired ?? 0} required
+                    Shopify webhooks are registered, so recent changes may not appear yet.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+
+            {storeContext.connected && !isSyncIncomplete(storeContext) && !hasWebhookGap(storeContext)
+              && isSyncStale(storeContext) && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(31,6,172,0.06)", border: `1px solid ${bdr}` }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#1F06AC" }} />
+                <div>
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    Data may be out of date
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    The last successful sync of {storeLabel(storeContext)} was{" "}
+                    {new Date(storeContext.lastSyncedAt as string).toLocaleString()}. Rev discloses
+                    freshness with every answer.
+                  </p>
+                </div>
+              </motion.div>
+            )}
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25 }} className="w-full mb-7">
@@ -1933,6 +2050,40 @@ export default function RevIntell() {
       )}
 
       </div>
+      {/* One theme-aware history drawer for desktop and mobile. */}
+      {createPortal(
+        <AnimatePresence>
+          {menuOpen && (
+            <motion.div className="fixed inset-0 z-[170] flex justify-end" role="presentation">
+              <motion.button type="button" aria-label="Close conversation history"
+                className="absolute inset-0 cursor-default"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.16 }}
+                style={{ background: "rgba(8,10,18,0.38)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)" }}
+                onClick={() => setMenuOpen(false)} />
+              <motion.div role="dialog" aria-modal="true" aria-label="Conversation history"
+                initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+                transition={{ type: "spring", stiffness: 360, damping: 36 }}
+                onClick={event => event.stopPropagation()}
+                className="relative z-10 h-full w-[min(390px,calc(100vw-12px))] max-w-full shadow-2xl"
+                style={{ background: isDark ? "#111116" : "#ffffff", borderLeft: `1px solid ${bdr}`, boxShadow: "-18px 0 56px rgba(0,0,0,0.24)" }}>
+                <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close conversation history"
+                  className="absolute right-4 top-5 z-20 flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:opacity-75"
+                  style={{ color: t1, background: isDark ? "#24242c" : "#f0f1f5" }}>
+                  <X size={16} />
+                </button>
+                <ConversationRail conversations={conversations} activeId={activeId}
+                  loading={historyLoading} query={searchQuery} onQuery={setSearchQuery}
+                  onNew={newChat} onSelect={openConversation} onRename={renameConv}
+                  onDelete={id => setDeleteConfirmId(id)}
+                  isDark={isDark} t1={t1} t2={t2} t4={t4} border={bdr} />
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
       {/* Evidence drawer — verified facts, calculations and limits for one turn. */}
       {createPortal(
         <AnimatePresence>
@@ -1951,6 +2102,8 @@ export default function RevIntell() {
                   className="relative h-full w-full max-w-[460px] shadow-2xl overflow-hidden"
                   style={{ background: card, borderLeft: `1px solid ${bdr}` }}>
                   <EvidencePanel
+                    key={`${message.id}:${focusedEvidenceId ?? "all"}`}
+                    focusEvidenceId={focusedEvidenceId}
                     evidence={message.payload.evidence}
                     facts={message.payload.facts}
                     comparisonFacts={message.payload.comparison_facts}
@@ -1959,7 +2112,7 @@ export default function RevIntell() {
                     recommendations={message.payload.recommendations}
                     dark={isDark}
                     asSheet
-                    onClose={() => setEvidenceFor(null)}
+                    onClose={() => { setEvidenceFor(null); setFocusedEvidenceId(null); }}
                   />
                 </ModalSurface>
               </motion.div>

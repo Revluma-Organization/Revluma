@@ -88,7 +88,13 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
                     uri = (chunk.get("web") or {}).get("uri", "")
                     if uri.startswith("https://") and uri not in sources:
                         sources.append(uri)
-                output += ("\\n\\nSources:\\n" + "\\n".join("- " + uri for uri in sources[:5])) if sources else "\\n\\n(Web search returned no verifiable sources.)"
+                # Real newlines, not escaped ones: this text is rendered to the
+                # merchant, where a literal backslash-n is visible corruption.
+                if sources:
+                    output += "\n\nSources:\n" + "\n".join(
+                        "- " + uri for uri in sources[:5])
+                else:
+                    output += "\n\n(Web search returned no verifiable sources.)"
             logger.info("model_provider_request_success provider=gemini model=%s elapsed_ms=%d attempt=%d",
                         model, int((time.monotonic() - started) * 1000), attempt + 1)
             return output.strip()

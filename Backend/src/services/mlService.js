@@ -1491,6 +1491,7 @@ async function streamInvestigation({
 
   let finalPayload = null;
   let streamError = null;
+  let cancelledUpstream = null;
   const parser = createSseParser((event, payload) => {
     if (event === 'final') {
       finalPayload = payload;
@@ -1498,6 +1499,14 @@ async function streamInvestigation({
     }
     if (event === 'error') {
       streamError = payload;
+      return;
+    }
+    if (event === 'cancelled') {
+      // The Python orchestrator abandoned the turn because the merchant
+      // pressed Stop or the browser went away. That is not a failure and there
+      // is no final payload coming, so it must not fall through to the
+      // invalid-response branch below.
+      cancelledUpstream = payload || {};
       return;
     }
     if (typeof onEvent === 'function') onEvent(event, payload);
@@ -1532,6 +1541,19 @@ async function streamInvestigation({
     try { reader.releaseLock(); } catch { /* no-op */ }
   }
 
+  if (cancelledUpstream) {
+    logger.info('rev_stream_cancelled_upstream', {
+      correlationId: requestCorrelationId,
+      reason: cancelledUpstream.reason || 'unspecified',
+      completedTools: Array.isArray(cancelledUpstream.completed_tools)
+        ? cancelledUpstream.completed_tools.length
+        : 0,
+    });
+    return {
+      success: false,
+      error: { code: 'CANCELLED', message: 'Generation stopped.' },
+    };
+  }
   if (streamError) {
     return {
       success: false,

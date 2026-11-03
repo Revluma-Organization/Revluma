@@ -19,16 +19,25 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-import redis
 from sqlalchemy import bindparam, text
 
 from src.config.settings import settings
+from src.intelligence.query import (
+    _in_transaction,
+    begin_read_scope,
+    begin_write_scope,
+    commit_write_scope,
+    end_read_scope,
+    read_row,
+)
 
 logger = logging.getLogger("rev.business_state")
 
@@ -53,6 +62,32 @@ DAILY_REVENUE_SQL = """
 
 SCHEMA_VERSION = "1.1"
 DEFAULT_STALENESS_MINS = 30
+
+def _int_setting(name: str, default: int, *, minimum: int = 0) -> int:
+    """Read an integer setting, falling back on garbage instead of crashing.
+
+    These are evaluated at import time, so a malformed value must never stop
+    the service from booting.
+    """
+    raw = (os.environ.get(name) or "").strip()
+    try:
+        value = int(raw) if raw else default
+    except ValueError:
+        return default
+    return value if value >= minimum else default
+
+
+# Snapshot retention. Superseded snapshots are near-write-only history: the
+# observed-change reader caps at 48 rows per organization, so a generous window
+# preserves every query that exists today while bounding the table. Without
+# retention the production table reached 33,717 rows / 33 MB in five days, of
+# which only 5 were still current.
+#
+# The observed-change reader caps at 48 snapshots, so never retain fewer.
+SNAPSHOT_HISTORY_RETENTION = _int_setting(
+    "REV_BUSINESS_STATE_HISTORY_RETENTION", 200, minimum=48
+)
+SNAPSHOT_PRUNE_BATCH = _int_setting("REV_BUSINESS_STATE_PRUNE_BATCH", 500, minimum=1)
 VIP_INACTIVE_DAYS = 45
 LTV_THRESHOLDS = (100.0, 500.0, 1000.0, 2500.0)
 LTV_APPROACH_BAND = 0.15
@@ -72,61 +107,203 @@ class BusinessStateLockUnavailable(RuntimeError):
     """Raised when the shared lock service is unavailable; rebuilds fail closed."""
 
 
-def _acquire_business_state_lock(organization_id: str):
-    """Acquire a token-owned, organization-scoped Redis lease shared by all instances."""
-    redis_url = (getattr(settings, "REDIS_URL", "") or "").strip()
-    if not redis_url:
-        logger.error("business_state_lock_unavailable", extra={"reason": "redis_url_missing"})
-        raise BusinessStateLockUnavailable("REDIS_URL is not configured.")
+class BusinessStatePersistenceError(RuntimeError):
+    """Raised when a new business-state snapshot could not be persisted."""
 
-    client = redis.from_url(
-        redis_url,
-        decode_responses=True,
-        socket_connect_timeout=3,
-        socket_timeout=3,
-        max_connections=1,
-    )
-    key = f"revluma:business-state:rebuild:{organization_id}"
-    token = uuid.uuid4().hex
+
+#: A new snapshot was computed and persisted by this call.
+OUTCOME_REBUILT = "rebuilt"
+
+#: Another build held the lock, so the previous snapshot was returned instead.
+#: Callers must not record this as a successful rebuild.
+OUTCOME_DUPLICATE_SKIPPED = "duplicate_skipped"
+
+
+#: The per-organization build lease lives in Postgres, in the same table the
+#: Node scheduler already uses for its own distributed lock. One coordination
+#: primitive, one dependency, and the TTL is enforced by SQL rather than by a
+#: second datastore that can disagree with the database.
+BUILD_LOCK_TABLE = "automation_job_state"
+
+#: Lease length for a build. Long enough to cover a slow build, short enough
+#: that a process killed mid-build stops blocking its organization promptly.
+DEFAULT_BUILD_LOCK_TTL_SECONDS = 600
+
+
+#: How long the persistence phase will wait for another build of the same
+#: organization to finish before giving up. Bounded so a stuck peer produces a
+#: reported failure instead of an open-ended hang that the caller can only see
+#: as a timeout.
+PERSIST_LOCK_TIMEOUT_SECONDS = 10
+
+
+def _build_lock_ttl_seconds() -> int:
+    """Read the lease TTL, falling back on garbage rather than failing closed."""
+    raw = (os.environ.get("BUSINESS_STATE_LOCK_TTL_SECONDS") or "").strip()
+    if not raw:
+        return DEFAULT_BUILD_LOCK_TTL_SECONDS
     try:
-        acquired = client.set(key, token, nx=True, ex=600)
-    except Exception as exc:
-        client.close()
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_BUILD_LOCK_TTL_SECONDS
+    # A lease shorter than the build itself would let two builds overlap.
+    return value if value >= 30 else DEFAULT_BUILD_LOCK_TTL_SECONDS
+
+
+def _build_lock_job_name(organization_id: str) -> str:
+    """Namespace the lease so it can never collide with a scheduler job row."""
+    return f"business-state-build:{organization_id}"
+
+
+def _acquire_business_state_lock(organization_id: str, db):
+    """Claim an organization-scoped build lease in Postgres.
+
+    Returns ``(job_name, token)`` when the lease was claimed, or ``None`` when
+    another build already holds it. Raises :class:`BusinessStateLockUnavailable`
+    when the claim itself could not be made, so rebuilds fail closed rather than
+    running uncoordinated.
+
+    The claim is a single atomic statement: the row is inserted, or updated only
+    when the current holder's lease has expired. That makes a lease left behind
+    by a killed process self-healing after its TTL, which a lease that can only
+    be released by its owner is not.
+
+    This replaces a Redis ``SET NX EX`` lease. Two properties of that lease
+    failed in production: release required a Lua ``EVAL``, which the managed
+    Redis in use does not support, so a lease was never released by its owner;
+    and once stuck it blocked that organization's rebuilds indefinitely, which
+    is why ``business_states.generated_at`` stayed frozen while every pass
+    reported a duplicate-build skip.
+    """
+    job_name = _build_lock_job_name(organization_id)
+    token = uuid.uuid4().hex
+    ttl = _build_lock_ttl_seconds()
+
+    try:
+        row = db.execute(
+            text(f"""
+                INSERT INTO {BUILD_LOCK_TABLE}
+                    (job_name, status, last_started_at, last_result, updated_at)
+                VALUES
+                    (:job_name, 'running', now(),
+                     jsonb_build_object('lock_token', :token), now())
+                ON CONFLICT (job_name) DO UPDATE
+                    SET status = 'running',
+                        last_started_at = now(),
+                        last_result = jsonb_build_object('lock_token', :token),
+                        updated_at = now()
+                    WHERE {BUILD_LOCK_TABLE}.status IS DISTINCT FROM 'running'
+                       OR {BUILD_LOCK_TABLE}.last_started_at IS NULL
+                       OR {BUILD_LOCK_TABLE}.last_started_at
+                          < now() - make_interval(secs => :ttl)
+                RETURNING last_result ->> 'lock_token' AS lock_token
+            """),
+            {"job_name": job_name, "token": token, "ttl": ttl},
+        ).fetchone()
+        # Commit so other instances see the claim immediately. Holding it in an
+        # uncommitted transaction would let a second builder claim it too.
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:  # pragma: no cover - defensive
+            logger.exception("business_state_lock_rollback_failed")
         logger.exception(
             "business_state_lock_unavailable",
-            extra={"reason": "redis_connection_failed"},
+            extra={"reason": "db_lock_claim_failed", "org_id": organization_id},
         )
         raise BusinessStateLockUnavailable(
-            "The shared Redis lock service is unavailable."
-        ) from exc
+            "The shared build lock could not be claimed."
+        )
 
-    if not acquired:
-        client.close()
+    if row is None:
         return None
-    return client, key, token
+
+    claimed = str(row[0] or "")
+    if claimed != token:  # pragma: no cover - another writer won the race
+        return None
+
+    return job_name, token
 
 
-def _release_business_state_lock(lock) -> None:
-    """Release only the lock token owned by this worker."""
+def _release_business_state_lock(
+    lock,
+    db,
+    *,
+    outcome: str | None = None,
+    state_id: str | None = None,
+    computation_status: str | None = None,
+    duration_ms: int | None = None,
+    error: str | None = None,
+) -> None:
+    """Release only the lease this worker owns.
+
+    Token-matched, so a worker whose lease already expired and was re-claimed
+    by another builder can never release the new holder's lease. A failure here
+    is logged and swallowed: the lease expires on its own TTL, and turning
+    cleanup into a build failure would be worse than waiting it out.
+    """
     if lock is None:
         return
-    client, key, token = lock
+
     try:
-        released = client.eval(
-            "if redis.call('get', KEYS[1]) == ARGV[1] "
-            "then return redis.call('del', KEYS[1]) else return 0 end",
-            1,
-            key,
-            token,
+        job_name, token = lock
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        logger.error("business_state_lock_release_invalid_handle")
+        return
+
+    try:
+        # The release doubles as the build's own report card. The orchestrator
+        # path wraps this build in `except Exception: logger.error(...)`, so a
+        # persistence failure there is swallowed and leaves no trace anywhere an
+        # operator - or an engineer without access to the application logs - can
+        # see. Production showed exactly that: a lease held for 134 seconds and
+        # released cleanly with an empty error, while no snapshot was written.
+        # Recording the outcome, the state id and the exception here makes the
+        # failure readable straight from SQL.
+        db.execute(
+            text(f"""
+                UPDATE {BUILD_LOCK_TABLE}
+                   SET status = 'idle',
+                       last_result = (COALESCE(last_result, '{{}}'::jsonb) - 'lock_token')
+                                     || jsonb_strip_nulls(jsonb_build_object(
+                                            'outcome', :outcome,
+                                            'state_id', :state_id,
+                                            'computation_status', :computation_status,
+                                            'duration_ms', :duration_ms
+                                        )),
+                       last_error = :error,
+                       last_completed_at = now(),
+                       updated_at = now()
+                 WHERE job_name = :job_name
+                   AND last_result ->> 'lock_token' = :token
+            """),
+            {
+                "job_name": job_name,
+                "token": token,
+                "outcome": outcome,
+                "state_id": state_id,
+                "computation_status": computation_status,
+                "duration_ms": duration_ms,
+                "error": error,
+            },
         )
+        db.commit()
         logger.info(
             "business_state_lock_released",
-            extra={"lock_key": key, "released": bool(released)},
+            extra={
+                "lock_key": job_name,
+                "outcome": outcome,
+                "duration_ms": duration_ms,
+                "error": error,
+            },
         )
     except Exception:
+        try:
+            db.rollback()
+        except Exception:  # pragma: no cover - defensive
+            pass
         logger.exception("business_state_lock_release_failed")
-    finally:
-        client.close()
 
 
 def _table_exists(db, table_name: str) -> bool:
@@ -144,6 +321,70 @@ def _rollback_quietly(db) -> None:
         db.rollback()
     except Exception:
         logger.exception("business_state_rollback_failed")
+
+
+def prune_superseded_snapshots(
+    db,
+    organization_id: str,
+    *,
+    keep: int = SNAPSHOT_HISTORY_RETENTION,
+    batch: int = SNAPSHOT_PRUNE_BATCH,
+) -> int:
+    """Delete superseded snapshots beyond the retained history window.
+
+    Only ``is_current = FALSE`` rows for this organization are eligible, so the
+    live snapshot can never be removed. The delete is batched so a large
+    backlog drains gradually across rebuilds instead of one long-running
+    statement that holds locks and blows the request budget.
+
+    Retention is housekeeping: a failure here is logged and swallowed so it can
+    never turn a successful Business State build into a reported failure.
+    Returns the number of rows deleted.
+    """
+    keep = max(48, int(keep))
+    batch = max(1, int(batch))
+    try:
+        result = db.execute(
+            text("""
+                DELETE FROM business_states
+                WHERE id IN (
+                    SELECT id
+                    FROM business_states
+                    WHERE organization_id = :org_id
+                      AND is_current = FALSE
+                      AND id NOT IN (
+                          SELECT retained.id
+                          FROM business_states retained
+                          WHERE retained.organization_id = :org_id
+                            AND retained.is_current = FALSE
+                          ORDER BY retained.generated_at DESC, retained.id DESC
+                          LIMIT :keep
+                      )
+                    LIMIT :batch
+                )
+            """),
+            {"org_id": organization_id, "keep": keep, "batch": batch},
+        )
+        deleted = int(getattr(result, "rowcount", 0) or 0)
+        db.commit()
+        if deleted:
+            logger.info(
+                "business_state_snapshots_pruned",
+                extra={
+                    "org_id": organization_id,
+                    "deleted": deleted,
+                    "retained": keep,
+                    "batch": batch,
+                },
+            )
+        return deleted
+    except Exception as exc:
+        _rollback_quietly(db)
+        logger.warning(
+            "business_state_prune_failed",
+            extra={"org_id": organization_id, "error_type": type(exc).__name__},
+        )
+        return 0
 
 
 def _json_value(value: Any, default: Any) -> Any:
@@ -551,9 +792,21 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     warnings: list[str] = []
     computation_status = "complete"
 
+    # One transaction for the whole read phase, so the twelve source queries
+    # share a single pooled connection instead of each pinning its own. Behind
+    # Supavisor's transaction pooler a per-read transaction is assigned a
+    # distinct server backend that stays idle-in-transaction until reset, and a
+    # full build therefore consumed the entire 12-connection pool before it
+    # reached persistence. See begin_read_scope for the production evidence.
+    #
+    # This is closed again before persistence so the persistence transaction,
+    # its advisory lock and the existing rollback paths keep exactly their
+    # current semantics.
+    read_scope = begin_read_scope(db)
+
     # Read the current snapshot before the expensive source queries. The
-    # advisory lock is acquired only for the final persistence transaction so
-    # optional-source rollbacks cannot release it prematurely.
+    # The persistence advisory lock is taken only for the final persistence
+    # transaction, so optional-source rollbacks cannot release it prematurely.
     previous_state = load_current_business_state(organization_id, db)
 
     logger.info("business_state_build_start", extra={
@@ -1026,23 +1279,95 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     # Capture warnings raised during availability checks as well as metric collection.
     state_metadata["warnings"] = list(warnings)
 
+    # Every source read is done. Release the single connection the read phase
+    # held so persistence runs in its own transaction, takes its own advisory
+    # lock, and commits on its own terms.
+    end_read_scope(db, read_scope)
+
     persistence_failed = False
+    # The underlying driver error, kept because the exception raised below is a
+    # deliberate wrapper: the serving layer maps it to a retryable 503 and must
+    # not leak a raw database message to a caller. Discarding the cause meant the
+    # only record of *why* persistence failed was a single log line, which is
+    # invisible to anyone without access to the application logs.
+    persistence_cause: str | None = None
+    persistence_exc: BaseException | None = None
+
+    # Hold ONE transaction across the whole persistence block. Without it each
+    # statement becomes its own transaction behind Supavisor, which silently
+    # defeats every safeguard below: set_config('lock_timeout', ..., true) is
+    # transaction-local, pg_advisory_xact_lock is released the moment its own
+    # transaction ends, and the UPDATE and INSERT stop being atomic. Production
+    # caught all four statements on four separate backends in the same second,
+    # with the INSERT then blocked on the unique partial index
+    # idx_bstate_org_current until the 2-minute statement_timeout cancelled it.
+    # See begin_write_scope for the full evidence.
+    write_scope = begin_write_scope(db)
+
+    # DIAGNOSTIC (temporary): two shipped fixes have now been defeated by the
+    # runtime splitting these statements across four server backends, so the
+    # behaviour is being measured rather than inferred. pg_backend_pid() reports
+    # which server backend executes a statement; if the value differs between the
+    # start of the block and the INSERT, the statements are not sharing one
+    # connection and no transaction-scoped safeguard can work. The values are
+    # appended to the reported cause, which already reaches automation_job_state.
+    diag_scope_opened = write_scope is not None
+    diag_in_tx_before = _in_transaction(db)
+    diag_pid_before = None
+    diag_pid_after_insert = None
+
     try:
-        # The outer Redis lock serializes this organization across all instances.
-        # Step 1: mark existing current state as historical
-        db.execute(
-            text("""
+        diag_pid_before = db.execute(text("SELECT pg_backend_pid()")).scalar()
+
+        # Serialize persistence per organization *at the database level*.
+        #
+        # Comments here have always claimed an advisory lock guards this
+        # transaction, but no such call existed - the only coordination was the
+        # application-level lease. Production proved that is not sufficient: at
+        # 03:37 UTC on 2026-11-03 two builds for one organization reached this
+        # phase one second apart. One ran the UPDATE below and then sat idle in
+        # an open transaction; the other blocked behind it on a transactionid
+        # lock for 64+ seconds. Neither could finish, the caller timed out, and
+        # no snapshot was written.
+        #
+        # A transaction-scoped advisory lock is the right primitive here: it is
+        # released automatically on commit *and* on rollback, so unlike a
+        # session-scoped pg_advisory_lock it cannot leak onto a pooled connection
+        # and be inherited by an unrelated borrower. lock_timeout is set
+        # transaction-locally so waiting for a stuck peer fails loudly instead of
+        # hanging until the caller's HTTP timeout.
+        # ONE statement, not four. Production measured the reason: with the block
+        # split across separate executes, Supavisor ran each on its OWN server
+        # backend in its OWN transaction even though begin_write_scope had opened
+        # an explicit client transaction (diag scope_opened=True, and the four
+        # statements appeared on four distinct pids in pg_stat_activity). That
+        # silently defeats every transaction-scoped safeguard at once:
+        #
+        #   * set_config('lock_timeout', ..., true) applied only to the
+        #     transaction containing the set_config itself.
+        #   * pg_advisory_xact_lock was released the moment its own transaction
+        #     ended, i.e. before the UPDATE ran - zero mutual exclusion.
+        #   * the UPDATE and the INSERT were not atomic, so the INSERT of an
+        #     is_current = TRUE row had to wait on the UPDATE's uncommitted row
+        #     via the unique partial index idx_bstate_org_current
+        #     (organization_id) WHERE is_current = true, until the database's
+        #     2-minute statement_timeout cancelled it: QueryCanceled "while
+        #     inserting index tuple in relation idx_bstate_org_current".
+        #
+        # psycopg2 interpolates bound parameters client side and dispatches the
+        # mogrified string with PQexec, so a semicolon-separated batch is one
+        # round trip and PostgreSQL runs it as a single implicit transaction.
+        # One statement therefore means one backend, one transaction: the
+        # lock_timeout genuinely bounds the advisory wait, the advisory lock is
+        # genuinely held across the UPDATE and INSERT, and the two writes are
+        # genuinely atomic.
+        critical_section_sql = """
+                SELECT set_config('lock_timeout', :lock_timeout, true);
+                SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint);
                 UPDATE business_states
                 SET is_current = FALSE
                 WHERE organization_id = :org_id
-                  AND is_current = TRUE
-            """),
-            {"org_id": organization_id},
-        )
-
-        # Step 2: insert new current state
-        db.execute(
-            text("""
+                  AND is_current = TRUE;
                 INSERT INTO business_states (
                     id, organization_id, is_current, schema_version,
                     generated_at, data_freshness_at, valid_until,
@@ -1068,8 +1393,12 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
                     CAST(:ml_signals AS JSONB), CAST(:source_data AS JSONB),
                     CAST(:metadata AS JSONB)
                 )
-            """),
+        """
+        db.execute(
+            text(critical_section_sql),
             {
+                "lock_timeout": f"{PERSIST_LOCK_TIMEOUT_SECONDS}s",
+                "lock_key": _build_lock_job_name(organization_id),
                 "id": state_id,
                 "org_id": organization_id,
                 "schema_version": SCHEMA_VERSION,
@@ -1098,6 +1427,8 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
                 "metadata": json.dumps(state_metadata),
             },
         )
+
+        diag_pid_after_insert = db.execute(text("SELECT pg_backend_pid()")).scalar()
 
         if baseline_table_available:
             db.execute(
@@ -1141,7 +1472,10 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
                         "dedupe_key": f"{state_id}:{anomaly['metric']}",
                     },
                 )
-        db.commit()
+        # Commits the single transaction that spans set_config, the advisory
+        # lock, the UPDATE, the INSERT and the alert inserts - so the advisory
+        # lock is genuinely held across the critical section and released here.
+        commit_write_scope(db, write_scope)
 
         logger.info("business_state_written", extra={
             "org_id": organization_id,
@@ -1150,23 +1484,56 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
             "warnings": len(warnings),
         })
 
+        # Bound the table now that the snapshot is safely committed. Running
+        # this outside the write transaction keeps a retention failure from
+        # invalidating a successful build.
+        prune_superseded_snapshots(db, organization_id)
+
     except BusinessStateBuildInProgress:
         _rollback_quietly(db)
         raise
     except Exception as exc:
+        # Bounded, type first: this string ends up in a database column read by
+        # operators, so it must never carry a traceback or an unbounded message.
+        # Diagnostics go FIRST. The caller bounds this string to 280 characters
+        # before it reaches automation_job_state.last_error, and putting the
+        # measurements at the end meant production truncated them away: the first
+        # run of this diagnostic recorded length 311 ending mid-word at
+        # "in_tx_befo", so scope_opened survived and the two backend pids - the
+        # only decisive values - were cut off.
+        persistence_cause = (
+            f"diag scope_opened={diag_scope_opened} "
+            f"in_tx_before={diag_in_tx_before} pid_before={diag_pid_before} "
+            f"pid_after_insert={diag_pid_after_insert} | "
+            f"{type(exc).__name__}: {str(exc)[:200]}"
+        )
+        persistence_exc = exc
         logger.exception(
             "business_state_write_failed",
-            extra={"org_id": organization_id, "error_type": type(exc).__name__},
+            extra={
+                "org_id": organization_id,
+                "error_type": type(exc).__name__,
+                "cause": persistence_cause,
+            },
         )
         _rollback_quietly(db)
         warnings.append("Failed to persist business state to database.")
         computation_status = "partial"
         persistence_failed = True
 
-    if persistence_failed and previous_state:
-        previous_state.warnings.extend(warnings)
-        previous_state.computation_status = "partial"
-        return previous_state
+    if persistence_failed:
+        # Never report the old snapshot as if this rebuild succeeded. The
+        # serving layer must return a retryable failure so scheduler telemetry
+        # and operators see the persistence failure accurately.
+        #
+        # The cause travels with the wrapper so the build's own report - written
+        # to automation_job_state when the lease is released - names the real
+        # failure rather than only the fact that there was one. `from` preserves
+        # the chain for anyone who does have the traceback.
+        raise BusinessStatePersistenceError(
+            "Business-state snapshot persistence failed"
+            + (f" ({persistence_cause})" if persistence_cause else ".")
+        ) from persistence_exc
 
     return BusinessState(
         id=state_id,
@@ -1205,14 +1572,26 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     )
 
 
-def build_business_state(organization_id: str, db) -> BusinessState:
-    """Build one organization's state under a shared, rollback-safe Redis lock.
+def build_business_state_with_status(
+    organization_id: str, db
+) -> tuple["BusinessState", str]:
+    """Build one organization's state and report whether a snapshot was written.
+
+    Returns ``(state, outcome)`` where outcome is ``"rebuilt"`` when this call
+    computed and persisted a new snapshot, or ``"duplicate_skipped"`` when
+    another build already held the lock and the previous snapshot was returned
+    instead.
+
+    The distinction matters because both cases previously looked identical to
+    the caller: an HTTP 200 carrying a valid state. The Node scheduler counted
+    the skip as a success, so a lock stuck for ten minutes produced a heartbeat
+    reporting healthy rebuilds while no snapshot was being written at all.
 
     The lock is deliberately independent of the SQLAlchemy transaction because
     optional source-query failures may roll that transaction back while the
     overall build continues.
     """
-    lock = _acquire_business_state_lock(organization_id)
+    lock = _acquire_business_state_lock(organization_id, db)
     if lock is None:
         previous_state = load_current_business_state(organization_id, db)
         if previous_state is not None:
@@ -1220,7 +1599,7 @@ def build_business_state(organization_id: str, db) -> BusinessState:
                 "business_state_duplicate_build_skipped",
                 extra={"org_id": organization_id, "state_id": previous_state.id},
             )
-            return previous_state
+            return previous_state, OUTCOME_DUPLICATE_SKIPPED
         raise BusinessStateBuildInProgress(
             "A business-state rebuild is already running for this organization."
         )
@@ -1229,10 +1608,46 @@ def build_business_state(organization_id: str, db) -> BusinessState:
         "business_state_lock_acquired",
         extra={"org_id": organization_id},
     )
+
+    started = time.monotonic()
+    outcome: str | None = None
+    state_id: str | None = None
+    computation_status: str | None = None
+    error_text: str | None = None
+
     try:
-        return _build_business_state_unlocked(organization_id, db)
+        state = _build_business_state_unlocked(organization_id, db)
+        outcome = OUTCOME_REBUILT
+        state_id = getattr(state, "id", None)
+        computation_status = getattr(state, "computation_status", None)
+        return state, outcome
+    except Exception as exc:
+        # Bounded, and the exception type first: this string is stored in a
+        # database column and read by operators, so it must never carry a
+        # traceback, a token, or an unbounded driver message.
+        error_text = f"{type(exc).__name__}: {str(exc)[:280]}"
+        raise
     finally:
-        _release_business_state_lock(lock)
+        _release_business_state_lock(
+            lock,
+            db,
+            outcome=outcome,
+            state_id=state_id,
+            computation_status=computation_status,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            error=error_text,
+        )
+
+
+def build_business_state(organization_id: str, db) -> BusinessState:
+    """Build one organization's state under a shared, rollback-safe lock.
+
+    Retained for callers that only need the state. Prefer
+    :func:`build_business_state_with_status` where a skipped build must not be
+    mistaken for a completed one.
+    """
+    state, _outcome = build_business_state_with_status(organization_id, db)
+    return state
 
 
 def load_current_business_state(organization_id: str, db) -> BusinessState | None:
@@ -1241,8 +1656,10 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
     Returns None if no state exists yet.
     """
     try:
-        row = db.execute(
-            text("""
+        # read_row, not db.execute: this sits on the investigation hot path via
+        # _run_specialists, and a bare execute left the session idle in a
+        # transaction -- holding a pooled connection across the model call.
+        row = read_row(db, """
                 SELECT
                     id, organization_id, schema_version, generated_at,
                     data_freshness_at, staleness_threshold_mins, computation_status,
@@ -1256,9 +1673,7 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
                 WHERE organization_id = :org_id
                   AND is_current = TRUE
                 LIMIT 1
-            """),
-            {"org_id": organization_id},
-        ).fetchone()
+        """, {"org_id": organization_id})
 
         if not row:
             return None

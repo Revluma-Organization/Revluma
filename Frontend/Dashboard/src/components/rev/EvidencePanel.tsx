@@ -20,6 +20,7 @@ interface Props {
   dark?: boolean;
   onClose?: () => void;
   asSheet?: boolean;
+  focusEvidenceId?: string | null;
 }
 
 const STATUS_LABEL: Record<string, string> = {
