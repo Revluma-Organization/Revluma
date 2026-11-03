@@ -268,7 +268,74 @@ That is proposed as part of Milestone C and is not yet built.
 
 ---
 
-## 5. Remaining work
+## 5. Frontend regression inherited from PR #265 — repaired
+
+PR #265 (`544d07d`) merged with **zero check runs**. Verified with
+`gh api repos/Revluma-Organization/Revluma/commits/544d07d/check-runs`, which
+returned an empty list. It left `main` with 145 of 436 Dashboard tests failing
+and the Rev Intelligence page throwing `ReferenceError: STARTERS is not defined`
+at render, so the page was unusable in production.
+
+Two rounds of repair were needed.
+
+**Round 1 — five undefined identifiers.** `STARTERS`, `ShieldCheck`,
+`citedEvidenceIds`, `evidenceById`, `focusEvidenceId` and `ConversationRail`'s
+theme props were referenced by new markup that was merged before the code
+defining them existed. `git log -S` confirmed `STARTERS` appears exactly once in
+the file's history, in `544d07d`: a feature referenced before it was written, not
+a deletion. One of these was a latent crash rather than a build break —
+`evidenceById.get(id)!` on an unresolvable citation.
+
+**Round 2 — the last three failures, all in `conversation history reliability`.**
+They had two independent causes, and the obvious repair for the first one was
+wrong:
+
+1. *Two history drawers rendered at once.* The original `AnimatePresence` sidebar
+   and the newer portal drawer were both gated on `menuOpen`, so opening history
+   produced three copies of the same list, search and failure state. The portal
+   drawer was a bare `motion.div` rather than a dialog primitive, so nothing
+   `aria-hidden` the workspace behind it, and it was wired without the
+   `error`/`onRetry` props its own `HistoryStatus` requires — a merchant whose
+   history failed to load got a drawer that could never offer a retry.
+
+   Deleting the old sidebar is the intuitive fix and is **incorrect on its own**:
+   it broke three mobile-modal-stack tests, because the portal drawer's
+   `ConversationRail` never rendered the row actions those tests exercise. The
+   working repair is one drawer built on Radix `ModalSurface`, and one list
+   component with a `variant` prop — `rail` keeps the compact inline row actions
+   the desktop tests specify, `drawer` uses `ConvItem`'s 44px dropdown, whose
+   trigger doubles as the focus-return target for the nested rename/delete
+   dialog. Being a real dialog is what lets the drawer stay mounted but
+   `aria-hidden` underneath a nested dialog, so focus can return to the row that
+   launched it.
+
+2. *The suite never stubbed `/store`*, which the page legitimately fetches on
+   mount to ground its welcome suggestions in the merchant's real connection.
+   That unrelated request satisfied `waitFor(() => expect(api.get).toHaveBeenCalled())`
+   immediately, so two tests resolved the history promise roughly 250 ms before
+   the debounced history load was issued and then asserted against a list that
+   was still loading. The endpoint is now stubbed and the wait points at the
+   history path. No behavioural assertion was weakened; the retry-count assertion
+   is scoped to the history path the same way the rest of the file already scopes
+   its own call assertions.
+
+Also repaired: `RevAnswerView`'s evidence panel toggle was wired straight to
+`onClick`, handing the handler a `MouseEvent` where the prop contract declares
+`evidenceId?: string`. Harmless with the current call site, which ignores the
+argument, but wrong for any consumer that focuses evidence by id.
+
+**Verified:** Dashboard 436/436 across 28 files (from 291/436 on `main`),
+`vite build` clean, zero remaining type errors in Rev paths (17 pre-existing
+errors elsewhere are untouched and out of scope).
+
+**Process lesson recorded for §76:** a green build is not evidence that `main` is
+healthy. Query `commits/{sha}/check-runs` before trusting a merge, and never chain
+`gh pr checks` into `gh pr merge` through a pipe — the pipeline's exit code comes
+from the last command, so a failed check still merges.
+
+---
+
+## 6. Remaining work
 
 | Milestone | State |
 |---|---|
@@ -278,7 +345,7 @@ That is proposed as part of Milestone C and is not yet built.
 | D — investigation and opportunity intelligence | Not started |
 | E — conversational intelligence | Not started; PR #251 capabilities must be preserved |
 | F — proactive intelligence | Not started; findings producer and baselines exist from earlier remediation |
-| G — frontend experience | PR #265 landed Rev presentation work; not assessed against §57–§60 |
+| G — frontend experience | PR #265 regression repaired, Dashboard suite green; still not assessed against §57–§60 |
 | H — security and reliability | RLS and grants audit across 61 tables outstanding; prompt-injection neutralisation exists from earlier work |
 | I — production release | Continuous; every increment merged to `main` and verified in production |
 

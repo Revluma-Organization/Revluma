@@ -37,8 +37,15 @@ const STATUS_COLOR: Record<string, { fg: string; bg: string }> = {
   unsupported: { fg: "#475467", bg: "#F2F4F7" },
 };
 
-function EvidenceRow({ item, dark, validated }: { item: EvidenceItem; dark: boolean; validated: boolean }) {
-  const [open, setOpen] = useState(false);
+function EvidenceRow({ item, dark, validated, focused = false }: {
+  item: EvidenceItem; dark: boolean; validated: boolean; focused?: boolean;
+}) {
+  // null means "the merchant has not toggled this row", so the focused record
+  // starts expanded and every other record starts collapsed. Tracking the toggle
+  // separately from `focused` means a citation clicked later still expands the
+  // right record instead of being frozen by the initial state.
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const open = userOpen ?? focused;
   const usable = !formatEvidenceValue(item).startsWith("Unavailable");
   const verified = validated && evidenceItemWellFormed(item) && item.status === "available" && usable;
   const knownStatus = typeof item.status === "string" && Object.prototype.hasOwnProperty.call(STATUS_LABEL, item.status) ? item.status : null;
@@ -51,7 +58,7 @@ function EvidenceRow({ item, dark, validated }: { item: EvidenceItem; dark: bool
     <div style={{ borderBottom: `1px solid ${border}`, padding: "10px 0" }}>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setUserOpen(!open)}
         className="flex w-full flex-wrap items-start gap-2 text-left"
         aria-expanded={open}
       >
@@ -101,8 +108,11 @@ function EvidenceRow({ item, dark, validated }: { item: EvidenceItem; dark: bool
 
 export function EvidencePanel({
   evidence, facts, comparisonFacts, hypotheses, unknowns, recommendations, factsLabel = "Facts",
-  dark = false, onClose, asSheet = false,
+  dark = false, onClose, asSheet = false, focusEvidenceId = null,
 }: Props) {
+  // The record a citation pointed at, so opening the panel lands on it expanded
+  // rather than making the merchant hunt through the list.
+  const focusedId = textValue(focusEvidenceId);
   const strong = dark ? "#F2F4F7" : "#101828";
   const muted = dark ? "#98A2B3" : "#667085";
   const border = dark ? "rgba(255,255,255,0.09)" : "#EAECF0";
@@ -208,7 +218,7 @@ export function EvidencePanel({
             <h3 style={{ margin: "0 0 2px", fontSize: "0.72rem", fontWeight: 750, color: muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Previous period (cited by comparisons)
             </h3>
-            {comparisons.map((item, index) => <EvidenceRow key={`${textValue(item.id)}-${index}`} item={item} dark={dark} validated={validated} />)}
+            {comparisons.map((item, index) => <EvidenceRow key={`${textValue(item.id)}-${index}`} item={item} dark={dark} validated={validated} focused={focusedId !== "" && textValue(item.id) === focusedId} />)}
           </section>
         ) : null}
 
@@ -245,7 +255,7 @@ export function EvidencePanel({
                 <p style={{ margin: "0 0 2px", fontSize: "0.68rem", color: muted, textTransform: "capitalize" }}>
                   {group}
                 </p>
-                {groupItems.map((item, index) => <EvidenceRow key={`${textValue(item.id)}-${index}`} item={item} dark={dark} validated={validated} />)}
+                {groupItems.map((item, index) => <EvidenceRow key={`${textValue(item.id)}-${index}`} item={item} dark={dark} validated={validated} focused={focusedId !== "" && textValue(item.id) === focusedId} />)}
               </div>
             ))}
           </section>

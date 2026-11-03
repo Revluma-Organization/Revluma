@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import {
-  ArrowUpRight, Check, Copy, Database, RefreshCw, TriangleAlert,
+  ArrowUpRight, Check, Copy, Database, RefreshCw, ShieldCheck, TriangleAlert,
 } from "lucide-react";
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
-import type { RevAnswerPayload, RevFact, RevHypothesis, RevRecommendation, SpecialistsSummary, InvestigationStep } from "@/lib/revStream";
+import type { EvidenceItem, RevAnswerPayload, RevFact, RevHypothesis, RevRecommendation, SpecialistsSummary, InvestigationStep } from "@/lib/revStream";
 import { coveredBy, evidenceState, normaliseRevAnswer, recordList, stringList, textValue } from "@/lib/revPresentation";
 
 interface Props {
@@ -52,7 +52,35 @@ export function RevAnswerView({
 
   const investigation = payload.investigation;
   const steps = recordList<InvestigationStep>(investigation?.steps);
-  const evidenceCount = recordList(payload.evidence?.items).length + recordList(payload.evidence?.comparison_items).length;
+  const evidenceItems = [
+    ...recordList<EvidenceItem>(payload.evidence?.items),
+    ...recordList<EvidenceItem>(payload.evidence?.comparison_items),
+  ];
+  const evidenceCount = evidenceItems.length;
+
+  // Evidence actually retrieved, keyed by id, so a citation can be resolved to a
+  // real record with a real label.
+  const evidenceById = useMemo(() => {
+    const map = new Map<string, EvidenceItem>();
+    for (const item of evidenceItems) {
+      const id = textValue(item?.id);
+      if (id && !map.has(id)) map.set(id, item);
+    }
+    return map;
+  }, [payload]);
+
+  // Ids cited by facts and comparison facts, de-duplicated, and filtered to those
+  // that resolve to a retrieved record. A citation to a record that does not exist
+  // is dropped rather than rendered: evidence references must correspond to actual
+  // retrieved records, and an unresolvable id must never become a clickable source
+  // that opens nothing or throws when its label is read.
+  const citedEvidenceIds = useMemo(() => {
+    const cited = [
+      ...recordList<RevFact>(payload.facts),
+      ...recordList<RevFact>(payload.comparison_facts),
+    ].flatMap(fact => stringList(fact?.evidence_ids));
+    return [...new Set(cited)].filter(id => evidenceById.has(id));
+  }, [payload, evidenceById]);
   const warnings = [
     ...stringList(payload.warnings),
     ...stringList(payload.response?.warnings),
@@ -135,7 +163,8 @@ export function RevAnswerView({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Evidence cited in this answer">
           <span style={{ fontSize: "0.68rem", color: muted, fontWeight: 650 }}>Sources:</span>
           {citedEvidenceIds.map((id) => {
-            const item = evidenceById.get(id)!;
+            const item = evidenceById.get(id);
+            if (!item) return null;
             return (
               <button
                 key={id}
@@ -234,7 +263,10 @@ export function RevAnswerView({
         <div className="flex flex-wrap items-center gap-3" style={{ paddingTop: 2 }}>
           <button
             type="button"
-            onClick={onOpenEvidence}
+            // This button toggles the whole panel, so it must not report an
+            // evidence id. Wired straight to onClick it handed the handler a
+            // MouseEvent where the contract declares `evidenceId?: string`.
+            onClick={() => onOpenEvidence?.()}
             disabled={!hasEvidence || !onOpenEvidence}
             aria-expanded={evidenceOpen}
             className="inline-flex min-h-11 items-center gap-1.5"
