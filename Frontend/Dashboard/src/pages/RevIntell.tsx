@@ -25,7 +25,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Send, Plus, Menu, X, Copy,
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
-  Zap, RefreshCw, Mic, Phone, MoreHorizontal, Pencil,
+  Zap, RefreshCw, Mic, Phone, Pencil,
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
 } from "lucide-react";
 import revIntellLogo from "@/assets/images/rev-intell-logo.png";
@@ -133,7 +133,7 @@ function ModalSurface({ children, onClose, hasDescription = false, returnFocusTo
         event.preventDefault();
         const target = returnTo.current;
         if (target?.isConnected) target.focus();
-        else Array.from(document.querySelectorAll<HTMLElement>('button[aria-current="page"], button[aria-label="Open conversation history"], .rev-history-rail button'))
+        else Array.from(document.querySelectorAll<HTMLElement>('button[aria-current="page"], button[aria-label="Open conversation history"], [data-rev-history] button'))
           .find(element => element.getClientRects().length > 0)?.focus();
       }}>
       <motion.div data-rev-modal="" {...props}><DialogPrimitive.Title className="sr-only">{props["aria-label"] || "Conversation options"}</DialogPrimitive.Title>{children}</motion.div>
@@ -806,28 +806,6 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
 
 // ── Conversation history item ─────────────────────────────────────────────────
 
-function ConvItem({ conv, isActive, onClick, onDelete, onRename, isDark, t1 }: {
-  conv: Conversation; isActive: boolean;
-  onClick: () => void; onDelete: (trigger: HTMLButtonElement | null) => void; onRename: (trigger: HTMLButtonElement | null) => void;
-  isDark: boolean; t1: string;
-}) {
-  const actionsRef = useRef<HTMLButtonElement>(null);
-  return <div className="flex items-center rounded-lg" style={{ background: isActive ? (isDark ? "#24203c" : "#eeebff") : "transparent" }}>
-    <button onClick={onClick} aria-current={isActive ? "page" : undefined}
-      className="min-h-11 flex-1 min-w-0 truncate px-3 text-left text-sm" style={{ color: t1 }}>
-      {conv.title || "Untitled conversation"}
-    </button>
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild><button ref={actionsRef} aria-label={`Actions for ${conv.title || "Untitled conversation"}`}
-        className="flex h-11 w-11 shrink-0 items-center justify-center" style={{ color: t1 }}><MoreHorizontal size={20} /></button></DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="z-[190]" style={{ background: isDark ? "#171717" : "#fff", color: t1 }}>
-        <DropdownMenuItem onSelect={() => onRename(actionsRef.current)} className="min-h-11"><Pencil size={14} className="mr-2" />Rename</DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onDelete(actionsRef.current)} className="min-h-11"><Trash2 size={14} className="mr-2" />Delete</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  </div>;
-}
-
 function HistoryStatus({ loading, error, count, query, onRetry, color }: {
   loading: boolean; error: string | null; count: number; query: string;
   onRetry: () => void; color: string;
@@ -847,171 +825,113 @@ function HistoryStatus({ loading, error, count, query, onRetry, color }: {
   </>;
 }
 
-// One conversation-history surface, rendered in two variants: the persistent
-// desktop rail and the modal mobile drawer. They share a single list, search and
-// failure state so a merchant can never be shown two contradictory histories.
-// The row actions differ on purpose — the rail uses compact inline buttons, the
-// drawer uses a 44px dropdown whose trigger is also the focus-return target for
-// the nested rename/delete dialog.
-function ConversationRail({
+// The conversation-history list, rendered only inside the modal drawer that
+// the top-right menu button opens. It used to exist a second time as a
+// persistent desktop rail with a hard-coded dark palette, which ignored the
+// page theme and left wide screens with history permanently on screen and no
+// menu button to open or dismiss it. One surface now: theme-driven colours,
+// and inline row actions whose own element is the focus-return target for the
+// nested rename/delete dialog.
+function ConversationHistoryList({
   conversations, activeId, loading, error, onRetry, query, onQuery, onNew, onSelect,
-  onRename, onDelete, className, pagination,
-  isDark, t1, t2, border,
-  variant = "rail", onClose,
+  onRename, onDelete, pagination, isDark, t1, t2, border, onClose,
 }: {
   conversations: Conversation[]; activeId: string | null; loading: boolean;
   error: string | null; onRetry: () => void;
   query: string; onQuery: (value: string) => void;
   onNew: () => void; onSelect: (id: string) => void;
-  // A drawer row action passes the element that opened it, so focus can return
-  // there once the nested rename/delete dialog closes. The rail has no nested
-  // layer to return through, so it passes no trigger.
-  onRename: (id: string, trigger?: HTMLButtonElement | null) => void;
-  onDelete: (id: string, trigger?: HTMLButtonElement | null) => void;
+  // A row action passes the element that opened it, so focus can return there
+  // once the nested rename/delete dialog closes.
+  onRename: (id: string, trigger: HTMLButtonElement | null) => void;
+  onDelete: (id: string, trigger: HTMLButtonElement | null) => void;
   isDark: boolean; t1: string; t2: string; border: string;
-  className?: string;
   pagination?: React.ReactNode;
-  variant?: "rail" | "drawer";
   onClose?: () => void;
 }) {
-  const drawer = variant === "drawer";
-
-  const header = drawer ? (
-    <div className="flex items-center justify-between px-5 pt-5 pb-4"
-      style={{ borderBottom: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"}` }}>
-      <div className="flex items-center gap-2.5">
-        <img src={revIntellLogo} alt="" className="w-6 h-6 object-contain" />
-        <span className="text-[0.88rem] font-bold" style={{ color: t1 }}>Rev Intelligence</span>
-      </div>
-      <button type="button" onClick={onClose} aria-label="Close conversation history"
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg" style={{ color: t1 }}>
-        <X size={16} />
-      </button>
-    </div>
-  ) : (
-    <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-      <img src={revIntellLogo} alt="" className="w-6 h-6 object-contain" />
-      <div style={{ minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: "0.82rem", fontWeight: 750, color: "#F5F6FA" }}>
-          Rev Intelligence
-        </p>
-        <p style={{ margin: 0, fontSize: "0.62rem", color: "#7C8494" }}>Read-only workspace</p>
-      </div>
-    </div>
-  );
-
-  const startChat = (
-    <div className="px-4 pt-4 pb-3">
-      <button onClick={onNew}
-        className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[0.84rem] font-bold text-white transition-opacity hover:opacity-90"
-        style={{ background: "linear-gradient(135deg,#1F06AC,#17057F)", boxShadow: "0 4px 14px rgba(31,6,172,0.2)" }}>
-        <Plus size={16} />New conversation
-      </button>
-    </div>
-  );
-
-  const search = drawer ? (
-    <div className="px-4 pb-3">
-      <input aria-label="Search conversations" value={query} onChange={event => onQuery(event.target.value)}
-        placeholder="Search conversations"
-        className="w-full min-w-0 rounded-lg border bg-transparent px-3 py-2.5 text-[0.8rem] outline-none"
-        style={{ borderColor: border, color: t1 }} />
-    </div>
-  ) : (
-    <div className="px-4 pb-3">
-      <div className="flex items-center gap-2 rounded-xl px-3"
-        style={{ background: isDark ? "#1b1b23" : "#f5f6fa", border: `1px solid ${border}` }}>
-        <Search size={15} color={t2} />
-        <input value={query} onChange={event => onQuery(event.target.value)}
-          placeholder="Search conversations" aria-label="Search conversations"
-          className="w-full min-w-0 bg-transparent py-2.5 text-[0.78rem] outline-none" style={{ color: t1 }} />
-        {query && <button onClick={() => onQuery("")} aria-label="Clear search"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ color: t2 }}>
-          <X size={14} />
-        </button>}
-      </div>
-    </div>
-  );
-
-  const list = (
-    <div aria-busy={loading}
-      className={drawer ? "flex-1 overflow-y-auto px-3 pb-4 [scrollbar-width:none]" : "flex-1 overflow-y-auto px-2 pb-3 [scrollbar-width:thin]"}>
-      <HistoryStatus loading={loading} error={error} count={conversations.length} query={query}
-        onRetry={onRetry} color={drawer ? t2 : "#C5CAD6"} />
-      {drawer && conversations.length > 0 && (
-        <p className="px-2 py-1.5 text-[0.62rem] font-bold uppercase tracking-[0.1em]" style={{ color: t2 }}>
-          Recent
-        </p>
-      )}
-      {conversations.map((conversation) => {
-        const active = activeId === conversation.id;
-        if (drawer) {
-          return <ConvItem key={conversation.id} conv={conversation} isActive={active}
-            onClick={() => onSelect(conversation.id)}
-            onDelete={trigger => onDelete(conversation.id, trigger)}
-            onRename={trigger => onRename(conversation.id, trigger)}
-            isDark={isDark} t1={t1} />;
-        }
-        return (
-          <div key={conversation.id} className="group relative">
-            <button aria-current={active ? "page" : undefined} onClick={() => onSelect(conversation.id)}
-              className="w-full text-left rounded-lg pl-2.5 pr-20 py-2 transition-colors"
-              style={{
-                background: active ? "rgba(31,6,172,0.45)" : "transparent",
-                borderLeft: `2px solid ${active ? "#7B6BFF" : "transparent"}`,
-              }}>
-              <p className="truncate" style={{ margin: 0, fontSize: "0.76rem", color: active ? "#FFFFFF" : "#C5CAD6" }}>
-                {conversation.title || "Untitled conversation"}
-              </p>
-              <p style={{ margin: "1px 0 0", fontSize: "0.62rem", color: "#9CA3AF" }}>
-                {new Date(conversation.last_activity_at).toLocaleDateString([], { month: "short", day: "numeric" })}
-                {conversation.message_count ? ` · ${conversation.message_count} messages` : ""}
-              </p>
-            </button>
-            <div className="absolute right-1 top-1.5 flex gap-0.5 opacity-100 transition-opacity">
-              <button onClick={() => onRename(conversation.id)} aria-label="Rename conversation"
-                className="min-h-8 min-w-8 rounded-md"
-                style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
-                <Pencil size={11} />
-              </button>
-              <button onClick={() => onDelete(conversation.id)} aria-label="Delete conversation"
-                className="min-h-8 min-w-8 rounded-md"
-                style={{ background: "transparent", border: "none", color: "#97A0B0", cursor: "pointer", padding: 3 }}>
-                <Trash2 size={11} />
-              </button>
-            </div>
+  return (
+    <div data-rev-history="" style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", minWidth: 0 }}>
+      <div className="flex items-center justify-between px-5 pt-5 pb-4"
+        style={{ borderBottom: `1px solid ${border}` }}>
+        <div className="flex items-center gap-2.5">
+          <img src={revIntellLogo} alt="" className="w-6 h-6 object-contain" />
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: "0.82rem", fontWeight: 750, color: t1 }}>Rev Intelligence</p>
+            <p style={{ margin: 0, fontSize: "0.62rem", color: t2 }}>Read-only workspace</p>
           </div>
-        );
-      })}
-      {pagination}
-    </div>
-  );
+        </div>
+        <button type="button" onClick={onClose} aria-label="Close conversation history"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg" style={{ color: t1 }}>
+          <X size={16} />
+        </button>
+      </div>
 
-  const readOnlyNotice = (
-    <div className="px-5 py-3" style={{ borderTop: `1px solid ${border}` }}>
-      <p className="m-0 text-[0.66rem] leading-relaxed" style={{ color: t2 }}>
-        Rev observes and explains your store. It cannot change prices, orders, discounts, themes or settings, and it never sends campaigns.
-      </p>
-    </div>
-  );
+      <div className="px-4 pt-4 pb-3">
+        <button onClick={onNew}
+          className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[0.84rem] font-bold text-white transition-opacity hover:opacity-90"
+          style={{ background: "linear-gradient(135deg,#1F06AC,#17057F)", boxShadow: "0 4px 14px rgba(31,6,172,0.2)" }}>
+          <Plus size={16} />New conversation
+        </button>
+      </div>
 
-  const body = <>{header}{startChat}{search}{list}{readOnlyNotice}</>;
+      <div className="px-4 pb-3">
+        <div className="flex items-center gap-2 rounded-xl px-3"
+          style={{ background: isDark ? "#1b1b23" : "#f5f6fa", border: `1px solid ${border}` }}>
+          <Search size={15} color={t2} />
+          <input value={query} onChange={event => onQuery(event.target.value)}
+            placeholder="Search conversations" aria-label="Search conversations"
+            className="w-full min-w-0 bg-transparent py-2.5 text-[0.78rem] outline-none" style={{ color: t1 }} />
+          {query && <button onClick={() => onQuery("")} aria-label="Clear search"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ color: t2 }}>
+            <X size={14} />
+          </button>}
+        </div>
+      </div>
 
-  return drawer ? (
-    <div className={className} style={{
-      display: "flex", flexDirection: "column", height: "100%", width: "100%", minWidth: 0,
-      background: isDark ? "#111116" : "#ffffff",
-    }}>
-      {body}
+      <div aria-busy={loading} className="flex-1 overflow-y-auto px-2 pb-3 [scrollbar-width:thin]">
+        <HistoryStatus loading={loading} error={error} count={conversations.length} query={query}
+          onRetry={onRetry} color={t2} />
+        {conversations.map((conversation) => {
+          const active = activeId === conversation.id;
+          return (
+            <div key={conversation.id} className="group relative">
+              <button aria-current={active ? "page" : undefined} onClick={() => onSelect(conversation.id)}
+                className="w-full text-left rounded-lg pl-2.5 pr-24 py-2 transition-colors"
+                style={{
+                  background: active ? (isDark ? "rgba(31,6,172,0.45)" : "rgba(31,6,172,0.10)") : "transparent",
+                  borderLeft: `2px solid ${active ? "#7B6BFF" : "transparent"}`,
+                }}>
+                <p className="truncate" style={{ margin: 0, fontSize: "0.76rem", color: active ? (isDark ? "#FFFFFF" : "#1F06AC") : t1 }}>
+                  {conversation.title || "Untitled conversation"}
+                </p>
+                <p style={{ margin: "1px 0 0", fontSize: "0.62rem", color: t2 }}>
+                  {new Date(conversation.last_activity_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+                  {conversation.message_count ? ` · ${conversation.message_count} messages` : ""}
+                </p>
+              </button>
+              <div className="absolute right-1 top-1 flex gap-0.5">
+                <button onClick={event => onRename(conversation.id, event.currentTarget)} aria-label="Rename conversation"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-md"
+                  style={{ background: "transparent", border: "none", color: t2, cursor: "pointer", padding: 3 }}>
+                  <Pencil size={13} />
+                </button>
+                <button onClick={event => onDelete(conversation.id, event.currentTarget)} aria-label="Delete conversation"
+                  className="flex min-h-11 min-w-11 items-center justify-center rounded-md"
+                  style={{ background: "transparent", border: "none", color: t2, cursor: "pointer", padding: 3 }}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {pagination}
+      </div>
+
+      <div className="px-5 py-3" style={{ borderTop: `1px solid ${border}` }}>
+        <p className="m-0 text-[0.66rem] leading-relaxed" style={{ color: t2 }}>
+          Rev observes and explains your store. It cannot change prices, orders, discounts, themes or settings, and it never sends campaigns.
+        </p>
+      </div>
     </div>
-  ) : (
-    <aside className={className} style={{
-      width: 268, flexShrink: 0, background: "#0B0B10",
-      borderRight: "1px solid rgba(255,255,255,0.07)",
-      flexDirection: "column", height: "100%",
-    }}>
-      {body}
-    </aside>
   );
 }
 
@@ -1384,18 +1304,18 @@ export default function RevIntell() {
     return () => window.clearTimeout(handle);
   }, [searchQuery, loadConversations]);
 
-  // The history drawer is modal: Escape closes it and the workspace behind it cannot scroll.
+  // The history drawer is modal: the workspace behind it cannot scroll. Escape
+  // is deliberately NOT handled here — the drawer is a Radix dialog, which
+  // closes only the topmost layer, so Escape inside a nested rename/delete
+  // dialog closes that dialog and leaves the drawer (and the row button focus
+  // must return to) mounted. A window-level Escape listener closed the drawer
+  // underneath the nested dialog and destroyed that focus return.
   useEffect(() => {
     if (!menuOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false);
-    };
-    window.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [menuOpen]);
 
@@ -1799,28 +1719,10 @@ export default function RevIntell() {
     <div className="rev-workspace relative flex overflow-hidden"
       style={{ height: "calc(100dvh - var(--topbar-h, 64px))", margin: "-20px -20px 0", background: bg }}>
 
-      {/* Persistent conversation rail — desktop only; mobile uses the drawer. */}
-      <ConversationRail
-        className="rev-history-rail hidden lg:flex"
-        pagination={<LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" />}
-        conversations={conversations}
-        activeId={activeId}
-        loading={historyLoading}
-        error={historyError}
-        onRetry={() => void loadConversations()}
-        query={searchQuery}
-        onQuery={changeSearch}
-        onNew={newChat}
-        onSelect={openConversation}
-        onRename={id => { dialogReturnRef.current = null; renameConv(id); }}
-        isDark={isDark} t1={t1} t2={t2} border={bdr}
-        onDelete={id => { dialogReturnRef.current = null; setDeleteConfirmId(id); }}
-      />
-
       <div className="flex flex-col flex-1 min-w-0 h-full">
 
       {/* Hamburger (mobile) */}
-      <div className="absolute top-4 right-4 z-30 lg:hidden">
+      <div className="absolute top-4 right-4 z-30">
         <button onClick={() => setMenuOpen(v => !v)}
           aria-label={menuOpen ? "Close conversation history" : "Open conversation history"} aria-expanded={menuOpen}
           className="flex items-center justify-center w-9 h-9 rounded-xl transition-all hover:opacity-80"
@@ -2100,14 +2002,14 @@ export default function RevIntell() {
                 transition={{ type: "spring", stiffness: 360, damping: 36 }}
                 className="relative z-10 h-full w-[min(390px,calc(100vw-12px))] max-w-full overflow-hidden shadow-2xl"
                 style={{ background: isDark ? "#111116" : "#ffffff", borderLeft: `1px solid ${bdr}`, boxShadow: "-18px 0 56px rgba(0,0,0,0.24)" }}>
-                <ConversationRail variant="drawer" onClose={() => setMenuOpen(false)}
+                <ConversationHistoryList onClose={() => setMenuOpen(false)}
                   conversations={conversations} activeId={activeId}
                   loading={historyLoading} error={historyError}
                   onRetry={() => void loadConversations()}
                   query={searchQuery} onQuery={changeSearch}
                   onNew={newChat} onSelect={openConversation}
-                  onRename={(id, trigger) => { dialogReturnRef.current = trigger ?? null; renameConv(id); }}
-                  onDelete={(id, trigger) => { dialogReturnRef.current = trigger ?? null; setDeleteConfirmId(id); }}
+                  onRename={(id, trigger) => { dialogReturnRef.current = trigger; renameConv(id); }}
+                  onDelete={(id, trigger) => { dialogReturnRef.current = trigger; setDeleteConfirmId(id); }}
                   pagination={<LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" />}
                   isDark={isDark} t1={t1} t2={t2} border={bdr} />
               </ModalSurface>
