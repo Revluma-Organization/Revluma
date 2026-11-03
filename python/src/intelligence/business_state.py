@@ -31,6 +31,7 @@ from sqlalchemy import bindparam, text
 
 from src.config.settings import settings
 from src.intelligence.query import (
+    _in_transaction,
     begin_read_scope,
     begin_write_scope,
     commit_write_scope,
@@ -1303,7 +1304,21 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     # See begin_write_scope for the full evidence.
     write_scope = begin_write_scope(db)
 
+    # DIAGNOSTIC (temporary): two shipped fixes have now been defeated by the
+    # runtime splitting these statements across four server backends, so the
+    # behaviour is being measured rather than inferred. pg_backend_pid() reports
+    # which server backend executes a statement; if the value differs between the
+    # start of the block and the INSERT, the statements are not sharing one
+    # connection and no transaction-scoped safeguard can work. The values are
+    # appended to the reported cause, which already reaches automation_job_state.
+    diag_scope_opened = write_scope is not None
+    diag_in_tx_before = _in_transaction(db)
+    diag_pid_before = None
+    diag_pid_after_insert = None
+
     try:
+        diag_pid_before = db.execute(text("SELECT pg_backend_pid()")).scalar()
+
         # Serialize persistence per organization *at the database level*.
         #
         # Comments here have always claimed an advisory lock guards this
@@ -1400,6 +1415,8 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
             },
         )
 
+        diag_pid_after_insert = db.execute(text("SELECT pg_backend_pid()")).scalar()
+
         if baseline_table_available:
             db.execute(
                 text("""
@@ -1466,6 +1483,13 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         # Bounded, type first: this string ends up in a database column read by
         # operators, so it must never carry a traceback or an unbounded message.
         persistence_cause = f"{type(exc).__name__}: {str(exc)[:280]}"
+        # Appended so the split-backend question is answered by production itself
+        # rather than by reading code. Bounded: this lands in a database column.
+        persistence_cause = (
+            f"{persistence_cause[:200]} | diag scope_opened={diag_scope_opened} "
+            f"in_tx_before={diag_in_tx_before} pid_before={diag_pid_before} "
+            f"pid_after_insert={diag_pid_after_insert}"
+        )
         persistence_exc = exc
         logger.exception(
             "business_state_write_failed",
