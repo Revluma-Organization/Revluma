@@ -101,6 +101,27 @@ const FINDING_ERRORS = ["INVALID_FINDING_ID", "FINDING_NOT_FOUND", "FINDING_EVID
 const HISTORY_PAGE_SIZE = 20;
 const MESSAGE_PAGE_SIZE = 50;
 
+// Suggested opening questions for an empty conversation.
+//
+// `sub` is both the caption and the message sent to Rev, so each is written as a
+// question a merchant would actually ask. Icons are restricted to those already
+// imported from lucide-react above: an unimported identifier here is exactly the
+// defect that made this component throw "ReferenceError: STARTERS is not defined".
+//
+// Every question is answerable from data Revluma is authorized to read, per the
+// metric registry (python/src/intelligence/metric_registry.py). Deliberately
+// absent: anything about profit or margin, because no unit-cost field exists in
+// the schema and Rev must disclose that gap rather than answer a starter prompt
+// with an invented figure.
+const STARTERS = [
+  { label: "This week",  sub: "What changed in my business this week?", icon: TrendingUp,   color: "#1F06AC" },
+  { label: "Revenue",    sub: "Why did my revenue change?",             icon: Search,       color: "#2563EB" },
+  { label: "Products",   sub: "Which products are underperforming?",    icon: BarChart2,    color: "#0F172A" },
+  { label: "Carts",      sub: "Where are carts being abandoned?",       icon: ShoppingCart, color: "#1F06AC" },
+  { label: "Customers",  sub: "Which customers buy repeatedly?",        icon: Users,        color: "#2563EB" },
+  { label: "Priorities", sub: "What should I focus on first?",          icon: Zap,          color: "#0F172A" },
+];
+
 // Use the installed dialog primitive for focus trapping and background isolation.
 function ModalSurface({ children, onClose, hasDescription = false, returnFocusTo, ...props }: Omit<React.ComponentProps<typeof motion.div>, "children"> & {
   children: React.ReactNode; onClose: () => void; hasDescription?: boolean; returnFocusTo?: HTMLElement | null;
@@ -829,12 +850,17 @@ function HistoryStatus({ loading, error, count, query, onRetry, color }: {
 function ConversationRail({
   conversations, activeId, loading, error, onRetry, query, onQuery, onNew, onSelect,
   onRename, onDelete, className, pagination,
+  isDark, t1, t2, border,
 }: {
   conversations: Conversation[]; activeId: string | null; loading: boolean;
   error: string | null; onRetry: () => void;
   query: string; onQuery: (value: string) => void;
   onNew: () => void; onSelect: (id: string) => void;
   onRename: (id: string) => void; onDelete: (id: string) => void;
+  // Theme values this component's own markup already used. Both call sites are
+  // inside RevIntell(), where isDark/t1/t2/bdr are in scope; the desktop rail
+  // simply never received them, so it threw "isDark is not defined" at render.
+  isDark: boolean; t1: string; t2: string; border: string;
   className?: string;
   pagination?: React.ReactNode;
 }) {
@@ -1718,6 +1744,7 @@ export default function RevIntell() {
         onNew={newChat}
         onSelect={openConversation}
         onRename={id => { dialogReturnRef.current = null; renameConv(id); }}
+        isDark={isDark} t1={t1} t2={t2} border={bdr}
         onDelete={id => { dialogReturnRef.current = null; setDeleteConfirmId(id); }}
       />
 
