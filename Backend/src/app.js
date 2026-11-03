@@ -28,7 +28,8 @@ const commerceWebhookRoute = require('./route/commerceWebhookRoute');
 const messageWebhookRoute = require('./route/messageWebhookRoute');
 const subscriptionController = require('./controller/subscriptionController');
 const { prisma } = require('./configs/database');
-const { isRedisReady } = require('./configs/redis');
+const { isRedisReady, isRedisConfigured } = require('./configs/redis');
+const { BUSINESS_STATE_JOB } = require('./services/schedulerLocks');
 const { checkPythonHealth } = require('./services/mlService');
 
 
@@ -128,6 +129,37 @@ app.get('/ready', async (req, res) => {
     databaseReady = false;
   }
   const python = await checkPythonHealth();
+
+  // Scheduler heartbeat. A silently skipped job is indistinguishable from a
+  // healthy idle one in application logs, so the last claim is surfaced here and
+  // is also readable straight from automation_job_state. This is what makes
+  // "did Business State actually run?" answerable without log access.
+  let scheduler = { available: false };
+  try {
+    const jobState = await prisma.automation_job_state.findUnique({
+      where: { job_name: BUSINESS_STATE_JOB },
+    });
+
+    scheduler = jobState
+      ? {
+          available: true,
+          business_state: {
+            status: jobState.status,
+            last_started_at: jobState.last_started_at,
+            last_completed_at: jobState.last_completed_at,
+            last_error: jobState.last_error,
+            last_result: jobState.last_result,
+            age_seconds: jobState.last_completed_at
+              ? Math.round((Date.now() - new Date(jobState.last_completed_at).getTime()) / 1000)
+              : null,
+          },
+        }
+      : { available: true, business_state: null };
+  } catch {
+    // Observability must never be the reason readiness fails.
+    scheduler = { available: false, reason: 'query_failed' };
+  }
+
   const automationEnabled = process.env.BETA_AUTOMATION_KILL_SWITCH === 'false';
   const requiredAutomationConfig = [
     'BACKEND_URL',
@@ -158,6 +190,8 @@ app.get('/ready', async (req, res) => {
     beta_automation_ready: automationReady,
     beta_automation_config_missing: automationConfigMissing,
     redis_ready: isRedisReady(),
+    redis_configured: isRedisConfigured(),
+    scheduler,
   });
 });
 

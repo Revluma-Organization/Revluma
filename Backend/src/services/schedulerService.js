@@ -36,71 +36,42 @@ const { runFeatureJobs } = require('./featureWorkerService');
 const { runRecoveryActions } = require('./recoveryActionService');
 const { runDailyChurnScoring } = require('./churnWorkerService');
 const { runTrainingObservationFinalization } = require('./trainingObservationService');
+const {
+    BUSINESS_STATE_JOB,
+    acquireDbLock,
+    releaseDbLock,
+    recordJobSkip,
+} = require('./schedulerLocks');
+const { intSetting } = require('../utils/intSetting');
 
 // -----------------------------------------------------------------------------
 // Configuration
 // -----------------------------------------------------------------------------
 
-const BUSINESS_STATE_INTERVAL_MS = parseInt(
-    process.env.BUSINESS_STATE_INTERVAL_MS || '60000',
-    10
-);
+const BUSINESS_STATE_INTERVAL_MS = intSetting('BUSINESS_STATE_INTERVAL_MS', '60000', 5000);
 
-const RECOMMENDATION_OUTCOMES_INTERVAL_MS = parseInt(
-    process.env.RECOMMENDATION_OUTCOMES_INTERVAL_MS || '60000',
-    10
-);
+const RECOMMENDATION_OUTCOMES_INTERVAL_MS = intSetting('RECOMMENDATION_OUTCOMES_INTERVAL_MS', '60000', 5000);
 
-const ALERT_QUEUE_INTERVAL_MS = parseInt(
-    process.env.ALERT_QUEUE_INTERVAL_MS || '60000',
-    10
-);
+const ALERT_QUEUE_INTERVAL_MS = intSetting('ALERT_QUEUE_INTERVAL_MS', '60000', 5000);
 
-const MORNING_BRIEFINGS_INTERVAL_MS = parseInt(
-    process.env.MORNING_BRIEFINGS_INTERVAL_MS || '60000',
-    10
-);
+const MORNING_BRIEFINGS_INTERVAL_MS = intSetting('MORNING_BRIEFINGS_INTERVAL_MS', '60000', 5000);
 
-const STORE_SYNC_INTERVAL_MS = parseInt(
-    process.env.STORE_SYNC_INTERVAL_MS || String(15 * 60 * 1000),
-    10
-);
+const STORE_SYNC_INTERVAL_MS = intSetting('STORE_SYNC_INTERVAL_MS', String(15 * 60 * 1000), 5000);
 
-const FEATURE_JOB_INTERVAL_MS = parseInt(
-    process.env.FEATURE_JOB_INTERVAL_MS || '15000',
-    10
-);
+const FEATURE_JOB_INTERVAL_MS = intSetting('FEATURE_JOB_INTERVAL_MS', '15000', 5000);
 
-const RECOVERY_ACTION_INTERVAL_MS = parseInt(
-    process.env.RECOVERY_ACTION_INTERVAL_MS || '30000',
-    10
-);
+const RECOVERY_ACTION_INTERVAL_MS = intSetting('RECOVERY_ACTION_INTERVAL_MS', '30000', 5000);
 
-const CHURN_SCORING_INTERVAL_MS = parseInt(
-    process.env.CHURN_SCORING_INTERVAL_MS || String(60 * 60 * 1000),
-    10
-);
+const CHURN_SCORING_INTERVAL_MS = intSetting('CHURN_SCORING_INTERVAL_MS', String(60 * 60 * 1000), 5000);
 
-const INTELLIGENCE_AUTOMATION_INTERVAL_MS = parseInt(
-    process.env.INTELLIGENCE_AUTOMATION_INTERVAL_MS || String(5 * 60 * 1000),
-    10
-);
+const INTELLIGENCE_AUTOMATION_INTERVAL_MS = intSetting('INTELLIGENCE_AUTOMATION_INTERVAL_MS', String(5 * 60 * 1000), 5000);
 
-const LOCK_TTL_SECONDS = parseInt(
-    process.env.SCHEDULER_LOCK_TTL_SECONDS || '300',
-    10
-);
+const LOCK_TTL_SECONDS = intSetting('SCHEDULER_LOCK_TTL_SECONDS', '300', 30);
 
-const BUSINESS_STATE_LOCK_TTL_SECONDS = parseInt(
-    process.env.BUSINESS_STATE_LOCK_TTL_SECONDS || '600',
-    10
-);
+const BUSINESS_STATE_LOCK_TTL_SECONDS = intSetting('BUSINESS_STATE_LOCK_TTL_SECONDS', '600', 60);
 
 const ALERT_QUEUE_BATCH_SIZE = Math.min(
-    Math.max(
-        parseInt(process.env.ALERT_QUEUE_BATCH_SIZE || '25', 10),
-        1
-    ),
+    intSetting('ALERT_QUEUE_BATCH_SIZE', 25, 1),
     100
 );
 
@@ -254,12 +225,38 @@ async function runBusinessStateRebuild() {
 
     // Business-state rebuilds are expensive and must never fall back to
     // per-process locks: a rolling deploy can run more than one instance.
-    const lock = await acquireLock('business-state', {
-        requireDistributed: true,
-        ttlSeconds: BUSINESS_STATE_LOCK_TTL_SECONDS,
-    });
+    //
+    // The claim lives in Postgres, not Redis. Redis readiness is lost
+    // permanently after a transient failure — ioredis stops retrying after five
+    // attempts and nothing reconnects — and because this was the only job
+    // demanding a distributed lock, one blip silently stopped *every* rebuild
+    // until the next process restart, while the rest of the scheduler carried on
+    // with local locks. That made a Node-side lock outage look like a Python
+    // outage for 16+ hours.
+    //
+    // Postgres is already a hard dependency and is the system of record for the
+    // snapshots being rebuilt, so it is the correct coordinator. The claim is
+    // also visible in automation_job_state, so "did this job run?" is answerable
+    // from the database without application logs.
+    let lock = null;
+
+    try {
+        lock = await acquireDbLock(prisma, BUSINESS_STATE_JOB, {
+            ttlSeconds: BUSINESS_STATE_LOCK_TTL_SECONDS,
+        });
+    } catch (error) {
+        const errorType = error.code || error.name || 'lock_error';
+
+        // This is the case that used to be invisible: the job cannot run, and
+        // nothing downstream would ever notice.
+        logger.error('scheduler_business_state_lock_error', { error_type: errorType });
+        await recordJobSkip(prisma, BUSINESS_STATE_JOB, 'lock_error', { error_type: errorType });
+        return;
+    }
 
     if (!lock) {
+        // Another instance holds a live claim. Normal during a rolling deploy,
+        // and self-healing because the claim expires after its TTL.
         logger.debug?.('scheduler_business_state_lock_not_acquired');
         return;
     }
@@ -267,6 +264,9 @@ async function runBusinessStateRebuild() {
     businessStateRunning = true;
 
     const startedAt = Date.now();
+    let succeeded = 0;
+    let failed = 0;
+    let processed = 0;
 
     try {
         logger.info('scheduler_business_state_started');
@@ -318,8 +318,7 @@ async function runBusinessStateRebuild() {
             return;
         }
 
-        let succeeded = 0;
-        let failed = 0;
+        processed = organizations.length;
 
         for (const organization of organizations) {
             const correlationId =
@@ -354,7 +353,7 @@ async function runBusinessStateRebuild() {
         }
 
         logger.info('scheduler_business_state_completed', {
-            organizations: organizations.length,
+            organizations: processed,
             succeeded,
             failed,
             latency_ms: Date.now() - startedAt,
@@ -366,7 +365,19 @@ async function runBusinessStateRebuild() {
         });
     } finally {
         businessStateRunning = false;
-        await releaseLock(lock);
+
+        // Release only our own claim, and leave the run's outcome behind so the
+        // heartbeat shows what the last pass actually did.
+        await releaseDbLock(prisma, lock, {
+            result: {
+                job: BUSINESS_STATE_JOB,
+                organizations: processed,
+                succeeded,
+                failed,
+                latency_ms: Date.now() - startedAt,
+                finished_at: new Date().toISOString(),
+            },
+        });
     }
 }
 
