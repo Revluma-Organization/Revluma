@@ -16,6 +16,7 @@ import {
 
 export interface StoreContext {
   loaded: boolean;
+  loadError: boolean;
   connected: boolean;
   shopDomain: string | null;
   platform: string | null;
@@ -54,10 +55,51 @@ export interface StoreListResponse {
 }
 
 export const UNKNOWN_STORE: StoreContext = {
-  loaded: false, connected: false, shopDomain: null, platform: null,
+  loaded: false, loadError: false, connected: false, shopDomain: null, platform: null,
   syncStatus: null, setupStatus: null, monitoringMode: null, lastSyncedAt: null,
   webhooksRegistered: null, webhooksRequired: null,
 };
+
+/**
+ * Convert the authenticated GET /stores response into Rev's connection state.
+ * A malformed/failed response is an error, never evidence that the merchant has
+ * no connected store.
+ */
+export function storeContextFromResponse(response: StoreListResponse): StoreContext {
+  const stores = response?.data?.data?.stores ?? response?.data?.stores;
+  if (response?.success !== true || !Array.isArray(stores)) {
+    throw new Error("Store connection response was not verifiable.");
+  }
+
+  const shopifyStores = stores.filter((store) =>
+    String(store?.platform || "").toLowerCase() === "shopify"
+  );
+  if (shopifyStores.length === 0) return { ...UNKNOWN_STORE, loaded: true };
+
+  const rank = (store: StoreSummary) =>
+    (store?.connection_status === "connected" ? 4 : 0) +
+    (store?.sync_status === "complete" ? 2 : 0) +
+    (store?.status === "active" ? 1 : 0);
+  const chosen = [...shopifyStores].sort((a, b) => {
+    const delta = rank(b) - rank(a);
+    if (delta !== 0) return delta;
+    return Date.parse(b?.updated_at || "") - Date.parse(a?.updated_at || "");
+  })[0];
+
+  return {
+    loaded: true,
+    loadError: false,
+    connected: chosen?.connection_status === "connected",
+    shopDomain: chosen?.shop_domain ?? null,
+    platform: chosen?.platform ?? null,
+    syncStatus: chosen?.sync_status ?? null,
+    setupStatus: chosen?.setup_status ?? null,
+    monitoringMode: chosen?.monitoring_mode ?? null,
+    lastSyncedAt: chosen?.last_synced_at ?? null,
+    webhooksRegistered: chosen?.webhooks_registered ?? null,
+    webhooksRequired: chosen?.webhooks_required ?? null,
+  };
+}
 
 /** "revluma-test-store-v1.myshopify.com" → "revluma-test-store-v1". */
 export function storeLabel(ctx: StoreContext): string {
