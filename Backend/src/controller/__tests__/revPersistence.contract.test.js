@@ -32,6 +32,16 @@ assert.equal(conversational.response_mode, 'conversational');
 assert.equal(conversational.mode_reason, 'the question needs no store investigation');
 assert.equal(conversational.text, 'Hey Chief, good to see you.');
 
+// Understanding/gate metadata travels with the payload (contract §16).
+const withUnderstanding = bounded({
+  response_mode: 'conversational',
+  understanding: { intent: 'greeting', gate: 'conversational', source: 'fast_path' },
+});
+assert.deepEqual(withUnderstanding.understanding, {
+  intent: 'greeting', gate: 'conversational', source: 'fast_path',
+});
+assert.equal(bounded({ text: 'x' }).understanding, null);
+
 // A verified answer keeps its mode too.
 const verified = bounded({ response_mode: 'quick_verification', text: 'Yes — connected.' });
 assert.equal(verified.response_mode, 'quick_verification');

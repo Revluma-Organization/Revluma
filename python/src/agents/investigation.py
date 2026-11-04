@@ -135,6 +135,22 @@ INTENT_READ_ONLY = "read_only_boundary"
 INTENT_CAPABILITY = "capability"
 INTENT_GREETING = "greeting"
 INTENT_SOCIAL = "social"
+INTENT_KNOWLEDGE = "knowledge"
+INTENT_CLARIFY = "clarify"
+
+# Whole-message acknowledgements and topic-change cues (conversation-experience
+# directive §4.1 B/K). Supports for the routing layer, not the intelligence.
+ACK_PATTERN = re.compile(
+    r"^(?:okay|ok|okeh|alright|all right|got it|gotcha|interesting|nice|wow|cool"
+    r"|makes sense|make sense|i see|understood|noted|fine|sure|yep|nope|yeah|nah|yes|no"
+    r"|that'?s (?:good|great|helpful|interesting|fair)|good to know|fair enough"
+    r"|thank you|thanks)[\s!.,]*$", re.I)
+TOPIC_CHANGE_PATTERN = re.compile(
+    r"\b(?:anyway|anyways|forget that|forget it|never ?mind|let'?s (?:talk about"
+    r"|move on to|switch to|leave that)|different topic|another question"
+    r"|i have another|moving on|change of subject)\b", re.I)
+CONFIDENCE_FLOOR = 0.55
+STATE_TTL_MINUTES = 30
 INTENT_IDENTITY = "identity"
 INTENT_GENERAL = "general"
 
@@ -151,6 +167,8 @@ INTENT_LABELS = {
     INTENT_CAPABILITY: "Capabilities",
     INTENT_GREETING: "Conversation",
     INTENT_SOCIAL: "Conversation",
+    INTENT_KNOWLEDGE: "General guidance",
+    INTENT_CLARIFY: "Conversation",
     INTENT_IDENTITY: "Identity",
     INTENT_GENERAL: "General guidance",
 }
@@ -246,13 +264,15 @@ SOCIAL_WELLBEING_PATTERN = re.compile(
     r"|\bhow do you feel\b|\bhow have you been\b|\bare you (?:okay|ok|awake|there|up)\b"
     r"|\bwhat(?:'s| is) up\b|\bwhat(?:'s| is) new with you\b|\bwhat are you up to\b"
     r"|\bhow(?:'s| is) life\b|\bhow(?:'s| is) everything (?:with you )?(?:going )?on your (?:side|end)\b"
-    r"|\bhow are things on your (?:side|end)\b", re.I)
+    r"|\bhow are things on your (?:side|end)\b|\blong time no see\b"
+    r"|\bhope you'?re (?:doing|well)\b|\bhope all is well\b|\bjust checking in\b", re.I)
 SOCIAL_THANKS_PATTERN = re.compile(
     r"\bthanks\b|\bthank you\b|\bappreciate (?:it|you)\b|\bcheers\b"
     r"|\bwell done\b|\bgood (?:bot|job|work)\b|\bnice one\b|\bgreat work\b", re.I)
 SOCIAL_FAREWELL_PATTERN = re.compile(
     r"\b(?:bye|goodbye|good bye|see you|catch you later|talk later|good night"
-    r"|goodnight|have a (?:good|great) (?:one|day|night|weekend))\b"
+    r"|goodnight|have a (?:good|great) (?:one|day|night|weekend)"
+    r"|nice talking to you|good talking to you)\b"
     r"|\blater\b(?!(?: (?:than|this|today|tonight|week|month|year)))", re.I)
 BUSINESS_NOUN_PATTERN = re.compile(
     r"\bstore|shop|shopify|business|revenue|sales|order|customer|client|cart"
@@ -279,6 +299,106 @@ GREETING_CHECKINS = (
     "Hope the day is treating you well — how's it going?",
     "Good to have you back — what's happening with you today?",
 )
+
+
+def _dynamic_conversational(message: str, classification: dict, intent: str,
+                            user_id: str, routed: dict, goal: str | None = None) -> str:
+    """Generated conversational language: one fast-model call with history,
+    memories and an address hint; static fallbacks keep replies honest when
+    the provider is unavailable (never a fabricated business answer)."""
+    from . import responder
+    name = _boss_name(message, user_id)
+    kind = classification.get("social_kind")
+    if goal is None:
+        if intent == INTENT_GREETING:
+            goal = (f"greet the merchant back warmly, address them as {name} once, "
+                    "ask how they are doing, and open the door to business naturally")
+        elif kind == "ack":
+            goal = f"acknowledge briefly as {name} and keep the conversation open"
+        elif kind == "farewell":
+            goal = f"say a warm goodbye to {name} without introducing anything new"
+        elif kind == "wellbeing":
+            goal = (f"answer how Rev is doing in one or two sentences, address them "
+                    f"as {name}, and return the question about their day")
+        elif intent == INTENT_IDENTITY:
+            goal = "explain plainly what Rev is and invite the merchant to share what they are working on"
+        else:
+            goal = f"reply naturally to the merchant as {name}, matching their energy"
+    understanding = routed.get("understanding_obj") or _synthetic_understanding(
+        "greeting" if intent == INTENT_GREETING else "casual", goal)
+    try:
+        text = responder.compose_conversational(
+            message, understanding, routed.get("history_text") or "",
+            routed.get("memories") or [], bool(routed.get("has_store")))
+    except Exception:
+        text = ""
+    if not text or text.startswith("I'm temporarily unable"):
+        # Provider degradation keeps the §13 greeting contract instead of
+        # surfacing a system notice as if it were conversation.
+        if intent == INTENT_GREETING:
+            return _static_greeting(message, user_id)
+        if intent == INTENT_IDENTITY:
+            return ("I'm Rev, Revluma's operational intelligence analyst. I read your "
+                    "connected store's records, verify the evidence, and explain what "
+                    "changed, what it might mean, and what is still unknown. What are "
+                    "you working on today?")
+        if kind is None and intent == INTENT_GENERAL:
+            return _static_general_offer(message, user_id)
+        return _social_reply(kind or "wellbeing", message, user_id)
+    return text
+
+
+def _static_greeting(message: str, user_id: str) -> str:
+    name = _boss_name(message, user_id)
+    checkin = GREETING_CHECKINS[sum((user_id or message).encode()) % len(GREETING_CHECKINS)]
+    return (f"Hey {name}, good to see you. {checkin}\n\n"
+            "I can help with your store's revenue, checkout, customers, products, "
+            "inventory and data coverage. Ask a business question and I'll investigate "
+            "the evidence. For general ecommerce advice, tell me the context you want "
+            "me to account for. If you want a starting point, I can check how your "
+            "store sync is doing or what your recorded sales look like this week.")
+
+
+def _static_general_offer(message: str, user_id: str) -> str:
+    name = _boss_name(message, user_id)
+    return (f"I'm all ears, {name}. Ask me anything about your store's revenue, checkout, "
+            "customers, products, inventory or data coverage and I'll investigate the "
+            "recorded evidence for you. What's on your mind today?")
+
+
+def _dynamic_knowledge(message: str, user_id: str, routed: dict) -> str:
+    from . import responder
+    understanding = routed.get("understanding_obj") or _synthetic_understanding(
+        "knowledge", "explain the concept practically and offer to check the store",
+        response_mode="explanation")
+    try:
+        text = responder.compose_knowledge(
+            message, understanding, routed.get("history_text") or "",
+            routed.get("memories") or [], bool(routed.get("has_store")))
+    except Exception:
+        text = ""
+    if not text or text.startswith("I'm temporarily unable"):
+        name = _boss_name(message, user_id)
+        return (f"Good question, {name}. General ecommerce practice has a lot to say "
+                "here, but I'd rather check what your own records show before I advise. "
+                "Want me to investigate it in your store?")
+    return text
+
+
+def _dynamic_clarification(message: str, user_id: str, routed: dict) -> str:
+    from . import responder
+    understanding = routed.get("understanding_obj") or _synthetic_understanding(
+        "clarification_needed", "ask which reading the merchant meant",
+        response_mode="clarification", confidence=0.4)
+    try:
+        text = responder.compose_clarification(message, understanding,
+                                               routed.get("history_text") or "")
+    except Exception:
+        text = ""
+    if not text or text.startswith("I'm temporarily unable"):
+        return ("I want to make sure I answer the right question. Are you asking about "
+                "your store's recorded data, or would you like general advice?")
+    return text
 
 
 def _social_reply(kind: str, message: str, user_id: str) -> str:
@@ -526,13 +646,219 @@ def classify_investigation(message: str, context: dict | None = None) -> dict:
     }
 
 
+# ── Conversational routing: understanding-driven investigation gate ──────────
+
+def _history_text(context: dict | None) -> str:
+    turns = (context or {}).get("recent_turns") or []
+    lines = []
+    for turn in turns[-6:]:
+        role = turn.get("role")
+        text = turn.get("text") or ""
+        if text:
+            lines.append(f"{'merchant' if role == 'user' else 'rev'}: {text[:160]}")
+    return "\n".join(lines)
+
+
+def _model_history(context: dict | None) -> list[dict]:
+    return [{"role": t.get("role"), "content": {"text": t.get("text")}}
+            for t in ((context or {}).get("recent_turns") or []) if t.get("text")]
+
+
+def _synthetic_understanding(intent: str, goal: str, *, requires_store_data: bool = False,
+                             response_mode: str = "conversational", entities: dict | None = None,
+                             domains: list | None = None, confidence: float = 0.9):
+    from .understanding import Understanding
+    return Understanding(intent=intent, goal=goal, requires_store_data=requires_store_data,
+                         requires_web=False, requires_action=False,
+                         response_mode=response_mode, entities=entities or {},
+                         domains=domains or [], confidence=confidence)
+
+
+def _memories_for(organization_id: str, user_id: str, db) -> list[dict]:
+    try:
+        from .orchestrator import _load_memories
+        return _load_memories(organization_id, user_id, db) or []
+    except Exception:
+        return []
+
+
+def gate_investigation(routing: dict) -> str:
+    """The single investigation gate: refuse | conversational | clarify | tools.
+
+    Store data is retrieved only when the routed subject justifies it;
+    uncertainty clarifies instead of investigating (directive §5).
+    """
+    if routing.get("source") == "guard":
+        return "refuse"
+    intent = routing["classification"]["intent"]
+    if intent in (INTENT_GREETING, INTENT_SOCIAL, INTENT_IDENTITY, INTENT_CAPABILITY,
+                  INTENT_KNOWLEDGE):
+        return "conversational"
+    if intent == INTENT_CLARIFY:
+        return "clarify"
+    if intent in STORE_INTENTS:
+        return "tools"
+    return "conversational"
+
+
+_DOMAIN_INTENTS = {
+    "revenue": INTENT_REVENUE, "carts": INTENT_CHECKOUT, "checkout": INTENT_CHECKOUT,
+    "customers": INTENT_CUSTOMERS, "products": INTENT_PRODUCTS,
+    "marketing": INTENT_TRAFFIC, "traffic": INTENT_TRAFFIC,
+}
+
+
+def route_message(message: str, context: dict | None, store_context: dict | None) -> dict:
+    """Resolve what the merchant means before any tool runs.
+
+    L1 deterministic safeguards keep trivial messages fast and security
+    deterministic; L2 model understanding (understanding.understand) resolves
+    everything else, so unforeseen phrasings get real interpretation instead
+    of a keyword guess. Never raises: model failure degrades to the
+    deterministic router with the gate held shut on ambiguity.
+    """
+    text = (message or "").strip()
+    lower = text.lower()
+    routing: dict = {"classification": None, "understanding": None,
+                     "understanding_obj": None, "source": None,
+                     "gate": None, "social_opener": False, "topic_change": False}
+
+    if re.search(r"\bmobile\b|\bphone\b|\bios\b|\bandroid\b", lower):
+        segment = "mobile"
+    elif re.search(r"\bdesktop\b|\blaptop\b", lower):
+        segment = "desktop"
+    else:
+        segment = None
+
+    def done(classification: dict, source: str) -> dict:
+        if classification.get("segment") is None:
+            classification["segment"] = segment
+        routing["classification"] = classification
+        routing["source"] = source
+        routing["gate"] = gate_investigation(routing)
+        return routing
+
+    prohibited = detect_prohibited_actions(text)
+    if prohibited:
+        return done({"intent": INTENT_READ_ONLY, "requested_actions": prohibited,
+                     "segment": None, "followup": False}, "guard")
+
+    greeting_form = re.sub(r"\s+", " ", re.sub(r"[^\w\s']", " ", text)).strip().lower()
+    leading_form = re.sub(r"\s+", " ", re.sub(r"[^\w\s']", " ",
+                            " ".join(text.split()[:4]))).strip().lower()
+    social_kind = _social_kind(text)
+    topic_change = bool(TOPIC_CHANGE_PATTERN.search(lower))
+    routing["topic_change"] = topic_change
+    routing["social_opener"] = bool(social_kind) or bool(GREETING_PATTERN.match(leading_form))
+
+    if GREETING_PATTERN.match(greeting_form):
+        return done({"intent": INTENT_GREETING, "segment": None, "followup": False},
+                    "fast_path")
+    if social_kind and not BUSINESS_NOUN_PATTERN.search(text):
+        return done({"intent": INTENT_SOCIAL, "segment": None, "followup": False,
+                     "social_kind": social_kind}, "fast_path")
+    if ACK_PATTERN.match(greeting_form):
+        return done({"intent": INTENT_SOCIAL, "segment": None, "followup": False,
+                     "social_kind": "ack"}, "fast_path")
+    if IDENTITY_PATTERN.search(text):
+        return done({"intent": INTENT_IDENTITY, "segment": None, "followup": False},
+                    "fast_path")
+    if CAPABILITY_PATTERN.search(text):
+        return done({"intent": INTENT_CAPABILITY, "segment": None, "followup": False},
+                    "fast_path")
+    if re.search(r"\b(?:sync(?:s|ed|ing)?|connected|connection|integration|webhooks?)\b", lower) \
+            and ("?" in text or re.search(r"\b(?:is|are|was|were|did|does|has|have|when|check)\b", lower)):
+        return done({"intent": INTENT_COVERAGE, "segment": None, "followup": False},
+                    "fast_path")
+
+    inherited = (context or {}).get("last_investigation") or {}
+    inherited_intent = inherited.get("intent")
+    is_followup = bool(FOLLOWUP_PATTERN.match(lower)) or lower in FOLLOWUP_ELLIPSIS
+    keyword_intent = None
+    for pattern, candidate in INTENT_PATTERNS:
+        if pattern.search(lower):
+            keyword_intent = candidate
+            break
+    if is_followup and not topic_change and inherited_intent in STORE_INTENTS:
+        return done({"intent": inherited_intent, "segment": None, "followup": True,
+                     "inherited_intent": inherited_intent}, "fast_path")
+    # Advice-seeking phrasings ("how do I reduce cart abandonment?") name a
+    # domain but ask for expertise, not a data pull: they reach the model.
+    store_ref = re.search(r"\b(?:my|our|we|us|store|shop)\b", lower)
+    metric_query = re.search(r"\b(?:how (?:much|many)|show me|count|total"
+                             r"|what (?:is|was|are|were) (?:my|our|the))\b", lower)
+    if keyword_intent is not None and BUSINESS_NOUN_PATTERN.search(text) \
+            and (store_ref or metric_query):
+        return done({"intent": keyword_intent, "segment": None, "followup": False},
+                    "fast_path")
+
+    # L2: model understanding for everything the safeguards do not settle.
+    from .understanding import understand
+    understanding = understand(text, _model_history(context))
+    routing["understanding"] = understanding.to_dict()
+    routing["understanding_obj"] = understanding
+
+    # A topic change resets continuity (state layer) but never blocks the
+    # actual reading of the message: a definition after "anyway" is knowledge.
+    if understanding.intent == "clarification_needed":
+        if keyword_intent is not None and BUSINESS_NOUN_PATTERN.search(text):
+            return done({"intent": keyword_intent, "segment": None, "followup": False},
+                        "fallback_deterministic")
+        return done({"intent": INTENT_CLARIFY, "segment": None, "followup": False},
+                    "model")
+    if understanding.confidence < CONFIDENCE_FLOOR:
+        # Degraded reading (provider failure or unparseable output): the
+        # deterministic layer rescues clear business subjects; explicit
+        # store language still justifies tools; anything else stays
+        # conversational. Ambiguity never becomes an investigation.
+        if keyword_intent is not None and BUSINESS_NOUN_PATTERN.search(text):
+            return done({"intent": keyword_intent, "segment": None, "followup": False},
+                        "fallback_deterministic")
+        if understanding.requires_store_data:
+            domains = understanding.domains or []
+            intent = _DOMAIN_INTENTS.get(domains[0] if domains else "") or INTENT_OVERVIEW
+            return done({"intent": intent, "segment": None, "followup": False},
+                        "fallback_deterministic")
+        return done({"intent": INTENT_GENERAL, "segment": None, "followup": False},
+                    "model_degraded")
+    if not understanding.requires_store_data:
+        intent_map = {
+            "greeting": INTENT_GREETING, "casual": INTENT_SOCIAL,
+            "feedback": INTENT_SOCIAL, "preference": INTENT_SOCIAL,
+            "identity": INTENT_IDENTITY, "capability": INTENT_CAPABILITY,
+            "knowledge": INTENT_KNOWLEDGE, "strategy": INTENT_KNOWLEDGE,
+            "web_research": INTENT_KNOWLEDGE,
+        }
+        intent = intent_map.get(understanding.intent, INTENT_KNOWLEDGE)
+        classification = {"intent": intent, "segment": None, "followup": False}
+        if intent == INTENT_SOCIAL:
+            classification["social_kind"] = "casual"
+        return done(classification, "model")
+
+    # Store data is justified: resolve the subject (follow-ups inherit it).
+    state = (context or {}).get("conversation_state") or {}
+    if understanding.intent == "followup":
+        subject = inherited_intent if inherited_intent in STORE_INTENTS else state.get("subject")
+        if subject in STORE_INTENTS:
+            return done({"intent": subject, "segment": None, "followup": True,
+                         "inherited_intent": subject}, "model")
+    domains = understanding.domains or []
+    intent = _DOMAIN_INTENTS.get(domains[0] if domains else "")
+    if intent is None:
+        intent = keyword_intent or (state.get("subject") if understanding.intent == "followup"
+                                    and state.get("subject") in STORE_INTENTS else None) \
+            or INTENT_OVERVIEW
+    return done({"intent": intent, "segment": None,
+                 "followup": understanding.intent == "followup"}, "model")
+
+
 # ── Context loading ───────────────────────────────────────────────────────────
 
 def load_conversation_context(organization_id: str, user_id: str,
                               conversation_id: str | None, db,
                               context_payload: dict | None = None) -> dict:
     context = {"summary": None, "last_investigation": None, "recent_turns": [],
-               "unresolved": []}
+               "unresolved": [], "conversation_state": None}
     if not conversation_id:
         return context
 
@@ -569,6 +895,9 @@ def load_conversation_context(organization_id: str, user_id: str,
                 context["last_investigation"] = raw.get("last_investigation")
             if not context["unresolved"]:
                 context["unresolved"] = raw.get("unresolved") or []
+            state = raw.get("conversation_state")
+            if isinstance(state, dict):
+                context["conversation_state"] = _fresh_state(state)
     history, history_error = safe_query(db, """
         SELECT role, content, created_at
         FROM conversation_messages
@@ -586,6 +915,21 @@ def load_conversation_context(organization_id: str, user_id: str,
                 turns.append({"role": _get(row, "role"), "text": text[:600]})
         context["recent_turns"] = turns
     return context
+
+
+def _fresh_state(state: dict) -> dict | None:
+    """Conversation state expires: old subjects must not hijack new messages."""
+    stamp = state.get("updated_at")
+    if not isinstance(stamp, str):
+        return None
+    try:
+        at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    age_minutes = (utc_now() - at).total_seconds() / 60.0
+    return state if age_minutes <= STATE_TTL_MINUTES else None
 
 
 def _get(row, key, default=None):
@@ -1301,7 +1645,8 @@ def _validate_narrative(text_value: str, facts: list[dict], items: list[dict]) -
 def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[dict],
                        comparison_facts: list[dict], hypotheses: list[dict],
                        unknowns: list[str], recommendations: list[dict],
-                       items: list[dict], deterministic: str) -> tuple[str, bool]:
+                       items: list[dict], deterministic: str,
+                       social_opener: bool = False) -> tuple[str, bool]:
     if not _narrative_enabled():
         return deterministic, False
     from .model_gateway import generate
@@ -1322,10 +1667,15 @@ def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[d
             for item in items
         ],
     }
+    social_line = (
+        "The merchant opened with a friendly social clause before the business question. "
+        "Acknowledge it in one short, warm sentence before presenting the analysis. "
+        if social_opener else "")
     prompt = (
         "You are Rev, Revluma's commerce intelligence analyst. Answer the merchant's question "
         "using ONLY the verified evidence supplied. Do not add numbers, causes, benchmarks or "
         "actions that are not present. Clearly separate what is verified from what is not. "
+        + social_line +
         "State limitations. Never claim an action was executed: Rev is read-only in this release.\n\n"
         f"{UNTRUSTED_DATA_PREAMBLE}\n\n"
         f"Merchant question: {message}\n\n"
@@ -1349,8 +1699,51 @@ def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[d
 
 # ── Persistence ───────────────────────────────────────────────────────────────
 
+def _persist_conversation_state(organization_id: str, conversation_id: str | None,
+                                db, state: dict) -> None:
+    """Merge conversation_state into the context window without touching the
+    rest of it (last_investigation, summary). Failure is logged, never fatal:
+    continuity is a convenience, not a correctness boundary."""
+    if not conversation_id:
+        return
+    try:
+        db.execute(
+            _text("""
+                UPDATE conversations
+                SET context_window = COALESCE(context_window, '{}'::jsonb)
+                    || jsonb_build_object('conversation_state', :state::jsonb),
+                    updated_at = NOW()
+                WHERE id = :conversation_id::uuid AND organization_id = :org_id::uuid
+            """),
+            {"state": json.dumps(state), "conversation_id": conversation_id,
+             "org_id": organization_id},
+        )
+        db.commit()
+    except Exception as exc:
+        logger.error("rev_state_persist_failed error_type=%s", type(exc).__name__)
+
+
+def _conversation_state(previous: dict | None, *, intent: str, window: dict,
+                        topic_change: bool, open_clarification: bool,
+                        understanding: dict | None) -> dict:
+    subject = intent if intent in STORE_INTENTS else (previous or {}).get("subject")
+    version = (previous or {}).get("topic_version") or 0
+    prior_subject = (previous or {}).get("subject")
+    if topic_change and prior_subject and prior_subject != subject:
+        version += 1
+    return {
+        "subject": subject,
+        "metric": (understanding or {}).get("entities", {}).get("metric"),
+        "period": (window or {}).get("label"),
+        "topic_version": version,
+        "open_clarification": open_clarification,
+        "updated_at": iso(utc_now()),
+    }
+
+
 def persist_investigation_context(organization_id: str, user_id: str,
-                                  conversation_id: str | None, db, result: dict) -> bool:
+                                  conversation_id: str | None, db, result: dict,
+                                  conversation_state: dict | None = None) -> bool:
     """Persist bounded conversation context and one verified investigation memory.
 
     Conversation transcripts belong to Node. This function only writes the
@@ -1371,6 +1764,8 @@ def persist_investigation_context(organization_id: str, user_id: str,
         },
         "unresolved": result.get("unknowns", [])[:5],
     }
+    if conversation_state:
+        context_window["conversation_state"] = conversation_state
     summary = (f"{INTENT_LABELS.get(result['investigation']['intent'], 'Investigation')} "
                f"for {result['investigation']['period'].get('label', 'the period')}; "
                f"status {result['investigation']['status']}; "
@@ -1536,27 +1931,22 @@ def _base_result(*, message: str, intent: str, window: dict, investigation_id: s
 
 
 def _conversation_result(message: str, classification: dict, *, investigation_id: str,
-                         store_context: dict, user_id: str, window: dict) -> dict:
+                         store_context: dict, user_id: str, window: dict,
+                         routed: dict | None = None) -> dict:
     intent = classification["intent"]
     result = _base_result(message=message, intent=intent, window=window,
                           investigation_id=investigation_id, store_context=store_context,
                           user_id=user_id)
     result["response_type"] = "chat" if intent in (INTENT_GREETING, INTENT_IDENTITY,
-                                                   INTENT_GENERAL, INTENT_SOCIAL) else "capability"
+                                                   INTENT_GENERAL, INTENT_SOCIAL,
+                                                   INTENT_KNOWLEDGE, INTENT_CLARIFY) else "capability"
     result["investigation"]["status"] = "complete"
     # Conversational turns run no evidence engine, so they carry no follow-up
     # chips (spec §7: never a generic auto-list after every answer).
-    if intent == INTENT_GREETING:
-        name = _boss_name(message, user_id)
-        checkin = GREETING_CHECKINS[sum(investigation_id.encode()) % len(GREETING_CHECKINS)]
-        result["text"] = (
-            f"Hey {name}, good to see you. {checkin}\n\n"
-            "I can help with your store's revenue, checkout, customers, products, "
-            "inventory and data coverage. Ask a business question and I'll investigate "
-            "the evidence. For general ecommerce advice, tell me the context you want "
-            "me to account for. If you want a starting point, I can check how your "
-            "store sync is doing or what your recorded sales look like this week."
-        )
+    routed = routed or {}
+    if intent in (INTENT_GREETING, INTENT_SOCIAL, INTENT_IDENTITY):
+        result["text"] = _dynamic_conversational(message, classification, intent,
+                                                 user_id, routed)
     elif intent == INTENT_IDENTITY:
         result["text"] = (
             "I'm Rev, Revluma's operational intelligence analyst. I read your connected "
@@ -1581,16 +1971,16 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
             "- I won't invent a number or a cause when the evidence isn't there.\n\n"
             "Ask me something like \"Why did my revenue change this week?\" to start."
         )
-    elif intent == INTENT_SOCIAL:
-        result["text"] = _social_reply(classification.get("social_kind") or "wellbeing",
-                                       message, user_id)
+    elif intent == INTENT_KNOWLEDGE:
+        result["text"] = _dynamic_knowledge(message, user_id, routed)
+    elif intent == INTENT_CLARIFY:
+        result["text"] = _dynamic_clarification(message, user_id, routed)
     else:
-        name = _boss_name(message, user_id)
-        result["text"] = (
-            f"I'm all ears, {name}. Ask me anything about your store's revenue, checkout, "
-            "customers, products, inventory or data coverage and I'll investigate the "
-            f"recorded evidence for you. What's on your mind today?"
-        )
+        result["text"] = _dynamic_conversational(
+            message, classification, INTENT_GENERAL, user_id, routed,
+            goal="invite the merchant to share what they need today and offer "
+                 "store analysis naturally, without listing features robotically")
+        # kind None + INTENT_GENERAL inside the composer maps to the offer fallback.
     result["response_mode"] = RESPONSE_MODE_CONVERSATIONAL
     result["mode_reason"] = "the answer uses no store investigation"
     return result
@@ -1615,7 +2005,8 @@ def select_response_mode(*, intent: str, status: str, tool_names: list,
     evidence actually supports instead of guessing from rendered text.
     """
     if intent in (INTENT_GREETING, INTENT_IDENTITY, INTENT_CAPABILITY,
-                  INTENT_GENERAL, INTENT_SOCIAL, INTENT_READ_ONLY):
+                  INTENT_GENERAL, INTENT_SOCIAL, INTENT_KNOWLEDGE, INTENT_CLARIFY,
+                  INTENT_READ_ONLY):
         return RESPONSE_MODE_CONVERSATIONAL, "the question needs no store investigation"
     verified = [item for item in evidence_items
                 if item.get("status") == STATUS_AVAILABLE]
@@ -1736,18 +2127,47 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     conversation_context = load_conversation_context(
         organization_id, user_id, conversation_id, db, context_payload=context_payload)
     store_context = resolve_store_context(organization_id, db)
-    classification = classify_investigation(message, conversation_context)
+    routed = route_message(message, conversation_context, store_context)
+    routed["history_text"] = _history_text(conversation_context)
+    routed["memories"] = _memories_for(organization_id, user_id, db)
+    routed["has_store"] = (store_context or {}).get("store_count", 0) > 0
+    classification = routed["classification"]
     intent = classification["intent"]
+    logger.info(
+        "rev_routing",
+        extra={
+            "source": routed["source"],
+            "intent": intent,
+            "gate": routed["gate"],
+            "confidence": (routed["understanding"] or {}).get("confidence"),
+            "topic_change": routed["topic_change"],
+            "social_opener": routed["social_opener"],
+        },
+    )
     window = resolve_reporting_period(
         message, now,
         inherited=(conversation_context or {}).get("last_investigation"))
 
     if intent in (INTENT_GREETING, INTENT_IDENTITY, INTENT_CAPABILITY, INTENT_GENERAL,
-                  INTENT_SOCIAL):
+                  INTENT_SOCIAL, INTENT_KNOWLEDGE, INTENT_CLARIFY):
         result = _conversation_result(message, classification,
                                       investigation_id=investigation_id,
                                       store_context=store_context, user_id=user_id,
-                                      window=window)
+                                      window=window, routed=routed)
+        result["understanding"] = {
+            "intent": (routed["understanding"] or {}).get("intent") or intent,
+            "gate": routed["gate"],
+            "source": routed["source"],
+            "confidence": (routed["understanding"] or {}).get("confidence"),
+        }
+        if intent == INTENT_CLARIFY:
+            _persist_conversation_state(
+                organization_id, conversation_id, db,
+                _conversation_state(conversation_context.get("conversation_state"),
+                                    intent=intent, window=window,
+                                    topic_change=routed["topic_change"],
+                                    open_clarification=True,
+                                    understanding=routed["understanding"]))
         _emit({"event": "final", "data": result})
         return result
 
@@ -1960,6 +2380,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             message=message, intent=intent, window=window, facts=facts,
             comparison_facts=comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
             recommendations=recommendations, items=items, deterministic=deterministic,
+            social_opener=routed["social_opener"],
         )
 
     coverage = {}
@@ -2038,7 +2459,18 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     result["mode_reason"] = mode_reason
 
     if persist and conversation_id:
-        persist_investigation_context(organization_id, user_id, conversation_id, db, result)
+        persist_investigation_context(
+            organization_id, user_id, conversation_id, db, result,
+            conversation_state=_conversation_state(
+                conversation_context.get("conversation_state"), intent=intent,
+                window=window, topic_change=routed["topic_change"],
+                open_clarification=False, understanding=routed["understanding"]))
+        result["understanding"] = {
+            "intent": (routed["understanding"] or {}).get("intent") or intent,
+            "gate": routed["gate"],
+            "source": routed["source"],
+            "confidence": (routed["understanding"] or {}).get("confidence"),
+        }
 
     _emit({"event": "evidence", "data": result["evidence"]})
     _emit({"event": "final", "data": result})
