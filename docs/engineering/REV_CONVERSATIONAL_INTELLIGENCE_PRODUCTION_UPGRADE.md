@@ -191,6 +191,19 @@ quick_verification / investigation / comparison modes with their evidence
 chrome. The frontend never infers investigation from metadata presence
 (MODE-PERSIST-001 rule: empty evidence shells are not evidence).
 
+Increment 2 (implemented): `RevAnswerView` treats `understanding.gate`
+(`conversational`/`clarify`/`refuse`) as authoritative for quiet presentation
+even when `response_mode` is missing, and quiet turns no longer render any
+report scaffolding at all — structured sections, facts, hypotheses,
+recommendations, comparison cards, specialist warnings and timelines are
+suppressed regardless of which legacy fields ride along in the payload. The
+legacy mode fallback keeps full rigour for pre-mode analysis turns that carry
+structured prose sections. The unused parallel pill module
+(`revAnswerState.ts`, never imported by any component) was removed so one
+renderer owns presentation decisions. Contract tests:
+`RevQuietPresentation.test.tsx` (4 cases) plus the existing mode suite;
+Dashboard 266 rev/lib tests green.
+
 ## 11. Security considerations
 
 Unchanged boundaries: Node authentication and tenant ownership checks;
@@ -214,6 +227,14 @@ into prompts; no new write capabilities; logs carry no message content.
 - Evaluation harness extension: unnecessary-tool rate on a social set
   (target 0), follow-up resolution set (target ≥95%), intent accuracy on a
   labelled prompt set, measured baseline vs post-change.
+- Increment 2 additions: `test_conversational_evaluation.py` (50 cases —
+  misspellings, incomplete fragments, emotional context, sarcasm, corrections,
+  ambiguous follow-ups, topic change with subject recovery, a 14-turn mixed
+  conversation with state threading, provider outage, junk model output, and
+  dynamic-generation-vs-template guarantees); Backend
+  `revLifecycle.contract.test.js` (Python SSE → Node gateway → persistence
+  mapper → browser `final` frame: understanding/mode/tool metadata survive;
+  conversational turns emit no plan/step/evidence frames).
 
 ## 13. Evaluation results
 
@@ -232,6 +253,23 @@ Python suite: 1451 passed (4 environment-only DB failures, CI authoritative).
 Backend persistence contract test: passed (mode + understanding fields).
 Dashboard suites: unchanged by this increment (CI verifies).
 
+Increment 2 (frontend integration + expanded evaluation), measured 2026-11-04:
+
+| Set | Cases | Result |
+|---|---|---|
+| Expanded conversational evaluation (`test_conversational_evaluation.py`): typos/variations 15, misspelled business 5, fragments 8, emotional 6, sarcasm 4, corrections 2, ambiguous follow-ups 2 scenarios, topic change 1, long 14-turn mixed conversation 1, outage 1, junk output 1, dynamic generation 4 | 50 | 50/50; zero false-positive tool invocations across 40 conversational-class messages |
+| Backend lifecycle contract (conversational + investigation turn, real `streamInvestigation` + real persistence mapper) | 2 | 2/2 |
+| Frontend quiet-presentation contract (§10/§16) | 4 | 4/4 |
+| Python full suite | — | 1501 passed (4 environment-only DB failures; CI authoritative) |
+| Dashboard full suite | — | green locally (vitest exit 0) + CI |
+
+Evaluation surfaced two genuine fixes, both landed in increment 2:
+multi-token acknowledgements ("ok noted", "cool cool") escaped the ACK
+safeguard and reached the model (now token-wise `_is_ack`, ≤4 pure
+acknowledgement tokens); degraded understanding readings claimed 0.6
+confidence and bypassed the deterministic rescue (fallback confidences now
+0.45–0.5, gate handles them explicitly).
+
 ## 14. Performance measurements
 
 LLM calls per message class (increment 1): greetings/social/acknowledgements/
@@ -243,8 +281,26 @@ degrades to deterministic templates.
 
 ## 15. Deployment details
 
-_To be filled per increment: PR numbers, merge SHAs, Vercel deployment ids,
-Render service redeploy requirements (Node/Python), verification queries._
+Increment 1: PR #285 → merge `049b0c3` (CI 7/7); Vercel production
+`dpl_5vQsPQETYvRhqn4JyQRKVyybBeTQ` READY/PROMOTED; records PR #286 → `a983cc8`.
+Render Node + Python redeploys are user-only (sandbox cannot reach Render).
+
+Increment 2 adds deploy-version verification so production claims stop relying
+on CI alone: `/ready` now reports `node_build` (the git SHA the Node process is
+running, best-effort) and `python_version` (the Python service's reported FastAPI
+version, bumped `0.4.0` → `0.5.0` in this increment). After the user redeploys
+both Render services, verification is:
+
+```
+GET https://revluma-backend-vrsd.onrender.com/ready
+  → node_build == <merge SHA prefix> AND python_version == "0.5.0"
+```
+
+Then the production reproduction sequence (hey chat / how are you doing? /
+conversation→investigation→conversation) is run in the merchant UI and verified
+from the database: `conversation_messages.content->'understanding'` (gate +
+source per turn) and `content->'investigation'->'tools_used'` == [] on
+conversational turns.
 
 ## 16. Rollback procedure
 

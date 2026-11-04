@@ -103,6 +103,18 @@ export interface RevAnswerPayload {
   // turns predate the field and are adapted by the renderer's fallback.
   response_mode?: string;
   mode_reason?: string;
+  /**
+   * Understanding/gate metadata from the routing layer (conversational
+   * intelligence upgrade §16). The frontend uses `gate` to keep conversational
+   * turns out of report presentation even when legacy fields are present; it
+   * never infers an investigation from incidental metadata.
+   */
+  understanding?: {
+    intent?: string;
+    gate?: string;
+    source?: string;
+    confidence?: number;
+  } | null;
   response?: {
     situation?: string;
     insight?: string;

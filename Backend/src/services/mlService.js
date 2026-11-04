@@ -1310,6 +1310,9 @@ async function checkPythonHealth() {
       modelsReady: data?.models_ready === true,
       modelsMissing: modelsMissing || [],
       modelChannels: isPlainObject(data?.model_channels) ? data.model_channels : {},
+      // Deploy verification (conversational upgrade §21): which Python build
+      // is actually answering, not just whether it is healthy.
+      version: typeof data?.version === 'string' ? data.version : null,
       reason: healthy ? null : 'models_not_ready',
       latencyMs:
         Date.now() - startTime,
