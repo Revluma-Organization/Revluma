@@ -294,12 +294,12 @@ export function RevAnswerView({
       {!streaming && (quiet ? monetary : Boolean(investigation?.period?.start || monetary)) && (
         <p style={{ margin: 0, fontSize: "0.7rem", color: muted }}>
           Based on recorded store data
-          {investigation?.period?.start ? ` for ${formatPeriod(investigation.period)} (UTC)` : ""}
+          {investigation?.period?.start ? ` for ${formatPeriod(investigation.period)}` : ""}
           {monetary && currencies.length > 0 ? ` · ${currencies.join(", ")}` : ""}.
         </p>
       )}
 
-      {citedEvidenceIds.length > 0 && !streaming && (
+      {citedEvidenceIds.length > 0 && !streaming && (!quiet || monetary) && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Evidence cited in this answer">
           <span style={{ fontSize: "0.68rem", color: muted, fontWeight: 650 }}>Sources:</span>
           {citedEvidenceIds.map((id) => {
@@ -352,13 +352,13 @@ export function RevAnswerView({
             <div>
               <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Period and currency</p>
               <p style={{ ...DISCLOSURE_LINE, color: muted }}>
-                {investigation?.period?.start ? `${formatPeriod(investigation.period)} (UTC)` : "Period unavailable"}
+                {investigation?.period?.start ? formatPeriod(investigation.period) : "Period unavailable"}
                 {" · "}
                 {currencies.length > 0 ? currencies.join(", ") : "Currency unavailable"}
               </p>
               {investigation?.period?.compared_to?.start && (
                 <p style={{ ...DISCLOSURE_LINE, color: muted, marginTop: 2 }}>
-                  Compared with {formatPeriod(investigation.period.compared_to)} (UTC)
+                  Compared with {formatPeriod(investigation.period.compared_to)}
                   {textValue(investigation.period.compared_to.label) ? ` — ${investigation.period.compared_to.label}` : ""}
                 </p>
               )}
@@ -445,7 +445,7 @@ export function RevAnswerView({
         </div>
       )}
 
-      {followUps.length > 0 && !streaming && (
+      {followUps.length > 0 && !streaming && !quiet && (
         <div className="flex flex-wrap gap-2">
           {followUps.slice(0, 4).map((followUp) => (
             <button
@@ -470,6 +470,8 @@ export function RevAnswerView({
 
       {!streaming && (
         <div className="flex flex-wrap items-center gap-3" style={{ paddingTop: 2 }}>
+          {/* Transcript A: a quiet non-monetary answer shows no evidence count by default. */}
+          {(!quiet || monetary) && (
           <button
             type="button"
             // This button toggles the whole panel, so it must not report an
@@ -490,6 +492,7 @@ export function RevAnswerView({
             <Database size={13} />
             {evidenceCount ? `Evidence (${evidenceCount})` : hasEvidence ? "Evidence and limitations" : "No evidence records"}
           </button>
+          )}
           {onCopy && (
             <button
               type="button"

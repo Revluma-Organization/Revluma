@@ -178,3 +178,31 @@ describe("monetary provenance in quiet modes", () => {
     expect(screen.queryByText(/Based on recorded store data/)).not.toBeInTheDocument();
   });
 });
+
+describe("quiet verification chrome (transcript A)", () => {
+  it("hides sources, evidence count, chips and disclosure on a non-monetary quick verification", () => {
+    render(<RevAnswerView onOpenEvidence={vi.fn()} onFollowUp={vi.fn()} payload={payload({
+      response_mode: "quick_verification",
+      text: "Yes — your Shopify store is connected. The latest sync completed successfully.",
+      evidence: evidence([item({ unit: "count", currency: null })]),
+      facts: [{ text: "Your Shopify store is connected.", evidence_ids: ["ev-current"] }],
+      investigation: investigation({ follow_ups: ["Compare with last week"] }),
+    })} />);
+    // Transcript A: no provenance table, no evidence count, no follow-up block.
+    expect(screen.queryByText("Sources:")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Evidence/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Compare with last week")).not.toBeInTheDocument();
+    expect(screen.queryByText("How I checked")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Based on recorded store data/)).not.toBeInTheDocument();
+  });
+
+  it("keeps compact provenance and sources for a monetary quick verification", () => {
+    render(<RevAnswerView onOpenEvidence={vi.fn()} payload={payload({
+      response_mode: "quick_verification",
+      text: "Recorded order value is $1,250 for the window.",
+      facts: [{ text: "Recorded order value was $1,250 for the period.", evidence_ids: ["ev-current"] }],
+    })} />);
+    expect(screen.getByText(/Based on recorded store data/)).toBeInTheDocument();
+    expect(screen.getByText("Sources:")).toBeInTheDocument();
+  });
+});

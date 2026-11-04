@@ -269,6 +269,9 @@ PROHIBITED_CLAIMS = [
     "i launched", "i refunded", "i cancelled", "net sales", "confidence score",
     "context payload", "sql", "worker", "event stream", "endpoint",
     "model status",
+    # Internal notation that leaked into a production answer (2026-11-04):
+    "half-open", "[start, end)", "store(s)", "finding(s)", "coverage status:",
+    "evidence item(s)",
 ]
 
 GENERIC_FILLER = "What should I investigate next?"

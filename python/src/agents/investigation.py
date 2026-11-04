@@ -342,6 +342,7 @@ def resolve_reporting_period(message: str, now: datetime | None = None,
         "start": iso(comparison_start),
         "end": iso(comparison_end),
         "label": "Immediately preceding equal-length period",
+        "timezone": "UTC",
     }
     return window
 
@@ -723,12 +724,22 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
         for metric in by_metric:
             if metric.startswith("event_"):
                 add(metric, lambda i: f"{i['value']} {i.get('label', 'events').lower()} recorded")
-    if intent == INTENT_COVERAGE:
-        add("certified_store_count", lambda i: f"{i['value']} stores certify order coverage for this window")
-    add("connected_store_count", lambda i: f"{i['value']} connected store(s)")
-    add("stores_with_sync", lambda i: f"{i['value']} store(s) have completed a sync")
-    add("certified_store_count", lambda i: f"{i['value']} store(s) certify order coverage")
-    add("open_finding_count", lambda i: f"{i['value']} verified operational finding(s) are open")
+    # Merchant phrasing (spec §8): no machine "(s)" counters, no duplicated
+    # coverage claim. These facts can become the answer text, so they read as
+    # sentences a merchant would say.
+    add("connected_store_count", lambda i: (
+        "Your Shopify store is connected." if i["value"] == 1
+        else f"{i['value']} Shopify stores are connected."))
+    add("stores_with_sync", lambda i: (
+        "The latest sync completed." if i["value"] == 1
+        else f"{i['value']} stores completed a sync."))
+    add("certified_store_count", lambda i: (
+        "Order coverage is certified for this window." if i["value"] == 1
+        else f"Order coverage is certified for {i['value']} stores in this window."
+        if i["value"] else "No store certifies order coverage for this window."))
+    add("open_finding_count", lambda i: (
+        "One verified operational finding is open." if i["value"] == 1
+        else f"{i['value']} verified operational findings are open."))
     return facts
 
 
@@ -890,8 +901,8 @@ def _recommendations(intent: str, items: list[dict]) -> list[dict]:
              "measure": "First-time and ordering customer counts per currency."},
         ],
         INTENT_COVERAGE: [
-            {"label": "Complete the initial Shopify sync",
-             "why": "Coverage certification is required before financial claims are treated as complete.",
+            {"label": "Confirm the Shopify sync completed for this window",
+             "why": "Coverage certification needs one successful sync and recorded orders inside the period.",
              "measure": "Certified coverage window per store."},
         ],
         INTENT_OVERVIEW: [
@@ -974,9 +985,90 @@ def _follow_ups(intent: str, window: dict, segment: str | None,
     # Evidence-gated follow-ups (spec §7): suggestions only when something the
     # investigation actually returned supports them. When nothing does, the list
     # is empty and the UI shows no chips at all — never generic filler.
-    if evidence_items and window.get("compared_to") and not comparison_facts:
+    if (intent != INTENT_COVERAGE and evidence_items and window.get("compared_to")
+            and not comparison_facts):
         suggestions.append("Can you compare this with the previous period?")
     return list(dict.fromkeys(suggestions))[:3]
+
+
+def _verification_answer(*, items: list[dict], window: dict) -> tuple[str, list[dict]]:
+    """Direct answer for connection/sync/coverage questions.
+
+    Binding shape from the conversation-experience plan §4.1/§4.6 (transcripts
+    A and B): a plain-language verdict first, at most one caveat that changes
+    understanding, no report scaffolding, no machine count facts, no filler
+    sections. Connection, sync completion and coverage certification stay
+    separate concepts (P6) — a connected store is never presented as certified
+    data coverage, and a failed check is never presented as a disconnected
+    store. Returns (text, recommendations).
+    """
+    def _metric_value(metric: str) -> int | None:
+        for entry in items:
+            if entry.get("metric") == metric and entry.get("status") == STATUS_AVAILABLE:
+                try:
+                    return int(entry.get("value"))
+                except (TypeError, ValueError):
+                    return None
+        return None
+
+    connected = _metric_value("connected_store_count")
+    synced = _metric_value("stores_with_sync")
+    certified = _metric_value("certified_store_count")
+    period_text = describe_period(window)
+
+    sync_recommendation = {
+        "label": "Complete the initial Shopify sync",
+        "why": "Coverage certification requires one successful sync.",
+        "measure": "Certified coverage window per store.",
+        "executed": False, "evidence_ids": [],
+    }
+    coverage_recommendation = {
+        "label": "Review why no orders were recorded for this window",
+        "why": "Coverage certification needs recorded orders inside the reporting period.",
+        "measure": "Recorded order count per day for the window.",
+        "executed": False, "evidence_ids": [],
+    }
+
+    if connected is None:
+        # Transcript B: the check itself failed — that is not a disconnected store.
+        return (
+            "I can't verify the connection right now because the store status check "
+            "did not return a usable result. That doesn't necessarily mean your store "
+            "is disconnected. Try again shortly, or check the Integrations page."
+        ), []
+    if connected == 0:
+        return (
+            "The store health check found no connected Shopify store for this "
+            "workspace, so I won't invent store figures. Connect Shopify and complete "
+            "one sync, then ask me again."
+        ), [sync_recommendation]
+
+    connection_sentence = ("Yes — your Shopify store is connected." if connected == 1
+                           else f"Yes — {connected} Shopify stores are connected.")
+    if synced is None:
+        return (
+            f"{connection_sentence} I could not verify the sync status, so I can't "
+            "certify any data coverage yet. Try again shortly."
+        ), []
+    if synced == 0:
+        return (
+            f"{connection_sentence} The initial sync has not completed yet, so no "
+            "store data is certified. Once the sync finishes I can answer financial "
+            "questions from recorded evidence."
+        ), [sync_recommendation]
+
+    sync_sentence = ("The latest sync completed successfully." if synced == 1
+                     else f"{synced} stores completed a sync.")
+    if certified:
+        return (
+            f"{connection_sentence} {sync_sentence} Order coverage is certified for "
+            f"{period_text}, so I can answer financial questions about that window."
+        ), []
+    return (
+        f"{connection_sentence} {sync_sentence} One caveat: order coverage is not "
+        f"certified for {period_text}, so I won't quote financial totals from that "
+        "window yet — certification needs recorded orders inside it."
+    ), [coverage_recommendation]
 
 
 def _compose_text(*, intent: str, label: str, window: dict, facts: list[dict],
@@ -1012,10 +1104,15 @@ def _compose_text(*, intent: str, label: str, window: dict, facts: list[dict],
         lines.append("## Data I could not read")
         lines.extend(f"- {item}" for item in skipped)
     lines.append("## Data provenance")
+    status_sentence = {
+        "complete": "All planned checks completed.",
+        "partial": "Some checks could not complete; only the verified findings are shown.",
+        "insufficient_data": "The checks did not return enough verified data.",
+    }.get(overall_status, "Check status unavailable.")
     provenance = (f"Read-only analysis of recorded merchant data. "
-                  f"Period: {window['start']} to {window['end']} (half-open, UTC). "
-                  f"Sources: the commerce tables behind the tools listed in this investigation. "
-                  f"Coverage status: {overall_status}.")
+                  f"Period: {describe_period(window)}. "
+                  f"Sources: your store's recorded orders, checkouts, customers and settings. "
+                  f"{status_sentence}")
     lines.append(provenance)
     return "\n\n".join(lines)
 
@@ -1713,17 +1810,34 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             intent, investigation_id,
         )
 
-    deterministic = _compose_text(
-        intent=intent, label=INTENT_LABELS.get(intent, intent), window=window, facts=facts,
-        comparison_facts=comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
-        recommendations=recommendations, skipped=skipped, store_context=store_context,
-        overall_status=overall,
+    # Quick-verification answers (transcript A): when the merchant asked a
+    # connection/sync/coverage question and only health/coverage checks ran,
+    # the answer is direct prose — no report scaffolding, no count-fact dump,
+    # no narrative rewrite drifting from the verified state.
+    verification_only = (
+        intent == INTENT_COVERAGE
+        and bool(tool_results_by_name)
+        and set(tool_results_by_name) <= {"store_health", "data_coverage"}
     )
-    narrative, used_model = _compose_narrative(
-        message=message, intent=intent, window=window, facts=facts,
-        comparison_facts=comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
-        recommendations=recommendations, items=items, deterministic=deterministic,
-    )
+    if verification_only:
+        deterministic, recommendations = _verification_answer(items=items, window=window)
+        narrative, used_model = deterministic, None
+        facts = []
+        comparison_facts = []
+        hypotheses = []
+        unknowns = []
+    else:
+        deterministic = _compose_text(
+            intent=intent, label=INTENT_LABELS.get(intent, intent), window=window, facts=facts,
+            comparison_facts=comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
+            recommendations=recommendations, skipped=skipped, store_context=store_context,
+            overall_status=overall,
+        )
+        narrative, used_model = _compose_narrative(
+            message=message, intent=intent, window=window, facts=facts,
+            comparison_facts=comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
+            recommendations=recommendations, items=items, deterministic=deterministic,
+        )
 
     coverage = {}
     freshness = {}
@@ -1737,13 +1851,13 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         "response_type": "analysis",
         "text": narrative,
         "response": {
-            "situation": (facts[0]["text"] if facts else "No verified metric is available for this question."),
-            "insight": (comparison_facts[0]["text"] if comparison_facts else
-                        "No verified period-over-period change is available."),
+            # Empty strings, never filler (spec §8: no robotic placeholder
+            # prose). The renderer omits sections the evidence does not carry.
+            "situation": (facts[0]["text"] if facts else ""),
+            "insight": (comparison_facts[0]["text"] if comparison_facts else ""),
             "implication": ("Causes are not established by this evidence."
-                            if hypotheses else "No operational implication is asserted."),
-            "recommendation": (recommendations[0]["label"] if recommendations else
-                               "Gather the missing evidence before acting."),
+                            if hypotheses else ""),
+            "recommendation": (recommendations[0]["label"] if recommendations else ""),
             "confidence": {
                 "score": _confidence(overall, items),
                 "basis": ("Verified, currency-explicit evidence only; "
@@ -1784,7 +1898,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     result["investigation"].update({
         "status": overall,
         "steps": plan,
-        "follow_ups": _follow_ups(
+        "follow_ups": [] if verification_only else _follow_ups(
             intent, window, classification.get("segment"),
             evidence_items=items, unknowns=unknowns,
             comparison_facts=comparison_facts,
