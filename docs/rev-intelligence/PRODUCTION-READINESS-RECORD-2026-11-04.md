@@ -16,15 +16,18 @@ actually executed or queried on 2026-11-04; every gap is stated as a gap.
 | Base | main `7f27913` (PR #288 records) |
 | Commit 1 | `ff36d5f` — Data-API lockdown migration, dependency upgrades, churn contract root-cause fix, PII redaction (both services), 25 FK indexes |
 | Commit 2 | `fc5cd6e` — churn job-state observability, capacity record, three routing false-positive fixes, guard gap, 26-case Phase 7 eval set |
-| Commit 3 | (this record + certification updates) |
-| PR | opened from `arena/4f3ee579-revluma` against `main` (number recorded in §2 after creation) |
+| Commit 3 | `b84bd7b` — this record, certification issues log, Python 0.6.0 marker |
+| Commit 4 | `d4fd5b5` — FK indexes declared in `schema.prisma` (zero-drift), both hardening migrations added to the CI candidate list (root cause of the first red run: CI created `rev_is_org_member` with default PUBLIC EXECUTE) |
+| PR | #289, `arena/4f3ee579-revluma` → `main` |
 
 ## 2. CI status
 
-Recorded after the PR checks complete (see PR link in §1). Full-stack suite:
-8 checks (~3 min), including the Prisma bootstrap + financial/security
-regressions job that runs `verify-security-hardening.sql` and the extended
-`verify-data-api-isolation.sql` against a disposable database.
+**Green on `d4fd5b5`** (PR #289): Backend suite, Dashboard suite + production
+build, Prisma bootstrap/financial/security regressions (runs
+`verify-security-hardening.sql` and the extended
+`verify-data-api-isolation.sql` — including live `SET ROLE` negative attempts —
+against a disposable database with both hardening migrations applied),
+python-regressions, task025, task026, Vercel ×2.
 
 ## 3. Deployed-version tracking
 
