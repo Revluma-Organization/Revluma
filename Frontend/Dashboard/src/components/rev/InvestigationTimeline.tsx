@@ -8,6 +8,8 @@ interface Props {
   investigation?: RevInvestigationMeta | null;
   streaming?: boolean;
   dark?: boolean;
+  /** Live one-line progress while a turn is running; no card, no history. */
+  compact?: boolean;
 }
 
 function StepIcon({ status }: { status: InvestigationStep["status"] }) {
@@ -17,10 +19,23 @@ function StepIcon({ status }: { status: InvestigationStep["status"] }) {
   return <Circle size={10} color="#98A2B3" />;
 }
 
-export function InvestigationTimeline({ steps: originalSteps, investigation, streaming = false, dark = false }: Props) {
+export function InvestigationTimeline({ steps: originalSteps, investigation, streaming = false, dark = false, compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const steps = recordList<InvestigationStep>(originalSteps);
   if (!steps.length) return null;
+  if (compact) {
+    // Progress copy names the check actually running right now (P4: honest
+    // progress). Labels come from backend step metadata, never from a timer.
+    const current = steps.find((step) => step.status === "running");
+    const done = steps.filter((step) => step.status === "completed").length;
+    const muted = dark ? "#98A2B3" : "#667085";
+    return (
+      <p role="status" aria-live="polite" style={{ margin: 0, fontSize: "0.76rem", color: muted }}>
+        {current ? `${textValue(current.label) || "Checking your store"}\u2026` : "Preparing checks\u2026"}
+        <span style={{ marginLeft: 6 }}>{done}/{steps.length}</span>
+      </p>
+    );
+  }
   const complete = steps.filter((step) => step.status === "completed").length;
   const failed = steps.filter((step) => step.status === "failed").length;
   const completeInvestigation = complete === steps.length && (!investigation?.status || investigation.status === "complete");

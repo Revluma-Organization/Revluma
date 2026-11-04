@@ -98,6 +98,11 @@ export interface RevAnswerPayload {
   read_only: boolean;
   response_type: string;
   text: string;
+  // Presentation mode assigned by the backend's deterministic selector
+  // (REV-CONVERSATION-EXPERIENCE-SPEC v1.0.0 §2). Optional: legacy persisted
+  // turns predate the field and are adapted by the renderer's fallback.
+  response_mode?: string;
+  mode_reason?: string;
   response?: {
     situation?: string;
     insight?: string;
@@ -346,4 +351,28 @@ export async function streamRevAnswer({
 
   if (streamError) throw streamError;
   return { conversationId: resolvedConversationId, completed };
+}
+
+// ── Response mode contract (REV-CONVERSATION-EXPERIENCE-SPEC v1.0.0 §2) ──────
+// The backend assigns the presentation mode from deterministic guards; the
+// frontend validates it and falls back rather than trusting an unknown value.
+export type RevResponseMode =
+  | "conversational" | "quick_verification" | "insight" | "investigation"
+  | "comparison" | "recommendation" | "insufficient_evidence";
+
+const RESPONSE_MODES: readonly string[] = [
+  "conversational", "quick_verification", "insight", "investigation",
+  "comparison", "recommendation", "insufficient_evidence",
+];
+
+export type RevAnswerPayloadWithMode = RevAnswerPayload & {
+  response_mode?: unknown;
+  mode_reason?: unknown;
+};
+
+export function responseModeOf(payload: unknown): RevResponseMode | null {
+  const mode = (payload as { response_mode?: unknown } | null)?.response_mode;
+  return typeof mode === "string" && RESPONSE_MODES.includes(mode)
+    ? (mode as RevResponseMode)
+    : null;
 }
