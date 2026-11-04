@@ -157,7 +157,7 @@ async def _lifespan(_: FastAPI):
 app = FastAPI(
     title="Revluma ML Serving API",
     description="Real-time inference endpoints for Revluma's five predictive models.",
-    version="0.5.0",
+    version="0.6.0",
     lifespan=_lifespan,
 )
 
