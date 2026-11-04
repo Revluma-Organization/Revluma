@@ -246,7 +246,7 @@ INTENT_PATTERNS = (
                 r"|\bsku(?:s)?\b|\bcollection(?:s)?\b"), INTENT_PRODUCTS),
     (re.compile(r"\btraffic\b|\bsession(?:s)?\b|\bvisit(?:s|or|ors)?\b|\bpixel\b"
                 r"|\bevent(?:s)?\b|\bconversion rate\b|\bclick(?:s|ed)?\b"
-                r"|\blanding page\b"), INTENT_TRAFFIC),
+                r"|\blanding pages?\b"), INTENT_TRAFFIC),
     (re.compile(r"\bsync(?:s|ed|ing)?\b|\bcoverage\b|\bconnected\b|\bconnection\b"
                 r"|\bfreshness\b|\bdata available\b|\bup to date\b|\bout of date\b"
                 r"|\bstale\b|\bhow fresh\b|\bdata quality\b|\bpermissions?\b"
@@ -965,7 +965,11 @@ def _follow_ups(intent: str, window: dict, segment: str | None,
         if any("traffic" in metric or "event" in metric for metric in metrics):
             suggestions.append("Which tracked events are missing or incomplete?")
     elif intent == INTENT_COVERAGE:
-        suggestions.append("Which missing data source is limiting this investigation?")
+        # The coverage chip is evidence-gated like every other: it is offered
+        # only when the investigation actually surfaced a coverage limitation,
+        # never just because the question was about coverage (spec §7).
+        if any(word in unknown_text for word in ("missing", "coverage", "limit", "gap", "stale", "failed")):
+            suggestions.append("Which missing data source is limiting this investigation?")
 
     # Evidence-gated follow-ups (spec §7): suggestions only when something the
     # investigation actually returned supports them. When nothing does, the list
