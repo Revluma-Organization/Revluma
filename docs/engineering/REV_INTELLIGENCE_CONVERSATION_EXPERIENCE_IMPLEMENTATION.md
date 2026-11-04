@@ -94,6 +94,7 @@ this project unless a direct dependency blocks it; related defects recorded sepa
 | Increment | Branch | PR | Merge SHA | Deployment | Verified |
 |---|---|---|---|---|---|
 | (baseline) | arena/3cfa18ed-revluma | — | — | — | docs only |
+| I1/I3/I4 | arena/3cfa18ed-revluma | #272 | b8d5088 | dpl_Gnvbxq47yqYi81bV14V9jUfaNX9W (READY/PROMOTED, revluma.vercel.app) | CI 6/6 green; Python 879; Dashboard 446; deploy verified 2026-11-04. Modes assign in production only after the Python Render service redeploys (user-only action); frontend fallback degrades gracefully until then. |
 
 ## Unresolved / user-only
 
