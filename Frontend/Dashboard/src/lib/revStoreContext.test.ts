@@ -14,12 +14,14 @@ import {
   hasWebhookGap,
   isSyncIncomplete,
   isSyncStale,
+  storeContextFromResponse,
   storeLabel,
   type StoreContext,
 } from "./revStoreContext";
 
 const CONNECTED: StoreContext = {
   loaded: true,
+  loadError: false,
   connected: true,
   shopDomain: "revluma-test-store-v1.myshopify.com",
   platform: "shopify",
@@ -136,5 +138,54 @@ describe("buildStarters", () => {
         expect(starter.label).not.toMatch(/win-back|sequence|campaign/i);
       }
     }
+  });
+});
+
+describe("storeContextFromResponse", () => {
+  it("recognizes a connected Shopify store from GET /stores", () => {
+    const context = storeContextFromResponse({
+      success: true,
+      data: { stores: [{
+        id: "store-1",
+        platform: "shopify",
+        shop_domain: "revluma-test-store-v1.myshopify.com",
+        status: "active",
+        connection_status: "connected",
+        sync_status: "complete",
+      }] },
+    });
+    expect(context).toMatchObject({
+      loaded: true, loadError: false, connected: true, platform: "shopify",
+      shopDomain: "revluma-test-store-v1.myshopify.com", syncStatus: "complete",
+    });
+  });
+
+  it("prefers connected Shopify stores and ignores non-Shopify records", () => {
+    const context = storeContextFromResponse({
+      success: true,
+      data: { stores: [
+        { id: "woo", platform: "woocommerce", connection_status: "connected" },
+        { id: "disconnected", platform: "shopify", connection_status: "disconnected" },
+        { id: "connected", platform: "shopify", connection_status: "connected" },
+      ] },
+    });
+    expect(context.connected).toBe(true);
+    expect(context.platform).toBe("shopify");
+  });
+
+  it("treats a successful empty store list as no connected store", () => {
+    expect(storeContextFromResponse({ success: true, data: { stores: [] } }))
+      .toMatchObject({ loaded: true, loadError: false, connected: false });
+  });
+
+  it("throws on failed or malformed responses so callers can show an unverifiable state", () => {
+    expect(() => storeContextFromResponse({ success: false, data: { stores: [] } })).toThrow();
+    expect(() => storeContextFromResponse({ success: true, data: {} })).toThrow();
+  });
+
+  it("does not offer connect-store prompts after a status lookup failure", () => {
+    const failed = { ...UNKNOWN_STORE, loaded: true, loadError: true };
+    expect(buildStarters(failed)[0].label).toBe("Retry");
+    expect(buildStarters(failed).some(starter => /connect your Shopify store/i.test(starter.sub))).toBe(false);
   });
 });

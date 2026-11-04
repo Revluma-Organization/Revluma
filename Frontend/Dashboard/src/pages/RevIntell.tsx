@@ -35,8 +35,7 @@ import api, { ApiError } from "@/lib/api";
 import { parseVerifiedComparison } from "@/lib/revComparison";
 import {
   UNKNOWN_STORE, buildStarters, hasWebhookGap, isSyncIncomplete, isSyncStale,
-  storeLabel, type StoreContext, type StoreListEnvelope, type StoreListResponse,
-  type StoreSummary,
+  storeContextFromResponse, storeLabel, type StoreContext, type StoreListResponse,
 } from "@/lib/revStoreContext";
 import RevAnswerView from "@/components/rev/RevAnswerView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
@@ -1050,42 +1049,14 @@ export default function RevIntell() {
   }, [messages, thinking, reducedMotion]);
 
   // ── Load store context ────────────────────────────────────────────────────
-  // Grounds the welcome suggestions and the data-health states in the
-  // merchant's real connection. Failure is non-fatal: Rev still works, the
-  // suggestions just fall back to the un-connected wording rather than
-  // inventing a store that may not exist.
+  // The registered backend route is /stores (plural). A failed request is
+  // deliberately represented as unverifiable, never as a disconnected store.
   const loadStoreContext = useCallback(async () => {
     try {
-      const res = await api.get<StoreListResponse>("/store");
-      const payload = res?.data as StoreListEnvelope | undefined;
-      const stores = payload?.data?.stores ?? payload?.stores ?? [];
-      if (!Array.isArray(stores) || stores.length === 0) {
-        setStoreContext({ ...UNKNOWN_STORE, loaded: true });
-        return;
-      }
-      // Prefer a connected store, then the most recently updated one.
-      const rank = (store: StoreSummary) =>
-        (store?.connection_status === "connected" ? 2 : 0) +
-        (store?.sync_status === "complete" ? 1 : 0);
-      const chosen = [...stores].sort((a, b) => {
-        const delta = rank(b) - rank(a);
-        if (delta !== 0) return delta;
-        return Date.parse(b?.updated_at || "") - Date.parse(a?.updated_at || "");
-      })[0];
-      setStoreContext({
-        loaded: true,
-        connected: chosen?.connection_status === "connected",
-        shopDomain: chosen?.shop_domain ?? null,
-        platform: chosen?.platform ?? null,
-        syncStatus: chosen?.sync_status ?? null,
-        setupStatus: chosen?.setup_status ?? null,
-        monitoringMode: chosen?.monitoring_mode ?? null,
-        lastSyncedAt: chosen?.last_synced_at ?? null,
-        webhooksRegistered: chosen?.webhooks_registered ?? null,
-        webhooksRequired: chosen?.webhooks_required ?? null,
-      });
+      const res = await api.get<StoreListResponse>("/stores");
+      setStoreContext(storeContextFromResponse(res.data));
     } catch {
-      setStoreContext({ ...UNKNOWN_STORE, loaded: true });
+      setStoreContext({ ...UNKNOWN_STORE, loaded: true, loadError: true });
     }
   }, []);
 
@@ -1815,9 +1786,11 @@ export default function RevIntell() {
                 Hello, {firstName}
               </h2>
               <h3 className="text-[1.75rem] font-extrabold tracking-tight mb-3" style={{ color: t1 }}>
-                {storeContext.connected
-                  ? `What do you want to know about ${storeLabel(storeContext)}?`
-                  : "How can I help your revenue today?"}
+                {storeContext.loadError
+                  ? "I couldn't verify your store connection"
+                  : storeContext.connected
+                    ? `What do you want to know about ${storeLabel(storeContext)}?`
+                    : "How can I help your revenue today?"}
               </h3>
               <p className="text-[0.88rem] max-w-md mx-auto leading-relaxed" style={{ color: t2 }}>
                 I explain your available store data, investigate findings,
@@ -1827,7 +1800,7 @@ export default function RevIntell() {
 
             {/* Data-health states. A confident answer built on an incomplete or
                 stale feed misleads the merchant, so say so before they ask. */}
-            {storeContext.loaded && !storeContext.connected && (
+            {storeContext.loaded && !storeContext.loadError && !storeContext.connected && (
               <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                 className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
                 style={{ background: "rgba(220,38,38,0.07)", border: "1px solid rgba(220,38,38,0.25)" }}>
@@ -1840,6 +1813,27 @@ export default function RevIntell() {
                     Rev answers from your real Shopify data. Connect a store and finish the
                     first sync before asking about revenue, products or customers.
                   </p>
+                </div>
+              </motion.div>
+            )}
+
+            {storeContext.loaded && storeContext.loadError && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                className="w-full mb-5 flex items-start gap-3 p-3.5 rounded-xl"
+                style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.28)" }}>
+                <AlertCircle size={17} className="mt-0.5 flex-shrink-0" style={{ color: "#d97706" }} />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[0.8rem] font-semibold mb-0.5" style={{ color: t1 }}>
+                    Store connection couldn't be verified
+                  </p>
+                  <p className="text-[0.75rem] leading-snug" style={{ color: t2 }}>
+                    This status check failed. It does not mean your Shopify store is disconnected.
+                  </p>
+                  <button type="button" onClick={() => void loadStoreContext()}
+                    className="mt-2 rounded-md text-xs font-semibold underline underline-offset-2"
+                    style={{ color: isDark ? "#b4a8ff" : "#1F06AC" }}>
+                    Retry connection check
+                  </button>
                 </div>
               </motion.div>
             )}
