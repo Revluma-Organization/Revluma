@@ -95,7 +95,7 @@ this project unless a direct dependency blocks it; related defects recorded sepa
 |---|---|---|---|---|---|
 | (baseline) | arena/3cfa18ed-revluma | — | — | — | docs only |
 | I1/I3/I4 | arena/3cfa18ed-revluma | #272 | b8d5088 | dpl_Gnvbxq47yqYi81bV14V9jUfaNX9W (READY/PROMOTED, revluma.vercel.app) | CI 6/6 green; Python 879; Dashboard 446; deploy verified 2026-11-04. Modes assign in production only after the Python Render service redeploys (user-only action); frontend fallback degrades gracefully until then. |
-| I2 | arena/67999bda-revluma | pending | pending | pending | Unified renderer: legacy ResponseCard/RichText removed, legacy turns adapt via legacyResponseToPayload into RevAnswerView; VerifiedComparison absorbed into shared renderer; semantic heading scale, italic, table header semantics; parity tests. |
+| I2 | arena/67999bda-revluma | #273 | 03bcbcd | dpl_SrRX6P2giHoAGykqeABqXe1sMccp (READY/PROMOTED, revluma.vercel.app) | CI green (dashboard 2m2s + Vercel; python/backend path-filtered out — frontend-only change); Dashboard 451/30 files; vite build clean; rev tsc 0, total 17 pre-existing baseline; deploy verified 2026-11-04. Unified renderer: legacy ResponseCard/RichText removed, legacy turns adapt via legacyResponseToPayload into RevAnswerView; VerifiedComparison absorbed into shared renderer; semantic heading scale, italic, table header semantics; parity tests (5). |
 
 ## Unresolved / user-only
 
