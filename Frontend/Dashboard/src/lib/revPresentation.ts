@@ -129,3 +129,33 @@ export function formatPeriod(period?: EvidencePeriod): string {
   const metadata = [textValue(period?.timezone), textValue(period?.semantics)].filter(Boolean);
   return bounds + (metadata.length ? ` (${metadata.join(", ")})` : " (timezone and interval semantics not supplied)");
 }
+
+/**
+ * Adapt a legacy RevResponse object (persisted turns from before the
+ * normalized payload contract) into the shared answer schema, so one renderer
+ * presents every turn. Confidence is carried but never badged: the presentation
+ * layer decides, and badge discipline (spec P5) hides uncalibrated scores.
+ */
+export function legacyResponseToPayload(value: unknown): RevAnswerPayload {
+  const record = (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>;
+  const pick = (key: string) => textValue(record[key]);
+  const response: Record<string, unknown> = {};
+  for (const key of ["situation", "insight", "implication", "recommendation"] as const) {
+    const text = pick(key);
+    if (text) response[key] = text;
+  }
+  const confidence = record.confidence as { score?: unknown; basis?: unknown } | undefined;
+  if (typeof confidence?.score === "number" && Number.isFinite(confidence.score)) {
+    response.confidence = { score: confidence.score, basis: textValue(confidence.basis) };
+  }
+  const warnings = stringList(record.warnings);
+  if (warnings.length) response.warnings = warnings;
+  return {
+    read_only: true,
+    response_type: pick("response_type") || "analysis",
+    text: pick("text"),
+    response: Object.keys(response).length
+      ? response as NonNullable<RevAnswerPayload["response"]>
+      : undefined,
+  };
+}

@@ -32,7 +32,6 @@ import revIntellLogo from "@/assets/images/rev-intell-logo.png";
 import { useAuth } from "@/context/AuthContext";
 import { useThemeStore } from "@/store";
 import api, { ApiError } from "@/lib/api";
-import { parseVerifiedComparison } from "@/lib/revComparison";
 import {
   UNKNOWN_STORE, buildStarters, hasWebhookGap, isSyncIncomplete, isSyncStale,
   storeContextFromResponse, storeLabel, type StoreContext, type StoreListResponse,
@@ -40,7 +39,8 @@ import {
 import RevAnswerView from "@/components/rev/RevAnswerView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import EvidencePanel from "@/components/rev/EvidencePanel";
-import { normaliseRevAnswer, coveredBy, recordList, stringList, textValue } from "@/lib/revPresentation";
+import { normaliseRevAnswer, coveredBy, legacyResponseToPayload, recordList, stringList, textValue } from "@/lib/revPresentation";
+import RevMarkdown from "@/components/rev/RevMarkdown";
 import {
   streamRevAnswer, RevStreamError,
   type RevAnswerPayload, type InvestigationStep,
@@ -245,348 +245,6 @@ function LoadingBar({ isDark }: { isDark: boolean }) {
   );
 }
 
-// ── ResponseCard — adaptive to response type ──────────────────────────────────
-
-function renderInline(text: string) {
-  // Only render safe web URLs from untrusted model text.
-  const safeUrl = (raw: string) => { try { const u = new URL(raw); return ["https:", "http:"].includes(u.protocol) ? u.href : null; } catch { return null; } };
-  // Handle markdown image: ![alt](url)
-  const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-  if (imgRegex.test(text)) {
-    const parts: React.ReactNode[] = [];
-    let last = 0;
-    let m: RegExpExecArray | null;
-    const re = /!\[([^\]]*)\]\(([^)]+)\)/g;
-    while ((m = re.exec(text)) !== null) {
-      if (m.index > last) parts.push(<span key={last}>{text.slice(last, m.index)}</span>);
-      parts.push(
-        <img key={m.index} src={safeUrl(m[2]) ?? undefined} alt={m[1]}
-          style={{ maxWidth: "100%", borderRadius: 8, margin: "8px 0", display: "block" }}
-          onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-        />
-      );
-      last = m.index + m[0].length;
-    }
-    if (last < text.length) parts.push(<span key={last}>{text.slice(last)}</span>);
-    return <>{parts}</>;
-  }
-  // Handle markdown link: [text](url)
-  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  if (linkRegex.test(text)) {
-    const parts: React.ReactNode[] = [];
-    let last = 0;
-    let m: RegExpExecArray | null;
-    const re = /\[([^\]]+)\]\(([^)]+)\)/g;
-    while ((m = re.exec(text)) !== null) {
-      if (m.index > last) parts.push(<span key={last}>{renderBasicInline(text.slice(last, m.index))}</span>);
-      parts.push(
-        <a key={m.index} href={safeUrl(m[2]) ?? undefined} target="_blank" rel="noopener noreferrer"
-          style={{ color: "#1F06AC", textDecoration: "underline", textDecorationColor: "rgba(31,6,172,0.4)" }}>
-          {m[1]}
-        </a>
-      );
-      last = m.index + m[0].length;
-    }
-    if (last < text.length) parts.push(<span key={last}>{renderBasicInline(text.slice(last))}</span>);
-    return <>{parts}</>;
-  }
-  return renderBasicInline(text);
-}
-
-function renderBasicInline(text: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
-  return <>{parts.map((p, i) => {
-    if (p.startsWith("**") && p.endsWith("**"))
-      return <strong key={i} style={{ fontWeight: 650 }}>{p.slice(2, -2)}</strong>;
-    if (p.startsWith("`") && p.endsWith("`"))
-      return <code key={i} style={{ fontFamily: "ui-monospace, monospace",
-        background: "rgba(31,6,172,0.12)", padding: "1px 5px",
-        borderRadius: 4, fontSize: "0.86em" }}>{p.slice(1, -1)}</code>;
-    return <span key={i}>{p}</span>;
-  })}</>;
-}
-
-/** Renders rich markdown: headings, bold, bullets, numbers, blockquotes, paragraphs. */
-function RichText({ text, t1, isDark }: { text: string; t1: string; isDark?: boolean }) {
-  const blocks = text.split(/\n{2,}/).filter(b => b.trim());
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {blocks.map((block, bi) => {
-        const lines = block.split("\n").filter(l => l.trim());
-        if (!lines.length) return null;
-
-        // ## Heading
-        if (lines[0].startsWith("## ")) {
-          const heading = lines[0].replace(/^##\s+/, "");
-          return (
-            <div key={bi}>
-              <p style={{ fontSize: "clamp(1.25rem, 1.8vw, 1.5rem)", lineHeight: 1.3, fontWeight: 700, color: t1, margin: "12px 0 10px" }}>
-                {renderInline(heading)}
-              </p>
-              {lines.slice(1).length > 0 && (
-                <p style={{ fontSize: "1rem", lineHeight: 1.7, color: t1, margin: 0 }}>
-                  {lines.slice(1).map((l, li) => (
-                    <span key={li}>{renderInline(l)}{li < lines.slice(1).length - 1 ? <br /> : null}</span>
-                  ))}
-                </p>
-              )}
-            </div>
-          );
-        }
-
-        // # Heading (larger)
-        if (lines[0].startsWith("# ")) {
-          const heading = lines[0].replace(/^#\s+/, "");
-          return (
-            <p key={bi} style={{ fontSize: "clamp(1.5rem, 2.2vw, 2.25rem)", lineHeight: 1.25, fontWeight: 750, color: t1, margin: "16px 0 8px", letterSpacing: "-0.01em" }}>
-              {renderInline(heading)}
-            </p>
-          );
-        }
-
-        // > Blockquote / callout
-        if (lines.every(l => l.startsWith("> "))) {
-          return (
-            <div key={bi} style={{
-              borderLeft: "3px solid #1F06AC",
-              paddingLeft: 12,
-              margin: "2px 0",
-              background: isDark ? "rgba(31,6,172,0.08)" : "rgba(31,6,172,0.06)",
-              borderRadius: "0 8px 8px 0",
-              padding: "8px 12px",
-            }}>
-              {lines.map((l, li) => (
-                <p key={li} style={{ fontSize: "0.9rem", lineHeight: 1.65, color: t1, margin: li > 0 ? "4px 0 0" : 0, fontStyle: "italic" }}>
-                  {renderInline(l.replace(/^>\s+/, ""))}
-                </p>
-              ))}
-            </div>
-          );
-        }
-
-        // Bullet list
-        const isBullet = lines.every(l => /^\s*[-*•]\s+/.test(l));
-        if (isBullet) {
-          return (
-            <ul key={bi} style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 5 }}>
-              {lines.map((l, li) => (
-                <li key={li} style={{ fontSize: "1rem", lineHeight: 1.7, color: t1 }}>
-                  {renderInline(l.replace(/^\s*[-*•]\s+/, ""))}
-                </li>
-              ))}
-            </ul>
-          );
-        }
-
-        // Numbered list
-        const isNumber = lines.every(l => /^\s*\d+[.)]\s+/.test(l));
-        if (isNumber) {
-          return (
-            <ol key={bi} style={{ margin: 0, paddingLeft: 22, display: "flex", flexDirection: "column", gap: 5 }}>
-              {lines.map((l, li) => (
-                <li key={li} style={{ fontSize: "1rem", lineHeight: 1.7, color: t1 }}>
-                  {renderInline(l.replace(/^\s*\d+[.)]\s+/, ""))}
-                </li>
-              ))}
-            </ol>
-          );
-        }
-
-        // Mixed block — render line by line
-        return (
-          <div key={bi} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {lines.map((l, li) => {
-              if (/^\s*[-*•]\s+/.test(l)) return (
-                <div key={li} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <span style={{ color: "#1F06AC", flexShrink: 0, marginTop: 2 }}>•</span>
-                  <span style={{ fontSize: "1rem", lineHeight: 1.7, color: t1 }}>
-                    {renderInline(l.replace(/^\s*[-*•]\s+/, ""))}
-                  </span>
-                </div>
-              );
-              if (/^\s*\d+[.)]\s+/.test(l)) {
-                const num = l.match(/^\s*(\d+)/)?.[1];
-                return (
-                  <div key={li} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                    <span style={{ color: "#1F06AC", fontWeight: 700, flexShrink: 0, fontSize: "0.85rem", minWidth: 16 }}>{num}.</span>
-                    <span style={{ fontSize: "1rem", lineHeight: 1.7, color: t1 }}>
-                      {renderInline(l.replace(/^\s*\d+[.)]\s+/, ""))}
-                    </span>
-                  </div>
-                );
-              }
-              return (
-                <p key={li} style={{ fontSize: "1rem", lineHeight: 1.7, color: t1, margin: 0 }}>
-                  {renderInline(l)}
-                </p>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Structured cards derived only from values explicitly present in Rev's verified answer. */
-const VerifiedComparison: FC<{ text: string; isDark: boolean; t1: string; t2: string }> = ({ text, isDark, t1, t2 }) => {
-  const metrics = parseVerifiedComparison(text);
-  if (!metrics) return null;
-  const cardBg = isDark ? "#151824" : "#ffffff";
-  const border = isDark ? "#34374b" : "#e5e7eb";
-  return (
-    <section aria-label="Verified store performance comparison" style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <BarChart2 size={16} color="#1F06AC" />
-        <span style={{ color: t1, fontSize: 14, fontWeight: 750 }}>Verified performance evidence</span>
-        <span style={{ color: t2, fontSize: 11 }}>Rolling 7-day periods · UTC</span>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-        {metrics.map((period, index) => (
-          <div key={index} style={{ border: `1px solid ${index === 0 ? "#1F06AC" : border}`, borderRadius: 12,
-            padding: 14, background: index === 0 ? (isDark ? "#1b1740" : "#f4f2ff") : cardBg }}>
-            <div style={{ color: t1, fontSize: 13, fontWeight: 750 }}>{period.title}</div>
-            <div style={{ color: t2, fontSize: 11, marginTop: 4, marginBottom: 12 }}>{period.dates}</div>
-            {([["Orders", period.orders], ["Abandoned carts", period.carts], ["New profiles", period.customers],
-               ["First-time orders", period.firstTime], ["Returning orders", period.returning]] as Array<[string, string | null]>).map(([label, value]) => (
-              <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0" }}>
-                <span style={{ color: t2, fontSize: 12 }}>{label}</span>
-                <strong style={{ color: t1, fontSize: 13 }}>{value ?? "—"}</strong>
-              </div>
-            ))}
-            {period.cartValues.map((value, i) => <div key={`c${i}`} style={{ color: t1, fontSize: 12, marginTop: 6 }}>Recorded cart value: <strong>{value}</strong></div>)}
-            {period.values.map((value, i) => <div key={`v${i}`} style={{ color: t1, fontSize: 12, marginTop: 9 }}>Recorded order value: <strong>{value}</strong></div>)}
-            {period.discounts.map((value, i) => <div key={`d${i}`} style={{ color: t2, fontSize: 12, marginTop: 4 }}>Discounts: {value}</div>)}
-          </div>
-        ))}
-      </div>
-      <div style={{ fontSize: 12, color: t2, marginTop: 12 }}>Recorded merchant data, not verified net sales. Review the evidence limitations below.</div>
-    </section>
-  );
-};
-
-const ResponseCard: FC<{ response: RevResponse; isDark: boolean; t1: string; t2: string; onSend?: (text: string) => void }> = ({
-  response, isDark, t1, t2, onSend,
-}) => {
-  const type = response.response_type;
-
-  // Every non-analysis type renders as rich text, not a report card
-  if (type !== "analysis") {
-    const text = response.text || "";
-    if (!text) return null;
-    return <><VerifiedComparison text={text} isDark={isDark} t1={t1} t2={t2} /><RichText text={text} t1={t1} isDark={isDark} /></>;
-  }
-
-  // Analysis: 6-part structured response
-  const sections = [
-    { label: "Situation",      text: response.situation },
-    { label: "Insight",        text: response.insight },
-    { label: "Implication",    text: response.implication },
-    { label: "Recommendation", text: response.recommendation },
-  ].filter(s => s.text);
-
-  const conf = response.confidence;
-  const confPct = conf ? Math.round(conf.score * 100) : null;
-  const confColor = confPct !== null
-    ? (confPct >= 75 ? "#059669" : confPct >= 50 ? "#d97706" : "#dc2626")
-    : "#9ca3af";
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {sections.map(({ label, text }) => (
-        <div key={label}>
-          <p style={{ fontSize: "1.05rem", fontWeight: 750,
-            letterSpacing: "-0.015em", color: t1, margin: "0 0 7px" }}>
-            {label}
-          </p>
-          <RichText text={text!} t1={t1} isDark={isDark} />
-        </div>
-      ))}
-
-      {confPct !== null && conf && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "4px 10px", borderRadius: 999,
-            background: `${confColor}15`, border: `1px solid ${confColor}30` }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: confColor }} />
-            <span style={{ fontSize: "0.72rem", fontWeight: 700, color: confColor }}>
-              {confPct}% confidence
-            </span>
-          </div>
-          {conf.basis && (
-            <span style={{ fontSize: "0.7rem", color: t2 }}>{conf.basis}</span>
-          )}
-        </div>
-      )}
-
-      {response.actions && response.actions.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {response.actions.map((action, i) => {
-            // Map tool names to real dashboard routes
-            const toolRoutes: Record<string, string> = {
-              view_carts:       "/dashboard/cart-recovery",
-              view_customers:   "/dashboard/customers",
-              view_revenue:     "/dashboard/analytics",
-              view_analytics:   "/dashboard/analytics",
-              view_products:    "/dashboard/analytics",
-              view_checkout:    "/dashboard/checkout",
-              view_retention:   "/dashboard/customers",
-            };
-            const route = action.tool ? toolRoutes[action.tool] : null;
-            const available = Boolean(route || (action.tool === "ask_rev" && typeof action.params?.message === "string" && onSend));
-            return (
-              <button key={i} disabled={!available} title={available ? undefined : "Unavailable in this read-only release"} style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "7px 14px", borderRadius: 999, fontSize: "0.8rem", fontWeight: 600,
-                background: "rgba(31,6,172,0.1)", color: "#1F06AC",
-                border: "1px solid rgba(31,6,172,0.25)", cursor: "pointer",
-                fontFamily: "inherit", transition: "all 0.15s",
-              }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.background = "rgba(31,6,172,0.2)";
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = "rgba(31,6,172,0.1)";
-                  e.currentTarget.style.transform = "translateY(0)";
-                }}
-                onClick={() => {
-                  if (route) {
-                    window.location.href = route;
-                  } else if (action.tool === "ask_rev") {
-                    // Send a follow-up message to Rev
-                    const followUp = action.params?.message as string;
-                    if (followUp) onSend?.(followUp);
-                  }
-                  // Other tool types will be wired as capabilities are built
-                }}
-              >
-                <Zap size={11} />{action.label}{!available && " (unavailable)"}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {response.agents_used && response.agents_used.length > 0 && (
-        <p style={{ fontSize: "0.65rem", color: t2, margin: 0 }}>
-          Analysed by: {response.agents_used.join(", ")} agent{response.agents_used.length > 1 ? "s" : ""}
-        </p>
-      )}
-
-      {response.warnings && response.warnings.length > 0 && (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 6,
-          padding: "8px 12px", borderRadius: 8,
-          background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)" }}>
-          <AlertCircle size={13} color="#d97706" style={{ flexShrink: 0, marginTop: 2 }} />
-          <p style={{ fontSize: "0.72rem", color: "#d97706", margin: 0, lineHeight: 1.5 }}>
-            {response.warnings.join(" · ")}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 
@@ -706,10 +364,14 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
 
         {!msg.payload && !msg.isStreaming && !msg.hasError && !msg.cancelled && msg.content && (
           typeof msg.content === "object" && "response_type" in (msg.content as object)
-            ? <ResponseCard response={msg.content as RevResponse} isDark={isDark} t1={t1} t2={t2} onSend={onSend} />
-            : <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: t1, margin: 0 }}>
-                {String(msg.content)}
-              </p>
+            ? <RevAnswerView
+                payload={legacyResponseToPayload(msg.content)}
+                dark={isDark}
+                evidenceOpen={evidenceOpen}
+                onOpenEvidence={() => onOpenEvidence?.(msg.id)}
+                onFollowUp={actionsDisabled ? undefined : onSend}
+              />
+            : <RevMarkdown text={String(msg.content)} tone={isDark ? "dark" : "light"} />
         )}
 
         {!msg.isStreaming && !msg.hasError && !msg.cancelled && (
@@ -732,6 +394,7 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
     </motion.div>
   );
 }
+
 
 // ── Attach dropdown ───────────────────────────────────────────────────────────
 

@@ -17,7 +17,7 @@ function safeUrl(raw: string): string | null {
 
 function inline(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
+  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
   let last = 0;
   let match: RegExpExecArray | null;
   let index = 0;
@@ -27,6 +27,8 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
     const key = `${keyPrefix}-${index++}`;
     if (token.startsWith("**")) {
       nodes.push(<strong key={key} style={{ fontWeight: 650 }}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("*")) {
+      nodes.push(<em key={key}>{token.slice(1, -1)}</em>);
     } else if (token.startsWith("`")) {
       nodes.push(
         <code key={key} style={{
@@ -81,7 +83,7 @@ export function RevMarkdown({ text, tone = "light" }: Props) {
 
         if (first.startsWith("### ")) {
           return (
-            <h4 key={blockIndex} style={{ color: bodyColor, fontSize: "0.95rem", fontWeight: 700, margin: 0 }}>
+            <h4 key={blockIndex} style={{ color: bodyColor, fontSize: "0.88rem", fontWeight: 650, margin: 0 }}>
               {inline(first.slice(4), `h4-${blockIndex}`)}
             </h4>
           );
@@ -90,9 +92,8 @@ export function RevMarkdown({ text, tone = "light" }: Props) {
           return (
             <div key={blockIndex}>
               <h3 style={{
-                color: bodyColor, fontSize: "0.82rem", fontWeight: 750,
-                letterSpacing: "0.02em",
-                textTransform: "uppercase", margin: "0 0 8px",
+                color: bodyColor, fontSize: "0.95rem", fontWeight: 700,
+                margin: "0 0 6px",
               }}>
                 {inline(first.slice(3), `h3-${blockIndex}`)}
               </h3>
@@ -109,7 +110,7 @@ export function RevMarkdown({ text, tone = "light" }: Props) {
         if (first.startsWith("# ")) {
           return (
             <h2 key={blockIndex} style={{
-              color: bodyColor, fontSize: "1.35rem", fontWeight: 750,
+              color: bodyColor, fontSize: "1.12rem", fontWeight: 750,
               letterSpacing: "-0.01em", margin: 0,
             }}>
               {inline(first.slice(2), `h2-${blockIndex}`)}
@@ -127,7 +128,7 @@ export function RevMarkdown({ text, tone = "light" }: Props) {
                 <thead>
                   <tr style={{ background: dark ? "rgba(255,255,255,0.04)" : "#F9FAFB" }}>
                     {head.map((cell, index) => (
-                      <th key={index} style={{ textAlign: "left", padding: "9px 12px", color: mutedColor, fontWeight: 650 }}>
+                      <th key={index} scope="col" style={{ textAlign: "left", padding: "9px 12px", color: mutedColor, fontWeight: 650 }}>
                         {cell}
                       </th>
                     ))}
