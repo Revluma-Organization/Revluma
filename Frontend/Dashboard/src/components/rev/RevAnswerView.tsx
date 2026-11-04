@@ -174,10 +174,15 @@ export function RevAnswerView({
   // evidence, and reads as plain conversation when it carries none.
   // An evidence object that yields nothing usable is a warning state, not a
   // quiet conversation: the merchant must see that the check produced nothing.
-  const carriesEvidence = Boolean(payload.evidence) && (
-    recordList<EvidenceItem>(payload.evidence?.items).length > 0 ||
-    evidenceState(payload.evidence) !== "verified"
-  );
+  // An empty evidence shell is not evidence: every backend result carries
+  // one, so treating its mere presence (or its "unavailable" state) as
+  // carried evidence mis-modeled quiet chat turns as investigations.
+  const evidenceContent = (ev: unknown) => {
+    const record = ev as { items?: unknown; limitations?: unknown } | null | undefined;
+    return recordList<EvidenceItem>(record?.items).length > 0 ||
+      stringList(record?.limitations).length > 0;
+  };
+  const carriesEvidence = evidenceContent(payload.evidence);
   const mode: RevResponseMode = responseModeOf(payload) ?? (
     recordList(payload.facts).length || recordList(payload.comparison_facts).length ||
     recordList(payload.hypotheses).length || recordList(payload.recommendations).length ||
@@ -211,7 +216,7 @@ export function RevAnswerView({
     const parts = [item.label, item.why, item.measure].map(textValue).filter(Boolean);
     return parts.length > 0 && !parts.every(text => coveredBy(shown, text));
   });
-  const hasEvidence = Boolean(payload.evidence || facts.length || hypotheses.length || unknowns.length || recommendations.length || recordList(payload.comparison_facts).length || recordList(payload.facts).length);
+  const hasEvidence = Boolean(evidenceContent(payload.evidence) || facts.length || hypotheses.length || unknowns.length || recommendations.length || recordList(payload.comparison_facts).length || recordList(payload.facts).length);
   const factSections = [
     { label: "Facts", entries: facts },
     { label: "Compared with the previous period", entries: comparisonFacts },
@@ -326,7 +331,7 @@ export function RevAnswerView({
         </div>
       )}
 
-      {!streaming && !quiet && (steps.length > 0 || evidenceItems.length > 0 || investigation?.period?.start) && (
+      {!streaming && !quiet && (steps.length > 0 || evidenceItems.length > 0) && (
         <details style={{ border: `1px solid ${border}`, borderRadius: 10 }}>
           <summary style={{
             cursor: "pointer", padding: "8px 11px", listStyle: "none",

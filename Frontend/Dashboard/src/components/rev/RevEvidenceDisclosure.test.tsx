@@ -206,3 +206,47 @@ describe("quiet verification chrome (transcript A)", () => {
     expect(screen.getByText("Sources:")).toBeInTheDocument();
   });
 });
+
+describe("greeting chrome suppression (GREET-001)", () => {
+  const greetingText = "Hey Chief, good to see you. How's your day going?\n\nI can help with your store's revenue, checkout, customers, products, inventory and data coverage.";
+
+  it("renders a conversational turn as plain chat: no badges, provenance, disclosure or evidence button", () => {
+    render(<RevAnswerView onOpenEvidence={vi.fn()} payload={payload({
+      response_mode: "conversational",
+      response_type: "chat",
+      text: greetingText,
+      evidence: evidence([]),
+      investigation: investigation({ intent: "greeting", label: "Conversation", steps: [] }),
+    })} />);
+    expect(screen.getByText(/good to see you/)).toBeInTheDocument();
+    expect(screen.queryByText(/Evidence unavailable/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Conversation/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Based on recorded store data/)).not.toBeInTheDocument();
+    expect(screen.queryByText("How I checked")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Evidence/ })).not.toBeInTheDocument();
+  });
+
+  it("does not let an empty evidence shell upgrade a mode-less payload to investigation", () => {
+    const shell: Record<string, unknown> = {
+      ...payload({
+        response_type: "chat",
+        text: greetingText,
+        evidence: evidence([]),
+        investigation: investigation({ intent: "greeting", label: "Conversation", steps: [] }),
+      }),
+    };
+    delete shell.response_mode;
+    render(<RevAnswerView onOpenEvidence={vi.fn()} payload={shell as never} />);
+    expect(screen.queryByText(/Evidence unavailable/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("How I checked")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Evidence/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps the disclosure for a real investigation with steps", () => {
+    render(<RevAnswerView payload={payload({
+      response_mode: "investigation",
+      investigation: investigation({ steps: [{ id: "store_health", status: "completed", label: "Store health" } as never] }),
+    })} />);
+    expect(screen.getByText("How I checked")).toBeInTheDocument();
+  });
+});

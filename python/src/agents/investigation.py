@@ -212,8 +212,46 @@ PROHIBITED_ACTIONS = [
      "executing a change on the merchant's behalf"),
 ]
 
+# A greeting is the whole message: an opener plus at most one addressee
+# ("hello chat", "hey there", "good morning rev"). Punctuation and emoji are
+# stripped before matching, so "Hey! 👋" greets back instead of investigating.
 GREETING_PATTERN = re.compile(
-    r"^(?:hi|hello|hey|hiya|good (?:morning|afternoon|evening)|yo)\b[\s!.,]*$", re.I)
+    r"^(?:hi|hello|hey|hiya|howdy|yo|good (?:morning|afternoon|evening))"
+    r"(?:\s+(?:there|chat|rev|revluma|friend|friends|everyone|everybody|team"
+    r"|guys|people|world|boss|chief|king|queen|captain))?$")
+
+# The merchant is the boss. The default pool is the product owner's chosen
+# energy; a stated preference ("call me Queen") or a feminine self-reference
+# switches to the feminine pool. Selection is stable per user, never random
+# per render, so the nickname does not flicker between turns.
+BOSS_NAMES = ("Chief", "Don", "Big Chief", "King", "Chairman", "Mogul",
+              "Top G", "Emperor", "The General", "Sovereign")
+FEMININE_BOSS_NAMES = ("Queen", "Chairwoman", "Lady Boss", "Business Queen",
+                       "The Matriarch", "The Powerhouse", "The Visionary",
+                       "The Deal Maker", "Empress", "Your Majesty")
+FEMININE_SIGNAL_PATTERN = re.compile(
+    r"\b(?:i(?:'m| am)(?: a| an)? (?:woman|lady|girl|female|queen|mama|madam|miss)"
+    r"|call me (?:queen|madam|mama|miss|ms\.?|mrs\.?|lady|girl|empress)"
+    r"|i identify as (?:a |an )?(?:woman|female|girl))\b", re.I)
+PREFERRED_NAME_PATTERN = re.compile(r"\bcall me ([A-Za-z][\w'-]{1,24})\b", re.I)
+GREETING_CHECKINS = (
+    "How's your day going?",
+    "How are things with you today?",
+    "Hope the day is treating you well — how's it going?",
+    "Good to have you back — what's happening with you today?",
+)
+
+
+def _boss_name(message: str, user_id: str) -> str:
+    """The honorific for this merchant: stated preference, then feminine
+    signal, then the default pool — deterministic per user."""
+    preferred = PREFERRED_NAME_PATTERN.search(message or "")
+    if preferred:
+        token = preferred.group(1).strip()
+        return token[:1].upper() + token[1:]
+    pool = (FEMININE_BOSS_NAMES if FEMININE_SIGNAL_PATTERN.search(message or "")
+            else BOSS_NAMES)
+    return pool[sum((user_id or message or "rev").encode()) % len(pool)]
 IDENTITY_PATTERN = re.compile(
     r"\b(?:who are you|what are you|what is rev|tell me about yourself|your name)\b", re.I)
 CAPABILITY_PATTERN = re.compile(
@@ -374,7 +412,8 @@ def classify_investigation(message: str, context: dict | None = None) -> dict:
         return {"intent": INTENT_READ_ONLY, "requested_actions": prohibited,
                 "segment": None, "followup": False}
 
-    if GREETING_PATTERN.search(text):
+    greeting_form = re.sub(r"\s+", " ", re.sub(r"[^\w\s']", " ", text)).strip().lower()
+    if GREETING_PATTERN.match(greeting_form):
         return {"intent": INTENT_GREETING, "segment": None, "followup": False}
     if IDENTITY_PATTERN.search(text):
         return {"intent": INTENT_IDENTITY, "segment": None, "followup": False}
@@ -1434,10 +1473,15 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
     # Conversational turns run no evidence engine, so they carry no follow-up
     # chips (spec §7: never a generic auto-list after every answer).
     if intent == INTENT_GREETING:
+        name = _boss_name(message, user_id)
+        checkin = GREETING_CHECKINS[sum(investigation_id.encode()) % len(GREETING_CHECKINS)]
         result["text"] = (
-            "Hey, good to see you. I can investigate your store's revenue, checkout, "
-            "customers, products and data coverage whenever you're ready. "
-            "What would you like to look at first?"
+            f"Hey {name}, good to see you. {checkin}\n\n"
+            "I can help with your store's revenue, checkout, customers, products, "
+            "inventory and data coverage. Ask a business question and I'll investigate "
+            "the evidence. For general ecommerce advice, tell me the context you want "
+            "me to account for. If you want a starting point, I can check how your "
+            "store sync is doing or what your recorded sales look like this week."
         )
     elif intent == INTENT_IDENTITY:
         result["text"] = (
