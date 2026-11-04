@@ -18,7 +18,7 @@ actually executed or queried on 2026-11-04; every gap is stated as a gap.
 | Commit 2 | `fc5cd6e` — churn job-state observability, capacity record, three routing false-positive fixes, guard gap, 26-case Phase 7 eval set |
 | Commit 3 | `b84bd7b` — this record, certification issues log, Python 0.6.0 marker |
 | Commit 4 | `d4fd5b5` — FK indexes declared in `schema.prisma` (zero-drift), both hardening migrations added to the CI candidate list (root cause of the first red run: CI created `rev_is_org_member` with default PUBLIC EXECUTE) |
-| PR | #289, `arena/4f3ee579-revluma` → `main` |
+| PR | #289, `arena/4f3ee579-revluma` → `main` — **MERGED 2026-11-04T17:03:11Z**, merge commit `f7c2d651a0c8f2f26d210d5d039c7b27897302e0`, CI green (12/12 checks) |
 
 ## 2. CI status
 
@@ -37,10 +37,12 @@ python-regressions, task025, task026, Vercel ×2.
 | Python ML (Render `srv-db9m923ncjis739s8co0`) | `dep-dblkud2fngtc738b04og` | `/ready.python_version = 0.5.0` | live; **redeploy (user-only) must show `0.6.0`** (bumped in this branch) |
 | Frontend (Vercel `prj_4f3MJwxdXHDQguveNw5dZaVr7fQj`) | `dpl_Ewu7dt5S1vg9r6SzhvHoPVmeFLLw` | commit `2f627f3` promoted | live; this branch changes no frontend behaviour |
 
-Post-merge verification protocol (exact): fetch
-`https://revluma-backend-vrsd.onrender.com/ready` → assert `node_build`
-equals the merge SHA prefix **and** `python_version == "0.6.0"` → then run the
-database checks in §10 (churn self-heal).
+Post-merge verification protocol (exact, values now known): fetch
+`https://revluma-backend-vrsd.onrender.com/ready` → assert
+`node_build == "f7c2d651a0c8"` (merge SHA prefix) **and**
+`python_version == "0.6.0"` → then run the database checks in §8 (churn
+self-heal: 11 active customers scored within a day; `automation_job_state`
+row `daily-churn` = `completed`, `succeeded=11`, `failed=0`).
 
 ## 4. Live health checks (executed 2026-11-04, ~16:09 UTC)
 
