@@ -1,7 +1,18 @@
+const crypto = require('crypto');
 const { prisma } = require('../configs/database');
 const logger = require('../utils/logger');
 const { predictChurnRisk } = require('./mlService');
 const { verifiedCustomerLifetimeValue } = require('./financialIntegrity');
+
+// Shopper identifiers are merchant-customer PII: operational logs get a
+// deterministic pseudonym instead of the raw UUID. It still correlates the
+// same customer across runs and services (the correlation id travels to the
+// Python service in headers), without putting PII into log aggregators.
+// Failed customers keep their stale churn_scored_at, so the next hourly run
+// retries them automatically — the raw id is not needed for recovery.
+function pseudonym(value) {
+  return crypto.createHash('sha256').update(String(value)).digest('hex').slice(0, 16);
+}
 
 function average(values) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
@@ -110,9 +121,16 @@ async function scoreCustomer(customer, store) {
     customerId: customer.id,
     merchantId: store.id,
     features,
-    correlationId: `daily-churn-${customer.id}-${scoreStartedAt.getTime()}`,
+    correlationId: `daily-churn-${pseudonym(customer.id)}-${scoreStartedAt.getTime()}`,
   });
-  if (!result.success) throw new Error(result.error?.code || 'churn_prediction_failed');
+  if (!result.success) {
+    // Carry the provider error code so failure logs distinguish an outage
+    // (UNAVAILABLE) from a contract rejection (INVALID_RESPONSE) — a bare
+    // Error name made every failure look identical.
+    const failure = new Error(result.error?.code || 'churn_prediction_failed');
+    failure.code = result.error?.code || 'churn_prediction_failed';
+    throw failure;
+  }
   const updated = await prisma.customers.updateMany({
     where: {
       id: customer.id,
@@ -159,7 +177,7 @@ async function runDailyChurnScoring({ limit = 100 } = {}) {
     } catch (error) {
       failed += 1;
       logger.warn('daily_churn_customer_failed', {
-        customer_id: customer.id,
+        customer_ref: pseudonym(customer.id),
         error_type: error.code || error.name || 'processing_error',
       });
     }

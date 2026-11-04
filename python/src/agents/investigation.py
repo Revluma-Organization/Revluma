@@ -243,6 +243,10 @@ PROHIBITED_ACTIONS = [
      "launching campaigns or sending messages"),
     ("customer_action", re.compile(r"\b(?:email|sms|message|contact)\b[^.?!]{0,30}\b(?:customer|shopper|list)(?:s)?\b", re.I),
      "contacting customers"),
+    ("customer_data", re.compile(
+        r"\b(?:delete|remove|wipe|erase|purge)\b[^.?!]{0,30}"
+        r"\b(?:customer|client|shopper|store|data|database|record|account)(?:s)?\b", re.I),
+     "deleting merchant data"),
     ("execution_request", re.compile(
         r"(?:\b(?:can|could|would|will|shall)\s+you\b[^.?!]{0,32}"
         r"|\b(?:please\s+)?(?:just\s+)?)"
@@ -311,6 +315,53 @@ def _social_kind(message: str):
     if SOCIAL_FAREWELL_PATTERN.search(message or ""):
         return "farewell"
     return None
+
+
+# An interrogative that survives removal of the social phrase itself. "?"
+# alone only counts when the remainder carries real content, so a bare
+# "how are you doing?" stays a fast-path check-in on Rev.
+INTERROGATIVE_WORD_PATTERN = re.compile(
+    r"\b(?:what|why|how|when|where|which|who|can you|could you|tell me"
+    r"|explain|recommend|suggest)\b", re.I)
+_SOCIAL_KIND_PATTERNS = {
+    "wellbeing": SOCIAL_WELLBEING_PATTERN,
+    "thanks": SOCIAL_THANKS_PATTERN,
+    "farewell": SOCIAL_FAREWELL_PATTERN,
+}
+
+
+def _social_is_mixed(message: str, kind: str) -> bool:
+    """True when a social message also carries its own question.
+
+    "Thanks, that helps." is an acknowledgement. "Thanks for that! Also, what
+    makes a good win-back email subject line?" is a mixed intent whose second
+    half must not be swallowed by the social fast path (Phase 7 mixed-intent
+    finding): the remainder after the social phrase decides.
+    """
+    pattern = _SOCIAL_KIND_PATTERNS.get(kind)
+    remainder = pattern.sub(" ", message or "", count=1) if pattern else (message or "")
+    if INTERROGATIVE_WORD_PATTERN.search(remainder):
+        return True
+    remainder_tokens = re.findall(r"[\w']{2,}", remainder)
+    return "?" in remainder and len(remainder_tokens) > 2
+
+
+# Emotion expressed about the business, without a question attached:
+# "I'm worried about my sales" is a feeling to acknowledge, not an
+# investigation order (directive: emotion first; investigate when justified).
+# An explicit question ("...why did they drop?") still routes on its own.
+EMOTION_EXPRESSION_PATTERN = re.compile(
+    r"\b(?:worried|worry|worries|anxious|anxiety|stressed|stress|overwhelmed"
+    r"|scared|afraid|nervous|panicking|panicked|freaking out|fretting"
+    r"|concerned|frustrated|frustrating|disappointed|discouraged|exhausted"
+    r"|sleepless|devastated|desperate)\b", re.I)
+QUESTION_STRUCTURE_PATTERN = re.compile(
+    r"\?|\b(?:why|what|when|where|which|who|how)\b", re.I)
+
+
+def _is_emotional_expression(text: str) -> bool:
+    return bool(EMOTION_EXPRESSION_PATTERN.search(text or "")) \
+        and not QUESTION_STRUCTURE_PATTERN.search(text or "")
 
 
 GREETING_CHECKINS = (
@@ -460,6 +511,18 @@ FOLLOWUP_PATTERN = re.compile(
     r"|where (?:is|are) (?:you )?(?:getting|pulling)"
     r"|based on|reach(?:ed)? that conclusion|your conclusion"
     r"|break that down|go deeper|tell me more|explain that)\b")
+# Advice-seeking questions name a domain but ask for expertise, not a data
+# pull ("and what's a good re-engagement cadence?"). They are their own
+# question, never a follow-up refinement of the previous investigation, so
+# the "and"/"also" prefixes must not let subject inheritance hijack them
+# into store tools (Phase 7 mixed-intent finding).
+ADVICE_QUESTION_PATTERN = re.compile(
+    r"\bwhat(?:'s|\s+is|\s+are)?\s+(?:a\s+|an\s+|some\s+)?good\b"
+    r"|\bwhat\s+makes\b|\bwhat\s+(?:is\s+)?a\s+normal\b"
+    r"|\bhow\s+(?:do|can|should)\s+(?:i|you|we|one)\s+"
+    r"(?:improve|reduce|increase|grow|get|start|stop|avoid|prevent|handle|fix)\b"
+    r"|\bbest\s+(?:way|practices?|tips?)\b", re.I)
+
 FOLLOWUP_ELLIPSIS = {
     "why?", "why", "how?", "explain", "go deeper", "and?", "compared to?",
     "what changed?", "sure", "yes", "ok", "okay",
@@ -612,7 +675,8 @@ def classify_investigation(message: str, context: dict | None = None) -> dict:
     # Social comes before identity/capability: "what are you up to?" is a
     # check-in on Rev, while bare "what are you?" still asks about identity.
     social_kind = _social_kind(text)
-    if social_kind and not BUSINESS_NOUN_PATTERN.search(text):
+    if social_kind and not BUSINESS_NOUN_PATTERN.search(text) \
+            and not _social_is_mixed(text, social_kind):
         return {"intent": INTENT_SOCIAL, "segment": None, "followup": False,
                 "social_kind": social_kind}
     if IDENTITY_PATTERN.search(text):
@@ -620,7 +684,8 @@ def classify_investigation(message: str, context: dict | None = None) -> dict:
     if CAPABILITY_PATTERN.search(text):
         return {"intent": INTENT_CAPABILITY, "segment": None, "followup": False}
 
-    is_followup = bool(FOLLOWUP_PATTERN.match(lower)) or lower in FOLLOWUP_ELLIPSIS
+    is_followup = (bool(FOLLOWUP_PATTERN.match(lower)) or lower in FOLLOWUP_ELLIPSIS) \
+        and not ADVICE_QUESTION_PATTERN.search(text)
 
     segment = None
     if re.search(r"\bmobile\b|\bphone\b|\bios\b|\bandroid\b", lower):
@@ -649,7 +714,9 @@ def classify_investigation(message: str, context: dict | None = None) -> dict:
         else:
             intent = keyword_intent
     elif keyword_intent is not None:
-        intent = keyword_intent
+        # Emotion about the business without a question is acknowledged, not
+        # investigated — even in the deterministic degraded path.
+        intent = INTENT_GENERAL if _is_emotional_expression(text) else keyword_intent
     elif is_followup:
         # A follow-up with no resolvable subject still deserves a real
         # investigation of the store rather than a generic conversational reply.
@@ -774,7 +841,8 @@ def route_message(message: str, context: dict | None, store_context: dict | None
     if GREETING_PATTERN.match(greeting_form):
         return done({"intent": INTENT_GREETING, "segment": None, "followup": False},
                     "fast_path")
-    if social_kind and not BUSINESS_NOUN_PATTERN.search(text):
+    if social_kind and not BUSINESS_NOUN_PATTERN.search(text) \
+            and not _social_is_mixed(text, social_kind):
         return done({"intent": INTENT_SOCIAL, "segment": None, "followup": False,
                      "social_kind": social_kind}, "fast_path")
     if ACK_PATTERN.match(greeting_form) or _is_ack(greeting_form):
@@ -793,7 +861,8 @@ def route_message(message: str, context: dict | None, store_context: dict | None
 
     inherited = (context or {}).get("last_investigation") or {}
     inherited_intent = inherited.get("intent")
-    is_followup = bool(FOLLOWUP_PATTERN.match(lower)) or lower in FOLLOWUP_ELLIPSIS
+    is_followup = (bool(FOLLOWUP_PATTERN.match(lower)) or lower in FOLLOWUP_ELLIPSIS) \
+        and not ADVICE_QUESTION_PATTERN.search(text)
     keyword_intent = None
     for pattern, candidate in INTENT_PATTERNS:
         if pattern.search(lower):
@@ -807,8 +876,9 @@ def route_message(message: str, context: dict | None, store_context: dict | None
     store_ref = re.search(r"\b(?:my|our|we|us|store|shop)\b", lower)
     metric_query = re.search(r"\b(?:how (?:much|many)|show me|count|total"
                              r"|what (?:is|was|are|were) (?:my|our|the))\b", lower)
+    emotional_expression = _is_emotional_expression(text)
     if keyword_intent is not None and BUSINESS_NOUN_PATTERN.search(text) \
-            and (store_ref or metric_query):
+            and (store_ref or metric_query) and not emotional_expression:
         return done({"intent": keyword_intent, "segment": None, "followup": False},
                     "fast_path")
 
@@ -831,7 +901,8 @@ def route_message(message: str, context: dict | None, store_context: dict | None
         # deterministic layer rescues clear business subjects; explicit
         # store language still justifies tools; anything else stays
         # conversational. Ambiguity never becomes an investigation.
-        if keyword_intent is not None and BUSINESS_NOUN_PATTERN.search(text):
+        if keyword_intent is not None and BUSINESS_NOUN_PATTERN.search(text) \
+                and not emotional_expression:
             return done({"intent": keyword_intent, "segment": None, "followup": False},
                         "fallback_deterministic")
         if understanding.requires_store_data:

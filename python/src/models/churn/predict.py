@@ -26,6 +26,7 @@ itself, so it needs no model at all. This function never raises.
 """
 
 import logging
+import hashlib
 import typing
 
 from src.config.model_registry import load_registered_model
@@ -378,7 +379,11 @@ def predict(customer_id: str, feature_vector: dict, merchant_id: str) -> dict:
         logger.warning(
             "m4_inference_fallback",
             extra={
-                "customer_id": customer_id,
+                # Shopper PII never reaches log aggregators: the Node caller
+                # logs the same deterministic pseudonym (sha256 prefix), so a
+                # fallback still correlates across services and runs.
+                "customer_ref": hashlib.sha256(
+                    str(customer_id).encode("utf-8")).hexdigest()[:16],
                 "merchant_id": merchant_id,
                 "error_type": type(exc).__name__,
             },

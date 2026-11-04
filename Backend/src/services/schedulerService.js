@@ -830,19 +830,71 @@ async function runRecoveryQueue() {
     }
 }
 
+const CHURN_SCORING_JOB = 'daily-churn';
+const CHURN_SCORING_LOCK_TTL_SECONDS = intSetting(
+    'CHURN_SCORING_LOCK_TTL_SECONDS',
+    '900',
+    60
+);
+
+/**
+ * Hourly churn scoring pass.
+ *
+ * Coordination uses the Postgres job lock (not the Redis lock): the pass and
+ * its outcome are written to `automation_job_state`, so "did churn run, and
+ * did it fail?" is answerable from the database without application logs.
+ * This is how the eleven-customer failure storm of 2026-11 stayed invisible
+ * for days — the Redis lock left no persistent trace, and per-customer
+ * warnings were only in Render logs. A pass with failures now lands as
+ * `failed`/`partial` with a structured last_result, exactly like the
+ * business-state rebuild.
+ */
 async function runChurnQueue() {
     if (churnScoringRunning) return;
-    const lock = await acquireLock('daily-churn');
+
+    let lock = null;
+    try {
+        lock = await acquireDbLock(prisma, CHURN_SCORING_JOB, {
+            ttlSeconds: CHURN_SCORING_LOCK_TTL_SECONDS,
+        });
+    } catch (error) {
+        const errorType = error.code || error.name || 'lock_error';
+        logger.error('scheduler_churn_scoring_lock_failed', { error_type: errorType });
+        await recordJobSkip(prisma, CHURN_SCORING_JOB, 'lock_error', { error_type: errorType });
+        return;
+    }
     if (!lock) return;
+
     churnScoringRunning = true;
+    const startedAt = Date.now();
     try {
         const result = await runDailyChurnScoring({ limit: 100 });
         logger.info('scheduler_churn_scoring_completed', result);
+        // processed -> succeeded so deriveJobStatus can distinguish a mixed
+        // pass (partial) from a total outage (failed).
+        await releaseDbLock(prisma, lock, {
+            result: {
+                job: CHURN_SCORING_JOB,
+                succeeded: result?.processed ?? 0,
+                failed: result?.failed ?? 0,
+                latency_ms: Date.now() - startedAt,
+                finished_at: new Date().toISOString(),
+            },
+        });
     } catch (error) {
-        logger.error('scheduler_churn_scoring_failed', { error_type: error.code || error.name || 'worker_error' });
+        const errorType = error.code || error.name || 'worker_error';
+        logger.error('scheduler_churn_scoring_failed', { error_type: errorType });
+        await releaseDbLock(prisma, lock, {
+            status: 'failed',
+            error: `churn_error: ${errorType}`,
+            result: {
+                job: CHURN_SCORING_JOB,
+                latency_ms: Date.now() - startedAt,
+                finished_at: new Date().toISOString(),
+            },
+        });
     } finally {
         churnScoringRunning = false;
-        await releaseLock(lock);
     }
 }
 

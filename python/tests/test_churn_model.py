@@ -174,6 +174,90 @@ def test_predict_sends_normalized_aliases_in_the_training_feature_order():
     assert model.frame.loc[0, "browse_to_cart_conversion_trend"] == -1
 
 
+def test_feature_schema_accepts_unverified_money_fields():
+    """Phase 5 root cause: financial integrity sends null for money that has
+    no verified single currency. The serving schema must treat that as
+    "unknown", not reject the whole prediction with a 422 — that rejection
+    is what failed all 11 active customers hourly in production."""
+    from src.serving.api import ChurnFeatures, OfferFeatures
+
+    churn = ChurnFeatures(past_orders_total=2, avg_order_value=None,
+                          customer_ltv=None)
+    assert churn.avg_order_value is None
+    assert churn.customer_ltv is None
+
+    offer = OfferFeatures(ltv=None)
+    assert offer.ltv is None
+
+    # Real values are still range-checked: unknown money is legal, negative
+    # money is not.
+    with pytest.raises(Exception):
+        ChurnFeatures(avg_order_value=-5)
+    with pytest.raises(Exception):
+        OfferFeatures(ltv=-1)
+
+
+def test_predict_scores_a_customer_with_unverified_money():
+    """The inference layer scores None money as missing: the model row
+    coerces it to 0, and escalation never fires on an unverified LTV."""
+    class RecordingModel:
+        classes_ = np.array(["AT_RISK", "CRITICAL", "HEALTHY", "HIGH_RISK"])
+
+        def __init__(self):
+            self.frame = None
+
+        def predict_proba(self, frame):
+            self.frame = frame
+            return np.array([[0.1, 0.1, 0.7, 0.1]])
+
+    model = RecordingModel()
+    features = {
+        "days_since_last_purchase": 10,
+        "avg_order_value": None,
+        "customer_ltv": None,
+        "customer_ltv_currency": None,
+        "past_orders_total": 3,
+    }
+
+    with (
+        patch.object(churn_predict, "load_model", return_value=model),
+        patch.object(churn_predict, "_early_warning_probability", return_value=None),
+    ):
+        result = churn_predict.predict("customer-1", features, "merchant-1")
+
+    assert result["fallback"] is False
+    assert model.frame.loc[0, "avg_order_value"] == 0
+    # An unverified LTV can never justify a human hand-off.
+    assert result["escalate_to_human"] is False
+
+
+def test_fallback_log_pseudonymises_the_customer_identifier():
+    """Production hardening Phase 5: shopper PII never reaches log aggregators.
+
+    The Node churn worker logs the same deterministic sha256 prefix, so a
+    fallback still correlates across services without the raw UUID.
+    """
+    import hashlib
+
+    with (
+        patch.object(churn_predict, "load_model", side_effect=RuntimeError("registry down")),
+        patch.object(churn_predict, "_early_warning_probability", return_value=None),
+        patch.object(churn_predict.logger, "warning") as warn,
+    ):
+        result = churn_predict.predict(
+            "customer-secret-id", {"days_since_last_purchase": 10}, "merchant-1")
+
+    assert result["fallback"] is True
+    events = [call for call in warn.call_args_list
+              if call.args and call.args[0] == "m4_inference_fallback"]
+    assert events, "expected an m4_inference_fallback warning"
+    extra = events[0].kwargs["extra"]
+    assert "customer_id" not in extra
+    expected = hashlib.sha256(b"customer-secret-id").hexdigest()[:16]
+    assert extra["customer_ref"] == expected
+    assert "customer-secret-id" not in str(extra)
+
+
 def test_trend_direction_uses_a_five_percent_neutral_band():
     assert _trend_direction(106, 100) == 1
     assert _trend_direction(94, 100) == -1
