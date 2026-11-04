@@ -105,3 +105,9 @@ Verified in code and tests:
 
 Full certification is granted only when rows 1–2 are verified in production
 behaviour (not deploy status) and rows 3–4 are completed or explicitly waived.
+
+## 7. Issues log and resolved defects
+
+| ID | Reported | Symptom (production evidence) | Root cause | Fix | Verification |
+|---|---|---|---|---|---|
+| TRANS-001 | 2026-11-04, merchant live test | "Hey Rev, is my store connected?" answered with a coverage-certification report: count facts ("1 connected store(s)"), duplicated coverage claim, "Complete the initial sync" recommendation contradicting "1 store has completed a sync", robotic filler, internal notation in merchant copy ("half-open", "[start, end)", microsecond ISO, "Coverage status: partial", doubled "(UTC)"), compare chip — violating transcript A (§4.1), P6 and §8 | Coverage answers composed by template sections over machine-count facts; period/semantics strings leaked; renderer appended its own timezone note; payload also proved the production Python predated #272 (no `response_mode`), so the renderer fell back to full report scaffolding | PR #279 `d19f5b6`: `_verification_answer()` direct-prose composer (skips narrative rewrite), humanised fact builders, human provenance + status sentences, empty-string fillers, no coverage compare chip, `formatPeriod` human UTC windows, transcript A chrome gating | Python 1399 (10 new transcript tests), golden set 511/511 with leaked terms added to prohibited claims, Dashboard 467/31, CI green, Vercel `dpl_FLmGghoPPfiLPwNAxYRrUbF2Q2Fr` PROMOTED; backend half awaits the Render redeploy (row 2 above) |
