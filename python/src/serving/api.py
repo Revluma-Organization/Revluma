@@ -22,7 +22,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Literal, Optional
 
 import pandas as pd
 import httpx
@@ -523,14 +523,17 @@ class ChurnFeatures(BaseModel):
     # --- fed to the trained model ---
     past_orders_total: int = Field(0, ge=0)
     days_since_last_purchase: int = Field(-1, ge=-1)
-    avg_order_value: float = Field(0.0, ge=0.0)
+    # None = money that failed currency verification upstream (financial
+    # integrity sends null rather than an unlabelled total). Inference
+    # scores None as missing; escalation never trusts it.
+    avg_order_value: Optional[float] = Field(None, ge=0.0)
     purchase_frequency_trend: int = Field(0, ge=-1, le=1)
     rfm_recency_score: int = Field(1, ge=1, le=5)
     rfm_frequency_score: int = Field(1, ge=1, le=5)
     rfm_monetary_score: int = Field(1, ge=1, le=5)
 
     # --- accepted, used only for escalate_to_human / primary_churn_signal ---
-    customer_ltv: float = Field(0.0, ge=0.0)
+    customer_ltv: Optional[float] = Field(None, ge=0.0)
     historical_aov_trend: float = Field(0.0)
 
     # --- accepted for forward-compatibility only; NOT yet consumed (flagged gap) ---
@@ -595,7 +598,9 @@ class OfferFeatures(BaseModel):
     failed_coupon_count: int = Field(0, ge=0)
 
     # Step 3 — modifier inputs
-    ltv: float = Field(0.0, ge=0.0)
+    # None = LTV that failed currency verification upstream; offer_value's
+    # predict treats it as 0.0 (unavailable), never as money.
+    ltv: float | None = Field(None, ge=0.0)
     past_orders_total: int = Field(0, ge=0)
     cart_value: float | None = Field(None, ge=0.0)
     churn_tier: str = Field("HEALTHY", pattern="^(HEALTHY|AT_RISK|HIGH_RISK|CRITICAL)$")

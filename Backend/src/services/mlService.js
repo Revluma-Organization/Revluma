@@ -876,6 +876,15 @@ async function predictOfferValue({ features, customerId, merchantId, correlation
 /* CHURN RISK                                                                 */
 /* -------------------------------------------------------------------------- */
 
+// avg_order_value is derived from the stored lifetime value, and financial
+// integrity deliberately sends null when that value cannot be verified
+// against a single labelled currency (unlabelled or mixed-currency totals
+// must never be read as USD). Null means "unknown money", not "bad feature":
+// Python's inference layer scores it as missing, and escalation stays off
+// because an unverified LTV can never justify a human hand-off. Every other
+// feature remains a required finite number.
+const NULLABLE_CHURN_FEATURES = new Set(['avg_order_value']);
+
 function validateChurnFeatures(features) {
   if (!isPlainObject(features)) {
     return {
@@ -892,6 +901,13 @@ function validateChurnFeatures(features) {
         message:
           `Missing churn feature: ${feature}`,
       };
+    }
+
+    if (
+      features[feature] === null &&
+      NULLABLE_CHURN_FEATURES.has(feature)
+    ) {
+      continue;
     }
 
     if (
@@ -1610,6 +1626,7 @@ module.exports = {
     ML_ERRORS,
     CHURN_FEATURES,
     _validateOrchestrateResponse: validateOrchestrateResponse,
+    _validateChurnFeatures: validateChurnFeatures,
     _validateOrchestrateRequest: validateOrchestrateRequest,
     _validateInvestigationResponse: validateInvestigationResponse,
     INVESTIGATION_CONTRACT,
