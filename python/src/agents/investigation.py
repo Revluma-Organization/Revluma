@@ -134,6 +134,7 @@ INTENT_COVERAGE = "data_coverage"
 INTENT_READ_ONLY = "read_only_boundary"
 INTENT_CAPABILITY = "capability"
 INTENT_GREETING = "greeting"
+INTENT_SOCIAL = "social"
 INTENT_IDENTITY = "identity"
 INTENT_GENERAL = "general"
 
@@ -149,6 +150,7 @@ INTENT_LABELS = {
     INTENT_READ_ONLY: "Read-only boundary",
     INTENT_CAPABILITY: "Capabilities",
     INTENT_GREETING: "Conversation",
+    INTENT_SOCIAL: "Conversation",
     INTENT_IDENTITY: "Identity",
     INTENT_GENERAL: "General guidance",
 }
@@ -234,12 +236,64 @@ FEMININE_SIGNAL_PATTERN = re.compile(
     r"|call me (?:queen|madam|mama|miss|ms\.?|mrs\.?|lady|girl|empress)"
     r"|i identify as (?:a |an )?(?:woman|female|girl))\b", re.I)
 PREFERRED_NAME_PATTERN = re.compile(r"\bcall me ([A-Za-z][\w'-]{1,24})\b", re.I)
+# A social message is addressed to Rev, not to the store: wellbeing checks,
+# thanks and farewells. It never runs the evidence pipeline. A store-domain
+# noun anywhere in the message ("how are you doing on my sales?") wins over
+# the social reading, so business questions still investigate.
+SOCIAL_WELLBEING_PATTERN = re.compile(
+    r"\bhow(?:'s| is| are) you\b|\bhow (?:are|is) you doing\b|\bhow you doing\b"
+    r"|\bhow(?:'s| is) it going\b|\bhow are things\b|\bhow(?:'s| was) your day\b"
+    r"|\bhow do you feel\b|\bhow have you been\b|\bare you (?:okay|ok|awake|there|up)\b"
+    r"|\bwhat(?:'s| is) up\b|\bwhat(?:'s| is) new with you\b|\bwhat are you up to\b"
+    r"|\bhow(?:'s| is) life\b|\bhow(?:'s| is) everything (?:with you )?(?:going )?on your (?:side|end)\b"
+    r"|\bhow are things on your (?:side|end)\b", re.I)
+SOCIAL_THANKS_PATTERN = re.compile(
+    r"\bthanks\b|\bthank you\b|\bappreciate (?:it|you)\b|\bcheers\b"
+    r"|\bwell done\b|\bgood (?:bot|job|work)\b|\bnice one\b|\bgreat work\b", re.I)
+SOCIAL_FAREWELL_PATTERN = re.compile(
+    r"\b(?:bye|goodbye|good bye|see you|catch you later|talk later|good night"
+    r"|goodnight|have a (?:good|great) (?:one|day|night|weekend))\b"
+    r"|\blater\b(?!(?: (?:than|this|today|tonight|week|month|year)))", re.I)
+BUSINESS_NOUN_PATTERN = re.compile(
+    r"\bstore|shop|shopify|business|revenue|sales|order|customer|client|cart"
+    r"|checkout|product|inventory|stock|coverage|sync|finding|refund|chargeback"
+    r"|dispute|churn|retention|loyal|traffic|session|conversion|discount|campaign"
+    r"|metric|figure|overview|summary|briefing|priorit|trading|evidence|profit"
+    r"|margin|income|webhook|scope|permission|connected|connection|forecast\b", re.I)
+
+
+def _social_kind(message: str):
+    """wellbeing | thanks | farewell | None — a message addressed to Rev."""
+    if SOCIAL_WELLBEING_PATTERN.search(message or ""):
+        return "wellbeing"
+    if SOCIAL_THANKS_PATTERN.search(message or ""):
+        return "thanks"
+    if SOCIAL_FAREWELL_PATTERN.search(message or ""):
+        return "farewell"
+    return None
+
+
 GREETING_CHECKINS = (
     "How's your day going?",
     "How are things with you today?",
     "Hope the day is treating you well — how's it going?",
     "Good to have you back — what's happening with you today?",
 )
+
+
+def _social_reply(kind: str, message: str, user_id: str) -> str:
+    """A mutual-conversation answer: Rev is asked about itself, thanked or
+    bid goodbye — no store data is pulled and none is implied."""
+    name = _boss_name(message, user_id)
+    if kind == "thanks":
+        return (f"Anytime, {name} — that's what I'm here for. If there's anything "
+                "else you'd like me to look at, just say the word.")
+    if kind == "farewell":
+        return (f"See you later, {name}. Your store's records will be right here "
+                "whenever you're ready to look at them again.")
+    return (f"I'm doing well, {name} — thanks for asking. I don't have good days or "
+            "bad ones, but I'm always ready to dig into your store's records. How's "
+            "your side of the screen — what are we working on today?")
 
 
 def _boss_name(message: str, user_id: str) -> str:
@@ -298,7 +352,7 @@ INTENT_PATTERNS = (
                 r"|\boverview\b|\bmost important\b|\bpriorit(?:y|ies|ise|ize)\b"
                 r"|\bbiggest (?:issue|problem|risk)\b|\blook at first\b|\bsummary\b"
                 r"|\bbriefing\b|\bwhere should i (?:start|focus|look)\b"
-                r"|\bwhat (?:do i|should i) need to know\b|\bhow (?:is|are)\b[^.?!]{0,40}"
+                r"|\bwhat (?:do i|should i) need to know\b|\bhow (?:is|are)\b(?![^.?!]{0,40}\byou\b)[^.?!]{0,40}"
                 r"\b(?:performing|doing)\b|\bhealth\b"), INTENT_OVERVIEW),
 )
 
@@ -415,6 +469,12 @@ def classify_investigation(message: str, context: dict | None = None) -> dict:
     greeting_form = re.sub(r"\s+", " ", re.sub(r"[^\w\s']", " ", text)).strip().lower()
     if GREETING_PATTERN.match(greeting_form):
         return {"intent": INTENT_GREETING, "segment": None, "followup": False}
+    # Social comes before identity/capability: "what are you up to?" is a
+    # check-in on Rev, while bare "what are you?" still asks about identity.
+    social_kind = _social_kind(text)
+    if social_kind and not BUSINESS_NOUN_PATTERN.search(text):
+        return {"intent": INTENT_SOCIAL, "segment": None, "followup": False,
+                "social_kind": social_kind}
     if IDENTITY_PATTERN.search(text):
         return {"intent": INTENT_IDENTITY, "segment": None, "followup": False}
     if CAPABILITY_PATTERN.search(text):
@@ -779,7 +839,21 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
     add("open_finding_count", lambda i: (
         "One verified operational finding is open." if i["value"] == 1
         else f"{i['value']} verified operational findings are open."))
-    return facts
+    # Two tools can verify the same sentence (order value from revenue and
+    # order observations): cite both records under one fact, never repeat it.
+    deduped: list[dict] = []
+    position: dict[str, int] = {}
+    for fact in facts:
+        key = fact["text"]
+        if key in position:
+            target = deduped[position[key]]
+            for evidence_id in fact["evidence_ids"]:
+                if evidence_id not in target["evidence_ids"]:
+                    target["evidence_ids"].append(evidence_id)
+            continue
+        position[key] = len(deduped)
+        deduped.append(fact)
+    return deduped
 
 
 def _count_for(by_metric: dict, metric: str, currency: str | None) -> str:
@@ -1468,7 +1542,7 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
                           investigation_id=investigation_id, store_context=store_context,
                           user_id=user_id)
     result["response_type"] = "chat" if intent in (INTENT_GREETING, INTENT_IDENTITY,
-                                                   INTENT_GENERAL) else "capability"
+                                                   INTENT_GENERAL, INTENT_SOCIAL) else "capability"
     result["investigation"]["status"] = "complete"
     # Conversational turns run no evidence engine, so they carry no follow-up
     # chips (spec §7: never a generic auto-list after every answer).
@@ -1507,11 +1581,15 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
             "- I won't invent a number or a cause when the evidence isn't there.\n\n"
             "Ask me something like \"Why did my revenue change this week?\" to start."
         )
+    elif intent == INTENT_SOCIAL:
+        result["text"] = _social_reply(classification.get("social_kind") or "wellbeing",
+                                       message, user_id)
     else:
+        name = _boss_name(message, user_id)
         result["text"] = (
-            "I can help with your store's revenue, checkout, customers, products, inventory "
-            "and data coverage. Ask a business question and I'll investigate the evidence. "
-            "For general ecommerce advice, tell me the context you want me to account for."
+            f"I'm all ears, {name}. Ask me anything about your store's revenue, checkout, "
+            "customers, products, inventory or data coverage and I'll investigate the "
+            f"recorded evidence for you. What's on your mind today?"
         )
     result["response_mode"] = RESPONSE_MODE_CONVERSATIONAL
     result["mode_reason"] = "the answer uses no store investigation"
@@ -1537,7 +1615,7 @@ def select_response_mode(*, intent: str, status: str, tool_names: list,
     evidence actually supports instead of guessing from rendered text.
     """
     if intent in (INTENT_GREETING, INTENT_IDENTITY, INTENT_CAPABILITY,
-                  INTENT_GENERAL, INTENT_READ_ONLY):
+                  INTENT_GENERAL, INTENT_SOCIAL, INTENT_READ_ONLY):
         return RESPONSE_MODE_CONVERSATIONAL, "the question needs no store investigation"
     verified = [item for item in evidence_items
                 if item.get("status") == STATUS_AVAILABLE]
@@ -1664,7 +1742,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         message, now,
         inherited=(conversation_context or {}).get("last_investigation"))
 
-    if intent in (INTENT_GREETING, INTENT_IDENTITY, INTENT_CAPABILITY, INTENT_GENERAL):
+    if intent in (INTENT_GREETING, INTENT_IDENTITY, INTENT_CAPABILITY, INTENT_GENERAL,
+                  INTENT_SOCIAL):
         result = _conversation_result(message, classification,
                                       investigation_id=investigation_id,
                                       store_context=store_context, user_id=user_id,

@@ -1,7 +1,8 @@
 # Rev Intelligence — Conversation & Response Experience Specification
 
-Version: 1.1.0 · Date: 2026-11-04 · Status: Approved-for-implementation baseline
-(v1.1.0 adds §13 greeting, rapport and merchant-address contract after GREET-001)
+Version: 1.2.0 · Date: 2026-11-04 · Status: Approved-for-implementation baseline
+(v1.1.0 adds §13 greeting, rapport and merchant-address contract after GREET-001;
+v1.2.0 adds G13.5 mutual conversation and G13.6 fact dedupe after CONV-001)
 Source plan: `Revluma_Rev_Intelligence_Conversation_Experience_Production_Implementation_Plan.pdf` (15 pp, 2026-11-04)
 Task document: `docs/engineering/REV_INTELLIGENCE_CONVERSATION_EXPERIENCE_IMPLEMENTATION.md`
 
@@ -327,3 +328,17 @@ turns. Address is style, never a data claim (§8).
 streamed and persisted Rev payload (Node persistence mapper). The UI must not
 infer a mode from an empty evidence shell: an evidence object with no usable
 items and no limitations is not evidence (MODE-PERSIST-001).
+
+**G13.5 — Mutual conversation (v1.2.0).** A message addressed to Rev itself —
+a wellbeing check ("How are you doing?", "how's your day?"), thanks, or a
+farewell — is conversation, not analysis: it runs no evidence tool and is
+answered in kind (a reply plus a returned question, or a warm close). A
+store-domain noun anywhere in the message ("how are you doing on my sales?")
+keeps the business reading, so real questions still investigate. A message
+with neither a business noun nor a social form gets a conversational offer
+("I'm all ears, Chief…"), never a capability wall and never an investigation.
+
+**G13.6 — One sentence, one fact (v1.2.0).** When two tools verify the same
+sentence (order value from revenue and order observations), the sentence
+appears once and cites both records; identical fact sentences never repeat
+inside one answer.
