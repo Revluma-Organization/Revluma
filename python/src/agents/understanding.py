@@ -305,7 +305,7 @@ def _safe_fallback(message: str, history: list[dict], reason: str) -> Understand
     )
     if (is_general_strategy or is_ecommerce_reasoning) and not needs_store:
         return Understanding("strategy", "get ecommerce guidance", False, False, False,
-                             MODE_EXPLANATION, {}, domains, "low", 0.8, reason)
+                             MODE_EXPLANATION, {}, domains, "low", 0.5, reason)
 
     # Store-specific business question
     if needs_store:
@@ -314,12 +314,12 @@ def _safe_fallback(message: str, history: list[dict], reason: str) -> Understand
             "diagnosis" if diag else "metrics",
             "understand store performance", True, False, False,
             MODE_ANALYSIS if diag else MODE_DIRECT_ANSWER,
-            {}, domains or ["revenue"], "medium", 0.75, reason,
+            {}, domains or ["revenue"], "medium", 0.5, reason,
         )
 
     # Everything else is conversation. This is the safe default.
     return Understanding("casual", "conversation", False, False, False,
-                         MODE_CONVERSATIONAL, {}, domains, "low", 0.6, reason)
+                         MODE_CONVERSATIONAL, {}, domains, "low", 0.45, reason)
 
 
 def _format_history(history: list[dict], turns: int = 6) -> str:

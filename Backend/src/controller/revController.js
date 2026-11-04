@@ -311,6 +311,7 @@ exports.chat = async (req, res, next) => {
         read_only:      mlResult.data?.read_only     ?? true,
         response_mode:  mlResult.data?.response_mode || null,
         mode_reason:    mlResult.data?.mode_reason   || null,
+        understanding:  mlResult.data?.understanding || null,
       };
     }
 
@@ -804,6 +805,10 @@ function _boundedResultForPersistence(data) {
     // the database alone.
     response_mode: data?.response_mode || null,
     mode_reason: data?.mode_reason || null,
+    // Understanding/gate metadata: the response contract (conversational
+    // intelligence upgrade §16) so presentation and audits never infer intent
+    // from content shape.
+    understanding: data?.understanding || null,
   };
 }
 
