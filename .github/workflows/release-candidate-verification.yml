@@ -87,7 +87,9 @@ jobs:
           for migration in \
             prisma/migrations/20261027140000_intelligence_findings/migration.sql \
             prisma/migrations/20261101120000_rev_financial_integrity/migration.sql \
-            prisma/migrations/20261102090000_rev_supabase_function_hardening/migration.sql
+            prisma/migrations/20261102090000_rev_supabase_function_hardening/migration.sql \
+            prisma/migrations/20261104170000_supabase_data_api_lockdown/migration.sql \
+            prisma/migrations/20261104180000_fk_covering_indexes/migration.sql
           do
             echo "applying $migration"
             psql -h 127.0.0.1 -U postgres -d revluma_rc -v ON_ERROR_STOP=1 -f "$migration"
