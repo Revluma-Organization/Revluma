@@ -145,6 +145,26 @@ ACK_PATTERN = re.compile(
     r"|makes sense|make sense|i see|understood|noted|fine|sure|yep|nope|yeah|nah|yes|no"
     r"|that'?s (?:good|great|helpful|interesting|fair)|good to know|fair enough"
     r"|thank you|thanks)[\s!.,]*$", re.I)
+
+# Multi-token acknowledgements ("ok noted", "thanks a lot", "cool cool") are
+# pure acknowledgement when EVERY token is an acknowledgement word; anything
+# else (a noun, a verb, a question word) falls through to normal routing.
+ACK_WORDS = frozenset({
+    "okay", "ok", "okeh", "alright", "all", "right", "got", "it", "gotcha",
+    "interesting", "nice", "wow", "cool", "makes", "make", "sense", "i", "see",
+    "understood", "noted", "fine", "sure", "yep", "nope", "yeah", "nah", "yes",
+    "no", "thats", "that's", "good", "great", "helpful", "fair", "to", "know",
+    "enough", "thank", "thanks", "you", "cheers", "appreciated", "very", "much",
+    "so", "really", "lot", "a", "bunch", "of", "haha", "lol", "lmao", "ty",
+    "perfect", "excellent", "brilliant", "awesome", "love",
+})
+
+
+def _is_ack(form: str) -> bool:
+    tokens = re.findall(r"[a-z']+", form.lower())
+    return bool(tokens) and len(tokens) <= 4 and all(t in ACK_WORDS for t in tokens)
+
+
 TOPIC_CHANGE_PATTERN = re.compile(
     r"\b(?:anyway|anyways|forget that|forget it|never ?mind|let'?s (?:talk about"
     r"|move on to|switch to|leave that)|different topic|another question"
@@ -757,7 +777,7 @@ def route_message(message: str, context: dict | None, store_context: dict | None
     if social_kind and not BUSINESS_NOUN_PATTERN.search(text):
         return done({"intent": INTENT_SOCIAL, "segment": None, "followup": False,
                      "social_kind": social_kind}, "fast_path")
-    if ACK_PATTERN.match(greeting_form):
+    if ACK_PATTERN.match(greeting_form) or _is_ack(greeting_form):
         return done({"intent": INTENT_SOCIAL, "segment": None, "followup": False,
                      "social_kind": "ack"}, "fast_path")
     if IDENTITY_PATTERN.search(text):
@@ -1947,12 +1967,6 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
     if intent in (INTENT_GREETING, INTENT_SOCIAL, INTENT_IDENTITY):
         result["text"] = _dynamic_conversational(message, classification, intent,
                                                  user_id, routed)
-    elif intent == INTENT_IDENTITY:
-        result["text"] = (
-            "I'm Rev, Revluma's operational intelligence analyst. I read your connected "
-            "store's records, verify the evidence, and explain what changed, what it might "
-            "mean, and what is still unknown. I don't make changes to your store."
-        )
     elif intent == INTENT_CAPABILITY:
         capabilities = "\n".join(
             f"- {entry['label']}: {entry['description']}"

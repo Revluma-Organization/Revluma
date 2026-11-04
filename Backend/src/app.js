@@ -32,6 +32,19 @@ const { isRedisReady, isRedisConfigured } = require('./configs/redis');
 const { BUSINESS_STATE_JOB } = require('./services/schedulerLocks');
 const { checkPythonHealth } = require('./services/mlService');
 
+// Build marker for deploy verification: the commit this Node process is
+// actually running. Best effort — falls back to 'unknown' when the runtime
+// image has no git metadata, so /ready never fails because of observability.
+const NODE_BUILD = (() => {
+  try {
+    return require('child_process')
+      .execSync('git rev-parse --short=12 HEAD', { cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString().trim();
+  } catch {
+    return process.env.RENDER_GIT_COMMIT_SHA || 'unknown';
+  }
+})();
+
 
 
 const app = express();
@@ -186,6 +199,8 @@ app.get('/ready', async (req, res) => {
     python_ready: python.healthy,
     python_model_status: python.modelStatus || null,
     python_models_missing: python.modelsMissing || [],
+    python_version: python.version || null,
+    node_build: NODE_BUILD,
     beta_automation_enabled: automationEnabled,
     beta_automation_ready: automationReady,
     beta_automation_config_missing: automationConfigMissing,

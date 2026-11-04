@@ -186,11 +186,21 @@ export function RevAnswerView({
   const mode: RevResponseMode = responseModeOf(payload) ?? (
     recordList(payload.facts).length || recordList(payload.comparison_facts).length ||
     recordList(payload.hypotheses).length || recordList(payload.recommendations).length ||
+    // Legacy analysis turns (pre-mode) often carry nothing but structured
+    // prose sections; those were genuine reports and keep full rigour.
+    Boolean(textValue(payload.response?.situation) || textValue(payload.response?.insight) ||
+            textValue(payload.response?.implication) || textValue(payload.response?.recommendation)) ||
     carriesEvidence
       ? "investigation"
       : "conversational"
   );
-  const quiet = mode === "conversational" || mode === "quick_verification";
+  // The routing layer's gate decision is authoritative for presentation
+  // (§16): a conversational/clarify/refuse turn never renders report
+  // scaffolding, even when the payload still carries legacy structural
+  // fields (an investigation shell, empty evidence, stale sections).
+  const gate = textValue((payload.understanding as { gate?: unknown } | undefined)?.gate);
+  const gateQuiet = gate === "conversational" || gate === "clarify" || gate === "refuse";
+  const quiet = gateQuiet || mode === "conversational" || mode === "quick_verification";
   let shown = body;
   const sections = (["situation", "insight", "implication", "recommendation"] as const).flatMap(key => {
     const text = textValue(payload.response?.[key]);
@@ -243,7 +253,7 @@ export function RevAnswerView({
         </div>
       )}
 
-      {streaming && steps.length > 0 && (
+      {streaming && !quiet && steps.length > 0 && (
         <InvestigationTimeline
           steps={steps}
           investigation={investigation}
@@ -253,16 +263,16 @@ export function RevAnswerView({
         />
       )}
 
-      {!streaming && body && <VerifiedComparison text={body} dark={dark} strong={strong} muted={muted} border={border} />}
+      {!streaming && !quiet && body && <VerifiedComparison text={body} dark={dark} strong={strong} muted={muted} border={border} />}
 
       <div style={{ fontSize: "0.9rem", lineHeight: 1.65, color: strong }}>
         {body && <RevMarkdown text={body} tone={dark ? "dark" : "light"} />}
-        {sections.map(section => <section key={section.label} className="mt-3">
+        {!quiet && sections.map(section => <section key={section.label} className="mt-3">
           <h3 className="text-xs font-semibold mb-1">{section.label}</h3>
           <RevMarkdown text={section.text} tone={dark ? "dark" : "light"} />
         </section>)}
         {!body && !sections.length && !facts.length && !comparisonFacts.length && !hypotheses.length && !unknowns.length && !recommendations.length && <p>No answer content was returned.</p>}
-        {factSections.map(({ label, entries }) => entries.length > 0 && <section key={label} className="mt-3">
+        {!quiet && factSections.map(({ label, entries }) => entries.length > 0 && <section key={label} className="mt-3">
           <h3 className="text-xs font-semibold mb-1">{label}</h3>
           <ul className="list-disc pl-4">
             {[...new Map(entries.map(entry => [entry.text, entry])).values()].map(entry => (
@@ -290,7 +300,7 @@ export function RevAnswerView({
             ))}
           </ul>
         </section>)}
-        {detailGroups.map(({ label, values }) => values.length > 0 && <section key={label} className="mt-3">
+        {!quiet && detailGroups.map(({ label, values }) => values.length > 0 && <section key={label} className="mt-3">
           <h3 className="text-xs font-semibold mb-1">{label}</h3>
           <ul className="list-disc pl-4">{[...new Set(values)].map(text => <li key={text}>{text}</li>)}</ul>
         </section>)}
@@ -399,7 +409,7 @@ export function RevAnswerView({
         </details>
       )}
 
-      {partialSpecialists.length > 0 && (
+      {!quiet && partialSpecialists.length > 0 && (
         <div style={{
           display: "flex", gap: 8, alignItems: "flex-start",
           background: dark ? "rgba(181,71,8,0.12)" : "#FFFAEB",
@@ -427,7 +437,7 @@ export function RevAnswerView({
         </ul>
       )}
 
-      {recommendations.length > 0 && (
+      {!quiet && recommendations.length > 0 && (
         <div className="flex flex-col gap-2" style={{ borderTop: `1px solid ${border}`, paddingTop: 10 }}>
           <p style={{ margin: 0, fontSize: "0.68rem", fontWeight: 750, color: muted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
             Recommended next steps
