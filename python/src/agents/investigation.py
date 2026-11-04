@@ -967,13 +967,11 @@ def _follow_ups(intent: str, window: dict, segment: str | None,
     elif intent == INTENT_COVERAGE:
         suggestions.append("Which missing data source is limiting this investigation?")
 
-    if not suggestions:
-        suggestions.append("What should I investigate next?")
-    if (len(suggestions) < 3 and evidence_items and window.get("compared_to")
-            and not comparison_facts):
+    # Evidence-gated follow-ups (spec §7): suggestions only when something the
+    # investigation actually returned supports them. When nothing does, the list
+    # is empty and the UI shows no chips at all — never generic filler.
+    if evidence_items and window.get("compared_to") and not comparison_facts:
         suggestions.append("Can you compare this with the previous period?")
-    if len(suggestions) < 3:
-        suggestions.append("What should I investigate next?")
     return list(dict.fromkeys(suggestions))[:3]
 
 
@@ -1332,7 +1330,8 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
     result["response_type"] = "chat" if intent in (INTENT_GREETING, INTENT_IDENTITY,
                                                    INTENT_GENERAL) else "capability"
     result["investigation"]["status"] = "complete"
-    result["investigation"]["follow_ups"] = _follow_ups(INTENT_OVERVIEW, window, None)
+    # Conversational turns run no evidence engine, so they carry no follow-up
+    # chips (spec §7: never a generic auto-list after every answer).
     if intent == INTENT_GREETING:
         result["text"] = (
             "Hey, good to see you. I can investigate your store's revenue, checkout, "
@@ -1369,8 +1368,6 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
             "and data coverage. Ask a business question and I'll investigate the evidence. "
             "For general ecommerce advice, tell me the context you want me to account for."
         )
-    if intent != INTENT_CAPABILITY:
-        result["investigation"]["follow_ups"] = _follow_ups(INTENT_OVERVIEW, window, None)
     result["response_mode"] = RESPONSE_MODE_CONVERSATIONAL
     result["mode_reason"] = "the answer uses no store investigation"
     return result

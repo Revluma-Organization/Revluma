@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import {
   ArrowUpRight, Check, Copy, Database, RefreshCw, TriangleAlert,
 } from "lucide-react";
@@ -41,6 +41,40 @@ function deriveState(payload: RevAnswerPayload, streaming: boolean): AnswerState
     || recordList<InvestigationStep>(payload.investigation?.steps).some(step => step.status !== "completed");
   return state === "verified" && degraded ? "partial" : state;
 }
+
+/** Honest wording for a step status — never claims completion for a step that did not complete. */
+const STEP_STATUS_WORD: Record<string, string> = {
+  pending: "did not run", running: "was still running", completed: "completed", failed: "failed",
+};
+
+function stepStatusWord(status: unknown): string {
+  if (typeof status === "string" && STEP_STATUS_WORD[status]) return STEP_STATUS_WORD[status];
+  return textValue(status) || "unknown";
+}
+
+/** Primitive coverage entries only — objects are not flattened into invented prose. */
+function coverageText(coverage?: Record<string, unknown>): string {
+  if (!coverage || typeof coverage !== "object") return "";
+  return Object.entries(coverage)
+    .filter(([, value]) => typeof value === "string" || typeof value === "number" || typeof value === "boolean")
+    .map(([key, value]) => `${key}: ${String(value)}`)
+    .join(" · ");
+}
+
+function freshnessText(freshness?: EvidenceItem["freshness"]): string {
+  if (!freshness || typeof freshness !== "object") return "";
+  const parts = [textValue(freshness.state), textValue(freshness.as_of)].filter(Boolean);
+  if (typeof freshness.age_minutes === "number" && Number.isFinite(freshness.age_minutes)) {
+    parts.push(`${Math.round(freshness.age_minutes)} minutes old`);
+  }
+  return parts.join(" · ");
+}
+
+const DISCLOSURE_HEADING: CSSProperties = {
+  margin: "0 0 3px", fontSize: "0.64rem", fontWeight: 750,
+  textTransform: "uppercase", letterSpacing: "0.05em",
+};
+const DISCLOSURE_LINE: CSSProperties = { margin: 0, fontSize: "0.72rem", lineHeight: 1.55 };
 
 /** Structured cards derived only from values explicitly present in Rev's verified answer. */
 function VerifiedComparison({ text, dark, strong, muted, border }: {
@@ -98,6 +132,10 @@ export function RevAnswerView({
     ...recordList<EvidenceItem>(payload.evidence?.comparison_items),
   ];
   const evidenceCount = evidenceItems.length;
+  // Compact provenance for monetary claims survives even quiet modes (§6):
+  // concise never means unprovenanced.
+  const currencies = [...new Set(evidenceItems.map(item => textValue(item?.currency)).filter(Boolean))];
+  const monetary = evidenceItems.some(item => item?.unit === "currency" || Boolean(textValue(item?.currency)));
 
   // Evidence actually retrieved, keyed by id, so a citation can be resolved to a
   // real record with a real label.
@@ -155,8 +193,18 @@ export function RevAnswerView({
     shown += `\n${text}`;
     return [{ label: key[0].toUpperCase() + key.slice(1), text }];
   });
-  const facts = [...recordList<RevFact>(payload.facts), ...recordList<RevFact>(payload.comparison_facts)]
-    .map(fact => textValue(fact.text)).filter(text => text && !coveredBy(shown, text));
+  // Inline citations (spec §6): a chip sits at the claim it supports, numbered
+  // against the cited-evidence list below. An id that does not resolve to a
+  // retrieved record never becomes a chip.
+  const factEntry = (fact: RevFact) => ({
+    text: textValue(fact.text),
+    ids: stringList(fact?.evidence_ids).filter(id => evidenceById.has(id)),
+  });
+  const facts = recordList<RevFact>(payload.facts).map(factEntry)
+    .filter(entry => entry.text && !coveredBy(shown, entry.text));
+  const comparisonFacts = recordList<RevFact>(payload.comparison_facts).map(factEntry)
+    .filter(entry => entry.text && !coveredBy(shown, entry.text)
+      && !facts.some(other => other.text === entry.text));
   const hypotheses = recordList<RevHypothesis>(payload.hypotheses).map(item => textValue(item.statement)).filter(text => text && !coveredBy(shown, text));
   const unknowns = stringList(payload.unknowns).filter(text => !coveredBy(shown, text));
   const recommendations = recordList<RevRecommendation>(payload.recommendations).filter(item => {
@@ -164,8 +212,11 @@ export function RevAnswerView({
     return parts.length > 0 && !parts.every(text => coveredBy(shown, text));
   });
   const hasEvidence = Boolean(payload.evidence || facts.length || hypotheses.length || unknowns.length || recommendations.length || recordList(payload.comparison_facts).length || recordList(payload.facts).length);
+  const factSections = [
+    { label: "Facts", entries: facts },
+    { label: "Compared with the previous period", entries: comparisonFacts },
+  ];
   const detailGroups = [
-    { label: "Facts", values: facts },
     { label: "Hypotheses — not verified", values: hypotheses },
     { label: "Unknowns and limits", values: unknowns },
   ];
@@ -205,16 +256,46 @@ export function RevAnswerView({
           <h3 className="text-xs font-semibold mb-1">{section.label}</h3>
           <RevMarkdown text={section.text} tone={dark ? "dark" : "light"} />
         </section>)}
-        {!body && !sections.length && !facts.length && !hypotheses.length && !unknowns.length && !recommendations.length && <p>No answer content was returned.</p>}
+        {!body && !sections.length && !facts.length && !comparisonFacts.length && !hypotheses.length && !unknowns.length && !recommendations.length && <p>No answer content was returned.</p>}
+        {factSections.map(({ label, entries }) => entries.length > 0 && <section key={label} className="mt-3">
+          <h3 className="text-xs font-semibold mb-1">{label}</h3>
+          <ul className="list-disc pl-4">
+            {[...new Map(entries.map(entry => [entry.text, entry])).values()].map(entry => (
+              <li key={entry.text}>
+                {entry.text}
+                {entry.ids.map(id => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => onOpenEvidence?.(id)}
+                    aria-label={`Citation ${citedEvidenceIds.indexOf(id) + 1}: ${textValue(evidenceById.get(id)?.label) || id} — open evidence`}
+                    style={{
+                      fontSize: "0.62rem", fontWeight: 700, lineHeight: 1, marginLeft: 5,
+                      color: dark ? "#A5B4FC" : "#1F06AC",
+                      background: dark ? "rgba(31,6,172,0.22)" : "rgba(31,6,172,0.07)",
+                      border: "1px solid rgba(31,6,172,0.18)", borderRadius: 6,
+                      padding: "2px 5px", verticalAlign: "baseline",
+                      cursor: onOpenEvidence ? "pointer" : "default",
+                    }}
+                  >
+                    {citedEvidenceIds.indexOf(id) + 1}
+                  </button>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </section>)}
         {detailGroups.map(({ label, values }) => values.length > 0 && <section key={label} className="mt-3">
           <h3 className="text-xs font-semibold mb-1">{label}</h3>
           <ul className="list-disc pl-4">{[...new Set(values)].map(text => <li key={text}>{text}</li>)}</ul>
         </section>)}
       </div>
 
-      {!streaming && !quiet && investigation?.period?.start && (
+      {!streaming && (quiet ? monetary : Boolean(investigation?.period?.start || monetary)) && (
         <p style={{ margin: 0, fontSize: "0.7rem", color: muted }}>
-          Based on recorded store data for {formatPeriod(investigation.period)} (UTC).
+          Based on recorded store data
+          {investigation?.period?.start ? ` for ${formatPeriod(investigation.period)} (UTC)` : ""}
+          {monetary && currencies.length > 0 ? ` · ${currencies.join(", ")}` : ""}.
         </p>
       )}
 
@@ -237,11 +318,80 @@ export function RevAnswerView({
                 }}
                 aria-label={`Open evidence: ${item.label}`}
               >
+                <span aria-hidden="true" style={{ fontWeight: 750, marginRight: 3 }}>{citedEvidenceIds.indexOf(id) + 1}.</span>
                 {item.label}
               </button>
             );
           })}
         </div>
+      )}
+
+      {!streaming && !quiet && (steps.length > 0 || evidenceItems.length > 0 || investigation?.period?.start) && (
+        <details style={{ border: `1px solid ${border}`, borderRadius: 10 }}>
+          <summary style={{
+            cursor: "pointer", padding: "8px 11px", listStyle: "none",
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: "0.74rem", fontWeight: 650, color: muted,
+          }}>
+            <Database size={13} aria-hidden="true" />
+            How I checked
+          </summary>
+          <div style={{ padding: "2px 11px 10px", display: "flex", flexDirection: "column", gap: 9 }}>
+            {steps.length > 0 && (
+              <div>
+                <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Checks that ran</p>
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {steps.map((step, index) => (
+                    <li key={textValue(step?.id) || index} style={{ ...DISCLOSURE_LINE, color: muted }}>
+                      {textValue(step?.label) || textValue(step?.tool) || "Unnamed check"} — {stepStatusWord(step?.status)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div>
+              <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Period and currency</p>
+              <p style={{ ...DISCLOSURE_LINE, color: muted }}>
+                {investigation?.period?.start ? `${formatPeriod(investigation.period)} (UTC)` : "Period unavailable"}
+                {" · "}
+                {currencies.length > 0 ? currencies.join(", ") : "Currency unavailable"}
+              </p>
+              {investigation?.period?.compared_to?.start && (
+                <p style={{ ...DISCLOSURE_LINE, color: muted, marginTop: 2 }}>
+                  Compared with {formatPeriod(investigation.period.compared_to)} (UTC)
+                  {textValue(investigation.period.compared_to.label) ? ` — ${investigation.period.compared_to.label}` : ""}
+                </p>
+              )}
+            </div>
+            {evidenceItems.length > 0 && (
+              <div>
+                <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Per-source detail</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {evidenceItems.map((item, index) => {
+                    const coverage = coverageText(item?.coverage);
+                    const freshness = freshnessText(item?.freshness);
+                    const limitations = stringList(item?.limitations).filter(Boolean).join("; ");
+                    return (
+                      <div key={textValue(item?.id) || index} style={{ ...DISCLOSURE_LINE, color: muted }}>
+                        <strong style={{ color: strong, fontSize: "0.72rem" }}>
+                          {textValue(item?.label) || textValue(item?.metric) || "Untitled record"}
+                        </strong>
+                        {" — "}
+                        {textValue(item?.status) || "status unavailable"}
+                        <br />
+                        Source: {textValue(item?.source) || "Unavailable"} · Definition: {textValue(item?.definition) || "Unavailable"}
+                        {coverage ? <><br />Coverage: {coverage}</> : null}
+                        {freshness ? <><br />Freshness: {freshness}</> : null}
+                        <br />
+                        Limitations: {limitations || "Unavailable"}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </details>
       )}
 
       {partialSpecialists.length > 0 && (

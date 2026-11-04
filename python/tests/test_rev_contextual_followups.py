@@ -32,3 +32,31 @@ def test_followups_do_not_invent_product_or_customer_segments():
 
     assert "Which products contributed most to recorded sales?" not in suggestions
     assert "What about returning customers?" not in suggestions
+
+
+def test_followups_are_empty_when_no_evidence_supports_them():
+    # Spec §7: never a generic auto-list after every answer. An investigation
+    # that returned nothing usable offers no chips rather than filler.
+    assert _follow_ups(INTENT_REVENUE, {}, None, evidence_items=[], unknowns=[],
+                       comparison_facts=[]) == []
+    assert _follow_ups(INTENT_REVENUE, {"compared_to": {"label": "Previous period"}}, None) == []
+
+
+def test_comparison_followup_offered_only_when_comparison_data_exists():
+    suggestions = _follow_ups(
+        INTENT_REVENUE, {"compared_to": {"label": "Previous period"}}, None,
+        evidence_items=[{"metric": "recorded_order_value", "status": "available"}],
+        unknowns=[], comparison_facts=[],
+    )
+    assert suggestions == ["Can you compare this with the previous period?"]
+
+
+def test_conversational_turns_carry_no_followup_chips():
+    from src.agents.investigation import INTENT_GREETING, _conversation_result
+
+    result = _conversation_result(
+        "hey rev", {"intent": INTENT_GREETING}, investigation_id="inv-1",
+        store_context={}, user_id="user-1", window={},
+    )
+    assert result["investigation"]["follow_ups"] == []
+    assert result["response_mode"] == "conversational"
