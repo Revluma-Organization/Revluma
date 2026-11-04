@@ -1371,7 +1371,43 @@ def _conversation_result(message: str, classification: dict, *, investigation_id
         )
     if intent != INTENT_CAPABILITY:
         result["investigation"]["follow_ups"] = _follow_ups(INTENT_OVERVIEW, window, None)
+    result["response_mode"] = RESPONSE_MODE_CONVERSATIONAL
+    result["mode_reason"] = "the answer uses no store investigation"
     return result
+
+
+RESPONSE_MODE_CONVERSATIONAL = "conversational"
+RESPONSE_MODES = (
+    RESPONSE_MODE_CONVERSATIONAL, "quick_verification", "insight",
+    "investigation", "comparison", "recommendation", "insufficient_evidence",
+)
+
+
+def select_response_mode(*, intent: str, status: str, tool_names: list,
+                         evidence_items: list, comparison_facts: list,
+                         hypotheses: list) -> tuple:
+    """Choose the presentation mode for a finished investigation.
+
+    Deterministic guards run first (REV-CONVERSATION-EXPERIENCE-SPEC v1.0.0,
+    section 2): a missing-evidence state always wins over a flattering layout,
+    and a connection-only check never renders as a full investigation report.
+    The mode travels with the final payload so the frontend presents what the
+    evidence actually supports instead of guessing from rendered text.
+    """
+    if intent in (INTENT_GREETING, INTENT_IDENTITY, INTENT_CAPABILITY,
+                  INTENT_GENERAL, INTENT_READ_ONLY):
+        return RESPONSE_MODE_CONVERSATIONAL, "the question needs no store investigation"
+    verified = [item for item in evidence_items
+                if item.get("status") == STATUS_AVAILABLE]
+    if status == "insufficient_data" or not verified:
+        return "insufficient_evidence", "no verified evidence supports an answer yet"
+    if comparison_facts:
+        return "comparison", "the answer compares recorded periods"
+    if set(tool_names) <= {"store_health", "data_coverage"}:
+        return "quick_verification", "only connection and coverage checks were needed"
+    if len(verified) <= 2 and not hypotheses and status == "complete":
+        return "insight", "one supported observation answers the question"
+    return "investigation", "the answer combines several store checks"
 
 
 def _read_only_result(message: str, classification: dict, *, investigation_id: str,
@@ -1396,6 +1432,8 @@ def _read_only_result(message: str, classification: dict, *, investigation_id: s
     result["requested_actions"] = requested
     result["executed_actions"] = []
     result["investigation"]["status"] = "complete"
+    result["response_mode"] = RESPONSE_MODE_CONVERSATIONAL
+    result["mode_reason"] = "the answer explains Rev's read-only boundary"
     return result
 
 
@@ -1436,6 +1474,8 @@ def _clarification_result(message: str, classification: dict, *, investigation_i
             "Tell me the period and the business area you want me to investigate "
             "(revenue, checkout, customers, products or data coverage)."
         )
+    result["response_mode"] = "insufficient_evidence"
+    result["mode_reason"] = "a required check or source is missing"
     return result
 
 
@@ -1751,6 +1791,13 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         "tools_used": [name for name in tool_results_by_name],
         "evidence_count": len(items),
     })
+
+    mode, mode_reason = select_response_mode(
+        intent=intent, status=overall, tool_names=list(tool_results_by_name),
+        evidence_items=items, comparison_facts=comparison_facts,
+        hypotheses=hypotheses)
+    result["response_mode"] = mode
+    result["mode_reason"] = mode_reason
 
     if persist and conversation_id:
         persist_investigation_context(organization_id, user_id, conversation_id, db, result)

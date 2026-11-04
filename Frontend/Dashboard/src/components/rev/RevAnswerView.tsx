@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import {
-  ArrowUpRight, Check, Copy, Database, RefreshCw, ShieldCheck, TriangleAlert,
+  ArrowUpRight, Check, Copy, Database, RefreshCw, TriangleAlert,
 } from "lucide-react";
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import type { EvidenceItem, RevAnswerPayload, RevFact, RevHypothesis, RevRecommendation, SpecialistsSummary, InvestigationStep } from "@/lib/revStream";
-import { coveredBy, evidenceState, normaliseRevAnswer, recordList, stringList, textValue } from "@/lib/revPresentation";
+
+import { coveredBy, evidenceState, formatPeriod, normaliseRevAnswer, recordList, stringList, textValue } from "@/lib/revPresentation";
+import { responseModeOf, type RevResponseMode } from "@/lib/revStream";
 
 interface Props {
   payload: RevAnswerPayload;
@@ -89,8 +91,24 @@ export function RevAnswerView({
     (specialist) => specialist.status !== "success",
   );
   const followUps = stringList(investigation?.follow_ups);
-  const confidence = payload.response?.confidence;
   const body = textValue(payload.text);
+  // Presentation mode comes from the backend's deterministic selection. A
+  // legacy payload without a mode keeps full rigour when it carries structured
+  // evidence, and reads as plain conversation when it carries none.
+  // An evidence object that yields nothing usable is a warning state, not a
+  // quiet conversation: the merchant must see that the check produced nothing.
+  const carriesEvidence = Boolean(payload.evidence) && (
+    recordList<EvidenceItem>(payload.evidence?.items).length > 0 ||
+    evidenceState(payload.evidence) !== "verified"
+  );
+  const mode: RevResponseMode = responseModeOf(payload) ?? (
+    recordList(payload.facts).length || recordList(payload.comparison_facts).length ||
+    recordList(payload.hypotheses).length || recordList(payload.recommendations).length ||
+    carriesEvidence
+      ? "investigation"
+      : "conversational"
+  );
+  const quiet = mode === "conversational" || mode === "quick_verification";
   let shown = body;
   const sections = (["situation", "insight", "implication", "recommendation"] as const).flatMap(key => {
     const text = textValue(payload.response?.[key]);
@@ -115,34 +133,28 @@ export function RevAnswerView({
 
   return (
     <article className="flex min-w-0 flex-col gap-3 [overflow-wrap:anywhere]">
-      <div className="flex flex-wrap items-center gap-2">
-        <span style={{
-          fontSize: "0.62rem", fontWeight: 750, letterSpacing: "0.04em",
-          textTransform: "uppercase", color: dark && state === "streaming" ? "#b4a8ff" : pill.fg, background: pill.bg,
-          padding: "3px 8px", borderRadius: 999,
-        }}>
-          {pill.label}
-        </span>
-        {investigation?.label && (
-          <span style={{ fontSize: "0.72rem", color: muted }}>{textValue(investigation.label)}</span>
-        )}
-        {typeof confidence?.score === "number" && Number.isFinite(confidence.score) && confidence.score >= 0 && confidence.score <= 1 && (
-          <span style={{ fontSize: "0.72rem", color: muted }}>
-            Confidence {Math.round(confidence.score * 100)}%
+      {!quiet && state !== "streaming" && state !== "verified" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span style={{
+            fontSize: "0.62rem", fontWeight: 750, letterSpacing: "0.04em",
+            textTransform: "uppercase", color: pill.fg, background: pill.bg,
+            padding: "3px 8px", borderRadius: 999,
+          }}>
+            {pill.label}
           </span>
-        )}
-        <span className="inline-flex items-center gap-1" style={{ fontSize: "0.7rem", color: muted, marginLeft: "auto" }}>
-          <ShieldCheck size={12} color="#067647" />
-          Read-only
-        </span>
-      </div>
+          {investigation?.label && (
+            <span style={{ fontSize: "0.72rem", color: muted }}>{textValue(investigation.label)}</span>
+          )}
+        </div>
+      )}
 
-      {steps.length > 0 && (
+      {streaming && steps.length > 0 && (
         <InvestigationTimeline
           steps={steps}
           investigation={investigation}
           streaming={streaming}
           dark={dark}
+          compact
         />
       )}
 
@@ -158,6 +170,12 @@ export function RevAnswerView({
           <ul className="list-disc pl-4">{[...new Set(values)].map(text => <li key={text}>{text}</li>)}</ul>
         </section>)}
       </div>
+
+      {!streaming && !quiet && investigation?.period?.start && (
+        <p style={{ margin: 0, fontSize: "0.7rem", color: muted }}>
+          Based on recorded store data for {formatPeriod(investigation.period)} (UTC).
+        </p>
+      )}
 
       {citedEvidenceIds.length > 0 && !streaming && (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1" aria-label="Evidence cited in this answer">

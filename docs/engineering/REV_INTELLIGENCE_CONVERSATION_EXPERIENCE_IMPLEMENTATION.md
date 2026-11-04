@@ -51,8 +51,10 @@ this project unless a direct dependency blocks it; related defects recorded sepa
 
 - [x] Phase 0 baseline: SHA, tests, code map, payload paths, defects (this document).
 - [x] Phase 1 specification: `REV-CONVERSATION-EXPERIENCE-SPEC.md` v1.0.0.
-- [ ] I1 (plan Phases 2-3): event envelope + normalized answer schema, `response_mode`
-      with deterministic guards, adapters for legacy payloads, contract tests.
+- [~] I1 (plan Phases 2-3): `response_mode` + `mode_reason` emitted by Python
+      (`select_response_mode`, guard-first) with `python/tests/test_response_mode.py`;
+      frontend `RevResponseMode` type + `responseModeOf` validation with fallback
+      (legacy payloads keep full rigour). Event-envelope versioning still open.
 - [ ] I2 (Phase 4): unified renderer, semantic typography, safe Markdown + tables,
       legacy parity tests then legacy removal.
 - [ ] I3 (Phase 5): truthful progress copy from real events, collapse on final,

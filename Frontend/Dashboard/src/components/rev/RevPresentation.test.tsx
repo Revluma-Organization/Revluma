@@ -68,9 +68,12 @@ describe("answer validation and content", () => {
     render(<RevAnswerView payload={payload({ success: true, evidence: { items: [item()] } })} />);
     expect(screen.getByText("Evidence unverified")).toBeInTheDocument();
   });
-  it("shows verified only for valid, available records", () => {
+  it("keeps a verified investigation quiet instead of badging every answer", () => {
+    // Badge discipline (spec P5/P9): a healthy verified answer carries no
+    // status pill at all. The unverified/partial/unavailable cases below still
+    // warn, because those states change what the merchant may rely on.
     render(<RevAnswerView payload={payload()} />);
-    expect(screen.getByText("Evidence verified")).toBeInTheDocument();
+    expect(screen.queryByText("Evidence verified")).not.toBeInTheDocument();
   });
   it("keeps malformed provenance unverified even if validation claims success", () => {
     render(<RevAnswerView payload={payload({ evidence: { ...evidence(), items: [item({ source: "" })] } })} />);
@@ -88,7 +91,8 @@ describe("answer validation and content", () => {
     } })} />);
     for (const text of ["Short summary.", "The observed situation.", "A distinct insight.", "A cautious implication.", "Review the records."]) expect(screen.getByText(text)).toBeInTheDocument();
     for (const label of ["Situation", "Insight", "Implication", "Recommendation"]) expect(screen.getByRole("heading", { name: label })).toBeInTheDocument();
-    expect(screen.getByText("Read-only")).toBeInTheDocument();
+    // Read-only is product-level education, not a per-message badge (spec §5).
+    expect(screen.queryByText("Read-only")).not.toBeInTheDocument();
   });
   it("does not repeat structured sections or recommendations already covered by a complete text answer", () => {
     render(<RevAnswerView payload={payload({

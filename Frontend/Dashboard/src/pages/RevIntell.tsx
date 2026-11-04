@@ -1043,9 +1043,17 @@ export default function RevIntell() {
     }
   }, []);
 
-  // Scroll to bottom when messages change
+  // Scroll discipline: follow the stream only while the merchant is pinned to
+  // the bottom. Reading an older answer must not be hijacked by new frames.
+  const scrollBoxRef = useRef<HTMLDivElement>(null);
+  const pinnedRef = useRef(true);
+  const handleScrollBoxScroll = () => {
+    const box = scrollBoxRef.current;
+    if (!box) return;
+    pinnedRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  };
   useEffect(() => {
-    if (!messagesPagePending.current) bottomRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
+    if (!messagesPagePending.current && pinnedRef.current) bottomRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
   }, [messages, thinking, reducedMotion]);
 
   // ── Load store context ────────────────────────────────────────────────────
@@ -1348,6 +1356,7 @@ export default function RevIntell() {
     if ((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment) return;
     const turn = ++turnRequestRef.current;
     turnPendingRef.current = true;
+    pinnedRef.current = true;
     const isCurrent = () => turn === turnRequestRef.current;
     const turnFindingId = findingContext?.id;
     const findingRejected = (code?: string) => {
@@ -1734,7 +1743,7 @@ export default function RevIntell() {
       {attachmentError && <p role="alert" className="px-4 py-2 text-sm" style={{ color: isDark ? "#fca5a5" : "#b91c1c" }}>{attachmentError}</p>}
 
       {/* Main content */}
-      <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+      <div ref={scrollBoxRef} onScroll={handleScrollBoxScroll} className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
 
         {/* Conversation loading */}
         {convLoading && (
