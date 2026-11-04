@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import RevAnswerView from "./RevAnswerView";
 import EvidencePanel from "./EvidencePanel";
 import InvestigationTimeline from "./InvestigationTimeline";
-import { coveredBy, evidenceState, formatEvidenceValue, formatTimestamp, normaliseRevAnswer } from "@/lib/revPresentation";
+import { coveredBy, evidenceState, formatEvidenceValue, formatPeriod, formatTimestamp, normaliseRevAnswer } from "@/lib/revPresentation";
 import type { EvidenceItem, InvestigationStep, RevAnswerPayload, RevInvestigationMeta } from "@/lib/revStream";
 
 const item = (overrides: Partial<EvidenceItem> = {}): EvidenceItem => ({
@@ -133,6 +133,22 @@ describe("answer validation and content", () => {
   });
 });
 
+describe("formatPeriod merchant copy", () => {
+  it("renders microsecond UTC windows as human dates with one timezone note", () => {
+    expect(formatPeriod({ start: "2026-10-28T08:43:22.111755Z", end: "2026-11-04T08:43:22.111755Z", timezone: "UTC", semantics: "[start, end)" } as never))
+      .toBe("28 Oct 2026 → 04 Nov 2026 (UTC)");
+  });
+  it("keeps raw fidelity for offset timestamps and never renders interval notation", () => {
+    const text = formatPeriod({ start: "2026-11-01T10:15:00+02:00", end: "2026-11-08T10:15:00+02:00", timezone: "UTC", semantics: "[start, end)" } as never);
+    expect(text).toContain("2026-11-01 10:15:00+02:00");
+    expect(text).not.toContain("[start");
+  });
+  it("labels a missing timezone honestly instead of assuming UTC", () => {
+    expect(formatPeriod({ start: "2026-10-01", end: "2026-11-01" } as never))
+      .toBe("01 Oct 2026 → 01 Nov 2026 (timezone not supplied)");
+  });
+});
+
 describe("evidence records and attribution", () => {
   it.each([{}, null, 42, "unexpected", "__proto__", "constructor"])('renders a neutral fallback for status %j', status => {
     render(<EvidencePanel evidence={{ ...evidence(), items: [item({ status } as unknown as Partial<EvidenceItem>)] }} />);
@@ -230,13 +246,14 @@ describe("investigation status", () => {
     expect(screen.getByRole("list")).toBeInTheDocument();
     if (label !== "Investigation complete") expect(screen.queryByText("Investigation complete")).not.toBeInTheDocument();
   });
-  it("displays only supplied reporting timezone and interval semantics", () => {
+  it("displays the supplied timezone as human dates and never renders interval notation", () => {
     const view = render(<InvestigationTimeline steps={[step("completed")]} investigation={{ status: "complete", period: { start: "2026-10-01", end: "2026-11-01" } } as RevInvestigationMeta} />);
     fireEvent.click(screen.getByRole("button"));
-    expect(screen.getByText(/Reporting period/)).toHaveTextContent("timezone and interval semantics not supplied");
+    expect(screen.getByText(/Reporting period/)).toHaveTextContent("01 Oct 2026 → 01 Nov 2026 (timezone not supplied)");
     expect(screen.queryByText(/UTC/)).not.toBeInTheDocument();
     view.rerender(<InvestigationTimeline steps={[step("completed")]} investigation={{ status: "complete", period: { start: "2026-10-01", end: "2026-11-01", timezone: "UTC", semantics: "[start, end)" } } as RevInvestigationMeta} />);
-    expect(screen.getByText(/Reporting period/)).toHaveTextContent("UTC, [start, end)");
+    expect(screen.getByText(/Reporting period/)).toHaveTextContent("01 Oct 2026 → 01 Nov 2026 (UTC)");
+    expect(screen.getByText(/Reporting period/)).not.toHaveTextContent("[start, end)");
   });
   it("renders nothing for absent or malformed checks", () => {
     const { container } = render(<InvestigationTimeline steps={null} />); expect(container).toBeEmptyDOMElement();

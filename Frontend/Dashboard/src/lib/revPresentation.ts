@@ -124,10 +124,34 @@ export function formatTimestamp(value: unknown): string {
   return text.replace("T", " ") + (text.includes("T") && !/(?:Z|[+-]\d{2}:\d{2})$/.test(text) ? " (timezone not supplied)" : "");
 }
 
+/** Human day-level date for a period bound; "" when the value must keep raw fidelity. */
+function humanDate(value: unknown): string {
+  const text = textValue(value);
+  if (!validTimestamp(text)) return "";
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(text);
+  // Only re-format values with an explicit UTC basis (date-only or Z-suffixed).
+  // Offset or naive timestamps keep formatTimestamp's raw fidelity contract:
+  // never imply a conversion that was not made.
+  if (!dateOnly && !/Z$/.test(text)) return "";
+  const parsed = new Date(dateOnly ? `${text}T00:00:00Z` : text);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("en-GB", {
+    day: "2-digit", month: "short", year: "numeric", timeZone: "UTC",
+  });
+}
+
 export function formatPeriod(period?: EvidencePeriod): string {
+  // Interval semantics ("[start, end)") are engineering notation, never
+  // merchant copy (spec §8): not rendered whatever the payload supplies.
+  const timezone = textValue(period?.timezone);
+  const start = humanDate(period?.start);
+  const end = humanDate(period?.end);
+  if (start && end) {
+    return `${start} → ${end}${timezone ? ` (${timezone})` : " (timezone not supplied)"}`;
+  }
   const bounds = `${formatTimestamp(period?.start)} → ${formatTimestamp(period?.end)}`;
-  const metadata = [textValue(period?.timezone), textValue(period?.semantics)].filter(Boolean);
-  return bounds + (metadata.length ? ` (${metadata.join(", ")})` : " (timezone and interval semantics not supplied)");
+  if (timezone) return `${bounds} (${timezone})`;
+  return bounds.includes("timezone not supplied") ? bounds : `${bounds} (timezone not supplied)`;
 }
 
 /**
