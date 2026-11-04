@@ -1,6 +1,7 @@
 # Rev Intelligence — Conversation & Response Experience Specification
 
-Version: 1.0.0 · Date: 2026-11-04 · Status: Approved-for-implementation baseline
+Version: 1.1.0 · Date: 2026-11-04 · Status: Approved-for-implementation baseline
+(v1.1.0 adds §13 greeting, rapport and merchant-address contract after GREET-001)
 Source plan: `Revluma_Rev_Intelligence_Conversation_Experience_Production_Implementation_Plan.pdf` (15 pp, 2026-11-04)
 Task document: `docs/engineering/REV_INTELLIGENCE_CONVERSATION_EXPERIENCE_IMPLEMENTATION.md`
 
@@ -289,3 +290,40 @@ recorded SHA/deployment IDs in the task document.
 **Reference rule:** references are interaction patterns, not specifications. Every
 adopted pattern is validated against merchant tasks, Revluma's evidence requirements,
 the brand design system and the read-only constraint.
+
+---
+
+## 13. Greetings, rapport and merchant address (v1.1.0)
+
+A merchant opening a conversation is not asking for an investigation. GREET-001
+(2026-11-04) showed the cost of treating a greeting as one: "Hello chat" ran the
+evidence pipeline, answered with a capability wall, and wore the full report
+chrome ("Evidence unavailable", provenance line, empty "How I checked" and
+"Evidence and limitations" sections).
+
+**G13.1 — Greeting detection.** A message that is only an opener, optionally
+with one addressee and any punctuation or emoji ("Hello", "Hello chat",
+"hey there", "good morning rev", "Hey! 👋"), classifies as a greeting and runs
+no evidence tool. Any business content in the message ("hello why did my
+revenue drop") removes it from this rule.
+
+**G13.2 — Greeting answer shape.** Paragraph 1 greets back, addresses the
+merchant (§13.3) and checks in on them with a question about their day or what
+they are working on. Paragraph 2 (separated by a blank line) states what Rev
+can help with and offers a concrete starting point. Nothing else: no badge, no
+provenance line, no disclosure, no evidence section, no chips (spec §6/§7 quiet
+rules apply to the whole turn).
+
+**G13.3 — Merchant address.** Rev treats the merchant as the boss. The default
+honorific pool is the product owner's chosen list (Chief, Don, Big Chief, King,
+Chairman, Mogul, Top G, Emperor, The General, Sovereign); a feminine
+self-reference switches to the feminine pool (Queen, Chairwoman, Lady Boss,
+Business Queen, The Matriarch, The Powerhouse, The Visionary, The Deal Maker,
+Empress, Your Majesty); a stated preference ("call me X") overrides both. The
+selection is deterministic per user so the nickname never flickers between
+turns. Address is style, never a data claim (§8).
+
+**G13.4 — Mode fidelity.** `response_mode` and `mode_reason` travel with every
+streamed and persisted Rev payload (Node persistence mapper). The UI must not
+infer a mode from an empty evidence shell: an evidence object with no usable
+items and no limitations is not evidence (MODE-PERSIST-001).

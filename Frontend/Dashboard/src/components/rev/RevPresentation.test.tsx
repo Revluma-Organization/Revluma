@@ -128,7 +128,12 @@ describe("answer validation and content", () => {
   it("handles absent content and malformed optional fields without showing fabricated confidence", () => {
     render(<RevAnswerView payload={{ text: {}, evidence: { items: [null], validation: { valid: "true", errors: null } }, response: { confidence: { score: Infinity } }, warnings: {}, recommendations: [null], hypotheses: {}, specialists: [null], investigation: { steps: null, follow_ups: {} } } as unknown as RevAnswerPayload} />);
     expect(screen.getByText("No answer content was returned.")).toBeInTheDocument();
-    expect(screen.getByText("Evidence unavailable")).toBeInTheDocument();
+    // GREET-001 contract: a payload that claims no analysis and carries no
+    // usable evidence renders as quiet chat — the fallback line states the
+    // absence honestly instead of investigation chrome; confidence is never
+    // fabricated from a malformed score.
+    expect(screen.queryByText("Evidence unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByText("How I checked")).not.toBeInTheDocument();
     expect(screen.queryByText(/Confidence/)).not.toBeInTheDocument();
   });
 });

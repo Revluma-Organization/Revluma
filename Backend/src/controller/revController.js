@@ -282,6 +282,8 @@ exports.chat = async (req, res, next) => {
       revContent = {
         response_type: responseType,
         text: revData.text || '',
+        response_mode: revData.response_mode || null,
+        mode_reason: revData.mode_reason || null,
       };
     } else {
       // Full 6-part analysis
@@ -307,6 +309,8 @@ exports.chat = async (req, res, next) => {
         investigation:  mlResult.data?.investigation || null,
         specialists:    mlResult.data?.specialists    || [],
         read_only:      mlResult.data?.read_only     ?? true,
+        response_mode:  mlResult.data?.response_mode || null,
+        mode_reason:    mlResult.data?.mode_reason   || null,
       };
     }
 
@@ -793,8 +797,18 @@ function _boundedResultForPersistence(data) {
     specialists: Array.isArray(data?.specialists) ? data.specialists : [],
     read_only: data?.read_only !== false,
     warnings: Array.isArray(data?.warnings) ? data.warnings.slice(0, 12) : [],
+    // The mode decides how the answer is presented (quiet chat vs verified
+    // report). Dropping it forced the UI to guess from an empty evidence
+    // shell and mis-rendered greetings as full investigations (GREET-001);
+    // persisting it also makes production mode assignment checkable from
+    // the database alone.
+    response_mode: data?.response_mode || null,
+    mode_reason: data?.mode_reason || null,
   };
 }
+
+// Exported for contract tests only.
+exports._boundedResultForPersistence = _boundedResultForPersistence;
 
 async function _insertRevMessage({
   organizationId, userId, conversationId, sequenceNumber, correlationId, content,
