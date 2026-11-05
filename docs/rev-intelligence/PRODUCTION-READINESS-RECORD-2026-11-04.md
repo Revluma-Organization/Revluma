@@ -33,8 +33,8 @@ python-regressions, task025, task026, Vercel ×2.
 
 | Layer | Deploy ID | Version marker | Status |
 |---|---|---|---|
-| Node API (Render `srv-db9m6pom7kps73dtk1tg`) | `dep-dblkudjl550s73f83o80` | `/ready.node_build = 7f27913af71e` | live; **must be redeployed (user-only) to carry this branch** |
-| Python ML (Render `srv-db9m923ncjis739s8co0`) | `dep-dblkud2fngtc738b04og` | `/ready.python_version = 0.5.0` | live; **redeploy (user-only) must show `0.6.0`** (bumped in this branch) |
+| Node API (Render `srv-db9m6pom7kps73dtk1tg`) | redeployed by the operator 2026-11-05 (~11:07Z at `971263ce762b`, then ~12:08Z at `affee1e9ec32`) | `/ready.node_build = affee1e9ec32` | **live and verified** — carries the full hardening set incl. PR #291 (`failure_reasons`); PR #292 is records-only |
+| Python ML (Render `srv-db9m923ncjis739s8co0`) | redeployed by the operator 2026-11-05 | `/ready.python_version = 0.6.0` | **live and verified** |
 | Frontend (Vercel `prj_4f3MJwxdXHDQguveNw5dZaVr7fQj`) | `dpl_Ewu7dt5S1vg9r6SzhvHoPVmeFLLw` | commit `2f627f3` promoted | live; this branch changes no frontend behaviour |
 
 Post-merge verification protocol: fetch
@@ -178,11 +178,17 @@ conversational / conversational(knowledge) / tools(revenue, week-before) /
     observed live).
   - All 11 scored customers have `ltv_currency IS NULL` — the exact
     population that failed for three days, scored by the contract fix.
-- **Follow-up (PR #291, merged `affee1e`):** the pass that failed at
-  11:08Z showed counters but not reasons; `runDailyChurnScoring` now
-  aggregates `failure_reasons` per error code into
-  `automation_job_state.last_result`, so a future failed pass is
-  self-diagnosing from the database alone. Rides the next redeploy.
+- **Follow-up (PR #291, merged `affee1e`) — LIVE AND VERIFIED 2026-11-05
+  ~12:21Z:** the pass that failed at 11:08Z showed counters but not
+  reasons; `runDailyChurnScoring` now aggregates `failure_reasons` per
+  error code into `automation_job_state.last_result`, so a future failed
+  pass is self-diagnosing from the database alone. The operator redeployed
+  Node at `affee1e9ec32` (~12:08Z); the live `daily-churn` row now carries
+  `"failure_reasons": {}` from the new instance's startup pass (nothing
+  stale after the 12:07:50Z hourly pass — the field's presence is itself
+  proof the new build wrote it). Post-restart invariants re-verified:
+  0 table grants for anon/authenticated, 65 RLS-enabled tables, 11/11
+  actives scored, 0 stale.
 
 ## 9. Reliability inventory (Phase 5) — verified in code during this audit
 
@@ -252,9 +258,10 @@ during the failure window); 108 churn training observations.
 1. Phase 2 live transcript + two-merchant HTTP isolation test: user-only
    (no authenticated production session in sandbox). DB-layer equivalents
    executed instead (§5).
-2. Render redeploys: user-only — **done 2026-11-05** (both services live
-   at `971263ce762b` / Python 0.6.0). PR #291's `failure_reasons`
-   aggregation rides the next redeploy (not yet live).
+2. Render redeploys: user-only — **done 2026-11-05, all caught up**:
+   Node live at `affee1e9ec32` (includes PR #291 `failure_reasons`,
+   verified in the live job row), Python at 0.6.0. No merged code is
+   awaiting deployment.
 3. Churn self-heal: **confirmed 2026-11-05 12:08Z** — 11/11 scored with
    the real model, 0 stale, no duplicates (§8).
 4. Free-tier capacity ceiling: p95 at the ML timeout; 500-merchant plan
