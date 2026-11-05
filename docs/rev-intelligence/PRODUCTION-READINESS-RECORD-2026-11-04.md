@@ -33,7 +33,7 @@ python-regressions, task025, task026, Vercel ×2.
 
 | Layer | Deploy ID | Version marker | Status |
 |---|---|---|---|
-| Node API (Render `srv-db9m6pom7kps73dtk1tg`) | redeployed by the operator 2026-11-05 (~11:07Z at `971263ce762b`, then ~12:08Z at `affee1e9ec32`) | `/ready.node_build = affee1e9ec32` | **live and verified** — carries the full hardening set incl. PR #291 (`failure_reasons`); PR #292 is records-only |
+| Node API (Render `srv-db9m6pom7kps73dtk1tg`) | redeployed by the operator 2026-11-05 (11:07Z `971263ce762b` → 12:08Z `affee1e9ec32` → 12:29Z `412395793082`) | `/ready.node_build = 412395793082` | **live and verified at main HEAD** — the deployed build equals `main` (`4123957`, PR #293); nothing merged awaits deployment |
 | Python ML (Render `srv-db9m923ncjis739s8co0`) | redeployed by the operator 2026-11-05 | `/ready.python_version = 0.6.0` | **live and verified** |
 | Frontend (Vercel `prj_4f3MJwxdXHDQguveNw5dZaVr7fQj`) | `dpl_Ewu7dt5S1vg9r6SzhvHoPVmeFLLw` | commit `2f627f3` promoted | live; this branch changes no frontend behaviour |
 
@@ -259,9 +259,12 @@ during the failure window); 108 churn training observations.
    (no authenticated production session in sandbox). DB-layer equivalents
    executed instead (§5).
 2. Render redeploys: user-only — **done 2026-11-05, all caught up**:
-   Node live at `affee1e9ec32` (includes PR #291 `failure_reasons`,
-   verified in the live job row), Python at 0.6.0. No merged code is
-   awaiting deployment.
+   Node live at `412395793082` = main HEAD (PR #293), Python at 0.6.0.
+   Verified after the final redeploy (~12:29Z boot): startup churn pass
+   completed 12:29:54Z with `failure_reasons: {}` and zero work due
+   (idempotent), 11/11 actives still scored / 0 stale, 0 grants for
+   anon/authenticated, 65 RLS tables, scheduler healthy. No merged code
+   is awaiting deployment.
 3. Churn self-heal: **confirmed 2026-11-05 12:08Z** — 11/11 scored with
    the real model, 0 stale, no duplicates (§8).
 4. Free-tier capacity ceiling: p95 at the ML timeout; 500-merchant plan
