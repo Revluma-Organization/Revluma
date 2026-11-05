@@ -6,7 +6,7 @@
 |---|---|---|---|
 | DE-001 | P0 | Fail closed on missing monetary amounts in Shopify coverage certification | In workspace; 5 focused tests previously passed with stubbed Prisma; CI, deploy, real Shopify comparison outstanding. |
 | DE-002 | P0 | Reject incomplete nested Shopify order and checkout line item pages before persistence | Implemented locally with parent-specific child pagination, duplicate/cycle detection and updatedAt consistency checks. 26 focused tests passed with Prisma/Shopify stubs across related suites; API schema and live production validation, full CI, cross-tenant integration remain outstanding. |
-| DE-003 | P0 | Audit webhook HMAC, duplicate delivery, ordering, privacy requests, cleanup and live registration | Not started; no production guarantees. |
+| DE-003 | P0 | Audit webhook HMAC, duplicate delivery, ordering, privacy requests, cleanup and live registration | Audit in progress: generic customer handling matched privacy topics and shop/redact was ignored. Guard fails those topics rather than recording success; 3 signed-request tests pass. Full request/erasure workflow, registration, retention, retries and production verification remain unimplemented. |
 | DE-004 | P0 | Audit existing forced write_discounts scope and safe reduction | Not started; no scope changes authorized by this task. |
 | DE-005 | P1 | Verify live currentAppInstallation scopes, token, Shopify counts and Admin source parity | Blocked by absence of authorized direct Shopify/Render access in this environment; do not extract credentials. |
 | DE-006 | P1 | Tenant-scoped domain coverage, checkpoints, stale/failure handling | Not started; schema, RLS and existing jobs audit prerequisite. |

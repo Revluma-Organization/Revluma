@@ -732,6 +732,15 @@ async function upsertCustomer(store, payload) {
 
 async function processCommerceWebhook({ provider, store, topic, payload }) {
   const normalizedTopic = String(topic || '').toLowerCase();
+  // These are privacy requests, not customer updates. Until durable,
+  // tenant-scoped request and redaction workflows exist, do not acknowledge
+  // them as processed or route them into normal commerce ingestion. A failure
+  // allows Shopify to retry and makes the missing workflow visible.
+  if (provider === 'shopify' && ['customers/data_request', 'customers/redact', 'shop/redact'].includes(normalizedTopic)) {
+    throw Object.assign(new Error('Shopify privacy webhook workflow is not implemented'), {
+      code: 'SHOPIFY_PRIVACY_WEBHOOK_UNIMPLEMENTED',
+    });
+  }
   if (normalizedTopic === 'app/uninstalled') {
     await prisma.stores.update({
       where: { id: store.id },
