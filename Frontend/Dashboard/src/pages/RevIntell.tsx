@@ -728,6 +728,11 @@ export default function RevIntell() {
   // (already correct) optimistic messages with a fresh server round trip.
   const justCreatedIdRef = useRef<string | null>(null);
   const justCreatedFindingRef = useRef<string | null>(null);
+  // REV-RESUME-001 gates: an explicit "New conversation" choice opts the bare
+  // route out of continuity until the next send/selection; the resumed flag
+  // keeps one mount to a single continuity redirect.
+  const newChatIntentRef = useRef(false);
+  const resumedBareRouteRef = useRef(false);
 
   const loadFinding = useCallback(async (id: string) => {
     const request = ++findingRequestRef.current;
@@ -968,6 +973,8 @@ export default function RevIntell() {
   }, []);
 
   useLayoutEffect(() => {
+    // Any concrete conversation in the URL ends a pending new-chat intent.
+    if (urlConvId) newChatIntentRef.current = false;
     // Adoption of a newly created thread keeps its optimistic turn and stream.
     if (urlConvId && justCreatedIdRef.current === urlConvId && justCreatedFindingRef.current === findingId) {
       justCreatedIdRef.current = null;
@@ -984,6 +991,24 @@ export default function RevIntell() {
     }
     if (findingId !== null) void loadFinding(findingId);
   }, [urlConvId, findingId, resetThread, loadConversation, loadFinding]);
+
+  // ── Landing continuity (REV-RESUME-001) ───────────────────────────────────
+  // A bare route is not amnesia. Rev threads are evidence-bound business
+  // investigations, so a merchant returning from Command Center — or a new
+  // tab, or Back — lands in their most recent conversation instead of a blank
+  // slate. The history list is already server-sorted by last_activity_at DESC,
+  // so row one is the resume target. `replace` keeps the browser Back button
+  // pointing at wherever they came from (no history-entry loop). Explicit
+  // "New conversation" intent, finding deep links, and empty or failed
+  // history all opt out; nothing is ever invented or pre-filled.
+  useEffect(() => {
+    if (urlConvId || findingId !== null) return;
+    if (newChatIntentRef.current || resumedBareRouteRef.current) return;
+    const target = conversations[0];
+    if (!target) return;
+    resumedBareRouteRef.current = true;
+    navigate(`/dashboard/rev-intell/${target.id}`, { replace: true });
+  }, [conversations, urlConvId, findingId, navigate]);
 
   useLayoutEffect(() => () => {
     copyRequestRef.current += 1;
@@ -1030,6 +1055,7 @@ export default function RevIntell() {
 
   // ── New chat ──────────────────────────────────────────────────────────────
   const newChat = useCallback(() => {
+    newChatIntentRef.current = true;
     resetThread();
     setActiveId(null);
     setMenuOpen(false);
