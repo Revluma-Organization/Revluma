@@ -347,3 +347,25 @@ with neither a business noun nor a social form gets a conversational offer
 sentence (order value from revenue and order observations), the sentence
 appears once and cites both records; identical fact sentences never repeat
 inside one answer.
+## 14. Landing continuity (v1.3.0, REV-RESUME-001)
+
+A bare `/dashboard/rev-intell` route (no conversation id, no finding param) is
+**not** an amnesiac blank slate: once the history list — already fetched on
+mount, server-sorted by `last_activity_at DESC` — resolves, the page resumes
+the most recent conversation with a `replace` navigation, so the browser Back
+button still points wherever the merchant came from (Command Center, another
+tab, a reopened session). Rationale: Rev threads are evidence-bound business
+investigations, and Rev's history lives in a modal drawer rather than a
+persistent sidebar, so a blank-slate landing reads as lost work.
+
+Opt-outs, all explicit and honest:
+- **New conversation** sets a new-chat intent for the mount, cleared on the
+  next conversation adoption or selection; until then the bare route stays a
+  blank slate even if the list refreshes.
+- **Finding deep links** (`?finding=`) keep their own handoff flow.
+- **Empty history** shows the welcome experience; a **failed history load
+  never resumes** (the drawer reports the failure honestly).
+- At most one continuity redirect per mount; nothing is pre-filled or invented.
+
+Deleting the conversation currently in view lands on New chat (the drawer
+closes by design); reopening the drawer shows the refreshed list.

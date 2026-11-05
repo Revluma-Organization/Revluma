@@ -59,11 +59,17 @@ function LocationControls() {
     <button onClick={() => navigate(1)}>Browser forward</button>
   </>;
 }
-function renderPage(path = '/dashboard/rev-intell') {
-  return render(<MemoryRouter initialEntries={[path]}>
+function renderPage(path = '/dashboard/rev-intell', entries?: string[]) {
+  return render(<MemoryRouter initialEntries={entries ?? [path]}>
     <LocationControls />
     <Routes><Route path="/dashboard/rev-intell/:conversationId?" element={<RevIntell />} /></Routes>
   </MemoryRouter>);
+}
+/** REV-RESUME-001: the bare route resumes the newest conversation, so tests
+ *  that exercise the blank-slate flow (first send creates a thread) pin an
+ *  empty history — the honest precondition for "no thread to resume". */
+function noHistoryToResume() {
+  replies.set('/rev/conversations', Promise.resolve(reply([])));
 }
 const title = (id: string) => new RegExp(`^Conversation ${id}\\b`);
 // History lives only inside the modal drawer the menu button opens, so the
@@ -699,6 +705,7 @@ describe('turn callbacks remain in their originating thread', () => {
     expect(screen.getByText('Current answer')).toBeInTheDocument();
   });
   it('protects New Chat while an initial stream has not yet created its conversation', async () => {
+    noHistoryToResume();
     renderPage(); send();
     const old = streams[0]; await clickNewConversation();
     await act(async () => {
@@ -711,6 +718,7 @@ describe('turn callbacks remain in their originating thread', () => {
     expect(screen.queryByText('Late answer')).not.toBeInTheDocument();
   });
   it.each([true, false])('keeps the optimistic turn when its own conversation is created (metadata=%s)', async metadata => {
+    noHistoryToResume();
     renderPage(); send();
     await act(async () => {
       if (metadata) streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' });
@@ -771,6 +779,7 @@ describe('turn callbacks remain in their originating thread', () => {
     expect(api.get).toHaveBeenLastCalledWith('/rev/conversations?q=current');
   });
   it('does not refresh history when a stream finishes after unmount', async () => {
+    noHistoryToResume();
     const view = renderPage(); send(); const calls = vi.mocked(api.get).mock.calls.length;
     view.unmount();
     await act(async () => streams[0].result.resolve({ conversationId: 'Late', completed: true }));
@@ -836,6 +845,14 @@ describe('Phase 5.4 bounded pagination', () => {
     }
     await waitFor(() => expect(vi.mocked(api.get).mock.calls.filter(([path]) => path === '/rev/conversations')).toHaveLength(2));
     await act(async () => pending.resolve(reply(firstHistory())));
+    // REV-RESUME-001: deleting the conversation you are viewing lands on New
+    // chat, which closes the drawer by design — let it finish closing, then
+    // reopen it and assert the LIVE list (an exiting drawer snapshot is not
+    // the source of truth).
+    if (mutation === 'delete') {
+      await waitFor(() => expect(historyDialog()).not.toBeInTheDocument(), { timeout: 4000 });
+      openHistory();
+    }
     expect(screen.queryByText('Conversation H0')).not.toBeInTheDocument();
     if (mutation === 'rename') expect(screen.getByText('Changed title')).toBeInTheDocument();
   });
@@ -1253,5 +1270,57 @@ describe('answer feedback and read-aloud (ChatGPT-UI study §5)', () => {
       delete (window as unknown as Record<string, unknown>).speechSynthesis;
       delete (window as unknown as Record<string, unknown>).SpeechSynthesisUtterance;
     }
+  });
+});
+
+describe('landing continuity (REV-RESUME-001)', () => {
+  it('resumes the most recent conversation on the bare route', async () => {
+    renderPage();
+    await screen.findByText('Message from A');
+    await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/A'));
+  });
+
+  it('keeps the browser Back button pointing at where the merchant came from', async () => {
+    renderPage('/dashboard/rev-intell', ['/', '/dashboard/rev-intell']);
+    await screen.findByText('Message from A');
+    fireEvent.click(screen.getByRole('button', { name: 'Browser back' }));
+    await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/$/));
+  });
+
+  it('honours an explicit New conversation choice until the next send', async () => {
+    renderPage();
+    await screen.findByText('Message from A');
+    await clickNewConversation();
+    expect(screen.queryByText('Message from A')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
+    send('Fresh question');
+    await act(async () => {
+      streams[0].request.handlers.onMeta?.({ conversation_id: 'New1' });
+      streams[0].request.handlers.onFinal?.(answer('New1', 'Fresh answer'));
+      streams[0].result.resolve({ conversationId: 'New1', completed: true });
+    });
+    await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/New1'));
+    expect(screen.queryByText('Message from A')).not.toBeInTheDocument();
+    expect(screen.getByText('Fresh answer')).toBeInTheDocument();
+  });
+
+  it('shows the welcome experience when there is no history to resume', async () => {
+    noHistoryToResume();
+    renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    await screen.findByText('How can I help your revenue today?');
+    expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
+  });
+
+  it('never resumes from a failed history load', async () => {
+    // Pre-handled so the debounced consumer's 250ms gap does not surface as
+    // an unhandled rejection; loadConversations still sees the failure.
+    const rejected = Promise.reject(new Error('history down'));
+    rejected.catch(() => {});
+    replies.set('/rev/conversations', rejected);
+    renderPage();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
+    await screen.findByText('How can I help your revenue today?');
+    expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
   });
 });
