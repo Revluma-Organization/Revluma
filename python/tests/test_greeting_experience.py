@@ -4,8 +4,10 @@ A merchant saying hello is not asking for an investigation. These tests pin:
 - whole-message greetings (with an addressee, punctuation or emoji) classify
   as INTENT_GREETING and never fall through to the evidence engine;
 - the greeting answer greets back, addresses the merchant as the boss,
-  checks in on them, and keeps the capability offer as its own paragraph
-  with a concrete starting point;
+  checks in on them, and closes with a single open invitation — never a
+  capability menu (GREET-002, merchant directive 2026-11-05: a capability
+  wall on "hello" reads as a sales pitch; what Rev can do is answered when
+  asked, via INTENT_CAPABILITY);
 - the nickname is stable per user, honours a stated preference and switches
   to the feminine pool on a feminine signal;
 - the greeting payload stays conversational, quiet and chrome-free: no
@@ -73,7 +75,7 @@ def test_business_questions_are_not_swallowed_by_the_greeting_rule():
         assert classify_investigation(message, {})["intent"] != INTENT_GREETING, message
 
 
-def test_greeting_answer_greets_checks_in_then_offers():
+def test_greeting_answer_greets_checks_in_then_opens_the_door():
     result = _result("Hello chat")
     text = result["text"]
     first, _, second = text.partition("\n\n")
@@ -81,9 +83,15 @@ def test_greeting_answer_greets_checks_in_then_offers():
     assert any(f"Hey {name}" in first for name in BOSS_NAMES), first
     assert "?" in first and any(word in first.lower() for word in
                                 ("day", "things", "well", "happening")), first
-    # Paragraph 2: the capability offer, untouched, plus a starting point.
-    assert second.startswith("I can help with your store's revenue"), second
-    assert "starting point" in second
+    # Paragraph 2 (GREET-002): one open invitation, never a capability wall.
+    assert "ready" in second and ("working on" in second or "on your mind" in second), second
+    for marker in ("I can help with your store's revenue", "starting point",
+                   "data coverage", "inventory and", "ecommerce advice"):
+        assert marker not in text, marker
+    # Brevity: two short paragraphs, at most three sentences, chat-length.
+    assert text.count("\n\n") == 1, text
+    assert sum(text.count(char) for char in ".?!") <= 3, text
+    assert len(text) <= 240, text
 
 
 def test_greeting_payload_is_quiet_conversational_with_no_chrome():

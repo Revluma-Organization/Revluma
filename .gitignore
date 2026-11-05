@@ -51,3 +51,4 @@ python/artifacts/
 mlruns/
 Frontend/dashboard/
 Frontend/Dashboard/*.tsbuildinfo
+.venv-rev/
