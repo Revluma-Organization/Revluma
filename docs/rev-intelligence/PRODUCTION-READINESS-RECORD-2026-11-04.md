@@ -37,12 +37,19 @@ python-regressions, task025, task026, Vercel ×2.
 | Python ML (Render `srv-db9m923ncjis739s8co0`) | `dep-dblkud2fngtc738b04og` | `/ready.python_version = 0.5.0` | live; **redeploy (user-only) must show `0.6.0`** (bumped in this branch) |
 | Frontend (Vercel `prj_4f3MJwxdXHDQguveNw5dZaVr7fQj`) | `dpl_Ewu7dt5S1vg9r6SzhvHoPVmeFLLw` | commit `2f627f3` promoted | live; this branch changes no frontend behaviour |
 
-Post-merge verification protocol (exact, values now known): fetch
-`https://revluma-backend-vrsd.onrender.com/ready` → assert
-`node_build == "f7c2d651a0c8"` (merge SHA prefix) **and**
-`python_version == "0.6.0"` → then run the database checks in §8 (churn
-self-heal: 11 active customers scored within a day; `automation_job_state`
-row `daily-churn` = `completed`, `succeeded=11`, `failed=0`).
+Post-merge verification protocol: fetch
+`https://revluma-backend-vrsd.onrender.com/ready` → assert `node_build`
+equals the deployed main SHA prefix and `python_version == "0.6.0"` → then
+run the database checks in §8 (churn self-heal).
+
+**EXECUTED 2026-11-05 ~11:14 UTC (user redeployed both services):**
+`/ready` returned `node_build == "971263ce762b"` (= main HEAD at deploy,
+PR #290 merge) and `python_version == "0.6.0"`; database_ready,
+python_ready, redis_ready all true; business-state completed with 0
+failures. Both Render deploys also ran `prisma migrate deploy`: migrations
+`20261104170000_supabase_data_api_lockdown` and
+`20261104180000_fk_covering_indexes` are recorded in `_prisma_migrations`
+(finished 11:07:49/11:07:50 UTC, replayed idempotently as designed).
 
 ## 4. Live health checks (executed 2026-11-04, ~16:09 UTC)
 
@@ -146,10 +153,36 @@ conversational / conversational(knowledge) / tools(revenue, week-before) /
 - **Observability:** `runChurnQueue` moved to the Postgres job lock; every
   hourly pass writes status (`completed/partial/failed`), counters and latency
   to `automation_job_state` (job `daily-churn`). Regression: `churnQueueJobState` (2).
-- **Post-redeploy verification (pending, user-only redeploy):**
-  `SELECT count(*) FROM customers WHERE status='active' AND churn_scored_at >
-  now() - interval '1 day'` must reach 11, and `automation_job_state` row
-  `daily-churn` must show `completed` with `succeeded=11, failed=0`.
+- **Post-redeploy verification — EXECUTED 2026-11-05, PASSED:**
+  - 11:08:11Z startup pass failed 11/11 (`automation_job_state` row
+    `failed`, `job_failed: failed=11 succeeded=0`) — the Node service
+    booted at 11:07:49Z and the staggered churn pass fired 22 seconds
+    later while the Python service was still redeploying. This is exactly
+    the deploy-window race class the directive asked to contain; the new
+    job-state row made it visible from the database within minutes.
+  - Offline reproduction with the exact production rows (unlabelled LTV →
+    `avg_order_value: null`) proved the merged contract passes
+    end-to-end: Node validation → Python `ChurnFeatures` → `predict` →
+    response serialization — so the fix was confirmed correct while
+    waiting for the next hourly pass.
+  - 12:07:50Z hourly pass: **all 11 active customers scored** (latest
+    12:08:24Z), **0 stale actives remain**, all with the real model
+    `m4-v1.0` and `churn_score_fallback=false` (10 × AT_RISK p=0.632,
+    1 × HIGH_RISK p=0.653). `churn_escalate_to_human=false` for all 11 —
+    correct, because escalation requires a verified LTV and these money
+    values are unverified: financial integrity holds through the whole
+    chain.
+  - 11 `churn_training_observations` rows for 11 distinct customers —
+    no duplicates (a second pass at 12:08:50Z found nothing stale and
+    completed in 599 ms with `succeeded=0, failed=0`: idempotency
+    observed live).
+  - All 11 scored customers have `ltv_currency IS NULL` — the exact
+    population that failed for three days, scored by the contract fix.
+- **Follow-up (PR #291, merged `affee1e`):** the pass that failed at
+  11:08Z showed counters but not reasons; `runDailyChurnScoring` now
+  aggregates `failure_reasons` per error code into
+  `automation_job_state.last_result`, so a future failed pass is
+  self-diagnosing from the database alone. Rides the next redeploy.
 
 ## 9. Reliability inventory (Phase 5) — verified in code during this audit
 
@@ -219,10 +252,11 @@ during the failure window); 108 churn training observations.
 1. Phase 2 live transcript + two-merchant HTTP isolation test: user-only
    (no authenticated production session in sandbox). DB-layer equivalents
    executed instead (§5).
-2. Render redeploys: user-only. Until they happen, production still runs
-   `7f27913`/0.5.0 — the churn fix, redaction, job-state and routing fixes
-   are merged but **not live**.
-3. Churn self-heal confirmation: pending redeploy (§8 query).
+2. Render redeploys: user-only — **done 2026-11-05** (both services live
+   at `971263ce762b` / Python 0.6.0). PR #291's `failure_reasons`
+   aggregation rides the next redeploy (not yet live).
+3. Churn self-heal: **confirmed 2026-11-05 12:08Z** — 11/11 scored with
+   the real model, 0 stale, no duplicates (§8).
 4. Free-tier capacity ceiling: p95 at the ML timeout; 500-merchant plan
    documented, not executed (§10).
 5. Python suite has 4 known env-only failures in the sandbox (missing
