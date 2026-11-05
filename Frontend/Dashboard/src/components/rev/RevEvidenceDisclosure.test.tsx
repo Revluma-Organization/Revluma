@@ -208,7 +208,7 @@ describe("quiet verification chrome (transcript A)", () => {
 });
 
 describe("greeting chrome suppression (GREET-001)", () => {
-  const greetingText = "Hey Chief, good to see you. How's your day going?\n\nI can help with your store's revenue, checkout, customers, products, inventory and data coverage.";
+  const greetingText = "Hey Chief, good to see you. How's your day going?\n\nWhenever you're ready, tell me what you're working on or what's on your mind, and we'll dig into it together.";
 
   it("renders a conversational turn as plain chat: no badges, provenance, disclosure or evidence button", () => {
     render(<RevAnswerView onOpenEvidence={vi.fn()} payload={payload({

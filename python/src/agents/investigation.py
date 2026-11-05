@@ -383,7 +383,9 @@ def _dynamic_conversational(message: str, classification: dict, intent: str,
     if goal is None:
         if intent == INTENT_GREETING:
             goal = (f"greet the merchant back warmly, address them as {name} once, "
-                    "ask how they are doing, and open the door to business naturally")
+                    "ask how they are doing, and open the door to business naturally "
+                    "in at most three sentences total, without listing what you can "
+                    "do unless they asked")
         elif kind == "ack":
             goal = f"acknowledge briefly as {name} and keep the conversation open"
         elif kind == "farewell":
@@ -422,12 +424,13 @@ def _dynamic_conversational(message: str, classification: dict, intent: str,
 def _static_greeting(message: str, user_id: str) -> str:
     name = _boss_name(message, user_id)
     checkin = GREETING_CHECKINS[sum((user_id or message).encode()) % len(GREETING_CHECKINS)]
+    # GREET-002 (merchant directive 2026-11-05): a hello is not a sales pitch.
+    # The degraded greeting keeps the warm shape merchants preferred — greet,
+    # check in, one open invitation — and never dumps the capability menu.
+    # What Rev can do is answered when asked (INTENT_CAPABILITY).
     return (f"Hey {name}, good to see you. {checkin}\n\n"
-            "I can help with your store's revenue, checkout, customers, products, "
-            "inventory and data coverage. Ask a business question and I'll investigate "
-            "the evidence. For general ecommerce advice, tell me the context you want "
-            "me to account for. If you want a starting point, I can check how your "
-            "store sync is doing or what your recorded sales look like this week.")
+            "Whenever you're ready, tell me what you're working on or what's "
+            "on your mind, and we'll dig into it together.")
 
 
 def _static_general_offer(message: str, user_id: str) -> str:
