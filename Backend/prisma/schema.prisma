@@ -106,6 +106,7 @@ model organizations {
   audit_logs                        audit_logs[]
   business_state_baselines          business_state_baselines?
   business_states                   business_states[]
+  conversation_message_feedback     conversation_message_feedback[]
   conversation_messages             conversation_messages[]
   conversations                     conversations[]
   merchant_memories                 merchant_memories[]
@@ -155,6 +156,7 @@ model users {
   profile_picture_url        String?
   notification_preferences   Json?
   audit_logs                 audit_logs[]
+  conversation_message_feedback conversation_message_feedback[]
   conversation_messages      conversation_messages[]
   conversations              conversations[]
   merchant_memories          merchant_memories[]
@@ -760,12 +762,36 @@ model conversation_messages {
   users             users             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   business_states   business_states?  @relation(fields: [business_state_id], references: [id], onUpdate: NoAction, map: "fk_conv_msg_bstate")
   recommendations   recommendations[]
+  conversation_message_feedback conversation_message_feedback[]
 
   @@index([conversation_id, sequence_number], map: "idx_conv_msg_conversation")
   @@index([correlation_id], map: "idx_conv_msg_correlation")
   @@index([organization_id, created_at(sort: Desc)], map: "idx_conv_msg_org_created")
   @@index([business_state_id])
   @@index([user_id])
+}
+
+/// Per-answer thumbs up/down on persisted Rev answers (ChatGPT-UI adoption §5
+/// "action dock"). Backend-only: RLS enabled with no policies and no grants to
+/// anon/authenticated, accessed with the service role like conversation_messages
+/// under the Data-API lockdown. One row per (message, user); changing a rating
+/// upserts, clearing it deletes the row. The rating CHECK constraint lives in
+/// the migration SQL (pris.ly/d/check-constraints).
+model conversation_message_feedback {
+  id                    String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id       String                @db.Uuid
+  message_id            String                @db.Uuid
+  user_id               String                @db.Uuid
+  rating                String
+  created_at            DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime              @default(now()) @db.Timestamptz(6)
+  conversation_messages conversation_messages @relation(fields: [message_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  organizations         organizations         @relation(fields: [organization_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                 users                 @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([message_id, user_id])
+  @@index([organization_id, created_at(sort: Desc)], map: "idx_msg_feedback_org_created")
+  @@index([user_id], map: "idx_msg_feedback_user")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
