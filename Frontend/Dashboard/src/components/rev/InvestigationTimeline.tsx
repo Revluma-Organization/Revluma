@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check, ChevronDown, CircleAlert, Circle, Loader2, ShieldCheck } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Circle, ShieldCheck } from "lucide-react";
+import { SkeletonDot } from "@/components/rev/RevSkeleton";
 import type { InvestigationStep, RevInvestigationMeta } from "@/lib/revStream";
 import { formatPeriod, recordList, textValue } from "@/lib/revPresentation";
 
@@ -12,9 +13,10 @@ interface Props {
   compact?: boolean;
 }
 
-function StepIcon({ status }: { status: InvestigationStep["status"] }) {
+function StepIcon({ status, isDark }: { status: InvestigationStep["status"]; isDark: boolean }) {
   if (status === "completed") return <Check size={13} strokeWidth={3} color="#067647" />;
-  if (status === "running") return <Loader2 size={13} className="animate-spin" color="#1F06AC" />;
+  // Running = still loading: skeleton shimmer, never a spinner.
+  if (status === "running") return <SkeletonDot size={13} isDark={isDark} />;
   if (status === "failed") return <CircleAlert size={13} color="#B42318" />;
   return <Circle size={10} color="#98A2B3" />;
 }
@@ -57,7 +59,7 @@ export function InvestigationTimeline({ steps: originalSteps, investigation, str
         style={{ background: dark ? "rgba(255,255,255,0.03)" : "#FAFAFB", color: strong }}
       >
         {streaming ? (
-          <Loader2 size={14} className="animate-spin" color="#1F06AC" />
+          <SkeletonDot size={14} isDark={dark} />
         ) : !completeInvestigation ? (
           <CircleAlert size={14} color="#B42318" />
         ) : (
@@ -80,7 +82,7 @@ export function InvestigationTimeline({ steps: originalSteps, investigation, str
         <ol className="flex flex-col gap-0 px-3.5 pb-2 pt-1" style={{ listStyle: "none", margin: 0 }}>
           {steps.map((step) => (
             <li key={step.id || step.tool} className="flex items-start gap-2.5 py-1.5">
-              <span style={{ marginTop: 2 }}><StepIcon status={step.status} /></span>
+              <span style={{ marginTop: 2 }}><StepIcon status={step.status} isDark={dark} /></span>
               <div style={{ minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: "0.78rem", color: strong, lineHeight: 1.4 }}>
                 {textValue(step.label) || "Unnamed check"} <span style={{ color: muted }}>({textValue(step.status) || "unknown"})</span>

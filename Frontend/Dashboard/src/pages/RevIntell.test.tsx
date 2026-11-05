@@ -143,6 +143,7 @@ beforeEach(() => {
     return result.promise;
   });
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('Network requests are forbidden in this suite.'); }));
+  window.localStorage.clear();
   Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
 });
 afterEach(async () => {
@@ -181,7 +182,9 @@ describe('structured conversation rehydration', () => {
       success: true, conversation_id: 'ImageCreated', response_type: 'analysis', text: null,
       response: { situation: 'Attachment situation', insight: 'Attachment insight', implication: 'Attachment implication', recommendation: 'Attachment recommendation' },
     } });
+    noHistoryToResume();
     const view = renderPage();
+    await screen.findByPlaceholderText(/Ask (me|Rev)/);
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['fixture'], 'fixture.png', { type: 'image/png' })] } });
     await screen.findByAltText('attachment'); send('Read this attachment');
     await waitFor(() => expect(answerView).toHaveBeenCalledWith(expect.objectContaining({ response: expect.objectContaining({ situation: 'Attachment situation', insight: 'Attachment insight', implication: 'Attachment implication', recommendation: 'Attachment recommendation' }) })));
@@ -208,7 +211,7 @@ describe('finding investigation handoff', () => {
     theme.value = mode;
     const pending = deferred<Reply>(); replies.set(`/rev/findings/${findingOne}`, pending.promise);
     renderPage(`/dashboard/rev-intell?finding=${findingOne}`);
-    expect(screen.getByText('Loading finding details…')).toHaveAttribute('role', 'status');
+    expect(screen.getByRole('status', { name: 'Loading finding details' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
     await act(async () => pending.resolve(findingReply()));
     expect(screen.getByRole('region', { name: 'Finding context' })).toHaveTextContent('Revenue decline');
@@ -473,7 +476,7 @@ describe('conversation history reliability', () => {
     expect(screen.queryByText('No conversations yet.')).not.toBeInTheDocument();
     const next = deferred<Reply>(); replies.set('/rev/conversations', next.promise);
     fireEvent.click(screen.getByRole('button', { name: 'Retry conversation history' }));
-    expect(screen.getByText('Loading conversation history…')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading conversation history' })).toBeInTheDocument();
     await act(async () => next.resolve(reply([])));
     expect(screen.getByText('No conversations yet.')).toBeInTheDocument();
     // One initial history load plus the one visible retry. Scoped to the history
@@ -483,7 +486,7 @@ describe('conversation history reliability', () => {
   it('shows verified empty only after a successful empty response', async () => {
     const pending = deferred<Reply>(); replies.set('/rev/conversations', pending.promise);
     renderPage(); openHistory();
-    expect(screen.getByText('Loading conversation history…')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading conversation history' })).toBeInTheDocument();
     expect(screen.queryByText('No conversations yet.')).not.toBeInTheDocument();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
     await act(async () => pending.resolve(reply([])));
@@ -526,7 +529,7 @@ describe('conversation history reliability', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Search conversations' }), { target: { value: 'new' } });
     await act(async () => old.resolve(reply([conversation('Outdated')])));
     expect(screen.queryByRole('button', { name: title('Outdated') })).not.toBeInTheDocument();
-    expect(screen.getByText('Loading conversation history…')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading conversation history' })).toBeInTheDocument();
   });
   it('provides accessible failure recovery inside the history drawer', async () => {
     vi.mocked(api.get).mockRejectedValue(new Error('offline'));
@@ -576,7 +579,8 @@ describe('history requests overlapping successful mutations', () => {
     await act(async () => { oldSearch.resolve(reply(history)); oldLatestSearch.resolve(reply(history)); });
     expect(screen.queryByRole('button', { name: title('A'), hidden: true })).not.toBeInTheDocument();
     if (mutation === 'rename') expect(screen.getByRole('button', { name: /^Renamed A\b/, hidden: true })).toBeInTheDocument();
-    expect(screen.getByText('Loading conversation history…')).toBeInTheDocument();
+    // hidden:true — the drawer sits aria-hidden behind the nested options dialog.
+    expect(screen.getByRole('status', { name: 'Loading conversation history', hidden: true })).toBeInTheDocument();
     expect(screen.getByRole(unrelatedDialog)).toBeInTheDocument();
     expect(screen.getByText('Message from B')).toBeInTheDocument();
     expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/B');
@@ -591,7 +595,7 @@ describe('history requests overlapping successful mutations', () => {
       replies.set('/rev/conversations?q=latest', Promise.resolve(reply(updated)));
       fireEvent.click(screen.getByRole('button', { name: 'Retry conversation history', hidden: true }));
     } else await act(async () => refresh.resolve(reply(updated)));
-    await waitFor(() => expect(screen.queryByText('Loading conversation history…')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading conversation history' })).not.toBeInTheDocument());
     expect(screen.queryByRole('alert', { hidden: true })).not.toBeInTheDocument();
     expect(screen.getByRole(unrelatedDialog)).toBeInTheDocument();
     expect(screen.getByText('Message from B')).toBeInTheDocument();
@@ -615,7 +619,7 @@ describe('URL-scoped conversation retrieval', () => {
     replies.set('/rev/conversation/A', a.promise); replies.set('/rev/conversation/B', b.promise);
     renderPage('/dashboard/rev-intell/A'); await historyReady(); await select('B');
     await act(async () => a.reject(error));
-    expect(screen.getByText('Loading conversation...')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading conversation' })).toBeInTheDocument();
     expect(screen.queryByText('Conversation not found')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await act(async () => b.resolve(reply(thread('B'))));
@@ -628,7 +632,7 @@ describe('URL-scoped conversation retrieval', () => {
     await act(async () => pending.resolve(reply(thread('A'))));
     expect(screen.getByText('How can I help your revenue today?')).toBeInTheDocument();
     expect(screen.queryByText('Message from A')).not.toBeInTheDocument();
-    expect(screen.queryByText('Loading conversation...')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Loading conversation' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
   });
   it.each(['dark', 'light'])('recovers failed retrieval through Retry without changing its URL in %s mode', async mode => {
@@ -639,7 +643,7 @@ describe('URL-scoped conversation retrieval', () => {
     expect(screen.queryByRole('button', { name: 'Send message' })).not.toBeInTheDocument();
     const pending = deferred<Reply>(); vi.mocked(api.get).mockImplementation(path => path === '/rev/conversation/A' ? pending.promise : Promise.resolve(reply(history)));
     fireEvent.click(screen.getByRole('button', { name: 'Retry conversation' }));
-    expect(screen.getByText('Loading conversation...')).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'Loading conversation' })).toBeInTheDocument();
     await act(async () => pending.resolve(reply(thread('A'))));
     expect(screen.getByText('Message from A')).toBeInTheDocument();
     expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/A');
@@ -706,7 +710,9 @@ describe('turn callbacks remain in their originating thread', () => {
   });
   it('protects New Chat while an initial stream has not yet created its conversation', async () => {
     noHistoryToResume();
-    renderPage(); send();
+    renderPage();
+    await screen.findByPlaceholderText(/Ask (me|Rev)/);
+    send();
     const old = streams[0]; await clickNewConversation();
     await act(async () => {
       old.request.handlers.onMeta?.({ conversation_id: 'Late' });
@@ -719,7 +725,9 @@ describe('turn callbacks remain in their originating thread', () => {
   });
   it.each([true, false])('keeps the optimistic turn when its own conversation is created (metadata=%s)', async metadata => {
     noHistoryToResume();
-    renderPage(); send();
+    renderPage();
+    await screen.findByPlaceholderText(/Ask (me|Rev)/);
+    send();
     await act(async () => {
       if (metadata) streams[0].request.handlers.onMeta?.({ conversation_id: 'Created' });
       streams[0].request.handlers.onFinal?.(answer('Created', 'Created answer'));
@@ -780,7 +788,9 @@ describe('turn callbacks remain in their originating thread', () => {
   });
   it('does not refresh history when a stream finishes after unmount', async () => {
     noHistoryToResume();
-    const view = renderPage(); send(); const calls = vi.mocked(api.get).mock.calls.length;
+    const view = renderPage();
+    await screen.findByPlaceholderText(/Ask (me|Rev)/);
+    send(); const calls = vi.mocked(api.get).mock.calls.length;
     view.unmount();
     await act(async () => streams[0].result.resolve({ conversationId: 'Late', completed: true }));
     expect(api.get).toHaveBeenCalledTimes(calls);
@@ -940,13 +950,18 @@ describe('Phase 5.4 interaction and honest capabilities', () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
   it.each(['application/pdf', 'video/mp4', 'image/svg+xml'])('rejects unsupported %s files without sending placeholder messages', async type => {
+    noHistoryToResume();
     const view = renderPage();
+    await screen.findByPlaceholderText(/Ask (me|Rev)/);
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [new File(['fixture'], 'unsupported', { type })] } });
     expect(screen.getByRole('alert')).toHaveTextContent('not supported');
     expect(api.post).not.toHaveBeenCalled(); expect(streamRevAnswer).not.toHaveBeenCalled();
   });
-  it('rejects oversized images and exposes voice and calls as unavailable', () => {
-    const view = renderPage(); const file = new File(['fixture'], 'large.png', { type: 'image/png' });
+  it('rejects oversized images and exposes voice and calls as unavailable', async () => {
+    noHistoryToResume();
+    const view = renderPage();
+    await screen.findByPlaceholderText(/Ask (me|Rev)/);
+    const file = new File(['fixture'], 'large.png', { type: 'image/png' });
     Object.defineProperty(file, 'size', { value: 6 * 1024 * 1024 });
     fireEvent.change(view.container.querySelector('input[type="file"]')!, { target: { files: [file] } });
     expect(screen.getByRole('alert')).toHaveTextContent('under 5 MB');
@@ -1250,12 +1265,18 @@ describe('answer feedback and read-aloud (ChatGPT-UI study §5)', () => {
 
   it('reads the answer aloud and stops on a second click where speech is supported', async () => {
     class Utterance {
-      text: string; onend: (() => void) | null = null; onerror: (() => void) | null = null;
+      text: string; voice: SpeechSynthesisVoice | null = null;
+      onend: (() => void) | null = null; onerror: (() => void) | null = null;
       constructor(text: string) { this.text = text; }
     }
+    const stubVoice = { default: true, name: 'stub-voice' } as unknown as SpeechSynthesisVoice;
     const speak = vi.fn();
     const cancel = vi.fn();
-    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speak, cancel } });
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+      speak, cancel, paused: false,
+      getVoices: () => [stubVoice],
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    } });
     Object.defineProperty(window, 'SpeechSynthesisUtterance', { configurable: true, value: Utterance });
     try {
       await openThread();
@@ -1263,6 +1284,8 @@ describe('answer feedback and read-aloud (ChatGPT-UI study §5)', () => {
       await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
       expect(speak.mock.calls[0][0]).toBeInstanceOf(Utterance);
       expect((speak.mock.calls[0][0] as Utterance).text).toContain('Stored answer');
+      // Pre-warmed voice assigned: no multi-second first-speak stall.
+      expect((speak.mock.calls[0][0] as Utterance).voice).toBe(stubVoice);
       fireEvent.click(screen.getByRole('button', { name: 'Stop reading aloud' }));
       await waitFor(() => expect(cancel).toHaveBeenCalled());
       expect(screen.getByRole('button', { name: 'Read aloud' })).toBeTruthy();
@@ -1322,5 +1345,57 @@ describe('landing continuity (REV-RESUME-001)', () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
     await screen.findByText('How can I help your revenue today?');
     expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
+  });
+});
+
+describe('instant landing continuity and skeleton discipline (REV-RESUME-002)', () => {
+  const HINT_KEY = 'revluma.rev-intell.last-conversation';
+
+  it('navigates to the stored conversation before paint: skeleton, no spinner, no blank flash', async () => {
+    window.localStorage.setItem(HINT_KEY, 'A');
+    const pendingThread = deferred<Reply>();
+    replies.set('/rev/conversation/A', pendingThread.promise);
+    renderPage();
+    expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/A');
+    expect(screen.getByRole('status', { name: 'Loading conversation' })).toBeInTheDocument();
+    expect(document.querySelector('[data-rev-skeleton-thread]')).not.toBeNull();
+    expect(document.querySelector('.animate-spin')).toBeNull();
+    expect(screen.queryByText('How can I help your revenue today?')).not.toBeInTheDocument();
+    await act(async () => pendingThread.resolve(reply(thread('A'))));
+    await screen.findByText('Message from A');
+  });
+
+  it('drops a stale hint honestly and falls back to the server-sorted resume', async () => {
+    window.localStorage.setItem(HINT_KEY, 'Dead');
+    replies.set('/rev/conversation/Dead', Promise.reject(new ApiError(404, 'gone')));
+    renderPage();
+    await screen.findByText('Message from A');
+    await waitFor(() => expect(screen.getByLabelText('Current path')).toHaveTextContent('/dashboard/rev-intell/A'));
+    await waitFor(() => expect(window.localStorage.getItem(HINT_KEY)).toBe('A'));
+  });
+
+  it('shows skeleton rows while the history drawer loads', async () => {
+    const pending = deferred<Reply>();
+    replies.set('/rev/conversations', pending.promise);
+    renderPage();
+    openHistory();
+    expect(screen.getByRole('status', { name: 'Loading conversation history' })).toBeInTheDocument();
+    expect(document.querySelector('[data-rev-skeleton-rows]')).not.toBeNull();
+    await act(async () => pending.resolve(reply(history)));
+    await screen.findByRole('button', { name: title('A') });
+  });
+
+  it('thanks the merchant for a recorded rating with a transient toast', async () => {
+    vi.mocked(api.post).mockResolvedValue(reply(null));
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [
+      { id: 'stored-rev', role: 'rev', content: answer('A', 'Stored answer'), created_at: '2026-11-02T12:00:05Z' },
+    ] })));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Stored answer');
+    fireEvent.click(screen.getByRole('button', { name: 'Helpful' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText('Thanks for your review')).toBeInTheDocument());
+    expect(screen.getByText('Thanks for your review').closest('div[role="status"]')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText('Thanks for your review')).not.toBeInTheDocument(), { timeout: 6000 });
   });
 });

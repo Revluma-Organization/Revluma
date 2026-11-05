@@ -313,3 +313,20 @@
   20% { transform: rotate(-8deg); }
 }
 .wave-emoji { display:inline-block; transform-origin: 70% 70%; animation: wave 2.4s ease-in-out infinite; }
+
+/* Rev skeleton loaders (YouTube-style): static block + sheen sweep.
+   Reduced motion freezes the sweep; the static blocks remain as the
+   honest "something is loading here" surface. */
+.rev-skeleton-sweep {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%) skewX(-12deg);
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.55) 50%, transparent 100%);
+  animation: sheen-sweep 1.4s ease-in-out infinite;
+}
+.rev-skeleton-sweep-dark {
+  background: linear-gradient(90deg, transparent 0%, rgba(31, 6, 172, 0.35) 50%, transparent 100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rev-skeleton-sweep { animation: none; }
+}
