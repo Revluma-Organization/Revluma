@@ -3,6 +3,7 @@ import {
   ArrowUpRight, Check, Copy, Database, RefreshCw, TriangleAlert,
 } from "lucide-react";
 import RevMarkdown from "@/components/rev/RevMarkdown";
+import { CitationChip } from "@/components/rev/CitationChip";
 import { parseVerifiedComparison } from "@/lib/revComparison";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import type { EvidenceItem, RevAnswerPayload, RevFact, RevHypothesis, RevRecommendation, SpecialistsSummary, InvestigationStep } from "@/lib/revStream";
@@ -266,10 +267,10 @@ export function RevAnswerView({
       {!streaming && !quiet && body && <VerifiedComparison text={body} dark={dark} strong={strong} muted={muted} border={border} />}
 
       <div style={{ fontSize: "0.9rem", lineHeight: 1.65, color: strong }}>
-        {body && <RevMarkdown text={body} tone={dark ? "dark" : "light"} />}
+        {body && <RevMarkdown text={body} tone={dark ? "dark" : "light"} streaming={streaming} />}
         {!quiet && sections.map(section => <section key={section.label} className="mt-3">
           <h3 className="text-xs font-semibold mb-1">{section.label}</h3>
-          <RevMarkdown text={section.text} tone={dark ? "dark" : "light"} />
+          <RevMarkdown text={section.text} tone={dark ? "dark" : "light"} streaming={streaming} />
         </section>)}
         {!body && !sections.length && !facts.length && !comparisonFacts.length && !hypotheses.length && !unknowns.length && !recommendations.length && <p>No answer content was returned.</p>}
         {!quiet && factSections.map(({ label, entries }) => entries.length > 0 && <section key={label} className="mt-3">
@@ -278,24 +279,22 @@ export function RevAnswerView({
             {[...new Map(entries.map(entry => [entry.text, entry])).values()].map(entry => (
               <li key={entry.text}>
                 {entry.text}
-                {entry.ids.map(id => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => onOpenEvidence?.(id)}
-                    aria-label={`Citation ${citedEvidenceIds.indexOf(id) + 1}: ${textValue(evidenceById.get(id)?.label) || id} — open evidence`}
-                    style={{
-                      fontSize: "0.62rem", fontWeight: 700, lineHeight: 1, marginLeft: 5,
-                      color: dark ? "#A5B4FC" : "#1F06AC",
-                      background: dark ? "rgba(31,6,172,0.22)" : "rgba(31,6,172,0.07)",
-                      border: "1px solid rgba(31,6,172,0.18)", borderRadius: 6,
-                      padding: "2px 5px", verticalAlign: "baseline",
-                      cursor: onOpenEvidence ? "pointer" : "default",
-                    }}
-                  >
-                    {citedEvidenceIds.indexOf(id) + 1}
-                  </button>
-                ))}
+                {entry.ids.map(id => {
+                  const item = evidenceById.get(id);
+                  // An id that no longer resolves renders nothing: a citation
+                  // must always point at a retrieved record (contract §6).
+                  if (!item) return null;
+                  return (
+                    <CitationChip
+                      key={id}
+                      number={citedEvidenceIds.indexOf(id) + 1}
+                      item={item}
+                      tone={dark ? "dark" : "light"}
+                      variant="marker"
+                      onOpen={onOpenEvidence}
+                    />
+                  );
+                })}
               </li>
             ))}
           </ul>
@@ -321,21 +320,14 @@ export function RevAnswerView({
             const item = evidenceById.get(id);
             if (!item) return null;
             return (
-              <button
+              <CitationChip
                 key={id}
-                type="button"
-                onClick={() => onOpenEvidence?.(id)}
-                className="inline-flex items-center"
-                style={{
-                  fontSize: "0.7rem", color: dark ? "#A5B4FC" : "#1F06AC", background: "transparent",
-                  border: "none", padding: 0, cursor: "pointer",
-                  textDecoration: "underline", textUnderlineOffset: 2,
-                }}
-                aria-label={`Open evidence: ${item.label}`}
-              >
-                <span aria-hidden="true" style={{ fontWeight: 750, marginRight: 3 }}>{citedEvidenceIds.indexOf(id) + 1}.</span>
-                {item.label}
-              </button>
+                number={citedEvidenceIds.indexOf(id) + 1}
+                item={item}
+                tone={dark ? "dark" : "light"}
+                variant="source"
+                onOpen={onOpenEvidence}
+              />
             );
           })}
         </div>

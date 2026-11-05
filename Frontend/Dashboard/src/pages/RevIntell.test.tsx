@@ -1129,3 +1129,40 @@ describe('Phase 5.4 follow-up clipboard attempt ownership', () => {
     expect(screen.getByText('Copied')).toBeInTheDocument();
   });
 });
+
+describe('stream scroll discipline (ChatGPT-UI study §6)', () => {
+  it('reveals a back-to-latest pill after scrolling away and rejoins the stream on click', async () => {
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Message from A');
+    const box = screen.getByTestId('rev-scroll-box');
+    let scrollTop = 0;
+    Object.defineProperty(box, 'scrollHeight', { configurable: true, value: 1200 });
+    Object.defineProperty(box, 'clientHeight', { configurable: true, value: 400 });
+    Object.defineProperty(box, 'scrollTop', { configurable: true, get: () => scrollTop });
+    const spy = Element.prototype.scrollIntoView as unknown as ReturnType<typeof vi.fn>;
+
+    // Pinned at the bottom of a short thread: no pill in the a11y tree.
+    expect(screen.queryByRole('button', { name: 'Back to latest message' })).toBeNull();
+
+    // Scroll far away (distance 800px > 160px threshold): the pill appears.
+    fireEvent.scroll(box);
+    const pill = screen.getByRole('button', { name: 'Back to latest message' });
+
+    // One click rejoins the live stream and hides the pill again.
+    const before = spy.mock.calls.length;
+    fireEvent.click(pill);
+    expect(spy.mock.calls.length).toBeGreaterThan(before);
+    expect(screen.queryByRole('button', { name: 'Back to latest message' })).toBeNull();
+
+    // Back at the bottom (distance 0): still hidden, auto-follow re-armed.
+    scrollTop = 800;
+    fireEvent.scroll(box);
+    expect(screen.queryByRole('button', { name: 'Back to latest message' })).toBeNull();
+
+    // Hysteresis: a small overscroll (distance 100px, between 80 and 160)
+    // must not flicker the pill back on.
+    scrollTop = 700;
+    fireEvent.scroll(box);
+    expect(screen.queryByRole('button', { name: 'Back to latest message' })).toBeNull();
+  });
+});
