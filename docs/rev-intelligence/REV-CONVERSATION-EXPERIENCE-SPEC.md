@@ -369,3 +369,31 @@ Opt-outs, all explicit and honest:
 
 Deleting the conversation currently in view lands on New chat (the drawer
 closes by design); reopening the drawer shows the refreshed list.
+
+## 15. Perceived performance and acknowledgement (v1.4.0)
+
+**P15.1 — Resume experiment (REV-RESUME-002; not production-verified).** The list-based resume (§14)
+costs one round trip during which the blank new-chat frame painted. The last
+selected conversation id is now mirrored to localStorage and the
+bare route performs a *render-phase* redirect to it (before first paint); the
+thread then loads behind a skeleton. The server stays authoritative: a hint
+that 404/403s is dropped and the §14 list resume takes over. "New conversation"
+intent, finding deep links and deleted hints never redirect.
+
+**P15.2 — Skeleton discipline (coverage under review).** These loading surfaces use
+skeleton shimmer (YouTube-style static blocks plus a sheen sweep), never a
+spinner: thread load, landing decision, history drawer rows, pagination
+buttons, finding card, running investigation steps and the queued-turn
+placeholder. Under `prefers-reduced-motion` the sweep freezes; the static
+blocks remain. Each surface carries `role="status"` with an aria-label at the
+call site; skeleton nodes themselves are `aria-hidden`.
+
+**P15.3 — Read-aloud experiment.** Voices are requested on mount
+(`getVoices` + `voiceschanged`); an available voice is assigned to the
+utterance, and a paused synthesizer is resumed before speaking. Actual
+startup latency depends on the browser and voice and has not been measured.
+
+**P15.4 — Feedback acknowledgement.** A recorded rating (write confirmed by
+the backend) shows a transient toast — "Thanks for your review" — in the same
+fixed pill position as the Copy toast, fading after ~2.4s. Failed writes show
+nothing and honestly revert the thumb (§11 honesty rules).

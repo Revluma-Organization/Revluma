@@ -21,7 +21,7 @@ import { motion, AnimatePresence, MotionConfig, useReducedMotion } from "framer-
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { createPortal } from "react-dom";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Send, Plus, Menu, X, Copy,
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
@@ -42,6 +42,7 @@ import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import { JumpToLatest } from "@/components/rev/JumpToLatest";
 import EvidencePanel from "@/components/rev/EvidencePanel";
 import { normaliseRevAnswer, coveredBy, legacyResponseToPayload, recordList, stringList, textValue } from "@/lib/revPresentation";
+import { RevSkeletonCard, RevSkeletonRows, RevSkeletonThread, SkeletonBar } from "@/components/rev/RevSkeleton";
 import RevMarkdown from "@/components/rev/RevMarkdown";
 import {
   streamRevAnswer, RevStreamError,
@@ -144,15 +145,15 @@ function ModalSurface({ children, onClose, hasDescription = false, returnFocusTo
   </DialogPrimitive.Root>;
 }
 
-function LoadMore({ available, loading, error, onLoad, label }: {
-  available: boolean; loading: boolean; error: string | null; onLoad: () => void; label: string;
+function LoadMore({ available, loading, error, onLoad, label, isDark }: {
+  available: boolean; loading: boolean; error: string | null; onLoad: () => void; label: string; isDark: boolean;
 }) {
   return <div className="px-3 py-2 text-xs">
     {error && <p role="alert">{error}</p>}
     {available && <button onClick={onLoad} disabled={loading}
       className="min-h-11 rounded-lg border border-current px-3 py-2"
       aria-label={error ? `Retry ${label.toLowerCase()}` : label}>
-      {loading ? <span role="status">Loading…</span> : error ? 'Retry' : label}
+      {loading ? <span role="status" aria-label="Loading" className="inline-flex items-center"><SkeletonBar width={56} height={8} isDark={isDark} /></span> : error ? 'Retry' : label}
     </button>}
   </div>;
 }
@@ -226,6 +227,28 @@ function OrbAvatar() {
         transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }} />
     </div>
   );
+}
+
+// ── Landing continuity hint (REV-RESUME-002) ──────────────────────────────────
+// The server-sorted list resume (REV-RESUME-001) costs one round trip before
+// the thread round trip — merchants perceived that as a blank new-chat flash.
+// The last selected conversation id is mirrored to
+// localStorage so a bare mount can navigate to it *before first paint*; the
+// server stays authoritative because the hinted load is validated (404/403
+// drops the hint and falls back to the list resume).
+const LAST_CONVERSATION_KEY = "revluma.rev-intell.last-conversation";
+function readLastConversationHint(): string | null {
+  try {
+    const value = window.localStorage.getItem(LAST_CONVERSATION_KEY);
+    // Safe pattern only; the server remains the authority (a dead hint falls
+    // back to the list resume), so this just keeps junk out of the URL.
+    return typeof value === "string" && /^[a-z0-9-]{1,64}$/i.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+function clearLastConversationHint() {
+  try { window.localStorage.removeItem(LAST_CONVERSATION_KEY); } catch { /* storage unavailable */ }
 }
 
 // ── Loading shimmer ───────────────────────────────────────────────────────────
@@ -519,13 +542,13 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
 
 // ── Conversation history item ─────────────────────────────────────────────────
 
-function HistoryStatus({ loading, error, count, query, onRetry, color }: {
+function HistoryStatus({ loading, error, count, query, onRetry, color, isDark }: {
   loading: boolean; error: string | null; count: number; query: string;
-  onRetry: () => void; color: string;
+  onRetry: () => void; color: string; isDark: boolean;
 }) {
   return <>
     {!loading && !error && count > 0 && <p role="status" className="sr-only">{count} conversations loaded{query.trim() ? ` for ${query.trim()}` : ""}.</p>}
-    {loading && <p role="status" className="px-3 py-4 text-center text-xs" style={{ color }}>Loading conversation history…</p>}
+    {loading && <div role="status" aria-label="Loading conversation history" className="px-2 py-2"><RevSkeletonRows isDark={isDark} /></div>}
     {error && <div role="alert" className="px-3 py-4 text-center text-xs" style={{ color }}>
       <p>{error}</p>
       <button onClick={onRetry} disabled={loading} aria-label="Retry conversation history"
@@ -602,7 +625,7 @@ function ConversationHistoryList({
 
       <div aria-busy={loading} className="flex-1 overflow-y-auto px-2 pb-3 [scrollbar-width:thin]">
         <HistoryStatus loading={loading} error={error} count={conversations.length} query={query}
-          onRetry={onRetry} color={t2} />
+          onRetry={onRetry} color={t2} isDark={isDark} />
         {conversations.map((conversation) => {
           const active = activeId === conversation.id;
           return (
@@ -733,6 +756,8 @@ export default function RevIntell() {
   // keeps one mount to a single continuity redirect.
   const newChatIntentRef = useRef(false);
   const resumedBareRouteRef = useRef(false);
+  // REV-RESUME-002: render-phase redirect target, read once per mount.
+  const [hintRedirect, setHintRedirect] = useState<string | null>(() => readLastConversationHint());
 
   const loadFinding = useCallback(async (id: string) => {
     const request = ++findingRequestRef.current;
@@ -802,6 +827,9 @@ export default function RevIntell() {
   useEffect(() => { void loadStoreContext(); }, [loadStoreContext]);
 
   // ── Load conversations list ───────────────────────────────────────────────
+  // First load fires immediately (the landing resume depends on it); only
+  // search typing is debounced.
+  const firstHistoryLoadRef = useRef(true);
   const loadConversations = useCallback(async (searchText = searchQueryRef.current, append = false) => {
     const query = searchText.trim().slice(0, 80);
     if (query !== searchQueryRef.current.trim().slice(0, 80) || (append && historyPagePending.current)) return;
@@ -921,6 +949,15 @@ export default function RevIntell() {
       if (append) {
         setMessagesMoreError("More messages could not be loaded. Please try again.");
       } else if (err?.status === 404 || err?.status === 403) {
+        if (hintRedirect && hintRedirect === convId) {
+          // The hinted thread is gone (deleted in another session, other
+          // tenant): drop the hint honestly and let the server-sorted list
+          // resume choose — never a dead-end screen for a stale hint.
+          setHintRedirect(null);
+          clearLastConversationHint();
+          navigate("/dashboard/rev-intell", { replace: true });
+          return;
+        }
         setConvNotFound(true);
       } else {
         setConvError("This conversation could not be loaded. Please try again.");
@@ -990,7 +1027,13 @@ export default function RevIntell() {
       setActiveId(null);
     }
     if (findingId !== null) void loadFinding(findingId);
-  }, [urlConvId, findingId, resetThread, loadConversation, loadFinding]);
+  }, [urlConvId, findingId, resetThread, loadConversation, loadFinding, navigate]);
+
+  // Mirror the last opened conversation for instant resume (REV-RESUME-002).
+  useEffect(() => {
+    if (!activeId) return;
+    try { window.localStorage.setItem(LAST_CONVERSATION_KEY, activeId); } catch { /* storage unavailable */ }
+  }, [activeId]);
 
   // ── Landing continuity (REV-RESUME-001) ───────────────────────────────────
   // A bare route is not amnesia. Rev threads are evidence-bound business
@@ -1034,7 +1077,9 @@ export default function RevIntell() {
 
   // Sidebar search is server-side (titles and message content) and debounced.
   useEffect(() => {
-    const handle = window.setTimeout(() => { void loadConversations(searchQuery); }, 250);
+    const delay = firstHistoryLoadRef.current ? 0 : 250;
+    firstHistoryLoadRef.current = false;
+    const handle = window.setTimeout(() => { void loadConversations(searchQuery); }, delay);
     return () => window.clearTimeout(handle);
   }, [searchQuery, loadConversations]);
 
@@ -1373,9 +1418,22 @@ export default function RevIntell() {
     setMessages(list => list.map(item => (item.id === msg.id ? { ...item, feedback: next } : item)));
     try {
       await api.post("/rev/message-feedback", { message_id: messageId, rating: next });
+      // Acknowledge a recorded rating the way the Copy toast acknowledges a
+      // confirmed write — briefly, then gone. Never shown for a failed write.
+      if (next !== null) {
+        if (feedbackThanksTimerRef.current !== null) clearTimeout(feedbackThanksTimerRef.current);
+        setFeedbackThanks(true);
+        feedbackThanksTimerRef.current = setTimeout(() => {
+          setFeedbackThanks(false);
+          feedbackThanksTimerRef.current = null;
+        }, 2400);
+      }
     } catch {
       setMessages(list => list.map(item => (item.id === msg.id ? { ...item, feedback: previous } : item)));
     }
+  }, []);
+  useEffect(() => () => {
+    if (feedbackThanksTimerRef.current !== null) clearTimeout(feedbackThanksTimerRef.current);
   }, []);
 
   // ── Read aloud (ChatGPT-UI study §5: TTS in the action dock) ───────────────
@@ -1384,6 +1442,23 @@ export default function RevIntell() {
   const speechSupported = typeof window !== "undefined" && "speechSynthesis" in window
     && typeof window.SpeechSynthesisUtterance !== "undefined";
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [feedbackThanks, setFeedbackThanks] = useState(false);
+  const feedbackThanksTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Request available voices ahead of time and use one when available.
+  // Browser and voice implementation determine actual speech startup latency.
+  const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  useEffect(() => {
+    const synth = window.speechSynthesis;
+    if (!speechSupported || !synth) return;
+    const pick = () => {
+      const voices = synth.getVoices();
+      if (!voices.length) return;
+      voiceRef.current = voices.find(voice => voice.default) ?? voices[0] ?? null;
+    };
+    pick();
+    synth.addEventListener?.("voiceschanged", pick);
+    return () => synth.removeEventListener?.("voiceschanged", pick);
+  }, [speechSupported]);
   const stopSpeech = useCallback(() => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
     setSpeakingId(null);
@@ -1395,7 +1470,9 @@ export default function RevIntell() {
       return;
     }
     window.speechSynthesis.cancel();
+    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
     const utterance = new window.SpeechSynthesisUtterance(answerCopyText(msg));
+    if (voiceRef.current) utterance.voice = voiceRef.current;
     const clear = () => setSpeakingId(current => (current === msg.id ? null : current));
     utterance.onend = clear;
     utterance.onerror = clear;
@@ -1440,6 +1517,7 @@ export default function RevIntell() {
       await api.delete(`/rev/conversation/${encodeURIComponent(id)}`);
       void loadConversations();
       setConversations(prev => prev.filter(c => c.id !== id));
+      if (readLastConversationHint() === id) clearLastConversationHint();
       setDeleteConfirmId(null);
       if (activeId === id && request === conversationRequestRef.current) newChat();
     } catch {
@@ -1497,6 +1575,14 @@ export default function RevIntell() {
   const hasMessages = messages.length > 0;
   const starters = useMemo(() => buildStarters(storeContext), [storeContext]);
 
+  // REV-RESUME-002: render-phase redirect happens before first paint, so a
+  // returning merchant never sees a blank new-chat frame — the hinted thread
+  // loads like any other conversation (skeleton meanwhile), and the server
+  // validates the hint: a dead one falls back to the list resume honestly.
+  if (hintRedirect && !urlConvId && findingId === null && !newChatIntentRef.current) {
+    return <Navigate to={`/dashboard/rev-intell/${encodeURIComponent(hintRedirect)}`} replace />;
+  }
+
   return (
     <MotionConfig reducedMotion="user">
     <style>{`
@@ -1521,7 +1607,7 @@ export default function RevIntell() {
 
       {(findingId !== null || findingContext) && <section aria-label="Finding context"
         className="mx-4 mt-4 max-h-[28dvh] shrink-0 overflow-y-auto rounded-xl border px-4 py-3 pr-14 lg:pr-4" style={{ background: card, borderColor: bdr, color: t1 }}>
-        {findingLoading && <p role="status" className="text-sm" style={{ color: t2 }}>Loading finding details…</p>}
+        {findingLoading && <div role="status" aria-label="Loading finding details" className="max-w-2xl w-full"><RevSkeletonCard isDark={isDark} /></div>}
         {findingContext && <>
           <p className="mb-1 text-xs font-semibold" style={{ color: t2 }}>Finding to investigate</p>
           <h2 className="text-sm font-semibold">{findingContext.title}</h2>
@@ -1553,13 +1639,10 @@ export default function RevIntell() {
       <div className="flex-1 min-h-0 relative">
       <div ref={scrollBoxRef} onScroll={handleScrollBoxScroll} data-testid="rev-scroll-box" className="absolute inset-0 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
 
-        {/* Conversation loading */}
+        {/* Conversation loading — skeleton, never a spinner */}
         {convLoading && (
-          <div role="status" className="flex items-center justify-center h-full">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-6 h-6 rounded-full border-2 border-t-transparent border-[#1F06AC] animate-spin" />
-              <p className="text-[0.8rem]" style={{ color: t2 }}>Loading conversation...</p>
-            </div>
+          <div role="status" aria-label="Loading conversation" className="px-6 py-6 max-w-2xl mx-auto w-full">
+            <RevSkeletonThread isDark={isDark} />
           </div>
         )}
 
@@ -1590,8 +1673,16 @@ export default function RevIntell() {
           <p role="status" className="px-6 py-8 text-center text-sm" style={{ color: t2 }}>No messages in this conversation yet.</p>
         )}
 
+        {/* Landing decision pending (list resume / hint validation): skeleton,
+            never a blank new-chat flash */}
+        {!hasMessages && !convLoading && !convNotFound && !convError && !activeId && findingId === null && historyLoading && (
+          <div role="status" aria-label="Preparing your conversation" className="px-6 py-6 max-w-2xl mx-auto w-full">
+            <RevSkeletonThread isDark={isDark} />
+          </div>
+        )}
+
         {/* Welcome screen */}
-        {!hasMessages && !convLoading && !convNotFound && !activeId && (
+        {!hasMessages && !convLoading && !convNotFound && !convError && !activeId && (findingId !== null || !historyLoading) && (
           <div className="flex flex-col items-center justify-start min-h-full px-6 pt-10 lg:pt-16 pb-6 max-w-2xl mx-auto w-full">
             <motion.div initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }} className="mb-6">
@@ -1761,7 +1852,7 @@ export default function RevIntell() {
                 isDark={isDark} t1={t1} t2={t2} />
             ))}
             {messagesMore && <p role="status" className="mt-3 text-xs" style={{ color: t2 }}>Showing the start of this conversation. Load the remaining messages before continuing.</p>}
-            <LoadMore available={messagesMore} loading={messagesMoreLoading} error={messagesMoreError} onLoad={() => activeId && void loadConversation(activeId, true)} label="Load more messages" />
+            <LoadMore available={messagesMore} loading={messagesMoreLoading} error={messagesMoreError} onLoad={() => activeId && void loadConversation(activeId, true)} label="Load more messages" isDark={isDark} />
             <div ref={bottomRef} />
           </div>
         )}
@@ -1827,7 +1918,7 @@ export default function RevIntell() {
                   onNew={newChat} onSelect={openConversation}
                   onRename={(id, trigger) => { dialogReturnRef.current = trigger; renameConv(id); }}
                   onDelete={(id, trigger) => { dialogReturnRef.current = trigger; setDeleteConfirmId(id); }}
-                  pagination={<LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" />}
+                  pagination={<LoadMore available={historyMore} loading={historyMoreLoading} error={historyMoreError} onLoad={() => void loadConversations(undefined, true)} label="Load more conversations" isDark={isDark} />}
                   isDark={isDark} t1={t1} t2={t2} border={bdr} />
               </ModalSurface>
             </motion.div>
@@ -1972,6 +2063,17 @@ export default function RevIntell() {
             <Copy size={12} />Copied
           </motion.div>
         )}
+      {/* Feedback thanks toast — mirrors the Copy toast, fades after ~2.4s */}
+      <AnimatePresence>
+        {feedbackThanks && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full text-[0.8rem] shadow-lg"
+            style={{ background: card, border: `1px solid ${bdr}`, color: t1 }}>
+            <ThumbsUp size={12} />Thanks for your review
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
     </MotionConfig>
   );
