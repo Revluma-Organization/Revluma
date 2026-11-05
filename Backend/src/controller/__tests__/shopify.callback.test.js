@@ -81,7 +81,7 @@ mockPrisma.webhook_deliveries = {
     }
     return { count: 0 };
   },
-  findUnique: async () => ({ id: 'delivery-row', status: deliveryStatus }),
+  findUnique: async () => ({ id: 'delivery-row', status: deliveryStatus, store_id: 'store-123', topic: 'orders/create' }),
 };
 
 const { generateState } = require('../../utils/shopify');
@@ -290,8 +290,9 @@ async function verifyFailedWebhookDeliveryCanRetryOnce() {
   const { claimDelivery } = require('../../services/commerceWebhookService');
   const retry = await claimDelivery('shopify', 'delivery-123', 'store-123', 'orders/create');
   assert.strictEqual(retry.status, 'received');
-  const duplicate = await claimDelivery('shopify', 'delivery-123', 'store-123', 'orders/create');
-  assert.strictEqual(duplicate, null, 'in-flight duplicate deliveries must remain idempotent');
+  await assert.rejects(claimDelivery('shopify', 'delivery-123', 'store-123', 'orders/create'), { code: 'WEBHOOK_DELIVERY_PENDING' });
+  deliveryStatus = 'processed';
+  assert.strictEqual(await claimDelivery('shopify', 'delivery-123', 'store-123', 'orders/create'), null);
 }
 
 (async () => {

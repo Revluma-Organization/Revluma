@@ -50,14 +50,30 @@ async function claimDelivery(provider, deliveryId, storeId, topic) {
     });
   } catch (error) {
     if (error.code === 'P2002') {
-      const retry = await prisma.webhook_deliveries.updateMany({
-        where: { provider, delivery_id: deliveryId, status: 'failed' },
-        data: { status: 'received', last_error: null, received_at: new Date() },
-      });
-      if (!retry.count) return null;
-      return prisma.webhook_deliveries.findUnique({
-        where: { provider_delivery_id: { provider, delivery_id: deliveryId } },
-      });
+      const key = { provider_delivery_id: { provider, delivery_id: deliveryId } };
+      const existing = await prisma.webhook_deliveries.findUnique({ where: key });
+      if (!existing || existing.store_id !== storeId || existing.topic !== topic) {
+        throw Object.assign(new Error('Webhook delivery identity does not match'), { code: 'WEBHOOK_DELIVERY_IDENTITY_MISMATCH' });
+      }
+      if (existing.status === 'processed') return null;
+      if (existing.status === 'failed') {
+        const retry = await prisma.webhook_deliveries.updateMany({
+          where: { provider, delivery_id: deliveryId, store_id: storeId, topic, status: 'failed' },
+          data: { status: 'received', last_error: null, received_at: new Date() },
+        });
+        if (retry.count) {
+          const claimed = await prisma.webhook_deliveries.findUnique({ where: key });
+          if (!claimed || claimed.store_id !== storeId || claimed.topic !== topic || claimed.status !== 'received') {
+            throw Object.assign(new Error('Webhook delivery claim could not be verified'), { code: 'WEBHOOK_DELIVERY_CLAIM_UNVERIFIED' });
+          }
+          return claimed;
+        }
+        const latest = await prisma.webhook_deliveries.findUnique({ where: key });
+        if (latest?.store_id === storeId && latest.topic === topic && latest.status === 'processed') return null;
+      }
+      // A received/in-flight delivery is not proof of success. Returning 2xx
+      // here can lose an event after a crash, so request a later retry instead.
+      throw Object.assign(new Error('Webhook delivery is still pending'), { code: 'WEBHOOK_DELIVERY_PENDING' });
     }
     throw error;
   }
