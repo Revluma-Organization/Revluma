@@ -232,10 +232,10 @@ function OrbAvatar() {
 // ── Landing continuity hint (REV-RESUME-002) ──────────────────────────────────
 // The server-sorted list resume (REV-RESUME-001) costs one round trip before
 // the thread round trip — merchants perceived that as a blank new-chat flash.
-// The last successfully opened conversation id is therefore mirrored to
+// The last selected conversation id is mirrored to
 // localStorage so a bare mount can navigate to it *before first paint*; the
 // server stays authoritative because the hinted load is validated (404/403
-// drops the hint and falls back to the list resume). UUID-shaped only.
+// drops the hint and falls back to the list resume).
 const LAST_CONVERSATION_KEY = "revluma.rev-intell.last-conversation";
 function readLastConversationHint(): string | null {
   try {
@@ -1444,9 +1444,8 @@ export default function RevIntell() {
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [feedbackThanks, setFeedbackThanks] = useState(false);
   const feedbackThanksTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Read-aloud must start instantly: browsers (Chrome above all) stall the
-  // first speak() for seconds while voices initialise, so voices are
-  // pre-warmed on mount and an explicit voice is assigned per utterance.
+  // Request available voices ahead of time and use one when available.
+  // Browser and voice implementation determine actual speech startup latency.
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
   useEffect(() => {
     const synth = window.speechSynthesis;

@@ -372,15 +372,15 @@ closes by design); reopening the drawer shows the refreshed list.
 
 ## 15. Perceived performance and acknowledgement (v1.4.0)
 
-**P15.1 — Instant resume (REV-RESUME-002).** The list-based resume (§14)
+**P15.1 — Resume experiment (REV-RESUME-002; not production-verified).** The list-based resume (§14)
 costs one round trip during which the blank new-chat frame painted. The last
-successfully opened conversation id is now mirrored to localStorage and the
+selected conversation id is now mirrored to localStorage and the
 bare route performs a *render-phase* redirect to it (before first paint); the
 thread then loads behind a skeleton. The server stays authoritative: a hint
 that 404/403s is dropped and the §14 list resume takes over. "New conversation"
 intent, finding deep links and deleted hints never redirect.
 
-**P15.2 — Skeleton discipline.** Every loading surface inside Rev Intell uses
+**P15.2 — Skeleton discipline (coverage under review).** These loading surfaces use
 skeleton shimmer (YouTube-style static blocks plus a sheen sweep), never a
 spinner: thread load, landing decision, history drawer rows, pagination
 buttons, finding card, running investigation steps and the queued-turn
@@ -388,10 +388,10 @@ placeholder. Under `prefers-reduced-motion` the sweep freezes; the static
 blocks remain. Each surface carries `role="status"` with an aria-label at the
 call site; skeleton nodes themselves are `aria-hidden`.
 
-**P15.3 — Read-aloud starts instantly.** Browsers stall a first `speak()` for
-seconds while voices initialise, so voices are pre-warmed on mount
-(`getVoices` + `voiceschanged`) and every utterance gets an explicit voice;
-a paused synthesizer is resumed before speaking.
+**P15.3 — Read-aloud experiment.** Voices are requested on mount
+(`getVoices` + `voiceschanged`); an available voice is assigned to the
+utterance, and a paused synthesizer is resumed before speaking. Actual
+startup latency depends on the browser and voice and has not been measured.
 
 **P15.4 — Feedback acknowledgement.** A recorded rating (write confirmed by
 the backend) shows a transient toast — "Thanks for your review" — in the same
