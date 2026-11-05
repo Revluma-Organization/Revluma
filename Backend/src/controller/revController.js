@@ -458,9 +458,12 @@ exports.getConversation = async (req, res, next) => {
       SELECT
         cm.id, cm.role, cm.content, cm.sequence_number,
         cm.agent_name, cm.confidence_score, cm.has_error, cm.error_code, cm.error_message,
-        cm.created_at
+        cm.created_at,
+        fb.rating AS feedback_rating
       FROM conversation_messages cm
       JOIN conversations cv ON cv.id = cm.conversation_id
+      LEFT JOIN conversation_message_feedback fb
+        ON fb.message_id = cm.id AND fb.user_id = ${req.user.id}::uuid
       WHERE cm.conversation_id = ${id}::uuid
         AND cv.organization_id = ${org.id}::uuid
       ORDER BY cm.sequence_number ASC
@@ -474,6 +477,97 @@ exports.getConversation = async (req, res, next) => {
         messages,
         pagination: { limit, offset },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── POST /api/v1/rev/message-feedback ─────────────────────────────────────────
+// Thumbs up/down on a persisted Rev answer (ChatGPT-UI adoption §5 "action
+// dock"). Same security invariants as every rev endpoint: the organisation is
+// resolved from the authenticated JWT/DB — never from the request body — and
+// the target message is verified to belong to that organisation and to be a
+// Rev answer before anything is written. Changing a rating upserts; sending
+// rating null deletes the merchant's row (toggle-off), so the table only ever
+// holds an explicit current choice.
+
+const FEEDBACK_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VALID_FEEDBACK_RATINGS = ['up', 'down'];
+
+exports.submitMessageFeedback = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+
+    const messageId = typeof req.body?.message_id === 'string'
+      ? req.body.message_id.trim().toLowerCase()
+      : '';
+    const rating = req.body?.rating === undefined ? undefined : req.body?.rating;
+
+    if (!FEEDBACK_UUID_PATTERN.test(messageId)
+        || (rating !== null && !VALID_FEEDBACK_RATINGS.includes(rating))) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A valid message_id and rating ("up", "down" or null) are required.',
+        },
+      });
+    }
+
+    const rows = await prisma.$queryRaw`
+      SELECT id, organization_id, role
+      FROM conversation_messages
+      WHERE id = ${messageId}::uuid
+      LIMIT 1
+    `;
+    const row = rows[0] || null;
+    if (!row) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'MESSAGE_NOT_FOUND', message: 'Message not found.' },
+      });
+    }
+    if (String(row.organization_id) !== String(org.id)) {
+      logger.warn('rev_cross_tenant_attempt', {
+        requestorOrgId: org.id,
+        messageOrgId:   row.organization_id,
+        messageId,
+        endpoint:       'message-feedback',
+      });
+      return res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: 'Not authorised to rate this message.' },
+      });
+    }
+    if (row.role !== 'rev') {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'NOT_RATEABLE', message: 'Only Rev answers can be rated.' },
+      });
+    }
+
+    if (rating === null) {
+      await prisma.$executeRaw`
+        DELETE FROM conversation_message_feedback
+        WHERE message_id = ${messageId}::uuid
+          AND user_id = ${req.user.id}::uuid
+      `;
+      return res.status(200).json({
+        success: true,
+        data: { message_id: messageId, rating: null },
+      });
+    }
+
+    await prisma.$executeRaw`
+      INSERT INTO conversation_message_feedback (organization_id, message_id, user_id, rating)
+      VALUES (${org.id}::uuid, ${messageId}::uuid, ${req.user.id}::uuid, ${rating})
+      ON CONFLICT (message_id, user_id)
+      DO UPDATE SET rating = EXCLUDED.rating, updated_at = NOW()
+    `;
+    return res.status(200).json({
+      success: true,
+      data: { message_id: messageId, rating },
     });
   } catch (error) {
     next(error);

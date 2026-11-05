@@ -27,6 +27,7 @@ import {
   RotateCcw, TrendingUp, ShoppingCart, Users, BarChart2,
   Zap, RefreshCw, Mic, Phone, Pencil,
   Trash2, ImageIcon, AlertCircle, RefreshCcw, Square, Search,
+  ThumbsUp, ThumbsDown, Volume2,
 } from "lucide-react";
 import revIntellLogo from "@/assets/images/rev-intell-logo.png";
 import { useAuth } from "@/context/AuthContext";
@@ -82,6 +83,8 @@ interface Message {
   /** Live investigation steps while the turn is streaming. */
   steps?:      InvestigationStep[];
   cancelled?:  boolean;
+  /** The merchant's persisted thumbs rating for a Rev answer (ChatGPT-UI study §5). */
+  feedback?:   "up" | "down" | null;
 }
 
 interface Conversation {
@@ -276,12 +279,15 @@ function answerCopyText(message: Message): string {
   return blocks.join("\n\n");
 }
 
-function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evidenceOpen, actionsDisabled, isDark, t1, t2 }: {
+function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evidenceOpen, actionsDisabled, onFeedback, speechSupported, speaking, onReadAloud, isDark, t1, t2 }: {
   msg: Message; onCopy: (t: string) => void;
   onRetry: () => void; onSend?: (text: string) => void;
   retryLabel?: string;
   actionsDisabled?: boolean;
   onOpenEvidence?: (messageId: string) => void; evidenceOpen?: boolean;
+  onFeedback: (msg: Message, rating: "up" | "down") => void;
+  speechSupported: boolean; speaking: boolean;
+  onReadAloud: (msg: Message) => void;
   isDark: boolean; t1: string; t2: string;
 }) {
   const isRev = msg.role === "rev";
@@ -376,9 +382,53 @@ function Bubble({ msg, onCopy, onRetry, retryLabel, onSend, onOpenEvidence, evid
         )}
 
         {!msg.isStreaming && !msg.hasError && !msg.cancelled && (
-          <div className="flex items-center gap-0.5 mt-3 opacity-100 transition-opacity">
+          <div className="flex flex-wrap items-center gap-0.5 mt-3 opacity-100 transition-opacity">
             {[
               { icon: Copy,       label: "Copy",  fn: () => onCopy(answerCopyText(msg)) },
+            ].map(({ icon: Icon, label, fn }) => (
+              <button key={label} onClick={fn} disabled={fn === onRetry && actionsDisabled}
+                className="flex min-h-11 items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors disabled:opacity-50"
+                style={{ color: t2, fontFamily: "inherit" }}
+                onMouseEnter={e => (e.currentTarget.style.color = t1)}
+                onMouseLeave={e => (e.currentTarget.style.color = t2)}>
+                <Icon size={11} />{label}
+              </button>
+            ))}
+            {isRev && speechSupported && (
+              <button
+                onClick={() => onReadAloud(msg)}
+                aria-label={speaking ? "Stop reading aloud" : "Read aloud"}
+                title={speaking ? "Stop reading aloud" : "Read aloud"}
+                className="flex min-h-11 items-center gap-1 px-2 py-1 rounded-md text-[0.7rem] transition-colors"
+                style={{ color: speaking ? (isDark ? "#b4a8ff" : "#1F06AC") : t2, fontFamily: "inherit" }}
+                onMouseEnter={e => (e.currentTarget.style.color = t1)}
+                onMouseLeave={e => (e.currentTarget.style.color = speaking ? (isDark ? "#b4a8ff" : "#1F06AC") : t2)}>
+                {speaking ? <Square size={10} /> : <Volume2 size={11} />}
+                {speaking ? "Stop" : "Read aloud"}
+              </button>
+            )}
+            {isRev && msg.payload?.message_id && ([
+              { rating: "up" as const, icon: ThumbsUp, label: "Helpful" },
+              { rating: "down" as const, icon: ThumbsDown, label: "Not helpful" },
+            ].map(({ rating, icon: Icon, label }) => {
+              const active = msg.feedback === rating;
+              return (
+                <button
+                  key={rating}
+                  onClick={() => onFeedback(msg, rating)}
+                  disabled={actionsDisabled}
+                  aria-label={label}
+                  aria-pressed={active}
+                  title={label}
+                  className="flex min-h-11 items-center px-2 py-1 rounded-md text-[0.7rem] transition-colors disabled:opacity-50"
+                  style={{ color: active ? (isDark ? "#b4a8ff" : "#1F06AC") : t2 }}
+                  onMouseEnter={e => { if (!active) e.currentTarget.style.color = t1; }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.color = t2; }}>
+                  <Icon size={11} fill={active ? "currentColor" : "none"} />
+                </button>
+              );
+            }))}
+            {[
               { icon: RotateCcw,  label: retryLabel ?? "Retry", fn: onRetry },
             ].map(({ icon: Icon, label, fn }) => (
               <button key={label} onClick={fn} disabled={fn === onRetry && actionsDisabled}
@@ -811,6 +861,7 @@ export default function RevIntell() {
           messages: Array<{
             id: string; role: string; content: unknown;
             created_at: string; has_error?: boolean;
+            feedback_rating?: string | null;
           }>;
         };
       }>(`/rev/conversation/${encodeURIComponent(convId)}${append ? `?limit=${MESSAGE_PAGE_SIZE}&offset=${offset}` : ""}`);
@@ -850,7 +901,10 @@ export default function RevIntell() {
           timestamp: new Date(m.created_at),
           hasError:  m.has_error || false,
           persistence: "persisted",
-          payload,
+          feedback: m.feedback_rating === "up" || m.feedback_rating === "down" ? m.feedback_rating : undefined,
+          // Rehydrated Rev turns stay ratable even when the persisted content
+          // predates message_id in payloads: the thread row IS the message.
+          payload: payload && !payload.message_id ? { ...payload, message_id: m.id } : payload,
         };
       });
 
@@ -1278,6 +1332,57 @@ export default function RevIntell() {
       if (request === copyRequestRef.current) setCopyError("The answer could not be copied. Select the text and copy it manually.");
     }
   };
+
+  // ── Answer feedback (ChatGPT-UI study §5: thumbs in the action dock) ───────
+  // Optimistic with an honest revert: if the write does not land, the UI must
+  // not claim it did. Clicking the active rating clears it — the backend row
+  // only ever holds an explicit current choice.
+  const submitFeedback = useCallback(async (msg: Message, rating: "up" | "down") => {
+    const messageId = typeof msg.payload?.message_id === "string" && msg.payload.message_id
+      ? msg.payload.message_id
+      : null;
+    if (!messageId) return;
+    const previous = msg.feedback ?? null;
+    const next = previous === rating ? null : rating;
+    setMessages(list => list.map(item => (item.id === msg.id ? { ...item, feedback: next } : item)));
+    try {
+      await api.post("/rev/message-feedback", { message_id: messageId, rating: next });
+    } catch {
+      setMessages(list => list.map(item => (item.id === msg.id ? { ...item, feedback: previous } : item)));
+    }
+  }, []);
+
+  // ── Read aloud (ChatGPT-UI study §5: TTS in the action dock) ───────────────
+  // Feature-detected: the button exists only where the platform can actually
+  // speak. Speech never survives a new turn or leaving the page.
+  const speechSupported = typeof window !== "undefined" && "speechSynthesis" in window
+    && typeof window.SpeechSynthesisUtterance !== "undefined";
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const stopSpeech = useCallback(() => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    setSpeakingId(null);
+  }, []);
+  const toggleReadAloud = useCallback((msg: Message) => {
+    if (!speechSupported) return;
+    if (speakingId === msg.id) {
+      stopSpeech();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new window.SpeechSynthesisUtterance(answerCopyText(msg));
+    const clear = () => setSpeakingId(current => (current === msg.id ? null : current));
+    utterance.onend = clear;
+    utterance.onerror = clear;
+    setSpeakingId(msg.id);
+    window.speechSynthesis.speak(utterance);
+  }, [speechSupported, speakingId, stopSpeech]);
+  // A new turn never talks over the merchant: speech stops when Rev starts.
+  useEffect(() => { if (thinking) stopSpeech(); }, [thinking, stopSpeech]);
+  // Never leave the page speaking.
+  useEffect(() => () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+  }, []);
+
   const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -1623,6 +1728,10 @@ export default function RevIntell() {
                 retryLabel={msg.persistence === "not-persisted" && msg === messages[messages.length - 1] ? "Try again" : "Ask again"}
                 onOpenEvidence={(messageId) => setEvidenceFor(current => (current === messageId ? null : messageId))}
                 evidenceOpen={evidenceFor === msg.id}
+                onFeedback={submitFeedback}
+                speechSupported={speechSupported}
+                speaking={speakingId === msg.id}
+                onReadAloud={toggleReadAloud}
                 isDark={isDark} t1={t1} t2={t2} />
             ))}
             {messagesMore && <p role="status" className="mt-3 text-xs" style={{ color: t2 }}>Showing the start of this conversation. Load the remaining messages before continuing.</p>}

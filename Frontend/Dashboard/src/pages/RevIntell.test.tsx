@@ -1166,3 +1166,92 @@ describe('stream scroll discipline (ChatGPT-UI study §6)', () => {
     expect(screen.queryByRole('button', { name: 'Back to latest message' })).toBeNull();
   });
 });
+
+describe('answer feedback and read-aloud (ChatGPT-UI study §5)', () => {
+  const ratedThread = (feedbackRating?: string) => reply({ messages: [
+    { id: 'stored-user', role: 'user', content: { text: 'Stored question' }, created_at: '2026-11-02T12:00:00Z' },
+    { id: 'stored-rev', role: 'rev', content: answer('A', 'Stored answer'), created_at: '2026-11-02T12:00:05Z',
+      ...(feedbackRating ? { feedback_rating: feedbackRating } : {}) },
+  ] });
+
+  async function openThread(feedbackRating?: string) {
+    replies.set('/rev/conversation/A', Promise.resolve(ratedThread(feedbackRating)));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByText('Stored answer');
+  }
+
+  it('posts an up rating under the persisted message id', async () => {
+    vi.mocked(api.post).mockResolvedValue(reply(null));
+    await openThread();
+    const thumb = screen.getByRole('button', { name: 'Helpful' });
+    expect(thumb).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(thumb);
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/rev/message-feedback', { message_id: 'stored-rev', rating: 'up' }));
+    await waitFor(() => expect(thumb).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByRole('button', { name: 'Not helpful' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('rehydrates the stored rating and clears it when the active thumb is clicked again', async () => {
+    vi.mocked(api.post).mockResolvedValue(reply(null));
+    await openThread('up');
+    const thumb = screen.getByRole('button', { name: 'Helpful' });
+    expect(thumb).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(thumb);
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/rev/message-feedback', { message_id: 'stored-rev', rating: null }));
+    await waitFor(() => expect(thumb).toHaveAttribute('aria-pressed', 'false'));
+  });
+
+  it('switches sides when the other thumb is clicked', async () => {
+    vi.mocked(api.post).mockResolvedValue(reply(null));
+    await openThread('up');
+    fireEvent.click(screen.getByRole('button', { name: 'Not helpful' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/rev/message-feedback', { message_id: 'stored-rev', rating: 'down' }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Helpful' })).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByRole('button', { name: 'Not helpful' })).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+
+  it('reverts the optimistic state honestly when the backend write fails', async () => {
+    vi.mocked(api.post).mockRejectedValue(new Error('RATE_LIMITED'));
+    await openThread();
+    const thumb = screen.getByRole('button', { name: 'Helpful' });
+    fireEvent.click(thumb);
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/rev/message-feedback', { message_id: 'stored-rev', rating: 'up' }));
+    await waitFor(() => expect(thumb).toHaveAttribute('aria-pressed', 'false'));
+  });
+
+  it('shows no thumbs on merchant turns', async () => {
+    await openThread();
+    expect(screen.getAllByRole('button', { name: 'Helpful' })).toHaveLength(1);
+  });
+
+  it('offers no Read aloud button where the platform cannot speak', async () => {
+    await openThread();
+    expect(screen.queryByRole('button', { name: /Read aloud|Stop reading aloud/ })).toBeNull();
+  });
+
+  it('reads the answer aloud and stops on a second click where speech is supported', async () => {
+    class Utterance {
+      text: string; onend: (() => void) | null = null; onerror: (() => void) | null = null;
+      constructor(text: string) { this.text = text; }
+    }
+    const speak = vi.fn();
+    const cancel = vi.fn();
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: { speak, cancel } });
+    Object.defineProperty(window, 'SpeechSynthesisUtterance', { configurable: true, value: Utterance });
+    try {
+      await openThread();
+      fireEvent.click(screen.getByRole('button', { name: 'Read aloud' }));
+      await waitFor(() => expect(speak).toHaveBeenCalledTimes(1));
+      expect(speak.mock.calls[0][0]).toBeInstanceOf(Utterance);
+      expect((speak.mock.calls[0][0] as Utterance).text).toContain('Stored answer');
+      fireEvent.click(screen.getByRole('button', { name: 'Stop reading aloud' }));
+      await waitFor(() => expect(cancel).toHaveBeenCalled());
+      expect(screen.getByRole('button', { name: 'Read aloud' })).toBeTruthy();
+    } finally {
+      delete (window as unknown as Record<string, unknown>).speechSynthesis;
+      delete (window as unknown as Record<string, unknown>).SpeechSynthesisUtterance;
+    }
+  });
+});

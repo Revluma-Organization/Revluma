@@ -8,6 +8,7 @@
  * POST /api/v1/rev/chat              — send message, get Rev response
  * GET  /api/v1/rev/conversations     — list conversation history (paginated)
  * GET  /api/v1/rev/conversation/:id  — load full conversation thread
+ * POST /api/v1/rev/message-feedback  — thumbs up/down on a persisted Rev answer
  * POST /api/v1/memory                — write a merchant memory
  * GET  /api/v1/rev/health            — Python service health check
  */
@@ -54,6 +55,24 @@ const memoryLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'test',
 });
 
+// ── Rate limiter: answer feedback ────────────────────────────────────────────
+// 60 rating writes per 5 minutes per IP — generous for honest thumb toggling,
+// tight enough that the table cannot be used as a write-amplification target.
+const feedbackLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 60,
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many feedback submissions. Please wait a moment.',
+    },
+  },
+  standardHeaders: true,
+  legacyHeaders:   false,
+  skip: () => process.env.NODE_ENV === 'test',
+});
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 // Chat — the primary Rev Intelligence endpoint (non-streaming fallback)
@@ -79,6 +98,9 @@ router.delete('/conversation/:id',        authenticateToken,               revCo
 
 // Rename a conversation
 router.patch('/conversation/:id/title',   authenticateToken,               revController.renameConversation);
+
+// Thumbs up/down on a persisted Rev answer (upsert; rating null clears)
+router.post('/message-feedback',          authenticateToken, feedbackLimiter, revController.submitMessageFeedback);
 
 // Evidence-gated intelligence findings — organization scoped
 router.get('/findings',                   authenticateToken,               revController.getIntelligenceFindings);

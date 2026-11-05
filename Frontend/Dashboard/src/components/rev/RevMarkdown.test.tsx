@@ -126,6 +126,67 @@ describe("RevMarkdown table exports (ChatGPT-UI study §5)", () => {
   });
 });
 
+describe("RevMarkdown sortable tables (ChatGPT-UI study §5)", () => {
+  const sortable = [
+    "| Product | Units | Revenue |",
+    "| --- | --- | --- |",
+    "| Widget | 12 | 1,571.90 USD |",
+    "| Gadget | 9 | 900.00 USD |",
+    "| Doohickey | 30 | 2,100.00 USD |",
+  ].join("\n");
+
+  function productOrder(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll("tbody tr td:first-child"))
+      .map(td => td.textContent ?? "");
+  }
+
+  it("cycles none → ascending → descending → none when the header is clicked", async () => {
+    const { container } = render(<RevMarkdown text={sortable} />);
+    const revenueHeader = screen.getByRole("button", { name: "Sort by Revenue" }).closest("th")!;
+    expect(productOrder(container)).toEqual(["Widget", "Gadget", "Doohickey"]);
+    expect(revenueHeader.getAttribute("aria-sort")).toBe("none");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Revenue" }));
+    await waitFor(() => expect(productOrder(container)).toEqual(["Gadget", "Widget", "Doohickey"]));
+    expect(revenueHeader.getAttribute("aria-sort")).toBe("ascending");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Revenue" }));
+    await waitFor(() => expect(productOrder(container)).toEqual(["Doohickey", "Widget", "Gadget"]));
+    expect(revenueHeader.getAttribute("aria-sort")).toBe("descending");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Revenue" }));
+    await waitFor(() => expect(productOrder(container)).toEqual(["Widget", "Gadget", "Doohickey"]));
+    expect(revenueHeader.getAttribute("aria-sort")).toBe("none");
+  });
+
+  it("sorts numeric cells as numbers, not as strings (9 before 12 before 30)", async () => {
+    const { container } = render(<RevMarkdown text={sortable} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Units" }));
+    await waitFor(() => expect(productOrder(container)).toEqual(["Gadget", "Widget", "Doohickey"]));
+  });
+
+  it("exports the sorted order as CSV but keeps the Markdown export verbatim", async () => {
+    const writeText = stubClipboard("success");
+    render(<RevMarkdown text={sortable} />);
+    const revenueHeader = screen.getByRole("button", { name: "Sort by Revenue" }).closest("th")!;
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Revenue" }));
+    await waitFor(() => expect(revenueHeader.getAttribute("aria-sort")).toBe("ascending"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy CSV" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(
+      'Product,Units,Revenue\nGadget,9,900.00 USD\nWidget,12,"1,571.90 USD"\nDoohickey,30,"2,100.00 USD"',
+    ));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Markdown" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(sortable));
+  });
+
+  it("renders no sort controls while the table is still streaming", () => {
+    render(<RevMarkdown text={sortable} streaming />);
+    expect(screen.queryByRole("button", { name: /Sort by/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy CSV" })).toBeNull();
+  });
+});
+
 describe("RevMarkdown streaming discipline (ChatGPT-UI study §3/§6)", () => {
   it("hides every interactive affordance while the turn is still streaming", () => {
     const { container } = render(

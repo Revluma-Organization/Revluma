@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, Copy, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy, X } from "lucide-react";
 import { revTokens, type RevTone } from "@/lib/revTokens";
-import { copyTextToClipboard, tableToCsv, tableToMarkdown } from "@/lib/revTableExport";
+import { copyTextToClipboard, plainCellText, tableToCsv, tableToMarkdown } from "@/lib/revTableExport";
 
 /**
  * Small, dependency-free renderer for the markdown Rev is allowed to return.
@@ -190,6 +190,119 @@ function CodeBlock({ lines, tone, streaming }: { lines: string[]; tone: RevTone;
   );
 }
 
+type SortState = { col: number; dir: "asc" | "desc" } | null;
+
+/** First finite number in a cell (thousands separators, currency words around it); null when there is none. */
+function cellNumber(text: string): number | null {
+  const match = plainCellText(text).match(/-?\d[\d,]*(?:\.\d+)?/);
+  if (!match) return null;
+  const value = Number(match[0].replace(/,/g, ""));
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Numeric-first comparison so "1,571.90 USD" sorts as a number, not a string. */
+function compareCells(a: string, b: string): number {
+  const na = cellNumber(a);
+  const nb = cellNumber(b);
+  if (na !== null && nb !== null && na !== nb) return na - nb;
+  return plainCellText(a).localeCompare(plainCellText(b), undefined, { numeric: true, sensitivity: "base" });
+}
+
+/**
+ * Table block (ChatGPT-UI study §5 "Tables"): horizontal-scroll container,
+ * Copy CSV / Copy Markdown toolbar, and click-to-sort columns cycling
+ * none → ascending → descending → none. CSV export carries the *rendered*
+ * (sorted) order; the Markdown export always carries the original source.
+ * Sorting is client-side over values the model actually produced — nothing
+ * is recomputed or estimated.
+ */
+function TableBlock({ source, tone, streaming }: { source: string; tone: RevTone; streaming: boolean }) {
+  const t = revTokens(tone);
+  const lines = useMemo(() => source.split("\n"), [source]);
+  const rows = useMemo(
+    () => lines
+      .filter((line, index) => index !== 1)
+      .map((line) => line.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((cell) => cell.trim())),
+    [lines],
+  );
+  const [head, ...body] = rows;
+  const [sort, setSort] = useState<SortState>(null);
+
+  const displayBody = useMemo(() => {
+    if (!sort) return body;
+    const factor = sort.dir === "asc" ? 1 : -1;
+    return [...body].sort((a, b) => factor * compareCells(a[sort.col] ?? "", b[sort.col] ?? ""));
+  }, [sort, rows]);
+
+  const cycleSort = (col: number) => {
+    setSort(current => {
+      if (!current || current.col !== col) return { col, dir: "asc" };
+      if (current.dir === "asc") return { col, dir: "desc" };
+      return null;
+    });
+  };
+
+  const sortIcon = (col: number) => {
+    if (sort?.col !== col) return <ArrowUpDown size={11} aria-hidden="true" />;
+    return sort.dir === "asc" ? <ArrowUp size={11} aria-hidden="true" /> : <ArrowDown size={11} aria-hidden="true" />;
+  };
+
+  return (
+    <div>
+      {!streaming && (
+        <div className="flex flex-wrap items-center gap-1" data-rev-table-toolbar style={{ marginBottom: 2 }}>
+          <CopyButton value={tableToCsv([head, ...displayBody])} label="Copy CSV" tone={tone} />
+          <CopyButton value={tableToMarkdown(lines)} label="Copy Markdown" tone={tone} />
+        </div>
+      )}
+      <div style={{ overflowX: "auto", border: `1px solid ${t.border}`, borderRadius: 10 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+          <thead>
+            <tr style={{ background: t.tableHeadBg }}>
+              {(head ?? []).map((cell, index) => (
+                <th
+                  key={index}
+                  scope="col"
+                  aria-sort={streaming ? undefined : sort?.col === index ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+                  style={{ textAlign: "left", padding: "9px 12px", color: t.muted, fontWeight: 650 }}
+                >
+                  {streaming ? cell : (
+                    <button
+                      type="button"
+                      onClick={() => cycleSort(index)}
+                      aria-label={`Sort by ${plainCellText(cell) || `column ${index + 1}`}`}
+                      className="inline-flex min-h-11 items-center gap-1"
+                      style={{
+                        background: "transparent", border: "none", cursor: "pointer", padding: 0,
+                        color: sort?.col === index ? t.strong : "inherit",
+                        font: "inherit", fontWeight: "inherit", textAlign: "left",
+                      }}
+                    >
+                      {cell}
+                      {sortIcon(index)}
+                    </button>
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {displayBody.map((row, rowIndex) => (
+              <tr key={rowIndex} style={{ borderTop: `1px solid ${t.border}` }}>
+                {row.map((cell, cellIndex) => (
+                  <td key={cellIndex} style={{ padding: "9px 12px", color: t.body }}>
+                    {inline(cell, `cell-${rowIndex}-${cellIndex}`)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 const Block = memo(function Block({ block, tone, streaming }: { block: string; tone: RevTone; streaming: boolean }) {
   const t = revTokens(tone);
   const rawLines = block.split("\n");
@@ -237,44 +350,7 @@ const Block = memo(function Block({ block, tone, streaming }: { block: string; t
     );
   }
   if (isTableBlock(lines)) {
-    const rows = lines
-      .filter((line, index) => index !== 1)
-      .map((line) => line.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((cell) => cell.trim()));
-    const [head, ...body] = rows;
-    return (
-      <div>
-        {!streaming && (
-          <div className="flex flex-wrap items-center gap-1" data-rev-table-toolbar style={{ marginBottom: 2 }}>
-            <CopyButton value={tableToCsv(rows)} label="Copy CSV" tone={tone} />
-            <CopyButton value={tableToMarkdown(lines)} label="Copy Markdown" tone={tone} />
-          </div>
-        )}
-        <div style={{ overflowX: "auto", border: `1px solid ${t.border}`, borderRadius: 10 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-            <thead>
-              <tr style={{ background: t.tableHeadBg }}>
-                {head.map((cell, index) => (
-                  <th key={index} scope="col" style={{ textAlign: "left", padding: "9px 12px", color: t.muted, fontWeight: 650 }}>
-                    {cell}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {body.map((row, rowIndex) => (
-                <tr key={rowIndex} style={{ borderTop: `1px solid ${t.border}` }}>
-                  {row.map((cell, cellIndex) => (
-                    <td key={cellIndex} style={{ padding: "9px 12px", color: t.body }}>
-                      {inline(cell, `cell-${rowIndex}-${cellIndex}`)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
+    return <TableBlock source={lines.join("\n")} tone={tone} streaming={streaming} />;
   }
   if (lines.every((line) => /^\s*[-*]\s+/.test(line))) {
     return (
