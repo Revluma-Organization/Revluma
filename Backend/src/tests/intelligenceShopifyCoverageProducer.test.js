@@ -55,3 +55,23 @@ test('does not certify if Shopify granted scopes cannot be verified', async () =
   }), /read_orders/);
   assert.equal(f.certificates, 0);
 });
+
+test('never certifies missing or malformed Shopify money as a zero-value order', async () => {
+  for (const amount of [null, undefined, '', '   ', false, {}, 'not-money']) {
+    const f = fixture({ orders: [{ ...source[0], currentTotalPriceSet: { shopMoney: { amount, currencyCode: 'USD' } } }] });
+    await assert.rejects(verifyShopifyOrderCoverage(f.db, shop, {
+      now: new Date('2026-10-27T12:00:00Z'), graphql: f.graphql, fetchPages: f.fetchPages,
+    }), { code: 'ORDER_COVERAGE_SOURCE_FINANCIALS_UNVERIFIED' });
+    assert.equal(f.certificates, 0);
+  }
+});
+
+test('never certifies a missing or invalid local total as a zero-value order', async () => {
+  for (const total of [null, undefined, '', '  ', 'not-money']) {
+    const f = fixture({ rows: [{ external_order_id: '1001', total, currency: 'USD' }] });
+    await assert.rejects(verifyShopifyOrderCoverage(f.db, shop, {
+      now: new Date('2026-10-27T12:00:00Z'), graphql: f.graphql, fetchPages: f.fetchPages,
+    }), { code: 'ORDER_COVERAGE_ORDER_TOTAL_MISMATCH' });
+    assert.equal(f.certificates, 0);
+  }
+});

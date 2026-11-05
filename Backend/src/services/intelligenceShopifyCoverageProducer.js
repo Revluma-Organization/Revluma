@@ -8,7 +8,14 @@ const { fetchConnection, verifyOrderReadScope } = require('./shopifySync');
 const { TRUSTED_SOURCE, certifyOrderCoverage } = require('./intelligenceOrderCoverage');
 
 const DAY = 86400000;
-const asMoney = value => Number(value?.shopMoney?.amount);
+// Number(null) and Number('') are zero in JavaScript. Missing source money
+// must never be certified as a legitimate zero-value order.
+const asMoney = value => {
+  const amount = value?.shopMoney?.amount;
+  if (amount === null || amount === undefined || (typeof amount === 'string' && !amount.trim())) return NaN;
+  if (typeof amount !== 'number' && typeof amount !== 'string') return NaN;
+  return Number(amount);
+};
 const orderId = gid => String(gid || '').split('/').pop();
 function verificationError(code) {
   return Object.assign(new Error('Shopify historical coverage verification incomplete'), { code });
@@ -58,7 +65,8 @@ async function verifyShopifyOrderCoverage(prisma, store, { now = new Date(), gra
   if (local.length !== sourceById.size) throw verificationError('ORDER_COVERAGE_ORDER_SET_MISMATCH');
   for (const row of local) {
     const expected = sourceById.get(row.external_order_id);
-    if (!expected || expected.currency !== row.currency ||
+    if (!expected || expected.currency !== row.currency || row.total == null ||
+        (typeof row.total === 'string' && !row.total.trim()) || !Number.isFinite(Number(row.total)) ||
         Math.round(expected.amount * 100) !== Math.round(Number(row.total) * 100)) {
       throw verificationError('ORDER_COVERAGE_ORDER_TOTAL_MISMATCH');
     }
