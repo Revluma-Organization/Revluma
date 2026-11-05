@@ -18,3 +18,5 @@
 ### Further P0 financial coverage hardening
 
 Coverage comparison must use exact decimal equality, not universally round to two decimal places. It now normalizes nonnegative decimal strings without floating-point rounding and rejects malformed numbers, unsupported scientific notation and duplicate local order identifiers before issuing a certificate. This is **a verification safeguard**, not a complete multi-currency metrics engine: existing ingestion still has two-decimal rounding and remains to be audited/fixed. Local mocked coverage tests include 3-decimal differences, equivalent trailing zeros, large integer differences and duplicate local IDs. Production evidence remains outstanding.
+
+Coverage now also compares each source order creation timestamp with the stored reporting timestamp and refuses certification if a local status would exclude the order from the revenue query. This prevents a correct window total from falsely certifying an incorrect subperiod. Focused fixtures pass; live reconciliation still required.

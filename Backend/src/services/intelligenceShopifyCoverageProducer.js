@@ -65,19 +65,22 @@ async function verifyShopifyOrderCoverage(prisma, store, { now = new Date(), gra
         order.cancelledAt || ['CANCELLED', 'FAILED', 'VOIDED'].includes(order.displayFinancialStatus)) {
       throw verificationError('ORDER_COVERAGE_SOURCE_FINANCIALS_UNVERIFIED');
     }
-    sourceById.set(id, { amount, currency });
+    sourceById.set(id, { amount, currency, createdAt: created.getTime() });
   }
   // Any cancelled or otherwise excluded Shopify order makes this window
   // uncertifiable until cancellation accounting is separately attested.
   const local = await prisma.orders.findMany({
     where: { store_id: store.id, ordered_at: { gte: start, lt: end } },
-    select: { external_order_id: true, total: true, currency: true },
+    select: { external_order_id: true, total: true, currency: true, ordered_at: true, recovery_status: true },
   });
   if (local.length !== sourceById.size) throw verificationError('ORDER_COVERAGE_ORDER_SET_MISMATCH');
   const seenLocalIds = new Set();
   for (const row of local) {
     const expected = sourceById.get(row.external_order_id);
+    const localDate = row.ordered_at instanceof Date ? row.ordered_at.getTime() : NaN;
+    const excludedStatus = ['cancelled', 'canceled', 'voided', 'deleted'].includes(String(row.recovery_status || '').toLowerCase());
     if (!expected || seenLocalIds.has(row.external_order_id) || expected.currency !== row.currency ||
+        !Number.isFinite(localDate) || localDate !== expected.createdAt || excludedStatus ||
         canonicalMoney(row.total) !== expected.amount) {
       throw verificationError('ORDER_COVERAGE_ORDER_TOTAL_MISMATCH');
     }

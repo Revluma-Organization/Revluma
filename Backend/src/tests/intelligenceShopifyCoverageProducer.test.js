@@ -14,7 +14,7 @@ function fixture({ rows = [{ external_order_id: '1001', total: 0, currency: 'USD
   orders = source, gaps = 0 } = {}) {
   let certificates = 0;
   const db = {
-    orders: { findMany: async () => rows },
+    orders: { findMany: async () => rows.map(row => ({ ordered_at: new Date(source[0].createdAt), recovery_status: null, ...row })) },
     webhook_deliveries: { count: async () => gaps },
     stores: { findFirst: async () => ({ id: shop.id }) },
     intelligence_order_coverage: { upsert: async args => { certificates++; return args.create; } },
@@ -102,4 +102,18 @@ test('cannot certify a duplicate local order in place of a missing order', async
     now: new Date('2026-10-27T12:00:00Z'), graphql: f.graphql, fetchPages: f.fetchPages,
   }), { code: 'ORDER_COVERAGE_ORDER_TOTAL_MISMATCH' });
   assert.equal(f.certificates, 0);
+});
+
+
+test('does not certify an order assigned to the wrong time or excluded locally', async () => {
+  for (const overrides of [
+    { ordered_at: new Date('2026-10-21T12:00:00Z') }, { ordered_at: null },
+    { recovery_status: 'cancelled' }, { recovery_status: 'deleted' },
+  ]) {
+    const f = fixture({ rows: [{ external_order_id: '1001', total: 0, currency: 'USD', ...overrides }] });
+    await assert.rejects(verifyShopifyOrderCoverage(f.db, shop, {
+      now: new Date('2026-10-27T12:00:00Z'), graphql: f.graphql, fetchPages: f.fetchPages,
+    }), { code: 'ORDER_COVERAGE_ORDER_TOTAL_MISMATCH' });
+    assert.equal(f.certificates, 0);
+  }
 });
