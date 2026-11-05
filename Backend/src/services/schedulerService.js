@@ -877,6 +877,7 @@ async function runChurnQueue() {
                 job: CHURN_SCORING_JOB,
                 succeeded: result?.processed ?? 0,
                 failed: result?.failed ?? 0,
+                failure_reasons: result?.failure_reasons ?? {},
                 latency_ms: Date.now() - startedAt,
                 finished_at: new Date().toISOString(),
             },

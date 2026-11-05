@@ -171,18 +171,27 @@ async function runDailyChurnScoring({ limit = 100 } = {}) {
   });
   let processed = 0;
   let failed = 0;
+  // Counted per error code so the scheduler's job-state row answers "why did
+  // the pass fail?" from the database alone. The 2026-11-05 deploy-window
+  // failure (11/11 while Python redeployed) was only diagnosable by waiting
+  // for Render logs; with reasons persisted, an outage (UNAVAILABLE) is
+  // distinguishable from a contract rejection (INVALID_REQUEST/
+  // INVALID_RESPONSE) the moment the pass ends.
+  const failureReasons = {};
   for (const customer of customers) {
     try {
       if (await scoreCustomer(customer, customer.stores)) processed += 1;
     } catch (error) {
       failed += 1;
+      const reason = error.code || error.name || 'processing_error';
+      failureReasons[reason] = (failureReasons[reason] || 0) + 1;
       logger.warn('daily_churn_customer_failed', {
         customer_ref: pseudonym(customer.id),
-        error_type: error.code || error.name || 'processing_error',
+        error_type: reason,
       });
     }
   }
-  return { processed, failed };
+  return { processed, failed, failure_reasons: failureReasons };
 }
 
 module.exports = { buildChurnFeatures, runDailyChurnScoring, scoreCustomer };

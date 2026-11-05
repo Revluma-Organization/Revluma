@@ -46,7 +46,9 @@ const prisma = {
 
 stubModule('../configs/database', { prisma });
 stubModule('./churnWorkerService', {
-  runDailyChurnScoring: async () => ({ processed: 2, failed: 1 }),
+  runDailyChurnScoring: async () => ({
+    processed: 2, failed: 1, failure_reasons: { UNAVAILABLE: 1 },
+  }),
 });
 stubModule('../utils/logger', { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} });
 
@@ -68,6 +70,7 @@ test('a churn pass is claimed and released in automation_job_state', async () =>
   assert.equal(stored.job, 'daily-churn');
   assert.equal(stored.succeeded, 2);
   assert.equal(stored.failed, 1);
+  assert.deepEqual(stored.failure_reasons, { UNAVAILABLE: 1 });
   assert.ok(Number.isFinite(stored.latency_ms));
 });
 

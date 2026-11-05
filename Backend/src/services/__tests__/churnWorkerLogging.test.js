@@ -65,8 +65,13 @@ const { runDailyChurnScoring } = require('../churnWorkerService');
 test('a churn failure is contained, pseudonymised and classified', async () => {
   const result = await runDailyChurnScoring({ limit: 10 });
 
-  // One customer failed; the run itself completed (containment).
-  assert.deepEqual(result, { processed: 0, failed: 1 });
+  // One customer failed; the run itself completed (containment), and the
+  // failure reason is aggregated so the job-state row can answer "why".
+  assert.deepEqual(result, {
+    processed: 0,
+    failed: 1,
+    failure_reasons: { UNAVAILABLE: 1 },
+  });
   assert.equal(warnings.length, 1);
   const [event, payload] = warnings[0];
   assert.equal(event, 'daily_churn_customer_failed');
