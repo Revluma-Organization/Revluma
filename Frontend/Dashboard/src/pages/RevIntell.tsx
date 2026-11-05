@@ -38,6 +38,7 @@ import {
 } from "@/lib/revStoreContext";
 import RevAnswerView from "@/components/rev/RevAnswerView";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
+import { JumpToLatest } from "@/components/rev/JumpToLatest";
 import EvidencePanel from "@/components/rev/EvidencePanel";
 import { normaliseRevAnswer, coveredBy, legacyResponseToPayload, recordList, stringList, textValue } from "@/lib/revPresentation";
 import RevMarkdown from "@/components/rev/RevMarkdown";
@@ -708,13 +709,25 @@ export default function RevIntell() {
 
   // Scroll discipline: follow the stream only while the merchant is pinned to
   // the bottom. Reading an older answer must not be hijacked by new frames.
+  // Scrolling away reveals a "Back to latest" pill (ChatGPT-UI study §6):
+  // leaving the stream is free, rejoining it is one click.
   const scrollBoxRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const handleScrollBoxScroll = () => {
     const box = scrollBoxRef.current;
     if (!box) return;
-    pinnedRef.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    const distance = box.scrollHeight - box.scrollTop - box.clientHeight;
+    pinnedRef.current = distance < 80;
+    // Hysteresis: the pill appears past 160px and the pinned auto-follow
+    // resumes under 80px, so a small overscroll never flickers the pill.
+    setShowJumpToLatest(prev => (prev ? distance > 80 : distance > 160));
   };
+  const jumpToLatest = useCallback(() => {
+    pinnedRef.current = true;
+    setShowJumpToLatest(false);
+    bottomRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
+  }, [reducedMotion]);
   useEffect(() => {
     if (!messagesPagePending.current && pinnedRef.current) bottomRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
   }, [messages, thinking, reducedMotion]);
@@ -1406,7 +1419,8 @@ export default function RevIntell() {
       {attachmentError && <p role="alert" className="px-4 py-2 text-sm" style={{ color: isDark ? "#fca5a5" : "#b91c1c" }}>{attachmentError}</p>}
 
       {/* Main content */}
-      <div ref={scrollBoxRef} onScroll={handleScrollBoxScroll} className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+      <div className="flex-1 min-h-0 relative">
+      <div ref={scrollBoxRef} onScroll={handleScrollBoxScroll} data-testid="rev-scroll-box" className="absolute inset-0 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
 
         {/* Conversation loading */}
         {convLoading && (
@@ -1616,6 +1630,8 @@ export default function RevIntell() {
             <div ref={bottomRef} />
           </div>
         )}
+      </div>
+      <JumpToLatest visible={showJumpToLatest} onClick={jumpToLatest} dark={isDark} />
       </div>
 
       {/* Sticky input — active conversation */}

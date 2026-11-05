@@ -45,3 +45,22 @@ describe("RevAnswerView evidence references", () => {
     expect(onOpenEvidence).toHaveBeenCalledWith("evidence-order-value");
   });
 });
+
+describe("RevAnswerView streaming discipline (ChatGPT-UI study §3/§6)", () => {
+  const tablePayload = {
+    ...payload,
+    text: "Weekly summary:\n\n| Period | Orders |\n| --- | --- |\n| 2026-10-01 → 2026-10-07 | 12 |",
+  } as unknown as RevAnswerPayload;
+
+  it("renders the full answer while streaming but suppresses interactive exports until it completes", () => {
+    const { rerender } = render(<RevAnswerView payload={tablePayload} streaming />);
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copy CSV" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy Markdown" })).toBeNull();
+
+    rerender(<RevAnswerView payload={tablePayload} />);
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy CSV" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy Markdown" })).toBeTruthy();
+  });
+});
