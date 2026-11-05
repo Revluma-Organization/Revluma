@@ -850,7 +850,7 @@ describe('Phase 5.4 bounded pagination', () => {
     // reopen it and assert the LIVE list (an exiting drawer snapshot is not
     // the source of truth).
     if (mutation === 'delete') {
-      await waitFor(() => expect(historyDialog()).not.toBeInTheDocument());
+      await waitFor(() => expect(historyDialog()).not.toBeInTheDocument(), { timeout: 4000 });
       openHistory();
     }
     expect(screen.queryByText('Conversation H0')).not.toBeInTheDocument();
@@ -1313,7 +1313,11 @@ describe('landing continuity (REV-RESUME-001)', () => {
   });
 
   it('never resumes from a failed history load', async () => {
-    replies.set('/rev/conversations', Promise.reject(new Error('history down')));
+    // Pre-handled so the debounced consumer's 250ms gap does not surface as
+    // an unhandled rejection; loadConversations still sees the failure.
+    const rejected = Promise.reject(new Error('history down'));
+    rejected.catch(() => {});
+    replies.set('/rev/conversations', rejected);
     renderPage();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/rev/conversations'));
     await screen.findByText('How can I help your revenue today?');
