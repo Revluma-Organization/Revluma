@@ -14,3 +14,7 @@
 | DE-008 | P2 | Metrics, evidence, Rev retrieval, coverage interface and cross-merchant tests | Not started; depends on source completeness and domain authorization. |
 | DE-009 | P3 | Discover and implement relevant additional interfaces | In progress: initial capability register only; exhaustive discovery incomplete. |
 | DE-010 | P0 | Production certification | Blocked: real source parity, two genuine stores, deployments, logs and required acceptance tests unverified. |
+
+### Further P0 financial coverage hardening
+
+Coverage comparison must use exact decimal equality, not universally round to two decimal places. It now normalizes nonnegative decimal strings without floating-point rounding and rejects malformed numbers, unsupported scientific notation and duplicate local order identifiers before issuing a certificate. This is **a verification safeguard**, not a complete multi-currency metrics engine: existing ingestion still has two-decimal rounding and remains to be audited/fixed. Local mocked coverage tests include 3-decimal differences, equivalent trailing zeros, large integer differences and duplicate local IDs. Production evidence remains outstanding.
