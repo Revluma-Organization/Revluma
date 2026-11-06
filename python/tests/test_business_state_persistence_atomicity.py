@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from datetime import date, datetime, timezone
 
 import pytest
 import sqlalchemy as sa
@@ -73,6 +74,55 @@ pytestmark = pytest.mark.skipif(
     reason="no reachable PostgreSQL (set TASK198_DATABASE_URL or REVLUMA_TEST_DATABASE_URL)",
 )
 
+def _required_columns(engine, table: str) -> list[tuple[str, str]]:
+    """Columns that are NOT NULL with no default, identity or generation.
+
+    Production (prisma db push) and the local migration replay drift apart -
+    for example migrations lack organizations.slug while the pushed schema
+    requires it. The seeds must survive either.
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT column_name, data_type FROM information_schema.columns"
+                " WHERE table_schema = 'public' AND table_name = :t"
+                " AND is_nullable = 'NO' AND column_default IS NULL"
+                " AND is_identity = 'NO' AND is_generated = 'NEVER'"
+            ),
+            {"t": table},
+        ).fetchall()
+    return [(r[0], r[1]) for r in rows]
+
+
+def _type_filler(data_type: str):
+    if data_type == "uuid":
+        return str(uuid.uuid4())
+    if data_type in ("text", "character varying", "character"):
+        return f"test-{uuid.uuid4().hex[:12]}"
+    if data_type in ("integer", "bigint", "smallint", "numeric", "double precision", "real"):
+        return 1
+    if data_type == "boolean":
+        return False
+    if data_type.startswith("timestamp"):
+        return datetime.now(timezone.utc)
+    if data_type == "date":
+        return date.today()
+    if data_type in ("json", "jsonb"):
+        return "{}"
+    return f"test-{uuid.uuid4().hex[:12]}"
+
+
+def _insert(engine, table: str, values: dict) -> None:
+    fill = dict(values)
+    for column, data_type in _required_columns(engine, table):
+        if column not in fill:
+            fill[column] = _type_filler(data_type)
+    cols = ", ".join(fill)
+    params = ", ".join(f":{c}" for c in fill)
+    with engine.begin() as conn:
+        conn.execute(text(f"INSERT INTO {table} ({cols}) VALUES ({params})"), fill)
+
+
 _SCHEMA = [
     """CREATE TABLE IF NOT EXISTS organizations (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,6 +130,7 @@ _SCHEMA = [
         company_name TEXT NOT NULL DEFAULT 'test-org',
         industry TEXT NOT NULL DEFAULT 'general',
         country TEXT NOT NULL DEFAULT 'NG',
+        slug TEXT NOT NULL UNIQUE,
         status TEXT NOT NULL DEFAULT 'active',
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -205,30 +256,44 @@ def org(engine):
     org_id = str(uuid.uuid4())
     user_id = str(uuid.uuid4())
     store_id = str(uuid.uuid4())
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                "INSERT INTO users (id, full_name, email, password_hash,"
-                " accepted_terms, accepted_privacy_policy)"
-                " VALUES (:id, 'test merchant', :email, 'x', true, true)"
-            ),
-            {"id": user_id, "email": f"test-{uuid.uuid4().hex[:12]}@example.invalid"},
-        )
-        conn.execute(
-            text(
-                "INSERT INTO organizations (id, owner_id, company_name, industry, country)"
-                " VALUES (:id, :owner, 'test-org', 'general', 'NG')"
-            ),
-            {"id": org_id, "owner": user_id},
-        )
-        conn.execute(
-            text(
-                "INSERT INTO stores (id, organization_id, platform, shop_domain,"
-                " status, last_synced_at)"
-                " VALUES (:id, :org, 'shopify', :domain, 'active', now())"
-            ),
-            {"id": store_id, "org": org_id, "domain": f"test-{uuid.uuid4().hex[:12]}.myshopify.com"},
-        )
+    # Insert through the schema itself: any NOT NULL column without a default
+    # (production pushed schema and the local migration replay disagree) is
+    # filled from the live information_schema, so the seed works on both.
+    _insert(
+        engine,
+        "users",
+        {
+            "id": user_id,
+            "full_name": "test merchant",
+            "email": f"test-{uuid.uuid4().hex[:12]}@example.invalid",
+            "password_hash": "x",
+            "accepted_terms": True,
+            "accepted_privacy_policy": True,
+        },
+    )
+    _insert(
+        engine,
+        "organizations",
+        {
+            "id": org_id,
+            "owner_id": user_id,
+            "company_name": "test-org",
+            "industry": "general",
+            "country": "NG",
+        },
+    )
+    _insert(
+        engine,
+        "stores",
+        {
+            "id": store_id,
+            "organization_id": org_id,
+            "platform": "shopify",
+            "shop_domain": f"test-{uuid.uuid4().hex[:12]}.myshopify.com",
+            "status": "active",
+            "last_synced_at": datetime.now(timezone.utc),
+        },
+    )
     return {"org_id": org_id, "store_id": store_id}
 
 
