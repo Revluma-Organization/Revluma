@@ -35,13 +35,27 @@ function verifyWooCommerceSignature(rawBody, signature) {
 
 async function findStore(provider, domain) {
   if (!domain) return null;
-  return prisma.stores.findFirst({
+  const normalized = String(domain).trim().toLowerCase();
+  const matches = await prisma.stores.findMany({
     where: {
       platform: provider,
-      shop_domain: domain,
+      shop_domain: normalized,
       status: { not: 'deleted' },
     },
   });
+  if (matches.length > 1) {
+    // Cross-merchant domain collision: the domain alone cannot identify the
+    // tenant, so any write would land in an arbitrary organization. Fail
+    // closed instead of acknowledging data into the wrong tenant; the caller
+    // returns an error so the provider retries once the conflict is resolved.
+    logger.error('commerce_webhook_store_resolution_ambiguous', {
+      provider,
+      shop_domain: normalized,
+      match_count: matches.length,
+    });
+    throw Object.assign(new Error('Webhook store resolution is ambiguous'), { code: 'WEBHOOK_STORE_AMBIGUOUS' });
+  }
+  return matches[0] || null;
 }
 
 async function claimDelivery(provider, deliveryId, storeId, topic) {

@@ -1,6 +1,6 @@
 # REVLUMA — Known Limitations (Production Recovery Operation)
 
-Current as of 2026-11-06. This file is updated as each workstream closes; nothing here is
+Current as of 2026-11-06 (~10:30Z). This file is updated as each workstream closes; nothing here is
 waived silently. "BLOCKED" entries name the exact external dependency.
 
 ## P1 — Business-state persistence
@@ -34,30 +34,82 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 
 ## P2 — Products
 
-- Ingestion scope/grants unverified at time of writing; any field or scope Shopify withholds
-  will be listed here once P2 reconciliation runs.
+- **All Shopify stores hold 0 product rows** (3 rows total, stale WooCommerce). Sync correctness is
+  code-reviewed and fixture-tested (8/8); the empty catalog is an inference from recorded OAuth
+  scopes + completed syncs on v1 (`read_products` recorded), NOT a source-verified reconciliation —
+  no authorized path from this environment reaches the live Shopify API.
+- **Deletion reconciliation gap:** full syncs upsert but never remove rows hard-deleted in Shopify
+  without a products/delete webhook, and products webhooks were never registered remotely. Closing
+  this is a bulk-deletion behaviour change on production data — approval-gated (register item 9).
+- **Inventory is uncertified:** `read_inventory` granted to v1, but quantities are deliberately not
+  persisted by the catalogue sync; the observation module is unwired proof-of-capability. Nothing in
+  the catalogue should be read as certified stock.
+- Local sandbox cannot run `prisma generate` (binaries.prisma.sh unreachable); 9 backend suites rely
+  on CI for execution evidence.
 
 ## P3 — Webhooks
 
+- **Products webhooks have never been registered** (PRODUCTS_CREATE/UPDATE/DELETE: zero rows in
+  `webhook_registrations` for every store, 2026-11-06). Registration is a remote mutation and is
+  approval-gated (register item 3).
+- **27 duplicate (store, topic) registration groups** trace to the backend URL migration
+  (`revluma-backend.onrender.com` → `revluma-backend-vrsd.onrender.com`): exact-URI matching in
+  reconciliation never matched legacy-URI subscriptions, creating parallel sets. Old-host subscriptions
+  may still deliver to the legacy domain; duplicates inside `revluma-test-store` v1 and `6340092e…`
+  prove double-firing risk. Cleanup approval-gated (register item 2).
+- **Zero webhook deliveries since 2026-10-30 08:00Z** (197 rows, all processed). Whether the test
+  stores were simply idle or remote subscriptions are dead cannot be distinguished from inside this
+  environment; both readings are documented, neither is asserted as fact.
 - Remote-subscription changes (including duplicate deletion) are approval-gated; until approved,
   duplicate registrations may continue to deliver; idempotency at delivery time is the
   mitigation being verified, not deletion on suspicion.
+- **Before the P4 fix deploys, the conflicted domain (`revluma-test-store.myshopify.com`) routes
+  webhook writes to an ARBITRARY organization** — the fix (`WEBHOOK_STORE_AMBIGUOUS`) is
+  fixture-verified but undeployed (PR pending). Until then this class of delivery is unsafe by
+  construction.
 
 ## P4 — Store identity
 
-- Two production store records claim one Shopify domain. Until the authorized classification,
-  token ownership and tenant-scoping review completes, the correct owner of that domain is not
-  certified. No transfer/revoke may occur without explicit founder approval.
+- Two production store records claim one Shopify domain (`6340092e…`/org `09ff67bf…` vs
+  `009e5c86…`/org `91d88743…`). Until the authorized classification, token ownership and
+  tenant-scoping review completes, the correct owner of that domain is not certified. No
+  transfer/revoke may occur without explicit founder approval.
+- **No global `(platform, shop_domain)` uniqueness exists in `stores`** (only per-org). A third org
+  could claim the domain today; arbitration at OAuth install is a product decision (register item 5).
+- **Cross-merchant routing ambiguity (found + fixed, undeployed):** `findStore` previously used an
+  unordered `findFirst`; post-fix it fails closed. Until the fix deploys the defect is live.
+- **`products` has no `organization_id`** — tenancy is enforced via `store_id` joins alone; RLS on
+  products is enabled with no policies (deny-by-default for API roles) while the app role bypasses RLS.
+- **Access tokens are AES-256-CBC** (no AEAD/integrity tag). CBC→GCM requires ciphertext re-encryption —
+  approval-gated (register item 6).
+- WooCommerce store rows carry protocol-prefixed domains (`https://revluma.local`) while Shopify rows do
+  not — normalization conventions differ per platform.
 
 ## P5 — Privacy
 
-- Protected-customer-data eligibility with Shopify may block full erasure-proof end-to-end
-  verification; if so it will be named here with the exact approval required.
+- **Shopify protected-customer-data / mandatory compliance webhook approval state is UNKNOWN in this
+  environment and is the named external blocker** for any production erasure/export demonstration.
+- No live compliance webhook has been exercised on production (it would write/redact live merchant
+  data; not authorized). Verification is code review + 6/6 fixture workflow tests, including a
+  forced-failure leg proving no acknowledgement before durable success.
+- GDPR erasure is implemented at row level (events, ML session features, training observations, cart
+  scrub, customer pseudonymisation); orders are retained for financial necessity with PII links
+  severed. Retention windows and DSAR SLA are not certified.
+- Audit trail (`audit_logs`) stores counts and identifiers only; payload artifacts stay in
+  RLS-enabled `privacy_requests`.
 
 ## P6 — Rev intelligence
 
 - Verification is bounded by what live production data supports. Metrics with no trustworthy
   source in the canonical layer are documented as unavailable, never estimated.
+- **The 11-scenario conversational acceptance has not been run** (requires an authenticated production
+  session — user-only); the 2026-11-04 PARTIAL CERTIFICATION of the deterministic layer is the
+  standing record. Live tool-invocation counts are deliberately not estimated.
+- `merchant_memories` = 0 and `context_window`/`summary` are NULL on all conversations — persistent
+  business context has never completed in production (P0 noted 2026-11-02, not addressed by this operation).
+- Live catalogue is EMPTY (0 Shopify products): catalogue-dependent suggestions have nothing to cite.
+- `orders` holds only 5 rows on the v1 store (USD 3,446.85) — any revenue answer against v1 is
+  accurate but materially thin.
 
 ## Cross-cutting
 
