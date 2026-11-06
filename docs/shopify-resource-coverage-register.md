@@ -35,6 +35,14 @@ Only `IMPLEMENTED` + `PRODUCTION_VERIFIED` rows meet the directive's final accep
 - **BLOCKED_BY_SHOPIFY_APPROVAL / BLOCKED_BY_MERCHANT_AUTHORIZATION**: `read_all_orders` (history depth > 60 days), protected customer data (addresses/full names), `write_pixels` + Web Pixel extension deployment, analytics scopes plan-verified, PRODUCTS_* webhook remote registration, refund/returns scopes, conflicted-domain pair.
 - **NOT_YET_VERIFIED_LIVE**: every row above whose status says so — the canonical Render service has not yet served the new build at the time of writing (see TASK-034).
 
+## Live state update (2026-11-06T14:05Z, read-only SQL)
+
+- `/ready`: `node_build=7feee764c3d1`; db+redis+python `beta_ready`; scheduler completing.
+- `_prisma_migrations`: `20261106133000`/`…133001` applied 14:01Z.
+- **v1 production catalogue now holds 17 products and 26 product_variants** — exact Shopify baseline; the single store's catalogue pipeline is production-proven end-to-end for the first time.
+- Ledger rows on v1 (14:02–14:03Z): products ok/17, variants ok/26, customers ok/12, orders ok/4 (latest window), abandoned_checkouts ok/8 — all `pagination_complete=true`, retries 0, zero errors.
+- v1 full order-event graph (transactions/refunds/fulfillments) **not yet available**: PR #312 merged but undeployed at this timestamp — no `order_transactions`/`order_refunds`/`order_fulfillments`/`store_profiles`/`store_domains` tables in production; verifying requires the next deploy + re-sync.
+
 ## Entry points (operator)
 
 - Coverage: `GET /admin/shopify/stores/{storeId}/sync-coverage` — catalog × ledger fusion, explicit statuses incl. `PERMISSION_MISSING`-style reasoning via `missing_scopes`, `COMPLETE` only with `pagination_complete: true`.
