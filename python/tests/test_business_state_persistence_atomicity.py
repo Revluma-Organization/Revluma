@@ -140,13 +140,23 @@ _SCHEMA = [
     )""",
     """CREATE UNIQUE INDEX IF NOT EXISTS idx_bstate_org_current
         ON business_states (organization_id) WHERE is_current = true""",
+    """CREATE TABLE IF NOT EXISTS orders (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        store_id UUID NOT NULL,
+        ordered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        total NUMERIC(12,2) NOT NULL DEFAULT 0,
+        recovery_status TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )""",
     """CREATE TABLE IF NOT EXISTS business_state_baselines (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         organization_id UUID NOT NULL UNIQUE REFERENCES organizations(id) ON DELETE CASCADE,
         revenue_avg_30d NUMERIC(12,2),
-        day_of_week_baseline JSONB,
+        event_rate_5m_30d DOUBLE PRECISION,
         cart_abandonment_rate_30d DOUBLE PRECISION,
         returning_customer_rate_30d DOUBLE PRECISION,
+        day_of_week_baseline JSONB,
+        seasonal_baseline JSONB,
         next_rebuild_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
