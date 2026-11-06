@@ -254,7 +254,7 @@ test('Shopify and database fulfillment failures propagate to a failed ledger', a
 
   const dbPrisma = prismaStub();
   dbPrisma.state.failFulfillmentWrite = true;
-  const { enrichOrder: dbEnrich } = loadEnrichment(standardGraphql(async () => ({ node: { fulfillments: { nodes: [fulfillment(1)] } } })), dbPrisma);
+  const { enrichOrder: dbEnrich } = loadEnrichment(standardGraphql(async () => ({ node: { fulfillments: { nodes: [fulfillment(1)], pageInfo: { hasNextPage: false, endCursor: null } } } })), dbPrisma);
   const dbSummary = await dbEnrich(STORE, GID, dbPrisma, {});
   assert.equal(dbSummary.fulfillments, 'failed');
   assert.equal(dbPrisma.state.domainRows.get(`${STORE.id}|fulfillments`).error_code, 'P2037');
@@ -326,7 +326,7 @@ test('batch partial acquisition failure is failed, not a successful zero/partial
 test('fulfillment rows with the same external ID remain isolated by store', async () => {
   const prisma = prismaStub();
   const other = { id: '22222222-2222-2222-2222-222222222222' };
-  const graphql = standardGraphql(async () => ({ node: { fulfillments: { nodes: [fulfillment(88)] } } }));
+  const graphql = standardGraphql(async () => ({ node: { fulfillments: { nodes: [fulfillment(88)], pageInfo: { hasNextPage: false, endCursor: null } } } }));
   const { enrichOrder } = loadEnrichment(graphql, prisma);
   await enrichOrder(STORE, GID, prisma, {});
   await enrichOrder(other, GID, prisma, {});
