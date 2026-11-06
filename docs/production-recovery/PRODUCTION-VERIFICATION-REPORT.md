@@ -1,6 +1,6 @@
 # REVLUMA — Production Verification Report
 
-**Status: INTERIM — 2026-11-06 ~11:10Z.** P1 is **PRODUCTION VERIFIED**. **P4 ambiguity fix
+**Status: INTERIM — 2026-11-06 ~11:35Z.** P1 is **PRODUCTION VERIFIED**. **P4 ambiguity fix
 MERGED (PR #305 → `726bedc1b2a8`) and DEPLOYED VERIFIED (Render `/ready` node_build flip,
 10:56Z; scheduler `failed=0`; Vercel PROMOTED).** P3 gained read-only drift-report tooling; P2
 gained a source-to-DB reconciliation suite (7/7); P5 gained 4 regression pins (10/10). P2/P3/P5
@@ -48,7 +48,7 @@ as a future hardening item (startup claim sweep / wedged-call detection), not a 
 | V16 | P4 deploy | **PR #305 deployed on Render; `/ready` returns `node_build=726bedc1b2a8` (probe ~10:56Z); scheduler completed tick 10:56:33→10:56:37Z `failed=0, succeeded=1`; `redis_ready=true`; `python_ready=true`; Vercel frontend PROMOTED for same commit (`dpl_4oMgo4k6ma1RzK9EoivguHNGS243`, READY ~10:27Z)** | Direct behavioural probe of the ambiguous-delivery path needs a live webhook (write) — not authorized |
 | V17 | P2 reconciliation | `shopifyProductSync.reconciliation.test.js` **7/7**: 120-product/3-page idempotent persistence with exact decimals; status mapping (archived≠purchasable); 150-variant nested expansion before persistence; malformed-node loud failure with pages-persisted semantics; empty source = zero writes; source-absent-row gap pinned (approval-gated) | Live source-to-DB read impossible from this environment |
 | V18 | P3 drift tooling | `scripts/shopifyWebhookDriftReport.js` (read-only; per-store remote reconciliation: missing / unexpected / duplicates-with-counts / legacy URLs; exit 1 on drift, 2 on access failure; mutates NOTHING; never prints tokens) + pure `diffSubscriptions` (5/5 tests) + `shopifyWebhookTopics.js` extraction (12 required topics, Prisma-free) | Running it needs founder/operator invocation with Render env access; it cannot fix anything itself |
-| V19 | P4 Woo fix | `commerceWebhookService.findStore` now matches bare and scheme-prefixed domains both directions (Woo `shop_domain=` here `https://revluma.local` vs controller-stripped headers); ambiguity (>1 tenant) still fails closed; resolution suite 7/7; privacy workflow 6/6 after stub alignment | Deploy required; verified only after Render node_build flips to the PR #306 merge |
+| V19 | P4 Woo fix | `commerceWebhookService.findStore` now matches bare and scheme-prefixed domains both directions (Woo `shop_domain=` here `https://revluma.local` vs controller-stripped headers); ambiguity (>1 tenant) still fails closed; resolution suite 7/7; privacy workflow 6/6 after stub alignment; **MERGED as PR #306 → `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4` (~11:15Z, all checks green); Vercel production PROMOTED (`dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`, READY ~11:22Z); Backend NOT yet deployed — Render `/ready` still `node_build=726bedc1b2a8` at ~11:35Z probe; manual Render deploy required** | Operator Render deploy pending; verified only after node_build flips to `e8adae9…` |
 | V20 | Suite parity | Offline backend suites: **46 pass / 9 prisma-generate-blocked** (unchanged pre-existing set) vs 43/9 prior; zero regressions; new suites: reconciliation 7/7, drift 5/5, privacy pins 4/4 | Local sandbox cannot run prisma generate (binaries.prisma.sh unreachable) |
 | V21 | P6 accuracy cross-check | Current `business_states` row org `1dc6aa19…` (`ff83f1e6-b131-40f8-9668-288172ebeab5`, generated 10:50:35Z, complete) shows `revenue_today=0.00`/`revenue_yesterday=0.00` — CORRECT (latest v1 order 2026-10-30); telemetry keys present (`baseline_event_rate_5m_30d`, `current_event_rate_5m`, `warnings`, `root_causes`, `root_cause_verification`, `observed_drivers`, `ml_signals.inventory_signals`, `ml_signals.customer`) | Confirms truthfulness of output; does NOT certify conversational accuracy |
 
@@ -56,7 +56,7 @@ as a future hardening item (startup claim sweep / wedged-call detection), not a 
 
 - P2 products source-to-DB reconciliation. See MASTER-EXECUTION-REGISTER.md → P2.
 - P3 remote subscription reconciliation (products topics; duplicates); delivery reliability in production.
-- P4 deployment of the Woo scheme fix (PR #306); two-merchant production exercise; global domain uniqueness.
+- P4 deployment of the Woo scheme fix (PR #306 merged ~11:15Z; Render deploy pending, probed ~11:35Z); two-merchant production exercise; global domain uniqueness.
 - P5 live compliance workflow; P6 live conversational acceptance transcripts A–E and the
   11-scenario set with tool-invocation counts.
 - Python deploy metadata: Render exposes no deploy API through this environment's tooling; the
