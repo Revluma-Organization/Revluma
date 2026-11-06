@@ -60,6 +60,18 @@ The full set of 26 distinct inventory-item IDs independently present in Shopify-
 
 ### Additional defect found by relationship reconciliation
 
-Two valid levels referenced location `93369139389`, absent from the two-row location snapshot. Shopify's 2026-10 `locations` query is active-only by default; `includeInactive:true` and `includeLegacy:true` are required for complete coverage. The follow-up change adds both flags and an inactive-location regression test. Final verification of the resulting three-location/zero-orphan snapshot is pending deployment of this follow-up; the earlier two-location result is not represented as complete location coverage.
+Two valid levels referenced location `93369139389`, absent from the two-row location snapshot. Shopify's 2026-10 `locations` query excludes legacy fulfillment-service locations by default and also requires an explicit flag for inactive locations. The follow-up adds `includeInactive:true, includeLegacy:true` and regression coverage.
 
-Render management access is unavailable in this environment (`render` connector unsupported). Node's exact build is exposed by `/ready`; Python operational readiness is exposed there too, but Python's exact deployed Git SHA cannot be independently read through the available tools. This is recorded as an external verification limitation, not silently marked verified.
+## Final implementation verification — `f061efa5ee10`
+
+PR #323 merged as `f061efa5ee10fd59d7a479ae6a5e633a456520d6` after all required checks passed. `/ready` reported `node_build=f061efa5ee10`, `database_ready=true`, `python_ready=true`, and `redis_ready=true`. A fresh scheduled orchestration then completed at 17:13:24Z:
+
+- Locations: `ok`, 3 discovered, 1 inserted, 2 updated, 0 deleted, 1 page, pagination complete; success 17:12:13Z.
+- Inventory: `ok`, 26 items and 28 levels, 0 inserted / 54 updated / 0 deleted, 27 pages, pagination complete; success 17:12:49Z.
+- Fulfillments: `ok`, 1 discovered, 0 inserted / 1 updated / 0 deleted, 4 pages, pagination complete; success 17:12:09Z.
+- Full relationship reconciliation: 28 distinct item/location pairs, **0 orphan item references and 0 orphan location references**. All 26 Shopify-derived variant inventory-item IDs matched persisted inventory items with zero missing/extra IDs.
+- Existing products, variants, customers, orders, transactions, refunds, and abandoned checkouts all remained `ok` in the same run. No P2028 or new ledger error appeared.
+
+The retry counters and timestamps represent the latest completed run. `checkpoint={}` is intentional: these are complete snapshot runs, not resumable cursor checkpoints; successful completion never depends on stale checkpoint state.
+
+Render management access is unavailable in this environment (`render` connector unsupported). Node's exact build is exposed by `/ready`; Python operational readiness is exposed there too, but Python's exact deployed Git SHA cannot be independently read through the available tools. This remains an external deployment-verification limitation, not a claim that the Python SHA was verified.
