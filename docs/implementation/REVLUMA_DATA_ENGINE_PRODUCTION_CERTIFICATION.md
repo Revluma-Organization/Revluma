@@ -82,10 +82,38 @@ evidence below; it is not a blanket production sign-off.
 - Frontend: Vercel instant-rollback to `dpl_7R7vfMJfFD1LAstPANLA3LNM7rzK`.
 - No destructive SQL is part of this release.
 
+## Merge and post-merge verification (2026-11-06)
+
+- PR **#300** merged at 2026-11-06T05:54:53Z as merge commit
+  `89ce2d8ca4ffb8e196daea370b8641ba87829b41` (16/16 checks green: backend,
+  Backend test suite, python-regressions, Dashboard, Prisma bootstrap /
+  financial & security regressions on real PG 16, task025–032 integration,
+  Vercel, Vercel Preview Comments).
+- One CI regression was found and fixed during the release: eager
+  `productSync` require pulled the token-encryption key check into module
+  load, crashing integration contexts that do not set
+  `SHOPIFY_TOKEN_ENCRYPTION_KEY` (b2c0d4e). No test was weakened; no checks
+  bypassed.
+- **Vercel production**: `dpl_3CQ7vKtHV5wR8eHH3NU8FUo6qHXQ` READY/PROMOTED,
+  aliased to `revluma.vercel.app`, built from `main` @ `89ce2d8`.
+- **Render backend**: NOT YET OBSERVED on the new build — `/ready`
+  reported `node_build` `4410460de483` at 2026-11-06T06:10Z (16+ minutes
+  post-merge; auto-deploy timing/enabled state is not verifiable from this
+  environment). On next backend boot, `prestart` runs
+  `prisma migrate deploy`, which applies `20261105230000_add_privacy_requests`.
+  Until then `privacy_requests` does not exist in production (verified via
+  read-only information_schema query, 2026-11-06T06:02Z: table absent).
+  **Action: trigger/verify the Render Node service deploy of `main`; then
+  confirm `/ready` shows `89ce2d8`, `privacy_requests` exists, and the first
+  scheduled sync logs `product_sync`.**
+- `products` row count and first live `product_sync` evidence: pending the
+  backend deploy above; do not claim catalogue coverage until then.
+
 ## Final statement
 
-Code-level safeguards requested for this project are implemented and tested.
-Production behavior is partially observed (live counts, readiness) and
-**unverified for every element that requires Shopify or Render credentials**.
-This document will be updated after merge with deploy IDs and post-deploy
-results; until then, any claim of "production certified" would be fabrication.
+Code-level safeguards requested for this project are implemented and tested;
+CI on the merge commit is fully green and the frontend is deployed. Production
+backend migration + live-store behavior remain **pending deploy verification**.
+Any claim of full production certification before those checks would be
+fabrication; the verdict above therefore remains **NOT CERTIFIED** until the
+Render deploy is verified.
