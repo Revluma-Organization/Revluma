@@ -14,13 +14,13 @@ Legend: Impl = implementation status in this branch · Prod = production verific
 
 ---
 
-## 0. Environment identity (2026-11-06, multiple probes through ~13:45Z)
+## 0. Environment identity (2026-11-06, probes through ~12:15Z)
 
 | Item | Value | Evidence (2026-11-06) |
 |---|---|---|
-| Repo branch base | `414210b3be74` (= `main`, merge of PR #307, docs-only) | `git rev-parse HEAD`, `gh pr view 307` |
-| Node build on Render (`/ready.node_build`) at last probe ~11:35Z | `726bedc1b2a8` (PR #306 `e8adae9…` merged ~11:15Z NOT deploy-flipped at that probe) | direct fetch |
-| Python service | serving merged #303-era code; behaviorally verified via scheduler outcomes | `/ready`; `automation_job_state` |
+| Repo state | `main` = `55639425b3f5` (merge of PR #308); this record delivered from branch `arena/097a7439-revluma` | `git rev-parse HEAD`, `gh pr view 308` |
+| Node build on Render (`/ready.node_build`) at last probe ~12:05–12:09Z | **`55639425b3f5`** (PR #306 `e8adae9…` and PR #308 merged 11:15Z / 11:30Z; backend DEPLOYED VERIFIED ~12:05–12:09Z — deploy-interrupted pass self-completed 12:09:12Z `failed=0`) | direct fetch (cache-busted) + direct SQL |
+| Python service | serving (post-#308 deploy); `python_ready=true`, `python_model_status=beta_ready` (0.6.0); behavioral evidence only | `/ready`; `automation_job_state` |
 | `stores` (active) | 4 | read-only SQL |
 | `products` | 3 rows (stale WooCommerce, 2026-08-13) | read-only SQL |
 | Retired store | `bys-user-store-923319-1ifggjsw` — **never touched** | standing constraint |
@@ -63,7 +63,7 @@ for the full failure chain and acceptance evidence. Summary of the standing fact
 
 ---
 
-## P2 — Shopify product ingestion · Impl: IMPLEMENTED + TESTED (this PR extended) · Prod: NOT VERIFIED (permission-blocked)
+## P2 — Shopify product ingestion · Impl: IMPLEMENTED + TESTED (PR #308 extended) · Prod: NOT VERIFIED (permission-blocked)
 
 **Path A (live source) — as far as this environment reaches:** Vercel exposes only frontend env;
 Render env unreachable; no token read, decrypted, printed or transmitted anywhere. Production
@@ -75,15 +75,15 @@ at OAuth; syncs complete (any non-permission failure aborts the sync). "0 produc
 - `shopifyProductSync.reconciliation.test.js` (7/7): 120-product/3-page idempotent persistence,
   exact decimals, status mapping (archived ≠ purchasable), 150-variant nested expansion, loud
   malformed-node failure, empty source = zero writes, source-absent deletion gap pinned.
-- `productSync.js` (this PR): pagination failures now throw with `sync_stage`/`pages_completed`/
+- `productSync.js` (PR #308): pagination failures now throw with `sync_stage`/`pages_completed`/
   `products_upserted`; `shopifySync.js` logs the same counters (+`http_status`) on
   `shopify_sync_failed`. Earlier pages persist; the run fails loudly; retries converge
   (upserts idempotent); `last_synced_at` must not advance on failure.
-- P2 access diagnostic (this PR): `GET /api/v1/admin/shopify/stores/:storeId/access` (admin key,
+- P2 access diagnostic (PR #308): `GET /api/v1/admin/shopify/stores/:storeId/access` (admin key,
   no-store) — allow-list only; live vs recorded scopes; per-collection probes ok | empty |
   access_denied | error:<code>; `scope_query_ok=false` + null live flags on scope-query failure;
   no ids/tokens/PII. 4/4 tests.
-- Reconciliation tooling (this PR): `productReconciliation.js` + `scripts/productSyncReconcile.js` —
+- Reconciliation tooling (PR #308): `productReconciliation.js` + `scripts/productSyncReconcile.js` —
   dry-run default; `--apply` gated on `REVLUMA_RECONCILE_CONFIRM_DELETIONS=DELETE-SOURCE-ABSENT-PRODUCTS`;
   empty source hard-refused (override `REVLUMA_RECONCILE_ALLOW_EMPTY_SOURCE=ALLOW-EMPTY-SOURCE-DELETE`);
   7/7 tests.
@@ -94,7 +94,7 @@ at OAuth; syncs complete (any non-permission failure aborts the sync). "0 produc
 reconciliation of v1 + one create→sync→update→delete round-trip (founder/user action; mutates
 Shopify and this DB). Approval-gated — see list below.
 
-## P3 — Webhook registration & delivery · Impl: IMPLEMENTED + TESTED (this PR extended) · Prod: NOT VERIFIED (visibility/remediation gated)
+## P3 — Webhook registration & delivery · Impl: IMPLEMENTED + TESTED (PR #308 extended) · Prod: NOT VERIFIED (visibility/remediation gated)
 
 **Inventory (read-only prod 2026-11-06):** required set = **12 topics**
 (`shopifyWebhookTopics.js`, pure module). 82 registration rows: v1 + `6340092e…` hold 2 active × 9
@@ -128,7 +128,7 @@ retired store failed rows — leave unless founder orders otherwise.
 
 **Classification: IMPLEMENTED, NOT PRODUCTION VERIFIED.**
 
-## P4 — Store identity, tenant isolation, security · Impl: IMPLEMENTED + HARDENED (this PR) · Prod: PARTIAL (ambiguity fix verified live 10:56Z; this PR undeployed)
+## P4 — Store identity, tenant isolation, security · Impl: IMPLEMENTED + HARDENED (PR #308) · Prod: PARTIAL (ambiguity fix verified live 10:56Z; hardening DEPLOYED ~12:05Z, unexercised live)
 
 - **Cross-merchant webhook-routing ambiguity — FIXED (#305, `726bedc1b2a8…`) and VERIFIED DEPLOYED
   ~10:56Z** (`/ready` flip; tick 10:56:33Z `failed=0, succeeded=1`; `python_ready=true`); Vercel
@@ -136,8 +136,8 @@ retired store failed rows — leave unless founder orders otherwise.
   5xx probe not performed (would require sending a webhook — not authorized).
 - **WooCommerce scheme-mismatch — FIXED (#306, `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4`)**:
   bare/https-prefixed candidate matching both directions; ambiguity still fails closed. MERGED
-  ~11:15Z (CI green); Vercel PROMOTED (`dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`); **Render backend deploy
-  PENDING operator action as of ~11:35Z probe**.
+  ~11:15Z (CI green); Vercel PROMOTED (`dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`); **live in production
+  since ~12:05Z** (backend serving `55639425b3f5`, which includes #306).
 - **This PR (crypto + audits):** AES-256-GCM token encryption v2 (`v2:<iv 12B>:<tag>:<ct>`); v1 CBC
   decrypt-only compat (shape-gated `ENCRYPTION_FORMAT_UNKNOWN`); key format enforced at load;
   `scripts/reencryptStoreTokens.js` dry-run default, `--apply` gated on
@@ -147,11 +147,11 @@ retired store failed rows — leave unless founder orders otherwise.
   ingest is HMAC-SHA256 `public_tracking_key` (timing-safe; unsigned → 404); internal/admin
   diagnostics are key-authed and store-id-keyed; ambiguity fails closed everywhere inspected.
   The conflicting-domain pair remains untouched.
-- **RLS inventory (read-only, this PR):** 17/17 audited tables `relrowsecurity=true`; 7 also
+- **RLS inventory (read-only, PR #308):** 17/17 audited tables `relrowsecurity=true`; 7 also
   `FORCE`. Enabled-not-forced tables (products, order_items, webhook_*, audit_logs,
   automation_job_state, business_states, sequence_sends, ml_session_features, privacy_requests)
   rely on app-role least privilege via store/org scoping — recorded, not changed.
-- **Index audit (read-only, this PR):** hot paths covered (`webhook_deliveries(status,received_at)`
+- **Index audit (read-only, PR #308):** hot paths covered (`webhook_deliveries(status,received_at)`
   and per-store received_at; products store/external unique; events pixel idempotency key; orders
   store/external unique; stores org_domain unique). **No migration applied.** Watch item:
   `stores.shop_domain` lookup is a seq scan — fine at 4 stores; index before ~100 (documented).
@@ -163,7 +163,7 @@ arbitration; CBC→GCM re-encryption apply; two-merchant production exercise. Ne
 **Classification: PARTIAL — ambiguity class closed end-to-end (deployed + verified); isolation not
 certified beyond the webhook path and the audited read paths; crypto hardened, migration gated.**
 
-## P5 — Privacy / data governance / Shopify compliance · Impl: IMPLEMENTED + HARDENED (this PR) · Prod: NOT VERIFIED
+## P5 — Privacy / data governance / Shopify compliance · Impl: IMPLEMENTED + HARDENED (PR #308) · Prod: NOT VERIFIED
 
 **Durable-first, idempotent, never-ack-before-success — implementation reviewed** (2026-11-06):
 `privacy_requests` rows precede any work; P2002 race → `PRIVACY_REQUEST_PENDING` (never ack the
@@ -208,35 +208,35 @@ isolation; scenario 11 `gate=refuse` with zero tool-capable routing for both
 Full python suites green locally: 57 (conversational) + 667 (routing/investigation/golden/registry/
 metrics/failure/mode) + 11 = **735**.
 
-**P6-D frontend review (this PR):** quiet turns (conversational/clarify/refuse) never render report
+**P6-D frontend review (PR #308):** quiet turns (conversational/clarify/refuse) never render report
 scaffolding, evidence pills stay honest (verified/partial/unverified/unavailable), `pending` steps
 render "did not run" (never "completed"). No defect found; no change made.
 
 **NOT CERTIFIED:** live 11-scenario conversational acceptance with real tool-invocation counts —
 requires an authenticated Rev session (user-only). Procedure: `REV-LIVE-ACCEPTANCE-RUNBOOK.md`
-(created this PR; referenced from the test module docstring). Counts never estimated.
+(created PR #308; referenced from the test module docstring). Counts never estimated.
 
 **Classification: PARTIAL — deterministic layer certified (2026-11-04); fixture-level acceptance
 green (11/11); live acceptance pending user session.**
 
 ---
 
-## Cross-cutting release gate — standing at `414210b` + this PR (pre-merge)
+## Cross-cutting release gate — standing at `55639425b3f5` (PR #308 live ~12:05Z)
 
 | Gate item | Status |
 |---|---|
-| Node build on intended commit | Merge pending — verify `/ready` flips to this merge commit post-merge (auto-deploy observed 7–31 min lag; Render manual deploy may be required as with #306) |
+| Node build on intended commit | **YES — `55639425b3f5`** (`/ready` flip probe ~12:05Z, cache-busted; deploy-interrupted pass self-completed 12:09:12Z `failed=0, succeeded=1`; confirmed by direct DB read, not HTTP cache) |
 | Python on intended build | Healthy ticks on #303-era code; behavioral evidence only |
 | Persistence succeeds | YES (post-#303 deploys incl. previously failing org; tick 10:56Z failed=0) |
-| Recurring scheduler executions succeed | YES (ticks through 10:57Z, failed=0/succeeded=1; age_seconds=9 at 10:56Z probe) |
-| Snapshots + alerts persisted | YES (fresh snapshots all 5 orgs; 1 alert delivered) |
+| Recurring scheduler executions succeed | YES — post-#308 deploy: deploy-interrupted pass self-completed 12:09:12Z (`failed=0, succeeded=1`, latency 22.1s); fresh ticks observed 12:02Z and 12:07:53Z pre-restart, none wedged |
+| Snapshots + alerts persisted | **YES — all five orgs hold one current snapshot each (12:08:51Z freshest for `1dc6aa19…`; others fresh 11:54–11:57Z); direct SQL; no torn rows** |
 | Product sync source-reconciled | NO (P2) — fixture-verified only; live read permission-blocked; see P2 section |
-| Webhooks reliable & deduplicated | NO (P3) — HMAC/ack/idempotency verified; adopt-by-topic + in-flight recovery added this PR (tested); products topics unregistered; duplicates unremediated (approval-gated); 0 deliveries/7d |
-| Store identity + tenant isolation | PARTIAL (P4) — ambiguity fix DEPLOYED + verified (726bedc, 10:56Z); Woo scheme fix MERGED (#306, deploy pending operator); token crypto v2 IMPLEMENTED + TESTED this PR (undeployed); audits RLS/index/tenancy clean |
-| Privacy workflows pass | NO (NOT VERIFIED) (P5) — implemented + hardened this PR (de-transacted); 10/10 tests; live run approval-gated |
+| Webhooks reliable & deduplicated | NO (P3) — HMAC/ack/idempotency verified; adopt-by-topic + in-flight recovery added PR #308 (tested); products topics unregistered; duplicates unremediated (approval-gated); 0 deliveries/7d |
+| Store identity + tenant isolation | PARTIAL (P4) — ambiguity fix DEPLOYED + verified (726bedc, 10:56Z); Woo scheme fix MERGED (#306) and DEPLOYED (~12:05Z, `5563942…`); token crypto v2 IMPLEMENTED + DEPLOYED (unexercised); audits RLS/index/tenancy clean |
+| Privacy workflows pass | NO (NOT VERIFIED) (P5) — implemented + hardened PR #308 (de-transacted); 10/10 tests; live run approval-gated |
 | Rev on live-accurate evidence | NO (NOT CERTIFIED) (P6) — fixture acceptance 11/11; live session pending user |
 | Regression/security tests pass | Python 735 green; backend offline suites green incl. all new: reconciliation 7/7, webhook recovery 3/3, encryption 5/5, reencrypt 3/3, diagnostic 4/4, drift 5/5, webhook service 7 scenarios, privacy 6/6 + 4/4 pins; 9 suites CI-only (sandbox `prisma generate` blocked — `binaries.prisma.sh` unreachable); CI is truth |
-| Deployments verified | #303 (deployed+verified), #305 (deployed+verified), #306 (merged, Vercel promoted, Render pending), #307 (docs, merged); **this PR: pending** |
+| Deployments verified | #303 (deployed+verified), #305 (deployed+verified), #306 (merged + DEPLOYED ~12:05Z), #307 (docs, merged), **#308 (MERGED 11:30:16Z + DEPLOYED VERIFIED ~12:05–12:09Z: `node_build=55639425b3f5`, tick 12:09:12Z `failed=0`, 5×1 current snapshots)**; Python serving (`beta_ready` 0.6.0) |
 | Known limitations documented | See `KNOWN-LIMITATIONS.md` (audit findings appended this revision) |
 
 ## Approval-gated items (never block unrelated work)
@@ -248,16 +248,15 @@ green (11/11); live acceptance pending user session.**
 4. Transfer/delete/revoke of either production store-domain association (P4 conflict;
    `6340092e…` vs `009e5c86…`).
 5. Global `(platform, shop_domain)` uniqueness migration or OAuth-arbitration behaviour change (P4).
-6. AES-256-CBC → GCM migration of stored `access_token` ciphertexts (tooling merged this PR;
+6. AES-256-CBC → GCM migration of stored `access_token` ciphertexts (tooling merged PR #308;
    `--apply` execution gated on `REVLUMA_REKEY_CONFIRM`).
 7. Live end-to-end privacy compliance test on production (P5).
 8. Live 11-scenario Rev conversational acceptance (P6) — user-only session (see runbook).
 9. Full product-sync reconciliation implementing source-absent-row deletion semantics (P2) —
-   tooling merged this PR (dry-run default; `--apply` gated on `REVLUMA_RECONCILE_CONFIRM_DELETIONS`).
+   tooling merged PR #308 (dry-run default; `--apply` gated on `REVLUMA_RECONCILE_CONFIRM_DELETIONS`).
 10. Any production data write not covered by an authorized workflow.
-11. Manual/operator Render deploy of PR #306 (`e8adae9…`, P4 Woo fix) — merged; **not deployed as of
-    ~11:35Z probe**; environment-gated (dashboard), not a data approval.
-12. Post-merge deploy of THIS PR (P2–P6 hardening) + verification record (`/ready` flip probe).
+11. ~~Manual/operator Render deploy of PR #306~~ — **DONE ~12:05Z** (#306 and #308 both live).
+12. ~~Post-merge deploy of PR #308 + verification record~~ — **DONE ~12:05–12:09Z** (deploy + DB-verified; docs record landed in the follow-up docs PR).
 
 ## Change log
 
@@ -268,14 +267,22 @@ green (11/11); live acceptance pending user session.**
   fixed on `arena/f9c10395-revluma` (later dispatched as #305); P5 review with Shopify named blocker.
 - 2026-11-06 ~10:56–11:10Z — **PR #305 MERGED and DEPLOYED VERIFIED** (node_build=726bedc1b2a8 at
   10:56Z; scheduler healthy). PR #306 opened for Woo scheme fix (undeployed at that time).
-- 2026-11-06 ~11:15Z — **PR #306 MERGED** (`e8adae9…`, CI green); Vercel PROMOTED; **Render not
-  deployed** (2 probes); PR #307 (docs-only) merged 11:06Z.
-- 2026-11-06 ~13:45Z — **End-state refresh (this revision):** branch synced to `414210b` (main);
-  this PR adds the P2–P6 hardening batch — P5 shop/redact de-transaction (single-statement steps,
-  `SHOP_REDACT_STEP_FAILED:<step>`), P4 AES-256-GCM encryption v2 + gated re-encryption tool,
+- 2026-11-06 ~11:15Z — **PR #306 MERGED** (`e8adae9…`, CI green); Vercel PROMOTED; Render not
+  deployed at that time (2 probes); PR #307 (docs-only) merged 11:06Z.
+- 2026-11-06 ~11:30Z — **PR #308 MERGED** (`e095137` → merge `55639425b3f5`, all CI green;
+  Vercel Production deployment success 11:32:35Z). Hardening batch: P5 shop/redact de-transaction
+  (single-statement steps, `SHOP_REDACT_STEP_FAILED:<step>`), P4 AES-256-GCM v2 + gated rekey tool,
   P3 in-flight delivery recovery (scheduler-wired, 5 min) + adopt-by-topic, P2 reconciliation
-  tooling (dry-run default, gated apply) + admin access diagnostic endpoint, explicit productSync
+  tooling (dry-run default, gated apply) + admin access diagnostic endpoint, productSync partial-
   failure counters, drift-report path repair, P6 fixture-level 11-scenario acceptance (11/11),
-  RLS/index/tenant-isolation audits (read-only), audited dependency reality appended to
-  KNOWN-LIMITATIONS; docs rewritten to end-state; `MASTER-COMPLETION-CHECKLIST.md` and
-  `REV-LIVE-ACCEPTANCE-RUNBOOK.md` created. **No production data written; no remote state changed.**
+  RLS/index/tenant-isolation audits (read-only), end-state docs + checklist + live-acceptance
+  runbook. **No production data written; no remote state changed.**
+- 2026-11-06 ~12:15Z — **Deployed + verification record (this revision):** `/ready` reports
+  `node_build=55639425b3f5` (both #306 and #308 live); deploy-interrupted business-state pass
+  resolved `completed` at 12:09:12Z (`failed=0, succeeded=1`, 22.1s) after the restart — the
+  documented phantom-`running` mode, cleared without DB surgery; all five orgs hold exactly one
+  current snapshot each (freshest `1dc6aa19…` 12:08:51Z; others 11:54–11:57Z); `/ready` HTTP
+  responses during ~12:05–12:12Z were edge-cached copies of the deploy-interrupted claim — direct
+  DB read used as authority. Python serving `beta_ready` (0.6.0). **Merge ≠ deploy ≠ behavioural
+  verification stands:** the new code paths (redact / delivery-recovery / v2 crypto) have not been
+  exercised live; every remaining live item is approval-gated (list above).

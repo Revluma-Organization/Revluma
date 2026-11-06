@@ -1,6 +1,7 @@
 # REVLUMA — Known Limitations (Production Recovery Operation)
 
-Current as of 2026-11-06 (~13:45Z). This file is updated as each workstream closes; nothing here is
+Current as of 2026-11-06 (~12:20Z). PR #308 is live (backend `55639425b3f5`, verified ~12:05–12:09Z);
+everything in this file remains true on the live build. This file is updated as each workstream closes; nothing here is
 waived silently. "BLOCKED" entries name the exact external dependency.
 
 ## P1 — Business-state persistence
@@ -45,7 +46,7 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 - **Inventory is uncertified:** `read_inventory` granted to v1, but quantities are deliberately not
   persisted by the catalogue sync; the observation module is unwired proof-of-capability. Nothing in
   the catalogue should be read as certified stock.
-- **Partial product syncs persist silently until this PR:** a mid-pagination failure previously
+- **Partial product syncs persist silently until PR #308:** a mid-pagination failure previously
   threw with no counters, making it impossible to tell how far a failed run had gotten. Now the
   thrown error carries `sync_stage`/`pages_completed`/`products_upserted` and the failure log
   includes them. Still true: `last_synced_at` advances only on full success (by design) and
@@ -80,7 +81,7 @@ waived silently. "BLOCKED" entries name the exact external dependency.
   are possible at the data layer and prevented only by resolution fail-closed. Migration/arbitration
   is approval-gated.
 - **Token ciphertexts in v1 (AES-256-CBC) remain valid** (decrypt-only compat). New encryptions are
-  v2 (AES-256-GCM, authenticated). Bulk re-encryption is merged this PR as dry-run-default tooling;
+  v2 (AES-256-GCM, authenticated). Bulk re-encryption is merged PR #308 as dry-run-default tooling;
   `--apply` is gated on `REVLUMA_REKEY_CONFIRM=REENCRYPT-ALL-SHOPIFY-TOKENS` and is NOT executed.
 - **RLS is enabled but not forced on 9 tables** (products, order_items, webhook_deliveries,
   webhook_registrations, audit_logs, automation_job_state, business_states, sequence_sends,
@@ -96,7 +97,7 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 
 ## P5 — Privacy / compliance
 
-- **shop/redact is now de-transacted by design** (this PR): ordered, idempotent single statements
+- **shop/redact is now de-transacted by design** (PR #308): ordered, idempotent single statements
   (children→parents), per-step failure tagging (`SHOP_REDACT_STEP_FAILED:<step>`), `stores.update`
   last. Consequences, accepted and documented: (a) a mid-run failure leaves earlier steps applied —
   by design, retry converges (all steps idempotent); (b) there is no atomic "all or nothing" for
@@ -124,7 +125,7 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 - **`rev-metrics-v1` fails closed** for non-computable metrics — by design Rev says "I can't
   verify that" rather than fabricate; this is correct behaviour, not a bug, and will surface as
   "unverified" answers until data density improves.
-- **Frontend quiet-turn rendering** (reviewed this PR): conversational/clarify/refuse never render
+- **Frontend quiet-turn rendering** (reviewed PR #308): conversational/clarify/refuse never render
   report scaffolding — but the browser was not exercised against this build yet (no authenticated
   session); visual confirmation pending user session.
 
