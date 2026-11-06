@@ -22,6 +22,15 @@
 - **storeProfileSync**: `shopAddress { countryCodeV2 city zip }` (drop `countryName`); `country_name` persists as NULL with code comment (country_code unaffected).
 - Tests: `storeProfileSync` fixture updated; local engine-free suites with full deps installed (`npm ci --ignore-scripts`): `orderEnrichment` 4/4, `storeProfileSync` 3/3, `universalCoverage` 5/5, `coverageCatalog` 3/3, `capabilityDiffer` 4/4, `syncDomainState` 7/7. CI is the authoritative gate.
 
+## Production deploy evidence (live, read-only, 2026-11-06 ~15:30Z)
+
+- Migrations `20261106133002_commerce_event_graph`, `…033_store_profiles`, `…033004_inventory_locations` **applied to production at 14:42:22 / 14:42:23 / 14:42:24Z** by the prestart on the deployed build.
+- New tables present and populating: `order_transactions` **10 rows** (idempotent upserts accumulate — no duplicates by construction of (store_id, external_id) key), `locations` **6 rows across both conflicted-domain staging rows** (org `09ff67bf…` + org `91d88743…` — the SAME Shopify store connected twice; 2 locations each), `inventory_items`/`inventory_levels`/`order_refunds`/`order_fulfillments`/`store_profiles`/`store_domains` = 0 rows pending the TASK-036 fix build.
+- v1 ledger at ~15:00Z: products/variants/customers/orders/abandoned_checkouts/locations/transactions = `ok` (transactions = first production evidence); refunds/fulfillments retry×4 + inventory/store_domains retry×1 with `SHOPIFY_GRAPHQL_ERROR` — all field-level drift fixed in this PR's predecessor (#319). Re-ledger after next deploy.
+- `bys-user-store-923319-1ifggjsw` (retired store) shows no syncs and no writes — untouched, as mandated.
+- Conflicted-domain pair (`6340092e…` vs `009e5c86…`, the same Shopify store connected under two orgs) is a known data-ambiguity cell; inventory rows now exist for BOTH rows (distinct store ids). No attribution or merge decision made — human-gated.
+- `/ready` could NOT be probed from the sandbox used for this work (SSL_ERROR_SYSCALL to onrender.com); all build-version claims rest on DB-observable evidence (`_prisma_migrations`) and store ledger rows, not on the HTTP path.
+
 ## What this does NOT verify
 
 The fixes are merged but NOT yet running in production. `$SHOPIFY_INVENTORY_SYNC` and enrichment re-verification (refund/fulfillment persistence live) only after the next deploy + re-sync; do not claim `ok` until the ledger flips. Registry `inventory.*` and enrichment domains remain `not_verified` until then. No production writes were performed for this diagnosis; all fixes are code + CI.
