@@ -43,4 +43,14 @@ Repository-wide `npm run lint` remains red on 30 pre-existing errors in unrelate
 
 ## Acceptance boundaries
 
-This is a production increment inspired by publicly advertised workflows, not a complete Sidekick clone or proof of feature parity. Theme design, image editing, Shopify Admin navigation, discount/collection creation, shipping changes, and autonomous store mutations are not implemented. Production deployment and deployed behavior are verified separately after merge.
+This is a production increment inspired by publicly advertised workflows, not a complete Sidekick clone or proof of feature parity. Theme design, image editing, Shopify Admin navigation, discount/collection creation, shipping changes, and autonomous store mutations are not implemented.
+
+## Delivery and production evidence
+
+- PR #325 merged on 2026-11-06 as `dd8503e40b8994a8e48625905056931aed75b2b6`.
+- Dashboard CI run `42270681482`, Vercel preview, and preview-comments checks all passed before merge.
+- Vercel production deployment `dpl_Aj9HmT5jWQR4U5Lij18oz1NRvGJV` built the exact merge SHA and reached `READY` / `PROMOTED`; its production aliases include `revluma.vercel.app`.
+- Production build logs completed the Vite build successfully (2,881 modules) and reported deployment completion.
+- An anonymous request to `/dashboard/overview` redirected to the production sign-in route, confirming that the protected dashboard did not become publicly accessible.
+
+No backend deployment was required. An authenticated browser workflow and a real merchant `/rev/stream` response were not executed because no user browser session was available; deployment readiness and anonymous authentication behavior are not represented as an authenticated end-to-end test. The Vercel deployment-file endpoint returned `File tree not found`, so no claim is made about inspecting the deployed file tree or bundle contents through that API.
