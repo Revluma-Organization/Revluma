@@ -89,11 +89,15 @@ def test_the_lock_is_scoped_to_one_organization(build_source):
 
     # The real guarantee: the value bound to :lock_key is derived from the
     # organization, so two merchants can never contend on one lock.
-    # A fixed window, not "up to the first }": the params dict opens with an
-    # f-string whose own braces would end the slice early and hide the binding.
-    call_at = build_source.index("text(critical_section_sql)")
-    call = build_source[call_at:call_at + 600]
-    assert "_build_lock_job_name(organization_id)" in call
+    # The params block binds "lock_key" from the organization-scoped builder;
+    # the execute then passes that block to the assembled batch.
+    params_at = build_source.index("persistence_params = {")
+    params = build_source[params_at:params_at + 300]
+    assert "_build_lock_job_name(organization_id)" in params
+    assert '"lock_key":' in params
+    execute_at = build_source.index("text(critical_section_sql)")
+    call = build_source[execute_at:execute_at + 120]
+    assert "persistence_params" in call
 
 
 def test_lock_keys_are_stable_and_organization_scoped():
@@ -132,7 +136,7 @@ def test_the_lease_and_the_persistence_lock_share_one_key_space():
 def test_the_persistence_failure_carries_its_underlying_cause(build_source):
     cause_at = build_source.index("persistence_cause = (")
     flag_at = build_source.index("persistence_failed = True")
-    raise_at = build_source.index("raise BusinessStatePersistenceError")
+    raise_at = build_source.rindex("raise BusinessStatePersistenceError")
 
     # Captured in the handler, before the flag that triggers the raise.
     assert cause_at < flag_at < raise_at
@@ -142,13 +146,13 @@ def test_the_persistence_failure_carries_its_underlying_cause(build_source):
 
 
 def test_the_cause_is_interpolated_into_the_raised_message(build_source):
-    idx = build_source.index("raise BusinessStatePersistenceError")
+    idx = build_source.rindex("raise BusinessStatePersistenceError")
     statement = build_source[idx:idx + 320]
     assert "persistence_cause" in statement, "the message must name the real failure"
 
 
 def test_the_exception_chain_is_preserved(build_source):
-    idx = build_source.index("raise BusinessStatePersistenceError")
+    idx = build_source.rindex("raise BusinessStatePersistenceError")
     statement = build_source[idx:idx + 320]
     # `from` keeps __cause__ so a traceback shows the driver error, not just the
     # wrapper. Without it the original exception is lost entirely.

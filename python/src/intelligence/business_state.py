@@ -1361,6 +1361,54 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         # lock_timeout genuinely bounds the advisory wait, the advisory lock is
         # genuinely held across the UPDATE and INSERT, and the two writes are
         # genuinely atomic.
+        #
+        # The same property is now load-bearing for the DEPENDENT rows too.
+        # Production on 2026-11-06 showed the round trips landing on different
+        # server backends (pid_before=1534270, pid_after_insert=1517450) behind
+        # the pooler, so the snapshot INSERT was not visible to the dependent
+        # alert_queue INSERT and the foreign key rejected it: the whole
+        # persistence block rolled back, and no snapshot ever committed
+        # (business_states had no row newer than 2026-11-05 23:59:53; matching
+        # the scheduler's INTELLIGENCE_UNAVAILABLE heartbeat). Any write that
+        # must be atomic with the snapshot is therefore emitted inside this one
+        # batch.
+        baseline_sql = ""
+        if baseline_table_available:
+            baseline_sql = """
+                UPDATE business_state_baselines
+                SET next_rebuild_at = :next_rebuild_at,
+                    updated_at = NOW()
+                WHERE organization_id = :org_id;
+"""
+
+        alert_sql_fragments: list[str] = []
+        alert_params: dict[str, Any] = {}
+        if alert_table_available:
+            for index, anomaly in enumerate(anomalies):
+                alert_sql_fragments.append(f"""
+                INSERT INTO alert_queue (
+                    id, organization_id, business_state_id, alert_type,
+                    severity, message, action_url, payload, status,
+                    dedupe_key, available_at, created_at, updated_at
+                ) VALUES (
+                    :alert_id_{index}, :org_id, :state_id, :alert_type_{index},
+                    :alert_severity_{index}, :alert_message_{index},
+                    :alert_action_url_{index},
+                    CAST(:alert_payload_{index} AS JSONB), 'pending',
+                    :alert_dedupe_key_{index},
+                    NOW(), NOW(), NOW()
+                )
+                ON CONFLICT (organization_id, dedupe_key) DO NOTHING;
+                """)
+                alert_params[f"alert_id_{index}"] = str(uuid.uuid4())
+                alert_params[f"alert_type_{index}"] = anomaly["metric"]
+                alert_params[f"alert_severity_{index}"] = anomaly["severity"]
+                alert_params[f"alert_message_{index}"] = anomaly["message"]
+                alert_params[f"alert_action_url_{index}"] = anomaly.get("action_url")
+                alert_params[f"alert_payload_{index}"] = json.dumps(anomaly)
+                alert_params[f"alert_dedupe_key_{index}"] = f"{state_id}:{anomaly['metric']}"
+        alerts_sql = "".join(alert_sql_fragments)
+
         critical_section_sql = """
                 SELECT set_config('lock_timeout', :lock_timeout, true);
                 SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint);
@@ -1392,11 +1440,9 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
                     CAST(:anomalies AS JSONB), CAST(:trends AS JSONB),
                     CAST(:ml_signals AS JSONB), CAST(:source_data AS JSONB),
                     CAST(:metadata AS JSONB)
-                )
-        """
-        db.execute(
-            text(critical_section_sql),
-            {
+                );
+        """ + baseline_sql + alerts_sql
+        persistence_params = {
                 "lock_timeout": f"{PERSIST_LOCK_TIMEOUT_SECONDS}s",
                 "lock_key": _build_lock_job_name(organization_id),
                 "id": state_id,
@@ -1425,56 +1471,32 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
                 "ml_signals": json.dumps({"customer": customer_ml_signals}),
                 "source_data": json.dumps(source_data),
                 "metadata": json.dumps(state_metadata),
-            },
-        )
+        }
+        if baseline_table_available:
+            persistence_params["next_rebuild_at"] = next_rebuild_at
+        persistence_params["state_id"] = state_id
+        persistence_params.update(alert_params)
+        db.execute(text(critical_section_sql), persistence_params)
 
         diag_pid_after_insert = db.execute(text("SELECT pg_backend_pid()")).scalar()
 
-        if baseline_table_available:
-            db.execute(
-                text("""
-                    UPDATE business_state_baselines
-                    SET next_rebuild_at = :next_rebuild_at,
-                        updated_at = NOW()
-                    WHERE organization_id = :org_id
-                """),
-                {
-                    "next_rebuild_at": next_rebuild_at,
-                    "org_id": organization_id,
-                },
+        # Post-condition gate: the snapshot must exist and be current before
+        # dependent work proceeds. A persistence path that cannot show the row
+        # has not happened, whatever the driver reported. If it is missing, the
+        # build fails loudly instead of reporting a snapshot that was never
+        # written.
+        snapshot_visible = db.execute(
+            text("SELECT is_current FROM business_states WHERE id = :id"),
+            {"id": state_id},
+        ).scalar()
+        if not snapshot_visible:
+            raise BusinessStatePersistenceError(
+                "Business-state snapshot was not verifiable after persistence."
             )
-
-        if alert_table_available:
-            for anomaly in anomalies:
-                db.execute(
-                    text("""
-                        INSERT INTO alert_queue (
-                            id, organization_id, business_state_id, alert_type,
-                            severity, message, action_url, payload, status,
-                            dedupe_key, available_at, created_at, updated_at
-                        ) VALUES (
-                            :id, :org_id, :state_id, :alert_type,
-                            :severity, :message, :action_url,
-                            CAST(:payload AS JSONB), 'pending', :dedupe_key,
-                            NOW(), NOW(), NOW()
-                        )
-                        ON CONFLICT (organization_id, dedupe_key) DO NOTHING
-                    """),
-                    {
-                        "id": str(uuid.uuid4()),
-                        "org_id": organization_id,
-                        "state_id": state_id,
-                        "alert_type": anomaly["metric"],
-                        "severity": anomaly["severity"],
-                        "message": anomaly["message"],
-                        "action_url": anomaly["action_url"],
-                        "payload": json.dumps(anomaly),
-                        "dedupe_key": f"{state_id}:{anomaly['metric']}",
-                    },
-                )
         # Commits the single transaction that spans set_config, the advisory
-        # lock, the UPDATE, the INSERT and the alert inserts - so the advisory
-        # lock is genuinely held across the critical section and released here.
+        # lock, the UPDATE, the INSERT, the baselines update and the alert
+        # inserts - all inside one server-side implicit transaction. The commit
+        # releases the advisory lock together with the writes it protected.
         commit_write_scope(db, write_scope)
 
         logger.info("business_state_written", extra={
@@ -1493,6 +1515,18 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         _rollback_quietly(db)
         raise
     except Exception as exc:
+        # A lock_timeout waiting on a build that already holds the persistence
+        # lock is contention, not corruption: nothing was written. Map it to
+        # the build-in-progress outcome (HTTP 409) so callers report a skipped
+        # build instead of a broken one, and the unique partial index is never
+        # asked to adjudicate a race it lost to the lock.
+        sqlstate = getattr(getattr(exc, "orig", None), "pgcode", None) or getattr(exc, "pgcode", None)
+        if sqlstate == "55P03" or "lock_not_available" in str(exc):
+            _rollback_quietly(db)
+            warnings.append("Another business-state build holds the persistence lock.")
+            raise BusinessStateBuildInProgress(
+                "A business-state rebuild is already running for this organization."
+            ) from exc
         # Bounded, type first: this string ends up in a database column read by
         # operators, so it must never carry a traceback or an unbounded message.
         # Diagnostics go FIRST. The caller bounds this string to 280 characters
