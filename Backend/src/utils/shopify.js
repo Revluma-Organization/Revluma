@@ -153,6 +153,7 @@ const buildInstallUrl = ({ shop, state }) => {
     ...configuredScopes,
     'read_orders',
     'read_customers',
+    'read_products',
     'write_discounts',
   ])].join(',');
   const params = new URLSearchParams({

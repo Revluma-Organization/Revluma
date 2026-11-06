@@ -12,6 +12,9 @@ const REQUIRED_SUBSCRIPTIONS = Object.freeze([
   ['CUSTOMERS_UPDATE', 'customers/update'],
   ['CHECKOUTS_CREATE', 'checkouts/create'],
   ['CHECKOUTS_UPDATE', 'checkouts/update'],
+  ['PRODUCTS_CREATE', 'products/create'],
+  ['PRODUCTS_UPDATE', 'products/update'],
+  ['PRODUCTS_DELETE', 'products/delete'],
 ]);
 
 async function listSubscriptions(store) {

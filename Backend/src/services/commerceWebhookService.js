@@ -13,6 +13,7 @@ const {
   resolveOrderRecoveryStatus,
 } = require('./financialIntegrity');
 const { isPrivacyTopic, handleShopifyPrivacyWebhook } = require('./privacyWebhookService');
+const { syncProductById, deleteProduct } = require('./productSync');
 
 function safeCompareHex(actual, expected) {
   if (!actual || !expected || actual.length !== expected.length) return false;
@@ -747,6 +748,33 @@ async function upsertCustomer(store, payload) {
   });
 }
 
+async function handleProductWebhook(store, topic, payload) {
+  const rawId = payload?.id ?? payload?.product?.id ?? null;
+  const id = rawId != null ? String(rawId) : '';
+  if (!id) {
+    throw Object.assign(new Error('Product webhook is missing an id'), { code: 'PRODUCT_WEBHOOK_MALFORMED' });
+  }
+  if (topic.includes('delete')) {
+    const result = await deleteProduct(store, id);
+    return { action: 'product_deleted', external_id: id, deleted: result?.count ?? null };
+  }
+  // products/create and products/update are change signals; the stored state
+  // is always a fresh refetch, never the webhook body.
+  try {
+    return await syncProductById(store, id);
+  } catch (error) {
+    const denied = error.code === 'SHOPIFY_GRAPHQL_ERROR' &&
+      Array.isArray(error.shopifyErrors) &&
+      error.shopifyErrors.some((item) => Array.isArray(item.codes) && item.codes.includes('ACCESS_DENIED'));
+    const ignorable = denied || error.code === 'SHOPIFY_PRODUCT_NOT_FOUND' || error.code === 'SHOPIFY_PRODUCT_MALFORMED';
+    if (ignorable) {
+      logger.warn('shopify_product_webhook_skipped', { store_id: store.id, topic, error_type: error.code });
+      return { action: 'product_refetch_skipped', external_id: id };
+    }
+    throw error;
+  }
+}
+
 async function processCommerceWebhook({ provider, store, topic, payload }) {
   const normalizedTopic = String(topic || '').toLowerCase();
   // Mandatory Shopify privacy/compliance topics are handled by the dedicated
@@ -756,6 +784,9 @@ async function processCommerceWebhook({ provider, store, topic, payload }) {
   // silently acknowledged as processed.
   if (provider === 'shopify' && isPrivacyTopic(normalizedTopic)) {
     return handleShopifyPrivacyWebhook({ store, topic: normalizedTopic, payload });
+  }
+  if (normalizedTopic.startsWith('products/')) {
+    return handleProductWebhook(store, normalizedTopic, payload);
   }
   if (normalizedTopic === 'app/uninstalled') {
     await prisma.stores.update({

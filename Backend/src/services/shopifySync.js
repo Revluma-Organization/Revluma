@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const { getRedisClient, isRedisReady } = require('../configs/redis');
 const { shopifyGraphqlOrderTotals } = require('./shopifyOrderFinancials');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
+const { syncProducts } = require('./productSync');
 
 const PAGE_SIZE = 100;
 const MAX_SYNC_PAGES = 100; // Explicit cap: never report a partial import as successful.
@@ -484,6 +485,26 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'skipped_for_background_order_reconciliation' });
     }
 
+    setupStage = 'product_sync';
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
+    try {
+      const products = await syncProducts(store);
+      logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: products });
+    } catch (error) {
+      // Catalogue access is optional until the merchant re-consents to the
+      // read_products scope. Only an explicit Shopify products-field denial
+      // can be downgraded; malformed data and database failures stay fatal.
+      const deniedProducts = error.code === 'SHOPIFY_GRAPHQL_ERROR' &&
+        Array.isArray(error.shopifyErrors) &&
+        error.shopifyErrors.some(item =>
+          Array.isArray(item.codes) && item.codes.includes('ACCESS_DENIED') &&
+          /products field/i.test(String(item.message || '')));
+      if (!deniedProducts) throw error;
+      logger.warn('shopify_product_sync_permission_limited', {
+        store_id: store.id, stage: setupStage, reason: 'SHOPIFY_PRODUCTS_ACCESS_DENIED',
+      });
+    }
+
     setupStage = 'customer_sync';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     let customers = 0;
@@ -583,5 +604,6 @@ module.exports = {
   syncAbandonedCheckouts,
   syncCustomers,
   syncOrders,
+  syncProducts,
   syncShopifyStore,
 };

@@ -12,6 +12,9 @@ const REQUIRED = [
   ['CUSTOMERS_UPDATE', 'customers/update'],
   ['CHECKOUTS_CREATE', 'checkouts/create'],
   ['CHECKOUTS_UPDATE', 'checkouts/update'],
+  ['PRODUCTS_CREATE', 'products/create'],
+  ['PRODUCTS_UPDATE', 'products/update'],
+  ['PRODUCTS_DELETE', 'products/delete'],
 ];
 
 function installMocks({ failTopic = null, failTopicOnce = false, failPersistenceTopic = null, failList = null } = {}) {
@@ -101,7 +104,7 @@ async function verifyTopicRejectionDoesNotStopOtherTopics() {
   }
   assert.ok(thrown, 'reconciliation should report incomplete setup');
   assert.strictEqual(thrown.code, 'SHOPIFY_WEBHOOK_RECONCILIATION_INCOMPLETE');
-  assert.deepStrictEqual(attempts, REQUIRED.map(([topic]) => topic), 'all nine Shopify topics must be attempted in order');
+  assert.deepStrictEqual(attempts, REQUIRED.map(([topic]) => topic), 'all twelve Shopify topics must be attempted in order');
   const failure = thrown.webhookFailures.find((item) => item.topic === 'ORDERS_CREATE');
   assert.ok(failure, 'ORDERS_CREATE failure should be included in the result');
   assert.match(failure.errors[0].message, /not available for this app/);
