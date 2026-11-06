@@ -1,18 +1,9 @@
 # REVLUMA — Known Limitations (Production Recovery Operation)
 
-Current as of 2026-11-06 (~11:10Z). This file is updated as each workstream closes; nothing here is
+Current as of 2026-11-06 (~13:45Z). This file is updated as each workstream closes; nothing here is
 waived silently. "BLOCKED" entries name the exact external dependency.
 
 ## P1 — Business-state persistence
-
-6. **Deploy-killed scheduler passes self-heal only at the DB claim TTL (600s).** Observed live
-   2026-11-06 09:21:17: the pass was interrupted by a Node redeploy; the claim sat `running`
-   until 09:31:17; `/ready` reported a phantom running state meanwhile. No manual action was
-   taken; the mechanism worked. A future hardening (startup claim sweep) is tracked in
-   MASTER-EXECUTION-REGISTER.md → P1 open items.
-7. **Render has no deploy API in this operating environment** (unlike Vercel); Python-service
-   deploys are verified behaviorally (scheduler outcomes, snapshot persistence), not by deploy
-   metadata.
 
 1. **Bounded no-current window.** If a build fails between flipping the previous `is_current`
    snapshot out and flipping the new one in, the organization has no current snapshot until the
@@ -31,108 +22,129 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 5. **This fix cannot be validated anywhere but production** for the pooler scatter failure mode.
    Local/CI Postgres confirm correctness and determinism; only production confirms the
    no-scatter regime is tolerated end to end.
+6. **Deploy-killed scheduler passes self-heal only at the DB claim TTL (600s).** Observed live
+   2026-11-06 09:21:17: the pass was interrupted by a Node redeploy; the claim sat `running`
+   until 09:31:17; `/ready` reported a phantom running state meanwhile. A future hardening
+   (startup claim sweep) is tracked in MASTER-EXECUTION-REGISTER.md → P1 open items.
+7. **Render has no deploy API in this operating environment** (unlike Vercel); Python-service
+   deploys are verified behaviorally (scheduler outcomes, snapshot persistence), not by deploy
+   metadata.
 
 ## P2 — Products
 
 - **All Shopify stores hold 0 product rows** (3 rows total, stale WooCommerce). Sync correctness is
-  code-reviewed and fixture-tested (8/8 unit + **7/7 source-to-DB reconciliation suite**:
-  page-flush idempotency, exact-decimal pricing, status mapping, 150-variant nested expansion,
-  loud malformed-node failure, zero-write empty source); the empty catalog is an inference from recorded OAuth
-  scopes + completed syncs on v1 (`read_products` recorded), NOT a source-verified reconciliation —
-  no authorized path from this environment reaches the live Shopify API.
+  code-reviewed and fixture-tested (8/8 unit + **7/7 source-to-DB reconciliation suite**); the empty
+  catalog is an inference from recorded OAuth scopes + completed syncs on v1, NOT a source-verified
+  reconciliation — no authorized path from this environment reaches the live Shopify API.
 - **Deletion reconciliation gap:** full syncs upsert but never remove rows hard-deleted in Shopify
-  without a products/delete webhook, and products webhooks were never registered remotely. Closing
-  this is a bulk-deletion behaviour change on production data — approval-gated (register item 9).
+  without a `products/delete` webhook, and products webhooks were never registered remotely. Closing
+  it is a bulk-deletion behaviour change on production data — approval-gated. This PR merges the
+  gated tooling (`productReconciliation.js`, dry-run default; `--apply` requires
+  `REVLUMA_RECONCILE_CONFIRM_DELETIONS=DELETE-SOURCE-ABSENT-PRODUCTS`; empty source hard-refused,
+  override `REVLUMA_RECONCILE_ALLOW_EMPTY_SOURCE=ALLOW-EMPTY-SOURCE-DELETE`) but executes nothing.
 - **Inventory is uncertified:** `read_inventory` granted to v1, but quantities are deliberately not
   persisted by the catalogue sync; the observation module is unwired proof-of-capability. Nothing in
   the catalogue should be read as certified stock.
-- Local sandbox cannot run `prisma generate` (binaries.prisma.sh unreachable); 9 backend suites rely
-  on CI for execution evidence.
+- **Partial product syncs persist silently until this PR:** a mid-pagination failure previously
+  threw with no counters, making it impossible to tell how far a failed run had gotten. Now the
+  thrown error carries `sync_stage`/`pages_completed`/`products_upserted` and the failure log
+  includes them. Still true: `last_synced_at` advances only on full success (by design) and
+  retries converge via idempotent upserts.
 
 ## P3 — Webhooks
 
-- **Products webhooks have never been registered** (PRODUCTS_CREATE/UPDATE/DELETE: zero rows in
-  `webhook_registrations` for every store, 2026-11-06). Registration is a remote mutation and is
-  approval-gated (register item 3).
+- **Products webhooks have never been registered** (zero rows in `webhook_registrations` for every
+  store, 2026-11-06). Registration is a remote mutation — approval-gated.
 - **27 duplicate (store, topic) registration groups** trace to the backend URL migration
-  (`revluma-backend.onrender.com` → `revluma-backend-vrsd.onrender.com`): exact-URI matching in
-  reconciliation never matched legacy-URI subscriptions, creating parallel sets. Old-host subscriptions
-  may still deliver to the legacy domain; duplicates inside `revluma-test-store` v1 and `6340092e…`
-  prove double-firing risk. Cleanup approval-gated (register item 2).
-- **Zero webhook deliveries since 2026-10-30 08:00Z** (197 rows, all processed). Whether the test
-  stores were simply idle or remote subscriptions are dead cannot be distinguished from inside this
-  environment; both readings are documented, neither is asserted as fact.
-- Remote-subscription changes (including duplicate deletion) are approval-gated; until approved,
-  duplicate registrations may continue to deliver; idempotency at delivery time is the
-  mitigation being verified, not deletion on suspicion.
-- **Before the P4 fix deployed, the conflicted domain (`revluma-test-store.myshopify.com`) routed
-  webhook writes to an ARBITRARY organization** — the fix (`WEBHOOK_STORE_AMBIGUOUS`) is DEPLOYED
-  and verified (node_build `726bedc…`, 10:56Z). Deliveries to that domain are now refused fail-closed.
-- **Drift report tooling now available** (`scripts/shopifyWebhookDriftReport.js`): read-only remote
-  subscription reconciliation per store (missing / unexpected / duplicates-with-counts / legacy URLs);
-  exit 1 on drift. It is the evidence pre-flight for any remediation; it mutates nothing.
+  (`revluma-backend.onrender.com` → `revluma-backend-vrsd.onrender.com`). **This PR stops the
+  bleeding in code:** adopt-by-topic converges the local registry onto existing remote
+  subscriptions (no duplicate creates ever; remote URLs never silently rewritten). It does NOT
+  delete the 16 legacy subscriptions — that remains an approval-gated remote deletion.
+- **In-flight deliveries are no longer invisible:** deliveries claimed (`received`) but never
+  completed were previously stuck until manual DB surgery. This PR adds a scheduler worker that
+  flips wall-clock-stale claims (default ≥900s) to `failed` with an explicit reason so the
+  provider's redelivery re-claims them. Trade-off accepted: a delivery legitimately taking longer
+  than the threshold would be marked `failed` while still running — threshold is env-tunable
+  (`WEBHOOK_DELIVERY_STALE_SECONDS`) and never re-executes business logic.
+- **7-day delivery silence** (0 deliveries) is unexplained from inside this environment (idle test
+  stores vs silently-dead subscriptions indistinguishable). NOT diagnosed, NOT claimed healthy.
+- Local sandbox cannot run `prisma generate` (blocked hosts); 9 backend suites rely on CI.
 
-## P4 — Store identity
+## P4 — Identity, tenancy, security
 
-- Two production store records claim one Shopify domain (`6340092e…`/org `09ff67bf…` vs
-  `009e5c86…`/org `91d88743…`). Until the authorized classification, token ownership and
-  tenant-scoping review completes, the correct owner of that domain is not certified. No
-  transfer/revoke may occur without explicit founder approval.
-- **No global `(platform, shop_domain)` uniqueness exists in `stores`** (only per-org). A third org
-  could claim the domain today; arbitration at OAuth install is a product decision (register item 5).
-- **Cross-merchant routing ambiguity (found + fixed + DEPLOYED):** `findStore` previously used an
-  unordered `findFirst`; post-fix it fails closed with `WEBHOOK_STORE_AMBIGUOUS`. Fix merged via
-  PR #305 (`726bedc1b2a8`) and verified deployed ~10:56Z (Render node_build flip + scheduler healthy).
-- **WooCommerce webhooks 404 (found + fixed, deploy pending):** `stores.shop_domain` stores
-  `https://revluma.local` while the Woo webhook controller strips the scheme before `findStore`.
-  Fix matches bare/https candidates both directions (ambiguity still fails closed); resolution
-  suite 7/7. MERGED via PR #306 (`e8adae9…`, 2026-11-06 ~11:15Z); **NOT yet deployed** — Render
-  still serving `726bedc…` as of ~11:35Z probe; operator deploy required. Vercel frontend PROMOTED
-  for the same commit.
-- Full product-sync reconciliation (source-absent row deletion) remains unimplemented and
-  approval-gated (register item 9).
-- **`products` has no `organization_id`** — tenancy is enforced via `store_id` joins alone; RLS on
-  products is enabled with no policies (deny-by-default for API roles) while the app role bypasses RLS.
-- **Access tokens are AES-256-CBC** (no AEAD/integrity tag). CBC→GCM requires ciphertext re-encryption —
-  approval-gated (register item 6).
-- WooCommerce store rows carry protocol-prefixed domains (`https://revluma.local`) while Shopify rows do
-  not — normalization conventions differ per platform.
+- **Conflicting store-domain pair** (`revluma-test-store.myshopify.com`: `6340092e…`/org `09ff67bf…`
+  vs `009e5c86…`/org `91d88743…`) — unresolved by design; both rows untouched. Webhook resolution
+  fails closed (`WEBHOOK_STORE_AMBIGUOUS`, HTTP 5xx → provider redelivery); Woo findStore matches
+  bare/https candidates both directions with the same fail-closed ambiguity rule.
+- **Global `(platform, shop_domain)` uniqueness does not exist** — cross-tenant domain collisions
+  are possible at the data layer and prevented only by resolution fail-closed. Migration/arbitration
+  is approval-gated.
+- **Token ciphertexts in v1 (AES-256-CBC) remain valid** (decrypt-only compat). New encryptions are
+  v2 (AES-256-GCM, authenticated). Bulk re-encryption is merged this PR as dry-run-default tooling;
+  `--apply` is gated on `REVLUMA_REKEY_CONFIRM=REENCRYPT-ALL-SHOPIFY-TOKENS` and is NOT executed.
+- **RLS is enabled but not forced on 9 tables** (products, order_items, webhook_deliveries,
+  webhook_registrations, audit_logs, automation_job_state, business_states, sequence_sends,
+  ml_session_features, privacy_requests — 10 tables). Least privilege currently holds via app-role
+  scoping (every audited data path is org-/store-scoped or HMAC-gated); no policy was changed in
+  this operation because flipping FORCE without rehearsing the app role's requirements could take
+  production down. Recorded as defense-in-depth debt, owner: founder/infrastructure.
+- **`stores.shop_domain` has no standalone index** — lookups seq-scan (4 rows today). Add an index
+  before the store count approaches ~100; deliberately not added pre-launch by this operation.
+- **Tenant-isolation audit (2026-11-06) found no unscoped cross-tenant read** across rev/settings/
+  shopify/dashboard/intelligence/operational/scheduler/internal paths. This is an inspection result,
+  not a proof; isolation for future code paths must be maintained deliberately.
 
-## P5 — Privacy
+## P5 — Privacy / compliance
 
-- **Shopify protected-customer-data / mandatory compliance webhook approval state is UNKNOWN in this
-  environment and is the named external blocker** for any production erasure/export demonstration.
-- No live compliance webhook has been exercised on production (it would write/redact live merchant
-  data; not authorized). Verification is code review + 6/6 fixture workflow tests, including a
-  forced-failure leg proving no acknowledgement before durable success.
-- GDPR erasure is implemented at row level (events, ML session features, training observations, cart
-  scrub, customer pseudonymisation); orders are retained for financial necessity with PII links
-  severed. Retention windows and DSAR SLA are not certified.
-- Audit trail (`audit_logs`) stores counts and identifiers only; payload artifacts stay in
-  RLS-enabled `privacy_requests`.
+- **shop/redact is now de-transacted by design** (this PR): ordered, idempotent single statements
+  (children→parents), per-step failure tagging (`SHOP_REDACT_STEP_FAILED:<step>`), `stores.update`
+  last. Consequences, accepted and documented: (a) a mid-run failure leaves earlier steps applied —
+  by design, retry converges (all steps idempotent); (b) there is no atomic "all or nothing" for
+  redact on this pooler, ever — do not reintroduce a wrapping transaction; (c) a permanently
+  failing step halts redact at that step and requires operator attention (delivery marked failed
+  with the step code; admin page shows the failure).
+- **Protected customer data / compliance webhooks: Shopify approval required** — eligibility
+  unknown; the app cannot claim production compliance until Shopify reviews and the partner
+  dashboard is configured.
+- **Live end-to-end exercise never run** (would write/redact live data); DSAR SLA and retention
+  windows uncertified. Artifact v1 excludes internal identifiers (pinned by test).
+- Pseudonymised emails use `redacted-<sha256[:24]>@redacted.invalid` — deterministic (same input ⇒
+  same pseudonym) for cross-system erasure correlation; not reversible; not a privacy proof.
 
-## P6 — Rev intelligence
+## P6 — Rev live-data certification
 
-- Verification is bounded by what live production data supports. Metrics with no trustworthy
-  source in the canonical layer are documented as unavailable, never estimated.
-- **The 11-scenario conversational acceptance has not been run** (requires an authenticated production
-  session — user-only); the 2026-11-04 PARTIAL CERTIFICATION of the deterministic layer is the
-  standing record. Live tool-invocation counts are deliberately not estimated.
-- `merchant_memories` = 0 and `context_window`/`summary` are NULL on all conversations — persistent
-  business context has never completed in production (P0 noted 2026-11-02, not addressed by this operation).
-- Live catalogue is EMPTY (0 Shopify products): catalogue-dependent suggestions have nothing to cite.
-- `orders` holds only 5 rows on the v1 store (USD 3,446.85) — any revenue answer against v1 is
-  accurate but materially thin.
-- Live live-accuracy cross-check (2026-11-06 ~10:50Z) confirmed `revenue_today=0` is the CORRECT
-  value (no orders on 2026-11-05/06) and that the production snapshot carries the full telemetry key
-  set; no invented fields.
+- **Deterministic fixtures ≠ live certification.** The 11/11 scenario suite proves routing/gate/
+  tool-permission behaviour in-process; it says nothing about tool-invocation counts, latency,
+  evidence quality, or prose faithfulness in a real session.
+- **Golden set currency:** 507 cases as of 2026-11-04 certification; 667 routing/investigation/
+  registry/metrics tests green this revision — but no live acceptance with invocation counts exists.
+- **Live accuracy check** (v1: 5 orders USD 3,446.85; latest order 2026-10-30; `revenue_today=0`
+  correct as of probe) describes a nearly-dormant store; it cannot demonstrate quality on a busy
+  store. Certification on realistic volume is impossible without a merchant with real traffic.
+- **`rev-metrics-v1` fails closed** for non-computable metrics — by design Rev says "I can't
+  verify that" rather than fabricate; this is correct behaviour, not a bug, and will surface as
+  "unverified" answers until data density improves.
+- **Frontend quiet-turn rendering** (reviewed this PR): conversational/clarify/refuse never render
+  report scaffolding — but the browser was not exercised against this build yet (no authenticated
+  session); visual confirmation pending user session.
 
-## Cross-cutting
+## Cross-cutting — environment, dependencies, documents
 
-- **Stale `business_states` rows from before the fix are not automatically purged.** Retention
-  prunes `is_current = FALSE` rows beyond the configured window on successful builds; bulk
-  cleanup of historical rows requires explicit approval.
-- Local test rig vs CI parity: local runs use a self-provisioned Postgres (`empty_ci`); CI
-  replays prisma-push. Schema provisioning is kept identical in tests.
-- Pre-existing provider-dependent `phase2_business_state_fidelity` failures (if observed in CI)
-  are unrelated to this operation and tracked separately; they must not mask new failures.
+- **npm audit (production dependencies), 2026-11-06:**
+  - Backend — 7 findings (4 low, 3 high): `deepmerge` prototype pollution via `@sendgrid/mail`
+    (fix = downgrade to `@sendgrid/mail@6.5.2`, breaking — NOT applied), `deepmerge-ts` stack
+    exhaustion via `@prisma/config` (CLI/config-time only, not request path — fix = `prisma@7`
+    major, NOT applied). Risk accepted explicitly 3 days pre-launch rather than force breaking
+    dependency bumps; revisit post-launch with targeted tests.
+  - Frontend — 2 moderate: `react-router`/`react-router-dom` ≤7.17.0 (fix = v7 major upgrade,
+    NOT applied). Dashboard is embedded + authenticated; exposure limited; revisit post-launch.
+- **Sandbox cannot generate Prisma engines** (`binaries.prisma.sh` unreachable): 9 backend suites
+  run only in CI. The full `npm test` sweep aborts at `.prisma/client/default`; all suites that
+  can run without engines were run and are green (see register).
+- **`stores.shop_domain` uniqueness is per-org by design** (`uq_stores_org_domain`); cross-org
+  domain collisions are the P4 conflict — do not read the unique index as global uniqueness.
+- **Diagnostics endpoints** (`/api/v1/admin/...access`, drift reports, reconcile scripts) are
+  operator-only tooling: admin-key/env-gated, tenant-scoped, no PII, mutate nothing without a
+  confirmation env var. They are not for merchant consumption and are not public.
+- **Docs drift risk is real;** this file, the register, the checklist and the verification report
+  must be updated together at every gate (they were, this revision).

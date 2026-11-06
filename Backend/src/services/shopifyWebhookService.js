@@ -129,10 +129,30 @@ async function reconcileShopifyWebhooks(store) {
       }
 
       let subscription = existing.find((item) => item.topic === topic && item.uri === uri);
+      let adoptedLegacy = false;
       if (!subscription) {
-        subscription = await createSubscription(store, topic, uri);
-        created += 1;
+        // A subscription for this topic may already exist at a legacy
+        // callback URL. Creating a parallel subscription was the source of
+        // the duplicate-registration problem: match on topic alone and
+        // adopt the remote's actual URI. Migrating the remote URL is an
+        // explicit operator action (see the drift report) — never silently
+        // issue a second subscription for the same topic.
+        const topicMatch = existing.find((item) => item.topic === topic);
+        if (topicMatch) {
+          subscription = topicMatch;
+          adoptedLegacy = true;
+          logger.warn('shopify_webhook_legacy_subscription_adopted', {
+            store_id: store.id,
+            topic,
+            remote_uri: topicMatch.uri,
+            expected_uri: uri,
+          });
+        } else {
+          subscription = await createSubscription(store, topic, uri);
+          created += 1;
+        }
       }
+      const effectiveUri = subscription.uri || uri;
 
       await prisma.webhook_registrations.upsert({
         where: { store_id_external_id: { store_id: store.id, external_id: subscription.id } },
@@ -140,12 +160,12 @@ async function reconcileShopifyWebhooks(store) {
           store_id: store.id,
           external_id: subscription.id,
           topic,
-          delivery_url: uri,
+          delivery_url: effectiveUri,
           status: 'active',
-          last_error: null,
+          last_error: adoptedLegacy ? 'legacy_callback_url_adopted: remote subscription kept at its existing URI; URL migration pending operator review (see drift report)' : null,
           completed_at: new Date(),
         },
-        update: { topic, delivery_url: uri, status: 'active', last_error: null, completed_at: new Date(), updated_at: new Date() },
+        update: { topic, delivery_url: effectiveUri, status: 'active', last_error: adoptedLegacy ? 'legacy_callback_url_adopted: remote subscription kept at its existing URI; URL migration pending operator review (see drift report)' : null, completed_at: new Date(), updated_at: new Date() },
       });
       await prisma.webhook_registrations.deleteMany({
         where: { store_id: store.id, external_id: failureRecordId },
@@ -154,7 +174,7 @@ async function reconcileShopifyWebhooks(store) {
         where: { store_id_external_id: { store_id: store.id, external_id: `setup-state:${topic}` } },
         data: { status: 'succeeded', last_error: null, completed_at: new Date(), updated_at: new Date() },
       });
-      logger.info('shopify_webhook_topic_setup', { store_id: store.id, topic, outcome: 'registered' });
+      logger.info('shopify_webhook_topic_setup', { store_id: store.id, topic, outcome: adoptedLegacy ? 'adopted_legacy_subscription' : (created ? 'registered_or_confirmed' : 'registered') });
     } catch (error) {
       const safeErrors = safeShopifyErrors(error);
       const code = error.code || error.name || 'webhook_setup_error';

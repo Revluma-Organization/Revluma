@@ -301,50 +301,70 @@ async function handleShopRedact({ store }) {
   const cartIds = cartRows.map((row) => row.id);
   const sendRows = await prisma.sequence_sends.findMany({ where: { store_id: storeId }, select: { id: true } });
   const sendIds = sendRows.map((row) => row.id);
-  await prisma.$transaction(async (tx) => {
-    if (sendIds.length) {
-      counts.sequence_events = (await tx.sequence_events.deleteMany({ where: { sequence_send_id: { in: sendIds } } })).count;
+  // Ordered, idempotent single-statement steps — deliberately NOT an
+  // interactive multi-statement transaction. This environment's pooler does
+  // not pin one server backend to one client transaction (root cause of the
+  // 2026-11-06 business-state persistence incident), so a wrapping transaction
+  // would provide no atomicity while hiding the true failure point. Each
+  // statement below commits on its own; ordering is children-before-parents;
+  // every step is idempotent, so a failure is marked failed and a retry
+  // converges without double-erasing anything.
+  const steps = [
+    ['sequence_events', () => sendIds.length
+      ? prisma.sequence_events.deleteMany({ where: { sequence_send_id: { in: sendIds } } })
+      : { count: 0 }],
+    ['order_items', () => prisma.order_items.deleteMany({ where: { store_id: storeId } })],
+    ['order_checkout_reconciliation_cases', () => prisma.order_checkout_reconciliation_cases.deleteMany({ where: { store_id: storeId } })],
+    ['order_cancellation_tombstones', () => prisma.order_cancellation_tombstones.deleteMany({ where: { store_id: storeId } })],
+    ['orders', () => prisma.orders.deleteMany({ where: { store_id: storeId } })],
+    ['abandoned_cart_items', () => cartIds.length
+      ? prisma.abandoned_cart_items.deleteMany({ where: { abandoned_cart_id: { in: cartIds } } })
+      : { count: 0 }],
+    ['abandoned_carts', () => prisma.abandoned_carts.deleteMany({ where: { store_id: storeId } })],
+    ['feature_jobs', () => prisma.feature_jobs.deleteMany({ where: { store_id: storeId } })],
+    ['events', () => prisma.events.deleteMany({ where: { store_id: storeId } })],
+    ['ml_session_features', () => prisma.ml_session_features.deleteMany({ where: { store_id: storeId } })],
+    ['churn_training_observations', () => prisma.churn_training_observations.deleteMany({ where: { store_id: storeId } })],
+    ['sensitivity_training_observations', () => prisma.sensitivity_training_observations.deleteMany({ where: { store_id: storeId } })],
+    ['sequence_sends', () => prisma.sequence_sends.deleteMany({ where: { store_id: storeId } })],
+    ['sequences', () => prisma.sequences.deleteMany({ where: { store_id: storeId } })],
+    ['coupons', () => prisma.coupons.deleteMany({ where: { store_id: storeId } })],
+    ['intelligence_findings', () => prisma.intelligence_findings.deleteMany({ where: { store_id: storeId } })],
+    ['intelligence_order_coverage', () => prisma.intelligence_order_coverage.deleteMany({ where: { store_id: storeId } })],
+    ['product_images', () => prisma.product_images.deleteMany({ where: { store_id: storeId } })],
+    ['product_tag_links', () => prisma.product_tag_links.deleteMany({ where: { store_id: storeId } })],
+    ['product_category_links', () => prisma.product_category_links.deleteMany({ where: { store_id: storeId } })],
+    ['product_attributes', () => prisma.product_attributes.deleteMany({ where: { store_id: storeId } })],
+    ['product_tags', () => prisma.product_tags.deleteMany({ where: { store_id: storeId } })],
+    ['product_categories', () => prisma.product_categories.deleteMany({ where: { store_id: storeId } })],
+    ['products', () => prisma.products.deleteMany({ where: { store_id: storeId } })],
+    ['store_settings', () => prisma.store_settings.deleteMany({ where: { store_id: storeId } })],
+    ['webhook_deliveries', () => prisma.webhook_deliveries.deleteMany({ where: { store_id: storeId } })],
+    ['webhook_registrations', () => prisma.webhook_registrations.deleteMany({ where: { store_id: storeId } })],
+    ['customers', () => prisma.customers.deleteMany({ where: { store_id: storeId } })],
+  ];
+  for (const [name, run] of steps) {
+    try {
+      counts[name] = (await run()).count;
+    } catch (error) {
+      const tagged = Object.assign(new Error(`shop/redact failed at step '${name}'`), {
+        code: 'SHOP_REDACT_STEP_FAILED',
+        failed_step: name,
+        cause: error,
+      });
+      throw tagged;
     }
-    counts.order_items = (await tx.order_items.deleteMany({ where: { store_id: storeId } })).count;
-    counts.order_checkout_reconciliation_cases = (await tx.order_checkout_reconciliation_cases.deleteMany({ where: { store_id: storeId } })).count;
-    counts.order_cancellation_tombstones = (await tx.order_cancellation_tombstones.deleteMany({ where: { store_id: storeId } })).count;
-    counts.orders = (await tx.orders.deleteMany({ where: { store_id: storeId } })).count;
-    if (cartIds.length) {
-      counts.abandoned_cart_items = (await tx.abandoned_cart_items.deleteMany({ where: { abandoned_cart_id: { in: cartIds } } })).count;
-    }
-    counts.abandoned_carts = (await tx.abandoned_carts.deleteMany({ where: { store_id: storeId } })).count;
-    counts.feature_jobs = (await tx.feature_jobs.deleteMany({ where: { store_id: storeId } })).count;
-    counts.events = (await tx.events.deleteMany({ where: { store_id: storeId } })).count;
-    counts.ml_session_features = (await tx.ml_session_features.deleteMany({ where: { store_id: storeId } })).count;
-    counts.churn_training_observations = (await tx.churn_training_observations.deleteMany({ where: { store_id: storeId } })).count;
-    counts.sensitivity_training_observations = (await tx.sensitivity_training_observations.deleteMany({ where: { store_id: storeId } })).count;
-    counts.sequence_sends = (await tx.sequence_sends.deleteMany({ where: { store_id: storeId } })).count;
-    counts.sequences = (await tx.sequences.deleteMany({ where: { store_id: storeId } })).count;
-    counts.coupons = (await tx.coupons.deleteMany({ where: { store_id: storeId } })).count;
-    counts.intelligence_findings = (await tx.intelligence_findings.deleteMany({ where: { store_id: storeId } })).count;
-    counts.intelligence_order_coverage = (await tx.intelligence_order_coverage.deleteMany({ where: { store_id: storeId } })).count;
-    counts.product_images = (await tx.product_images.deleteMany({ where: { store_id: storeId } })).count;
-    counts.product_tag_links = (await tx.product_tag_links.deleteMany({ where: { store_id: storeId } })).count;
-    counts.product_category_links = (await tx.product_category_links.deleteMany({ where: { store_id: storeId } })).count;
-    counts.product_attributes = (await tx.product_attributes.deleteMany({ where: { store_id: storeId } })).count;
-    counts.product_tags = (await tx.product_tags.deleteMany({ where: { store_id: storeId } })).count;
-    counts.product_categories = (await tx.product_categories.deleteMany({ where: { store_id: storeId } })).count;
-    counts.products = (await tx.products.deleteMany({ where: { store_id: storeId } })).count;
-    counts.store_settings = (await tx.store_settings.deleteMany({ where: { store_id: storeId } })).count;
-    counts.webhook_deliveries = (await tx.webhook_deliveries.deleteMany({ where: { store_id: storeId } })).count;
-    counts.webhook_registrations = (await tx.webhook_registrations.deleteMany({ where: { store_id: storeId } })).count;
-    counts.customers = (await tx.customers.deleteMany({ where: { store_id: storeId } })).count;
-    await tx.stores.update({
-      where: { id: storeId },
-      data: {
-        status: 'redacted',
-        access_token: null,
-        granted_scopes: null,
-        public_tracking_key: null,
-        updated_at: new Date(),
-      },
-    });
-  }, { timeout: 60_000, maxWait: 10_000 });
+  }
+  await prisma.stores.update({
+    where: { id: storeId },
+    data: {
+      status: 'redacted',
+      access_token: null,
+      granted_scopes: null,
+      public_tracking_key: null,
+      updated_at: new Date(),
+    },
+  });
   return { action: 'privacy_shop_redacted', artifact: null, summary: counts };
 }
 
@@ -374,8 +394,11 @@ async function handleShopifyPrivacyWebhook({ store, topic, payload }) {
     const { artifact, ...publicOutcome } = outcome;
     return publicOutcome;
   } catch (error) {
-    await finishRequest(begin.id, { status: 'failed', errorCode: error?.code || error?.name || 'privacy_processing_error' });
-    logger.error('privacy_request_failed', { store_id: store.id, topic: normalizedTopic, error_type: error?.code || error?.name || 'privacy_processing_error' });
+    const errorType = error?.failed_step
+      ? `${error.code || 'PRIVACY_ERROR'}:${error.failed_step}`
+      : (error?.code || error?.name || 'privacy_processing_error');
+    await finishRequest(begin.id, { status: 'failed', errorCode: errorType });
+    logger.error('privacy_request_failed', { store_id: store.id, topic: normalizedTopic, error_type: errorType, failed_step: error?.failed_step || null });
     throw error;
   }
 }

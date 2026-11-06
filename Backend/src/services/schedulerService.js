@@ -33,6 +33,7 @@ const { syncShopifyStore } = require('./shopifySync');
 const { storeSyncEligibility } = require('./shopifySyncRecovery');
 const { ABANDONMENT_INACTIVITY_MS } = require('./checkoutInactivity');
 const { runFeatureJobs } = require('./featureWorkerService');
+const { recoverStuckDeliveries } = require('./webhookDeliveryRecovery');
 const { runRecoveryActions } = require('./recoveryActionService');
 const { runDailyChurnScoring } = require('./churnWorkerService');
 const { runTrainingObservationFinalization } = require('./trainingObservationService');
@@ -65,6 +66,10 @@ const ALERT_QUEUE_INTERVAL_MS = intSetting('ALERT_QUEUE_INTERVAL_MS', '60000', 5
 const MORNING_BRIEFINGS_INTERVAL_MS = intSetting('MORNING_BRIEFINGS_INTERVAL_MS', '60000', 5000);
 
 const STORE_SYNC_INTERVAL_MS = intSetting('STORE_SYNC_INTERVAL_MS', String(15 * 60 * 1000), 5000);
+
+const WEBHOOK_DELIVERY_RECOVERY_INTERVAL_MS = intSetting('WEBHOOK_DELIVERY_RECOVERY_INTERVAL_MS', String(5 * 60 * 1000), 60000);
+
+const WEBHOOK_DELIVERY_STALE_SECONDS = intSetting('WEBHOOK_DELIVERY_STALE_SECONDS', '900', 300);
 
 const FEATURE_JOB_INTERVAL_MS = intSetting('FEATURE_JOB_INTERVAL_MS', '15000', 5000);
 
@@ -136,6 +141,7 @@ let recoveryActionTimer = null;
 let churnScoringTimer = null;
 let intelligenceAutomationTimer = null;
 let trainingObservationTimer = null;
+let webhookDeliveryRecoveryTimer;
 let intelligenceFindingsTimer = null;
 let startupPassTimers = [];
 
@@ -1122,6 +1128,24 @@ async function runStoreSync() {
     }
 }
 
+async function runWebhookDeliveryRecovery() {
+    const lock = await acquireLock('webhook-delivery-recovery');
+    if (!lock) return;
+    try {
+        const result = await recoverStuckDeliveries({ olderThanSeconds: WEBHOOK_DELIVERY_STALE_SECONDS });
+        if (result.recovered) {
+            logger.warn('scheduler_webhook_delivery_recovery_completed', result);
+        }
+        return result;
+    } catch (error) {
+        logger.error('scheduler_webhook_delivery_recovery_failed', {
+            error_type: error?.code || error?.name || 'recovery_error',
+        });
+    } finally {
+        await releaseLock(lock);
+    }
+}
+
 // -----------------------------------------------------------------------------
 // Start
 // -----------------------------------------------------------------------------
@@ -1171,6 +1195,7 @@ function startScheduler() {
         ['intelligence-automation', runAutomationQueue],
         ['training-observations', runTrainingObservationQueue],
         ['intelligence-findings', runIntelligenceFindingsRefresh],
+        ['webhook-delivery-recovery', runWebhookDeliveryRecovery],
     ];
 
     startupPasses.forEach(([jobName, runPass], index) => {
@@ -1240,6 +1265,11 @@ function startScheduler() {
     intelligenceFindingsTimer = setInterval(
         runIntelligenceFindingsRefresh,
         INTELLIGENCE_FINDINGS_INTERVAL_MS
+    );
+
+    webhookDeliveryRecoveryTimer = setInterval(
+        runWebhookDeliveryRecovery,
+        WEBHOOK_DELIVERY_RECOVERY_INTERVAL_MS
     );
 
     /*
@@ -1313,6 +1343,11 @@ function stopScheduler() {
         trainingObservationTimer = null;
     }
 
+    if (webhookDeliveryRecoveryTimer) {
+        clearInterval(webhookDeliveryRecoveryTimer);
+        webhookDeliveryRecoveryTimer = null;
+    }
+
     if (intelligenceFindingsTimer) {
         clearInterval(intelligenceFindingsTimer);
         intelligenceFindingsTimer = null;
@@ -1340,6 +1375,7 @@ module.exports = {
     runAlertQueue,
     runChurnQueue,
     runFeatureQueue,
+    runWebhookDeliveryRecovery,
     runRecoveryQueue,
     runAutomationQueue,
     runTrainingObservationQueue,
