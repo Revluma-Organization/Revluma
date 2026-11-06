@@ -145,204 +145,120 @@ Pre-fix prod state retained below as the baseline defect record.
 
 ---
 
-## P2 — Shopify product ingestion  ·  Impl: IMPLEMENTED · Prod: NOT VERIFIED
+Throughout this section: full detail lives in `P2-P6-PRODUCTION-REPORT.md` (same directory).
 
-Requirement source: Recovery assignment P2.
+## P2 — Shopify product ingestion  ·  Impl: IMPLEMENTED (reconciliation-tested) · Prod: NOT VERIFIED
 
-**Implemented (code, reviewed + fixture-tested 2026-11-06):** `Backend/src/services/productSync.js` —
-50-node pages, `MAX_SYNC_PAGES=100` cap (pagination fail-closed, never a partial import reported
-as complete), variant connection fully expanded before persistence (`MAX_VARIANT_PAGES=20`,
-stale/changed `updatedAt` between pages fails the product), exact-decimal prices (no floats, no
-silent USD), idempotent upsert on `products @@unique([store_id, external_id])`, `created_at` never
-nulled on update, `ARCHIVED` maps to a kept `archived` row, deletion path wired end-to-end
-(products/delete webhook → `deleteProduct`, store-scoped), prices/status feed the catalogue as read-only.
-Scope posture: `read_products` is verified at OAuth time and recorded on `stores.granted_scopes`; only an
-explicit Shopify `ACCESS_DENIED` on the products field downgrades (warn + continue); malformed data and
-DB failures are fatal. Inventory is deliberately out of the catalogue snapshot (`read_inventory` granted
-to v1; `shopifyInventoryObservation.js` is a fail-closed observation module, tested, NOT wired to
-persistence or scheduler — quantities stay null rather than invented).
+Path A (live source via the authorized installation) was executed as far as this environment
+reaches: Vercel exposes only frontend env (no backend secrets — nothing decrypted, nothing
+transmitted); the authorized installation proves itself in production (`last_synced_at` advanced
+today for v1 and both conflict-pair stores; v1 records `read_products` from OAuth) but no
+authenticated remote catalogue read was possible from here. "0 rows in DB" remains an inference,
+NOT a source-verified reconciliation.
 
-**Production facts (read-only, 2026-11-06 ~10:20Z):** all Shopify stores hold **0 product rows**
-(products total = 3, all stale WooCommerce `revluma.local` rows last updated 2026-08-13). v1
-(`revluma-test-store-v1`, org `1dc6aa19…`, store `3ed79446…`) recorded `read_products` at OAuth and its
-full sync completed today (`last_synced_at` 2026-11-06 09:33:50Z and 10:03Z); with the products stage
-non-fatal-but-downgradable only on explicit ACCESS_DENIED, 0 rows is consistent with an **empty source
-catalog** — but this is an inference, NOT a source-verified reconciliation. No authorized path from this
-environment reaches the live Shopify API (tokens AES-encrypted at rest; `SHOPIFY_TOKEN_ENCRYPTION_KEY`
-not available; Render logs/deploy API unavailable). An advanced scheduler timestamp is not proof and is
-not claimed as one.
+Path B (sync-path verification) is DONE and fixture-verified: new
+`shopifyProductSync.reconciliation.test.js` (7/7 — 120-product/3-page persistence with exact
+decimals and zero duplicates; idempotent re-sync; `created_at` preserved; status mapping for
+ACTIVE/ARCHIVED/DRAFT/UNLISTED; 150-variant nested expansion before persistence; loud failure on
+malformed nodes; empty source = zero-write; source-absent rows pinned as the approval-gated gap).
+`shopifyProductSync.test.js` 8/8; `shopifyWebhookDrift.test.js` 5/5.
 
-**Defects / gaps found:**
-- (a) Full sync never reconciles rows hard-deleted in Shopify without a products/delete webhook — and
-  products webhooks were never registered remotely (see P3). Reconciling now = bulk deletion on prod;
-  NOT implemented (approval-gated).
-- (b) Product sync has no dedicated scope-verification/fail-fast like `verifyOrderReadScope` (orders);
-  it relies on the downgrade-on-ACCESS_DENIED path. Acceptable as deployed; hardening noted.
+**Production facts:** all Shopify stores hold 0 product rows (3 rows total, WooCommerce, stale
+2026-08-13). Inventory module exists but is deliberately unwired (quantities stay null, not
+invented). Deletion of source-absent rows: NOT IMPLEMENTED (approval-gated, item 9).
 
-**Offline verification:** `shopifyProductSync.test.js` 8/8; `shopifyWebhookDeliverySafety.test.js` 3/3;
-`shopifyPrivacyWebhookWorkflow.test.js` 6/6; `webhookStoreResolution.test.js` 4/4 (new, see P4);
-`shopifyWebhookService.test.js` all assertions passed; `shopifySyncRecovery.test.js` 4/4.
-`intelligenceShopifyPagination.test.js`, `shopifyNestedLineCompleteness.test.js`,
-`shopifyInventoryObservation.test.js` (and 6 other suites) cannot run in this sandbox — `prisma generate`
-requires `binaries.prisma.sh`, which this environment's egress policy blocks; these run in CI
-(`npm ci` + `prisma generate` there). Baseline comparison: 42→43 pass, 10→9 fail, all 9 failures
-identical `MODULE_NOT_FOUND '.prisma/client/default'` on both sides.
+**Classification: IMPLEMENTED, NOT PRODUCTION VERIFIED.** Close with: authorized live reconciliation
+of v1 + one create→sync→update→delete round-trip (founder/user action).
 
-**Classification: IMPLEMENTED, NOT PRODUCTION VERIFIED.** To close: live source-to-DB reconciliation
-of v1 (merchant confirmation the test store has no products, OR authorized Shopify API read, OR Render
-log access), then a created product round-trip (create → sync → row present → webhook update →
-delete → row gone).
+## P3 — Webhook registration & delivery  ·  Impl: IMPLEMENTED (+drift tooling) · Prod: NOT VERIFIED
 
-## P3 — Webhook registration & delivery  ·  Impl: IMPLEMENTED · Prod: NOT VERIFIED
+Inventory (read-only prod 2026-11-06): required set = **12 topics** (`shopifyWebhookTopics.js`,
+pure module). Registrations (82 rows): v1 + `6340092e…` hold **2 active × 9 topics** (split across
+legacy/current backend hosts — exact-URI matching never matched legacy subscriptions); `009e5c86…`
+1 active × 9; retired store 8 failed pairs + APP_UNINSTALLED ×2; **PRODUCTS_CREATE/UPDATE/DELETE:
+zero rows anywhere** (products subscribe only at install/reinstall; background sync runs
+`reconcileWebhooks:false` by design). 27 duplicate groups confirmed. Deliveries (197 rows, all
+`processed`): latest 2026-10-30 08:00Z; **0 in 7 days** — idle vs dead subscriptions
+indistinguishable from here.
 
-Requirement source: Recovery assignment P3.
+Verified: HMAC-SHA256 raw-body signature (401 pre-processing), claim-before-process with P2002
+identity checks, retry-once on failed delivery, never-ack-early, 200 only post-success.
+`shopifyWebhookDeliverySafety.test.js` 3/3; privacy workflow 6/6; drift analysis 5/5.
 
-**Inventory (read-only prod, 2026-11-06 ~10:20Z) — `webhook_registrations` (82 rows):**
-- Required set is **12 topics** (`REQUIRED_SUBSCRIPTIONS`: APP_UNINSTALLED, ORDERS_CREATE/UPDATED/
-  CANCELLED/DELETE, CUSTOMERS_CREATE/UPDATE, CHECKOUTS_CREATE/UPDATE, PRODUCTS_CREATE/UPDATE/DELETE).
-  *Earlier "13 topics" recon note was inaccurate; the code requires 12.*
-- `revluma-test-store-v1` (`3ed79446…`): **2 active rows per each of 9 topics** + 1 succeeded setup-state
-  row per topic (setup 2026-10-27) — duplicates split across two delivery URLs (`revluma-backend.onrender.com`
-  → `revluma-backend-vrsd.onrender.com`); `revluma-test-store` org `09ff67bf…` (`6340092e…`): same pattern,
-  2 active × 9 topics; `revluma-test-store` org `91d88743…` (`009e5c86…`): **1 active × 9 topics**, no
-  succeeded setup-state row (registered later, single URL); retired store (`aa269846…`, never touched):
-  8 topics × 2 **failed** rows from 2026-10-27 + APP_UNINSTALLED 2 active; **PRODUCTS_* topics have ZERO
-  rows for every store — never attempted**; products subscribe only at install/reinstall (background hourly
-  sync deliberately runs `reconcileWebhooks: false`), and v1 has had no OAuth exchange since the products
-  requirement shipped.
-- 27 duplicate (store, topic) groups confirmed: 9 + 9 + 8 (failed pairs, retired) + 1 (retired APP_UNINSTALLED).
-- Delivery URLs confirm the URL-migration duplicate source: current `-vrsd` host (6 rows/topic) vs old
-  host (3–4 rows/topic). Old-URL subscriptions remain registered at Shopify and, if they still fire,
-  deliver to the legacy backend domain.
+**NEW: `scripts/shopifyWebhookDriftReport.js`** — operator-run, READ-ONLY remote drift report
+(live subscriptions via the authorized installation vs REQUIRED_SUBSCRIPTIONS; missing / unexpected /
+duplicates-with-counts / legacy URLs; exit 1 on drift). Run it per store before any remediation.
+It mutates nothing, anywhere.
 
-**`webhook_deliveries` (197 rows, all `status=processed`):** orders/create 5, orders/updated 12,
-orders/cancelled 2, orders/delete 1, checkouts/create 19, checkouts/update 142, customers/create 9,
-customers/update 7 — latest 2026-10-30 08:00:39Z. **Zero deliveries in 7 days**; indistinguishable
-between idle test stores and silently-failing remote subscriptions from inside this environment.
+**Approval-gated (exact proposals):** register PRODUCTS_* on `3ed79446…`, `6340092e…`, `009e5c86…`
+(3×3); delete 8 legacy-host subscriptions on v1 and 8 on `6340092e…` (16 total) identified by the
+drift report; retired store rows — leave unless founder orders otherwise. No remote mutation has
+been executed or is authorized.
 
-**Code path (verified):** `commerceWebhookController.receive` → HMAC-SHA256 signature over the raw body
-(401 before any processing) → `findStore` (see P4) → `claimDelivery` (P2002-identity-checked; failed
-deliveries retry once; in-flight deliveries never acked) → process → `markDelivery(processed)` →
-only then HTTP 200. Failures mark the delivery failed and yield 5xx so Shopify retries. Delivery safety
-covered by `shopifyWebhookDeliverySafety.test.js` (3/3).
+**Classification: IMPLEMENTED, NOT PRODUCTION VERIFIED.**
 
-**NEW defect fixed on this branch (cross-merchant, see P4):** `findStore` previously resolved the tenant
-via `findFirst` with no uniqueness check; the same domain on two orgs routed webhook writes to an
-arbitrary organization. Now fails closed with `WEBHOOK_STORE_AMBIGUOUS`.
+## P4 — Store identity, tenant isolation, security  ·  Impl: IMPLEMENTED · Prod: PARTIAL (fix deployed + verified)
 
-**Not done (approval-gated):** creating remote PRODUCTS_* subscriptions; duplicate cleanup (27 groups);
-any change to the retired store's 18 failed registrations; retired `APP_UNINSTALLED` rows. Any remote
-subscription mutation requires explicit authorization + verified evidence.
+**Cross-merchant webhook-routing ambiguity — FIXED (#305, merged 2026-11-06 10:25:40Z, merge
+`726bedc1b2a8ef93962545ce05c3d04fba006f9d`) and VERIFIED DEPLOYED ~10:56Z** (Render `/ready`
+`node_build=726bedc1b2a8`, scheduler tick 10:56:33Z `failed=0, succeeded=1`, `python_ready=true`).
+Vercel frontend PROMOTED same commit (`dpl_4oMgo4k6ma1RzK9EoivguHNGS243`, READY). The conflicted
+domain (`revluma-test-store.myshopify.com`; `6340092e…`/org `09ff67bf…` vs `009e5c86…`/org
+`91d88743…`) now fails closed (`WEBHOOK_STORE_AMBIGUOUS`, provider retry) instead of arbitrary-tenant
+writes. Behaviour itself is fixture-verified (`webhookStoreResolution.test.js` 7/7); a live 5xx probe
+would require sending a webhook — not authorized, not performed.
 
-**Classification: IMPLEMENTED, NOT PRODUCTION VERIFIED.** Acceptance (every registration row mapped,
-remote subscriptions reconciled, delivery reliability evidenced in prod) unmet — remote reconciliation
-is blocked on authorization; delivery volume is currently zero.
+**WooCommerce scheme mismatch — FIXED this branch (undeployed):** `stores.shop_domain` stores
+`https://revluma.local` while the Woo controller strips the scheme — Woo webhooks 404 today.
+Fix: bare/https-prefixed candidate matching both directions; ambiguity check unchanged (still fails
+closed). Resolution suite 7/7; privacy workflow 6/6 after stub alignment.
 
-## P4 — Store identity, tenant isolation, security  ·  Impl: IMPLEMENTED (fix) · Prod: NOT VERIFIED
+Open by design (approval-gated): store-association transfer/delete/revoke; global
+`(platform, shop_domain)` uniqueness migration / OAuth arbitration; CBC→GCM token re-encryption.
+Two-merchant production exercise: NOT performed (would write data).
 
-Requirement source: Recovery assignment P4.
+**Classification: PARTIAL — ambiguity class closed end-to-end (deployed + verified); isolation not
+certified beyond the webhook path.**
 
-**Identity conflict (recon, read-only):** `6340092e…` (org `09ff67bf…`) and `009e5c86…` (org `91d88743…`)
-both claim `revluma-test-store.myshopify.com`; both are `status=active`; both synced 2026-11-06 (09:48:09Z
-and 09:48:20Z) with 4 customers each, 0 orders, 0 products. `granted_scopes` is NULL for both rows
-(scope recording post-dates their install). The OAuth path (`shopifyController.js`) validates the domain
-against `^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$` and lowercases it; `stores` enforces
-`@@unique([organization_id, shop_domain])` — **no global (platform, shop_domain) uniqueness**, which is
-why two orgs may claim the same domain. WooCommerce row stores its domain WITH scheme
-(`https://revluma.local`) — mixed normalization conventions.
+## P5 — Privacy / data governance / Shopify compliance  ·  Impl: IMPLEMENTED (+regression pins) · Prod: NOT VERIFIED
 
-**Defect 1 — cross-merchant webhook routing (FIXED on this branch, fixture-verified, NOT deployed):**
-`commerceWebhookService.findStore` used `stores.findFirst({ platform, shop_domain, status != deleted })`
-with no ORDER BY; for the conflicted domain Postgres could return either org's row on any delivery —
-i.e., merchant A's order webhook could persist into org B's store record, blending two merchants'
-governed data. Fix: `findMany`; if >1 row matches → log + throw `WEBHOOK_STORE_AMBIGUOUS` (global error
-handler → 500, provider retries); deleted rows still excluded; single-match resolution unchanged.
-New `webhookStoreResolution.test.js` pins: single match resolves; empty resolves null; two-org collision
-fails closed; deleted duplicate excluded. Privacy-webhook workflow test updated to stub `findMany`.
+Implementation reviewed (2026-11-06): durable-first `privacy_requests` before work; P2002 race →
+`PRIVACY_REQUEST_PENDING` (never ack the loser); completed requests short-circuit
+(`alreadyCompleted`); every read/write scoped by `store_id` from the *verified* delivery; HMAC gate
+precedes processing; 200 only after success; orders retained with PII links severed; emails
+pseudonymised (`redacted-<sha256[:24]>@redacted.invalid`); audit_logs carry counts only;
+`privacy_requests` artifact excluded from HTTP responses.
 
-**Defect 2 — no global domain uniqueness (NOT fixed; approval-gated):** needs a product/founder decision:
-either `@@unique([platform, shop_domain])` after the conflict is resolved (transfer/merge of one
-association), or explicit per-domain claim arbitration in OAuth install. Transfer/delete/revoke of either
-association remains approval-gated; none granted.
+Tests: 6/6 workflow + **4 new regression pins** (`privacyWorkflowRegression.test.js`): deterministic
+request keys; artifact v1 schema with external identifiers only (internal IDs pinned absent);
+deterministic pseudonymisation + PII nulling; financial orders retained. **10/10 green.**
 
-**Token storage:** `stores.access_token` is AES-256-**CBC** (`utils/encryption.js`, key from
-`SHOPIFY_TOKEN_ENCRYPTION_KEY`) — no AEAD/integrity tag. Works as deployed; migration to GCM requires
-re-encrypting stored ciphertexts and is approval-gated. Tokens are never logged (capability booleans only).
-
-**Tenant boundary:** products has **no `organization_id`** (tenancy via `store_id` join). RLS is enabled
-on all audited tables (25 with policies; others deny-by-default — no policies). `FORCE ROW LEVEL SECURITY`
-covers abandoned_carts, customers, orders, stores only; policies via `app.current_org_id()` exist for
-customers/orders/stores/business_states (SELECT). The app accesses Postgres via a privileged role (RLS not
-forced elsewhere), so **application-level scoping is the actual isolation boundary** — one defect (P4-1)
-was found and fixed; a full adversarial audit of every org-scoped path has not been performed.
-
-**Two-merchant isolation:** fixtures prove the ambiguity class is closed for the webhook path; no evidence
-of cross-tenant rows found in read-only inspection; end-to-end two-merchant exercise on production is NOT
-performed (would write data; not authorized).
-
-**Classification: IMPLEMENTED (ambiguity fix), NOT PRODUCTION VERIFIED.** Transfer/revoke of either
-association, global uniqueness migration, CBC→GCM re-encryption, and any OAuth behaviour change: all
-approval-gated; exposure of the conflict to OAuth re-installs remains open.
-
-## P5 — Privacy / data governance / Shopify compliance  ·  Impl: IMPLEMENTED · Prod: NOT VERIFIED
-
-Requirement source: Recovery assignment P5.
-
-**Implemented (code, reviewed 2026-11-06):** `Backend/src/services/privacyWebhookService.js` —
-- Topics: `customers/data_request`, `customers/redact`, `shop/redact` (mandatory compliance webhooks).
-- **Durable first:** `privacy_requests` row created BEFORE work; concurrent duplicates hit P2002 →
-  `PRIVACY_REQUEST_PENDING`, the racing delivery is NOT acknowledged (Shopify retries); completed requests
-  short-circuit to `alreadyCompleted`.
-- **Tenant isolation:** every read/write scoped by `store_id` from the *verified* delivery; payload cannot
-  redirect the operation.
-- **Signature:** same HMAC-SHA256-raw-body path as all Shopify webhooks (401 on failure) — verification
-  precedes parsing and persistence; `shopifyPrivacyWebhookWorkflow.test.js` 6/6 including a forced-DB-failure
-  leg that proves no ack on failure.
-- **Retry/idempotency:** failed deliveries are retried by Shopify; `beginRequest` resumes safely; redact
-  of already-redacted customers is a no-op.
-- **Erasure:** customer redact deletes events/ml_session_features/churn+sensitivity observations, scrubs
-  cart tokens, unlinks sequence_sends, pseudonymises email (`redacted-<sha256[:24]>@redacted.invalid`),
-  nulls PII/consents; **orders kept for financial necessity, PII links severed**. shop/redact wipes the
-  store's commerce graph in one transaction, nulls `access_token`/`granted_scopes`/`public_tracking_key`,
-  sets `status='redacted'`.
-- **Audit:** `audit_logs` rows carry action + counts only; payload artifacts stay in `privacy_requests`
-  (RLS-enabled, no API-role policies). Never ack before success: HTTP 200 only after the workflow completes.
-
-**Not verified / blockers (explicit):**
-1. No live end-to-end compliance delivery exercised — this would WRITE and DELETE production merchant data;
-   not authorized. Verification is fixture/workflow-level only.
-2. **Shopify App Store approval — protected customer data + mandatory compliance webhooks — eligibility
-   and review state unknown in this environment; if Shopify requires approval before the app can process
-   these webhooks on production stores, that is the named external blocker.**
-3. `privacy_requests`/`audit_logs` retention policy and DSAR response-time SLA are not certified.
+**Named external blocker:** Shopify approval for **protected customer data** and mandatory
+compliance webhooks (Partner Dashboard app configuration + review) — eligibility/review state
+**unknown** here. No live end-to-end run (would write/redact live merchant data — not authorized).
+DSAR SLA/retention uncertified.
 
 **Classification: IMPLEMENTED, NOT PRODUCTION VERIFIED.**
 
 ## P6 — Rev intelligence live-data certification  ·  Impl: PARTIAL · Prod: NOT CERTIFIED
 
-Requirement source: Recovery assignment P6.
+Live accuracy cross-check (2026-11-06 ~10:50Z): v1 orders (5 rows, 2026-10-27..30; USD totals sum
+3446.85 — matches); current `business_states` row for org `1dc6aa19…` (`ff83f1e6-b131-40f8-9668-288172ebeab5`,
+generated 10:50:35Z, complete) shows `revenue_today=0.00` — CORRECT (no orders today; zero is a
+fact, not a failure). Production state telemetry present (`baseline_event_rate_5m_30d`,
+`current_event_rate_5m`, `warnings`, `root_causes`, `root_cause_verification`,
+`observed_drivers`, `ml_signals.inventory_signals`, `ml_signals.customer`) — no invented fields.
+`rev-metrics-v1` fails closed for non-computable metrics; seven-day evidence carries
+`metric_definitions` alongside values.
 
-**Standing certification** (`docs/rev-intelligence/REV-CONVERSATION-EXPERIENCE-CERTIFICATION.md`, 2026-11-04):
-**PARTIAL CERTIFICATION** of the deterministic layer (golden set 507 cases / 107 prompts × 6 evidence
-states; all gates green; directness ≥95%, rest 100%). Not certified then: live acceptance transcripts A–E,
-production `response_mode` assignment, visual regression, manual screen-reader pass.
+Standing certification: `docs/rev-intelligence/REV-CONVERSATION-EXPERIENCE-CERTIFICATION.md`
+(2026-11-04 PARTIAL — deterministic layer certified; golden set 507 cases green).
 
-**Production data available to Rev today (read-only, 2026-11-06 ~10:20Z):** v1 store — 5 orders
-(USD 3,446.85 recorded, totals verified via canonical sync), 21 customers; WooCommerce `revluma.local` —
-1 order (2026-08-13); both conflict-pair stores — 4 customers each, 0 orders/0 products; retired store —
-0 rows; products table — 0 Shopify rows anywhere. `rev-metrics-v1` registry
-(`python/src/intelligence/metric_registry.py`) fails closed for non-computable metrics; seven-day evidence
-carries `metric_definitions` alongside values.
+**NOT CERTIFIED:** 11-scenario conversational acceptance with actual tool-invocation counts —
+requires an authenticated Rev session (user-only); counts will not be estimated. Runbook appended in
+`P2-P6-PRODUCTION-REPORT.md`.
 
-**Live-data certification NOT possible from this environment:** the 11-scenario conversational acceptance
-with actual tool-invocation counts requires an authenticated Rev session against production (browser) or
-an authorized harness with real tool calls. Neither is available read-only, and invocation counts must never
-be estimated. The merchant acceptance session remains **user-only**; until it is executed and recorded,
-Rev's live behaviour is uncertified regardless of internal eval scores.
-
-**Classification: IMPLEMENTED (registry + deterministic layer), NOT CERTIFIED (live-data certification).**
-Close by: (1) user-run transcripts A–E + 11-scenario set against v1, recording raw tool-invocation counts;
-(2) confirming `/ready python_version` post-Render-redeploy; (3) noting products=0 as the honest catalogue baseline.
+**Classification: PARTIAL — NOT CERTIFIED (live).**
 
 ---
 
@@ -350,34 +266,51 @@ Close by: (1) user-run transcripts A–E + 11-scenario set against v1, recording
 
 | Gate item | Status |
 |---|---|
-| Node build on intended commit | `/ready` `node_build=eaced144b33c` (PR #303 merge) |
-| Python on intended build | Render serving #303 code (first healthy tick 09:31:21) |
-| Persistence succeeds | **YES** (post-deploy builds 09:31–09:48Z, incl. previously failing org, twice) |
-| Recurring scheduler executions succeed | **YES** (passes 09:31–09:48Z, succeeded>0, failed=0) |
-| Snapshots + alerts persisted | **YES** (6 new snapshots post-deploy; 1 new alert `status=delivered`; FK intact) |
-| Product sync source-reconciled | **NO** (P2) — implemented, fixture-tested; live reconciliation needs authorized Shopify/API or log access; all Shopify stores hold 0 products (inference, not proof) |
-| Webhooks reliable & deduplicated | **NO** (P3) — HMAC/ack/idempotency verified in code+tests; remote reconciliation (products topics never registered; 27 duplicate groups) approval-gated; 0 deliveries in 7 days |
-| Store identity + tenant isolation | **PARTIAL** (P4) — cross-merchant webhook-routing ambiguity FIXED on this branch (fixture-verified, NOT deployed); domain global uniqueness + transfer/revoke approval-gated |
-| Privacy workflows pass | **NO (NOT VERIFIED)** (P5) — implemented + 6/6 workflow tests; live run would write/delete merchant data; Shopify protected-customer-data approval state unknown |
-| Rev on live-accurate evidence | **NO (NOT CERTIFIED)** (P6) — deterministic layer certified 2026-11-04; 11-scenario live acceptance requires user session; counts not fabricated |
-| Regression/security tests pass | Python suite on main `336bc8a` (1567 passed / 1 skipped, 2026-11-06); Backend: 43 offline-runnable suites / 9 prisma-generate-blocked in sandbox (CI runs them); new `webhookStoreResolution.test.js` 4/4; zero regressions vs baseline (42/10) |
-| Deployments verified | Node: #303 promoted (`eaced144b33c8`) and serving `/ready`; Python: healthy ticks 09:31+ (Render has no API in this environment — verified behaviorally). P4 ambiguity fix is NOT deployed (PR pending) |
-| Limitations documented | See `KNOWN-LIMITATIONS.md` |
+| Node build on intended commit | `/ready` `node_build=726bedc1b2a8` (PR #305 merge — P4 ambiguity fix live) |
+| Python on intended build | Render serving 726bedc (first healthy tick 10:56:33Z, failed=0) |
+| Persistence succeeds | **YES** (post-deploy builds incl. previously failing org) |
+| Recurring scheduler executions succeed | **YES** (ticks 10:56–10:57Z, failed=0/succeeded=1; age_seconds=9 at probe) |
+| Snapshots + alerts persisted | **YES** (post-deploy snapshots + 1 alert `status=delivered`) |
+| Product sync source-reconciled | **NO** (P2) — implemented; 7-test reconciliation suite green (fixture-verified); live reconciliation needs authorized Shopify/API or log access; all Shopify stores hold 0 products |
+| Webhooks reliable & deduplicated | **NO** (P3) — HMAC/ack/idempotency verified; drift-report tooling added (read-only, never mutates); products topics never registered; 27 duplicate groups; 0 deliveries in 7 days; remediation approval-gated |
+| Store identity + tenant isolation | **PARTIAL** (P4) — ambiguity fix DEPLOYED + verified (node 726bedc, 10:56Z). Woo scheme-mismatch fixed this branch (pending deploy). Global uniqueness / transfer/revoke / CBC→GCM approval-gated |
+| Privacy workflows pass | **NO (NOT VERIFIED)** (P5) — implemented + **10/10 workflow tests green** (6 existing + 4 regression pins); live run approval-gated; Shopify protected-customer-data eligibility unknown |
+| Rev on live-accurate evidence | **NO (NOT CERTIFIED)** (P6) — deterministic layer certified 2026-11-04; live cross-check 2026-11-06 consistent (revenue_today=0 correct; orders sum 3446.85); 11-scenario session user-only |
+| Regression/security tests pass | Python suite on main `336bc8a` (1567 passed / 1 skipped); Backend: 46 offline-runnable suites / 9 prisma-generate-blocked in sandbox (CI runs them); new P2 reconciliation 7/7, P3 drift 5/5, P5 pins 4/4; `webhookStoreResolution` 7/7; zero regressions vs baseline |
+| Deployments verified | Node: #303 (`eaced144b33c8`) and #305 (`726bedc1b2a8`) promoted + serving `/ready`; Python: healthy ticks; Vercel frontend PROMOTED for both |
+| Limitations documented | See `KNOWN-LIMITATIONS.md` and `P2-P6-PRODUCTION-REPORT.md` |
 
 ## Approval-gated items (never block unrelated work)
 
-1. R-10 stale business_states cleanup (earlier ~33k estimate; live table now 1005 rows — needs
-   recount + explicit approval before any delete).
-2. Duplicate webhook-registration cleanup (27 groups identified; plan + approval required).
-3. Any remote Shopify subscription mutation — explicitly including registering PRODUCTS_CREATE/UPDATE/DELETE
-   (currently ZERO registration rows for every store) and any change to the retired store's 18 failed rows.
+1. R-10 stale business_states cleanup (~1005 rows).
+2. Duplicate webhook-registration cleanup (27 groups; pre-flight = `shopifyWebhookDriftReport.js` output per store; plan + approval required).
+3. Any remote Shopify subscription mutation — including registering PRODUCTS_CREATE/UPDATE/DELETE (zero rows for every store) and the retired store's 18 failed rows.
 4. Transfer/delete/revoke of either production store-domain association (P4 conflict, `6340092e…` vs `009e5c86…`).
 5. Global (platform, shop_domain) uniqueness migration or OAuth-arbitration behaviour change (P4).
-6. AES-256-CBC → GCM migration of stored `access_token` ciphertexts (requires re-encryption + cutover) (P4).
+6. AES-256-CBC → GCM migration of stored `access_token` ciphertexts.
 7. Live end-to-end privacy compliance test on production (writes/redacts merchant data) (P5).
 8. Live 11-scenario Rev conversational acceptance with tool-invocation counts (P6) — user-only session.
-9. Full product-sync reconciliation pass implementing hard-delete of source-absent rows (P2).
+9. Full product-sync reconciliation implementing source-absent-row deletion semantics (P2).
 10. Any production data write not covered by an authorized workflow.
+11. Manual/operator Render deploy of PR #306 (P4 Woo fix) — deploys merged code; not a data-approval item but environment-gated.
+
+## Change log
+
+- 2026-11-06 — Register created. P1 fix implemented (5699c55); PR #303 merged 09:16:49Z;
+  P1 **PRODUCTION VERIFIED** at ~09:48Z (see P1 section).
+- 2026-11-06 ~10:30Z — P2–P6 inspection batch (all read-only): products inventory (all Shopify
+  stores 0 products; inference ≠ reconciliation); webhook registration/delivery map (products never
+  registered; 27 duplicate groups; 0 deliveries in 7 days); P4 ambiguity fixed (PR #305); P5 review
+  with named Shopify approval blocker; P6 cross-check (v1: 5 orders/21 customers).
+- 2026-11-06 ~10:56–11:10Z — **PR #305 MERGED (`726bedc1b2a8`) and DEPLOYED VERIFIED** (Render
+  node_build=726bedc… at 10:56:33Z probe, scheduler keyword healthy, Vercel PROMOTED). New branch
+  work (PR #306): P4 WooCommerce scheme-mismatch fix (bare/https candidate matching, fail-closed
+  ambiguity retained; resolution suite 7/7); P3 `shopifyWebhookDriftReport.js` (read-only operator
+  drift report; exit 1 on drift; mutates nothing) + `shopifyWebhookDrift.test.js` 5/5;
+  `shopifyWebhookTopics.js` pure module extraction; P2 7-test source-to-DB reconciliation suite
+  (7/7); P5 `privacyWorkflowRegression.test.js` 4 pins (10/10 total); consolidated report
+  `P2-P6-PRODUCTION-REPORT.md` created; backend offline suites 46 pass / 9 prisma-blocked
+  (unchanged pre-existing set); docs updated. No production data modified; no remote webhook state changed.
 
 ## Change log
 

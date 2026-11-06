@@ -1,6 +1,6 @@
 # REVLUMA — Known Limitations (Production Recovery Operation)
 
-Current as of 2026-11-06 (~10:30Z). This file is updated as each workstream closes; nothing here is
+Current as of 2026-11-06 (~11:10Z). This file is updated as each workstream closes; nothing here is
 waived silently. "BLOCKED" entries name the exact external dependency.
 
 ## P1 — Business-state persistence
@@ -35,7 +35,9 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 ## P2 — Products
 
 - **All Shopify stores hold 0 product rows** (3 rows total, stale WooCommerce). Sync correctness is
-  code-reviewed and fixture-tested (8/8); the empty catalog is an inference from recorded OAuth
+  code-reviewed and fixture-tested (8/8 unit + **7/7 source-to-DB reconciliation suite**:
+  page-flush idempotency, exact-decimal pricing, status mapping, 150-variant nested expansion,
+  loud malformed-node failure, zero-write empty source); the empty catalog is an inference from recorded OAuth
   scopes + completed syncs on v1 (`read_products` recorded), NOT a source-verified reconciliation —
   no authorized path from this environment reaches the live Shopify API.
 - **Deletion reconciliation gap:** full syncs upsert but never remove rows hard-deleted in Shopify
@@ -63,10 +65,12 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 - Remote-subscription changes (including duplicate deletion) are approval-gated; until approved,
   duplicate registrations may continue to deliver; idempotency at delivery time is the
   mitigation being verified, not deletion on suspicion.
-- **Before the P4 fix deploys, the conflicted domain (`revluma-test-store.myshopify.com`) routes
-  webhook writes to an ARBITRARY organization** — the fix (`WEBHOOK_STORE_AMBIGUOUS`) is
-  fixture-verified but undeployed (PR pending). Until then this class of delivery is unsafe by
-  construction.
+- **Before the P4 fix deployed, the conflicted domain (`revluma-test-store.myshopify.com`) routed
+  webhook writes to an ARBITRARY organization** — the fix (`WEBHOOK_STORE_AMBIGUOUS`) is DEPLOYED
+  and verified (node_build `726bedc…`, 10:56Z). Deliveries to that domain are now refused fail-closed.
+- **Drift report tooling now available** (`scripts/shopifyWebhookDriftReport.js`): read-only remote
+  subscription reconciliation per store (missing / unexpected / duplicates-with-counts / legacy URLs);
+  exit 1 on drift. It is the evidence pre-flight for any remediation; it mutates nothing.
 
 ## P4 — Store identity
 
@@ -76,8 +80,15 @@ waived silently. "BLOCKED" entries name the exact external dependency.
   transfer/revoke may occur without explicit founder approval.
 - **No global `(platform, shop_domain)` uniqueness exists in `stores`** (only per-org). A third org
   could claim the domain today; arbitration at OAuth install is a product decision (register item 5).
-- **Cross-merchant routing ambiguity (found + fixed, undeployed):** `findStore` previously used an
-  unordered `findFirst`; post-fix it fails closed. Until the fix deploys the defect is live.
+- **Cross-merchant routing ambiguity (found + fixed + DEPLOYED):** `findStore` previously used an
+  unordered `findFirst`; post-fix it fails closed with `WEBHOOK_STORE_AMBIGUOUS`. Fix merged via
+  PR #305 (`726bedc1b2a8`) and verified deployed ~10:56Z (Render node_build flip + scheduler healthy).
+- **WooCommerce webhooks 404 (found + fixed, deploy pending):** `stores.shop_domain` stores
+  `https://revluma.local` while the Woo webhook controller strips the scheme before `findStore`.
+  Fix matches bare/https candidates both directions (ambiguity still fails closed); resolution
+  suite 7/7. Ships in PR #306; verified deployed only after Render node_build flips.
+- Full product-sync reconciliation (source-absent row deletion) remains unimplemented and
+  approval-gated (register item 9).
 - **`products` has no `organization_id`** — tenancy is enforced via `store_id` joins alone; RLS on
   products is enabled with no policies (deny-by-default for API roles) while the app role bypasses RLS.
 - **Access tokens are AES-256-CBC** (no AEAD/integrity tag). CBC→GCM requires ciphertext re-encryption —
@@ -110,6 +121,9 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 - Live catalogue is EMPTY (0 Shopify products): catalogue-dependent suggestions have nothing to cite.
 - `orders` holds only 5 rows on the v1 store (USD 3,446.85) — any revenue answer against v1 is
   accurate but materially thin.
+- Live live-accuracy cross-check (2026-11-06 ~10:50Z) confirmed `revenue_today=0` is the CORRECT
+  value (no orders on 2026-11-05/06) and that the production snapshot carries the full telemetry key
+  set; no invented fields.
 
 ## Cross-cutting
 

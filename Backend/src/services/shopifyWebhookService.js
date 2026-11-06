@@ -1,21 +1,7 @@
 const { prisma } = require('../configs/database');
 const { shopifyGraphql } = require('./shopifyGraphql');
 const logger = require('../utils/logger');
-
-const REQUIRED_SUBSCRIPTIONS = Object.freeze([
-  ['APP_UNINSTALLED', 'app/uninstalled'],
-  ['ORDERS_CREATE', 'orders/create'],
-  ['ORDERS_UPDATED', 'orders/updated'],
-  ['ORDERS_CANCELLED', 'orders/cancelled'],
-  ['ORDERS_DELETE', 'orders/delete'],
-  ['CUSTOMERS_CREATE', 'customers/create'],
-  ['CUSTOMERS_UPDATE', 'customers/update'],
-  ['CHECKOUTS_CREATE', 'checkouts/create'],
-  ['CHECKOUTS_UPDATE', 'checkouts/update'],
-  ['PRODUCTS_CREATE', 'products/create'],
-  ['PRODUCTS_UPDATE', 'products/update'],
-  ['PRODUCTS_DELETE', 'products/delete'],
-]);
+const { REQUIRED_SUBSCRIPTIONS } = require('./shopifyWebhookTopics');
 
 async function listSubscriptions(store) {
   const query = `

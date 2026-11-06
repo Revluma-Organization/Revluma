@@ -218,8 +218,11 @@ function makePrisma(state) {
     webhook_deliveries: storeScoped('webhook_deliveries'),
     webhook_registrations: storeScoped('webhook_registrations'),
     stores: {
-      findMany: async ({ where }) => state.stores.filter((row) =>
-        row.platform === where.platform && row.shop_domain === where.shop_domain && row.status !== (where.status?.not)),
+      findMany: async ({ where }) => {
+        const candidates = where.shop_domain?.in || [where.shop_domain];
+        return state.stores.filter((row) =>
+          row.platform === where.platform && candidates.includes(row.shop_domain) && row.status !== (where.status?.not));
+      },
       findFirst: async ({ where }) => state.stores.find((row) =>
         row.platform === where.platform && row.shop_domain === where.shop_domain && row.status !== (where.status?.not)) || null,
       update: async ({ where, data }) => {
