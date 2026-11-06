@@ -1,6 +1,6 @@
 # TASK 034 — Shopify Data Acquisition Completeness (Execution Block 2)
 
-**Date:** 2026-11-06 | **Branch:** `arena/166f7cc9-revluma` | **Baseline:** origin/main `7feee76` | **Deployment:** pending — see §Blockers
+**Date:** 2026-11-06 | **Branch:** `arena/166f7cc9-revluma` | **Baseline:** origin/main `7feee76` | **Deployment:** #312 merged, Render deploy pending at time of writing (see live-state addendum in docs/shopify-resource-coverage-register.md)
 
 ## Scope closed in this block
 
