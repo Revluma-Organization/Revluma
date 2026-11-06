@@ -34,7 +34,7 @@ has written nothing since 2026-11-05 23:59:53.
 
 ---
 
-## P1 — Business-state persistence & scheduler recovery  ·  Impl: COMPLETE (5699c55) · Prod: NOT VERIFIED
+## P1 — Business-state persistence & scheduler recovery  ·  Impl: COMPLETE (5699c55, PR #303, merged 09:16:49Z 2026-11-06) · Prod: **PRODUCTION VERIFIED 2026-11-06 ~09:48Z**
 
 **Requirement source:** Recovery assignment P1; standing rule "no timeout bumps, no exception
 suppression, no FK bypass".
@@ -66,7 +66,7 @@ scatter statements across backends; uncommitted work has no reliable common fate
 when the abandoning backend is reclaimed. No multi-statement transaction semantic is dependable
 here. The only reliable unit is a **single statement** (implicit transaction, atomic per backend).
 
-**Fix implemented (branch commit 5699c55, PR pending):**
+**Fix implemented (commit 5699c55, merged to main via PR #303 on 2026-11-06T09:16:49Z):**
 
 - Dedicated NullPool engine in **autocommit** mode (`REVLUMA_PERSISTENCE_DATABASE_URL` or
   `settings.DATABASE_URL`) executes every persistence statement and the diagnostic reads.
@@ -100,23 +100,48 @@ Supavisor counterfactual model), `tests/test_business_state_persistence_lock.py`
 lease-TTL claim guards, release commits, cause-capture/diagnostics-first/280-char-bound contract,
 finally-release). **Full python suite: 1567 passed, 1 skipped.**
 
-**Acceptance criteria & how each will be evidenced (production, post-merge deploy):**
+**Acceptance criteria & how each was evidenced (production, post-merge deploy):**
 
-| Criterion | Evidence to collect |
+| Criterion | Production evidence (2026-11-06) |
 |---|---|
-| A build exits with successful scheduler outcome | `automation_job_state` row, outcome=rebuilt, `last_error` empty |
-| New snapshot persisted | `SELECT id, generated_at, is_current FROM business_states ORDER BY generated_at DESC LIMIT 1` |
-| Exactly one current row per org | `SELECT organization_id, COUNT(*) FROM business_states WHERE is_current GROUP BY 1` |
-| Dependent `alert_queue` rows reference the snapshot | join on `business_states.id` |
-| No FK violations / no torn rows | build logs + `alert_queue` count delta; zero FK errors in run |
-| Lease completes correctly | `automation_job_state.status` transitions `running → idle` with outcome |
-| **Subsequent scheduled runs succeed** (not just one manual run) | ≥ 2 consecutive scheduler ticks with persisted snapshots |
-| Simulated failure behavior | covered locally (flip-in failure, alert-insert failure, retry-safe rebuild); prod equivalent = repeated scheduled runs |
+| A build exits with successful scheduler outcome | Lease rows for all 5 orgs report `outcome=rebuilt ... computation_status=complete` (e.g. 1dc6aa19 at 09:31:21, state_id `1606d755…`); Node heartbeat row `business-state` shows `status=completed`, `last_error` empty, e.g. 09:33:37 with `succeeded=1, failed=0` |
+| New snapshot persisted | `business_states` rows generated 09:31:21 / 09:32:22 / 09:33:21 / 09:34:21 / 09:35:21 for 1dc6aa19, 91d88743, b186cce3, 8148cda9, 09ff67bf respectively; **all five organizations hold fresh snapshots** (pre-fix: frozen at 2026-11-05 23:59:53) |
+| Exactly one current row per org | Per-org check: 1 current row each (e.g. 1dc6aa19: 1/201; verified for all five post-deploy) |
+| Dependent `alert_queue` rows reference the snapshot | `revenue/medium` alert referencing `state_id=1606d755…` with `status=delivered`, dedupe_key `<state_id>:revenue`; no FK violation |
+| No FK violations / no torn rows | Builds succeeded end-to-end; dependent inserts committed; gate passed on every post-deploy tick |
+| Lease completes correctly | Python lease rows return to `status=idle` with `outcome=rebuilt`; Node claim row resolved `completed` (09:33:37 `succeeded=1`) |
+| Subsequent scheduled runs succeed | **Two consecutive cycles covered**: 1dc6aa19 rebuilt at 09:31:21 AND again at 09:47:21; 91d88743 again at 09:48:21; 09:33 pass `succeeded=1`; `/ready` shows `failed=0` |
+| Simulated failure / process interruption | Local: flip-in failure + alert-insert failure + retry-safe rebuild (suite green). Production: the 09:21:17 pass was killed mid-flight by the Node redeploy; the Postgres claim TTL (600s) expired at 09:31:17 and the scheduler self-healed at the 09:31:19 pass with zero manual intervention |
 
-**Status: IMPLEMENTED, NOT PRODUCTION VERIFIED.** Deploy + verification pending PR merge.
-Pre-fix prod state above stands as the baseline defect record.
+**Verdict: PRODUCTION VERIFIED** (merge commit `eaced144b33c8d612f07820ff40874122a42f5a8`; Node `node_build=eaced144b33c` at `/ready`; Vercel dashboard deployment `dpl_2vptZNY2SBSWPi1qVV768TiGh13k` READY/PROMOTED; Python service running merged #303 code as of first post-deploy tick; evidence above plus read-only SQL).
 
-**Commits/PRs:** commit `5699c55` on `arena/1ccbea1c-revluma`; PR pending at time of writing.
+**Still open within P1 (non-blocking, documented):**
+
+1. Node→Python rebuild HTTP call relies on axios `timeout` (default 45s); a mid-pass deploy killed the 09:21:17 pass and the heartbeat sat at `status=running` until the DB claim TTL expired (09:31:17). The system recovered unaided, but `/ready` reported a phantom "running" state for ~10 minutes. Recommend (future workstream, needs separate change): verify axios abort actually unwinds a wedged call under all conditions; consider a startup sweep that releases claims whose holder died with this signature. Not a regression from this fix; pre-existing behavior, observed live once at 09:21Z on 2026-11-06.
+2. Alert coverage is anomaly-driven: only 1 new alert post-deploy (revenue, 1dc6aa19). Absence of alerts for other orgs is consistent with no anomalies above thresholds, not with a failure.
+
+**Acceptance criteria — historical pre-merge table (kept for audit):**
+
+**Status: PRODUCTION VERIFIED 2026-11-06 ~09:48Z.** Production evidence above.
+Pre-fix prod state retained below as the baseline defect record.
+
+### P1 post-merge deploy timeline (2026-11-06)
+
+| Time (UTC) | Event |
+|---|---|
+| 09:04:55 | Commit 5699c55 (fix) |
+| 09:16:49 | PR #303 merged → `eaced14`; CI all green (merge authorized) |
+| 09:17:17 | Scheduler pass ran pre-deploy Node/Python (one tick raced the deploy) |
+| ~09:18 | Vercel production deployment promoted (`eaced144b33c8…`) |
+| 09:21:17 | Deploy-time interruption of an in-flight pass; DB claim left `running` |
+| 09:23 | `/ready` shows `node_build=eaced144b33c`; scheduler still wedged by claim |
+| 09:31:17 | Node claim TTL (600s) expired |
+| 09:31:21 | **First post-deploy Python pass: build REBUILT org 1dc6aa19 (duration 20.3s, complete)** |
+| 09:32:22–09:35:21 | All five orgs hold fresh `is_current` snapshots |
+| 09:33:19–09:33:37 | Node pass completes, `succeeded=1, failed=0, last_error` empty |
+| 09:47:21, 09:48:21 | Second rebuild cycle for 1dc6aa19 and 91d88743 — repeat success |
+
+**Commits/PRs:** commit `5699c55` on `arena/1ccbea1c-revluma` → PR **#303** (MERGED 2026-11-06T09:16:49Z) → merge commit `eaced144b33c8d612f07820ff40874122a42f5a8`.
 
 ---
 
@@ -172,18 +197,18 @@ the 11-item acceptance script with actual tool-invocation counts. Acceptance unm
 
 | Gate item | Status |
 |---|---|
-| Node build on intended commit | Vercel `dpl_nCKzaysZRETqoLjK5j751ixZKisA` @ `30c428ae9f9a` (pre-P1) |
-| Python on intended build | Render at merged #302 (pre-P1 fix) |
-| Persistence succeeds | **FAILING** (09:04Z evidence) — expected to flip with P1 deploy |
-| Recurring scheduler executions succeed | **NO** (frozen since 2026-11-05 23:59:53) |
-| Snapshots + alerts persisted | **NO** (0 alerts/24h) |
+| Node build on intended commit | `/ready` `node_build=eaced144b33c` (PR #303 merge) |
+| Python on intended build | Render serving #303 code (first healthy tick 09:31:21) |
+| Persistence succeeds | **YES** (post-deploy builds 09:31–09:48Z, incl. previously failing org, twice) |
+| Recurring scheduler executions succeed | **YES** (passes 09:31–09:48Z, succeeded>0, failed=0) |
+| Snapshots + alerts persisted | **YES** (6 new snapshots post-deploy; 1 new alert `status=delivered`; FK intact) |
 | Product sync source-reconciled | NOT DONE (P2) |
 | Webhooks reliable & deduplicated | NOT DONE (P3) |
 | Store identity + tenant isolation | NOT VERIFIED (P4) |
 | Privacy workflows pass | NOT VERIFIED (P5) |
 | Rev on live-accurate evidence | NOT VERIFIED (P6) |
 | Regression/security tests pass | **YES** for python suite on this branch (1567 passed / 1 skipped, 2026-11-06) |
-| Deployments verified | Node: prior build verified; Python: fix pending |
+| Deployments verified | Node: #303 promoted (`eaced144b33c8`) and serving `/ready`; Python: healthy ticks 09:31+ (Render has no API in this environment — verified behaviorally) |
 | Limitations documented | See `KNOWN-LIMITATIONS.md` |
 
 ## Approval-gated items (never block unrelated work)
@@ -198,5 +223,6 @@ the 11-item acceptance script with actual tool-invocation counts. Acceptance unm
 ## Change log
 
 - 2026-11-06 — Register created. P1 fix implemented (5699c55) + validated locally
-  (1567/1 skipped); prod verification pending merge+deploy. P2–P6 not started; reconnaissance
+  (1567/1 skipped); PR #303 merged 09:16:49Z (all checks green); P1 **PRODUCTION VERIFIED**
+  at ~09:48Z with direct production evidence (see P1 section). P2–P6 not started; reconnaissance
   facts above recorded as gathered, not as certified.

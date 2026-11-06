@@ -5,6 +5,15 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 
 ## P1 — Business-state persistence
 
+6. **Deploy-killed scheduler passes self-heal only at the DB claim TTL (600s).** Observed live
+   2026-11-06 09:21:17: the pass was interrupted by a Node redeploy; the claim sat `running`
+   until 09:31:17; `/ready` reported a phantom running state meanwhile. No manual action was
+   taken; the mechanism worked. A future hardening (startup claim sweep) is tracked in
+   MASTER-EXECUTION-REGISTER.md → P1 open items.
+7. **Render has no deploy API in this operating environment** (unlike Vercel); Python-service
+   deploys are verified behaviorally (scheduler outcomes, snapshot persistence), not by deploy
+   metadata.
+
 1. **Bounded no-current window.** If a build fails between flipping the previous `is_current`
    snapshot out and flipping the new one in, the organization has no current snapshot until the
    next successful build. Accepted by design: loud failure, never a torn write; self-healing on
