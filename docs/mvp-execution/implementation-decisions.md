@@ -118,3 +118,7 @@ These decisions were made during authorized Task 010 documentation work; they ar
 
 ## REV-DEC-0011 — Task030 checkout/order lock coordination
 2026-10-30. Share existing Task027 checkout UUID advisory transaction lock across checkout upsert and order reconciliation. Checkout path retains its store/external lock and re-reads after obtaining checkout UUID lock. Preserve monotonic Shopify activity watermark and verified completion over receipt ordering. Alternatives rejected: read-then-write without common lock, new queue, schema migration, last-write-wins. Consequence: checkout transaction may wait on order transaction; verify concurrency and deadlock behavior in isolated PostgreSQL. Related: REV-FIND-030-01/02/03, Task030. Implementation 31856d7bbc30037177812be046ef147f54cb74fe; verification pending.
+
+## 2026-11-06 — PR #321 inventory/fulfillment production completion
+
+Inventory snapshots are acquired completely before bounded independent upserts begin. This intentionally trades a small amount of transient read/write separation for avoidance of Prisma interactive-transaction expiry; any persistence failure leaves the domain failed and a later complete retry heals partial writes. Stale deletion is permitted only after explicit outer and nested connection termination. Fulfillment and other order-enrichment ledgers represent the whole order batch, not the last order. No fulfillment line-item allocation is claimed without fulfillment-order acquisition. No database migration is needed.

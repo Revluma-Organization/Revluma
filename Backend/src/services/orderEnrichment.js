@@ -8,7 +8,8 @@
 //     duties/total-received amounts, tags)
 //   - payment transactions per order (kind/status/gateway/amount/parent/error)
 //   - refund records with refund line items and refund transactions (JSON)
-//   - fulfillments with status, location, tracking and line items
+//   - fulfillments with status, location and tracking (line-item allocations
+//     require fulfillment-order APIs and are deliberately not claimed)
 //
 // Design rules:
 //   - The base revenue-ingestion path is untouched: enrichment is a separate,
@@ -56,8 +57,8 @@ function moneyDecimal(value) {
 function connectionNodes(field) {
   if (!field) return null;
   if (Array.isArray(field)) return { nodes: field, connection: false, complete: true, end: null };
-  if (Array.isArray(field.nodes)) {
-    return { nodes: field.nodes, connection: true, complete: !field.pageInfo?.hasNextPage, end: field.pageInfo?.endCursor || null };
+  if (Array.isArray(field.nodes) && typeof field.pageInfo?.hasNextPage === 'boolean') {
+    return { nodes: field.nodes, connection: true, complete: !field.pageInfo.hasNextPage, end: field.pageInfo?.endCursor || null };
   }
   return null;
 }
@@ -268,22 +269,54 @@ async function fetchFamily(store, id, cfg, cache = {}) {
       const nodes = [];
       let pages = 0;
       let cursor = null;
+      const seenCursors = new Set();
       do {
-        if (++pages > MAX_TRANSACTION_PAGES) return { nodes, complete: false };
-        const data = await shopifyGraphql(store, connectionQuery, { id, first, after: cursor });
+        if (++pages > MAX_TRANSACTION_PAGES) {
+          const error = new Error(`${kind}: pagination ceiling reached`);
+          error.code = 'SHOPIFY_ORDER_ENRICHMENT_PAGE_CEILING';
+          error.pages_completed = pages - 1;
+          error.discovered = nodes.length;
+          error.noFallback = true;
+          throw error;
+        }
+        let data;
+        try {
+          data = await shopifyGraphql(store, connectionQuery, { id, first, after: cursor });
+        } catch (error) {
+          error.pages_completed = pages - 1;
+          error.discovered = nodes.length;
+          throw error;
+        }
         const parsed = connectionNodes(data?.node?.[extractField]);
         if (!parsed) return null; // shape mismatch -> caller tries the other
         nodes.push(...parsed.nodes);
-        // Follow cursor ONLY when the source says another page exists.
-        cursor = parsed.connection && !parsed.complete ? parsed.end : null;
-        if (!parsed.connection) return { nodes, complete: true };
+        if (!parsed.connection) return { nodes, complete: true, pagesCompleted: pages };
+        if (parsed.complete) return { nodes, complete: true, pagesCompleted: pages };
+        if (!parsed.end) {
+          const error = new Error(`${kind}: next-page cursor missing`);
+          error.code = 'SHOPIFY_ORDER_ENRICHMENT_CURSOR_INVALID';
+          error.pages_completed = pages;
+          error.discovered = nodes.length;
+          error.noFallback = true;
+          throw error;
+        }
+        if (seenCursors.has(parsed.end)) {
+          const error = new Error(`${kind}: repeated next-page cursor`);
+          error.code = 'SHOPIFY_ORDER_ENRICHMENT_CURSOR_REPEATED';
+          error.pages_completed = pages;
+          error.discovered = nodes.length;
+          error.noFallback = true;
+          throw error;
+        }
+        seenCursors.add(parsed.end);
+        cursor = parsed.end;
       } while (cursor);
-      return { nodes, complete: true };
+      return { nodes, complete: true, pagesCompleted: pages };
     }
     const data = await shopifyGraphql(store, listQuery, { id });
     const field = data?.node?.[extractField];
     if (!Array.isArray(field)) return null;
-    return { nodes: field, complete: true };
+    return { nodes: field, complete: true, pagesCompleted: 1 };
   };
 
   const errors = [];
@@ -293,6 +326,7 @@ async function fetchFamily(store, id, cfg, cache = {}) {
       if (result) { cache[kind] = { shape: useShape }; return result; }
       errors.push(new Error(`${kind}: response shape unresolvable for shape=${useShape}`));
     } catch (error) {
+      if (error?.noFallback) throw error;
       errors.push(error);
     }
   }
@@ -306,6 +340,13 @@ async function fetchFamily(store, id, cfg, cache = {}) {
 }
 
 async function upsertRows(db, table, rows, { storeId, externalOrderId }, reconcile = true) {
+  const existing = rows.length && typeof db[table].findMany === 'function'
+    ? await db[table].findMany({
+      where: { store_id: storeId, external_id: { in: rows.map(row => row.external_id) } },
+      select: { external_id: true },
+    })
+    : [];
+  const existingIds = new Set(existing.map(row => row.external_id));
   for (const row of rows) {
     const { store_id, external_id, ...fields } = row;
     await db[table].upsert({
@@ -314,17 +355,37 @@ async function upsertRows(db, table, rows, { storeId, externalOrderId }, reconci
       update: { ...fields, synced_at: new Date() },
     });
   }
+  let deleted = 0;
   if (reconcile) {
     const keep = rows.map(r => r.external_id);
-    await db[table].deleteMany({
+    const result = await db[table].deleteMany({
       where: { store_id: storeId, external_order_id: externalOrderId, external_id: { notIn: keep.length ? keep : ['__none__'] } },
     });
+    deleted = result.count;
   }
+  const inserted = rows.filter(row => !existingIds.has(row.external_id)).length;
+  return { inserted, updated: rows.length - inserted, deleted };
 }
 
-async function enrichOrder(store, orderGid, db = prisma, shapeCache = {}) {
+function attachReport(summary, domain, report) {
+  if (!Object.prototype.hasOwnProperty.call(summary, '_reports')) {
+    Object.defineProperty(summary, '_reports', { value: {}, enumerable: false });
+  }
+  summary._reports[domain] = report;
+}
+
+async function enrichOrder(store, orderGid, db = prisma, shapeCache = {}, options = {}) {
+  const manageLedger = options.manageLedger !== false;
   const internal = { orderGid, externalOrderId: externalId(orderGid) };
   const summary = { scalars: 'skipped', transactions: 'skipped', refunds: 'skipped', fulfillments: 'skipped' };
+  const begin = domain => manageLedger ? beginAttempt(store.id, domain, db) : Promise.resolve(true);
+  const success = (domain, report) => manageLedger ? recordSuccess(store.id, domain, report, db) : Promise.resolve(true);
+  const failure = (domain, error, report = {}) => manageLedger
+    ? recordFailure(store.id, domain, error, report, db)
+    : Promise.resolve(true);
+  const degraded = (domain, code, report = {}) => manageLedger
+    ? recordDegraded(store.id, domain, code, report, db)
+    : Promise.resolve(true);
 
   // E1 order scalars — never fatal beyond its own domain.
   try {
@@ -342,27 +403,28 @@ async function enrichOrder(store, orderGid, db = prisma, shapeCache = {}) {
     logger.warn('order_enrichment_scalars_failed', { store_id: store.id, external_order_id: internal.externalOrderId, error_type: error?.code || error?.name });
   }
 
-  // Shared per-order transaction family fetch (used for E2 reconciliation).
   // E2 transactions
   try {
-    await beginAttempt(store.id, 'transactions');
+    await begin('transactions');
     const fetched = await fetchFamily(store, orderGid, {
-      kind: 'transactions',
-      connectionQuery: TXN_CONNECTION_QUERY,
-      listQuery: TXN_LIST_QUERY,
-      extractField: 'transactions',
-      first: TXS_PER_PAGE,
+      kind: 'transactions', connectionQuery: TXN_CONNECTION_QUERY, listQuery: TXN_LIST_QUERY,
+      extractField: 'transactions', first: TXS_PER_PAGE,
     }, shapeCache);
     const rows = fetched.nodes.map(txn => mapTransactionRow(store.id, internal.externalOrderId, txn)).filter(Boolean);
-    await upsertRows(db, 'order_transactions', rows, { storeId: store.id, externalOrderId: internal.externalOrderId }, fetched.complete);
-    await recordSuccess(store.id, 'transactions', { discovered: rows.length, inserted: rows.length, paginationComplete: fetched.complete, pagesCompleted: null });
+    const writes = await upsertRows(db, 'order_transactions', rows, { storeId: store.id, externalOrderId: internal.externalOrderId }, fetched.complete);
+    const report = { discovered: rows.length, ...writes, paginationComplete: fetched.complete, pagesCompleted: fetched.pagesCompleted };
+    await success('transactions', report);
+    attachReport(summary, 'transactions', { ...report, status: 'ok' });
     summary.transactions = rows.length;
   } catch (error) {
+    const report = { discovered: error.discovered, pagesCompleted: error.pages_completed };
     if (error?.accessDenied) {
-      await recordDegraded(store.id, 'transactions', 'SHOPIFY_ORDER_TRANSACTIONS_ACCESS_DENIED');
+      await degraded('transactions', 'SHOPIFY_ORDER_TRANSACTIONS_ACCESS_DENIED', report);
+      attachReport(summary, 'transactions', { ...report, status: 'degraded', errorCode: 'SHOPIFY_ORDER_TRANSACTIONS_ACCESS_DENIED' });
       summary.transactions = 'degraded';
     } else {
-      await recordFailure(store.id, 'transactions', error);
+      await failure('transactions', error, report);
+      attachReport(summary, 'transactions', { ...report, status: 'failed', errorCode: error?.code || error?.name });
       summary.transactions = 'failed';
     }
     logger.warn('order_enrichment_transactions_failed', { store_id: store.id, external_order_id: internal.externalOrderId, error_type: error?.code || error?.name });
@@ -370,44 +432,60 @@ async function enrichOrder(store, orderGid, db = prisma, shapeCache = {}) {
 
   // E3 refunds
   try {
-    await beginAttempt(store.id, 'refunds');
+    await begin('refunds');
     const data = await shopifyGraphql(store, REFUNDS_QUERY, { id: orderGid });
     const refunds = data?.node?.refunds;
-    if (Array.isArray(refunds)) {
-      const rows = refunds.map(r => mapRefundRow(store.id, internal.externalOrderId, r)).filter(Boolean);
-      await upsertRows(db, 'order_refunds', rows, { storeId: store.id, externalOrderId: internal.externalOrderId }, true);
-      await recordSuccess(store.id, 'refunds', { discovered: rows.length, inserted: rows.length, paginationComplete: true });
-      summary.refunds = rows.length;
-    } else {
-      await recordDegraded(store.id, 'refunds', 'SHOPIFY_REFUNDS_UNRESOLVABLE');
-      summary.refunds = 'degraded';
+    if (!Array.isArray(refunds)) {
+      const error = new Error('Shopify refunds response shape is unresolvable');
+      error.code = 'SHOPIFY_REFUNDS_UNRESOLVABLE';
+      error.accessDenied = false;
+      throw error;
     }
+    const rows = refunds.map(r => mapRefundRow(store.id, internal.externalOrderId, r)).filter(Boolean);
+    const writes = await upsertRows(db, 'order_refunds', rows, { storeId: store.id, externalOrderId: internal.externalOrderId }, true);
+    const report = { discovered: rows.length, ...writes, paginationComplete: true, pagesCompleted: 1 };
+    await success('refunds', report);
+    attachReport(summary, 'refunds', { ...report, status: 'ok' });
+    summary.refunds = rows.length;
   } catch (error) {
-    await recordFailure(store.id, 'refunds', error);
+    await failure('refunds', error);
+    attachReport(summary, 'refunds', { status: 'failed', errorCode: error?.code || error?.name, paginationComplete: false });
     summary.refunds = 'failed';
     logger.warn('order_enrichment_refunds_failed', { store_id: store.id, external_order_id: internal.externalOrderId, error_type: error?.code || error?.name });
   }
 
   // E4 fulfillments
   try {
-    await beginAttempt(store.id, 'fulfillments');
+    await begin('fulfillments');
+    const parent = await db.orders.findFirst({
+      where: { store_id: store.id, external_order_id: internal.externalOrderId },
+      select: { id: true },
+    });
+    if (!parent) {
+      const error = new Error('Cannot persist fulfillment without its tenant-scoped order');
+      error.code = 'ORDER_FULFILLMENT_PARENT_MISSING';
+      error.noFallback = true;
+      throw error;
+    }
     const fetched = await fetchFamily(store, orderGid, {
-      kind: 'fulfillments',
-      connectionQuery: FUL_CONNECTION_QUERY,
-      listQuery: FUL_LIST_QUERY,
-      extractField: 'fulfillments',
-      first: 100,
+      kind: 'fulfillments', connectionQuery: FUL_CONNECTION_QUERY, listQuery: FUL_LIST_QUERY,
+      extractField: 'fulfillments', first: 100,
     }, shapeCache);
     const rows = fetched.nodes.map(f => mapFulfillmentRow(store.id, internal.externalOrderId, f)).filter(Boolean);
-    await upsertRows(db, 'order_fulfillments', rows, { storeId: store.id, externalOrderId: internal.externalOrderId }, fetched.complete);
-    await recordSuccess(store.id, 'fulfillments', { discovered: rows.length, inserted: rows.length, paginationComplete: fetched.complete, pagesCompleted: null });
+    const writes = await upsertRows(db, 'order_fulfillments', rows, { storeId: store.id, externalOrderId: internal.externalOrderId }, fetched.complete);
+    const report = { discovered: rows.length, ...writes, paginationComplete: fetched.complete, pagesCompleted: fetched.pagesCompleted };
+    await success('fulfillments', report);
+    attachReport(summary, 'fulfillments', { ...report, status: 'ok' });
     summary.fulfillments = rows.length;
   } catch (error) {
+    const report = { discovered: error.discovered, pagesCompleted: error.pages_completed, paginationComplete: false };
     if (error?.accessDenied) {
-      await recordDegraded(store.id, 'fulfillments', 'SHOPIFY_ORDER_FULFILLMENTS_ACCESS_DENIED');
+      await degraded('fulfillments', 'SHOPIFY_ORDER_FULFILLMENTS_ACCESS_DENIED', report);
+      attachReport(summary, 'fulfillments', { ...report, status: 'degraded', errorCode: 'SHOPIFY_ORDER_FULFILLMENTS_ACCESS_DENIED' });
       summary.fulfillments = 'degraded';
     } else {
-      await recordFailure(store.id, 'fulfillments', error);
+      await failure('fulfillments', error, report);
+      attachReport(summary, 'fulfillments', { ...report, status: 'failed', errorCode: error?.code || error?.name });
       summary.fulfillments = 'failed';
     }
     logger.warn('order_enrichment_fulfillments_failed', { store_id: store.id, external_order_id: internal.externalOrderId, error_type: error?.code || error?.name });
@@ -416,21 +494,60 @@ async function enrichOrder(store, orderGid, db = prisma, shapeCache = {}) {
   return summary;
 }
 
+function emptyAggregate() {
+  return { discovered: 0, inserted: 0, updated: 0, deleted: 0, pagesCompleted: 0, failures: 0, degraded: 0, unexpected: 0 };
+}
+
 async function enrichOrders(store, orderNodes, db = prisma) {
-  const gid = n => n?.id || null;
+  const domains = ['transactions', 'refunds', 'fulfillments'];
+  const aggregates = Object.fromEntries(domains.map(domain => [domain, emptyAggregate()]));
+  await Promise.all(domains.map(domain => beginAttempt(store.id, domain, db)));
   const shapeCache = {};
   const totals = { orders: 0, ok: 0 };
   for (const node of orderNodes) {
-    const id = gid(node);
+    const id = node?.id || null;
     if (!id) continue;
     totals.orders += 1;
     try {
-      await enrichOrder(store, id, db, shapeCache);
+      const summary = await enrichOrder(store, id, db, shapeCache, { manageLedger: false });
       totals.ok += 1;
+      for (const domain of domains) {
+        const report = summary._reports?.[domain];
+        if (!report) { aggregates[domain].unexpected += 1; continue; }
+        for (const key of ['discovered', 'inserted', 'updated', 'deleted', 'pagesCompleted']) {
+          aggregates[domain][key] += Number.isFinite(report[key]) ? report[key] : 0;
+        }
+        if (report.status === 'failed') aggregates[domain].failures += 1;
+        if (report.status === 'degraded') aggregates[domain].degraded += 1;
+      }
     } catch (error) {
-      // Defensive: any unexpected throw remains logged, never fatal to the sync.
+      for (const domain of domains) aggregates[domain].unexpected += 1;
       logger.warn('order_enrichment_failed', { store_id: store.id, error_type: error?.code || error?.name });
     }
+  }
+
+  for (const domain of domains) {
+    const aggregate = aggregates[domain];
+    const report = {
+      discovered: aggregate.discovered, inserted: aggregate.inserted,
+      updated: aggregate.updated, deleted: aggregate.deleted,
+      pagesCompleted: aggregate.pagesCompleted,
+    };
+    if (aggregate.failures || aggregate.unexpected) {
+      const error = new Error(`${domain} enrichment incomplete for ${aggregate.failures + aggregate.unexpected} order(s)`);
+      error.code = 'SHOPIFY_ORDER_ENRICHMENT_INCOMPLETE';
+      await recordFailure(store.id, domain, error, report, db);
+    } else if (aggregate.degraded) {
+      await recordDegraded(store.id, domain, `SHOPIFY_ORDER_${domain.toUpperCase()}_ACCESS_DENIED`, report, db);
+    } else {
+      await recordSuccess(store.id, domain, { ...report, paginationComplete: true }, db);
+    }
+    logger.info('order_enrichment_domain_completed', {
+      store_id: store.id, domain, ...report,
+      status: aggregate.failures || aggregate.unexpected ? 'failed' : aggregate.degraded ? 'degraded' : 'ok',
+      failed_orders: aggregate.failures + aggregate.unexpected,
+      degraded_orders: aggregate.degraded,
+    });
   }
   return totals;
 }
