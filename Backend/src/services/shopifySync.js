@@ -58,6 +58,7 @@ async function fetchConnection(store, query, rootName, fetchPage = shopifyGraphq
   const nodes = [];
   let cursor = null;
   let pages = 0;
+  const seenCursors = new Set();
   do {
     if (++pages > MAX_SYNC_PAGES) {
       throw Object.assign(new Error(`shopify_${rootName}_pagination_limit_exceeded`), { code: 'SHOPIFY_PAGINATION_LIMIT_EXCEEDED' });
@@ -66,6 +67,10 @@ async function fetchConnection(store, query, rootName, fetchPage = shopifyGraphq
     const connection = data[rootName];
     if (!connection) throw new Error(`shopify_${rootName}_response_missing`);
     const nextCursor = nextConnectionCursor(connection, cursor, rootName);
+    if (nextCursor && seenCursors.has(nextCursor)) {
+      throw new Error(`shopify_${rootName}_pagination_stalled`);
+    }
+    if (nextCursor) seenCursors.add(nextCursor);
     nodes.push(...connection.nodes);
     cursor = nextCursor;
   } while (cursor);
@@ -115,6 +120,52 @@ async function syncCustomers(store) {
     });
   }
   return customers.length;
+}
+
+// Expand a nested connection before writing any parent. A cursor is only
+// meaningful for that parent, and each additional read must still refer to the
+// same source version. An interrupted or changed snapshot fails closed.
+async function completeLineItems(store, records, type, graphql = shopifyGraphql) {
+  if (!['Order', 'AbandonedCheckout'].includes(type)) throw new Error('Unsupported Shopify parent type');
+  const fields = type === 'Order'
+    ? 'id name quantity product { id } variant { id } originalUnitPriceSet { shopMoney { amount currencyCode } }'
+    : 'id title quantity product { id } variant { id } originalUnitPriceSet { shopMoney { amount currencyCode } }';
+  const query = `query RevlumaNestedLines($id: ID!, $first: Int!, $after: String!) {
+    node(id: $id) { id ... on ${type} { updatedAt lineItems(first: $first, after: $after) {
+      nodes { ${fields} } pageInfo { hasNextPage endCursor }
+    } } }
+  }`;
+  for (const record of records) {
+    const incomplete = () => Object.assign(new Error('Shopify line item connection is incomplete'), { code: 'SHOPIFY_LINE_ITEMS_INCOMPLETE' });
+    let connection = record?.lineItems;
+    if (!connection || !Array.isArray(connection.nodes) || typeof connection.pageInfo?.hasNextPage !== 'boolean') throw incomplete();
+    const items = [...connection.nodes];
+    const ids = new Set();
+    const addIds = nodes => {
+      for (const item of nodes) {
+        if (!item || typeof item.id !== 'string' || !item.id || ids.has(item.id)) throw incomplete();
+        ids.add(item.id);
+      }
+    };
+    addIds(items);
+    const cursors = new Set();
+    let pages = 1;
+    while (connection.pageInfo.hasNextPage) {
+      const cursor = connection.pageInfo.endCursor;
+      if (typeof record.id !== 'string' || !record.id || typeof record.updatedAt !== 'string' ||
+          !Number.isFinite(Date.parse(record.updatedAt)) || typeof cursor !== 'string' || !cursor || cursors.has(cursor)) throw incomplete();
+      if (++pages > MAX_SYNC_PAGES) throw incomplete();
+      cursors.add(cursor);
+      const data = await graphql(store, query, { id: record.id, first: 250, after: cursor });
+      const node = data?.node;
+      if (!node || node.id !== record.id || node.updatedAt !== record.updatedAt) throw incomplete();
+      connection = node.lineItems;
+      if (!connection || !Array.isArray(connection.nodes) || typeof connection.pageInfo?.hasNextPage !== 'boolean') throw incomplete();
+      addIds(connection.nodes);
+      items.push(...connection.nodes);
+    }
+    record.lineItems = { nodes: items, pageInfo: connection.pageInfo };
+  }
 }
 
 function orderPayload(order) {
@@ -204,7 +255,7 @@ async function syncOrders(store) {
     query Orders($first: Int!, $after: String) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         nodes {
-          id checkoutToken cartToken createdAt cancelledAt displayFinancialStatus discountCodes
+          id checkoutToken cartToken createdAt updatedAt cancelledAt displayFinancialStatus discountCodes
           currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
           totalRefundedSet { shopMoney { amount currencyCode } }
@@ -216,6 +267,7 @@ async function syncOrders(store) {
               id name quantity product { id } variant { id }
               originalUnitPriceSet { shopMoney { amount currencyCode } }
             }
+            pageInfo { hasNextPage endCursor }
           }
         }
         pageInfo { hasNextPage endCursor }
@@ -223,6 +275,9 @@ async function syncOrders(store) {
     }
   `;
   const orders = await fetchConnection(store, query, 'orders');
+  // Check all records before any writes, so a truncated child cannot produce a
+  // successful sync or silently replace previously complete order items.
+  await completeLineItems(store, orders, 'Order');
   let completed = 0;
   const failures = [];
   for (const order of orders) {
@@ -295,6 +350,7 @@ async function syncAbandonedCheckouts(store) {
               id title quantity product { id } variant { id }
               originalUnitPriceSet { shopMoney { amount currencyCode } }
             }
+            pageInfo { hasNextPage endCursor }
           }
         }
         pageInfo { hasNextPage endCursor }
@@ -302,6 +358,7 @@ async function syncAbandonedCheckouts(store) {
     }
   `;
   const checkouts = await fetchConnection(store, query, 'abandonedCheckouts');
+  await completeLineItems(store, checkouts, 'AbandonedCheckout');
   for (const checkout of checkouts) {
     logger.info('shopify_checkout_sync_processing', { store_id: store.id, checkout_id: externalId(checkout.id), stage: 'started' });
     const payload = abandonedPayload(checkout);
@@ -520,6 +577,7 @@ module.exports = {
   verifyOrderReadScope,
   fetchConnection,
   nextConnectionCursor,
+  completeLineItems,
   abandonedPayload,
   orderPayload,
   syncAbandonedCheckouts,
