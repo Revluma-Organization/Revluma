@@ -1,6 +1,6 @@
 # REV-COMMERCE-ACTIONS-001 — Merchant-approved commerce vertical slice
 
-Status: implemented for review; production verification and external authorization gates are recorded below.
+Status: merged and deployed; migration, deployed SHA, readiness, and unauthenticated route gates verified. Authenticated merchant verification and external authorization gates remain explicit below.
 
 ## Deliberate boundary
 
@@ -62,12 +62,23 @@ Migration `Backend/prisma/migrations/20261106210000_commerce_action_requests` cr
 
 - Prisma schema parsed through Prisma's WASM DMMF parser: 77 models; `commerce_action_requests` has 20 fields.
 - Focused tests cover strict validation, fixed GraphQL documents, correct `descriptionHtml` round trips, live scope gates, tenant isolation, idempotency, preview expiry/hash policy, concurrent edits, response verification, audit chains, rollback, uncertain outcomes, stale-crash reconciliation, collection pagination, merchant capabilities, route authorization, and Sidekick limitations.
-- Sandbox `binaries.prisma.sh` access is blocked. Local generation used Prisma internals/WASM with native engine downloads disabled. The complete test command reached tests requiring a native query engine and could not complete locally; CI with normal Prisma engine access is required and must pass before merge.
+- Sandbox `binaries.prisma.sh` access is blocked. Local generation used Prisma internals/WASM with native engine downloads disabled; the focused suite passed locally.
+- PR #327 passed the complete Backend test suite, Backend refresh regression, Prisma bootstrap/financial/security regressions, dashboard suite and production build, task025–task030 suites, and Vercel preview. The main-branch Backend test run 42297110869 also passed on merge SHA `8feb4f29d6f53185ba30fa6043b1a9dcd8a1262d`.
+
+## Production deployment evidence — 2026-11-06
+
+- Application PR #327 merged as `8feb4f29d6f53185ba30fa6043b1a9dcd8a1262d`.
+- Render `/ready` reports `node_build=8feb4f29d6f5`, `database_ready=true`, `python_ready=true`, `redis_ready=true`, and a healthy completed scheduler run.
+- Production Prisma ledger contains finished, non-rolled-back migration `20261106210000_commerce_action_requests`.
+- Production PostgreSQL inspection verified all 20 columns, the primary key, organization/store/user foreign keys, fixed action-type check, and all lifecycle-status checks.
+- Unauthenticated production requests to `/api/v1/commerce/actions`, `/api/v1/commerce/sidekick/extension-foundation`, and the collection endpoint return `Authentication required`, proving both route availability and the authentication boundary. This does not claim an authenticated end-to-end merchant test.
+- Vercel production deployment `dpl_8Gy25D1saNb8F1Xjt7i1MWEK4RoM` is READY and PROMOTED on the same merge SHA.
+- No production product mutation was attempted: `write_products` reauthorization and an authorized merchant confirmation are external gates.
 
 ## Production/external gates
 
-1. Apply and verify the migration before serving action routes.
-2. Deploy the Node service and verify its deployed SHA/readiness.
+1. **Complete:** migration applied and verified before the new Node process served action routes.
+2. **Complete:** Node service deployed SHA/readiness verified.
 3. Keep `COMMERCE_ACTIONS_ENABLED` unset/false until migration, authorization, and production smoke checks are complete.
 4. Merchant installations must explicitly grant `write_products`; recorded development scopes did not include it. Reauthorization is an external gate and must not be simulated.
 5. Authenticated production API verification requires an authorized merchant session. Public health alone does not prove authenticated behavior.
