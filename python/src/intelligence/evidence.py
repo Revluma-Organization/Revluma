@@ -35,6 +35,15 @@ UNIT_COUNT = "count"
 UNIT_RATIO = "ratio"
 UNITS = (UNIT_CURRENCY, UNIT_COUNT, UNIT_RATIO)
 
+#: The four claim grades Rev may use, in descending order of strength.
+#: A grade is a property of the evidence behind a statement, never a tone the
+#: model may choose for emphasis.
+CLAIM_VERIFIED_FACT = "verified_fact"
+CLAIM_CALCULATED_OBSERVATION = "calculated_observation"
+CLAIM_HYPOTHESIS = "hypothesis"
+CLAIM_UNKNOWN = "unknown"
+CLAIM_GRADES = (CLAIM_VERIFIED_FACT, CLAIM_CALCULATED_OBSERVATION, CLAIM_HYPOTHESIS, CLAIM_UNKNOWN)
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -257,6 +266,73 @@ def validate_collection(items: Iterable[dict]) -> list[str]:
             errors.append("missing_period")
         if not item.get("source") or not item.get("definition"):
             errors.append("missing_provenance")
+    return sorted(set(errors))
+
+
+def validate_claim_grades(
+    claims: Iterable[dict],
+    items: Iterable[dict],
+) -> list[str]:
+    """Enforce the four claim grades against the evidence that exists.
+
+    Rules (deterministic, no model discretion):
+
+    * ``verified_fact`` requires at least one resolvable cited evidence item,
+      and every cited item must have ``status == available``. Monetary facts
+      must cite items whose currency matches the claim currency.
+    * ``calculated_observation`` requires at least one resolvable cited item
+      and a non-empty ``definition``; cited items may be ``available`` or
+      ``partial``.
+    * ``hypothesis`` may never be emitted as verified, and if it cites
+      evidence the ids must resolve. A hypothesis is an open question, not a
+      conclusion with softer wording.
+    * ``unknown`` may not carry a numeric value; anything not established is
+      reported as missing, not guessed.
+
+    Returns a sorted list of stable error codes; an empty list means the
+    claims are admissible.
+    """
+    known = {item.get("id"): item for item in (items or []) if item.get("id")}
+    errors: list[str] = []
+    for claim in claims or []:
+        grade = claim.get("grade")
+        if grade not in CLAIM_GRADES:
+            errors.append("invalid_claim_grade")
+            continue
+        evidence_ids = [value for value in (claim.get("evidence_ids") or []) if value]
+        if grade == CLAIM_VERIFIED_FACT:
+            if not evidence_ids:
+                errors.append("verified_fact_without_evidence")
+            for identifier in evidence_ids:
+                item = known.get(identifier)
+                if item is None:
+                    errors.append("verified_fact_cites_unknown_evidence")
+                elif item.get("status") != STATUS_AVAILABLE:
+                    errors.append("verified_fact_cites_unavailable_evidence")
+                elif (claim.get("unit") == UNIT_CURRENCY
+                      and normalize_currency(claim.get("currency")) is not None
+                      and item.get("currency") != normalize_currency(claim.get("currency"))):
+                    errors.append("verified_fact_currency_mismatch")
+        elif grade == CLAIM_CALCULATED_OBSERVATION:
+            if not evidence_ids:
+                errors.append("calculated_observation_without_evidence")
+            if not str(claim.get("definition") or "").strip():
+                errors.append("calculated_observation_without_definition")
+            for identifier in evidence_ids:
+                item = known.get(identifier)
+                if item is None:
+                    errors.append("calculated_observation_cites_unknown_evidence")
+                elif item.get("status") not in (STATUS_AVAILABLE, STATUS_PARTIAL):
+                    errors.append("calculated_observation_cites_unavailable_evidence")
+        elif grade == CLAIM_HYPOTHESIS:
+            if claim.get("verified") is True:
+                errors.append("hypothesis_claimed_verified")
+            for identifier in evidence_ids:
+                if identifier not in known:
+                    errors.append("hypothesis_cites_unknown_evidence")
+        elif grade == CLAIM_UNKNOWN:
+            if claim.get("value") is not None:
+                errors.append("unknown_claim_carries_value")
     return sorted(set(errors))
 
 

@@ -12,6 +12,7 @@ const {
   requireCurrency,
   resolveOrderRecoveryStatus,
 } = require('./financialIntegrity');
+const { isPrivacyTopic, handleShopifyPrivacyWebhook } = require('./privacyWebhookService');
 
 function safeCompareHex(actual, expected) {
   if (!actual || !expected || actual.length !== expected.length) return false;
@@ -50,14 +51,30 @@ async function claimDelivery(provider, deliveryId, storeId, topic) {
     });
   } catch (error) {
     if (error.code === 'P2002') {
-      const retry = await prisma.webhook_deliveries.updateMany({
-        where: { provider, delivery_id: deliveryId, status: 'failed' },
-        data: { status: 'received', last_error: null, received_at: new Date() },
-      });
-      if (!retry.count) return null;
-      return prisma.webhook_deliveries.findUnique({
-        where: { provider_delivery_id: { provider, delivery_id: deliveryId } },
-      });
+      const key = { provider_delivery_id: { provider, delivery_id: deliveryId } };
+      const existing = await prisma.webhook_deliveries.findUnique({ where: key });
+      if (!existing || existing.store_id !== storeId || existing.topic !== topic) {
+        throw Object.assign(new Error('Webhook delivery identity does not match'), { code: 'WEBHOOK_DELIVERY_IDENTITY_MISMATCH' });
+      }
+      if (existing.status === 'processed') return null;
+      if (existing.status === 'failed') {
+        const retry = await prisma.webhook_deliveries.updateMany({
+          where: { provider, delivery_id: deliveryId, store_id: storeId, topic, status: 'failed' },
+          data: { status: 'received', last_error: null, received_at: new Date() },
+        });
+        if (retry.count) {
+          const claimed = await prisma.webhook_deliveries.findUnique({ where: key });
+          if (!claimed || claimed.store_id !== storeId || claimed.topic !== topic || claimed.status !== 'received') {
+            throw Object.assign(new Error('Webhook delivery claim could not be verified'), { code: 'WEBHOOK_DELIVERY_CLAIM_UNVERIFIED' });
+          }
+          return claimed;
+        }
+        const latest = await prisma.webhook_deliveries.findUnique({ where: key });
+        if (latest?.store_id === storeId && latest.topic === topic && latest.status === 'processed') return null;
+      }
+      // A received/in-flight delivery is not proof of success. Returning 2xx
+      // here can lose an event after a crash, so request a later retry instead.
+      throw Object.assign(new Error('Webhook delivery is still pending'), { code: 'WEBHOOK_DELIVERY_PENDING' });
     }
     throw error;
   }
@@ -730,8 +747,51 @@ async function upsertCustomer(store, payload) {
   });
 }
 
+async function handleProductWebhook(store, topic, payload) {
+  // Lazy-require: productSync pulls in the GraphQL client, which validates
+  // SHOPIFY_TOKEN_ENCRYPTION_KEY at load time. Requiring it lazily keeps this
+  // module loadable in maintenance/integration contexts that do not handle
+  // Shopify traffic; the key is still enforced on the first real API call.
+  const { syncProductById, deleteProduct } = require('./productSync');
+  const rawId = payload?.id ?? payload?.product?.id ?? null;
+  const id = rawId != null ? String(rawId) : '';
+  if (!id) {
+    throw Object.assign(new Error('Product webhook is missing an id'), { code: 'PRODUCT_WEBHOOK_MALFORMED' });
+  }
+  if (topic.includes('delete')) {
+    const result = await deleteProduct(store, id);
+    return { action: 'product_deleted', external_id: id, deleted: result?.count ?? null };
+  }
+  // products/create and products/update are change signals; the stored state
+  // is always a fresh refetch, never the webhook body.
+  try {
+    return await syncProductById(store, id);
+  } catch (error) {
+    const denied = error.code === 'SHOPIFY_GRAPHQL_ERROR' &&
+      Array.isArray(error.shopifyErrors) &&
+      error.shopifyErrors.some((item) => Array.isArray(item.codes) && item.codes.includes('ACCESS_DENIED'));
+    const ignorable = denied || error.code === 'SHOPIFY_PRODUCT_NOT_FOUND' || error.code === 'SHOPIFY_PRODUCT_MALFORMED';
+    if (ignorable) {
+      logger.warn('shopify_product_webhook_skipped', { store_id: store.id, topic, error_type: error.code });
+      return { action: 'product_refetch_skipped', external_id: id };
+    }
+    throw error;
+  }
+}
+
 async function processCommerceWebhook({ provider, store, topic, payload }) {
   const normalizedTopic = String(topic || '').toLowerCase();
+  // Mandatory Shopify privacy/compliance topics are handled by the dedicated
+  // durable workflow: recorded in `privacy_requests`, processed idempotently,
+  // tenant-scoped and audited. A processing failure throws so the delivery is
+  // marked failed and Shopify retries — a privacy obligation must never be
+  // silently acknowledged as processed.
+  if (provider === 'shopify' && isPrivacyTopic(normalizedTopic)) {
+    return handleShopifyPrivacyWebhook({ store, topic: normalizedTopic, payload });
+  }
+  if (normalizedTopic.startsWith('products/')) {
+    return handleProductWebhook(store, normalizedTopic, payload);
+  }
   if (normalizedTopic === 'app/uninstalled') {
     await prisma.stores.update({
       where: { id: store.id },

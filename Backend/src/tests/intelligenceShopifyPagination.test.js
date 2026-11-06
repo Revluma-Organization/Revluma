@@ -83,3 +83,12 @@ test('optional ML prediction rejection is contained', async () => {
     throw Object.assign(new Error('prediction unavailable'), { code: 'PREDICTION_UNAVAILABLE' });
   }, 'store-test', 'cart-test', 100));
 });
+
+test('Shopify sync rejects a cursor cycle longer than one page', async () => {
+  let call = 0;
+  const fetchPage = async () => ({ orders: { nodes: [], pageInfo: {
+    hasNextPage: true, endCursor: ['a', 'b', 'a'][call++],
+  } } });
+  await assert.rejects(fetchConnection({}, '', 'orders', fetchPage), /pagination_stalled/);
+  assert.equal(call, 3);
+});
