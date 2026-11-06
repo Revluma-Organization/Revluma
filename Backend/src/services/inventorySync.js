@@ -65,6 +65,18 @@ const INVENTORY_ITEMS_QUERY = `query RevlumaInventoryItems($first: Int!, $after:
   }
 }`;
 
+const INVENTORY_LEVELS_PAGE_QUERY = `query RevlumaInventoryItemLevels($id: ID!, $first: Int!, $after: String) {
+  node(id: $id) {
+    ... on InventoryItem {
+      id
+      inventoryLevels(first: $first, after: $after) {
+        nodes { location { id } quantities(names: ["available", "on_hand", "committed", "incoming", "reserved", "damaged", "safety_stock", "quality_control"]) { name quantity } updatedAt }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}`;
+
 function accessDenied(error, pattern) {
   return error?.code === 'SHOPIFY_GRAPHQL_ERROR' &&
     Array.isArray(error.shopifyErrors) &&
@@ -94,6 +106,31 @@ async function fetchAll(store, query, rootKey, maxPages) {
   err.code = 'SHOPIFY_INVENTORY_PAGE_CEILING';
   err.partial = nodes.length;
   throw err;
+}
+
+async function fetchAllInventoryLevels(store, inventoryItemGid, firstPage) {
+  const levels = [...(firstPage?.nodes || [])];
+  let pageInfo = firstPage?.pageInfo || {};
+  let pages = 1;
+  while (pageInfo.hasNextPage) {
+    if (!pageInfo.endCursor || pages >= MAX_ITEM_PAGES) {
+      const err = new Error(`inventory_levels_page_ceiling:${externalId(inventoryItemGid)}`);
+      err.code = 'SHOPIFY_INVENTORY_LEVELS_PAGE_CEILING';
+      err.partial = levels.length;
+      throw err;
+    }
+    const data = await shopifyGraphql(store, INVENTORY_LEVELS_PAGE_QUERY, { id: inventoryItemGid, first: PAGE_SIZE, after: pageInfo.endCursor });
+    const connection = data?.node?.inventoryLevels;
+    if (!connection || !Array.isArray(connection.nodes)) {
+      const err = new Error(`inventory_levels_shape_unresolvable:${externalId(inventoryItemGid)}`);
+      err.code = 'SHOPIFY_INVENTORY_LEVELS_SHAPE_UNRESOLVABLE';
+      throw err;
+    }
+    levels.push(...connection.nodes);
+    pageInfo = connection.pageInfo || {};
+    pages += 1;
+  }
+  return levels;
 }
 
 async function syncLocations(store, db = prisma) {
@@ -156,7 +193,8 @@ async function syncInventory(store, db = prisma) {
       updated_at: toTs(node.updatedAt),
       synced_at: new Date(),
     });
-    const levels = node.inventoryLevels?.nodes || [];
+    // Fetch every nested page before certifying this inventory item complete.
+    const levels = await fetchAllInventoryLevels(store, node.id, node.inventoryLevels);
     for (const level of levels) {
       const quantities = {};
       for (const q of (level?.quantities || [])) {
@@ -177,37 +215,37 @@ async function syncInventory(store, db = prisma) {
   }
   let deletedItems = 0;
   let deletedLevels = 0;
-  await db.$transaction(async tx => {
-    for (const row of itemRows) {
-      await tx.inventory_items.upsert({
-        where: { store_id_external_id: { store_id: row.store_id, external_id: row.external_id } },
-        update: row,
-        create: row,
-      });
+  // Persist in bounded independent statements. A large inventory snapshot can
+  // exceed Supavisor/Prisma interactive-transaction lifetimes; one long transaction
+  // previously caused P2028 and discarded the entire domain write.
+  for (const row of itemRows) {
+    await db.inventory_items.upsert({
+      where: { store_id_external_id: { store_id: row.store_id, external_id: row.external_id } },
+      update: row,
+      create: row,
+    });
+  }
+  for (const row of levelRows) {
+    await db.inventory_levels.upsert({
+      where: { store_id_inventory_item_external_id_location_external_id: { store_id: row.store_id, inventory_item_external_id: row.inventory_item_external_id, location_external_id: row.location_external_id } },
+      update: { quantities: row.quantities, synced_at: row.synced_at },
+      create: row,
+    });
+  }
+  // Never perform destructive stale sweeps unless both the outer inventory-item
+  // connection and every nested inventory-level connection are complete.
+  if (fetched.complete && !nestedLevelsIncomplete) {
+    const seenLevelKeys = levelRows.map(r => [r.inventory_item_external_id, r.location_external_id]);
+    const itemDelete = await db.inventory_items.deleteMany({ where: { store_id: store.id, external_id: { notIn: [...seenItems] } } });
+    deletedItems = itemDelete.count;
+    const allLevels = await db.inventory_levels.findMany({ where: { store_id: store.id }, select: { id: true, inventory_item_external_id: true, location_external_id: true } });
+    const fresh = new Set(seenLevelKeys.map(([i, l]) => `${i}|${l}`));
+    const stale = allLevels.filter(l => !fresh.has(`${l.inventory_item_external_id}|${l.location_external_id}`)).map(l => l.id);
+    if (stale.length) {
+      const del = await db.inventory_levels.deleteMany({ where: { id: { in: stale } } });
+      deletedLevels = del.count;
     }
-    for (const row of levelRows) {
-      await tx.inventory_levels.upsert({
-        where: { store_id_inventory_item_external_id_location_external_id: { store_id: row.store_id, inventory_item_external_id: row.inventory_item_external_id, location_external_id: row.location_external_id } },
-        update: { quantities: row.quantities, synced_at: row.synced_at },
-        create: row,
-      });
-    }
-    if (fetched.complete) {
-      const seenLevelKeys = levelRows.map(r => [r.inventory_item_external_id, r.location_external_id]);
-      // Reconcile deletions scoped to items we just saw (unknown items vanish with their items).
-      const itemDelete = await tx.inventory_items.deleteMany({ where: { store_id: store.id, external_id: { notIn: [...seenItems] } } });
-      deletedItems = itemDelete.count;
-      // Delete levels whose (item, location) pairs were not refreshed this pass,
-      // across the full set of items we observed (levels query was inline).
-      const allLevels = await tx.inventory_levels.findMany({ where: { store_id: store.id }, select: { id: true, inventory_item_external_id: true, location_external_id: true } });
-      const fresh = new Set(seenLevelKeys.map(([i, l]) => `${i}|${l}`));
-      const stale = allLevels.filter(l => !fresh.has(`${l.inventory_item_external_id}|${l.location_external_id}`)).map(l => l.id);
-      if (stale.length) {
-        const del = await tx.inventory_levels.deleteMany({ where: { id: { in: stale } } });
-        deletedLevels = del.count;
-      }
-    }
-  });
+  }
   await recordSuccess(store.id, 'inventory', { discovered: itemRows.length, inserted: itemRows.length, updated: itemRows.length, deleted: deletedItems + deletedLevels, paginationComplete: fetched.complete, pagesCompleted: null }, db);
   return { items: itemRows.length, levels: levelRows.length, deletedItems, deletedLevels };
 }
@@ -242,4 +280,4 @@ async function syncInventoryAndLocations(store, db = prisma) {
   return { locations, inventory };
 }
 
-module.exports = { syncInventoryAndLocations, syncLocations, syncInventory, externalId, _internal: { fetchAll } };
+module.exports = { syncInventoryAndLocations, syncLocations, syncInventory, externalId, _internal: { fetchAll, fetchAllInventoryLevels } };
