@@ -1521,8 +1521,10 @@ model commerce_resource_records {
   content_hash String   @db.Char(64)
   sync_run_id  String   @db.Uuid
   synced_at    DateTime @db.Timestamptz(6)
+  active       Boolean  @default(false)
 
-  @@unique([store_id, resource_id, source_id], map: "uq_commerce_resource_source")
+  @@unique([store_id, resource_id, sync_run_id, source_id], map: "uq_commerce_resource_run_source")
+  @@index([store_id, resource_id, active], map: "idx_commerce_resource_active")
   @@index([store_id, resource_id, sync_run_id], map: "idx_commerce_resource_run")
   @@index([resource_id, synced_at], map: "idx_commerce_resource_freshness")
 }

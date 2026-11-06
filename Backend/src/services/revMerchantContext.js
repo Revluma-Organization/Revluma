@@ -73,11 +73,11 @@ async function buildMerchantContext(prisma, organizationId) {
   if (allowedStores.size && prisma.commerce_resource_records) {
     [resourceCounts, resourceRecords] = await Promise.all([
       prisma.commerce_resource_records.groupBy({
-        by: ['resource_id'], where: { store_id: { in: [...allowedStores] } },
+        by: ['resource_id'], where: { store_id: { in: [...allowedStores] }, active: true },
         _count: { _all: true }, _max: { synced_at: true }, orderBy: { resource_id: 'asc' }, take: 32,
       }),
       prisma.commerce_resource_records.findMany({
-        where: { store_id: { in: [...allowedStores] } }, orderBy: [{ synced_at: 'desc' }], take: 100,
+        where: { store_id: { in: [...allowedStores] }, active: true }, orderBy: [{ synced_at: 'desc' }], take: 100,
         select: { resource_id: true, source_id: true, payload: true, synced_at: true },
       }),
     ]);

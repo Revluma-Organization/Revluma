@@ -82,8 +82,8 @@ function customerSnapshotWhere(storeId, customerGids) {
   return {
     store_id: storeId,
     OR: [
-      { resource_id: { in: ['customer.addresses', 'customer.metafields'] }, payload: { path: ['id'], in: customerGids } },
-      { resource_id: 'metafields.customers', payload: { path: ['owner', 'id'], in: customerGids } },
+      { resource_id: { in: ['customer.addresses', 'customer.metafields', 'metafields.customers'] }, payload: { path: ['id'], in: customerGids } },
+      { resource_id: 'metafields.orders', payload: { path: ['customer', 'id'], in: customerGids } },
     ],
   };
 }
@@ -196,7 +196,7 @@ async function handleDataRequest({ store, payload }) {
   const snapshotGids = customerSnapshotGids(rows, locator);
   if (snapshotGids.length) {
     authorizedSnapshots = await prisma.commerce_resource_records.findMany({
-      where: customerSnapshotWhere(store.id, snapshotGids),
+      where: { ...customerSnapshotWhere(store.id, snapshotGids), active: true },
       select: { resource_id: true, external_id: true, payload: true },
       orderBy: [{ resource_id: 'asc' }, { external_id: 'asc' }],
     });

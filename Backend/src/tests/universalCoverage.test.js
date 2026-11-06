@@ -52,7 +52,7 @@ test('implemented gateways and genuine external gates remain distinct', () => {
   // Shopify write access includes the corresponding read capability.
   assert.equal(universalStatus(discount, null, new Set(['write_discounts'])), STATUS.IMPLEMENTED_UNVERIFIED);
   const analytics = entry('analytics.reports');
-  assert.equal(universalStatus(analytics, null, grantedAll(analytics)), STATUS.IMPLEMENTED_UNVERIFIED);
+  assert.equal(universalStatus(analytics, null, grantedAll(analytics)), STATUS.UNAVAILABLE_PLATFORM);
   const payment = entry('shop.payment_configuration');
   assert.equal(universalStatus(payment, null, grantedAll(payment)), STATUS.REQUIRES_APP_APPROVAL);
 });

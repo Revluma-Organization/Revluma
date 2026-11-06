@@ -29,7 +29,7 @@ function freshState() {
     sequence_sends: [{ id: 'send-1', store_id: 'store-a', customer_id: 'internal-cust-1' }],
     commerce_resource_records: [
       { resource_id: 'customer.addresses', external_id: 'gid://shopify/CustomerAddress/1', store_id: 'store-a', payload: { id: 'gid://shopify/Customer/ext-shopify-1', address1: 'private' } },
-      { resource_id: 'metafields.customers', external_id: 'gid://shopify/Metafield/1', store_id: 'store-a', payload: { id: 'gid://shopify/Metafield/1', owner: { id: 'gid://shopify/Customer/ext-shopify-1' }, value: 'private' } },
+      { resource_id: 'metafields.customers', external_id: 'gid://shopify/Metafield/1', store_id: 'store-a', payload: { id: 'gid://shopify/Customer/ext-shopify-1', metafields: { nodes: [{ id: 'gid://shopify/Metafield/1', value: 'private' }] } } },
       { resource_id: 'customer.addresses', external_id: 'gid://shopify/CustomerAddress/2', store_id: 'store-a', payload: { id: 'gid://shopify/Customer/other', address1: 'retain' } },
     ],
     privacy_requests: [],

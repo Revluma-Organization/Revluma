@@ -153,10 +153,8 @@ const buildInstallUrl = ({ shop, state }) => {
   // observation-first product that must not request mutation access it
   // cannot honestly use. It is now opt-in via SHOPIFY_SCOPES only.
   // Every scope requested below is exercised by merged code and nothing
-  // write-scoped is ever forced. Phase-gated scopes (read_markets,
-  // read_content, read_analytics, read_discounts, read_draft_orders,
-  // read_selling_plans, read_returns, read_publications) are requested by
-  // future PRs that ship those domains — request architecture stays honest.
+  // write-scoped is ever forced. Optional commerce scopes remain configurable;
+  // legal policies and navigation are requested because their readers are live.
   const scope = [...new Set([
     ...configuredScopes,
     'read_orders',
@@ -164,6 +162,8 @@ const buildInstallUrl = ({ shop, state }) => {
     'read_products',
     'read_inventory',
     'read_locations',
+    'read_legal_policies',
+    'read_online_store_navigation',
   ])].join(',');
   const params = new URLSearchParams({
     client_id: apiKey,
