@@ -18,7 +18,7 @@ const SHOP_QUERY = `query RevlumaShopProfile {
     myshopifyDomain
     ianaTimezone
     currencyCode
-    shopAddress { countryCodeV2 countryName city zip }
+    shopAddress { countryCodeV2 city zip }
     plan { displayName partnerDevelopment shopifyPlus }
     primaryDomain { host url sslEnabled }
   }
@@ -36,7 +36,7 @@ function mapProfileRow(storeId, shop) {
     iana_timezone: shop?.ianaTimezone ? String(shop.ianaTimezone).slice(0, 64) : null,
     currency_code: shop?.currencyCode ? String(shop.currencyCode).slice(0, 3) : null,
     country_code: shop?.shopAddress?.countryCodeV2 ? String(shop.shopAddress.countryCodeV2).slice(0, 3) : null,
-    country_name: shop?.shopAddress?.countryName ? String(shop.shopAddress.countryName).slice(0, 120) : null,
+    country_name: null, // ShopAddress no longer exposes 'countryName' (API drift); country_code is the supported field
     city: shop?.shopAddress?.city ? String(shop.shopAddress.city).slice(0, 120) : null,
     zip: shop?.shopAddress?.zip ? String(shop.shopAddress.zip).slice(0, 32) : null,
     plan_display_name: shop?.plan?.displayName ? String(shop.plan.displayName).slice(0, 190) : null,

@@ -116,7 +116,7 @@ const REFUNDS_QUERY = `query RevlumaOrderRefunds($id: ID!) {
         id note createdAt
         totalRefundedSet { shopMoney { amount currencyCode } }
         refundLineItems(first: 250) { nodes { quantity subtotalSet { shopMoney { amount currencyCode } } restockType lineItem { id } } }
-        transactions { id kind status amountSet { shopMoney { amount currencyCode } } processedAt }
+        transactions(first: 100) { nodes { id kind status amountSet { shopMoney { amount currencyCode } } processedAt } }
       }
     }
   }
@@ -130,7 +130,6 @@ const FUL_CONNECTION_QUERY = `query RevlumaOrderFulfillments($id: ID!, $first: I
         nodes {
           id status createdAt updatedAt
           location { name }
-          trackingCompany
           trackingInfo { number url company }
           lineItems(first: 100) { nodes { id quantity } }
         }
@@ -147,7 +146,6 @@ const FUL_LIST_QUERY = `query RevlumaOrderFulfillmentsLegacy($id: ID!) {
       fulfillments {
         id status createdAt updatedAt
         location { name }
-        trackingCompany
         trackingInfo { number url company }
         lineItems(first: 100) { nodes { id quantity } }
       }
@@ -214,16 +212,17 @@ function mapRefundRow(storeId, externalOrderId, refund) {
   const lineItems = Array.isArray(refund.refundLineItems?.nodes)
     ? refund.refundLineItems.nodes.map(mapRefundLineItem)
     : [];
-  const transactions = Array.isArray(refund.transactions)
-    ? refund.transactions.map(txn => ({
-        id: externalId(txn.id),
-        kind: txn.kind || null,
-        status: txn.status || null,
-        amount: moneyDecimal(txn.amountSet?.shopMoney),
-        currency: txn.amountSet?.shopMoney?.currencyCode || null,
-        processed_at: txn.processedAt || null,
-      }))
-    : [];
+  const rawTxns = Array.isArray(refund.transactions)
+    ? refund.transactions
+    : (Array.isArray(refund.transactions?.nodes) ? refund.transactions.nodes : []);
+  const transactions = rawTxns.map(txn => ({
+      id: externalId(txn.id),
+      kind: txn.kind || null,
+      status: txn.status || null,
+      amount: moneyDecimal(txn.amountSet?.shopMoney),
+      currency: txn.amountSet?.shopMoney?.currencyCode || null,
+      processed_at: txn.processedAt || null,
+    }));
   return {
     store_id: storeId,
     external_order_id: String(externalOrderId),
@@ -253,7 +252,7 @@ function mapFulfillmentRow(storeId, externalOrderId, ful) {
     external_id: externalId(ful.id),
     status: ful.status ? String(ful.status).slice(0, 32) : null,
     location_name: ful.location?.name ? String(ful.location.name).slice(0, 255) : null,
-    tracking_company: ful.trackingCompany ? String(ful.trackingCompany).slice(0, 255) : null,
+    tracking_company: trackingInfo.length ? (trackingInfo[0].company ? String(trackingInfo[0].company).slice(0, 255) : null) : null,
     tracking_info: trackingInfo,
     line_items: lineItems,
     created_at: ful.createdAt && !Number.isNaN(new Date(ful.createdAt).getTime()) ? new Date(ful.createdAt) : null,

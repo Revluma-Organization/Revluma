@@ -46,7 +46,7 @@ function shopResponse() {
   return { shop: {
     name: 'Demo Store', email: 'owner@example.com', myshopifyDomain: 'demo.myshopify.com',
     ianaTimezone: 'Africa/Lagos', currencyCode: 'NGN',
-    shopAddress: { countryCodeV2: 'NG', countryName: 'Nigeria', city: 'Abuja', zip: '900001' },
+    shopAddress: { countryCodeV2: 'NG', city: 'Abuja', zip: '900001' },
     plan: { displayName: 'Development', partnerDevelopment: true, shopifyPlus: false },
     primaryDomain: { host: 'shop.demo-merchant.com', url: 'https://shop.demo-merchant.com', sslEnabled: true },
   } };
