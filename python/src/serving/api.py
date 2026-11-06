@@ -30,6 +30,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Re
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.concurrency import run_in_threadpool
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 # ---------------------------------------------------------------------------
 # Setup
@@ -126,6 +127,7 @@ def _capacity_budget_violation() -> str | None:
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
+    logger.info("startup_begin")
     # Keep synchronous request handlers aligned with the bounded SQLAlchemy
     # pool. Without this cap, FastAPI's default 40 worker tokens can create
     # more concurrent DB sessions than this single Render instance should use.
@@ -369,32 +371,106 @@ def _load_model(model_name: str):
     return None
 
 
+_MODEL_PRELOAD_TIMEOUT_SECONDS = float(
+    os.environ.get("ML_MODEL_PRELOAD_TIMEOUT_SECONDS", "20")
+)
+
+
+def _preload_with_timeout(name, loader, budget_seconds):
+    """Run one preload step with a hard ceiling on how long startup waits.
+
+    Uvicorn binds the listening socket only after the ASGI lifespan returns,
+    so any wait in startup is also the deploy's port-scan budget. A remote
+    registry that stalls must degrade the service to fallback models — never
+    hold the port hostage. The worker thread cannot be killed; we stop
+    WAITING and let it finish unobserved (bounded anyway by
+    MLFLOW_HTTP_REQUEST_TIMEOUT for registry REST calls).
+    """
+    start = time.monotonic()
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"preload-{name}")
+    future = executor.submit(loader)
+    try:
+        result = future.result(timeout=budget_seconds)
+        return result, time.monotonic() - start
+    except FutureTimeoutError:
+        logger.warning(
+            "[startup] model '%s' preload exceeded %.1fs budget — serving with fallback",
+            name,
+            budget_seconds,
+        )
+        return None, time.monotonic() - start
+    except Exception:
+        logger.warning(
+            "[startup] model '%s' preload raised — serving with fallback",
+            name,
+            exc_info=True,
+        )
+        return None, time.monotonic() - start
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+def _preload_models_sync():
+    primary = [
+        ("abandonment", lambda: _load_model("abandonment")),
+        ("churn_risk", lambda: churn_predict.load_model("")),
+        ("churn_early_warning", lambda: churn_predict.load_early_warning_model("")),
+        ("send_time", lambda: timing_predict.load_model("")),
+    ]
+    for name, loader in primary:
+        model, elapsed = _preload_with_timeout(name, loader, _MODEL_PRELOAD_TIMEOUT_SECONDS)
+        logger.info(
+            "[startup] model '%s': %s (%.1fs)",
+            name,
+            "loaded" if model is not None else "FALLBACK (not found or unavailable)",
+            elapsed,
+        )
+
+    sensitivity_models, elapsed = _preload_with_timeout(
+        "sensitivity", lambda: sensitivity_predict.load_model(None), _MODEL_PRELOAD_TIMEOUT_SECONDS
+    )
+    if isinstance(sensitivity_models, dict):
+        for target, model in sensitivity_models.items():
+            logger.info(
+                "[startup] model 'sensitivity_%s': %s (%.1fs)",
+                target,
+                "loaded" if model is not None else "FALLBACK (not found)",
+                elapsed,
+            )
+    else:
+        logger.info("[startup] model 'sensitivity': FALLBACK (preload failed) (%.1fs)", elapsed)
+
+    offer_model, elapsed = _preload_with_timeout(
+        "offer_value", lambda: offer_value_predict.load_model(None), _MODEL_PRELOAD_TIMEOUT_SECONDS
+    )
+    logger.info(
+        "[startup] model 'offer_value': %s (%.1fs)",
+        "loaded" if offer_model is not None else "FALLBACK (not found)",
+        elapsed,
+    )
+
+    _, refresh_elapsed = _preload_with_timeout(
+        "model_versions",
+        _refresh_loaded_model_versions,
+        _MODEL_PRELOAD_TIMEOUT_SECONDS,
+    )
+    logger.info("[startup] registry version refresh finished (%.1fs)", refresh_elapsed)
+
+
 async def _preload_models():
-    """
-    Attempts to load all models into cache on startup — this file's own
-    three (M1/M3/M4) plus M2's three (pss/css/tss) and M5's one, so every
-    model is warm before the first request and NO model is ever loaded
-    during request handling. Never crashes startup on a missing model —
-    that's exactly what each endpoint's fallback logic is for.
-    """
-    primary_models = {
-        "abandonment": _load_model("abandonment"),
-        "churn_risk": churn_predict.load_model(""),
-        "churn_early_warning": churn_predict.load_early_warning_model(""),
-        "send_time": timing_predict.load_model(""),
-    }
-    for name, model in primary_models.items():
-        status = "loaded" if model is not None else "FALLBACK (not found)"
-        logger.info(f"[startup] model '{name}': {status}")
+    """Warm every model before the first request — with a hard time ceiling.
 
-    sensitivity_models = sensitivity_predict.load_model(None)
-    for target, model in sensitivity_models.items():
-        status = "loaded" if model is not None else "FALLBACK (not found)"
-        logger.info(f"[startup] model 'sensitivity_{target}': {status}")
-
-    offer_model = offer_value_predict.load_model(None)
-    logger.info(f"[startup] model 'offer_value': {'loaded' if offer_model is not None else 'FALLBACK (not found)'}")
-    await run_in_threadpool(_refresh_loaded_model_versions)
+    Never raises: model failures degrade to each endpoint's documented
+    fallback, and a slow registry can no longer keep the ASGI lifespan
+    (and therefore the port bind) hostage.
+    """
+    logger.info(
+        "[startup] model preload beginning (per-model budget %.1fs)",
+        _MODEL_PRELOAD_TIMEOUT_SECONDS,
+    )
+    boot_start = time.monotonic()
+    await run_in_threadpool(_preload_models_sync)
+    logger.info("[startup] model preload finished in %.1fs", time.monotonic() - boot_start)
 
 
 def _all_loaded_model_names() -> list:
