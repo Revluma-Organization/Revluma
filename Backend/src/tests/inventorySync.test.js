@@ -273,3 +273,23 @@ test('valid query uses measurement weight and nested levels; unsupported shapes 
   assert.doesNotMatch(_internal.INVENTORY_ITEMS_QUERY, /\n\s+weight \{/);
   assert.match(_internal.INVENTORY_LEVELS_PAGE_QUERY, /inventoryLevels\(first: \$first, after: \$after\)/);
 });
+
+test('location acquisition includes inactive and legacy sources and persists active state', async () => {
+  const db = makeDb();
+  let seenQuery = '';
+  const graphql = async (_store, query) => {
+    seenQuery = query;
+    return { locations: { nodes: [
+      { id: 'gid://shopify/Location/101', name: 'Active', isActive: true, address: {} },
+      { id: 'gid://shopify/Location/102', name: 'Inactive', isActive: false, address: {} },
+    ], pageInfo: { hasNextPage: false, endCursor: null } } };
+  };
+  const { syncLocations, _internal } = load(graphql, db);
+  const result = await syncLocations(STORE, db);
+  assert.equal(result.count, 2);
+  assert.match(seenQuery, /includeInactive: true/);
+  assert.match(seenQuery, /includeLegacy: true/);
+  assert.match(_internal.LOCATIONS_QUERY, /includeInactive: true, includeLegacy: true/);
+  assert.equal(db.state.locations.find(row => row.external_id === '102').is_active, false);
+  assert.equal(db.state.ledger.get('store-a|locations').pagination_complete, true);
+});
