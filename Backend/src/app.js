@@ -26,6 +26,8 @@ const memoryRoutes        = require("./route/memoryRoute");
 const internalRoutes      = require('./route/internalRoute');
 const commerceWebhookRoute = require('./route/commerceWebhookRoute');
 const messageWebhookRoute = require('./route/messageWebhookRoute');
+const commerceActionRoutes = require('./route/commerceActionRoute');
+const merchantCapabilityRoutes = require('./route/merchantCapabilityRoute');
 const subscriptionController = require('./controller/subscriptionController');
 const { prisma } = require('./configs/database');
 const { isRedisReady, isRedisConfigured } = require('./configs/redis');
@@ -125,6 +127,8 @@ app.use("/api/v1/subscriptions", subscriptionRoutes);
 app.use("/api/v1/billing", billingRoutes);
 app.use("/api/v1/rev",           revRoutes);
 app.use("/api/v1/memory",        memoryRoutes);
+app.use('/api/v1/commerce/actions', commerceActionRoutes);
+app.use('/api/v1/commerce', merchantCapabilityRoutes);
 app.use('/internal', internalRoutes);
 
 

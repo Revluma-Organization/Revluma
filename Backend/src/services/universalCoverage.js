@@ -103,7 +103,7 @@ function universalRow(entry, ledgerRow, grantedScopes) {
     required_scopes: required,
     granted_required_scopes: required.filter(scope => granted.has(scope)),
     missing_scopes: missing,
-    recorded_granted_scopes: [...granted], // admin-only audience; no PII
+    recorded_granted_scopes: [...granted], // caller supplies recorded or live scopes; no credentials
     additional_approval: hasApproval(entry) ? entry.approval : null,
     plan_restrictions: entry.planRestrictions || [],
     restrictions: entry.restrictions || [],
