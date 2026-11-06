@@ -308,6 +308,15 @@ async function syncOrders(store) {
     error.failed_orders = failures.length;
     throw error;
   }
+  // Base order persistence is complete for this run. Enrichment queries capture
+  // the transactional/fulfilment graph as independently retryable domains —
+  // a failure here never unwinds order persistence and never blocks checkouts.
+  try {
+    const { enrichOrders } = require('./orderEnrichment');
+    await enrichOrders(store, orders);
+  } catch (enrichmentError) {
+    logger.warn('order_enrichment_deferred', { store_id: store.id, error_type: enrichmentError?.code || enrichmentError?.name || 'enrichment_error' });
+  }
   return completed;
 }
 
@@ -485,6 +494,19 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       }
     } else {
       logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'skipped_for_background_order_reconciliation' });
+    }
+
+    // Store identity first: cheap, informative, and its own independent domain.
+    // A profile failure never blocks catalog/order ingestion.
+    setupStage = 'store_profile_sync';
+    try {
+      const { syncStoreProfile } = require('./storeProfileSync');
+      await syncStoreProfile(store);
+    } catch (profileError) {
+      logger.warn('shopify_store_profile_sync_failed', {
+        store_id: store.id,
+        error_type: profileError?.code || profileError?.name || 'store_profile_error',
+      });
     }
 
     setupStage = 'product_sync';

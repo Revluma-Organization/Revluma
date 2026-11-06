@@ -208,6 +208,17 @@ function mergeSourceEvidence(existing, incoming) {
   return data;
 }
 
+
+function bestEffortOrderGid(payload) {
+  // Shopify webhook bodies include admin_graphql_api_id; if absent, derive the
+  // standard Order GID from the numeric resource id. Never guess for other gid kinds.
+  const provided = payload?.admin_graphql_api_id;
+  if (typeof provided === 'string' && provided.startsWith('gid://shopify/Order/')) return provided;
+  const raw = payload?.id;
+  if (/^\d{6,}$/.test(String(raw || ''))) return `gid://shopify/Order/${raw}`;
+  return null;
+}
+
 async function upsertOrder(store, provider, payload) {
   const customer = customerData(provider, payload);
   const orderExternalId = String(payload.id || payload.order_id);
@@ -834,6 +845,24 @@ async function processCommerceWebhook({ provider, store, topic, payload }) {
   }
   if (normalizedTopic.includes('orders/') || normalizedTopic.includes('order.')) {
     const order = await upsertOrder(store, provider, payload);
+    // Best-effort enrichment of the order's payment/fulfilment graph.
+    // Fire-and-forget: a failed enrichment never marks the webhook undelivered.
+    const orderGid = bestEffortOrderGid(payload);
+    if (orderGid) {
+      setImmediate(async () => {
+        try {
+          const { enrichOrder } = require('./orderEnrichment');
+          await enrichOrder(store, orderGid);
+        } catch (enrichmentError) {
+          logger.warn('order_enrichment_webhook_deferred', {
+            store_id: store.id,
+            error_type: enrichmentError?.code || enrichmentError?.name || 'enrichment_error',
+          });
+        }
+      });
+    } else {
+      logger.info('order_enrichment_webhook_skipped', { store_id: store.id, reason: 'no_resolvable_order_gid' });
+    }
     const rfm = await rfmSync({
       storeId: store.id,
       correlationId: `commerce-webhook-${store.id}-${order.id}`,

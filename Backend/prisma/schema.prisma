@@ -431,6 +431,17 @@ model orders {
   created_at              DateTime?        @default(now()) @db.Timestamptz(6)
   discount_pct            Float?
   session_id              String?
+  presentment_currency    String?  @db.VarChar(3)
+  display_fulfillment_status String? @db.VarChar(48)
+  processed_at            DateTime? @db.Timestamptz(6)
+  closed_at               DateTime? @db.Timestamptz(6)
+  source_name             String?  @db.VarChar(96)
+  test_flag               Boolean?
+  tax_amount              Decimal? @db.Decimal(12, 2)
+  shipping_amount         Decimal? @db.Decimal(12, 2)
+  duties_amount           Decimal? @db.Decimal(12, 2)
+  total_received          Decimal? @db.Decimal(12, 2)
+  tags                    Json     @default("[]")
   orderItems              order_items[]
   reconciliation_cases    order_checkout_reconciliation_cases[]
   abandoned_carts         abandoned_carts? @relation(fields: [abandoned_cart_id], references: [id], onUpdate: NoAction)
@@ -443,6 +454,101 @@ model orders {
   @@index([customer_id, ordered_at(sort: Desc)])
   @@index([attribution_sequence_id])
   @@index([abandoned_cart_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model order_transactions {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id              String    @db.Uuid
+  external_order_id     String    @db.VarChar(255)
+  external_id           String    @db.VarChar(255)
+  kind                  String    @db.VarChar(64)
+  status                String    @db.VarChar(32)
+  gateway               String?   @db.VarChar(255)
+  amount                Decimal?  @db.Decimal(12, 2)
+  currency              String?   @db.VarChar(3)
+  parent_transaction_id String?   @db.VarChar(255)
+  processed_at          DateTime? @db.Timestamptz(6)
+  error_code            String?   @db.VarChar(64)
+  error_message         String?   @db.VarChar(500)
+  created_at            DateTime? @db.Timestamptz(6)
+  synced_at             DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([store_id, external_id], map: "order_transactions_store_external_key")
+  @@index([store_id, external_order_id], map: "idx_order_transactions_order")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model order_refunds {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id          String    @db.Uuid
+  external_order_id String    @db.VarChar(255)
+  external_id       String    @db.VarChar(255)
+  note              String?
+  refund_amount     Decimal?  @db.Decimal(12, 2)
+  refund_currency   String?   @db.VarChar(3)
+  refunded_shipping Decimal?  @db.Decimal(12, 2)
+  created_at        DateTime? @db.Timestamptz(6)
+  refund_line_items Json      @default("[]")
+  transactions      Json      @default("[]")
+  synced_at         DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([store_id, external_id], map: "order_refunds_store_external_key")
+  @@index([store_id, external_order_id], map: "idx_order_refunds_order")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model order_fulfillments {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id          String    @db.Uuid
+  external_order_id String    @db.VarChar(255)
+  external_id       String    @db.VarChar(255)
+  status            String?   @db.VarChar(32)
+  location_name     String?   @db.VarChar(255)
+  tracking_company  String?   @db.VarChar(255)
+  tracking_info     Json      @default("[]")
+  line_items        Json      @default("[]")
+  created_at        DateTime? @db.Timestamptz(6)
+  updated_at        DateTime? @db.Timestamptz(6)
+  synced_at         DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([store_id, external_id], map: "order_fulfillments_store_external_key")
+  @@index([store_id, external_order_id], map: "idx_order_fulfillments_order")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model store_profiles {
+  store_id                 String   @id @db.Uuid
+  shop_name                String?  @db.VarChar(500)
+  myshopify_domain         String?  @db.VarChar(255)
+  primary_domain_host      String?  @db.VarChar(255)
+  primary_domain_url       String?
+  primary_domain_ssl       Boolean?
+  email                    String?  @db.VarChar(320)
+  iana_timezone            String?  @db.VarChar(64)
+  currency_code            String?  @db.VarChar(3)
+  country_code             String?  @db.VarChar(3)
+  country_name             String?  @db.VarChar(120)
+  city                     String?  @db.VarChar(120)
+  zip                      String?  @db.VarChar(32)
+  plan_display_name        String?  @db.VarChar(190)
+  plan_partner_development Boolean?
+  plan_shopify_plus        Boolean?
+  synced_at                DateTime @default(now()) @db.Timestamptz(6)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model store_domains {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id    String   @db.Uuid
+  host        String   @db.VarChar(255)
+  url         String?
+  kind        String   @db.VarChar(32)
+  ssl_enabled Boolean?
+  synced_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([store_id, host], map: "store_domains_store_host_key")
+  @@index([store_id], map: "idx_store_domains_store")
 }
 
 /// Recovery message sequence configuration.

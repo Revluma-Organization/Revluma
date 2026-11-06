@@ -8,7 +8,11 @@ per-domain sync ledger (`store_sync_domain_states`), normalized variant persiste
 `20261106133000` / `…133001`), variant-price normalizer fix (scalar-decimal GraphQL money coerced to null),
 admin per-domain coverage endpoint, and read-only dedup/financial reconciliation preview tools.
 **None of this is deployed until Render picks up main; nothing in that block is PRODUCTION_VERIFIED yet.**
-Original findings below preserved verbatim.
+Original findings below preserved verbatim. Follow-up block (TASK-034) added a Shopify acquisition layer:
+store profile/domains, order enrichment (transactions, refunds, fulfillments, business scalars), migration
+`20261106133002_commerce_event_graph`, `20261106133003_store_profiles`, capability catalog joined to the sync
+ledger behind `/admin/.../sync-coverage`, and `docs/shopify-resource-coverage-register.md` (22-row coverage
+register with scopes/approvals/restrictions). Verification of live behaviour still gated on the Render redeploy.
 
 This document answers one question: **if a merchant connected their store today, how much of their
 business could Revluma actually see, understand and investigate — and what revenue leaks would it
