@@ -53,6 +53,9 @@ Only `IMPLEMENTED` + `PRODUCTION_VERIFIED` rows meet the directive's final accep
 
 ## Entry points (operator)
 
+- Universal coverage (registry×ledger×consent, per-resource statuses): `GET /admin/shopify/stores/{storeId}/universal-coverage`
+- Source↔DB reconciliation diagnostics (read-only): `GET /admin/shopify/stores/{storeId}/reconciliation`
+- Schema-drift discovery (admin-only, introspection-dependent): `GET /admin/shopify/stores/{storeId}/schema-drift`
 - Coverage: `GET /admin/shopify/stores/{storeId}/sync-coverage` — catalog × ledger fusion, explicit statuses incl. `PERMISSION_MISSING`-style reasoning via `missing_scopes`, `COMPLETE` only with `pagination_complete: true`.
 - DB-side counts + freshness: `node scripts/reconcileResourceCounts.js` (source parity NOT available offline; see script header).
 - Dedup preview (abandoned carts): `node scripts/previewAbandonedCartDedup.js` — no apply path.

@@ -7,6 +7,7 @@ const adminShopifyDiagnosticsController = require('../controller/adminShopifyDia
 const adminSyncCoverageController = require('../controller/adminSyncCoverageController');
 const adminUniversalCoverageController = require('../controller/adminUniversalCoverageController');
 const adminSchemaDriftController = require('../controller/adminSchemaDriftController');
+const adminReconciliationController = require('../controller/adminReconciliationController');
 const { requireAdminKey } = require('../middlewares/adminAuth');
 
 // All admin routes require a valid admin key
@@ -50,5 +51,8 @@ router.get('/shopify/stores/:storeId/universal-coverage', adminUniversalCoverage
 
 // Read-only schema-vs-registry drift diagnostics (admin-only).
 router.get('/shopify/stores/:storeId/schema-drift', adminSchemaDriftController.getShopifyStoreSchemaDrift);
+
+// Read-only source-vs-database reconciliation diagnostics (admin-only).
+router.get('/shopify/stores/:storeId/reconciliation', adminReconciliationController.getShopifyStoreReconciliation);
 
 module.exports = router;
