@@ -28,7 +28,7 @@ Bulk Operations (needs per-merchant approval path design); metafields (data-cont
 - 100% of *applicable, supported, authorized, technically accessible* = the target. NOT 100% of Shopify.
 - Fictional counters are forbidden by construction: the new coverage report merges registry (built?) × ledger (ran?) × consented scopes (allowed?) — a row can only be `IMPLEMENTED_VERIFIED` when a ledger row says `ok` with `pagination_complete` AND registry `verification: live_read`. One dev store cannot and must not certify the universe — the report says so explicitly in its `disclaimer`.
 - Approval gates are row-level, not section-level: protected customer data, `read_all_orders`, `write_pixels`, `read_payment_settings`, `read_price_lists`, `read_companies`, ShopifyQL plan gates — all remain `not_implemented` with the exact blocker as the restriction text; `merchant re-consent` is documented below.
-- Merchant re-consent is REQUIRED: new stores get both scopes at install; EXISTING production installs (v1) will see `inventory`/`locations` ledgers land with status `degraded` + `ACCESS_DENIED` until the merchant re-authorizes. This is honest and expected; the coverage report will render it `REQUIRES_ADDITIONAL_SCOPES`. **DEPLOY ORDER: build ships with the scope widening; Partner-dashboard app scope list must include `read_inventory` and `read_locations` BEFORE merchants re-reinstall — this is a Partner-Dashboard action, not something code can do.**
+- Consent reality (2026-11-06, read-only SQL on v1): `granted_scopes` recorded at last install ALREADY includes `read_inventory`, `read_locations`, `read_content`, `read_reports`, `read_analytics`, `read_fulfillments`, `read_assigned_fulfillment_orders`, `read_merchant_managed_fulfillment_orders`, `read_shipping`, `read_returns`, `read_draft_orders`, `read_price_rules`, `read_themes`, `read_customer_events`, `write_discounts`, `read_payment_terms`, `read_marketing_events`, `read_shopify_payments_accounts/disputes/payouts`. The install-time widening (`read_inventory`,`read_locations`) therefore matches recorded consent for v1 — new merchants get them at install; existing v1 is expected to work after redeploy WITHOUT re-consent. `write_discounts` is consented but remains unused by design. Recorded consent ≠ plan access ≠ implemented.
 
 ## Evidence
 
@@ -37,9 +37,9 @@ Bulk Operations (needs per-merchant approval path design); metafields (data-cont
 
 ## Prerequisites before ANY claim of production-verified inventory
 
-1. Partner Dashboard app configured with `read_inventory`, `read_locations` (human, Partner Dashboard).
-2. Render deploy of this PR (auto; verify `/ready` `node_build` flips).
-3. v1 re-sync with merchant re-consent (passwordless reauth), or accept ledger `degraded ACCESS_DENIED` as the honest current state.
+1. Partner-Dashboard app configured with `read_inventory`, `read_locations` for future installs (match recorded consent).
+2. Render deploy of this PR (auto; verify `/ready` `node_build` flips — NOT verified at time of writing).
+3. v1 re-syncs on next scheduled pass; inventory/locations expected to flip `ok` given recorded consent (NOT verified at time of writing — do not claim until ledger shows `ok` + `pagination_complete`).
 4. Verify: tables exist; ledger rows flip `inventory`,`locations` → `ok`; counts sane; coverage endpoint renders `IMPLEMENTED_UNVERIFIED`→`IMPLEMENTED_VERIFIED` only after registry basis flips to `live_read` (deliberately NOT done in this PR — verification requires deployed runtime evidence).
 
 ## Honest bottom line
