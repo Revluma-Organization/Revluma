@@ -178,7 +178,6 @@ async function syncInventory(store, db = prisma) {
   const seenItems = new Set();
   const itemRows = [];
   const levelRows = [];
-  let nestedLevelsIncomplete = false;
   for (const node of fetched.nodes) {
     const ext = externalId(node.id);
     seenItems.add(ext);
