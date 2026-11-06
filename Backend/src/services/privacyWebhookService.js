@@ -72,6 +72,22 @@ function redactedEmail(internalId) {
   return `redacted-${digest}@redacted.invalid`;
 }
 
+function customerSnapshotGids(rows, locator) {
+  const externalIds = new Set(rows.map((row) => String(row.external_id)).filter(Boolean));
+  if (locator.externalId) externalIds.add(locator.externalId);
+  return [...externalIds].map((id) => id.startsWith('gid://') ? id : `gid://shopify/Customer/${id}`);
+}
+
+function customerSnapshotWhere(storeId, customerGids) {
+  return {
+    store_id: storeId,
+    OR: [
+      { resource_id: { in: ['customer.addresses', 'customer.metafields'] }, payload: { path: ['id'], in: customerGids } },
+      { resource_id: 'metafields.customers', payload: { path: ['owner', 'id'], in: customerGids } },
+    ],
+  };
+}
+
 async function beginRequest({ store, provider, topic, payload }) {
   const key = requestKey(topic, payload);
   const where = {
@@ -176,6 +192,15 @@ async function handleDataRequest({ store, payload }) {
   let orders = [];
   let orderItems = [];
   let carts = [];
+  let authorizedSnapshots = [];
+  const snapshotGids = customerSnapshotGids(rows, locator);
+  if (snapshotGids.length) {
+    authorizedSnapshots = await prisma.commerce_resource_records.findMany({
+      where: customerSnapshotWhere(store.id, snapshotGids),
+      select: { resource_id: true, external_id: true, payload: true },
+      orderBy: [{ resource_id: 'asc' }, { external_id: 'asc' }],
+    });
+  }
   if (ids.length) {
     orders = await prisma.orders.findMany({
       where: { store_id: store.id, customer_id: { in: ids } },
@@ -202,6 +227,7 @@ async function handleDataRequest({ store, payload }) {
     generated_at: new Date().toISOString(),
     store: { shop_domain: payload?.shop_domain ?? null },
     subject: { customer_id: locator.externalId, customer_email: locator.email },
+    authorized_resource_snapshots: authorizedSnapshots,
     located_customers: rows.map((row) => ({
       external_id: row.external_id,
       email: row.email,
@@ -243,6 +269,7 @@ async function handleDataRequest({ store, payload }) {
       orders_exported: orders.length,
       line_items_exported: orderItems.length,
       carts_exported: carts.length,
+      authorized_snapshots_exported: authorizedSnapshots.length,
     },
   };
 }
@@ -254,8 +281,14 @@ async function handleCustomerRedact({ store, payload }) {
   const counts = {
     customers_redacted: 0, events_deleted: 0, session_features_deleted: 0,
     churn_observations_deleted: 0, sensitivity_observations_deleted: 0,
-    carts_scrubbed: 0, sequence_sends_unlinked: 0,
+    carts_scrubbed: 0, sequence_sends_unlinked: 0, authorized_snapshots_deleted: 0,
   };
+  const snapshotGids = customerSnapshotGids(rows, locator);
+  if (snapshotGids.length) {
+    counts.authorized_snapshots_deleted = (await prisma.commerce_resource_records.deleteMany({
+      where: customerSnapshotWhere(store.id, snapshotGids),
+    })).count;
+  }
   if (!ids.length) {
     return { action: 'privacy_customer_redacted', artifact: null, summary: counts };
   }
@@ -310,6 +343,8 @@ async function handleShopRedact({ store }) {
   // every step is idempotent, so a failure is marked failed and a retry
   // converges without double-erasing anything.
   const steps = [
+    ['commerce_resource_records', () => prisma.commerce_resource_records.deleteMany({ where: { store_id: storeId } })],
+    ['commerce_action_requests', () => prisma.commerce_action_requests.deleteMany({ where: { store_id: storeId } })],
     ['sequence_events', () => sendIds.length
       ? prisma.sequence_events.deleteMany({ where: { sequence_send_id: { in: sendIds } } })
       : { count: 0 }],

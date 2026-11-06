@@ -3,12 +3,20 @@
 // Contracts for a future Shopify Sidekick app extension. These are deliberately
 // not advertised as an installed/deployable extension: managed installation and
 // token exchange are prerequisites and are not implemented in this service.
+const { authorizedResourceIds } = require('./authorizedResourceCatalog');
+
 const DATA_TOOLS = Object.freeze([
   {
     name: 'revluma_get_merchant_capability',
     description: 'Read Revluma resource coverage, live scope availability, freshness, and explicit limitations for one Shopify store.',
     input_schema: { type: 'object', additionalProperties: false, required: ['store_id'], properties: { store_id: { type: 'string', format: 'uuid' } } },
     output: 'JSON capability report with resource links to Revluma; never includes access tokens.',
+  },
+  {
+    name: 'revluma_read_authorized_resource',
+    description: 'Read one bounded page from a fixed-query Shopify resource after tenant and live scope checks; no arbitrary GraphQL.',
+    input_schema: { type: 'object', additionalProperties: false, required: ['store_id', 'resource_id'], properties: { store_id: { type: 'string', format: 'uuid' }, resource_id: { type: 'string', enum: authorizedResourceIds() }, first: { type: 'integer', minimum: 1, maximum: 100 }, after: { type: ['string', 'null'] } } },
+    output: 'JSON resource records, pagination, and explicit persisted/live coverage metadata.',
   },
   {
     name: 'revluma_list_collections',

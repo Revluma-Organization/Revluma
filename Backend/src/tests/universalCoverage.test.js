@@ -42,15 +42,17 @@ test('missing consent yields REQUIRES_ADDITIONAL_SCOPES even when code is built'
   assert.equal(universalStatus(inv, null, grantedAll(inv)), STATUS.IMPLEMENTED_UNVERIFIED);
 });
 
-test('not implemented stays not implemented regardless of scopes', () => {
-  const markets = entry('markets');
-  assert.equal(universalStatus(markets, null, grantedAll(markets)), STATUS.PLAN_RESTRICTED);
+test('implemented gateways and genuine external gates remain distinct', () => {
+  const taxes = entry('shop.taxes');
+  assert.equal(universalStatus(taxes, null, grantedAll(taxes)), STATUS.IMPLEMENTED_UNVERIFIED);
+  assert.equal(universalStatus({ ...taxes, acquisition: 'not_implemented' }, null, grantedAll(taxes)), STATUS.PLAN_RESTRICTED);
   const discount = entry('discount-nodes');
-  assert.equal(universalStatus(discount, null, grantedAll(discount)), STATUS.NOT_IMPLEMENTED);
-  // read_discounts not consented => consent-blocked before implementation labeling
+  assert.equal(universalStatus(discount, null, grantedAll(discount)), STATUS.IMPLEMENTED_UNVERIFIED);
   assert.equal(universalStatus(discount, null, new Set(['read_products'])), STATUS.REQUIRES_ADDITIONAL_SCOPES);
+  // Shopify write access includes the corresponding read capability.
+  assert.equal(universalStatus(discount, null, new Set(['write_discounts'])), STATUS.IMPLEMENTED_UNVERIFIED);
   const analytics = entry('analytics.reports');
-  assert.equal(universalStatus(analytics, null, grantedAll(analytics)), STATUS.REQUIRES_APP_APPROVAL);
+  assert.equal(universalStatus(analytics, null, grantedAll(analytics)), STATUS.IMPLEMENTED_UNVERIFIED);
   const payment = entry('shop.payment_configuration');
   assert.equal(universalStatus(payment, null, grantedAll(payment)), STATUS.REQUIRES_APP_APPROVAL);
 });

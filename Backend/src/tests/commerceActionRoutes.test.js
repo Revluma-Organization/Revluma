@@ -13,7 +13,7 @@ const noop = () => {};
 cache('../middlewares/authMiddleware', { authenticateToken });
 cache('../middlewares/orgAuth', { attachOrgMembership, requireRole: (...roles) => { assert.deepEqual(roles, ['owner', 'admin']); return privileged; } });
 cache('../controller/commerceActionController', { createPreview: noop, confirm: noop, rollback: noop, reconcile: noop, get: noop, list: noop });
-cache('../controller/merchantCapabilityController', { coverage: noop, collections: noop, sidekickFoundation: noop });
+cache('../controller/merchantCapabilityController', { coverage: noop, collections: noop, resourcePage: noop, syncResource: noop, sidekickFoundation: noop });
 
 test('all commerce mutations require owner/admin after authentication and tenant membership', () => {
   const router = require('../route/commerceActionRoute');

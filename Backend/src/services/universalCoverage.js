@@ -32,7 +32,10 @@ const STATUS = Object.freeze({
 });
 
 // Registry id → ledger domain (null when no ledger family exists yet)
+const { authorizedResourceIds } = require('./authorizedResourceCatalog');
+
 const LEDGER_DOMAIN_BY_ID = Object.freeze({
+  ...Object.fromEntries(authorizedResourceIds().map(id => [id, id])),
   'products': 'products',
   'product.variants': 'variants',
   'inventory.items': 'inventory',
@@ -47,6 +50,10 @@ const LEDGER_DOMAIN_BY_ID = Object.freeze({
   'webhooks': 'webhooks',
 });
 
+function scopeGranted(granted, required) {
+  return granted.has(required) || (required.startsWith('read_') && granted.has(`write_${required.slice(5)}`));
+}
+
 function hasApproval(entry) {
   const a = String(entry.approval || 'none');
   return a !== 'none';
@@ -55,7 +62,7 @@ function hasApproval(entry) {
 function universalStatus(entry, ledgerRow, grantedSet) {
   const required = Array.isArray(entry.scopes) ? entry.scopes : [];
   const granted = grantedSet instanceof Set ? grantedSet : new Set(grantedSet || []);
-  const missing = required.filter(scope => !granted.has(scope));
+  const missing = required.filter(scope => !scopeGranted(granted, scope));
 
   // 1) Evidence rules first: a ledger row that says DENIED beats any optimism.
   if (ledgerRow && String(ledgerRow.status || '').toLowerCase() === 'degraded') {
@@ -89,7 +96,7 @@ function universalStatus(entry, ledgerRow, grantedSet) {
 function universalRow(entry, ledgerRow, grantedScopes) {
   const required = Array.isArray(entry.scopes) ? entry.scopes : [];
   const granted = new Set(Array.isArray(grantedScopes) ? grantedScopes : String(grantedScopes || '').split(',').map(s => s.trim()).filter(Boolean));
-  const missing = required.filter(scope => !granted.has(scope));
+  const missing = required.filter(scope => !scopeGranted(granted, scope));
   const status = universalStatus(entry, ledgerRow, granted);
   const ledgerDomain = LEDGER_DOMAIN_BY_ID[entry.id] || null;
   return {
@@ -101,7 +108,7 @@ function universalRow(entry, ledgerRow, grantedScopes) {
     implementation: entry.acquisition,
     verification_basis: entry.verification || 'none',
     required_scopes: required,
-    granted_required_scopes: required.filter(scope => granted.has(scope)),
+    granted_required_scopes: required.filter(scope => scopeGranted(granted, scope)),
     missing_scopes: missing,
     recorded_granted_scopes: [...granted], // caller supplies recorded or live scopes; no credentials
     additional_approval: hasApproval(entry) ? entry.approval : null,
@@ -120,12 +127,10 @@ function universalRow(entry, ledgerRow, grantedScopes) {
     last_succeeded_at: ledgerRow?.last_succeeded_at ?? null,
     freshness_seconds: ledgerRow?.freshness_seconds ?? null,
     reconciliation: {
-      // Source↔DB reconciliation counters. Populated only after a genuine
-      // re-read comparison runs; null means "not run", never "passed".
-      missing: null,
-      duplicates: null,
-      mapping_errors: null,
-      last_run_at: null,
+      missing: ledgerRow?.checkpoint?.reconciliation?.missing ?? null,
+      duplicates: ledgerRow?.checkpoint?.reconciliation?.duplicates ?? null,
+      mapping_errors: ledgerRow?.checkpoint?.reconciliation?.mapping_errors ?? null,
+      last_run_at: ledgerRow?.checkpoint?.reconciliation?.last_run_at ?? null,
     },
     reason:
       status === STATUS.REQUIRES_ADDITIONAL_SCOPES ? `merchant must re-consent for: ${missing.join(', ')}`

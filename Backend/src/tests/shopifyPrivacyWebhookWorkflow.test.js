@@ -27,6 +27,11 @@ function freshDb() {
   return {
     privacy_requests: [],
     audit_logs: [],
+    commerce_resource_records: [
+      { resource_id: 'customer.addresses', external_id: 'address-a', store_id: 'store-a', payload: { id: 'gid://shopify/Customer/1001', address1: 'private' } },
+      { resource_id: 'customer.addresses', external_id: 'address-b', store_id: 'store-b', payload: { id: 'gid://shopify/Customer/1001', address1: 'untouched' } },
+    ],
+    commerce_action_requests: [{ id: 'action-a', store_id: 'store-a' }],
     customers: [
       { id: 'cust-a1', store_id: 'store-a', external_id: '1001', email: 'alice@example.com', full_name: 'Alice A', phone: '+111', anonymous_id: 'anon-a', consent_email: true, consent_sms: true, consent_updated_at: null, orders_count: 2, ltv: 120.5, created_at: new Date('2025-01-01T00:00:00Z'), rfm_segment: 'loyal', churn_tier: 'high', primary_churn_signal: 'x', recommended_channel: 'email' },
       { id: 'cust-b1', store_id: 'store-b', external_id: '1001', email: 'bob@example.com', full_name: 'Bob B', phone: '+222', anonymous_id: 'anon-b', consent_email: true, consent_sms: false, consent_updated_at: null, orders_count: 1, ltv: 40, created_at: new Date('2025-02-01T00:00:00Z'), rfm_segment: 'new', churn_tier: null, primary_churn_signal: null, recommended_channel: null },
@@ -92,6 +97,15 @@ function deleteBy(state, table, where) {
   const before = rows.length;
   state[table] = rows.filter((row) => {
     if (where.store_id && row.store_id !== where.store_id) return true;
+    if (where.OR) {
+      const matches = where.OR.some((clause) => {
+        if (Array.isArray(clause.resource_id?.in) && !clause.resource_id.in.includes(row.resource_id)) return false;
+        if (typeof clause.resource_id === 'string' && clause.resource_id !== row.resource_id) return false;
+        const value = clause.payload.path.reduce((current, key) => current?.[key], row.payload);
+        return clause.payload.in.includes(value);
+      });
+      if (!matches) return true;
+    }
     if (where.customer_id?.in && !where.customer_id.in.includes(row.customer_id)) return true;
     if (where.abandoned_cart_id?.in && !where.abandoned_cart_id.in.includes(row.abandoned_cart_id)) return true;
     if (where.sequence_send_id?.in && !where.sequence_send_id.in.includes(row.sequence_send_id)) return true;
@@ -134,6 +148,19 @@ function makePrisma(state) {
       },
     },
     audit_logs: { create: async ({ data }) => { state.audit_logs.push(data); return data; } },
+    commerce_resource_records: {
+      ...storeScoped('commerce_resource_records'),
+      findMany: async ({ where }) => state.commerce_resource_records.filter((row) => {
+        if (row.store_id !== where.store_id) return false;
+        return where.OR.some((clause) => {
+          if (Array.isArray(clause.resource_id?.in) && !clause.resource_id.in.includes(row.resource_id)) return false;
+          if (typeof clause.resource_id === 'string' && clause.resource_id !== row.resource_id) return false;
+          const value = clause.payload.path.reduce((current, key) => current?.[key], row.payload);
+          return clause.payload.in.includes(value);
+        });
+      }),
+    },
+    commerce_action_requests: storeScoped('commerce_action_requests'),
     customers: {
       findMany: async ({ where }) => state.customers.filter((row) => {
         if (row.store_id !== where.store_id) return false;

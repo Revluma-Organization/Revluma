@@ -2,6 +2,7 @@
 
 const capabilities = require('../services/merchantCapabilityService');
 const sidekick = require('../services/sidekickToolRegistry');
+const authorizedData = require('../services/authorizedDataService');
 const { CommerceActionError } = require('../services/commerceActionPolicy');
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -28,9 +29,23 @@ async function collections(req, res, next) {
     return res.json({ success: true, ...result });
   } catch (error) { return failure(error, res, next); }
 }
+async function resourcePage(req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const result = await authorizedData.getAuthorizedResourcePage(validateStore(req), req.orgMembership.organizationId, req.params.resourceId, req.query);
+    return res.json({ success: true, ...result });
+  } catch (error) { return failure(error, res, next); }
+}
+async function syncResource(req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const result = await authorizedData.syncAuthorizedResource(validateStore(req), req.orgMembership.organizationId, req.params.resourceId);
+    return res.json({ success: true, ...result });
+  } catch (error) { return failure(error, res, next); }
+}
 function sidekickFoundation(req, res) {
   res.set('Cache-Control', 'no-store');
   return res.json({ success: true, extension: sidekick.extensionManifest() });
 }
 
-module.exports = { coverage, collections, sidekickFoundation };
+module.exports = { coverage, collections, resourcePage, syncResource, sidekickFoundation };
