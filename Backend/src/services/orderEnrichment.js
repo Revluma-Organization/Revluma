@@ -131,8 +131,7 @@ const FUL_CONNECTION_QUERY = `query RevlumaOrderFulfillments($id: ID!, $first: I
           id status createdAt updatedAt
           location { name }
           trackingInfo { number url company }
-          lineItems(first: 100) { nodes { id quantity } }
-        }
+                  }
         pageInfo { hasNextPage endCursor }
       }
     }
@@ -147,8 +146,7 @@ const FUL_LIST_QUERY = `query RevlumaOrderFulfillmentsLegacy($id: ID!) {
         id status createdAt updatedAt
         location { name }
         trackingInfo { number url company }
-        lineItems(first: 100) { nodes { id quantity } }
-      }
+              }
     }
   }
 }`;
