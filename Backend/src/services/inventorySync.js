@@ -50,7 +50,7 @@ const INVENTORY_ITEMS_QUERY = `query RevlumaInventoryItems($first: Int!, $after:
   inventoryItems(first: $first, after: $after) {
     nodes {
       id sku tracked requiresShipping
-      weight { value unit }
+      measurement { weight { value unit } }
       createdAt updatedAt
       inventoryLevels(first: 100) {
         nodes {
@@ -150,8 +150,8 @@ async function syncInventory(store, db = prisma) {
       sku: node.sku ?? null,
       tracked: toBool(node.tracked),
       requires_shipping: toBool(node.requiresShipping),
-      weight: node.weight && node.weight.value != null && Number.isFinite(Number(node.weight.value)) ? String(node.weight.value) : null,
-      weight_unit: node.weight ? String(node.weight.unit || '').toLowerCase() || null : null,
+      weight: node.measurement?.weight && node.measurement.weight.value != null && Number.isFinite(Number(node.measurement.weight.value)) ? String(node.measurement.weight.value) : null,
+      weight_unit: node.measurement?.weight ? String(node.measurement.weight.unit || '').toLowerCase() || null : null,
       created_at: toTs(node.createdAt),
       updated_at: toTs(node.updatedAt),
       synced_at: new Date(),
