@@ -10,7 +10,7 @@ const { definitions } = require('../services/authorizedResourceCatalog');
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 const STORE = '22222222-2222-4222-8222-222222222222';
-const ALL_SCOPES = ['read_products', 'write_products', 'read_content', 'read_customers', 'read_orders', 'read_metaobjects', 'read_metaobject_definitions'];
+const ALL_SCOPES = ['read_products', 'write_products', 'read_content', 'read_customers', 'read_orders', 'read_metaobjects', 'read_metaobject_definitions', 'read_legal_policies'];
 function dbStub() {
   const rows = [{ source_id: 'stale', store_id: STORE, resource_id: 'collections', sync_run_id: 'old' }];
   const calls = { ledger: [], deleted: 0 };
@@ -61,12 +61,13 @@ test('live resource reads enforce scopes, fixed queries, and pagination bounds',
   await assert.rejects(service.getAuthorizedResourcePage(STORE, ORG, 'not-built', {}, { db, graphql }), error => error.code === 'RESOURCE_NOT_IMPLEMENTED');
 });
 
-test('write scope satisfies corresponding read access and owner type stays server controlled', async () => {
+test('write scope satisfies corresponding read access with server-owned metafield queries', async () => {
   const db = dbStub();
-  const { graphql, calls } = graphqlFor(() => ({ metafields: connection([]) }), ['write_products']);
+  const { graphql, calls } = graphqlFor(() => ({ products: connection([]) }), ['write_products']);
   const result = await service.getAuthorizedResourcePage(STORE, ORG, 'metafields.products', {}, { db, graphql });
   assert.equal(result.records.length, 0);
-  assert.equal(calls[1].variables.ownerType, 'PRODUCT');
+  assert.equal(calls[1].variables.ownerType, undefined);
+  assert.match(calls[1].query, /products\(first:/);
 });
 
 test('missing live scope and cross-tenant stores fail before provider resource reads', async () => {
@@ -77,10 +78,15 @@ test('missing live scope and cross-tenant stores fail before provider resource r
   await assert.rejects(service.getAuthorizedResourcePage(STORE, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'collections', {}, { db, graphql }), error => error.code === 'SHOPIFY_STORE_NOT_FOUND');
 });
 
-test('nested unfinished connections fail closed instead of claiming complete data', async () => {
+test('nested connections are followed to completion with fixed node queries', async () => {
   const db = dbStub();
-  const { graphql } = graphqlFor(() => ({ products: connection([{ id: 'gid://shopify/Product/1', media: connection([], true, 'nested-cursor') }]) }));
-  await assert.rejects(service.getAuthorizedResourcePage(STORE, ORG, 'product.media', {}, { db, graphql }), error => error.code === 'NESTED_PAGINATION_INCOMPLETE');
+  const { graphql, calls } = graphqlFor((query) => query.includes('RevlumaNested_Product_media')
+    ? { node: { media: connection([{ id: 'gid://shopify/MediaImage/2', alt: 'second' }]) } }
+    : { products: connection([{ id: 'gid://shopify/Product/1', media: connection([{ id: 'gid://shopify/MediaImage/1', alt: 'first' }], true, 'nested-cursor') }]) });
+  const result = await service.getAuthorizedResourcePage(STORE, ORG, 'product.media', {}, { db, graphql });
+  assert.deepEqual(result.records[0].media.nodes.map(row => row.id), ['gid://shopify/MediaImage/1', 'gid://shopify/MediaImage/2']);
+  assert.equal(result.records[0].media.pageInfo.hasNextPage, false);
+  assert.equal(calls[2].variables.after, 'nested-cursor');
 });
 
 test('full sync atomically replaces snapshots, removes stale ids, and writes reconciliation evidence', async () => {

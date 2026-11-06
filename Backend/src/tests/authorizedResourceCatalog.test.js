@@ -5,7 +5,7 @@ const { definitions, authorizedResourceIds } = require('../services/authorizedRe
 const { getResource } = require('../services/resourceRegistry');
 
  test('every fixed-query resource is registered and contains no merchant query input', () => {
-  assert.ok(authorizedResourceIds().length >= 28);
+  assert.ok(authorizedResourceIds().length >= 27);
   for (const id of authorizedResourceIds()) {
     const entry = definitions[id];
     assert.ok(getResource(id), `${id} has registry coverage`);
@@ -16,9 +16,12 @@ const { getResource } = require('../services/resourceRegistry');
   }
 });
 
-test('metafield readers bind server-owned owner types', () => {
-  for (const [id, ownerType] of Object.entries({ 'metafields.products': 'PRODUCT', 'metafields.orders': 'ORDER', 'metafields.customers': 'CUSTOMER', 'metafields.shop': 'SHOP' })) {
-    assert.equal(definitions[id].variables.ownerType, ownerType);
-    assert.ok(definitions[id].query.includes('ownerType: $ownerType'));
+test('metafield readers use real owner connections and nested completion contracts', () => {
+  for (const [id, root] of Object.entries({ 'metafields.products': 'products', 'metafields.orders': 'orders', 'metafields.customers': 'customers' })) {
+    assert.equal(definitions[id].root, root);
+    assert.ok(definitions[id].nested.metafields.selection.includes('namespace'));
   }
+  assert.equal(definitions['metafields.shop'].singleton, true);
+  assert.ok(definitions['product.media'].nested.media);
+  assert.equal(definitions['analytics.reports'], undefined);
 });

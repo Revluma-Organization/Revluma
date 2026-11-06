@@ -47,6 +47,44 @@ function validateNestedConnections(value, depth = 0) {
   }
   for (const child of Object.values(value)) validateNestedConnections(child, depth + 1);
 }
+async function completeNestedConnections(store, resourceId, nodes, graphql) {
+  const document = getAuthorizedResource(resourceId);
+  const execute = graphql || shopifyGraphql;
+  async function walk(parent, path = '') {
+    if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return;
+    for (const [key, value] of Object.entries(parent)) {
+      const childPath = path ? `${path}.${key}` : key;
+      if (value && Array.isArray(value.nodes) && value.pageInfo) {
+        if (value.pageInfo.hasNextPage) {
+          const spec = document.nested?.[childPath];
+          const parentType = spec?.parentType || parent.__typename;
+          if (!spec || !parent.id || !/^[A-Za-z][A-Za-z0-9]*$/.test(parentType || '')) {
+            throw new CommerceActionError('NESTED_PAGINATION_INCOMPLETE', `No complete reader exists for nested connection ${resourceId}:${childPath}.`);
+          }
+          const cursors = new Set();
+          while (value.pageInfo.hasNextPage) {
+            const after = value.pageInfo.endCursor;
+            if (!after || cursors.has(after)) throw new CommerceActionError('RESOURCE_PAGINATION_STALLED', `Nested connection ${childPath} repeated or omitted a cursor.`, 502);
+            cursors.add(after);
+            const query = `query RevlumaNested_${parentType}_${spec.field}($id: ID!, $first: Int!, $after: String) { node(id: $id) { ... on ${parentType} { ${spec.field}(first: $first, after: $after) { nodes { ${spec.selection} } ${require('./authorizedResourceCatalog').PAGE} } } } }`;
+            const data = await execute(store, query, { id: parent.id, first: 100, after });
+            const next = data?.node?.[spec.field];
+            if (!next || !Array.isArray(next.nodes) || typeof next.pageInfo?.hasNextPage !== 'boolean') {
+              throw new CommerceActionError('RESOURCE_RESPONSE_INVALID', `Shopify returned an invalid nested ${childPath} connection.`, 502);
+            }
+            value.nodes.push(...next.nodes);
+            value.pageInfo = next.pageInfo;
+          }
+        }
+        for (const child of value.nodes) await walk(child, childPath);
+      } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+        await walk(value, childPath);
+      }
+    }
+  }
+  for (const record of nodes) await walk(record);
+  return nodes;
+}
 function boundedNodes(nodes) {
   const serialized = JSON.stringify(nodes);
   if (Buffer.byteLength(serialized) > MAX_PAGE_BYTES) throw new CommerceActionError('RESOURCE_RESPONSE_TOO_LARGE', 'The resource page exceeded the 4 MiB safety boundary. Narrow the query before retrying.', 502);
@@ -64,10 +102,13 @@ async function readPage(store, resourceId, options, graphql) {
   if (document.singleton) {
     const values = document.map(data?.[document.root]);
     if (!Array.isArray(values)) throw new CommerceActionError('RESOURCE_RESPONSE_INVALID', 'Shopify returned an invalid singleton resource.', 502);
+    await completeNestedConnections(store, resourceId, values, graphql);
     return { records: boundedNodes(values), page_info: { has_next_page: false, end_cursor: null } };
   }
   const connection = validatePage(data, document.root);
-  return { records: boundedNodes(connection.nodes.map(document.map)), page_info: { has_next_page: connection.pageInfo.hasNextPage, end_cursor: connection.pageInfo.endCursor || null } };
+  const records = connection.nodes.map(document.map);
+  await completeNestedConnections(store, resourceId, records, graphql);
+  return { records: boundedNodes(records), page_info: { has_next_page: connection.pageInfo.hasNextPage, end_cursor: connection.pageInfo.endCursor || null } };
 }
 function pagination(query = {}) {
   const first = query.first === undefined ? 50 : Number(query.first);
@@ -165,4 +206,4 @@ async function syncAuthorizedResources(store, deps = {}) {
   return { results, succeeded: results.filter(row => row.status === 'ok').length, failed: results.filter(row => row.status === 'failed').length, missing_scope: results.filter(row => row.status === 'missing_scope').length };
 }
 
-module.exports = { getAuthorizedResourcePage, syncAuthorizedResource, syncAuthorizedResources, requiredScopes, scopeSatisfied, validateNestedConnections, fetchAll, sourceId };
+module.exports = { getAuthorizedResourcePage, syncAuthorizedResource, syncAuthorizedResources, requiredScopes, scopeSatisfied, validateNestedConnections, completeNestedConnections, fetchAll, sourceId };

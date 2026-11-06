@@ -82,8 +82,8 @@ function customerSnapshotWhere(storeId, customerGids) {
   return {
     store_id: storeId,
     OR: [
-      { resource_id: { in: ['customer.addresses', 'customer.metafields'] }, payload: { path: ['id'], in: customerGids } },
-      { resource_id: 'metafields.customers', payload: { path: ['owner', 'id'], in: customerGids } },
+      { resource_id: { in: ['customer.addresses', 'customer.metafields', 'metafields.customers'] }, payload: { path: ['id'], in: customerGids } },
+      { resource_id: 'metafields.orders', payload: { path: ['customer', 'id'], in: customerGids } },
     ],
   };
 }
