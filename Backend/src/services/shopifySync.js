@@ -438,6 +438,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     return { success: false, alreadyRunning: true };
   }
   let setupStage = 'marking_store_syncing';
+  let productsError = null;
   // A new lock owner supersedes any interrupted previous run. Preserve the
   // previous success timestamp; never claim the interrupted run completed.
   const previousState = await prisma.stores.findUnique({
@@ -492,17 +493,35 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: products });
     } catch (error) {
       // Catalogue access is optional until the merchant re-consents to the
-      // read_products scope. Only an explicit Shopify products-field denial
-      // can be downgraded; malformed data and database failures stay fatal.
+      // read_products scope, and a catalogue failure must NEVER block the
+      // unrelated customer, order and abandoned-checkout syncs — those are
+      // independent data domains with their own failure semantics. The
+      // explicit-access-denial case degrades to a warn (as before); any
+      // other product failure is logged loudly with the sync counters and
+      // recorded for the result, loudly but non-fatally. A failed catalogue
+      // can never masquerade as a healthy one: `last_synced_at` advances only
+      // for the stages that actually succeeded, and products are re-synced
+      // from scratch next pass.
       const deniedProducts = error.code === 'SHOPIFY_GRAPHQL_ERROR' &&
         Array.isArray(error.shopifyErrors) &&
         error.shopifyErrors.some(item =>
           Array.isArray(item.codes) && item.codes.includes('ACCESS_DENIED') &&
           /products field/i.test(String(item.message || '')));
-      if (!deniedProducts) throw error;
-      logger.warn('shopify_product_sync_permission_limited', {
-        store_id: store.id, stage: setupStage, reason: 'SHOPIFY_PRODUCTS_ACCESS_DENIED',
-      });
+      productsError = deniedProducts
+        ? Object.assign(error, { degraded: 'permission_denied' })
+        : error;
+      if (deniedProducts) {
+        logger.warn('shopify_product_sync_permission_limited', {
+          store_id: store.id, stage: setupStage, reason: 'SHOPIFY_PRODUCTS_ACCESS_DENIED',
+        });
+      } else {
+        logger.error('shopify_product_sync_failed', {
+          store_id: store.id, stage: setupStage,
+          error_type: error?.code || error?.name || 'product_sync_error',
+          pages_completed: Number.isFinite(error.pages_completed) ? error.pages_completed : null,
+          products_upserted: Number.isFinite(error.products_upserted) ? error.products_upserted : null,
+        });
+      }
     }
 
     setupStage = 'customer_sync';
@@ -558,8 +577,8 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     }
     const rfm = await rfmSync({ storeId: store.id, correlationId: `shopify-sync-${store.id}-${Date.now()}` });
     if (!rfm.success) logger.warn('shopify_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
-    logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned, webhook_setup_complete: !webhookSetupError });
-    return { success: true, customers, orders, abandoned, rfm: rfm.success, customerSyncLimited, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null };
+    logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned, webhook_setup_complete: !webhookSetupError, products_sync_failed: Boolean(productsError), products_error_type: productsError ? (productsError.degraded === 'permission_denied' ? 'permission_denied' : (productsError.code || productsError.name || 'product_sync_error')) : null });
+    return { success: true, customers, orders, abandoned, rfm: rfm.success, customerSyncLimited, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null, products: productsError ? { status: 'failed', error_type: productsError.code || productsError.name || 'product_sync_error' } : { status: 'ok' } };
   } catch (error) {
     try {
       await prisma.stores.update({

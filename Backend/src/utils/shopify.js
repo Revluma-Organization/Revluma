@@ -149,12 +149,14 @@ const buildInstallUrl = ({ shop, state }) => {
     .split(',')
     .map((scope) => scope.trim())
     .filter(Boolean);
+  // write_discounts was previously forced here although Revluma ships an
+  // observation-first product that must not request mutation access it
+  // cannot honestly use. It is now opt-in via SHOPIFY_SCOPES only.
   const scope = [...new Set([
     ...configuredScopes,
     'read_orders',
     'read_customers',
     'read_products',
-    'write_discounts',
   ])].join(',');
   const params = new URLSearchParams({
     client_id: apiKey,

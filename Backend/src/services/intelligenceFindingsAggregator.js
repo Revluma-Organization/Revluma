@@ -67,23 +67,30 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
     });
     const orders = await prisma.orders.findMany({
       where: { store_id: store.id, ordered_at: { gte: new Date(previousStart), lt: new Date(currentEnd) } },
-      select: { customer_id: true, total: true, currency: true, ordered_at: true },
+      select: { customer_id: true, total: true, currency: true, ordered_at: true, recovery_status: true, refunded_total: true },
     });
-    const currencies = sameCurrency(orders);
-    if (currencies.length !== 1 || !orders.length) {
+    // Exclude cancelled/voided/deleted orders and deduct refunds before
+    // comparing periods — identical financial semantics to the verified
+    // python metric layer. A refund is not revenue; a cancelled order is
+    // not a sale.
+    const EXCLUDED_RECOVERY_STATUSES = new Set(['cancelled', 'canceled', 'voided', 'deleted']);
+    const netValue = (o) => safeNumber(o.total) - safeNumber(o.refunded_total || 0);
+    const liveOrders = orders.filter(o => !EXCLUDED_RECOVERY_STATUSES.has(String(o.recovery_status || '').toLowerCase()));
+    const currencies = sameCurrency(liveOrders);
+    if (currencies.length !== 1 || !liveOrders.length) {
       diagnostics.push({ storeId: store.id, status: 'mixed_currency_or_no_orders' });
       continue;
     }
-    const current = orders.filter(o => o.ordered_at.getTime() >= currentStart);
-    const previous = orders.filter(o => o.ordered_at.getTime() < currentStart);
+    const current = liveOrders.filter(o => o.ordered_at.getTime() >= currentStart);
+    const previous = liveOrders.filter(o => o.ordered_at.getTime() < currentStart);
     const evidence = {
       verified: true, complete: true, currency: currencies[0],
       coverage_source: coverage.source, coverage_run_id: coverage.source_run_id,
       currentStart: windowIso(currentStart), currentEnd: windowIso(currentEnd),
       previousStart: windowIso(previousStart), previousEnd: windowIso(currentStart),
       currentCount: current.length, previousCount: previous.length,
-      currentRevenue: current.reduce((sum, o) => sum + safeNumber(o.total), 0),
-      previousRevenue: previous.reduce((sum, o) => sum + safeNumber(o.total), 0),
+      currentRevenue: current.reduce((sum, o) => sum + netValue(o), 0),
+      previousRevenue: previous.reduce((sum, o) => sum + netValue(o), 0),
     };
     candidates.push(detectRevenueChange({ scope, evidence }));
     candidates.push(detectOrderVolumeChange({ scope, evidence }));

@@ -30,7 +30,7 @@ const MAX_VARIANT_PAGES = 20; // 100 × 20 = 2000 variants (Shopify's per-produc
 const VARIANT_FIELDS = `
   id title sku barcode position
   price compareAtPrice
-  weight { value unit }
+  inventoryItem { measurement { weight { value unit } } }
 `;
 
 const PRODUCT_FIELDS = `
@@ -91,11 +91,11 @@ function mapProduct(storeId, product) {
   const maxCompareAt = moneyString(product.compareAtPriceRange?.maxVariantCompareAtPrice)
     ?? (compareAts.length ? compareAts.sort((a, b) => Number(b) - Number(a))[0] : null);
   const firstSkuVariant = firstVariantWith(variants, (variant) => variant?.sku);
-  const weightVariant = firstVariantWith(variants, (variant) => variant?.weight?.value != null);
+  const weightVariant = firstVariantWith(variants, (variant) => variant?.inventoryItem?.measurement?.weight?.value != null);
   const priceNumber = minPrice === null ? null : Number(minPrice);
   const compareAtNumber = maxCompareAt === null ? null : Number(maxCompareAt);
   const onSale = priceNumber !== null && compareAtNumber !== null && compareAtNumber > priceNumber;
-  const weightValue = weightVariant ? Number(weightVariant.weight.value) : null;
+  const weightValue = weightVariant ? Number(weightVariant.inventoryItem.measurement.weight.value) : null;
   return {
     store_id: storeId,
     external_id: id,
