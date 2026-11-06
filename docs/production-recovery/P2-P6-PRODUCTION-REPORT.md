@@ -1,13 +1,13 @@
 # REVLUMA — Consolidated P2–P6 Production Report
 
-**Status: END-STATE — 2026-11-06 ~13:45Z.** P1 is PRODUCTION VERIFIED (unchanged). P4's
-ambiguity fix is PRODUCTION VERIFIED (live). PR #306 is MERGED but Render-deploy pending.
-**This PR** (`arena/f9c10395-revluma` → `main`) is the P2–P6 hardening batch: privacy shop/redact
-de-transaction, token encryption v2 + gated re-encryption tool, webhook in-flight delivery
-recovery + adopt-by-topic, P2 reconciliation/diagnostic tooling, productSync failure counters,
-fixture-level 11-scenario acceptance (11/11), read-only RLS/index/tenant-isolation audits.
-**No item in this PR is PRODUCTION VERIFIED until the post-merge `/ready` flip is probed and
-recorded** (checklist X.7). "VERIFIED" below means directly observed in production.
+**Status: END-STATE — 2026-11-06 ~12:15Z.** P1 is PRODUCTION VERIFIED (unchanged). P4's
+ambiguity fix is PRODUCTION VERIFIED (live, 10:56Z). PR #306 (Woo fix) and PR #308 (P2–P6
+hardening batch) are MERGED and the backend is **DEPLOYED VERIFIED** as of ~12:05–12:09Z
+(`/ready` `node_build=55639425b3f5`; scheduler completed 12:09:12Z `failed=0, succeeded=1`;
+all five organizations hold one current snapshot each). "VERIFIED" below means directly observed
+in production. **No PRODUCTION VERIFIED claim is made for behaviour of the newly deployed code
+paths** (redact / recovery / crypto execute only under real traffic or gated applies; nothing
+has exercised them live).
 
 ## Verdict table
 
@@ -15,11 +15,11 @@ recorded** (checklist X.7). "VERIFIED" below means directly observed in producti
 |---|---|---|---|
 | P2 — Shopify product ingestion | **IMPLEMENTED + TESTED** (reconciliation fixtures 7/7; dry-run-default gated reconcile tool; admin access diagnostic; loud partial-failure counters) | **NOT VERIFIED** — all Shopify stores hold 0 product rows; live source read blocked (no Render env access; inference only) | Live round-trip (create→sync→update→delete) — production mutation not authorized |
 | P3 — Webhook registration & delivery | **IMPLEMENTED + TESTED** (HMAC/ack/idempotency; drift reporting; adopt-by-topic; in-flight recovery worker wired into scheduler) | **NOT VERIFIED** — 0 deliveries in 7 days; PRODUCTS_* never registered; duplicates unremediated | Products-topic registration; 16 legacy-URL deletions; retired-store rows |
-| P4 — Store identity & tenant isolation | **IMPLEMENTED + HARDENED** (ambiguity fix live; Woo scheme fix merged; AES-256-GCM v2; gated rekey tool; audits clean) | **PARTIAL** — ambiguity fix deployed + verified; this PR undeployed; global uniqueness unmigrated | Transfer/revoke conflicted store; uniqueness migration; CBC→GCM apply |
+| P4 — Store identity & tenant isolation | **IMPLEMENTED + HARDENED** (ambiguity fix live; Woo scheme fix merged; AES-256-GCM v2; gated rekey tool; audits clean) | **PARTIAL** — ambiguity fix deployed + verified; P2–P6 hardening deployed (`55639425b3f5`) but never exercised live; global uniqueness unmigrated | Transfer/revoke conflicted store; uniqueness migration; CBC→GCM apply |
 | P5 — Privacy / compliance | **IMPLEMENTED + HARDENED** (durable-first; shop/redact de-transacted with per-step failure codes; pins) | **NOT VERIFIED** — never run on live merchant data; Shopify protected-customer-data approval unknown | Live end-to-end compliance exercise |
-| P6 — Rev live-data certification | **PARTIAL** (fixture acceptance 11/11 this PR; deterministic layer certified 2026-11-04) | **NOT CERTIFIED** — live 11-scenario session is user-only; counts never estimated | — (user action) |
+| P6 — Rev live-data certification | **PARTIAL** (fixture acceptance 11/11 in #308; deterministic layer certified 2026-11-04) | **NOT CERTIFIED** — live 11-scenario session is user-only; counts never estimated | — (user action) |
 
-## What changed in this PR (branch `arena/f9c10395-revluma`, commit pending → merge)
+## What changed in PR #308 (merged 2026-11-06T11:30:16Z → `55639425b3f5`; backend DEPLOYED VERIFIED ~12:05–12:09Z)
 
 | File(s) | Change | Tests |
 |---|---|---|
@@ -34,7 +34,7 @@ recorded** (checklist X.7). "VERIFIED" below means directly observed in producti
 | `src/services/productReconciliation.js` (NEW) + `scripts/productSyncReconcile.js` (NEW) | Source-to-DB reconciliation report; dry-run default; `--apply` gated on `REVLUMA_RECONCILE_CONFIRM_DELETIONS=DELETE-SOURCE-ABSENT-PRODUCTS`; empty source hard-refused (override `REVLUMA_RECONCILE_ALLOW_EMPTY_SOURCE=ALLOW-EMPTY-SOURCE-DELETE`) | 7/7 |
 | `src/services/shopifyAccessDiagnostic.js` (NEW) + `src/controller/adminShopifyDiagnosticsController.js` (NEW) + `route/adminRoute.js` | `GET /api/v1/admin/shopify/stores/:storeId/access` — admin key, no-store; allow-list; live vs recorded scopes; per-collection probes (ok\|empty\|access_denied\|error:<code>); scope-query failure ⇒ `scope_query_ok=false` + null flags; no PII | 4/4 |
 | `python/tests/test_rev_eleven_scenarios.py` (NEW) + `docs/production-recovery/REV-LIVE-ACCEPTANCE-RUNBOOK.md` (NEW) | 11 mandated scenarios, real `route_message`, patched gateway; gate + no-fabricated-tools pins; 8=clarify, 11=refuse-before-tools, 5=analysis response_mode | 11/11 |
-| `docs/production-recovery/*` | END-STATE rewrite (this PR): register, verification, limitations, report + NEW `MASTER-COMPLETION-CHECKLIST.md` + NEW live-acceptance runbook | — |
+| `docs/production-recovery/*` | END-STATE rewrite (merged in #308; this post-deploy verification record lands as a follow-up docs PR): register, verification, limitations, report + NEW `MASTER-COMPLETION-CHECKLIST.md` + NEW live-acceptance runbook | — |
 | RLS / index audits (read-only prod) | 17/17 tables RLS-enabled (7 FORCE); hot-path indexes present; no schema change; `stores.shop_domain` seq-scan noted (4 rows; index before ~100 stores) | SQL (read-only) |
 
 Full green inventory this revision: python 57 + 667 + 11 = **735**; backend offline suites green
@@ -78,7 +78,7 @@ PRODUCTS_CREATE/UPDATE/DELETE zero rows. 27 duplicate groups.
 
 **Delivery health:** 197 rows, all `processed`, latest 2026-10-30 08:00:39Z; zero in 7 days.
 
-**NEW this PR:**
+**NEW in #308 (live ~12:05Z):**
 - Drift report path repair (`scripts/shopifyWebhookDriftReport.js`); operator-run, READ-ONLY;
   exit 1 on drift, 2 on access/config failure; mutates nothing.
 - **Adopt-by-topic** for legacy-URI subscriptions — local registry converges without creating
@@ -98,10 +98,11 @@ store rows — leave unless founder orders otherwise.
 (`webhookStoreResolution.test.js` 7/7); live behavioural 5xx probe not performed (would require
 sending a webhook — not authorized).
 
-**WooCommerce scheme-mismatch — FIXED and MERGED (#306 → `e8adae9…`); Vercel PROMOTED; Render
-deploy pending operator as of ~11:35Z.** 7/7 resolution tests; ambiguity still fails closed.
+**WooCommerce scheme-mismatch — FIXED and MERGED (#306 → `e8adae9…`); Vercel PROMOTED; backend
+deployed with #308 (serving `55639425b3f5`, verified ~12:05–12:09Z).** 7/7 resolution tests;
+ambiguity still fails closed.
 
-**This PR (hardening):**
+**The hardening batch (merged #308, live ~12:05Z):**
 - AES-256-GCM v2 tokens (see V23) + gated re-encryption tool (dry-run default).
 - Tenant-isolation audit — no unscoped cross-tenant read found (rev/settings/shopify/dashboard/
   intelligence/operational paths org- or store-scoped; pixel HMAC + timing-safe compare; internal
@@ -153,9 +154,9 @@ record raw counts in the certification doc and flip checklist P6.6.
 | `5699c55` → PR #303 → `eaced144b33c8` | P1 single-statement autocommit persistence | MERGED + deployed + **PRODUCTION VERIFIED** |
 | `0abdc35` → PR #304 → `336bc8a445b4` | P1 verification record | MERGED |
 | `b7aae39` → PR #305 → **`726bedc1b2a8`** | P4 ambiguity fix; P2–P6 inspection | MERGED; Vercel PROMOTED; Render node_build flip verified 10:56Z |
-| PR #306 → `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4` | P4 Woo scheme fix | MERGED ~11:15Z (CI green); Vercel PROMOTED; **Render backend deploy pending operator** |
-| PR #307 → `414210b3be74` | Docs-only record of #306 state | MERGED 11:06Z (this branch base) |
-| **this PR** (`arena/f9c10395-revluma`) | P2–P6 hardening batch + end-state docs (see table above) | **OPEN at writing; merge gated on CI; post-merge verification REQUIRED** |
+| PR #306 → `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4` | P4 Woo scheme fix | MERGED ~11:15Z (CI green); Vercel PROMOTED; **live — backend serving merged build since ~12:05Z** |
+| PR #307 → `414210b3be74` | Docs-only record of #306 state | MERGED 11:06Z |
+| **PR #308** → `55639425b3f53576fe314dc8be299880664cfe39` | P2–P6 hardening batch + end-state docs (table above) | **MERGED 11:30:16Z (all CI green); Vercel Production deploy success 11:32:35Z; backend DEPLOYED VERIFIED ~12:05–12:09Z** (`/ready` flip; scheduler completed 12:09:12Z `failed=0`; 5×1 current snapshots) |
 
 ## Remaining approvals / external actions (everything else is done or blocked)
 
@@ -170,7 +171,10 @@ record raw counts in the certification doc and flip checklist P6.6.
 6. **P5**: Shopify protected-customer-data eligibility + one live compliance exercise — founder/user + Shopify.
 7. **R-10** stale `business_states` recount + delete — unchanged approval gate.
 8. **P2 item 9** (source-absent row reconciliation apply) — approve design or leave rows.
-9. **Operator actions (not data approvals):** Render deploy of PR #306 (`e8adae9…`) — merged, not
-   live as of ~11:35Z; then this PR's deploy + `/ready` flip probe.
-10. **Docs**: this file, register, limitations, verification report, and the new checklist are
-    delivered inside this PR (same changeset).
+9. **Operator actions (not data approvals): NONE REMAINING.** PR #306 and PR #308 are both live as
+   of ~12:05Z (backend serving `55639425b3f5`; scheduler tick 12:09:12Z `failed=0, succeeded=1`;
+   all five orgs hold fresh snapshots; `python_ready=true`, `redis_ready=true`). The prior
+   "Render auto-deploy does not reliably flip merged builds" observation (seen for #306) resolved
+   when #308 deployed — but the lag pattern is real and should be expected on future merges.
+10. **Docs**: end-state register/limitations/report/verification + checklist are on `main`; this
+    post-deploy verification record lands as a follow-up docs PR.

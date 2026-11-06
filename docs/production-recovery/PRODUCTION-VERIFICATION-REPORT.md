@@ -1,13 +1,16 @@
 # REVLUMA — Production Verification Report
 
-**Status: END-STATE for the recovery operation — 2026-11-06 ~13:45Z.** P1 is **PRODUCTION VERIFIED**.
-P4's webhook-ambiguity fix is **PRODUCTION VERIFIED** (deployed 10:56Z). PR #306 (P4 Woo fix) is
-MERGED but **Render-deploy pending an operator action**. This PR (branch `arena/f9c10395-revluma`)
-ships the P2–P6 hardening batch (de-transacted redact, token encryption v2, webhook delivery
-recovery, reconciliation + diagnostic tooling, fixture-level live-acceptance suite, documentation).
-**Nothing in this PR is PRODUCTION VERIFIED until the post-merge `/ready` flip and scheduler-tick
-re-check are recorded (see MASTER-COMPLETION-CHECKLIST.md → X.7).** No production success claim
-beyond the evidence listed here is made anywhere in this tree.
+**Status: END-STATE for the recovery operation — 2026-11-06 ~12:15Z.** P1 is **PRODUCTION VERIFIED**.
+P4's webhook-ambiguity fix is **PRODUCTION VERIFIED** (deployed 10:56Z). PR #306 (P4 Woo fix) and
+PR #308 (P2–P6 hardening batch) are MERGED and the backend is **DEPLOYED VERIFIED** as of
+~12:05Z (`/ready` `node_build=55639425b3f5` — the #308 merge commit; scheduler tick 12:09:12Z
+`failed=0, succeeded=1` after the deploy-interruption pass; all five organizations hold exactly
+one current snapshot, freshest 12:08:51Z; direct database read, not HTTP cache). DEPLOYED is not
+the same as PRODUCTION VERIFIED: **no live exercise of the new code paths (redact, delivery
+recovery, crypto, reconciliation) has been run, and PRODUCTION VERIFIED is not claimed for any of
+them.** Python service: serving, `python_ready=true`, `beta_ready` (0.6.0), evidence behavioral
+only (no deploy metadata — Render API unavailable here). No production success claim beyond the
+evidence listed here is made anywhere in this tree.
 
 ## P1 — Production verification (historical, unchanged)
 
@@ -38,13 +41,15 @@ scheduler `INTELLIGENCE_UNAVAILABLE` every tick.
 |---|---------|--------------|
 | PR #304 → `336bc8a4` | P1 production verification docs | MERGED |
 | PR #305 → `726bedc1b2a8` | P4 cross-merchant webhook-routing ambiguity fix (`WEBHOOK_STORE_AMBIGUOUS`) | MERGED ~10:25Z; **DEPLOYED VERIFIED ~10:56Z** (`/ready` flip, tick 10:56:33Z `failed=0, succeeded=1`, `python_ready=true`); Vercel PROMOTED `dpl_4oMgo4k6ma1RzK9EoivguHNGS243` |
-| PR #306 → `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4` | P4 WooCommerce scheme-mismatch findStore fix | MERGED ~11:15Z (all CI green); Vercel PROMOTED `dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`; **Render backend NOT deployed as of ~11:35Z probe** — operator action pending |
-| PR #307 → `414210b3be74` | docs-only record of #306 merge state | MERGED 11:06Z (this branch base) |
+| PR #306 → `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4` | P4 WooCommerce scheme-mismatch findStore fix | MERGED ~11:15Z (all CI green); Vercel PROMOTED `dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`; **DEPLOYED VERIFIED ~12:05Z** (backend serving `55639425b3f5` — supersedes; `/ready` probe fresh tick 12:02Z `failed=0`) |
+| PR #307 → `414210b3be74` | docs-only record of #306 merge state | MERGED 11:06Z |
+| PR #308 → `55639425b3f53576fe314dc8be299880664cfe39` | P2–P6 hardening batch (PR #308) | MERGED 2026-11-06T11:30:16Z (all CI green); Vercel Production deployment success 11:32:35Z; **DEPLOYED VERIFIED ~12:05–12:09Z** (`/ready` `node_build=55639425b3f5`; deploy-interrupted pass left a wedged claim `status=running` which resolved to `completed` 12:09:12Z `failed=0, succeeded=1` — the documented phantom-running mode, self-healed via normal completion, no DB surgery; per-org current snapshots intact 12:08:51Z freshest) |
 
-## Evidence appended by this PR (2026-11-06 ~13:45Z)
+## Evidence appended by PR #308 (2026-11-06 ~12:15Z — merge + deploy verification included)
 
 | # | Evidence | Source |
 |---|----------|--------|
+| V22b | **This PR DEPLOYED**: `/ready` `node_build=55639425b3f5` at ~12:05Z probe (cb-busted); scheduler heartbeat row `completed` 12:09:12Z (`failed=0, succeeded=1`, latency 22,131 ms); five orgs × 1 current snapshot each; earlier `/ready` reads during ~12:05–12:12Z were HTTP-cached copies of a deploy-interrupted claim (`status=running`, stale age) — direct DB read is authoritative: last pass completed, `last_error` NULL | `fetch_page` probes + supabase SQL 2026-11-06 ~12:10–12:15Z |
 | V22 | P5 shop/redact de-transacted: no interactive multi-statement `$transaction`; ordered idempotent single-statement steps; per-step failure tagging `SHOP_REDACT_STEP_FAILED:<step>` (`failed_step`, `cause`); delivery row marked `failed` with that code; retry converges | code review + `privacyWebhookService.js`; workflow 6/6 + regression 4/4 green |
 | V23 | P4 token encryption v2 (AES-256-GCM): new encryptions `v2:<iv(12B)>:<tag>:<ct>`; v1 CBC read-back only (shape-gated `ENCRYPTION_FORMAT_UNKNOWN`); keys 64-hex enforced at module load | `encryption.js`; 5/5 tests |
 | V24 | P3 in-flight delivery recovery: stale `received` rows (wall-clock ≥ threshold, default 900s) flipped to `failed` with explicit reason → provider redelivery re-claimable; never re-executes business logic; scheduler interval 5 min, env-tunable; startup pass wired; never blocks ticks (errors logged, cycle continues) | `webhookDeliveryRecovery.js` + `schedulerService.js` diff; 3/3 tests |
@@ -73,8 +78,11 @@ scheduler `INTELLIGENCE_UNAVAILABLE` every tick.
 - Full backend suite in sandbox (`prisma generate` needs `binaries.prisma.sh`, unreachable from this
   environment; 9 pre-existing suites are CI-only — unchanged as of this writing).
 - Python-service deploys evidenced behaviorally, never by deploy metadata (Render exposes no API here).
-- Post-merge verification of this PR: **pending merge**; must capture `/ready` node_build flip and
-  scheduler `failed=0` tick before any PRODUCTION VERIFIED claim for V22–V28, V30.
+- Post-merge verification of PR #308: **DONE — DEPLOYED VERIFIED ~12:05–12:09Z** (`/ready` flip to
+  `55639425b3f5`; scheduler completed 12:09:12Z `failed=0`; snapshots intact all 5 orgs). Note: the
+  new code paths (redact de-transaction, delivery recovery, v2 crypto) execute only on real webhook
+  traffic / rekey apply, so **DEPLOYED is the ceiling of what can be honestly claimed today** —
+  PRODUCTION VERIFIED for those paths still requires a live exercise (approval-gated).
 
 ## Incident timeline reference
 

@@ -1,6 +1,6 @@
 # REVLUMA — Master Completion Checklist (Production Recovery P1–P6)
 
-**As of:** 2026-11-06 ~13:45Z · **Branch:** `arena/f9c10395-revluma` · **Scope:** the production-recovery
+**As of:** 2026-11-06 ~12:20Z · **Branch:** `arena/097a7439-revluma` (docs follow-up) · **Scope:** the production-recovery
 certification assignment (P1–P6) and its release gate.
 
 **Status vocabulary (binding):** NOT STARTED · IN PROGRESS · IMPLEMENTED · TESTED · MERGED ·
@@ -51,7 +51,7 @@ SQL), never by unit tests.
 | # | Item | Status | Evidence / note |
 |---|------|--------|-----------------|
 | P4.1 | Cross-merchant webhook-routing ambiguity → fail-closed `WEBHOOK_STORE_AMBIGUOUS` | **PRODUCTION VERIFIED (deployed) 2026-11-06 ~10:56Z** | PR #305 → `726bedc1b2a8`; `/ready` flip + scheduler tick `failed=0, succeeded=1`; fixture suite 7/7 |
-| P4.2 | WooCommerce scheme-mismatch findStore fix | MERGED (PR #306 → `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4`); Render deploy PENDING operator action; Vercel PROMOTED | Recorded 2026-11-06 ~11:15–11:35Z; fixture-verified 7/7 |
+| P4.2 | WooCommerce scheme-mismatch findStore fix | MERGED (PR #306) and **DEPLOYED** (backend serving `55639425b3f5` since ~12:05Z) | Verified 2026-11-06 ~12:05–12:09Z; fixture-verified 7/7 |
 | P4.3 | Tenant-isolation audit of all application data paths (2026-11-06) | **TESTED by inspection** | No unscoped cross-tenant read found: rev/settings/shopify/dashboard/intelligence/operational paths org- or store-scoped; churnWorker/shopifySync store-scoped; pixel path HMAC-gated (`public_tracking_key`, timing-safe; unsigned → 404); internal/admin diagnostics key-authed; ambiguity fails closed everywhere |
 | P4.4 | Token encryption v2: AES-256-GCM (`v2:<iv>:<tag>:<ct>`), v1 CBC decrypt-only compat, shape-gated | IMPLEMENTED + TESTED | `encryption.js` rewritten; malformed values throw `ENCRYPTION_FORMAT_UNKNOWN`; 5/5 tests |
 | P4.5 | Re-encryption tooling (`scripts/reencryptStoreTokens.js`) | IMPLEMENTED + TESTED | Dry-run default; `--apply` gated on `REVLUMA_REKEY_CONFIRM=REENCRYPT-ALL-SHOPIFY-TOKENS`; 3/3 tests |
@@ -90,10 +90,10 @@ SQL), never by unit tests.
 | X.1 | Full backend suite locally | BLOCKED (sandbox) — CI is truth | `prisma generate` needs `binaries.prisma.sh` (unreachable; allowlist); 9 pre-existing suites CI-only (unchanged count); npm test sweep aborts at `.prisma/client/default` |
 | X.2 | npm audit (production deps) | KNOWN/limited | Backend: 7 (4 low, 3 high) — `@sendgrid/mail→deepmerge` prototype pollution (fix = 6.5.2 breaking downgrade, not applied), `prisma→deepmerge-ts` stack exhaustion (CLI-time only; fix = prisma 7 major, not applied). Frontend: 2 moderate (react-router 6→7 breaking, not applied). Rationale: no breaking dependency changes 3 days pre-launch; all three documented in KNOWN-LIMITATIONS |
 | X.3 | RLS/index audit (read-only) | DONE | See P4.6/P4.7 — no schema change applied |
-| X.4 | 4 recovery docs end-state rewrite + this checklist + live-acceptance runbook | DONE (this PR) | `docs/production-recovery/*.md` |
+| X.4 | 4 recovery docs end-state rewrite + this checklist + live-acceptance runbook | **DONE** (merged as PR #308) | `docs/production-recovery/*.md` |
 | X.5 | Branch hygiene | DONE | Only `arena/f9c10395-revluma`; never #299; PR not merged by tool at time of writing |
-| X.6 | ONE coherent PR: code + tests + docs | IN PROGRESS | This branch → `main`; merge gated on CI green |
-| X.7 | Post-merge `/ready` probe + scheduler outcome re-check | PENDING MERGE (must flip to this merge commit) | Node deploy auto (observed lag 7–31 min) or operator manual deploy (Render); if no flip within ~30 min, record operator action required (as with PR #306) |
+| X.6 | ONE coherent PR: code + tests + docs | **MERGED** (PR #308, 2026-11-06T11:30:16Z → `55639425b3f5`; all CI green; Vercel Production success 11:32:35Z) | — |
+| X.7 | Post-merge `/ready` probe + scheduler outcome re-check | **DONE — DEPLOYED VERIFIED** (Node + Python both live since ~12:05Z) | `/ready` `node_build=55639425b3f5` (cache-busted probe ~12:05Z); deploy-interrupted pass self-completed 12:09:12Z `failed=0, succeeded=1`; all 5 orgs × 1 current snapshot each (direct SQL); http probes during ~12:05–12:12Z served edge-cached copies of the interrupted claim — direct DB read authoritative |
 | X.8 | Backfill: none | — | No production data written by any step of this checklist |
 
 ## Explicit non-claims
