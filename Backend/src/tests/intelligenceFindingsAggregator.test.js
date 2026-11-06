@@ -56,3 +56,30 @@ test('certified period allows revenue detection but not returning-customer claim
   assert.ok(result.diagnostics.some(item => item.status === 'customer_lifetime_history_unverified'));
   assert.ok(result.diagnostics.some(item => item.status === 'checkout_funnel_coverage_unverified'));
 });
+
+test('revenue detection excludes cancelled orders and subtracts refunds', async () => {
+  const db = fakeDb();
+  db.intelligence_order_coverage.findFirst = async () => ({ source: 'shopify_verified_history_v1', source_run_id: 'run-1', customer_lifetime_verified: true });
+  db.orders.findMany = async () => {
+    const rows = [];
+    for (let i = 0; i < 10; i++) {
+      rows.push({ customer_id: `prev-${i}`, total: 200, currency: 'USD', ordered_at: new Date('2026-10-15T12:00:00Z') });
+      rows.push({ customer_id: `curr-${i}`, total: 100, currency: 'USD', ordered_at: new Date('2026-10-24T12:00:00Z') });
+    }
+    // $9 000 cancelled current-period revenue that must NOT count.
+    for (let i = 0; i < 3; i++) {
+      rows.push({ customer_id: `cancelled-${i}`, total: 3000, currency: 'USD', ordered_at: new Date('2026-10-24T15:00:00Z'), recovery_status: 'cancelled', refunded_total: 0 });
+    }
+    // A $400 order fully refunded must count as 0 net, not 400 gross.
+    rows.push({ customer_id: 'refunded-1', total: 400, currency: 'USD', ordered_at: new Date('2026-10-24T16:00:00Z'), recovery_status: 'paid', refunded_total: 400 });
+    return rows;
+  };
+  db.orders.groupBy = async () => [];
+  const result = await evaluateOrganizationFindings(db, 'org-1', { now: '2026-10-27T11:00:00Z', periodDays: 7 });
+  const revenue = result.findings.find(f => f.type === 'revenue_change');
+  assert.ok(revenue, 'revenue_change finding expected');
+  // Current: 10 × 100 (net 1000) + 400-400 (0) = 1000. Previous: 10 × 200 = 2000.
+  assert.equal(revenue.evidence.currentRevenue, 1000);
+  assert.equal(revenue.evidence.previousRevenue, 2000);
+  assert.equal(revenue.evidence.currentCount, 11);
+});

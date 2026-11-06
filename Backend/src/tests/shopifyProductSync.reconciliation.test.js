@@ -66,7 +66,7 @@ function loadSync() {
 
 function fixtureProduct(id, { status = 'ACTIVE', updatedAt = '2026-10-01T00:00:00Z', createdAt = '2026-09-01T00:00:00Z', price = '19.99', compareAt = '29.99', variants } = {}) {
   const variantNodes = variants || [
-    { id: `gid://shopify/ProductVariant/${id}1`, title: 'Default Title', sku: `SKU-${id}`, barcode: '0123456789', position: 1, price, compareAtPrice: compareAt, weight: { value: 0.5, unit: 'KILOGRAMS' } },
+    { id: `gid://shopify/ProductVariant/${id}1`, title: 'Default Title', sku: `SKU-${id}`, barcode: '0123456789', position: 1, price, compareAtPrice: compareAt, inventoryItem: { measurement: { weight: { value: 0.5, unit: 'KILOGRAMS' } } } },
   ];
   return {
     id: `gid://shopify/Product/${id}`, title: `Fixture Product ${id}`, handle: `fixture-product-${id}`,
@@ -152,10 +152,10 @@ test('reconciliation: statuses map ACTIVE/ARCHIVED/DRAFT/UNLISTED to active/arch
 test('reconciliation: >100-variant product expands via nested pagination before upsert', async () => {
   const state = prismaStub();
   const firstHundred = Array.from({ length: 100 }, (_, index) => ({
-    id: `gid://shopify/ProductVariant/77-${index}`, title: `V${index}`, sku: `SKU-77-${index}`, barcode: null, position: index + 1, price: '9.99', compareAtPrice: null, weight: { value: 0.1, unit: 'KILOGRAMS' },
+    id: `gid://shopify/ProductVariant/77-${index}`, title: `V${index}`, sku: `SKU-77-${index}`, barcode: null, position: index + 1, price: '9.99', compareAtPrice: null, inventoryItem: { measurement: { weight: { value: 0.1, unit: 'KILOGRAMS' } } },
   }));
   const nextFifty = Array.from({ length: 50 }, (_, index) => ({
-    id: `gid://shopify/ProductVariant/77b-${index}`, title: `V${100 + index}`, sku: `SKU-77-${100 + index}`, barcode: null, position: 101 + index, price: '9.99', compareAtPrice: null, weight: { value: 0.1, unit: 'KILOGRAMS' },
+    id: `gid://shopify/ProductVariant/77b-${index}`, title: `V${100 + index}`, sku: `SKU-77-${100 + index}`, barcode: null, position: 101 + index, price: '9.99', compareAtPrice: null, inventoryItem: { measurement: { weight: { value: 0.1, unit: 'KILOGRAMS' } } },
   }));
   graphqlStub((query, variables) => {
     if (query.includes('RevlumaProducts')) {
@@ -183,7 +183,7 @@ test('reconciliation: malformed node fails loudly; earlier pages persist but the
     // Valid variants connection (so the run reaches mapping) but no product id:
     return productsResponse([{
       title: 'Node without gid', status: 'ACTIVE', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z',
-      variants: { nodes: [{ id: 'gid://shopify/ProductVariant/x1', title: 'v', sku: 'S', barcode: null, position: 1, price: '1.00', compareAtPrice: null, weight: { value: 0.1, unit: 'KILOGRAMS' } }], pageInfo: { hasNextPage: false, endCursor: 'v-end' } },
+      variants: { nodes: [{ id: 'gid://shopify/ProductVariant/x1', title: 'v', sku: 'S', barcode: null, position: 1, price: '1.00', compareAtPrice: null, inventoryItem: { measurement: { weight: { value: 0.1, unit: 'KILOGRAMS' } } } }], pageInfo: { hasNextPage: false, endCursor: 'v-end' } },
     }]);
   });
   const { syncProducts } = loadSync();

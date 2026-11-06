@@ -57,7 +57,7 @@ const STORE = { id: 'store-test', shop_domain: 'test.myshopify.com', access_toke
 
 function productNode(id, { updatedAt = '2026-10-01T00:00:00Z', price = '19.99', compareAt = '29.99', variants } = {}) {
   const variantNodes = variants || [
-    { id: `gid://shopify/ProductVariant/${id}1`, title: 'Default Title', sku: 'SKU-1', barcode: '0123456789', position: 1, price, compareAtPrice: compareAt, weight: { value: 0.5, unit: 'KILOGRAMS' } },
+    { id: `gid://shopify/ProductVariant/${id}1`, title: 'Default Title', sku: 'SKU-1', barcode: '0123456789', position: 1, price, compareAtPrice: compareAt, inventoryItem: { measurement: { weight: { value: 0.5, unit: 'KILOGRAMS' } } } },
   ];
   return {
     id: `gid://shopify/Product/${id}`, title: `Product ${id}`, handle: `product-${id}`,
@@ -120,7 +120,7 @@ test('nested variants resume across pages before any upsert', async () => {
     }
     if (query.includes('RevlumaProductVariants')) {
       return { node: { id: variables.id, updatedAt: '2026-10-01T00:00:00Z',
-        variants: { nodes: [{ id: `gid://shopify/ProductVariant/2002`, title: 'Large', sku: 'SKU-2', barcode: null, position: 2, price: '21.99', compareAtPrice: null, weight: null }],
+        variants: { nodes: [{ id: `gid://shopify/ProductVariant/2002`, title: 'Large', sku: 'SKU-2', barcode: null, position: 2, price: '21.99', compareAtPrice: null, inventoryItem: { measurement: { weight: null } } }],
           pageInfo: { hasNextPage: false, endCursor: 'v2' } } } };
     }
     throw new Error('unexpected query');
@@ -141,7 +141,7 @@ test('a product changing mid-pagination fails closed before any upsert', async (
     }
     if (query.includes('RevlumaProductVariants')) {
       return { node: { id: variables.id, updatedAt: '2026-10-02T00:00:00Z', // different source version
-        variants: { nodes: [{ id: `gid://shopify/ProductVariant/2012`, title: 'Changed', sku: 'SKU-2', barcode: null, position: 2, price: '1.00', compareAtPrice: null, weight: null }],
+        variants: { nodes: [{ id: `gid://shopify/ProductVariant/2012`, title: 'Changed', sku: 'SKU-2', barcode: null, position: 2, price: '1.00', compareAtPrice: null, inventoryItem: { measurement: { weight: null } } }],
           pageInfo: { hasNextPage: false, endCursor: 'v2' } } } };
     }
     throw new Error('unexpected query');
@@ -210,4 +210,12 @@ test('deleteProduct removes only the targeted row for the store', async () => {
   const result = await deleteProduct(STORE, '400');
   assert.equal(result.count, 1);
   assert.deepEqual(state.rows.map((row) => row.store_id), ['store-other']);
+});
+
+test('VARIANT_FIELDS uses inventoryItem.measurement.weight (ProductVariant.weight no longer exists)', async () => {
+  const source = require('fs').readFileSync(require.resolve('../services/productSync'), 'utf8');
+  const fieldsBlock = source.match(/const VARIANT_FIELDS = `([\s\S]*?)`;/)[1];
+  assert.match(fieldsBlock, /inventoryItem\s*{\s*measurement\s*{\s*weight/);
+  // A bare weight field on the variant node is the 2026-10 schema failure.
+  assert.doesNotMatch(fieldsBlock, /\n\s*weight\s*{/);
 });
