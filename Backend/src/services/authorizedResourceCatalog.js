@@ -35,11 +35,11 @@ const definitions = {
   'order.returns': definition(['read_orders', 'read_returns'], connection('orders', `id name ${nested('returns', `id name status createdAt ${nested('returnLineItems', 'id quantity returnReason returnReasonNote', 100)}`, 25)}`), node),
   'order.risk': definition(['read_orders'], connection('orders', 'id name risk { recommendation assessments { riskLevel facts { description sentiment } } }'), node),
   'order.fulfillment_orders': definition(['read_merchant_managed_fulfillment_orders'], connection('fulfillmentOrders', `id status requestStatus createdAt updatedAt assignedLocation { name } ${nested('lineItems', 'id totalQuantity remainingQuantity', 100)}`), node),
-  'discount-nodes': definition(['read_discounts'], connection('discountNodes', `id discount { __typename ... on DiscountCodeBasic { id title status ${nested('codes', 'code')} } ... on DiscountAutomaticBasic { id title status } ... on DiscountCodeBxgy { id title status ${nested('codes', 'code')} } ... on DiscountAutomaticBxgy { id title status } ... on DiscountCodeFreeShipping { id title status ${nested('codes', 'code')} } ... on DiscountAutomaticFreeShipping { id title status } }`), node),
+  'discount-nodes': definition(['read_discounts'], connection('discountNodes', `id discount { __typename ... on DiscountCodeBasic { title status ${nested('codes', 'code')} } ... on DiscountAutomaticBasic { title status } ... on DiscountCodeBxgy { title status ${nested('codes', 'code')} } ... on DiscountAutomaticBxgy { title status } ... on DiscountCodeFreeShipping { title status ${nested('codes', 'code')} } ... on DiscountAutomaticFreeShipping { title status } }`), node),
   'markets': definition(['read_markets'], connection('markets', `id name enabled primary createdAt updatedAt currencySettings { baseCurrency { currencyCode } } ${nested('webPresences', 'rootUrls { url locale }', 10)}`), node),
   'contextual-pricing': definition(['read_markets'], connection('priceLists', 'id name currency parent { adjustment { type value } }'), node),
   'content.pages': definition(['read_content'], connection('pages', 'id title handle body bodySummary createdAt updatedAt isPublished publishedAt templateSuffix'), node),
-  'content.blogs': definition(['read_content'], connection('blogs', `id title handle createdAt updatedAt commentPolicy templateSuffix tags ${nested('articles', 'id title handle body publishedAt authorV2 { name }', 100)}`), node),
+  'content.blogs': definition(['read_content'], connection('blogs', `id title handle createdAt updatedAt commentPolicy templateSuffix tags ${nested('articles', 'id title handle body publishedAt author { name }', 100)}`), node),
   'content.redirects': definition(['read_online_store_navigation'], connection('urlRedirects', 'id path target createdAt'), node),
   'online-store.menus': definition(['read_online_store_navigation'], connection('menus', 'id handle title items { id title type url items { id title type url items { id title type url } } }'), node),
   'themes': definition(['read_themes'], connection('themes', 'id name role createdAt updatedAt processing'), node),
@@ -75,13 +75,13 @@ const NESTED_SPECS = Object.freeze({
   'order.fulfillment_orders': { lineItems: ['FulfillmentOrder', 'id totalQuantity remainingQuantity'] },
   'draft-orders': { lineItems: ['DraftOrder', 'id title quantity'] },
   'markets': { webPresences: ['Market', 'rootUrls { url locale }'] },
-  'content.blogs': { articles: ['Blog', 'id title handle body publishedAt authorV2 { name }'] },
+  'content.blogs': { articles: ['Blog', 'id title handle body publishedAt author { name }'] },
   'product.media': { media: ['Product', 'id mediaContentType status alt'] },
-  'discount-nodes': { 'discount.codes': [null, 'code'] },
+  'discount-nodes': { 'discount.codes': ['DiscountNode', 'code', { rootParent: true, connectionPath: 'discount', concreteType: true }] },
 });
 for (const [resourceId, specs] of Object.entries(NESTED_SPECS)) {
-  definitions[resourceId].nested = Object.fromEntries(Object.entries(specs).map(([path, [parentType, selection]]) => [path, {
-    parentType, selection, field: path.split('.').at(-1),
+  definitions[resourceId].nested = Object.fromEntries(Object.entries(specs).map(([path, [parentType, selection, options = {}]]) => [path, {
+    parentType, selection, field: path.split('.').at(-1), ...options,
   }]));
 }
 

@@ -10,7 +10,7 @@ const { definitions } = require('../services/authorizedResourceCatalog');
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 const STORE = '22222222-2222-4222-8222-222222222222';
-const ALL_SCOPES = ['read_products', 'write_products', 'read_content', 'read_customers', 'read_orders', 'read_metaobjects', 'read_metaobject_definitions', 'read_legal_policies'];
+const ALL_SCOPES = ['read_products', 'write_products', 'read_content', 'read_customers', 'read_orders', 'read_metaobjects', 'read_metaobject_definitions', 'read_legal_policies', 'read_discounts'];
 function dbStub() {
   const rows = [{ source_id: 'stale', store_id: STORE, resource_id: 'collections', sync_run_id: 'old', active: true }];
   const calls = { ledger: [], deleted: 0 };
@@ -107,6 +107,18 @@ test('nested connections are followed to completion with fixed node queries', as
   assert.deepEqual(result.records[0].media.nodes.map(row => row.id), ['gid://shopify/MediaImage/1', 'gid://shopify/MediaImage/2']);
   assert.equal(result.records[0].media.pageInfo.hasNextPage, false);
   assert.equal(calls[2].variables.after, 'nested-cursor');
+});
+
+test('discount codes paginate through the parent DiscountNode and concrete discount type', async () => {
+  const db = dbStub();
+  const { graphql, calls } = graphqlFor((query) => query.includes('RevlumaNested_DiscountNode_codes')
+    ? { node: { discount: { codes: connection([{ code: 'SECOND' }]) } } }
+    : { discountNodes: connection([{ id: 'gid://shopify/DiscountNode/1', discount: { __typename: 'DiscountCodeBasic', title: 'Sale', codes: connection([{ code: 'FIRST' }], true, 'codes-cursor') } }]) });
+  const result = await service.getAuthorizedResourcePage(STORE, ORG, 'discount-nodes', {}, { db, graphql });
+  assert.deepEqual(result.records[0].discount.codes.nodes.map(row => row.code), ['FIRST', 'SECOND']);
+  assert.match(calls[2].query, /node\(id: \$id\).*DiscountNode.*discount \{ \.\.\. on DiscountCodeBasic.*codes\(first:/);
+  assert.equal(calls[2].variables.id, 'gid://shopify/DiscountNode/1');
+  assert.equal(calls[2].variables.after, 'codes-cursor');
 });
 
 test('full sync atomically replaces snapshots, removes stale ids, and writes reconciliation evidence', async () => {

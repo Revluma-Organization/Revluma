@@ -48,15 +48,17 @@ function validateNestedConnections(value, depth = 0) {
 async function completeNestedConnections(store, resourceId, nodes, graphql) {
   const document = getAuthorizedResource(resourceId);
   const execute = graphql || shopifyGraphql;
-  async function walk(parent, path = '') {
+  async function walk(parent, path = '', rootRecord = parent) {
     if (!parent || typeof parent !== 'object' || Array.isArray(parent)) return;
     for (const [key, value] of Object.entries(parent)) {
       const childPath = path ? `${path}.${key}` : key;
       if (value && Array.isArray(value.nodes) && value.pageInfo) {
         if (value.pageInfo.hasNextPage) {
           const spec = document.nested?.[childPath];
-          const parentType = spec?.parentType || parent.__typename;
-          if (!spec || !parent.id || !/^[A-Za-z][A-Za-z0-9]*$/.test(parentType || '')) {
+          const sourceParent = spec?.rootParent ? rootRecord : parent;
+          const parentType = spec?.parentType || sourceParent.__typename;
+          const concreteType = spec?.concreteType ? parent.__typename : null;
+          if (!spec || !sourceParent.id || !/^[A-Za-z][A-Za-z0-9]*$/.test(parentType || '') || (spec.concreteType && !/^[A-Za-z][A-Za-z0-9]*$/.test(concreteType || ''))) {
             throw new CommerceActionError('NESTED_PAGINATION_INCOMPLETE', `No complete reader exists for nested connection ${resourceId}:${childPath}.`);
           }
           const cursors = new Set();
@@ -64,9 +66,13 @@ async function completeNestedConnections(store, resourceId, nodes, graphql) {
             const after = value.pageInfo.endCursor;
             if (!after || cursors.has(after)) throw new CommerceActionError('RESOURCE_PAGINATION_STALLED', `Nested connection ${childPath} repeated or omitted a cursor.`, 502);
             cursors.add(after);
-            const query = `query RevlumaNested_${parentType}_${spec.field}($id: ID!, $first: Int!, $after: String) { node(id: $id) { ... on ${parentType} { ${spec.field}(first: $first, after: $after) { nodes { ${spec.selection} } ${require('./authorizedResourceCatalog').PAGE} } } } }`;
-            const data = await execute(store, query, { id: parent.id, first: 100, after });
-            const next = data?.node?.[spec.field];
+            const connectionSelection = `${spec.field}(first: $first, after: $after) { nodes { ${spec.selection} } ${require('./authorizedResourceCatalog').PAGE} }`;
+            const selection = spec.connectionPath
+              ? `${spec.connectionPath} { ... on ${concreteType} { ${connectionSelection} } }`
+              : connectionSelection;
+            const query = `query RevlumaNested_${parentType}_${spec.field}($id: ID!, $first: Int!, $after: String) { node(id: $id) { ... on ${parentType} { ${selection} } } }`;
+            const data = await execute(store, query, { id: sourceParent.id, first: 100, after });
+            const next = spec.connectionPath ? data?.node?.[spec.connectionPath]?.[spec.field] : data?.node?.[spec.field];
             if (!next || !Array.isArray(next.nodes) || typeof next.pageInfo?.hasNextPage !== 'boolean') {
               throw new CommerceActionError('RESOURCE_RESPONSE_INVALID', `Shopify returned an invalid nested ${childPath} connection.`, 502);
             }
@@ -74,9 +80,9 @@ async function completeNestedConnections(store, resourceId, nodes, graphql) {
             value.pageInfo = next.pageInfo;
           }
         }
-        for (const child of value.nodes) await walk(child, childPath);
+        for (const child of value.nodes) await walk(child, childPath, rootRecord);
       } else if (value && typeof value === 'object' && !Array.isArray(value)) {
-        await walk(value, childPath);
+        await walk(value, childPath, rootRecord);
       }
     }
   }
