@@ -2,6 +2,14 @@
 
 **Date:** 2026-11-06 · **Scope:** repository (`Revluma-Organization/Revluma`), production state (read-only), pasted audit re-verified claim by claim · **Mode:** read-only verification + minimum honest code fixes (this PR).
 
+**Status update (2026-11-06, PR follow-through):** PR #310 merged the F-001/F-002/F-003/F-011 product-sync and
+findings fixes. A follow-through block landed in the same branch as `docs/mvp-execution/implementation/TASK-033`:
+per-domain sync ledger (`store_sync_domain_states`), normalized variant persistence (`product_variants`, migrations
+`20261106133000` / `…133001`), variant-price normalizer fix (scalar-decimal GraphQL money coerced to null),
+admin per-domain coverage endpoint, and read-only dedup/financial reconciliation preview tools.
+**None of this is deployed until Render picks up main; nothing in that block is PRODUCTION_VERIFIED yet.**
+Original findings below preserved verbatim.
+
 This document answers one question: **if a merchant connected their store today, how much of their
 business could Revluma actually see, understand and investigate — and what revenue leaks would it
 still miss?** Every claim from the investigation source below is re-verified here against the

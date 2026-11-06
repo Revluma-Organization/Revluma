@@ -23,6 +23,7 @@ function graphqlStub(handler) {
 
 function prismaStub(store) {
   store.rows = store.rows || [];
+  store.variantRows = store.variantRows || [];
   const prisma = {
     products: {
       upsert: async ({ where, create, update }) => {
@@ -40,6 +41,31 @@ function prismaStub(store) {
         store.rows = store.rows.filter((row) => !(row.store_id === where.store_id && row.external_id === where.external_id));
         return { count: before - store.rows.length };
       },
+    },
+    product_variants: {
+      upsert: async ({ where, create, update }) => {
+        const id = where.store_id_external_id.external_id;
+        const existing = store.variantRows.find((row) => row.external_id === id);
+        if (existing) {
+          Object.assign(existing, update, { external_id: existing.external_id, store_id: existing.store_id });
+          return existing;
+        }
+        const row = { id: `var-${store.variantRows.length + 1}`, ...create };
+        store.variantRows.push(row);
+        return row;
+      },
+      deleteMany: async ({ where } = {}) => {
+        const notIn = where?.external_id?.notIn ?? null;
+        const before = store.variantRows.length;
+        store.variantRows = store.variantRows.filter((row) => {
+          if (row.store_id !== where.store_id) return true;
+          if (where.product_external_id && row.product_external_id !== where.product_external_id) return true;
+          if (notIn) return notIn.includes(row.external_id);
+          return row.external_id !== where.external_id;
+        });
+        return { count: before - store.variantRows.length };
+      },
+      findMany: async () => [...store.variantRows],
     },
   };
   require.cache[DB_PATH] = { id: DB_PATH, filename: DB_PATH, loaded: true, exports: { prisma } };
@@ -215,7 +241,7 @@ test('deleteProduct removes only the targeted row for the store', async () => {
 test('VARIANT_FIELDS uses inventoryItem.measurement.weight (ProductVariant.weight no longer exists)', async () => {
   const source = require('fs').readFileSync(require.resolve('../services/productSync'), 'utf8');
   const fieldsBlock = source.match(/const VARIANT_FIELDS = `([\s\S]*?)`;/)[1];
-  assert.match(fieldsBlock, /inventoryItem\s*{\s*measurement\s*{\s*weight/);
+  assert.match(fieldsBlock, /inventoryItem\s*{[^}]*measurement\s*{\s*weight/);
   // A bare weight field on the variant node is the 2026-10 schema failure.
   assert.doesNotMatch(fieldsBlock, /\n\s*weight\s*{/);
 });
