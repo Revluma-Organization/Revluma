@@ -28,7 +28,7 @@ function toNum(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
 function toTs(v) { const d = v ? new Date(v) : null; return d && !Number.isNaN(d.getTime()) ? d : null; }
 
 const LOCATIONS_QUERY = `query RevlumaLocations($first: Int!, $after: String) {
-  locations(first: $first, after: $after) {
+  locations(first: $first, after: $after, includeInactive: true, includeLegacy: true) {
     nodes {
       id name isActive
       address { address1 city zip countryCode provinceCode }
@@ -366,5 +366,6 @@ module.exports = {
     mapLevelRow,
     INVENTORY_ITEMS_QUERY,
     INVENTORY_LEVELS_PAGE_QUERY,
+    LOCATIONS_QUERY,
   },
 };

@@ -615,4 +615,8 @@ Baseline `cfbb1f5dc10b032688a001f2f014ac7498f4c70d`. Branch `test/mvp-task-032-c
 | REV-FIND-PR321-03 | High | Missing cursors and page ceilings could be treated as successful termination | `fetchAll` returned complete when `endCursor` was absent; `fetchFamily` returned `{complete:false}` to a success writer | Explicit cursor/repetition/shape/ceiling failures; no success or stale sweep after incomplete acquisition | FIXED, production verification pending |
 | REV-FIND-PR321-04 | Medium | Sync counts/pages did not represent actual writes/acquisition | Inventory inserted and updated both equaled discovered; enrichment pages null | Tenant-scoped pre-write identity comparison and outer+nested/batch page accounting | FIXED, production verification pending |
 
-Focused regression evidence: 28/28 inventory/enrichment tests passed locally. Full CI and final deployed execution are mandatory gates; see [implementation evidence](implementation/PR-321-PRODUCTION-COMPLETION.md).
+Focused regression evidence: 36/36 inventory/enrichment/ledger tests passed locally. PR #322 CI passed and implementation build `65c97bf93611` completed a fresh production sync: inventory 26 items/28 levels over 27 pages and fulfillment 1 row over 4 order pages, both idempotent and `ok`. Relationship reconciliation then found two levels at an omitted inactive/legacy location; `locations` now explicitly sets `includeInactive:true, includeLegacy:true`, with final follow-up deployment verification pending. See [implementation evidence](implementation/PR-321-PRODUCTION-COMPLETION.md).
+
+| Finding ID | Severity | Description | Evidence | Resolution | Status |
+|---|---|---|---|---|---|
+| REV-FIND-PR321-05 | Medium | Default Shopify locations query omitted non-active/legacy location identities | Fresh production build: 28 levels valid, 2 referenced one absent location | Added `includeInactive:true, includeLegacy:true` and regression coverage | FIXED, production verification pending |
