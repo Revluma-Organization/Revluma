@@ -65,6 +65,18 @@ const INVENTORY_ITEMS_QUERY = `query RevlumaInventoryItems($first: Int!, $after:
   }
 }`;
 
+const INVENTORY_LEVELS_PAGE_QUERY = `query RevlumaInventoryItemLevels($id: ID!, $first: Int!, $after: String) {
+  node(id: $id) {
+    ... on InventoryItem {
+      id
+      inventoryLevels(first: $first, after: $after) {
+        nodes { location { id } quantities(names: ["available", "on_hand", "committed", "incoming", "reserved", "damaged", "safety_stock", "quality_control"]) { name quantity } updatedAt }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}`;
+
 function accessDenied(error, pattern) {
   return error?.code === 'SHOPIFY_GRAPHQL_ERROR' &&
     Array.isArray(error.shopifyErrors) &&
@@ -94,6 +106,31 @@ async function fetchAll(store, query, rootKey, maxPages) {
   err.code = 'SHOPIFY_INVENTORY_PAGE_CEILING';
   err.partial = nodes.length;
   throw err;
+}
+
+async function fetchAllInventoryLevels(store, inventoryItemGid, firstPage) {
+  const levels = [...(firstPage?.nodes || [])];
+  let pageInfo = firstPage?.pageInfo || {};
+  let pages = 1;
+  while (pageInfo.hasNextPage) {
+    if (!pageInfo.endCursor || pages >= MAX_ITEM_PAGES) {
+      const err = new Error(`inventory_levels_page_ceiling:${externalId(inventoryItemGid)}`);
+      err.code = 'SHOPIFY_INVENTORY_LEVELS_PAGE_CEILING';
+      err.partial = levels.length;
+      throw err;
+    }
+    const data = await shopifyGraphql(store, INVENTORY_LEVELS_PAGE_QUERY, { id: inventoryItemGid, first: PAGE_SIZE, after: pageInfo.endCursor });
+    const connection = data?.node?.inventoryLevels;
+    if (!connection || !Array.isArray(connection.nodes)) {
+      const err = new Error(`inventory_levels_shape_unresolvable:${externalId(inventoryItemGid)}`);
+      err.code = 'SHOPIFY_INVENTORY_LEVELS_SHAPE_UNRESOLVABLE';
+      throw err;
+    }
+    levels.push(...connection.nodes);
+    pageInfo = connection.pageInfo || {};
+    pages += 1;
+  }
+  return levels;
 }
 
 async function syncLocations(store, db = prisma) {
@@ -157,8 +194,8 @@ async function syncInventory(store, db = prisma) {
       updated_at: toTs(node.updatedAt),
       synced_at: new Date(),
     });
-    const levels = node.inventoryLevels?.nodes || [];
-    if (node.inventoryLevels?.pageInfo?.hasNextPage) nestedLevelsIncomplete = true;
+    // Fetch every nested page before certifying this inventory item complete.
+    const levels = await fetchAllInventoryLevels(store, node.id, node.inventoryLevels);
     for (const level of levels) {
       const quantities = {};
       for (const q of (level?.quantities || [])) {
@@ -210,13 +247,6 @@ async function syncInventory(store, db = prisma) {
       deletedLevels = del.count;
     }
   }
-  if (nestedLevelsIncomplete) {
-    const err = new Error('One or more inventory items have additional inventory-level pages; nested cursor pagination is not yet implemented.');
-    err.code = 'SHOPIFY_INVENTORY_LEVELS_PAGINATION_INCOMPLETE';
-    err.partial = { items: itemRows.length, levels: levelRows.length };
-    await recordFailure(store.id, 'inventory', err, { discovered: itemRows.length, paginationComplete: false }, db);
-    return { items: itemRows.length, levels: levelRows.length, deletedItems, deletedLevels, paginationComplete: false };
-  }
   await recordSuccess(store.id, 'inventory', { discovered: itemRows.length, inserted: itemRows.length, updated: itemRows.length, deleted: deletedItems + deletedLevels, paginationComplete: fetched.complete, pagesCompleted: null }, db);
   return { items: itemRows.length, levels: levelRows.length, deletedItems, deletedLevels };
 }
@@ -251,4 +281,4 @@ async function syncInventoryAndLocations(store, db = prisma) {
   return { locations, inventory };
 }
 
-module.exports = { syncInventoryAndLocations, syncLocations, syncInventory, externalId, _internal: { fetchAll } };
+module.exports = { syncInventoryAndLocations, syncLocations, syncInventory, externalId, _internal: { fetchAll, fetchAllInventoryLevels } };
