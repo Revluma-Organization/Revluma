@@ -1,9 +1,11 @@
 # REVLUMA — Production Verification Report
 
-**Status: INTERIM — 2026-11-06 ~10:30Z.** P1 (business-state persistence & scheduler recovery)
-is **PRODUCTION VERIFIED**. P2/P3/P5 are **IMPLEMENTED, NOT PRODUCTION VERIFIED**; P4 is
-**PARTIAL (cross-merchant routing fix implemented on branch, fixture-verified, NOT deployed)**;
-P6 is **NOT CERTIFIED**. No production success claim beyond P1 is made anywhere in this file.
+**Status: INTERIM — 2026-11-06 ~11:10Z.** P1 is **PRODUCTION VERIFIED**. **P4 ambiguity fix
+MERGED (PR #305 → `726bedc1b2a8`) and DEPLOYED VERIFIED (Render `/ready` node_build flip,
+10:56Z; scheduler `failed=0`; Vercel PROMOTED).** P3 gained read-only drift-report tooling; P2
+gained a source-to-DB reconciliation suite (7/7); P5 gained 4 regression pins (10/10). P2/P3/P5
+remain **IMPLEMENTED, NOT PRODUCTION VERIFIED**; P6 remains **NOT CERTIFIED**. No production
+success claim beyond P1 and the P4 fix deployment is made anywhere in this file.
 
 ## P1 — Production verification evidence (2026-11-06)
 
@@ -40,15 +42,21 @@ as a future hardening item (startup claim sweep / wedged-call detection), not a 
 |----|------------|---------|---------------------|
 | V11 | P2 products | All Shopify stores hold 0 product rows; store v1 has `read_products` recorded at OAuth and its syncs complete; catalogue emptiness is INFERENCE, not reconciliation; fixture tests 8/8 | Authorized live Shopify read/API or log access (none in this environment); merchant confirmation of empty store |
 | V12 | P3 webhooks | 82 registration rows mapped; 12 required topics; PRODUCTS_* never registered for any store; 27 duplicate groups split across backend URL migration; deliveries: 197 processed, latest 2026-10-30; commerceWebhookService HMAC/ack/idempotency verified by tests 3/3 + callback assertions | Founder authorization for remote subscription creation/cleanup; delivery health otherwise unverifiable |
-| V13 | P4 tenancy | Cross-merchant webhook routing ambiguity found (`findStore` findFirst) and FIXED on branch (`WEBHOOK_STORE_AMBIGUOUS` fail-closed); 4/4 new tests; zero offline regressions (43 pass vs 42 baseline; 9 prisma-generate-blocked suites identical both sides) | Fix NOT deployed; store transfer/revoke + global uniqueness + CBC→GCM re-encryption approval-gated |
-| V14 | P5 privacy | Durable-first idempotent workflow reviewed; 6/6 workflow tests (incl. forced-failure no-ack leg); signature verification precedes processing | Live end-to-end would write/delete merchant data (not authorized); Shopify protected-customer-data approval state unknown |
+| V13 | P4 tenancy | Cross-merchant webhook routing ambiguity found (`findStore` findFirst) and FIXED (`WEBHOOK_STORE_AMBIGUOUS` fail-closed); PR #305 MERGED 10:25Z → `726bedc1b2a8`; **DEPLOYED + VERIFIED 10:56Z** (`node_build=726bedc1b2a8`, scheduler tick 10:56:33Z failed=0/succeeded=1, `python_ready=true`); Vercel PROMOTED (`dpl_4oMgo4k6…`); resolution suite 7/7 | Store transfer/revoke + global uniqueness + CBC→GCM approval-gated; Woo scheme-mismatch fix (this branch) deploy-pending |
+| V14 | P5 privacy | Durable-first idempotent workflow reviewed; **10/10 workflow tests** (6 existing + 4 new regression pins: deterministic request keys, artifact v1 schema with external identifiers only + internal-ID absence pinned, deterministic pseudonymisation + PII strip, financial-order retention) | Live end-to-end would write/delete merchant data (not authorized); Shopify protected-customer-data approval state unknown |
 | V15 | P6 Rev | v1 live data: 5 orders (USD 3,446.85), 21 customers; `rev-metrics-v1` registry fails closed; 7-day evidence carries metric definitions | 11-scenario conversational acceptance with real tool-invocation counts requires an authenticated session (user-only) |
+| V16 | P4 deploy | **PR #305 deployed on Render; `/ready` returns `node_build=726bedc1b2a8` (probe ~10:56Z); scheduler completed tick 10:56:33→10:56:37Z `failed=0, succeeded=1`; `redis_ready=true`; `python_ready=true`; Vercel frontend PROMOTED for same commit (`dpl_4oMgo4k6ma1RzK9EoivguHNGS243`, READY ~10:27Z)** | Direct behavioural probe of the ambiguous-delivery path needs a live webhook (write) — not authorized |
+| V17 | P2 reconciliation | `shopifyProductSync.reconciliation.test.js` **7/7**: 120-product/3-page idempotent persistence with exact decimals; status mapping (archived≠purchasable); 150-variant nested expansion before persistence; malformed-node loud failure with pages-persisted semantics; empty source = zero writes; source-absent-row gap pinned (approval-gated) | Live source-to-DB read impossible from this environment |
+| V18 | P3 drift tooling | `scripts/shopifyWebhookDriftReport.js` (read-only; per-store remote reconciliation: missing / unexpected / duplicates-with-counts / legacy URLs; exit 1 on drift, 2 on access failure; mutates NOTHING; never prints tokens) + pure `diffSubscriptions` (5/5 tests) + `shopifyWebhookTopics.js` extraction (12 required topics, Prisma-free) | Running it needs founder/operator invocation with Render env access; it cannot fix anything itself |
+| V19 | P4 Woo fix | `commerceWebhookService.findStore` now matches bare and scheme-prefixed domains both directions (Woo `shop_domain=` here `https://revluma.local` vs controller-stripped headers); ambiguity (>1 tenant) still fails closed; resolution suite 7/7; privacy workflow 6/6 after stub alignment | Deploy required; verified only after Render node_build flips to the PR #306 merge |
+| V20 | Suite parity | Offline backend suites: **46 pass / 9 prisma-generate-blocked** (unchanged pre-existing set) vs 43/9 prior; zero regressions; new suites: reconciliation 7/7, drift 5/5, privacy pins 4/4 | Local sandbox cannot run prisma generate (binaries.prisma.sh unreachable) |
+| V21 | P6 accuracy cross-check | Current `business_states` row org `1dc6aa19…` (`ff83f1e6-b131-40f8-9668-288172ebeab5`, generated 10:50:35Z, complete) shows `revenue_today=0.00`/`revenue_yesterday=0.00` — CORRECT (latest v1 order 2026-10-30); telemetry keys present (`baseline_event_rate_5m_30d`, `current_event_rate_5m`, `warnings`, `root_causes`, `root_cause_verification`, `observed_drivers`, `ml_signals.inventory_signals`, `ml_signals.customer`) | Confirms truthfulness of output; does NOT certify conversational accuracy |
 
 ## Not yet verified (explicitly)
 
 - P2 products source-to-DB reconciliation. See MASTER-EXECUTION-REGISTER.md → P2.
 - P3 remote subscription reconciliation (products topics; duplicates); delivery reliability in production.
-- P4 deployment of the ambiguity fix; two-merchant production exercise; global domain uniqueness.
+- P4 deployment of the Woo scheme fix (PR #306); two-merchant production exercise; global domain uniqueness.
 - P5 live compliance workflow; P6 live conversational acceptance transcripts A–E and the
   11-scenario set with tool-invocation counts.
 - Python deploy metadata: Render exposes no deploy API through this environment's tooling; the

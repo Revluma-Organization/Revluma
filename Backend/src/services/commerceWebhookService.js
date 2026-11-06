@@ -36,10 +36,16 @@ function verifyWooCommerceSignature(rawBody, signature) {
 async function findStore(provider, domain) {
   if (!domain) return null;
   const normalized = String(domain).trim().toLowerCase();
+  // WooCommerce store rows predate normalization and may keep the scheme
+  // prefix, while provider headers may arrive scheme-stripped depending on the
+  // caller. Match bare and https-prefixed candidate forms both directions;
+  // the ambiguity check below still fails closed when more than one tenant wins.
+  const stripped = normalized.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  const candidates = [...new Set([normalized, stripped, `https://${stripped}`])];
   const matches = await prisma.stores.findMany({
     where: {
       platform: provider,
-      shop_domain: normalized,
+      shop_domain: { in: candidates },
       status: { not: 'deleted' },
     },
   });
