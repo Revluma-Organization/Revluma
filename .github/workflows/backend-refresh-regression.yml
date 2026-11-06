@@ -22,4 +22,11 @@ jobs:
           cache-dependency-path: Backend/package-lock.json
       - run: npm ci
       - run: node --check src/controller/authController.js
-      - run: npm test
+      - run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/backend-refresh-tests.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            { echo '### Backend refresh test failure tail'; echo '```text'; tail -n 180 /tmp/backend-refresh-tests.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"

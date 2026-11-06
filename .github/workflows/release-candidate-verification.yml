@@ -109,7 +109,14 @@ jobs:
 
       - name: Backend test suite (Prisma-backed)
         working-directory: Backend
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/backend-prisma-tests.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            { echo '### Prisma-backed test failure tail'; echo '```text'; tail -n 180 /tmp/backend-prisma-tests.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
 
       - name: Financial integrity scenarios against real PostgreSQL
         working-directory: Backend
