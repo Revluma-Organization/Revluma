@@ -25,6 +25,13 @@ except ImportError:
 # Allow mlruns file store as fallback (MLflow 3.x requirement)
 os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
 
+# Bound every MLflow REST call. The upstream default is 120s per request; a
+# slow or unreachable tracking server stacked across registry lookups and
+# model resolution would stall service startup past the deploy platform's
+# port-scan window. Loading still falls back to None on any failure — this
+# only guarantees a bound on waiting.
+os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "10")
+
 # Priority: MLFLOW_TRACKING_URI → MLFLOW_REMOTE_URL → local mlruns
 _LOCAL_MLRUNS = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../../../mlruns")
