@@ -23,6 +23,11 @@
 
 Bulk Operations (needs per-merchant approval path design); metafields (data-contract stability); markets/content/analytics/discounts scopes (phase-gated to their PRs); refunds/fulfillments GraphQL *webhook-side* enrichment; reconciliation runner (`scripts/` source-vs-DB parity) — schema only, execution next block; delete-detection beyond stale-sweep; multi-merchant certification (needs a second merchant store — AUTHORIZATION required); PRODUCTS_* remote webhook topics; anything requiring Partner-Dashboard action.
 
+## Incidents
+
+- 2026-11-06, merge #316 (docs/registry annotation): annotation pass dropped the required `name` attribute from `shop.shipping_configuration`; `universalCoverage.test.js` registry-consistency check failed in CI. Fixed in #316 (7f13283) — caught by the exact test designed for registry integrity; no production impact (undeployed code).
+- During this block GitHub Actions log downloads and Render `onrender.com` became unreachable from this sandbox (SSL_ERROR_SYSCALL) — CI failure triage was done via the Jobs API step names; Render reachability must be re-confirmed by a later probe.
+
 ## Honesty contract for the "universal" mandate
 
 - 100% of *applicable, supported, authorized, technically accessible* = the target. NOT 100% of Shopify.
