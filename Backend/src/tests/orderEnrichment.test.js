@@ -21,10 +21,13 @@ function loadEnrichment(graphqlImpl, prisma) {
 }
 
 function prismaStub() {
-  const state = { orders: [], transactions: [], refunds: [], fulfillments: [], domainRows: new Map() };
+  const state = { orders: [], transactions: [], refunds: [], fulfillments: [], domainRows: new Map(), parentMissing: false, failFulfillmentWrite: false };
   return {
     state,
-    orders: { updateMany: async ({ where, data }) => { state.orders.push({ where, data }); return { count: 1 }; } },
+    orders: {
+      updateMany: async ({ where, data }) => { state.orders.push({ where, data }); return { count: 1 }; },
+      findFirst: async ({ where }) => state.parentMissing ? null : ({ id: `order-${where.external_order_id}`, store_id: where.store_id }),
+    },
     order_transactions: {
       upsert: async ({ where, create }) => {
         const existing = state.transactions.find(r => r.store_id === where.store_id_external_id.store_id && r.external_id === where.store_id_external_id.external_id);
@@ -42,8 +45,20 @@ function prismaStub() {
       deleteMany: async () => ({ count: 0 }),
     },
     order_fulfillments: {
-      upsert: async ({ create }) => { state.fulfillments.push(create); },
-      deleteMany: async () => ({ count: 0 }),
+      upsert: async ({ where, create, update }) => {
+        if (state.failFulfillmentWrite) throw Object.assign(new Error('fulfillment write failed'), { code: 'P2037' });
+        const key = row => `${row.store_id}|${row.external_id}`;
+        const existing = state.fulfillments.find(row => key(row) === key(create));
+        if (existing) Object.assign(existing, update);
+        else state.fulfillments.push(create);
+      },
+      findMany: async ({ where }) => state.fulfillments.filter(row => row.store_id === where.store_id && (!where.external_id?.in || where.external_id.in.includes(row.external_id))),
+      deleteMany: async ({ where }) => {
+        const keep = where.external_id?.notIn || [];
+        const before = state.fulfillments.length;
+        state.fulfillments = state.fulfillments.filter(row => row.store_id !== where.store_id || row.external_order_id !== where.external_order_id || keep.includes(row.external_id));
+        return { count: before - state.fulfillments.length };
+      },
     },
     store_sync_domain_states: {
       upsert: async ({ where, create, update }) => {
@@ -149,4 +164,172 @@ test('enrichment failure in one domain never fabricates rows in another', async 
   assert.equal(summary.refunds, 1, 'refund domain unaffected by transaction failure');
   assert.equal(prisma.state.refunds[0].refund_amount, '12.50');
   assert.deepEqual(prisma.state.refunds[0].transactions, [{ id: '8', kind: 'REFUND', status: 'SUCCESS', amount: '12.50', currency: 'USD', processed_at: '2026-10-31T09:00:00Z' }]);
+});
+
+function fulfillment(id, status = 'SUCCESS') {
+  return {
+    id: `gid://shopify/Fulfillment/${id}`, status,
+    createdAt: '2026-11-01T10:00:00Z', updatedAt: '2026-11-02T10:00:00Z',
+    location: { name: 'Shop location' },
+    trackingInfo: [{ number: 'TRACK-1', url: 'https://tracking.example/1', company: 'Example Carrier' }],
+  };
+}
+
+function standardGraphql(fulfillmentHandler) {
+  return async (store, query, variables) => {
+    if (query.includes('RevlumaOrderOverview')) return { node: { id: variables.id } };
+    if (query.includes('RevlumaOrderTransactions')) return { node: { id: variables.id, transactions: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } };
+    if (query.includes('RevlumaOrderRefunds')) return { node: { id: variables.id, refunds: [] } };
+    if (query.includes('RevlumaOrderFulfillments')) return fulfillmentHandler(store, query, variables);
+    throw new Error('unexpected query');
+  };
+}
+
+test('fulfillment mapping persists tracking and supported fields without unsupported selections', async () => {
+  const prisma = prismaStub();
+  let fulfillmentQuery = '';
+  const graphql = standardGraphql(async (_store, query) => {
+    fulfillmentQuery = query;
+    return { node: { id: GID, fulfillments: { nodes: [fulfillment(88)], pageInfo: { hasNextPage: false, endCursor: null } } } };
+  });
+  const { enrichOrder } = loadEnrichment(graphql, prisma);
+  const summary = await enrichOrder(STORE, GID, prisma, {});
+  assert.equal(summary.fulfillments, 1);
+  assert.equal(prisma.state.fulfillments[0].tracking_company, 'Example Carrier');
+  assert.deepEqual(prisma.state.fulfillments[0].line_items, [], 'fulfillment-order allocations are not fabricated');
+  assert.doesNotMatch(fulfillmentQuery, /lineItems|trackingCompany/);
+  assert.match(fulfillmentQuery, /trackingInfo \{ number url company \}/);
+});
+
+test('fulfillment pagination follows every page and repeated sync updates without duplicates', async () => {
+  const prisma = prismaStub();
+  const graphql = standardGraphql(async (_store, _query, variables) => {
+    if (!variables.after) return { node: { id: GID, fulfillments: { nodes: [fulfillment(88)], pageInfo: { hasNextPage: true, endCursor: 'next-fulfillment' } } } };
+    assert.equal(variables.after, 'next-fulfillment');
+    return { node: { id: GID, fulfillments: { nodes: [{ ...fulfillment(89), status: 'CANCELLED' }], pageInfo: { hasNextPage: false, endCursor: null } } } };
+  });
+  const { enrichOrder } = loadEnrichment(graphql, prisma);
+  await enrichOrder(STORE, GID, prisma, {});
+  await enrichOrder(STORE, GID, prisma, {});
+  assert.equal(prisma.state.fulfillments.length, 2);
+  const ledger = prisma.state.domainRows.get(`${STORE.id}|fulfillments`);
+  assert.equal(ledger.records_discovered, 2);
+  assert.equal(ledger.records_inserted, 0);
+  assert.equal(ledger.records_updated, 2);
+  assert.equal(ledger.pages_completed, 2);
+  assert.equal(ledger.pagination_complete, true);
+});
+
+test('empty fulfillment source is a successful zero-record acquisition', async () => {
+  const prisma = prismaStub();
+  const graphql = standardGraphql(async () => ({ node: { id: GID, fulfillments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } }));
+  const { enrichOrder } = loadEnrichment(graphql, prisma);
+  const summary = await enrichOrder(STORE, GID, prisma, {});
+  assert.equal(summary.fulfillments, 0);
+  const ledger = prisma.state.domainRows.get(`${STORE.id}|fulfillments`);
+  assert.equal(ledger.status, 'ok');
+  assert.equal(ledger.records_discovered, 0);
+  assert.equal(ledger.pages_completed, 1);
+});
+
+test('missing tenant-scoped parent order fails fulfillment persistence', async () => {
+  const prisma = prismaStub();
+  prisma.state.parentMissing = true;
+  let called = false;
+  const graphql = standardGraphql(async () => { called = true; return { node: { fulfillments: { nodes: [fulfillment(1)] } } }; });
+  const { enrichOrder } = loadEnrichment(graphql, prisma);
+  const summary = await enrichOrder(STORE, GID, prisma, {});
+  assert.equal(summary.fulfillments, 'failed');
+  assert.equal(called, false, 'acquisition does not proceed when relationship cannot be persisted safely');
+  assert.equal(prisma.state.fulfillments.length, 0);
+});
+
+test('Shopify and database fulfillment failures propagate to a failed ledger', async () => {
+  const apiPrisma = prismaStub();
+  const apiError = Object.assign(new Error('Shopify unavailable'), { code: 'SHOPIFY_GRAPHQL_HTTP_ERROR' });
+  const { enrichOrder: apiEnrich } = loadEnrichment(standardGraphql(async () => { throw apiError; }), apiPrisma);
+  const apiSummary = await apiEnrich(STORE, GID, apiPrisma, {});
+  assert.equal(apiSummary.fulfillments, 'failed');
+  assert.equal(apiPrisma.state.domainRows.get(`${STORE.id}|fulfillments`).status, 'failed');
+
+  const dbPrisma = prismaStub();
+  dbPrisma.state.failFulfillmentWrite = true;
+  const { enrichOrder: dbEnrich } = loadEnrichment(standardGraphql(async () => ({ node: { fulfillments: { nodes: [fulfillment(1)] } } })), dbPrisma);
+  const dbSummary = await dbEnrich(STORE, GID, dbPrisma, {});
+  assert.equal(dbSummary.fulfillments, 'failed');
+  assert.equal(dbPrisma.state.domainRows.get(`${STORE.id}|fulfillments`).error_code, 'P2037');
+});
+
+test('missing or repeated fulfillment cursors fail without stale deletion', async () => {
+  for (const mode of ['missing', 'repeated']) {
+    const prisma = prismaStub();
+    prisma.state.fulfillments.push({ store_id: STORE.id, external_order_id: '7001', external_id: 'keep' });
+    const graphql = standardGraphql(async (_store, _query, variables) => ({
+      node: { fulfillments: { nodes: [], pageInfo: {
+        hasNextPage: true,
+        endCursor: mode === 'missing' ? null : (variables.after || 'same-cursor'),
+      } } },
+    }));
+    const { enrichOrder } = loadEnrichment(graphql, prisma);
+    const summary = await enrichOrder(STORE, GID, prisma, {});
+    assert.equal(summary.fulfillments, 'failed');
+    assert.equal(prisma.state.fulfillments[0].external_id, 'keep');
+    assert.equal(prisma.state.domainRows.get(`${STORE.id}|fulfillments`).pagination_complete, false);
+  }
+});
+
+test('fulfillment pagination ceiling cannot be reported as success', async () => {
+  const prisma = prismaStub();
+  const graphql = standardGraphql(async (_store, _query, variables) => ({
+    node: { fulfillments: { nodes: [], pageInfo: { hasNextPage: true, endCursor: `cursor-${variables.after || 0}` } } },
+  }));
+  const { enrichOrder } = loadEnrichment(graphql, prisma);
+  const summary = await enrichOrder(STORE, GID, prisma, {});
+  assert.equal(summary.fulfillments, 'failed');
+  const ledger = prisma.state.domainRows.get(`${STORE.id}|fulfillments`);
+  assert.equal(ledger.status, 'failed');
+  assert.equal(ledger.pagination_complete, false);
+});
+
+test('batch ledger aggregates all orders instead of overwriting earlier fulfillments', async () => {
+  const prisma = prismaStub();
+  const graphql = standardGraphql(async (_store, _query, variables) => ({
+    node: { fulfillments: {
+      nodes: variables.id === GID ? [fulfillment(88)] : [],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    } },
+  }));
+  const { enrichOrders } = loadEnrichment(graphql, prisma);
+  await enrichOrders(STORE, [{ id: GID }, { id: 'gid://shopify/Order/7002' }], prisma);
+  const ledger = prisma.state.domainRows.get(`${STORE.id}|fulfillments`);
+  assert.equal(ledger.status, 'ok');
+  assert.equal(ledger.records_discovered, 1);
+  assert.equal(ledger.records_inserted, 1);
+  assert.equal(ledger.pages_completed, 2);
+  assert.equal(prisma.state.fulfillments.length, 1);
+});
+
+test('batch partial acquisition failure is failed, not a successful zero/partial run', async () => {
+  const prisma = prismaStub();
+  const graphql = standardGraphql(async (_store, _query, variables) => {
+    if (variables.id === GID) return { node: { fulfillments: { nodes: [fulfillment(88)], pageInfo: { hasNextPage: false, endCursor: null } } } };
+    throw Object.assign(new Error('source failed'), { code: 'SHOPIFY_GRAPHQL_HTTP_ERROR' });
+  });
+  const { enrichOrders } = loadEnrichment(graphql, prisma);
+  await enrichOrders(STORE, [{ id: GID }, { id: 'gid://shopify/Order/7002' }], prisma);
+  const ledger = prisma.state.domainRows.get(`${STORE.id}|fulfillments`);
+  assert.equal(ledger.status, 'failed');
+  assert.equal(ledger.pagination_complete, false);
+  assert.equal(ledger.records_discovered, 1);
+});
+
+test('fulfillment rows with the same external ID remain isolated by store', async () => {
+  const prisma = prismaStub();
+  const other = { id: '22222222-2222-2222-2222-222222222222' };
+  const graphql = standardGraphql(async () => ({ node: { fulfillments: { nodes: [fulfillment(88)] } } }));
+  const { enrichOrder } = loadEnrichment(graphql, prisma);
+  await enrichOrder(STORE, GID, prisma, {});
+  await enrichOrder(other, GID, prisma, {});
+  assert.equal(prisma.state.fulfillments.length, 2);
+  assert.deepEqual(new Set(prisma.state.fulfillments.map(row => row.store_id)), new Set([STORE.id, other.id]));
 });

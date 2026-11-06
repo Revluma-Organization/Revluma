@@ -605,3 +605,14 @@ TASK031 follow-up CI: commit 47ec2608d16d4501621b577a270588fa5b3e1489, run 41028
 
 ## TASK 032 — Checkout-first delivery validation (2026-10-30)
 Baseline `cfbb1f5dc10b032688a001f2f014ac7498f4c70d`. Branch `test/mvp-task-032-checkout-first-delivery`. Report `validation/TASK-032.md`. New isolated PostgreSQL test `Backend/src/tests/task032CheckoutFirst.integration.js`, CI `.github/workflows/task032-checkout-first.yml`. Twelve grouped assertions authored; 60-case acceptance matrix recorded with NOT RUN until actual execution. No production code changes. Status PARTIAL — test execution and comprehensive coverage pending. Task033 not started.
+
+## PR #321 production completion — 2026-11-06
+
+| Finding ID | Severity | Description | Evidence | Resolution | Status |
+|---|---|---|---|---|---|
+| REV-FIND-PR321-01 | Critical | Inventory acquisition wrote rows then failed before ledger success/reconciliation | Deployed `e44d475ed684`; production ledger `ReferenceError: nestedLevelsIncomplete is not defined`; 26 items/28 levels present | Removed undefined guard; all source reads precede writes; complete-only tenant-scoped stale sweeps | FIXED, production verification pending |
+| REV-FIND-PR321-02 | High | Enrichment ledger represented only the final order | One fulfillment persisted while ledger discovered/inserted zero | Batch aggregation with failed/degraded/successful-empty distinction | FIXED, production verification pending |
+| REV-FIND-PR321-03 | High | Missing cursors and page ceilings could be treated as successful termination | `fetchAll` returned complete when `endCursor` was absent; `fetchFamily` returned `{complete:false}` to a success writer | Explicit cursor/repetition/shape/ceiling failures; no success or stale sweep after incomplete acquisition | FIXED, production verification pending |
+| REV-FIND-PR321-04 | Medium | Sync counts/pages did not represent actual writes/acquisition | Inventory inserted and updated both equaled discovered; enrichment pages null | Tenant-scoped pre-write identity comparison and outer+nested/batch page accounting | FIXED, production verification pending |
+
+Focused regression evidence: 28/28 inventory/enrichment tests passed locally. Full CI and final deployed execution are mandatory gates; see [implementation evidence](implementation/PR-321-PRODUCTION-COMPLETION.md).
