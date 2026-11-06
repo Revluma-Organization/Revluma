@@ -16,11 +16,11 @@
  *
  * Exit codes: 0 = no drift; 1 = drift detected; 2 = configuration/access failure.
  */
-const { prisma } = require('../configs/database');
-const { shopifyGraphql } = require('../services/shopifyGraphql');
-const { diffSubscriptions } = require('../services/shopifyWebhookDrift');
+const { diffSubscriptions } = require('../src/services/shopifyWebhookDrift');
 
 async function main() {
+  const { prisma } = require('../src/configs/database');
+  const { shopifyGraphql } = require('../src/services/shopifyGraphql');
   const argIndex = process.argv.indexOf('--store');
   const storeRef = argIndex > -1 ? String(process.argv[argIndex + 1] || '').trim() : '';
   const expectedBase = String(process.env.BACKEND_URL || '').replace(/\/+$/, '');

@@ -1,70 +1,82 @@
 # REVLUMA — Production Verification Report
 
-**Status: INTERIM — 2026-11-06 ~11:35Z.** P1 is **PRODUCTION VERIFIED**. **P4 ambiguity fix
-MERGED (PR #305 → `726bedc1b2a8`) and DEPLOYED VERIFIED (Render `/ready` node_build flip,
-10:56Z; scheduler `failed=0`; Vercel PROMOTED).** P3 gained read-only drift-report tooling; P2
-gained a source-to-DB reconciliation suite (7/7); P5 gained 4 regression pins (10/10). P2/P3/P5
-remain **IMPLEMENTED, NOT PRODUCTION VERIFIED**; P6 remains **NOT CERTIFIED**. No production
-success claim beyond P1 and the P4 fix deployment is made anywhere in this file.
+**Status: END-STATE for the recovery operation — 2026-11-06 ~13:45Z.** P1 is **PRODUCTION VERIFIED**.
+P4's webhook-ambiguity fix is **PRODUCTION VERIFIED** (deployed 10:56Z). PR #306 (P4 Woo fix) is
+MERGED but **Render-deploy pending an operator action**. This PR (branch `arena/f9c10395-revluma`)
+ships the P2–P6 hardening batch (de-transacted redact, token encryption v2, webhook delivery
+recovery, reconciliation + diagnostic tooling, fixture-level live-acceptance suite, documentation).
+**Nothing in this PR is PRODUCTION VERIFIED until the post-merge `/ready` flip and scheduler-tick
+re-check are recorded (see MASTER-COMPLETION-CHECKLIST.md → X.7).** No production success claim
+beyond the evidence listed here is made anywhere in this tree.
 
-## P1 — Production verification evidence (2026-11-06)
+## P1 — Production verification (historical, unchanged)
 
-Fix: commit `5699c55` (single-statement autocommit persistence), PR **#303** MERGED
-2026-11-06T09:16:49Z → merge commit `eaced144b33c8d612f07820ff40874122a42f5a8`.
-CI on the PR: Dashboard seed+build **pass**, Prisma bootstrap financial+security regressions
-**pass**, python-regressions **pass**, Vercel **pass** (all five checks green before merge).
+Fix: commit `5699c55` (single-statement autocommit persistence), PR **#303** MERGED 2026-11-06T
+09:16:49Z → merge commit `eaced144b33c8d612f07820ff40874122a42f5a8`. CI on the PR: Dashboard
+seed+build **pass**, Prisma bootstrap financial+security regressions **pass**, python-regressions
+**pass**, Vercel **pass**.
 
 | # | Evidence | Source |
 |---|----------|--------|
 | V1 | `/ready` → `node_build=eaced144b33c`; `python_ready=true` | direct fetch ~09:35Z |
-| V2 | Vercel production deployment `dpl_2vptZNY2SBSWPi1qVV768TiGh13k` @ `eaced14` READY/PROMOTED (dashboard scope) | Vercel API |
-| V3 | First healthy post-deploy pass 09:31:21: build for org `1dc6aa19…` → `outcome=rebuilt`, `computation_status=complete`, duration 20,324 ms | Supabase `automation_job_state` |
-| V4 | New snapshot `1606d755-439c-4328-bff6-8cbf1eea5ec4` `is_current=true`, `computation_status=complete`, generated 09:31:21, `valid_until` 09:46:21 | Supabase SQL |
-| V5 | All five organizations hold fresh `is_current` snapshots (09:31:21, 09:32:22, 09:33:21, 09:34:21, 09:35:21) | Supabase SQL |
-| V6 | Second rebuild cycle: 1dc6aa19 again at 09:47:21 (`9afffec9…`); 91d88743 again at 09:48:21 (`be01b035…`) | Supabase SQL |
-| V7 | `alert_queue`: `revenue/medium` row referencing `business_state_id=1606d755…`, `status=delivered`, dedupe_key `<state_id>:revenue` | Supabase SQL |
-| V8 | Node heartbeat row `business-state`: 09:33:19 → 09:33:37, `status=completed`, `failed=0`, `succeeded=1`, `last_error=""` | Supabase SQL |
-| V9 | Repeat cycles `failed=0`; `/ready` reports `failed=0` after the deploy | `/ready` + SQL |
-| V10 | Deploy-time interruption at 09:21:17 (process replaced mid-pass); DB claim `running` persisted; TTL (600s) expired 09:31:17; scheduler self-healed with no intervention | `/ready` age growth + recovery at 09:31/09:33 passes |
+| V2 | Vercel production deployment `dpl_2vptZNY2SBSWPi1qVV768TiGh13k` @ `eaced14` READY/PROMOTED | Vercel API |
+| V3 | First healthy post-deploy pass 09:31:21: org `1dc6aa19…` → `outcome=rebuilt`, `computation_status=complete`, 20,324 ms | Supabase `automation_job_state` |
+| V4 | Snapshot `1606d755-439c-4328-bff6-8cbf1eea5ec4` current, generated 09:31:21, 200s TTL | Supabase SQL |
+| V5 | All five organizations hold fresh `is_current` snapshots (09:31–09:35Z) | Supabase SQL |
+| V6 | Second rebuild cycle (1dc6aa19 09:47:21; 91d88743 09:48:21) | Supabase SQL |
+| V7 | `alert_queue` row referencing `business_state_id=1606d755…`, `status=delivered` | Supabase SQL |
+| V8 | Node heartbeat `business-state` 09:33:37 completed, `succeeded=1, failed=0` | Supabase SQL |
+| V9 | Repeat cycles `failed=0` post-deploy | `/ready` + SQL |
+| V10 | Deploy-time interruption 09:21:17; claim TTL 600s expired 09:31:17; self-healed, no intervention | `/ready` + SQL |
 
 **Pre-fix baseline retained for audit:** snapshots frozen at 2026-11-05 23:59:53; 0 alerts/24h;
-scheduler `INTELLIGENCE_UNAVAILABLE` on every tick (evidence 2026-11-06 08:33–09:21Z).
+scheduler `INTELLIGENCE_UNAVAILABLE` every tick.
 
-**Node `/ready` phantom-"running" observation (pre-existing, not introduced by #303):** during the
-09:21:17 deploy flip, `/ready` reported `business_state.status=running` with growing `age_seconds`
-for ~10 minutes although the build behind it had completed; recovery happened via DB claim TTL
-(600s), not via code. If this class of stall recurs it will persist until TTL expiry; raising it
-as a future hardening item (startup claim sweep / wedged-call detection), not a P1 defect.
+## Post-P1 deploy record
 
-## P2–P6 evidence summary (2026-11-06, all read-only against production)
+| Ref | Content | Deploy state |
+|---|---------|--------------|
+| PR #304 → `336bc8a4` | P1 production verification docs | MERGED |
+| PR #305 → `726bedc1b2a8` | P4 cross-merchant webhook-routing ambiguity fix (`WEBHOOK_STORE_AMBIGUOUS`) | MERGED ~10:25Z; **DEPLOYED VERIFIED ~10:56Z** (`/ready` flip, tick 10:56:33Z `failed=0, succeeded=1`, `python_ready=true`); Vercel PROMOTED `dpl_4oMgo4k6ma1RzK9EoivguHNGS243` |
+| PR #306 → `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4` | P4 WooCommerce scheme-mismatch findStore fix | MERGED ~11:15Z (all CI green); Vercel PROMOTED `dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`; **Render backend NOT deployed as of ~11:35Z probe** — operator action pending |
+| PR #307 → `414210b3be74` | docs-only record of #306 merge state | MERGED 11:06Z (this branch base) |
 
-| ID | Workstream | Outcome | Blocking dependency |
-|----|------------|---------|---------------------|
-| V11 | P2 products | All Shopify stores hold 0 product rows; store v1 has `read_products` recorded at OAuth and its syncs complete; catalogue emptiness is INFERENCE, not reconciliation; fixture tests 8/8 | Authorized live Shopify read/API or log access (none in this environment); merchant confirmation of empty store |
-| V12 | P3 webhooks | 82 registration rows mapped; 12 required topics; PRODUCTS_* never registered for any store; 27 duplicate groups split across backend URL migration; deliveries: 197 processed, latest 2026-10-30; commerceWebhookService HMAC/ack/idempotency verified by tests 3/3 + callback assertions | Founder authorization for remote subscription creation/cleanup; delivery health otherwise unverifiable |
-| V13 | P4 tenancy | Cross-merchant webhook routing ambiguity found (`findStore` findFirst) and FIXED (`WEBHOOK_STORE_AMBIGUOUS` fail-closed); PR #305 MERGED 10:25Z → `726bedc1b2a8`; **DEPLOYED + VERIFIED 10:56Z** (`node_build=726bedc1b2a8`, scheduler tick 10:56:33Z failed=0/succeeded=1, `python_ready=true`); Vercel PROMOTED (`dpl_4oMgo4k6…`); resolution suite 7/7 | Store transfer/revoke + global uniqueness + CBC→GCM approval-gated; Woo scheme-mismatch fix (this branch) deploy-pending |
-| V14 | P5 privacy | Durable-first idempotent workflow reviewed; **10/10 workflow tests** (6 existing + 4 new regression pins: deterministic request keys, artifact v1 schema with external identifiers only + internal-ID absence pinned, deterministic pseudonymisation + PII strip, financial-order retention) | Live end-to-end would write/delete merchant data (not authorized); Shopify protected-customer-data approval state unknown |
-| V15 | P6 Rev | v1 live data: 5 orders (USD 3,446.85), 21 customers; `rev-metrics-v1` registry fails closed; 7-day evidence carries metric definitions | 11-scenario conversational acceptance with real tool-invocation counts requires an authenticated session (user-only) |
-| V16 | P4 deploy | **PR #305 deployed on Render; `/ready` returns `node_build=726bedc1b2a8` (probe ~10:56Z); scheduler completed tick 10:56:33→10:56:37Z `failed=0, succeeded=1`; `redis_ready=true`; `python_ready=true`; Vercel frontend PROMOTED for same commit (`dpl_4oMgo4k6ma1RzK9EoivguHNGS243`, READY ~10:27Z)** | Direct behavioural probe of the ambiguous-delivery path needs a live webhook (write) — not authorized |
-| V17 | P2 reconciliation | `shopifyProductSync.reconciliation.test.js` **7/7**: 120-product/3-page idempotent persistence with exact decimals; status mapping (archived≠purchasable); 150-variant nested expansion before persistence; malformed-node loud failure with pages-persisted semantics; empty source = zero writes; source-absent-row gap pinned (approval-gated) | Live source-to-DB read impossible from this environment |
-| V18 | P3 drift tooling | `scripts/shopifyWebhookDriftReport.js` (read-only; per-store remote reconciliation: missing / unexpected / duplicates-with-counts / legacy URLs; exit 1 on drift, 2 on access failure; mutates NOTHING; never prints tokens) + pure `diffSubscriptions` (5/5 tests) + `shopifyWebhookTopics.js` extraction (12 required topics, Prisma-free) | Running it needs founder/operator invocation with Render env access; it cannot fix anything itself |
-| V19 | P4 Woo fix | `commerceWebhookService.findStore` now matches bare and scheme-prefixed domains both directions (Woo `shop_domain=` here `https://revluma.local` vs controller-stripped headers); ambiguity (>1 tenant) still fails closed; resolution suite 7/7; privacy workflow 6/6 after stub alignment; **MERGED as PR #306 → `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4` (~11:15Z, all checks green); Vercel production PROMOTED (`dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`, READY ~11:22Z); Backend NOT yet deployed — Render `/ready` still `node_build=726bedc1b2a8` at ~11:35Z probe; manual Render deploy required** | Operator Render deploy pending; verified only after node_build flips to `e8adae9…` |
-| V20 | Suite parity | Offline backend suites: **46 pass / 9 prisma-generate-blocked** (unchanged pre-existing set) vs 43/9 prior; zero regressions; new suites: reconciliation 7/7, drift 5/5, privacy pins 4/4 | Local sandbox cannot run prisma generate (binaries.prisma.sh unreachable) |
-| V21 | P6 accuracy cross-check | Current `business_states` row org `1dc6aa19…` (`ff83f1e6-b131-40f8-9668-288172ebeab5`, generated 10:50:35Z, complete) shows `revenue_today=0.00`/`revenue_yesterday=0.00` — CORRECT (latest v1 order 2026-10-30); telemetry keys present (`baseline_event_rate_5m_30d`, `current_event_rate_5m`, `warnings`, `root_causes`, `root_cause_verification`, `observed_drivers`, `ml_signals.inventory_signals`, `ml_signals.customer`) | Confirms truthfulness of output; does NOT certify conversational accuracy |
+## Evidence appended by this PR (2026-11-06 ~13:45Z)
 
-## Not yet verified (explicitly)
+| # | Evidence | Source |
+|---|----------|--------|
+| V22 | P5 shop/redact de-transacted: no interactive multi-statement `$transaction`; ordered idempotent single-statement steps; per-step failure tagging `SHOP_REDACT_STEP_FAILED:<step>` (`failed_step`, `cause`); delivery row marked `failed` with that code; retry converges | code review + `privacyWebhookService.js`; workflow 6/6 + regression 4/4 green |
+| V23 | P4 token encryption v2 (AES-256-GCM): new encryptions `v2:<iv(12B)>:<tag>:<ct>`; v1 CBC read-back only (shape-gated `ENCRYPTION_FORMAT_UNKNOWN`); keys 64-hex enforced at module load | `encryption.js`; 5/5 tests |
+| V24 | P3 in-flight delivery recovery: stale `received` rows (wall-clock ≥ threshold, default 900s) flipped to `failed` with explicit reason → provider redelivery re-claimable; never re-executes business logic; scheduler interval 5 min, env-tunable; startup pass wired; never blocks ticks (errors logged, cycle continues) | `webhookDeliveryRecovery.js` + `schedulerService.js` diff; 3/3 tests |
+| V25 | P3 adopt-by-topic: legacy-URI subscriptions adopted in place (no duplicates, no silent remote URI migration); `shopify_webhook_legacy_subscription_adopted` warn; local registration converges on remote URI | `shopifyWebhookService.js`; 7 scenarios green |
+| V26 | P2 reconciliation tooling: dry-run default; `--apply` gated on `REVLUMA_RECONCILE_CONFIRM_DELETIONS=DELETE-SOURCE-ABSENT-PRODUCTS`; empty source hard-refused (override `REVLUMA_RECONCILE_ALLOW_EMPTY_SOURCE=ALLOW-EMPTY-SOURCE-DELETE`) | `productReconciliation.js`, `scripts/productSyncReconcile.js`; 7/7 tests |
+| V27 | P2 access diagnostic contract: `GET /api/v1/admin/shopify/stores/:storeId/access` (admin key, no-store): allow-list output; live vs recorded scopes; per-collection probes; `scope_query_ok=false` + null flags on scope-query failure; no ids/tokens/PII anywhere | `shopifyAccessDiagnostic.js` + `adminShopifyDiagnosticsController.js` + `adminRoute.js` mount; 4/4 tests |
+| V28 | P2 loud partial failure: product sync throws carry `sync_stage`/`pages_completed`/`products_upserted`; `shopifySync` logs them (+`http_status`) on `shopify_sync_failed` | code + fixture assertions; suites green |
+| V29 | P6-D frontend quiet-turn rendering review: conversational/clarify/refuse turns render no report scaffolding; evidence pill honest; pending steps never claimed complete | `RevAnswerView.tsx` / `RevIntell.tsx` review — no defect found |
+| V30 | P6 fixture-level live-acceptance: 11/11 (`test_rev_eleven_scenarios.py`) against real `route_message` | pytest 11/11 pass |
+| V31 | Python suites: 57 conversational + 667 routing/investigation/metric/failure/golden | pytest (local) — green |
+| V32 | RLS inventory READ-ONLY: 17/17 audited tables `relrowsecurity=true` (7 also FORCE) | supabase SQL 2026-11-06 |
+| V33 | Index inventory READ-ONLY: hot paths indexed (`webhook_deliveries(status,received_at)` etc.); no migration applied | supabase SQL 2026-11-06 |
+| V34 | npm audit (production deps): backend 7 (4 low/3 high, both highs not safely fixable pre-launch); frontend 2 moderate (react-router 6→7 breaking) — recorded as known limitations, no dependencies changed | `npm audit --omit=dev` |
+| V35 | Tenant-isolation audit (2026-11-06): no unscoped cross-tenant read found; pixel path HMAC-SHA256 + timing-safe compare; unsigned → 404 | static audit (see MASTER-COMPLETION-CHECKLIST.md → P4.3) |
 
-- P2 products source-to-DB reconciliation. See MASTER-EXECUTION-REGISTER.md → P2.
-- P3 remote subscription reconciliation (products topics; duplicates); delivery reliability in production.
-- P4 deployment of the Woo scheme fix (PR #306 merged ~11:15Z; Render deploy pending, probed ~11:35Z); two-merchant production exercise; global domain uniqueness.
-- P5 live compliance workflow; P6 live conversational acceptance transcripts A–E and the
-  11-scenario set with tool-invocation counts.
-- Python deploy metadata: Render exposes no deploy API through this environment's tooling; the
-  Python-service deploy is evidenced behaviorally (V3–V6) rather than by a deploy record.
-- Backend CI parity note: `prisma generate` requires `binaries.prisma.sh`, unreachable from this
-  sandbox; 9 backend suites are unrunnable locally and are exercised by CI instead.
+## Not verified (explicitly)
+
+- P2 production source-to-DB reconciliation (permission-blocked; empty-source inference only). See P2-P6-PRODUCTION-REPORT.md.
+- P3 remote subscription reconciliation (registration of PRODUCTS_*, duplicate cleanup, retired store) — approval-gated.
+- P3 production delivery reliability — zero deliveries in 7 days; indistinguishable idle vs failure.
+- P4 two-merchant production exercise (would write data); global domain uniqueness; re-encryption apply (approval-gated).
+- P4.8/P4.9 items specifically: never executed.
+- P5 live compliance run; Shopify protected-customer-data eligibility (unknown — external).
+- P6 live 11-scenario acceptance with tool-invocation counts (user-only authenticated session;
+  procedure in `REV-LIVE-ACCEPTANCE-RUNBOOK.md`); DSAR SLA uncertified.
+- Full backend suite in sandbox (`prisma generate` needs `binaries.prisma.sh`, unreachable from this
+  environment; 9 pre-existing suites are CI-only — unchanged as of this writing).
+- Python-service deploys evidenced behaviorally, never by deploy metadata (Render exposes no API here).
+- Post-merge verification of this PR: **pending merge**; must capture `/ready` node_build flip and
+  scheduler `failed=0` tick before any PRODUCTION VERIFIED claim for V22–V28, V30.
 
 ## Incident timeline reference
 
-See `MASTER-EXECUTION-REGISTER.md` → P1 for the 2026-11-03/2026-11-06 failure chain and the
-root-cause statement.
+See `MASTER-EXECUTION-REGISTER.md` → P1 for the 2026-11-03/2026-11-06 failure chain and the root-cause
+statement (pooler does not pin backend↔transaction; single statements or one atomic message only).

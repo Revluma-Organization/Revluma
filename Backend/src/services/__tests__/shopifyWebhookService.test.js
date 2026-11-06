@@ -17,7 +17,7 @@ const REQUIRED = [
   ['PRODUCTS_DELETE', 'products/delete'],
 ];
 
-function installMocks({ failTopic = null, failTopicOnce = false, failPersistenceTopic = null, failList = null } = {}) {
+function installMocks({ failTopic = null, failTopicOnce = false, failPersistenceTopic = null, failList = null, existingSubscriptions = [] } = {}) {
   const attempts = [];
   const rows = new Map();
   const logs = [];
@@ -55,7 +55,7 @@ function installMocks({ failTopic = null, failTopicOnce = false, failPersistence
   const shopifyGraphql = async (_store, query, variables = {}) => {
     if (query.includes('query WebhookSubscriptions')) {
       if (failList) throw failList;
-      return { webhookSubscriptions: { nodes: [] } };
+      return { webhookSubscriptions: { nodes: existingSubscriptions } };
     }
     const topic = variables.topic;
     attempts.push(topic);
@@ -67,6 +67,7 @@ function installMocks({ failTopic = null, failTopicOnce = false, failPersistence
   };
   const logger = {
     info(message, fields) { logs.push({ level: 'info', message, fields }); },
+    warn(message, fields) { logs.push({ level: 'warn', message, fields }); },
     error(message, fields) { logs.push({ level: 'error', message, fields }); },
   };
 
@@ -110,6 +111,54 @@ async function verifyTopicRejectionDoesNotStopOtherTopics() {
   assert.match(failure.errors[0].message, /not available for this app/);
   assert.match(rows.get('setup-state:ORDERS_CREATE').last_error, /not available for this app/);
   assert.strictEqual(rows.get('setup-state:ORDERS_CREATE').status, 'failed');
+}
+
+async function verifyExactUriMatchDoesNotCreate() {
+  const { service, attempts, rows } = installMocks({
+    existingSubscriptions: [
+      { id: 'gid://shopify/WebhookSubscription/EXACT1', topic: 'APP_UNINSTALLED', uri: 'https://api.example.test/api/v1/webhooks/shopify/app/uninstalled' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT2', topic: 'ORDERS_CREATE', uri: 'https://api.example.test/api/v1/webhooks/shopify/orders/create' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT3', topic: 'ORDERS_UPDATED', uri: 'https://api.example.test/api/v1/webhooks/shopify/orders/updated' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT4', topic: 'ORDERS_CANCELLED', uri: 'https://api.example.test/api/v1/webhooks/shopify/orders/cancelled' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT5', topic: 'ORDERS_DELETE', uri: 'https://api.example.test/api/v1/webhooks/shopify/orders/delete' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT6', topic: 'CUSTOMERS_CREATE', uri: 'https://api.example.test/api/v1/webhooks/shopify/customers/create' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT7', topic: 'CUSTOMERS_UPDATE', uri: 'https://api.example.test/api/v1/webhooks/shopify/customers/update' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT8', topic: 'CHECKOUTS_CREATE', uri: 'https://api.example.test/api/v1/webhooks/shopify/checkouts/create' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT9', topic: 'CHECKOUTS_UPDATE', uri: 'https://api.example.test/api/v1/webhooks/shopify/checkouts/update' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT10', topic: 'PRODUCTS_CREATE', uri: 'https://api.example.test/api/v1/webhooks/shopify/products/create' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT11', topic: 'PRODUCTS_UPDATE', uri: 'https://api.example.test/api/v1/webhooks/shopify/products/update' },
+      { id: 'gid://shopify/WebhookSubscription/EXACT12', topic: 'PRODUCTS_DELETE', uri: 'https://api.example.test/api/v1/webhooks/shopify/products/delete' },
+    ],
+  });
+  const result = await service.reconcileShopifyWebhooks(store);
+  assert.deepStrictEqual(attempts, [], 'no subscription may be created when the full required set already exists at the current URI');
+  assert.strictEqual(result.required, 12);
+  assert.strictEqual(rows.get('gid://shopify/WebhookSubscription/EXACT1').status, 'active');
+  assert.strictEqual(rows.get('gid://shopify/WebhookSubscription/EXACT1').delivery_url, 'https://api.example.test/api/v1/webhooks/shopify/app/uninstalled');
+}
+
+async function verifyLegacyUriIsAdoptedNotDuplicated() {
+  const { service, attempts, rows, logs } = installMocks({
+    existingSubscriptions: [
+      { id: 'gid://shopify/WebhookSubscription/LEGACY1', topic: 'PRODUCTS_CREATE', uri: 'https://revluma-backend.onrender.com/api/v1/webhooks/shopify/products/create' },
+    ],
+  });
+  await service.reconcileShopifyWebhooks(store);
+  assert.ok(!attempts.includes('PRODUCTS_CREATE'), 'a topic that already exists at a legacy URI must NOT be re-created');
+  const adopted = rows.get('gid://shopify/WebhookSubscription/LEGACY1');
+  assert.strictEqual(adopted.status, 'active');
+  assert.strictEqual(adopted.delivery_url, 'https://revluma-backend.onrender.com/api/v1/webhooks/shopify/products/create');
+  assert.match(adopted.last_error, /legacy_callback_url_adopted/);
+  assert.ok(logs.some((log) => log.message === 'shopify_webhook_legacy_subscription_adopted' && log.level === 'warn'), 'legacy adoption must be visible in logs');
+}
+
+async function verifyMissingTopicIsCreatedAtCurrentUri() {
+  const { service, attempts, rows } = installMocks();
+  await service.reconcileShopifyWebhooks(store);
+  assert.deepStrictEqual(attempts, REQUIRED.map(([topic]) => topic), 'with zero remote subscriptions every topic must be created once');
+  const created = rows.get('gid://shopify/WebhookSubscription/PRODUCTS_CREATE');
+  assert.strictEqual(created.delivery_url, 'https://api.example.test/api/v1/webhooks/shopify/products/create');
+  assert.strictEqual(created.last_error, null);
 }
 
 async function verifyInitialSubscriptionListFailureIsLoggedAndPreserved() {
@@ -167,6 +216,9 @@ async function verifyPersistenceFailureDoesNotBlockRemainingTopics() {
   await verifyInitialSubscriptionListFailureIsLoggedAndPreserved();
   await verifyRetryCanRecoverAfterShopifyRejection();
   await verifyPersistenceFailureDoesNotBlockRemainingTopics();
+  await verifyExactUriMatchDoesNotCreate();
+  await verifyLegacyUriIsAdoptedNotDuplicated();
+  await verifyMissingTopicIsCreatedAtCurrentUri();
   console.log('shopifyWebhookService.test.js: all assertions passed');
 })().catch((error) => {
   console.error(error);

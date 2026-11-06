@@ -576,8 +576,10 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     }
     logger.error('shopify_sync_failed', {
       store_id: store.id,
-      stage: error.setupStage || setupStage,
+      stage: error.setupStage || error.sync_stage || setupStage,
       error_type: error.code || error.name || 'sync_error',
+      pages_completed: Number.isFinite(error.pages_completed) ? error.pages_completed : null,
+      products_upserted: Number.isFinite(error.products_upserted) ? error.products_upserted : null,
       http_status: error.status || error.response?.status || null,
       network_code: error.networkCode || error.code || null,
       shopify_errors: error.shopifyErrors || [],

@@ -215,26 +215,44 @@ async function syncProducts(store, graphql = shopifyGraphql) {
   let cursor = null;
   let pages = 0;
   let count = 0;
-  do {
-    if (++pages > MAX_SYNC_PAGES) {
-      throw Object.assign(new Error('shopify_products_pagination_limit_exceeded'), { code: 'SHOPIFY_PAGINATION_LIMIT_EXCEEDED' });
-    }
-    const connection = await fetchProductsPage(store, cursor, graphql);
-    const products = connection.nodes;
-    await completeVariants(store, products, graphql);
-    for (const product of products) {
-      await upsertProduct(store, product);
-      count += 1;
-    }
-    const nextCursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
-    if (nextCursor) {
-      if (typeof nextCursor !== 'string' || !nextCursor || seenCursors.has(nextCursor)) {
-        throw Object.assign(new Error('shopify_products_pagination_stalled'), { code: 'SHOPIFY_PAGINATION_STALLED' });
+  // A later page may fail after earlier pages were already persisted. The run
+  // must fail loudly (it does, by throwing) AND carry enough context for an
+  // operator to see how far it got. Callers must not advance last_synced_at on
+  // failure; retries converge because upserts are idempotent.
+  try {
+    do {
+      if (++pages > MAX_SYNC_PAGES) {
+        throw Object.assign(new Error('shopify_products_pagination_limit_exceeded'), { code: 'SHOPIFY_PAGINATION_LIMIT_EXCEEDED' });
       }
-      seenCursors.add(nextCursor);
-    }
-    cursor = nextCursor;
-  } while (cursor);
+      const connection = await fetchProductsPage(store, cursor, graphql);
+      const products = connection.nodes;
+      await completeVariants(store, products, graphql);
+      for (const product of products) {
+        await upsertProduct(store, product);
+        count += 1;
+      }
+      const nextCursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+      if (nextCursor) {
+        if (typeof nextCursor !== 'string' || !nextCursor || seenCursors.has(nextCursor)) {
+          throw Object.assign(new Error('shopify_products_pagination_stalled'), { code: 'SHOPIFY_PAGINATION_STALLED' });
+        }
+        seenCursors.add(nextCursor);
+      }
+      cursor = nextCursor;
+    } while (cursor);
+  } catch (error) {
+    error.sync_stage = 'product_sync';
+    error.pages_completed = Math.max(0, pages - 1);
+    error.products_upserted = count;
+    logger.warn('shopify_products_sync_incomplete', {
+      store_id: store.id,
+      stage: 'product_sync',
+      pages_completed: error.pages_completed,
+      products_upserted: count,
+      error_code: error.code || error.name || 'product_sync_error',
+    });
+    throw error;
+  }
   logger.info('shopify_products_sync_completed', { store_id: store.id, count, pages });
   return count;
 }
