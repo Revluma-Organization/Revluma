@@ -196,7 +196,7 @@ async function handleDataRequest({ store, payload }) {
   const snapshotGids = customerSnapshotGids(rows, locator);
   if (snapshotGids.length) {
     authorizedSnapshots = await prisma.commerce_resource_records.findMany({
-      where: customerSnapshotWhere(store.id, snapshotGids),
+      where: { ...customerSnapshotWhere(store.id, snapshotGids), active: true },
       select: { resource_id: true, external_id: true, payload: true },
       orderBy: [{ resource_id: 'asc' }, { external_id: 'asc' }],
     });

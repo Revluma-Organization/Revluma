@@ -11,7 +11,7 @@
 //   IMPLEMENTED_PRODUCTION_VERIFIED — observed succeeding in production
 // Status vocabulary for completeness: see rowStatus() in domainCatalog.js.
 
-const REGISTRY_VERSION = '2026-11-06.v3';
+const REGISTRY_VERSION = '2026-11-06.v4';
 // Live consent evidence (2026-11-06, read-only SQL on production v1):
 // granted_scopes = read_orders, read_customers, read_products, read_analytics, read_checkouts,
 // read_draft_orders, read_inventory, read_locations, read_marketing_events,

@@ -10,8 +10,6 @@ const { CommerceActionError } = require('./commerceActionPolicy');
 const { organizationStore } = require('./merchantCapabilityService');
 const ledger = require('./syncDomainState');
 
-const MAX_PAGES = 100;
-const MAX_RECORDS = 10000;
 const MAX_PAGE_BYTES = 4 * 1024 * 1024;
 
 function requiredScopes(resourceId) {
@@ -125,29 +123,31 @@ async function getAuthorizedResourcePage(storeId, organizationId, resourceId, qu
   const result = await readPage(store, resourceId, pagination(query), deps.graphql);
   return { resource_id: resourceId, ...result, coverage: { implementation: 'implemented_unverified', persisted: false, source: 'shopify_live' } };
 }
-async function fetchAll(store, resourceId, graphql) {
+async function streamAll(store, resourceId, graphql, onPage) {
   const document = getAuthorizedResource(resourceId);
-  if (document.singleton) return { records: (await readPage(store, resourceId, { first: 100, after: null }, graphql)).records, pagesCompleted: 1 };
-  const records = [];
-  const sourceIds = new Set();
   const cursors = new Set();
   let after = null;
-  let pages = 0;
+  let pagesCompleted = 0;
+  let discovered = 0;
   do {
-    if (++pages > MAX_PAGES) throw new CommerceActionError('RESOURCE_PAGINATION_LIMIT', `Full sync exceeded ${MAX_PAGES} pages; partial data was not persisted.`);
-    if (after && cursors.has(after)) throw new CommerceActionError('RESOURCE_PAGINATION_STALLED', 'Shopify repeated a pagination cursor; partial data was not persisted.');
+    if (after && cursors.has(after)) throw new CommerceActionError('RESOURCE_PAGINATION_STALLED', 'Shopify repeated a pagination cursor; the inactive run was not activated.');
     if (after) cursors.add(after);
     const page = await readPage(store, resourceId, { first: 100, after }, graphql);
     for (const record of page.records) {
-      const id = sourceId(resourceId, record);
-      if (!id || sourceIds.has(id)) throw new CommerceActionError('RESOURCE_DUPLICATE_OR_MISSING_ID', 'Shopify returned a duplicate or missing resource id; partial data was not persisted.', 502);
-      sourceIds.add(id);
-      records.push(record);
-      if (records.length > MAX_RECORDS) throw new CommerceActionError('RESOURCE_RECORD_LIMIT', `Full sync exceeded ${MAX_RECORDS} records; use a bulk backfill before certifying this resource.`);
+      if (!sourceId(resourceId, record)) throw new CommerceActionError('RESOURCE_DUPLICATE_OR_MISSING_ID', 'Shopify returned a missing resource id; the inactive run was not activated.', 502);
     }
+    await onPage(page.records, pagesCompleted + 1);
+    discovered += page.records.length;
+    pagesCompleted += 1;
     after = page.page_info.has_next_page ? page.page_info.end_cursor : null;
+    if (document.singleton) after = null;
   } while (after);
-  return { records, pagesCompleted: pages };
+  return { discovered, pagesCompleted };
+}
+async function fetchAll(store, resourceId, graphql) {
+  const records = [];
+  const result = await streamAll(store, resourceId, graphql, async page => { records.push(...page); });
+  return { records, pagesCompleted: result.pagesCompleted };
 }
 function hashPayload(payload) { return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex'); }
 
@@ -158,29 +158,46 @@ async function syncAuthorizedResource(storeId, organizationId, resourceId, deps 
   await authorize(store, resourceId, deps.graphql, deps.grantedScopes);
   const syncLedger = deps.ledger || ledger;
   await syncLedger.beginAttempt(store.id, resourceId, db);
+  const runId = crypto.randomUUID();
   try {
-    const { records, pagesCompleted } = await fetchAll(store, resourceId, deps.graphql);
-    const existing = await db.commerce_resource_records.findMany({ where: { store_id: store.id, resource_id: resourceId }, select: { source_id: true } });
-    const incoming = new Set(records.map(record => sourceId(resourceId, record)));
-    const deleted = existing.filter(row => !incoming.has(row.source_id)).length;
-    const runId = crypto.randomUUID();
+    // A store-level distributed sync lock prevents concurrent runs. Remove only
+    // abandoned staging rows; the active snapshot remains readable throughout.
+    await db.commerce_resource_records.deleteMany({ where: { store_id: store.id, resource_id: resourceId, active: false } });
     const now = new Date();
-    await db.$transaction(async tx => {
-      await tx.commerce_resource_records.deleteMany({ where: { store_id: store.id, resource_id: resourceId } });
-      for (let offset = 0; offset < records.length; offset += 500) {
-        await tx.commerce_resource_records.createMany({ data: records.slice(offset, offset + 500).map(record => ({
-          store_id: store.id, resource_id: resourceId, source_id: sourceId(resourceId, record), payload: record,
-          content_hash: hashPayload(record), sync_run_id: runId, synced_at: now,
-        })) });
-      }
+    const { discovered, pagesCompleted } = await streamAll(store, resourceId, deps.graphql, async records => {
+      if (!records.length) return;
+      await db.commerce_resource_records.createMany({ data: records.map(record => ({
+        store_id: store.id, resource_id: resourceId, source_id: sourceId(resourceId, record), payload: record,
+        content_hash: hashPayload(record), sync_run_id: runId, synced_at: now, active: false,
+      })) });
     });
-    const persisted = await db.commerce_resource_records.count({ where: { store_id: store.id, resource_id: resourceId, sync_run_id: runId } });
-    if (persisted !== records.length) throw new CommerceActionError('RESOURCE_RECONCILIATION_FAILED', 'Persisted resource count did not match the complete source result.');
-    const report = { discovered: records.length, inserted: records.length, updated: 0, deleted, pagesCompleted, paginationComplete: true };
+    let deleted = 0;
+    await db.$transaction(async tx => {
+      if (typeof tx.$queryRaw === 'function') {
+        const rows = await tx.$queryRaw`SELECT COUNT(*)::int AS count FROM "commerce_resource_records" old WHERE old."store_id" = ${store.id}::uuid AND old."resource_id" = ${resourceId} AND old."active" = true AND NOT EXISTS (SELECT 1 FROM "commerce_resource_records" staged WHERE staged."store_id" = old."store_id" AND staged."resource_id" = old."resource_id" AND staged."sync_run_id" = ${runId}::uuid AND staged."source_id" = old."source_id")`;
+        deleted = Number(rows[0]?.count || 0);
+      } else {
+        const [active, staged] = await Promise.all([
+          tx.commerce_resource_records.findMany({ where: { store_id: store.id, resource_id: resourceId, active: true }, select: { source_id: true } }),
+          tx.commerce_resource_records.findMany({ where: { store_id: store.id, resource_id: resourceId, sync_run_id: runId }, select: { source_id: true } }),
+        ]);
+        const incoming = new Set(staged.map(row => row.source_id));
+        deleted = active.filter(row => !incoming.has(row.source_id)).length;
+      }
+      await tx.commerce_resource_records.deleteMany({ where: { store_id: store.id, resource_id: resourceId, active: true } });
+      await tx.commerce_resource_records.updateMany({ where: { store_id: store.id, resource_id: resourceId, sync_run_id: runId }, data: { active: true } });
+    });
+    const persisted = await db.commerce_resource_records.count({ where: { store_id: store.id, resource_id: resourceId, sync_run_id: runId, active: true } });
+    if (persisted !== discovered) throw new CommerceActionError('RESOURCE_RECONCILIATION_FAILED', 'Active resource count did not match the complete staged source result.');
+    const report = { discovered, inserted: discovered, updated: 0, deleted, pagesCompleted, paginationComplete: true };
     await syncLedger.recordSuccess(store.id, resourceId, report, db);
-    await syncLedger.mergeCheckpoint(store.id, resourceId, { reconciliation: { missing: 0, duplicates: 0, mapping_errors: 0, last_run_at: now.toISOString() }, sync_run_id: runId }, db);
-    return { resource_id: resourceId, sync_run_id: runId, discovered: records.length, persisted, deleted, pagination_complete: true, reconciliation: { missing: 0, duplicates: 0, mapping_errors: 0 } };
-  } catch (error) {
+    await syncLedger.mergeCheckpoint(store.id, resourceId, { reconciliation: { missing: 0, duplicates: 0, mapping_errors: 0, last_run_at: now.toISOString() }, sync_run_id: runId, streaming: true }, db);
+    return { resource_id: resourceId, sync_run_id: runId, discovered, persisted, deleted, pagination_complete: true, reconciliation: { missing: 0, duplicates: 0, mapping_errors: 0 } };
+  } catch (cause) {
+    const error = cause?.code === 'P2002'
+      ? new CommerceActionError('RESOURCE_DUPLICATE_OR_MISSING_ID', 'Shopify returned a duplicate resource id; the inactive run was not activated.', 502)
+      : cause;
+    try { await db.commerce_resource_records.deleteMany({ where: { store_id: store.id, resource_id: resourceId, sync_run_id: runId, active: false } }); } catch { /* Preserve the original sync failure. */ }
     await syncLedger.recordFailure(store.id, resourceId, error, {}, db);
     throw error;
   }
@@ -206,4 +223,4 @@ async function syncAuthorizedResources(store, deps = {}) {
   return { results, succeeded: results.filter(row => row.status === 'ok').length, failed: results.filter(row => row.status === 'failed').length, missing_scope: results.filter(row => row.status === 'missing_scope').length };
 }
 
-module.exports = { getAuthorizedResourcePage, syncAuthorizedResource, syncAuthorizedResources, requiredScopes, scopeSatisfied, validateNestedConnections, completeNestedConnections, fetchAll, sourceId };
+module.exports = { getAuthorizedResourcePage, syncAuthorizedResource, syncAuthorizedResources, requiredScopes, scopeSatisfied, validateNestedConnections, completeNestedConnections, streamAll, fetchAll, sourceId };
