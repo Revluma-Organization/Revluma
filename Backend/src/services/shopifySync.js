@@ -584,6 +584,18 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     await recordSuccess(store.id, 'orders', { discovered: orders, inserted: orders, paginationComplete: true });
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: orders });
 
+    // Inventory & Locations first pass: non-fatal, ledgered, degraded on
+    // ACCESS_DENIED (merchant must re-consent for newly-requested scopes).
+    setupStage = 'inventory_sync';
+    logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
+    try {
+      const { syncInventoryAndLocations } = require('./inventorySync');
+      const inventoryResult = await syncInventoryAndLocations(store);
+      logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', items: inventoryResult?.inventory?.items ?? null, levels: inventoryResult?.inventory?.levels ?? null, locations: inventoryResult?.locations?.count ?? null });
+    } catch (inventoryError) {
+      logger.warn('shopify_inventory_sync_unhandled', { store_id: store.id, error_type: inventoryError?.code || inventoryError?.name || 'inventory_sync_error' });
+    }
+
     setupStage = 'abandoned_checkout_sync';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     await beginAttempt(store.id, 'abandoned_checkouts');

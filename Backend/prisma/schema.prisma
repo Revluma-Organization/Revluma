@@ -551,6 +551,55 @@ model store_domains {
   @@index([store_id], map: "idx_store_domains_store")
 }
 
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model locations {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id      String   @db.Uuid
+  external_id   String   @db.VarChar(255)
+  name          String?  @db.VarChar(500)
+  is_active     Boolean?
+  country_code  String?  @db.VarChar(3)
+  province_code String?  @db.VarChar(3)
+  address1      String?  @db.VarChar(500)
+  city          String?  @db.VarChar(120)
+  zip           String?  @db.VarChar(32)
+  synced_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([store_id, external_id], map: "locations_store_external_key")
+  @@index([store_id], map: "idx_locations_store")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model inventory_items {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id          String    @db.Uuid
+  external_id       String    @db.VarChar(255)
+  sku               String?   @db.VarChar(255)
+  tracked           Boolean?
+  requires_shipping Boolean?
+  weight            Decimal?  @db.Decimal(12, 4)
+  weight_unit       String?   @db.VarChar(32)
+  created_at        DateTime? @db.Timestamptz(6)
+  updated_at        DateTime? @db.Timestamptz(6)
+  synced_at         DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@unique([store_id, external_id], map: "inventory_items_store_external_key")
+  @@index([store_id], map: "idx_inventory_items_store")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model inventory_levels {
+  id                         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id                   String   @db.Uuid
+  inventory_item_external_id String   @db.VarChar(255)
+  location_external_id       String   @db.VarChar(255)
+  quantities                 Json     @default("{}")
+  synced_at                  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([store_id, inventory_item_external_id, location_external_id], map: "inventory_levels_store_item_location_key")
+  @@index([store_id, inventory_item_external_id], map: "idx_inventory_levels_store")
+}
+
 /// Recovery message sequence configuration.
 /// One sequence = one channel (email, SMS, WhatsApp, push).
 /// sequence_sends and sequence_events are added in Phase 2 when recovery engine is built.

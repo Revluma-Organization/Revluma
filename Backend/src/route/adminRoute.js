@@ -5,6 +5,8 @@ const { body } = require('express-validator');
 const adminKeyController = require('../controller/adminKeyController');
 const adminShopifyDiagnosticsController = require('../controller/adminShopifyDiagnosticsController');
 const adminSyncCoverageController = require('../controller/adminSyncCoverageController');
+const adminUniversalCoverageController = require('../controller/adminUniversalCoverageController');
+const adminSchemaDriftController = require('../controller/adminSchemaDriftController');
 const { requireAdminKey } = require('../middlewares/adminAuth');
 
 // All admin routes require a valid admin key
@@ -42,5 +44,11 @@ router.get('/shopify/stores/:storeId/access', adminShopifyDiagnosticsController.
 
 // Read-only per-domain sync coverage (admin-only, no customer data).
 router.get('/shopify/stores/:storeId/sync-coverage', adminSyncCoverageController.getShopifyStoreSyncCoverage);
+
+// Read-only UNIVERSAL coverage: registry x recorded scopes x ledger (admin-only).
+router.get('/shopify/stores/:storeId/universal-coverage', adminUniversalCoverageController.getShopifyStoreUniversalCoverage);
+
+// Read-only schema-vs-registry drift diagnostics (admin-only).
+router.get('/shopify/stores/:storeId/schema-drift', adminSchemaDriftController.getShopifyStoreSchemaDrift);
 
 module.exports = router;
