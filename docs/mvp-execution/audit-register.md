@@ -620,3 +620,7 @@ Focused regression evidence: 36/36 inventory/enrichment/ledger tests passed loca
 | Finding ID | Severity | Description | Evidence | Resolution | Status |
 |---|---|---|---|---|---|
 | REV-FIND-PR321-05 | Medium | Default Shopify locations query omitted non-active/legacy location identities | Fresh production build: 28 levels valid, 2 referenced one absent location | Added `includeInactive:true, includeLegacy:true` and regression coverage | PRODUCTION VERIFIED at `f061efa5ee10` |
+
+## REV-COPILOT-001 — Evidence-led commerce copilot (2026-11-06)
+
+Status: **IMPLEMENTED; LOCAL VERIFICATION COMPLETE; CI/MERGE/PRODUCTION PENDING**. REA 6.8.0 installed and executed; its browser capture failed before navigation because host NSS libraries are unavailable, and no private/runtime Sidekick reconstruction is claimed. Public capability evidence was mapped to an original, read-only global Rev copilot. Replaced hardcoded merchant claims and the no-op submit path with authenticated streaming answers, evidence, cancellation, thread handoff, and six quick workflows. Local evidence: 504/504 dashboard tests (including 8 focused workflow/drawer tests), TypeScript, changed-file ESLint, production build, and diff check passed. Repository-wide lint retains 30 unrelated pre-existing errors. Full report: [REV-COPILOT-001](implementation/REV-COPILOT-001.md).
