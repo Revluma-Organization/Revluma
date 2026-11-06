@@ -10,7 +10,7 @@ directly observed in production; everything else is labelled.
 |---|---|---|---|
 | P2 — Shopify product ingestion | **IMPLEMENTED + reconciliation-tested** (incl. new 7-test source-to-DB fixture suite) | **NOT VERIFIED** — all Shopify stores hold 0 product rows (inference: hourly sync completes with `read_products` recorded ⇒ source returned 0 nodes; never a source-authenticated read) | Live end-to-end round-trip (create→sync→update→delete) on a real catalog — production mutation not authorized |
 | P3 — Webhook registration & delivery | **IMPLEMENTED + tested** (signature/ack/idempotency; drift-report tooling added, read-only) | **NOT VERIFIED** — 0 deliveries in 7 days; products topics never registered; duplicates unremediated | Products-topic registration; 27-group duplicate cleanup; retired-store failed rows |
-| P4 — Store identity & tenant isolation | **IMPLEMENTED** — cross-merchant ambiguity **FIXED and DEPLOYED** (Render flip verified) | **PARTIAL** — fix live; WooCommerce scheme-mismatch fix pending deploy; two-merchant prod exercise never performed | Store transfer/delete/revoke; global domain uniqueness migration; CBC→GCM re-encryption; OAuth arbitration change |
+| P4 — Store identity & tenant isolation | **IMPLEMENTED** — cross-merchant ambiguity **FIXED and DEPLOYED** (Render flip verified) | **PARTIAL** — ambiguity fix live; Woo scheme fix MERGED (PR #306), Vercel deployed, Render deploy pending; two-merchant prod exercise never performed | Store transfer/delete/revoke; global domain uniqueness migration; CBC→GCM re-encryption; OAuth arbitration change |
 | P5 — Privacy / compliance | **IMPLEMENTED + tested** (durable-first, idempotent; 4 new regression pins) | **NOT VERIFIED** — never run against live merchant data; Shopify protected-customer-data approval state unknown | Live end-to-end compliance test (writes/redacts merchant data) |
 | P6 — Rev live-data certification | **PARTIAL** (registry fail-closed; deterministic layer certified 2026-11-04) | **NOT CERTIFIED** — live conversational acceptance (11-scenario set with tool-invocation counts) is user-only | — (user action, not approval-gate) |
 
@@ -108,7 +108,7 @@ cross-scheme and cross-org collision cases).
 `https://revluma.local` while the Woo webhook controller strips the scheme before `findStore` —
 production Woo webhooks would 404 forever. Fix: match bare and `https://`-prefixed candidate domains
 both directions; the ambiguity (>1 tenant) check still fails closed. 7/7 resolution tests, privacy
-workflow 6/6. Ships with this report's PR; deploy pending Render flip.
+workflow 6/6. **Merged as PR #306** (`e8adae9…`); **Vercel PROMOTED; Render deploy pending** (probed ~11:35Z).
 
 **Not remediated (approval-gated / product decisions):** transfer/delete/revoke of either
 `revluma-test-store.myshopify.com` association; `@@unique([platform, shop_domain])` migration or
@@ -164,7 +164,7 @@ raw per-scenario tool counts against `rev-metrics-v1` gates (fail-closed for non
 | `5699c55` → PR #303 → `eaced144b33c8` | P1 single-statement autocommit persistence | MERGED + deployed + PRODUCTION VERIFIED |
 | `0abdc35` → PR #304 → `336bc8a445b4` | P1 production verification record | MERGED |
 | `b7aae39` → PR #305 → **`726bedc1b2a8`** | P4 cross-merchant ambiguity fix + P2–P6 inspection | MERGED; **Vercel frontend PROMOTED ~10:27Z (`dpl_4oMgo4k6…`); Render `node_build=726bedc1b2a8` verified 10:56Z (scheduler healthy, failed=0)** |
-| this branch → PR #306 | Woo scheme fix (P4), webhook drift report tooling (P3), 7 reconciliation tests (P2), 4 privacy regression pins (P5), this consolidated report; `shopifyWebhookTopics.js` extraction | See PR; **deploy pending Render flip after merge** |
+| this branch → **PR #306** → `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4` | Woo scheme fix (P4), webhook drift report tooling (P3), 7 reconciliation tests (P2), 4 privacy regression pins (P5), this consolidated report; `shopifyWebhookTopics.js` extraction | **MERGED ~11:15Z (all CI green); Vercel PROMOTED (`dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`, READY ~11:22Z); Render BACKEND NOT deployed — `/ready` still `726bedc1b2a8` at ~11:35Z probe; operator action required** |
 
 ## Remaining approvals / external actions (everything else is done or blocked)
 
@@ -177,3 +177,4 @@ raw per-scenario tool counts against `rev-metrics-v1` gates (fail-closed for non
 7. **Docs**: MASTER-EXECUTION-REGISTER.md and KNOWN-LIMITATIONS.md updated alongside this report (same PR).
 8. **R-10** stale `business_states` recount + delete — unchanged approval gate (not re-verified here).
 9. **P2 item 9** (full-sync source-absent row reconciliation): approve a deletion-semantics design or leave rows (documented).
+10. **Render manual deploy of `e8adae9…`** (PR #306; P4 Woo fix): merged but Render auto-deploy did not pick it up as of ~11:35Z; a manual deploy in the Render dashboard is required. Not a data-approval item; environment-gated operator action.

@@ -266,7 +266,7 @@ requires an authenticated Rev session (user-only); counts will not be estimated.
 
 | Gate item | Status |
 |---|---|
-| Node build on intended commit | `/ready` `node_build=726bedc1b2a8` (PR #305 merge — P4 ambiguity fix live) |
+| Node build on intended commit | `/ready` `node_build=726bedc1b2a8` (PR #305; **PR #306 merged at `e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4` on 2026-11-06 ~11:15Z — Render has NOT flipped to it as of ~11:35Z probe; manual Render deploy REQUIRED; Vercel PROMOTED `dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`**) |
 | Python on intended build | Render serving 726bedc (first healthy tick 10:56:33Z, failed=0) |
 | Persistence succeeds | **YES** (post-deploy builds incl. previously failing org) |
 | Recurring scheduler executions succeed | **YES** (ticks 10:56–10:57Z, failed=0/succeeded=1; age_seconds=9 at probe) |
@@ -292,7 +292,7 @@ requires an authenticated Rev session (user-only); counts will not be estimated.
 8. Live 11-scenario Rev conversational acceptance with tool-invocation counts (P6) — user-only session.
 9. Full product-sync reconciliation implementing source-absent-row deletion semantics (P2).
 10. Any production data write not covered by an authorized workflow.
-11. Manual/operator Render deploy of PR #306 (P4 Woo fix) — deploys merged code; not a data-approval item but environment-gated.
+11. Manual/operator Render deploy of PR #306 (`e8adae9`, P4 Woo fix) — merged 2026-11-06 ~11:15Z; Render has not auto-deployed it as of ~11:35Z probe; operator must trigger a deploy; not a data-approval item but environment-gated.
 
 ## Change log
 
@@ -302,6 +302,7 @@ requires an authenticated Rev session (user-only); counts will not be estimated.
   stores 0 products; inference ≠ reconciliation); webhook registration/delivery map (products never
   registered; 27 duplicate groups; 0 deliveries in 7 days); P4 ambiguity fixed (PR #305); P5 review
   with named Shopify approval blocker; P6 cross-check (v1: 5 orders/21 customers).
+- 2026-11-06 ~11:15Z — **PR #306 MERGED (`e8adae9232a026eb2dd00d9e8b6fd593a86fcfe4`, all checks green); Vercel production PROMOTED (`dpl_6DQDRz5BXuks78wmCVH4NTSytHXy`, READY); Render backend still serving `726bedc…` — manual deploy pending (probed twice, ~11:25Z/~11:35Z).**
 - 2026-11-06 ~10:56–11:10Z — **PR #305 MERGED (`726bedc1b2a8`) and DEPLOYED VERIFIED** (Render
   node_build=726bedc… at 10:56:33Z probe, scheduler keyword healthy, Vercel PROMOTED). New branch
   work (PR #306): P4 WooCommerce scheme-mismatch fix (bare/https candidate matching, fail-closed

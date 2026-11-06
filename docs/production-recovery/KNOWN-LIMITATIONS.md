@@ -86,7 +86,9 @@ waived silently. "BLOCKED" entries name the exact external dependency.
 - **WooCommerce webhooks 404 (found + fixed, deploy pending):** `stores.shop_domain` stores
   `https://revluma.local` while the Woo webhook controller strips the scheme before `findStore`.
   Fix matches bare/https candidates both directions (ambiguity still fails closed); resolution
-  suite 7/7. Ships in PR #306; verified deployed only after Render node_build flips.
+  suite 7/7. MERGED via PR #306 (`e8adae9…`, 2026-11-06 ~11:15Z); **NOT yet deployed** — Render
+  still serving `726bedc…` as of ~11:35Z probe; operator deploy required. Vercel frontend PROMOTED
+  for the same commit.
 - Full product-sync reconciliation (source-absent row deletion) remains unimplemented and
   approval-gated (register item 9).
 - **`products` has no `organization_id`** — tenancy is enforced via `store_id` joins alone; RLS on
