@@ -13,7 +13,6 @@ const {
   resolveOrderRecoveryStatus,
 } = require('./financialIntegrity');
 const { isPrivacyTopic, handleShopifyPrivacyWebhook } = require('./privacyWebhookService');
-const { syncProductById, deleteProduct } = require('./productSync');
 
 function safeCompareHex(actual, expected) {
   if (!actual || !expected || actual.length !== expected.length) return false;
@@ -749,6 +748,11 @@ async function upsertCustomer(store, payload) {
 }
 
 async function handleProductWebhook(store, topic, payload) {
+  // Lazy-require: productSync pulls in the GraphQL client, which validates
+  // SHOPIFY_TOKEN_ENCRYPTION_KEY at load time. Requiring it lazily keeps this
+  // module loadable in maintenance/integration contexts that do not handle
+  // Shopify traffic; the key is still enforced on the first real API call.
+  const { syncProductById, deleteProduct } = require('./productSync');
   const rawId = payload?.id ?? payload?.product?.id ?? null;
   const id = rawId != null ? String(rawId) : '';
   if (!id) {
