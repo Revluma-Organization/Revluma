@@ -449,6 +449,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
   }
   let setupStage = 'marking_store_syncing';
   let productsError = null;
+  let authorizedResources = null;
   // A new lock owner supersedes any interrupted previous run. Preserve the
   // previous success timestamp; never claim the interrupted run completed.
   const previousState = await prisma.stores.findUnique({
@@ -596,6 +597,17 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       logger.warn('shopify_inventory_sync_unhandled', { store_id: store.id, error_type: inventoryError?.code || inventoryError?.name || 'inventory_sync_error' });
     }
 
+    setupStage = 'authorized_resource_sync';
+    if (process.env.AUTHORIZED_RESOURCE_SYNC_ENABLED !== 'false') {
+      try {
+        const { syncAuthorizedResources } = require('./authorizedDataService');
+        authorizedResources = await syncAuthorizedResources(store);
+        logger.info('shopify_authorized_resource_sync_completed', { store_id: store.id, succeeded: authorizedResources.succeeded, failed: authorizedResources.failed, missing_scope: authorizedResources.missing_scope });
+      } catch (resourceError) {
+        logger.warn('shopify_authorized_resource_sync_interrupted', { store_id: store.id, error_type: resourceError.code || resourceError.name || 'resource_sync_error' });
+      }
+    }
+
     setupStage = 'abandoned_checkout_sync';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     await beginAttempt(store.id, 'abandoned_checkouts');
@@ -624,7 +636,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     const rfm = await rfmSync({ storeId: store.id, correlationId: `shopify-sync-${store.id}-${Date.now()}` });
     if (!rfm.success) logger.warn('shopify_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
     logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned, webhook_setup_complete: !webhookSetupError, products_sync_failed: Boolean(productsError), products_error_type: productsError ? (productsError.degraded === 'permission_denied' ? 'permission_denied' : (productsError.code || productsError.name || 'product_sync_error')) : null });
-    return { success: true, customers, orders, abandoned, rfm: rfm.success, customerSyncLimited, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null, products: productsError ? { status: 'failed', error_type: productsError.code || productsError.name || 'product_sync_error' } : { status: 'ok' } };
+    return { success: true, customers, orders, abandoned, rfm: rfm.success, customerSyncLimited, authorizedResources, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null, products: productsError ? { status: 'failed', error_type: productsError.code || productsError.name || 'product_sync_error' } : { status: 'ok' } };
   } catch (error) {
     try {
       await prisma.stores.update({

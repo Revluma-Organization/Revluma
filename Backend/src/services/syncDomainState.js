@@ -17,7 +17,10 @@
 //   check pagination_complete for paginated domains.
 // - Checkpoints are opaque caller-owned JSON merged atomically per write.
 
-const DOMAINS = Object.freeze([
+const { authorizedResourceIds } = require('./authorizedResourceCatalog');
+
+const DOMAINS = Object.freeze([...new Set([
+  ...authorizedResourceIds(),
   'products',
   'variants',
   'inventory',
@@ -33,7 +36,7 @@ const DOMAINS = Object.freeze([
   'store_domains',
   'webhooks',
   'pixel_events',
-]);
+])]);
 
 function defaultDb() {
   return require('../configs/database').prisma; // lazy: keeps this module importable without engines

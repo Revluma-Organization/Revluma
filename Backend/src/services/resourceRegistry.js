@@ -11,10 +11,10 @@
 //   IMPLEMENTED_PRODUCTION_VERIFIED — observed succeeding in production
 // Status vocabulary for completeness: see rowStatus() in domainCatalog.js.
 
-const REGISTRY_VERSION = '2026-11-06.v2';
+const REGISTRY_VERSION = '2026-11-06.v3';
 // Live consent evidence (2026-11-06, read-only SQL on production v1):
 // granted_scopes = read_orders, read_customers, read_products, read_analytics, read_checkouts,
-// read_draft_orders, read_inventory, read_locations, read_marketing_events, read_price_rules,
+// read_draft_orders, read_inventory, read_locations, read_marketing_events,
 // read_reports, read_shopify_payments_accounts/disputes/payouts, read_themes, read_content,
 // read_fulfillments, read_assigned_fulfillment_orders, read_merchant_managed_fulfillment_orders,
 // read_shipping, read_returns, read_payment_terms, read_customer_events, write_discounts.
@@ -25,7 +25,7 @@ const REGISTRY_VERSION = '2026-11-06.v2';
 //   category, scopes[], approval('none'|'read_all_orders'|'protected_customer_data'|'plan'|'partner_app'|'write_pixels'),
 //   planRestrictions, restrictions[], acquisition('implemented'|'not_implemented'|'implemented_unverified'),
 //   verification('not_verified'|'live_read'|'not_applicable'), notes
-const REGISTRY = Object.freeze([
+const REGISTRY = ([
   // ── 3.1 Store & account configuration ───────────────────────────────
   { id: 'shop.identity', queryRoots: ['shop'], name: 'Shop identity, plan, timezone, currency, address country', surface: 'graphql', category: 'store_configuration', scopes: [], approval: 'none', planRestrictions: [], restrictions: ['shop.email is the store owner contact, not customer PII'], acquisition: 'implemented_unverified', verification: 'live_read', notes: 'store_profiles + store_domains; PR #312; re-verify post-deploy' },
   { id: 'shop.policies', name: 'Store policies (privacy, refund, shipping)', surface: 'graphql', category: 'store_configuration', scopes: ['read_content'], approval: 'none', planRestrictions: [], restrictions: ['Policy API availability varies; legal-page resources are partial'], acquisition: 'not_implemented', verification: 'not_verified' },
@@ -84,6 +84,26 @@ const REGISTRY = Object.freeze([
   { id: 'bulk-operations', queryRoots: ['bulkOperations'], name: 'Bulk Operations (large stores/backfills)', surface: 'bulk', category: 'primitives', scopes: ['read_bulk_operations', 'read_products', 'read_orders'], approval: 'none', planRestrictions: [], restrictions: ['Bulk output is JSONL; private app limits apply; ordering guaranteed per operation'], acquisition: 'not_implemented', verification: 'not_verified' },
   { id: 'webhooks', name: 'Webhook subscriptions, deliveries, drift reconciliation', surface: 'webhook', category: 'primitives', scopes: [], approval: 'remote_mutation_gated', planRestrictions: [], restrictions: ['Remote subscription creation/change is approval-gated in this engineering phase'], acquisition: 'implemented', verification: 'live_read' },
 ]);
+
+const { authorizedResourceIds, ADDITIONAL_REGISTRY } = require('./authorizedResourceCatalog');
+const gatewayIds = new Set(authorizedResourceIds());
+for (const entry of REGISTRY) {
+  if (gatewayIds.has(entry.id) && entry.acquisition === 'not_implemented') {
+    entry.acquisition = 'implemented_unverified';
+    entry.verification = 'not_verified';
+    entry.notes = 'Fixed-query live reader and bounded reconciled snapshot sync; production verification pending';
+  }
+}
+REGISTRY.push(...ADDITIONAL_REGISTRY);
+// Correct scope requirements to the actual surfaces used by the gateway.
+const scopeCorrections = {
+  'shop.shipping_configuration': ['read_shipping'],
+  'contextual-pricing': ['read_price_lists', 'read_markets'],
+  'metaobjects': ['read_metaobjects'],
+  'bulk-operations': ['read_products', 'read_orders'],
+};
+for (const entry of REGISTRY) if (scopeCorrections[entry.id]) entry.scopes = scopeCorrections[entry.id];
+Object.freeze(REGISTRY);
 
 const IMPLEMENTED_IDS = REGISTRY.filter(r => r.acquisition === 'implemented').map(r => r.id);
 const IMPLEMENTED_UNVERIFIED_IDS = REGISTRY.filter(r => r.acquisition === 'implemented_unverified').map(r => r.id);

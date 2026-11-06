@@ -66,6 +66,33 @@ test('financial findings fail closed without certified coverage and valid window
   assert.equal(certifiedFinding({ ...base, type: 'unknown_financial_finding' }), false);
 });
 
+test('authorized snapshots are bounded, fresh, and restricted to selected tenant stores', async () => {
+  const db = {
+    stores: { findMany: async () => [{ id: 'store-a', platform: 'shopify', status: 'active' }] },
+    intelligence_findings: { findMany: async () => [] },
+    commerce_resource_records: {
+      groupBy: async query => {
+        assert.deepEqual(query.where.store_id.in, ['store-a']);
+        return [{ resource_id: 'collections', _count: { _all: 2 }, _max: { synced_at: '2026-11-06T00:00:00Z' } }];
+      },
+      findMany: async query => {
+        assert.deepEqual(query.where.store_id.in, ['store-a']);
+        return [
+          { resource_id: 'collections', source_id: '1', payload: { title: 'Summer' }, synced_at: '2026-11-06T00:00:00Z' },
+          { resource_id: 'collections', source_id: '2', payload: { title: 'Winter' }, synced_at: '2026-11-06T00:00:00Z' },
+        ];
+      },
+    },
+  };
+  const context = await buildMerchantContext(db, 'org-a');
+  assert.equal(context.schema_version, 'rev-merchant-context-v2');
+  assert.match(context.authorized_resources[0], /persisted_records=2/);
+  assert.equal(context.authorized_resource_samples.length, 1);
+  assert.match(context.authorized_resource_samples[0], /Summer/);
+  assert.doesNotMatch(context.authorized_resource_samples[0], /Winter/);
+  assert.ok(Buffer.byteLength(JSON.stringify({ merchant_context: context })) < 16 * 1024);
+});
+
 test('integration-health evidence remains available without financial coverage', () => {
   const finding = { type: 'integration_failure', store_id: 'store-a',
     evidence: { verified: true, source: 'stores', storeId: 'store-a' } };

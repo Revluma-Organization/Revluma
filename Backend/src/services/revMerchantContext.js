@@ -68,8 +68,30 @@ async function buildMerchantContext(prisma, organizationId) {
       description: true, evidence: true, detected_at: true },
   });
   const allowedStores = new Set(stores.map(s => s.id));
+  let resourceCounts = [];
+  let resourceRecords = [];
+  if (allowedStores.size && prisma.commerce_resource_records) {
+    [resourceCounts, resourceRecords] = await Promise.all([
+      prisma.commerce_resource_records.groupBy({
+        by: ['resource_id'], where: { store_id: { in: [...allowedStores] } },
+        _count: { _all: true }, _max: { synced_at: true }, orderBy: { resource_id: 'asc' }, take: 32,
+      }),
+      prisma.commerce_resource_records.findMany({
+        where: { store_id: { in: [...allowedStores] } }, orderBy: [{ synced_at: 'desc' }], take: 100,
+        select: { resource_id: true, source_id: true, payload: true, synced_at: true },
+      }),
+    ]);
+  }
+  const seenSamples = new Set();
+  const samples = [];
+  for (const row of resourceRecords) {
+    if (seenSamples.has(row.resource_id)) continue;
+    seenSamples.add(row.resource_id);
+    samples.push([String(row.resource_id).slice(0, 64), String(row.source_id).slice(0, 160), safeTimestamp(row.synced_at), JSON.stringify(row.payload).slice(0, 360)].join(' | ').slice(0, 620));
+    if (samples.length >= 8) break;
+  }
   return {
-    schema_version: 'rev-merchant-context-v1',
+    schema_version: 'rev-merchant-context-v2',
     observed_at: new Date().toISOString(),
     // Python's normalizer permits only three nested levels; array entries
     // must be primitive strings rather than nested objects.
@@ -85,9 +107,12 @@ async function buildMerchantContext(prisma, organizationId) {
           String(f.type || '').slice(0, 40),
           String(f.severity || '').slice(0, 16),
           compactEvidence(f.evidence)].join(' | ').slice(0, 620)),
+    authorized_resources: resourceCounts.map(row => [String(row.resource_id).slice(0, 64), `persisted_records=${Number(row._count?._all || 0)}`, `last_synced=${safeTimestamp(row._max?.synced_at)}`].join(' | ')),
+    authorized_resource_samples: samples,
     limitations: ['Connection does not prove complete order coverage.',
       'No verified checkout abandonment rate is available in this context.',
-      'No findings does not prove the store has no issues.'],
+      'No findings does not prove the store has no issues.',
+      'Authorized resource samples are bounded; use the resource API for complete paginated records and the capability report for exclusions.'],
   };
 }
 module.exports = { buildMerchantContext, boundedEvidence, certifiedFinding };

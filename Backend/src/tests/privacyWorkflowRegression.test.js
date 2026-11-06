@@ -27,12 +27,24 @@ function freshState() {
     sensitivity_training_observations: [{ id: 'sto-1', store_id: 'store-a', customer_id: 'internal-cust-1' }],
     abandoned_carts: [{ id: 'cart-1', store_id: 'store-a', customer_id: 'internal-cust-1', external_cart_id: 'ec-1', cart_value: '749.95', currency: 'USD', status: 'abandoned', abandoned_at: new Date('2026-10-29T00:00:00Z'), recovered_at: null, recovery_url: 'https://recover.example/x', session_id: 'sess-1', source_cart_token: 'ct', source_checkout_token: 'ckt', source_checkout_id: 'ckid' }],
     sequence_sends: [{ id: 'send-1', store_id: 'store-a', customer_id: 'internal-cust-1' }],
+    commerce_resource_records: [
+      { resource_id: 'customer.addresses', external_id: 'gid://shopify/CustomerAddress/1', store_id: 'store-a', payload: { id: 'gid://shopify/Customer/ext-shopify-1', address1: 'private' } },
+      { resource_id: 'metafields.customers', external_id: 'gid://shopify/Metafield/1', store_id: 'store-a', payload: { id: 'gid://shopify/Metafield/1', owner: { id: 'gid://shopify/Customer/ext-shopify-1' }, value: 'private' } },
+      { resource_id: 'customer.addresses', external_id: 'gid://shopify/CustomerAddress/2', store_id: 'store-a', payload: { id: 'gid://shopify/Customer/other', address1: 'retain' } },
+    ],
     privacy_requests: [],
     audit_logs: [],
   };
 }
 
 function makePrisma(state) {
+  const snapshotMatches = (row, where) => row.store_id === where.store_id && where.OR.some((clause) => {
+    if (Array.isArray(clause.resource_id?.in) && !clause.resource_id.in.includes(row.resource_id)) return false;
+    if (clause.resource_id && typeof clause.resource_id === 'string' && row.resource_id !== clause.resource_id) return false;
+    const path = clause.payload.path;
+    const value = path.reduce((current, key) => current?.[key], row.payload);
+    return clause.payload.in.includes(value);
+  });
   const deleteMany = (table) => async ({ where = {} }) => {
     const before = state[table].length;
     state[table] = state[table].filter((row) => {
@@ -74,6 +86,14 @@ function makePrisma(state) {
       },
     },
     audit_logs: { create: async ({ data }) => { state.audit_logs.push(data); return data; } },
+    commerce_resource_records: {
+      findMany: async ({ where }) => state.commerce_resource_records.filter((row) => snapshotMatches(row, where)),
+      deleteMany: async ({ where }) => {
+        const before = state.commerce_resource_records.length;
+        state.commerce_resource_records = state.commerce_resource_records.filter((row) => !snapshotMatches(row, where));
+        return { count: before - state.commerce_resource_records.length };
+      },
+    },
     customers: {
       findMany: async ({ where }) => state.customers.filter((row) => row.store_id === where.store_id &&
         (where.OR || []).some((clause) => (clause.external_id && row.external_id === clause.external_id) || (clause.email && row.email === clause.email))),
@@ -124,7 +144,8 @@ test('data_request artifact carries v1 schema and external identifiers only', as
   assert.equal(request.status, 'completed');
   const artifact = request.result.artifact;
   assert.equal(artifact.schema, 'revluma-privacy-data-request-v1');
-  assert.deepEqual(Object.keys(artifact).sort(), ['abandoned_carts', 'generated_at', 'located_customers', 'order_items', 'orders', 'schema', 'store', 'subject']);
+  assert.deepEqual(Object.keys(artifact).sort(), ['abandoned_carts', 'authorized_resource_snapshots', 'generated_at', 'located_customers', 'order_items', 'orders', 'schema', 'store', 'subject']);
+  assert.equal(artifact.authorized_resource_snapshots.length, 2);
   assert.deepEqual(Object.keys(artifact.located_customers[0]).sort(), ['created_at', 'email', 'external_id', 'lifetime_value', 'orders_count']);
   assert.ok(!JSON.stringify(artifact).includes('internal-cust-1'));
   assert.equal(request.result.customers_located, 1);
@@ -149,6 +170,8 @@ test('redact pseudonymises deterministically and strips PII to null', async () =
   assert.equal(state.abandoned_carts[0].recovery_url, null);
   assert.equal(state.abandoned_carts[0].session_id, null);
   assert.equal(state.sequence_sends[0].customer_id, null);
+  assert.equal(state.commerce_resource_records.length, 1);
+  assert.equal(state.commerce_resource_records[0].payload.id, 'gid://shopify/Customer/other');
 });
 
 test('financial orders are retained after redact', async () => {
