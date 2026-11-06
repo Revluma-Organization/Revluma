@@ -8,6 +8,7 @@ const { getRedisClient, isRedisReady } = require('../configs/redis');
 const { shopifyGraphqlOrderTotals } = require('./shopifyOrderFinancials');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
 const { syncProducts } = require('./productSync');
+const { beginAttempt, recordSuccess, recordFailure, recordDegraded, domainForSetupStage } = require('./syncDomainState');
 
 const PAGE_SIZE = 100;
 const MAX_SYNC_PAGES = 100; // Explicit cap: never report a partial import as successful.
@@ -487,9 +488,11 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     }
 
     setupStage = 'product_sync';
+    await beginAttempt(store.id, 'products');
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     try {
       const products = await syncProducts(store);
+      await recordSuccess(store.id, 'products', { discovered: products, inserted: products, pagesCompleted: null, paginationComplete: true });
       logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: products });
     } catch (error) {
       // Catalogue access is optional until the merchant re-consents to the
@@ -511,10 +514,12 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
         ? Object.assign(error, { degraded: 'permission_denied' })
         : error;
       if (deniedProducts) {
+        await recordDegraded(store.id, 'products', 'SHOPIFY_PRODUCTS_ACCESS_DENIED', { pagesCompleted: error.pages_completed });
         logger.warn('shopify_product_sync_permission_limited', {
           store_id: store.id, stage: setupStage, reason: 'SHOPIFY_PRODUCTS_ACCESS_DENIED',
         });
       } else {
+        await recordFailure(store.id, 'products', error, { pagesCompleted: error.pages_completed, discovered: error.products_upserted });
         logger.error('shopify_product_sync_failed', {
           store_id: store.id, stage: setupStage,
           error_type: error?.code || error?.name || 'product_sync_error',
@@ -525,11 +530,13 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     }
 
     setupStage = 'customer_sync';
+    await beginAttempt(store.id, 'customers');
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     let customers = 0;
     let customerSyncLimited = false;
     try {
       customers = await syncCustomers(store);
+      await recordSuccess(store.id, 'customers', { discovered: customers, inserted: customers, paginationComplete: true });
       logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: customers });
     } catch (error) {
       // Customer access is optional for the observation-first MVP. Only an
@@ -541,6 +548,7 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
           Array.isArray(item.codes) && item.codes.includes('ACCESS_DENIED') &&
           /customers field/i.test(String(item.message || '')));
       if (!deniedCustomers) throw error;
+      await recordDegraded(store.id, 'customers', 'SHOPIFY_CUSTOMERS_ACCESS_DENIED');
       customerSyncLimited = true;
       logger.warn('shopify_customer_sync_permission_limited', {
         store_id: store.id, stage: setupStage, reason: 'SHOPIFY_CUSTOMERS_ACCESS_DENIED',
@@ -549,12 +557,16 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
 
     setupStage = 'order_sync';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
+    await beginAttempt(store.id, 'orders');
     const orders = await syncOrders(store);
+    await recordSuccess(store.id, 'orders', { discovered: orders, inserted: orders, paginationComplete: true });
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: orders });
 
     setupStage = 'abandoned_checkout_sync';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
+    await beginAttempt(store.id, 'abandoned_checkouts');
     const abandoned = await syncAbandonedCheckouts(store);
+    await recordSuccess(store.id, 'abandoned_checkouts', { discovered: abandoned, inserted: abandoned, paginationComplete: true });
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: abandoned });
     await prisma.stores.update({
       where: { id: store.id },
@@ -592,6 +604,18 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
         store_id: store.id,
         error_type: stateError.code || stateError.name || 'store_state_update_error',
       });
+    }
+    try {
+      const failedStage = error.setupStage || error.sync_stage || setupStage;
+      const failedDomain = domainForSetupStage(failedStage);
+      if (failedDomain) {
+        await recordFailure(store.id, failedDomain, error, {
+          pagesCompleted: error.pages_completed,
+          discovered: error.products_upserted,
+        });
+      }
+    } catch (ledgerError) {
+      logger.warn('shopify_sync_ledger_write_failed', { store_id: store.id, error_type: ledgerError?.code || ledgerError?.name });
     }
     logger.error('shopify_sync_failed', {
       store_id: store.id,

@@ -19,7 +19,7 @@ const DB_PATH = require.resolve('../configs/database');
 const STORE = { id: 'store-fixture', shop_domain: 'fixture.myshopify.com', access_token: 'enc' };
 
 function prismaStub(initial) {
-  const store = { rows: [...(initial || [])], upsertCalls: 0, deleteCalls: [] };
+  const store = { rows: [...(initial || [])], upsertCalls: 0, deleteCalls: [], variantRows: [] };
   const prisma = {
     products: {
       upsert: async ({ where, create, update }) => {
@@ -41,6 +41,31 @@ function prismaStub(initial) {
         return { count: before - store.rows.length };
       },
       findMany: async ({ where } = {}) => store.rows.filter((row) => (!where?.store_id || row.store_id === where.store_id)),
+    },
+    product_variants: {
+      upsert: async ({ where, create, update }) => {
+        const id = where.store_id_external_id.external_id;
+        const existing = store.variantRows.find((row) => row.external_id === id);
+        if (existing) {
+          Object.assign(existing, update, { external_id: existing.external_id, store_id: existing.store_id });
+          return existing;
+        }
+        const row = { id: `var-${store.variantRows.length + 1}`, ...create };
+        store.variantRows.push(row);
+        return row;
+      },
+      deleteMany: async ({ where } = {}) => {
+        const notIn = where?.external_id?.notIn ?? null;
+        const before = store.variantRows.length;
+        store.variantRows = store.variantRows.filter((row) => {
+          if (row.store_id !== where.store_id) return true;
+          if (where.product_external_id && row.product_external_id !== where.product_external_id) return true;
+          if (notIn) return notIn.includes(row.external_id);
+          return row.external_id !== where.external_id;
+        });
+        return { count: before - store.variantRows.length };
+      },
+      findMany: async () => [...store.variantRows],
     },
   };
   require.cache[DB_PATH] = { id: DB_PATH, filename: DB_PATH, loaded: true, exports: { prisma } };

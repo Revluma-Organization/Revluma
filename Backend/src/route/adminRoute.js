@@ -4,6 +4,7 @@ const { body } = require('express-validator');
 
 const adminKeyController = require('../controller/adminKeyController');
 const adminShopifyDiagnosticsController = require('../controller/adminShopifyDiagnosticsController');
+const adminSyncCoverageController = require('../controller/adminSyncCoverageController');
 const { requireAdminKey } = require('../middlewares/adminAuth');
 
 // All admin routes require a valid admin key
@@ -38,5 +39,8 @@ router.delete('/keys/:id', adminKeyController.revokeKey);
 // Read-only live diagnostic of a Shopify installation (admin-only, no-store).
 // Never returns tokens or customer data; see shopifyAccessDiagnostic notes.
 router.get('/shopify/stores/:storeId/access', adminShopifyDiagnosticsController.getShopifyStoreAccess);
+
+// Read-only per-domain sync coverage (admin-only, no customer data).
+router.get('/shopify/stores/:storeId/sync-coverage', adminSyncCoverageController.getShopifyStoreSyncCoverage);
 
 module.exports = router;

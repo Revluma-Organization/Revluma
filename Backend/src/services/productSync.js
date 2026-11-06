@@ -29,8 +29,9 @@ const MAX_VARIANT_PAGES = 20; // 100 × 20 = 2000 variants (Shopify's per-produc
 
 const VARIANT_FIELDS = `
   id title sku barcode position
-  price compareAtPrice
-  inventoryItem { measurement { weight { value unit } } }
+  price compareAtPrice availableForSale
+  selectedOptions { name value }
+  inventoryItem { id tracked requiresShipping measurement { weight { value unit } } }
 `;
 
 const PRODUCT_FIELDS = `
@@ -52,7 +53,11 @@ function externalId(gid) {
 }
 
 function moneyString(value) {
-  const amount = value?.amount;
+  // Money scalars serialize as decimal strings; some SDK shapes wrap them in
+  // { amount, currencyCode } (MoneyV2). Accept both instead of silently
+  // persisting NULL prices for the entire catalogue.
+  let amount = value;
+  if (value != null && typeof value === 'object') amount = value.amount;
   if (amount === null || amount === undefined || amount === '') return null;
   const text = String(amount).trim();
   if (!/^\d+(\.\d+)?$/.test(text)) {
@@ -130,6 +135,59 @@ function mapProduct(storeId, product) {
   };
 }
 
+function mapVariant(storeId, productExternalId, variant) {
+  if (!variant || typeof variant !== 'object') {
+    throw Object.assign(new Error('Shopify returned a malformed variant node'), { code: 'SHOPIFY_VARIANT_MALFORMED' });
+  }
+  const id = externalId(variant.id);
+  if (!id) {
+    throw Object.assign(new Error('Shopify returned a variant without an identifier'), { code: 'SHOPIFY_VARIANT_MALFORMED' });
+  }
+  const weight = variant.inventoryItem?.measurement?.weight || null;
+  const options = Array.isArray(variant.selectedOptions) ? variant.selectedOptions : [];
+  return {
+    store_id: storeId,
+    product_external_id: String(productExternalId),
+    external_id: id,
+    title: String(variant.title || '').slice(0, 500),
+    sku: variant.sku ? String(variant.sku).slice(0, 255) : null,
+    barcode: variant.barcode ? String(variant.barcode).slice(0, 255) : null,
+    price: moneyString(variant.price),
+    compare_at_price: moneyString(variant.compareAtPrice),
+    inventory_item_external_id: variant.inventoryItem?.id ? externalId(variant.inventoryItem.id) : null,
+    weight: weight && Number.isFinite(Number(weight.value)) ? Number(weight.value) : null,
+    weight_unit: weight?.unit ? String(weight.unit).slice(0, 32) : null,
+    requires_shipping: typeof variant.inventoryItem?.requiresShipping === 'boolean' ? variant.inventoryItem.requiresShipping : null,
+    tracked: typeof variant.inventoryItem?.tracked === 'boolean' ? variant.inventoryItem.tracked : null,
+    available_for_sale: typeof variant.availableForSale === 'boolean' ? variant.availableForSale : null,
+    selected_options: options.map((option) => ({ name: String(option?.name || '').slice(0, 100), value: String(option?.value || '').slice(0, 255) })),
+    position: Number.isFinite(Number(variant.position)) ? Number(variant.position) : null,
+    updated_at: variant.updatedAt ? new Date(variant.updatedAt) : null,
+    synced_at: new Date(),
+  };
+}
+
+async function upsertProductVariants(store, product, db = prisma) {
+  const productExternalId = externalId(product?.id);
+  // completeVariants must have run first; truncated connections fail loudly there.
+  const variants = variantList(product);
+  const rows = variants.map((variant) => mapVariant(store.id, productExternalId, variant));
+  for (const row of rows) {
+    const { store_id, external_id, ...fields } = row;
+    await db.product_variants.upsert({
+      where: { store_id_external_id: { store_id, external_id } },
+      create: row,
+      update: { ...fields, synced_at: new Date() },
+    });
+  }
+  // Reconciliation: drop rows for this product that Shopify no longer returns.
+  const keepIds = rows.map((row) => row.external_id);
+  await db.product_variants.deleteMany({
+    where: { store_id: store.id, product_external_id: productExternalId, external_id: { notIn: keepIds.length ? keepIds : ['__none__'] } },
+  });
+  return rows.length;
+}
+
 async function upsertProduct(store, product, db = prisma) {
   const mapped = mapProduct(store.id, product);
   const { store_id, external_id, ...fields } = mapped;
@@ -146,6 +204,7 @@ async function upsertProduct(store, product, db = prisma) {
 async function deleteProduct(store, externalIdValue, db = prisma) {
   const id = String(externalIdValue || '').trim();
   if (!id) return { count: 0 };
+  await db.product_variants.deleteMany({ where: { store_id: store.id, product_external_id: id } });
   return db.products.deleteMany({ where: { store_id: store.id, external_id: id } });
 }
 
@@ -215,6 +274,7 @@ async function syncProducts(store, graphql = shopifyGraphql) {
   let cursor = null;
   let pages = 0;
   let count = 0;
+  let variantCount = 0;
   // A later page may fail after earlier pages were already persisted. The run
   // must fail loudly (it does, by throwing) AND carry enough context for an
   // operator to see how far it got. Callers must not advance last_synced_at on
@@ -229,6 +289,7 @@ async function syncProducts(store, graphql = shopifyGraphql) {
       await completeVariants(store, products, graphql);
       for (const product of products) {
         await upsertProduct(store, product);
+        variantCount += await upsertProductVariants(store, product);
         count += 1;
       }
       const nextCursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
@@ -244,6 +305,7 @@ async function syncProducts(store, graphql = shopifyGraphql) {
     error.sync_stage = 'product_sync';
     error.pages_completed = Math.max(0, pages - 1);
     error.products_upserted = count;
+    error.variants_upserted = variantCount;
     logger.warn('shopify_products_sync_incomplete', {
       store_id: store.id,
       stage: 'product_sync',
@@ -253,7 +315,13 @@ async function syncProducts(store, graphql = shopifyGraphql) {
     });
     throw error;
   }
-  logger.info('shopify_products_sync_completed', { store_id: store.id, count, pages });
+  try {
+    const { recordSuccess } = require('./syncDomainState');
+    await recordSuccess(store.id, 'variants', { discovered: variantCount, inserted: variantCount, pagesCompleted: pages, paginationComplete: true });
+  } catch (ledgerError) {
+    logger.warn('shopify_variants_ledger_unavailable', { store_id: store.id, error_type: ledgerError?.code || ledgerError?.name });
+  }
+  logger.info('shopify_products_sync_completed', { store_id: store.id, count, pages, variants: variantCount });
   return count;
 }
 
@@ -270,6 +338,7 @@ async function syncProductById(store, productGid, graphql = shopifyGraphql) {
   }
   await completeVariants(store, [product], graphql);
   await upsertProduct(store, product);
+  await upsertProductVariants(store, product);
   logger.info('shopify_product_webhook_refetched', { store_id: store.id, external_id: externalId(id) });
   return { action: 'product_upserted', external_id: externalId(id) };
 }
@@ -278,6 +347,8 @@ module.exports = {
   PRODUCT_FIELDS,
   mapProduct,
   upsertProduct,
+  mapVariant,
+  upsertProductVariants,
   deleteProduct,
   syncProducts,
   syncProductById,
