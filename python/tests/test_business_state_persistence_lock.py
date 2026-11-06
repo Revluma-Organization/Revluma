@@ -1,17 +1,23 @@
-"""Database-level serialization of the Business State persistence phase.
+"""Coordination and failure diagnostics for the Business State persistence path.
 
-Production evidence, 2026-11-03 03:37 UTC. Two builds for one organization
-reached persistence one second apart:
+Two production incidents define what belongs here:
 
-    pid 1179966  idle in transaction  ClientRead              tx age 64s
-                 UPDATE business_states SET is_current = FALSE ...
-    pid 1179967  active               Lock / transactionid    tx age 64s
-                 INSERT INTO business_states (...)
+2026-11-03 03:37 UTC. Two builds for one organization reached persistence one
+second apart and mutually deadlocked on ``idx_bstate_org_current``. Application
+lease rows in ``automation_job_state`` are the mutual-exclusion layer for a
+build; the unique partial index remains the database-level backstop that turns
+an unserialized write into a catchable 23505 instead of a torn state.
 
-Neither could finish. The caller timed out, the lease stayed held, and no
-snapshot was written. The comments in this module always claimed an advisory
-lock guarded the persistence transaction; no such call existed, so the
-application-level lease was the only coordination.
+2026-11-06. The persisted error string was "Business-state snapshot persistence
+failed." - true, but useless. The driver error was logged and discarded. The
+failure-reporting contract (cause captured, diagnostics first, bounded string,
+exception chain preserved) is what made the 2026-11-06 incident diagnosable; it
+is pinned here so it cannot silently regress.
+
+Atomicity itself is covered by test_business_state_persistence_atomicity.py.
+This file must not re-introduce client-transaction or advisory-lock needles for
+a pooler that scatters statements; they were removed after production disproved
+them (see test_write_scope_atomicity.py).
 """
 
 from __future__ import annotations
@@ -24,103 +30,73 @@ from src.intelligence import business_state
 from src.intelligence.business_state import _build_business_state_unlocked
 
 
-# Executable-SQL needles. Deliberately prefixed with SELECT / SET so they can
-# never match the prose comments that explain these fixes.
-LOCK_SQL = "SELECT pg_advisory_xact_lock("
-TIMEOUT_SQL = "SELECT set_config('lock_timeout'"
-UPDATE_SQL = "SET is_current = FALSE"
-INSERT_SQL = "INSERT INTO business_states ("
-
-
 @pytest.fixture(scope="module")
 def build_source() -> str:
     return inspect.getsource(_build_business_state_unlocked)
 
 
-def test_the_advisory_lock_is_taken_before_the_first_write(build_source):
-    lock_at = build_source.index(LOCK_SQL)
-    update_at = build_source.index(UPDATE_SQL)
-    insert_at = build_source.index(INSERT_SQL)
-
-    assert lock_at < update_at, "the lock must precede the UPDATE"
-    assert lock_at < insert_at, "the lock must precede the INSERT"
+# ---------------------------------------------------------------------------
+# Application lease: one row per organization, namespaced job name, TTL-bound.
+# ---------------------------------------------------------------------------
 
 
-def test_the_lock_is_transaction_scoped_so_it_cannot_leak(build_source):
-    """A session-scoped lock would be inherited by an unrelated borrower.
-
-    ``pg_advisory_lock`` is tied to the *connection*. With a pooled engine the
-    connection returns to the pool after the transaction, so a lock that was not
-    explicitly unlocked would be held by whatever borrows that connection next.
-    ``pg_advisory_xact_lock`` is released by the transaction ending, on commit
-    *and* on rollback, so it cannot outlive the build.
-    """
-    assert LOCK_SQL in build_source
-    # Guard against a regression to the session-scoped variant.
-    assert "pg_advisory_lock(" not in build_source
-    assert "pg_try_advisory_lock" not in build_source
-
-
-def test_lock_timeout_is_bounded_and_transaction_local(build_source):
-    """Waiting for a stuck peer must fail loudly, not hang to the HTTP timeout."""
-    assert TIMEOUT_SQL in build_source
-
-    # The third argument makes the setting local to this transaction, so it
-    # cannot leak into the session and silently apply to unrelated queries.
-    idx = build_source.index(TIMEOUT_SQL)
-    assert build_source[idx:idx + 90].count("true") >= 1
-
-    assert business_state.PERSIST_LOCK_TIMEOUT_SECONDS > 0
-    # Must be far below the caller's HTTP timeout, or the bound is meaningless.
-    assert business_state.PERSIST_LOCK_TIMEOUT_SECONDS <= 30
-
-
-def test_the_lock_timeout_is_set_before_the_lock_is_requested(build_source):
-    """Otherwise the wait for the lock itself is unbounded."""
-    assert build_source.index(TIMEOUT_SQL) < build_source.index(LOCK_SQL)
-
-
-def test_the_lock_is_scoped_to_one_organization(build_source):
-    """A global lock would serialize every merchant behind every other merchant."""
-    idx = build_source.index(LOCK_SQL)
-    statement = build_source[idx:idx + 120]
-    # The key is bound, not inlined, now that the lock is part of a batch.
-    assert ":lock_key" in statement
-
-    # The real guarantee: the value bound to :lock_key is derived from the
-    # organization, so two merchants can never contend on one lock.
-    # The params block binds "lock_key" from the organization-scoped builder;
-    # the execute then passes that block to the assembled batch.
-    params_at = build_source.index("persistence_params = {")
-    params = build_source[params_at:params_at + 300]
-    assert "_build_lock_job_name(organization_id)" in params
-    assert '"lock_key":' in params
-    execute_at = build_source.index("text(critical_section_sql)")
-    call = build_source[execute_at:execute_at + 120]
-    assert "persistence_params" in call
-
-
-def test_lock_keys_are_stable_and_organization_scoped():
+def test_lease_job_name_is_organization_scoped_and_stable():
     assert business_state._build_lock_job_name("org-1") == "business-state-build:org-1"
+    assert business_state._build_lock_job_name("org-1") == business_state._build_lock_job_name("org-1")
     assert business_state._build_lock_job_name("org-1") != business_state._build_lock_job_name("org-2")
-    # Namespaced so it can never collide with a scheduler job row in the same table.
-    assert not business_state._build_lock_job_name("org-1").startswith("business-state\x00")
-    assert business_state._build_lock_job_name("org-1") != "business-state"
 
 
-def test_two_organizations_get_different_advisory_lock_keys():
-    """hashtext collisions would serialize unrelated merchants."""
+def test_lease_job_name_cannot_collide_with_other_job_namespaces():
+    name = business_state._build_lock_job_name("org-1")
+    assert name.startswith("business-state-build:")
+    assert not name.startswith("business-state\x00")
+    assert name != "business-state"
+
+
+def test_lease_job_names_differ_across_real_organizations():
     key_a = business_state._build_lock_job_name("8148cda9-7d41-45b7-b66a-5339cb6286aa")
     key_b = business_state._build_lock_job_name("1dc6aa19-9737-4770-a340-ff812a8b139a")
     assert key_a != key_b
 
 
-def test_the_lease_and_the_persistence_lock_share_one_key_space():
-    """One key per organization, used by both coordination layers."""
-    org = "org-shared"
-    assert business_state._build_lock_job_name(org) == f"business-state-build:{org}"
-    source = inspect.getsource(_build_business_state_unlocked)
-    assert "_build_lock_job_name(organization_id)" in source
+def test_the_lease_claim_commits_so_peers_observe_it(build_source):
+    """An uncommitted lease would let two builders claim the same organization."""
+    lock_source = inspect.getsource(business_state._acquire_business_state_lock)
+    assert "db.commit()" in lock_source
+
+
+def test_the_lease_release_commits_so_the_outcome_is_durable(build_source):
+    release_source = inspect.getsource(business_state._release_business_state_lock)
+    assert "db.commit()" in release_source
+
+
+def test_the_lease_write_races_are_guarded(build_source):
+    """The claim must be atomic against stale holders; TTL reclaims dead leases."""
+    lock_source = inspect.getsource(business_state._acquire_business_state_lock)
+    assert "last_started_at" in lock_source and "make_interval(secs => :ttl)" in lock_source
+    assert "status IS DISTINCT FROM 'running'" in lock_source
+
+
+# ---------------------------------------------------------------------------
+# No client-side coordination primitives remain in the persistence path.
+# ---------------------------------------------------------------------------
+
+
+def test_the_persistence_path_uses_no_advisory_lock(build_source):
+    assert "pg_advisory" not in build_source
+    assert "lock_timeout" not in build_source
+
+
+def test_the_module_no_longer_defines_a_persistence_lock_timeout():
+    assert not hasattr(business_state, "PERSIST_LOCK_TIMEOUT_SECONDS")
+
+
+def test_the_build_relies_on_the_unique_partial_index_as_db_backstop(build_source):
+    # The 23505 mapping turns an unserialized is_current race into a readable
+    # BuildInProgress outcome instead of a torn row.
+    except_at = build_source.index("except Exception as exc:")
+    tail = build_source[except_at:]
+    assert "23505" in tail
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +162,7 @@ def test_diagnostics_precede_the_driver_message_so_truncation_cannot_eat_them(bu
     wrapper = "Business-state snapshot persistence failed ("
     surviving_budget = 280 - len(wrapper)
     measured_prefix = (
-        "diag scope_opened=True in_tx_before=False "
+        "diag scope_opened=False in_tx_before=False "
         "pid_before=1215449 pid_after_insert=1216237 | "
     )
     assert len(measured_prefix) < surviving_budget
@@ -195,16 +171,18 @@ def test_diagnostics_precede_the_driver_message_so_truncation_cannot_eat_them(bu
 def test_the_cause_is_recorded_even_when_the_caller_swallows_the_exception():
     """The report is written in the build's finally, not by the caller.
 
-    orchestrator.py:976 wraps this build in `except Exception: logger.error(...)`
-    and swallows it. Reporting from the caller would therefore never happen for
-    the path that matters most.
+    orchestrator.py wraps the build in `except Exception: logger.error(...)` and
+    swallows it. Reporting from the caller would therefore never happen for the
+    path that matters most.
     """
-    import inspect as _inspect
-
-    from src.intelligence.business_state import build_business_state_with_status
-
-    source = _inspect.getsource(build_business_state_with_status)
+    source = inspect.getsource(business_state.build_business_state_with_status)
     assert "finally:" in source
     finally_at = source.index("finally:")
     assert "_release_business_state_lock" in source[finally_at:]
     assert "error=error_text" in source[finally_at:]
+
+
+def test_a_failed_build_still_releases_its_lease(build_source):
+    source = inspect.getsource(business_state.build_business_state_with_status)
+    finally_at = source.index("finally:")
+    assert "_release_business_state_lock" in source[finally_at:]
