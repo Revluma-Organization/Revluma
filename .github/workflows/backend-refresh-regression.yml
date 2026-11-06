@@ -23,6 +23,7 @@ jobs:
       - run: npm ci
       - run: node --check src/controller/authController.js
       - run: |
+          set +e
           set -o pipefail
           npm test 2>&1 | tee /tmp/backend-refresh-tests.log
           status=${PIPESTATUS[0]}

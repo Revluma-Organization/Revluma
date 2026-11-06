@@ -35,6 +35,7 @@ jobs:
         run: npm ci
       - name: Run complete backend test suite
         run: |
+          set +e
           set -o pipefail
           npm test 2>&1 | tee /tmp/backend-tests.log
           status=${PIPESTATUS[0]}
