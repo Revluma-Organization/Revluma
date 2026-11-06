@@ -1,67 +1,49 @@
-"""The Business State persistence block must be one transaction.
+"""Persistence behind the production pooler: single statements only.
 
-Production evidence, 2026-11-03 10:21 UTC. ``pg_stat_activity`` showed four
-server backends, all with ``xact_start`` in the same second, each holding exactly
-one statement of the persistence block::
+Production evidence carried into this file:
 
-    1213110  idle in transaction  SELECT set_config('lock_timeout', '10s', true)
-    1211439  idle in transaction  SELECT pg_advisory_xact_lock(hashtext(...)::bigint)
-    1211443  idle in transaction  UPDATE business_states SET is_current = FALSE ...
-    1183936  active Lock/txid     INSERT INTO business_states (...)
+2026-11-03 10:21 UTC. ``pg_stat_activity`` showed four server backends, all with
+``xact_start`` in the same second, each holding exactly one statement of the
+persistence block. The lease then reported ``QueryCanceled ... while inserting
+index tuple (3766,4) in relation "idx_bstate_org_current"`` after 133851 ms.
 
-Four statements, four transactions. The lease row then reported::
+2026-11-06, after the advisory-lock + single-batch redesign merged in PR #302.
+The batched statement returned without error, yet the snapshot it inserted was
+not visible to the very next statement: ``diag scope_opened=True
+in_tx_before=True pid_before=1545467 pid_after_insert=1539098`` and the
+post-condition gate refused to report success. Statements are scattered across
+server backends even inside an explicit client transaction.
 
-    BusinessStatePersistenceError: ... (OperationalError:
-    (psycopg2.errors.QueryCanceled) canceling statement due to statement timeout
-    CONTEXT: while inserting index tuple (3766,4) in relation
-    "idx_bstate_org_current")
-    duration_ms: 133851
-
-``idx_bstate_org_current`` is ``CREATE UNIQUE INDEX ... ON business_states
-(organization_id) WHERE (is_current = true)`` and the database sets
-``statement_timeout = 2min``. 133851 ms is that timeout plus the read phase.
+The conclusion in both incidents is the same: the client transaction does not
+pin a backend, so atomicity may never be delegated to it. Every persistence
+statement is a single implicit transaction, routed through a dedicated
+NullPool autocommit engine. A test that would pass behind a normal Postgres
+but fail behind this pooler is a failing test of a broken design.
 """
 
 import inspect
 
 import pytest
+from sqlalchemy import create_engine
 
 from src.intelligence import business_state
-from src.intelligence.query import (
-    begin_write_scope,
-    commit_write_scope,
-    end_read_scope,
-)
 
-PERSISTENCE_STATEMENTS = [
-    "SELECT set_config('lock_timeout', :lock_timeout, true)",
-    "SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)",
-    "UPDATE business_states SET is_current = FALSE",
+PERSISTENCE_SEQUENCE = [
     "INSERT INTO business_states",
+    "UPDATE business_state_baselines",
+    "INSERT INTO alert_queue",
+    "SET is_current = FALSE",
+    "SET is_current = TRUE",
+    "SELECT is_current FROM business_states WHERE id = :id",
 ]
-
-
-class _Scope:
-    def __init__(self, session):
-        self._session = session
-        self.committed = False
-        self.rolled_back = False
-
-    def commit(self):
-        self.committed = True
-        self._session._end_transaction(commit=True)
-
-    def rollback(self):
-        self.rolled_back = True
-        self._session._end_transaction(commit=False)
 
 
 class SplittingSession:
     """Models Supavisor: no explicit transaction means one backend per statement.
 
     Each statement executed outside a transaction is pinned to its *own* server
-    backend and left ``idle in transaction``, exactly as production showed. A
-    statement count is therefore a backend count, which is the thing under test.
+    backend, exactly as production showed. A statement count is therefore a
+    backend count, which is the thing under test.
     """
 
     def __init__(self):
@@ -72,17 +54,6 @@ class SplittingSession:
     def in_transaction(self):
         return self._in_transaction
 
-    def begin(self):
-        assert not self._in_transaction, "nested begin"
-        self._in_transaction = True
-        self._current = []
-        self.backends.append(self._current)
-        return _Scope(self)
-
-    def _end_transaction(self, commit):
-        self._in_transaction = False
-        self._current = None
-
     def execute(self, sql, params=None):
         if not self._in_transaction:
             # Supavisor hands out a fresh backend and leaves it open.
@@ -91,149 +62,133 @@ class SplittingSession:
         self._current.append(str(sql))
 
     def commit(self):
-        self._end_transaction(commit=True)
+        self._end_transaction()
 
     def rollback(self):
-        self._end_transaction(commit=False)
+        self._end_transaction()
+
+    def _end_transaction(self):
+        self._in_transaction = False
+        self._current = None
 
 
-def _run_persistence(db):
-    """Execute the persistence statements the way the build does."""
-    scope = begin_write_scope(db)
-    for statement in PERSISTENCE_STATEMENTS:
-        db.execute(statement)
-    commit_write_scope(db, scope)
-    return scope
-
-
-def test_the_four_persistence_statements_share_one_backend():
+def test_without_a_client_transaction_each_statement_gets_its_own_backend():
+    """The production invariant the design must tolerate."""
     db = SplittingSession()
-    _run_persistence(db)
-
-    assert len(db.backends) == 1, (
-        "each statement got its own server backend, so the advisory lock and the "
-        "transaction-local lock_timeout were both inert"
-    )
-    assert db.backends[0] == PERSISTENCE_STATEMENTS
-
-
-def test_without_the_scope_each_statement_gets_its_own_backend():
-    """The counterfactual: this is precisely what production was doing."""
-    db = SplittingSession()
-    for statement in PERSISTENCE_STATEMENTS:
+    for statement in PERSISTENCE_SEQUENCE:
         db.execute(statement)
     db.commit()
 
-    assert len(db.backends) == len(PERSISTENCE_STATEMENTS)
+    assert len(db.backends) == len(PERSISTENCE_SEQUENCE)
 
 
-def test_the_update_and_insert_are_atomic():
-    """The self-deadlock: a non-atomic UPDATE then INSERT on the unique index."""
-    db = SplittingSession()
-    _run_persistence(db)
+def test_persistence_uses_the_dedicated_autocommit_transport(monkeypatch):
+    """The build must not rely on session-level transaction state at all."""
+    calls = []
 
-    update_at = db.backends[0].index("UPDATE business_states SET is_current = FALSE")
-    insert_at = db.backends[0].index("INSERT INTO business_states")
-    # Same backend, same transaction: the INSERT sees the UPDATE's own change
-    # instead of waiting on it as a competing uncommitted row.
-    assert insert_at == update_at + 1
+    class _FakeResult:
+        rowcount = 1
 
+        def scalar(self):
+            return 123
 
-def test_the_advisory_lock_is_taken_after_lock_timeout_and_before_the_update():
-    db = SplittingSession()
-    _run_persistence(db)
-    statements = db.backends[0]
+    class _FakeConn:
+        def __enter__(self):
+            return self
 
-    assert statements.index("SELECT set_config('lock_timeout', :lock_timeout, true)") < (
-        statements.index("SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)")
-    )
-    assert statements.index(
-        "SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)"
-    ) < statements.index("UPDATE business_states SET is_current = FALSE")
-
-
-def test_the_scope_is_committed_not_rolled_back():
-    db = SplittingSession()
-    scope = _run_persistence(db)
-    assert scope.committed is True
-    assert scope.rolled_back is False
-
-
-def test_begin_returns_none_when_the_caller_owns_the_transaction():
-    db = SplittingSession()
-    db.begin()  # caller already inside a transaction
-    outer = db.backends[0]
-
-    scope = begin_write_scope(db)
-    assert scope is None
-
-    for statement in PERSISTENCE_STATEMENTS:
-        db.execute(statement)
-    # Statements join the caller's transaction rather than starting their own.
-    assert db.backends == [outer]
-    assert outer == PERSISTENCE_STATEMENTS
-
-
-def test_commit_with_no_scope_falls_back_to_the_session():
-    class Bare:
-        def __init__(self):
-            self.commits = 0
-
-        def in_transaction(self):
-            return True
-
-        def execute(self, *_a, **_k):
-            pass
-
-        def commit(self):
-            self.commits += 1
-
-    db = Bare()
-    assert begin_write_scope(db) is None
-    assert commit_write_scope(db, None) is True
-    assert db.commits == 1
-
-
-def test_commit_failures_propagate_so_the_build_reports_failure():
-    class FailingScope:
-        def commit(self):
-            raise RuntimeError("could not serialize access")
-
-    class Db:
-        def in_transaction(self):
+        def __exit__(self, *_args):
             return False
 
-        def begin(self):
-            return FailingScope()
+        def execute(self, statement, params):
+            calls.append((str(statement), params))
+            return _FakeResult()
 
-    db = Db()
-    scope = begin_write_scope(db)
-    with pytest.raises(RuntimeError):
-        commit_write_scope(db, scope)
+    class _FakeEngine:
+        def connect(self):
+            return _FakeConn()
+
+    monkeypatch.setattr(business_state, "_PERSIST_ENGINE", _FakeEngine())
+    monkeypatch.setattr(business_state, "_PERSIST_ENGINE_READY", True)
+    assert business_state._persist_execute(None, "SELECT 1", scalar=True) == 123
+    assert calls, "the dedicated transport must serve persistence statements"
+    assert calls[0][0] == "SELECT 1"
 
 
-def test_a_session_without_begin_degrades_instead_of_failing():
-    class NoBegin:
-        def __init__(self):
-            self.commits = 0
+def test_persistence_engine_is_autocommit_and_nullpool():
+    url = "postgresql+psycopg2://u:p@localhost:1/db"
+    monkey = pytest.MonkeyPatch()
+    monkey.setenv("REVLUMA_PERSISTENCE_DATABASE_URL", url)
+    business_state._PERSIST_ENGINE = None
+    business_state._PERSIST_ENGINE_READY = False
+    try:
+        engine = business_state._persistence_engine()
+        assert engine is not None
+        # Engine creation is lazy, so this holds without a reachable server.
+        # The autocommit guarantee is enforced at connection setup by the
+        # isolation_level argument passed at creation time.
+        assert engine.__class__.__name__ == "Engine"
+        from sqlalchemy.pool import NullPool
 
-        def in_transaction(self):
-            return False
+        assert isinstance(engine.pool, NullPool)
+    finally:
+        monkey.undo()
+        business_state._PERSIST_ENGINE = None
+        business_state._PERSIST_ENGINE_READY = False
 
-        def execute(self, *_a, **_k):
-            pass
+
+def test_persistence_falls_back_to_session_commit_without_a_url(monkeypatch):
+    monkeypatch.setenv("REVLUMA_PERSISTENCE_DATABASE_URL", "")
+    monkeypatch.setattr(business_state.settings, "DATABASE_URL", "", raising=False)
+    business_state._PERSIST_ENGINE = None
+    business_state._PERSIST_ENGINE_READY = False
+    commits = []
+
+    class _Result:
+        rowcount = 1
+
+        def scalar(self):
+            return 7
+
+    class _Db:
+        def execute(self, statement, params):
+            return _Result()
 
         def commit(self):
-            self.commits += 1
+            commits.append(True)
 
-    db = NoBegin()
-    assert begin_write_scope(db) is None
-    commit_write_scope(db, None)
-    assert db.commits == 1
+    try:
+        assert business_state._persist_execute(_Db(), "SELECT 1") == 1
+        assert commits == [True]
+        assert business_state._persist_execute(_Db(), "SELECT 1", scalar=True) == 7
+    finally:
+        business_state._PERSIST_ENGINE = None
+        business_state._PERSIST_ENGINE_READY = False
+
+
+def test_compensation_never_raises_and_never_uses_the_session(monkeypatch):
+    """Cleanup runs behind the same autocommit transport; it cannot wedge the build."""
+    monkeypatch.setenv("REVLUMA_PERSISTENCE_DATABASE_URL", "postgresql+psycopg2://u:p@localhost:1/db")
+    business_state._PERSIST_ENGINE = None
+    business_state._PERSIST_ENGINE_READY = False
+
+    class _ExplodingSession:
+        def execute(self, *_a, **_k):
+            raise AssertionError("compensation must not route through the caller's session")
+
+        def rollback(self):
+            pass
+
+    try:
+        # The dedicated engine points at an unreachable port here; every DELETE
+        # fails, the failures are logged and swallowed, and no exception escapes.
+        business_state._compensate_failed_build(_ExplodingSession(), "org-1", "state-1")
+    finally:
+        business_state._PERSIST_ENGINE = None
+        business_state._PERSIST_ENGINE_READY = False
 
 
 # ---------------------------------------------------------------------------
-# The build itself must actually use the scope.
+# The build itself must run on the decomposed single-statement design.
 # ---------------------------------------------------------------------------
 
 
@@ -242,130 +197,28 @@ def build_source():
     return inspect.getsource(business_state._build_business_state_unlocked)
 
 
-def test_the_build_opens_the_write_scope_before_any_persistence_statement(build_source):
-    scope_at = build_source.index("write_scope = begin_write_scope(db)")
-    # Needles are the executable SQL, not prose: the comments explaining this fix
-    # quote the same statement names, and a needle matching a comment would make
-    # this test pass no matter where the code actually sits.
-    statements = (
-        "SELECT set_config('lock_timeout'",
-        "SELECT pg_advisory_xact_lock(",
-        "SET is_current = FALSE",
-        "INSERT INTO business_states (",
+def test_the_build_uses_the_persistence_transport_for_every_step(build_source):
+    assert build_source.count("_persist_execute(") >= 7, (
+        "every persistence statement must route through the dedicated transport"
     )
-    for statement in statements:
-        assert statement in build_source, f"missing from the build: {statement}"
-        assert scope_at < build_source.index(statement), statement
 
 
-def test_the_build_opens_the_write_scope_after_releasing_the_read_scope(build_source):
-    """The read scope is rolled back; persistence must start its own transaction."""
+def test_the_build_contains_no_client_transaction_or_batch(build_source):
+    for needle in ("begin_write_scope", "commit_write_scope", "critical_section_sql"):
+        assert needle not in build_source
+
+
+def test_the_module_exports_no_write_scope_constants():
+    assert not hasattr(business_state, "PERSIST_LOCK_TIMEOUT_SECONDS")
+
+
+def test_the_build_releases_the_read_scope_before_persisting(build_source):
     assert build_source.index("end_read_scope(db, read_scope)") < build_source.index(
-        "write_scope = begin_write_scope(db)"
+        "_persist_execute("
     )
 
 
-def test_the_build_commits_the_scope_and_not_the_session_directly(build_source):
-    assert "commit_write_scope(db, write_scope)" in build_source
-    # A bare db.commit() inside the block would end the transaction early and
-    # re-split the remaining statements across backends.
-    tail = build_source[build_source.index("write_scope = begin_write_scope(db)"):]
-    assert "db.commit()" not in tail.split("prune_superseded_snapshots")[0]
-
-
-def test_retention_pruning_still_runs_after_the_commit(build_source):
-    assert build_source.index("commit_write_scope(db, write_scope)") < build_source.index(
-        "prune_superseded_snapshots(db, organization_id)"
-    )
-
-
-# ---------------------------------------------------------------------------
-# The decisive fix: ONE statement, because the pooler splits separate executes
-# onto separate server backends even inside an explicit client transaction.
-#
-# Production measurement, 11:56:54 UTC:
-#   diag scope_opened=True in_tx_before=True pid_before=1220162
-#        pid_after_insert=None
-# scope_opened=True proves db.begin() succeeded, and pid_before had its own
-# backend while the four statements earlier appeared on four distinct pids.
-# ---------------------------------------------------------------------------
-
-
-CRITICAL_SECTION_ORDER = (
-    "SELECT set_config('lock_timeout', :lock_timeout, true);",
-    "SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint);",
-    "UPDATE business_states",
-    "INSERT INTO business_states (",
-)
-
-
-def test_the_critical_section_is_a_single_batched_statement(build_source):
-    assert "critical_section_sql" in build_source
-    # One execute for the whole critical section: no separate call per statement.
-    assert build_source.count("text(critical_section_sql)") == 1
-
-
-def test_the_batch_carries_all_four_statements_in_order(build_source):
-    start = build_source.index('critical_section_sql = """')
-    batch = build_source[start:start + 2600]
-
-    positions = []
-    for fragment in CRITICAL_SECTION_ORDER:
-        assert fragment in batch, f"missing from the batch: {fragment}"
-        positions.append(batch.index(fragment))
-
-    assert positions == sorted(positions), (
-        "lock_timeout must precede the advisory lock, which must precede the "
-        "UPDATE, which must precede the INSERT"
-    )
-
-
-def test_the_batch_is_semicolon_separated_so_postgres_runs_it_as_one_transaction(build_source):
-    start = build_source.index('critical_section_sql = """')
-    batch = build_source[start:start + 2600]
-    # psycopg2 mogrifies bound parameters client side and dispatches with PQexec,
-    # so a semicolon-separated batch is one round trip and one implicit
-    # transaction. Without the separators it would be four statements again.
-    assert batch.count(";") >= 3
-
-
-def test_the_old_separate_executes_are_gone(build_source):
-    """Each of these was its own round trip, and each got its own backend."""
-    start = build_source.index('critical_section_sql = """')
-    tail = build_source[start:]
-    for needle in (
-        'text("SELECT set_config(\'lock_timeout\', :lock_timeout, true)")',
-        'text("SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)")',
-    ):
-        assert needle not in tail, f"still executed separately: {needle}"
-
-
-def test_the_batch_binds_the_lock_key_and_timeout(build_source):
-    start = build_source.index("text(critical_section_sql)")
-    # Params are assembled into persistence_params just before the single
-    # execute; the lock key and timeout travel with that dict.
-    params_at = build_source.index("persistence_params = {")
-    assert params_at < start, "the params block must precede the execute"
-    params = build_source[params_at:start]
-    assert '"lock_timeout"' in params
-    assert '"lock_key"' in params
-    assert "_build_lock_job_name(organization_id)" in params
-    call = build_source[start:start + 120]
-    assert "persistence_params" in call
-
-
-def test_one_execute_means_one_backend_even_when_the_pooler_splits_statements():
-    """The property the fix depends on, modelled directly.
-
-    SplittingSession gives every *execute call* its own backend, which is what
-    production measured. Batching four statements into one call therefore yields
-    one backend no matter how the pooler behaves.
-    """
-    db = SplittingSession()
-    scope = begin_write_scope(db)
-    db.execute("SELECT set_config(...); SELECT pg_advisory_xact_lock(...); "
-               "UPDATE business_states ...; INSERT INTO business_states (...)")
-    commit_write_scope(db, scope)
-
-    assert len(db.backends) == 1
-    assert db.backends[0][0].count(";") == 3
+def test_retention_pruning_runs_only_after_the_gate(build_source):
+    gate_at = build_source.index("SELECT is_current FROM business_states WHERE id = :id")
+    prune_at = build_source.index("prune_superseded_snapshots(db, organization_id)")
+    assert gate_at < prune_at

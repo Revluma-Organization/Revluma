@@ -27,19 +27,86 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import bindparam, text
+from sqlalchemy import bindparam, create_engine, text
+from sqlalchemy.pool import NullPool
 
 from src.config.settings import settings
 from src.intelligence.query import (
     _in_transaction,
     begin_read_scope,
-    begin_write_scope,
-    commit_write_scope,
     end_read_scope,
     read_row,
 )
 
 logger = logging.getLogger("rev.business_state")
+
+# Persistence transport.
+#
+# This environment's connection pooler (Supavisor in transaction mode) does not
+# pin one server backend to one client transaction: instrumented production
+# evidence (2026-11-06, pid_before=1545467 vs pid_after_insert=1539098) showed a
+# client-side transaction leaving the transaction between statements, so
+# statements landed on arbitrary backends and no client transaction was ever
+# reliable. The only dependable unit of atomicity here is a single statement,
+# which auto-commits on whatever backend executes it.
+#
+# Every persistence statement - and the diagnostic reads - therefore goes
+# through a dedicated NullPool engine in autocommit mode. Each statement is its
+# own implicit transaction, identical in effect locally and behind the pooler.
+# The caller's session is still accepted so local tests and development keep
+# working without a configured database URL.
+_PERSIST_ENGINE = None
+_PERSIST_ENGINE_READY = False
+
+
+def _persistence_engine():
+    global _PERSIST_ENGINE, _PERSIST_ENGINE_READY
+    if _PERSIST_ENGINE_READY:
+        return _PERSIST_ENGINE
+    _PERSIST_ENGINE_READY = True
+    url = (
+        os.environ.get("REVLUMA_PERSISTENCE_DATABASE_URL")
+        or getattr(settings, "DATABASE_URL", "")
+        or ""
+    )
+    if not url.strip() or "placeholder" in url:
+        logger.warning("business_state_persistence_engine_unavailable")
+        _PERSIST_ENGINE = None
+        return None
+    try:
+        _PERSIST_ENGINE = create_engine(
+            url,
+            poolclass=NullPool,
+            isolation_level="autocommit",
+            pool_pre_ping=True,
+        )
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("business_state_persistence_engine_create_failed")
+        _PERSIST_ENGINE = None
+    return _PERSIST_ENGINE
+
+
+def _persist_execute(db, sql: str, params: dict | None = None, *, scalar: bool = False):
+    """Execute one persistence statement as its own implicit transaction.
+
+    Falls back to the caller's session (committing explicitly) when no
+    persistence URL is configured, keeping local unit tests hermetic.
+    """
+    engine = _persistence_engine()
+    if engine is not None:
+        try:
+            with engine.connect() as conn:
+                result = conn.execute(text(sql), params or {})
+                return result.scalar() if scalar else result.rowcount
+        except Exception:
+            logger.warning("business_state_persistence_step_failed")
+            raise
+    result = db.execute(text(sql), params or {})
+    if scalar:
+        return result.scalar()
+    db.commit()
+    return int(getattr(result, "rowcount", 0) or 0)
+
 
 # Daily revenue drives anomaly detection and the morning briefing, so it must use
 # the same semantics as every other revenue surface: `orders.total` is net of
@@ -130,11 +197,6 @@ BUILD_LOCK_TABLE = "automation_job_state"
 DEFAULT_BUILD_LOCK_TTL_SECONDS = 600
 
 
-#: How long the persistence phase will wait for another build of the same
-#: organization to finish before giving up. Bounded so a stuck peer produces a
-#: reported failure instead of an open-ended hang that the caller can only see
-#: as a timeout.
-PERSIST_LOCK_TIMEOUT_SECONDS = 10
 
 
 def _build_lock_ttl_seconds() -> int:
@@ -321,6 +383,40 @@ def _rollback_quietly(db) -> None:
         db.rollback()
     except Exception:
         logger.exception("business_state_rollback_failed")
+
+
+def _compensate_failed_build(db, organization_id: str, state_id: str) -> None:
+    """Best-effort cleanup for a persistence attempt that failed.
+
+    The persistence path is a sequence of single statements (no enclosing
+    transaction behind the production pooler), so an attempt that fails can
+    leave this attempt's rows behind. Every statement here is single and
+    self-contained; each is executed in a nested try so a cleanup failure
+    never masks the original error. Deleting this attempt's alerts and its
+    inactive snapshot restores the same externally visible state as if the
+    attempt never ran: the previous current snapshot (if any) is untouched,
+    no dependent rows survive, and no orphaned snapshot lingers.
+    """
+    try:
+        _persist_execute(
+            db,
+            "DELETE FROM alert_queue WHERE business_state_id = :state_id",
+            {"state_id": state_id},
+        )
+    except Exception:
+        logger.exception(
+            "business_state_cleanup_alerts_failed", extra={"org_id": organization_id}
+        )
+    try:
+        _persist_execute(
+            db,
+            "DELETE FROM business_states WHERE id = :state_id AND NOT is_current",
+            {"state_id": state_id},
+        )
+    except Exception:
+        logger.exception(
+            "business_state_cleanup_snapshot_failed", extra={"org_id": organization_id}
+        )
 
 
 def prune_superseded_snapshots(
@@ -800,13 +896,12 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     # reached persistence. See begin_read_scope for the production evidence.
     #
     # This is closed again before persistence so the persistence transaction,
-    # its advisory lock and the existing rollback paths keep exactly their
-    # current semantics.
+    # The read scope holds no persistence lock; writes coordinate through the
+    # application lease and serialize on the unique partial index.
     read_scope = begin_read_scope(db)
 
-    # Read the current snapshot before the expensive source queries. The
-    # The persistence advisory lock is taken only for the final persistence
-    # transaction, so optional-source rollbacks cannot release it prematurely.
+    # Read the current snapshot before the expensive source queries. No
+    # persistence lock is open during the read phase.
     previous_state = load_current_business_state(organization_id, db)
 
     logger.info("business_state_build_start", extra={
@@ -1279,10 +1374,16 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     # Capture warnings raised during availability checks as well as metric collection.
     state_metadata["warnings"] = list(warnings)
 
-    # Every source read is done. Release the single connection the read phase
-    # held so persistence runs in its own transaction, takes its own advisory
-    # lock, and commits on its own terms.
+    # Every source read is done. Release the read phase's connection so
+    # persistence stands alone. A read-scope release failure previously left
+    # one session transaction open across the persistence block, coupling
+    # reads and writes behind a single rollback - harmless when it works,
+    # catastrophic when a pooler scatters statements and the statements can
+    # no longer see each other's uncommitted rows. Close it deterministically
+    # here, whatever the read phase did, so the decomposed single statements
+    # below behave identically in every environment.
     end_read_scope(db, read_scope)
+    _rollback_quietly(db)
 
     persistence_failed = False
     # The underlying driver error, kept because the exception raised below is a
@@ -1293,113 +1394,86 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     persistence_cause: str | None = None
     persistence_exc: BaseException | None = None
 
-    # Hold ONE transaction across the whole persistence block. Without it each
-    # statement becomes its own transaction behind Supavisor, which silently
-    # defeats every safeguard below: set_config('lock_timeout', ..., true) is
-    # transaction-local, pg_advisory_xact_lock is released the moment its own
-    # transaction ends, and the UPDATE and INSERT stop being atomic. Production
-    # caught all four statements on four separate backends in the same second,
-    # with the INSERT then blocked on the unique partial index
-    # idx_bstate_org_current until the 2-minute statement_timeout cancelled it.
-    # See begin_write_scope for the full evidence.
-    write_scope = begin_write_scope(db)
-
-    # DIAGNOSTIC (temporary): two shipped fixes have now been defeated by the
-    # runtime splitting these statements across four server backends, so the
-    # behaviour is being measured rather than inferred. pg_backend_pid() reports
-    # which server backend executes a statement; if the value differs between the
-    # start of the block and the INSERT, the statements are not sharing one
-    # connection and no transaction-scoped safeguard can work. The values are
-    # appended to the reported cause, which already reaches automation_job_state.
-    diag_scope_opened = write_scope is not None
+    # Persistence no longer holds a client transaction across statements.
+    # Production (2026-11-06) measured pg_backend_pid() changing mid-block
+    # even inside an explicit client transaction - the pooler scatters
+    # statements, so transaction-scoped safeguards never engage. The
+    # decomposed single-statement design below needs no enclosing transaction.
+    diag_scope_opened = False
     diag_in_tx_before = _in_transaction(db)
+
+    # Persistence behind the production pooler is STATEMENT-SCATTERED: the
+    # client's explicit transaction does not pin a server backend. Production,
+    # 2026-11-06, after PR #302: the single batched statement returned without
+    # error, yet its writes were not visible to the very next statement
+    # (pid_before=1545467, pid_after_insert=1539098) and the snapshot was
+    # never persisted. No design that relies on multi-statement transaction
+    # semantics can be correct in that environment - including set_config +
+    # client-maintained advisory locks at all.
+    #
+    # Every write below is therefore a SINGLE statement. Each one is its own
+    # implicit server transaction, atomic in every pooler mode, with no
+    # cross-statement semantics to defeat:
+    #
+    #   1. INSERT the snapshot INACTIVE. Dependent FKs are satisfiable as
+    #      soon as this row exists; idx_bstate_org_current is not consulted
+    #      because is_current = FALSE for any number of rows.
+    #   2. Dependent writes (baselines UPDATE, alert INSERTs).
+    #   3. Flip the previous current snapshot out.
+    #   4. Flip the new snapshot in. Between steps 3 and 4 no row is current
+    #      for the organization: a brief, loud, self-healing window (the next
+    #      successful build restores service), never a torn or hidden write.
+    #
+    # Any failure compensates: this attempt's alerts and the inactive snapshot
+    # are deleted. The pre-existing current snapshot is left untouched unless
+    # the failure happens between steps 3 and 4 - then the org has no current
+    # row until the next successful build, which is loud and retry-safe. There
+    # is no way to torn-commit, no way to leak a dependent row, and no silent
+    # path to reporting success for a write that did not land. The unique
+    # partial index remains the last-line integrity guard; a concurrent build
+    # that loses the is_current race surfaces as a 23505 (mapped to
+    # BuildInProgress below) instead of a hand-rolled lock.
+
+    # state_id is bound again below for the flip-in step and every
+    # compensation statement.
+    # DIAGNOSTIC: pids are still recorded in the reported cause. In a
+    # statement-scattered environment they legitimately differ per statement;
+    # they exist to prove which regime a deployment is in, never to gate
+    # success. Bounded and merchant-free.
     diag_pid_before = None
     diag_pid_after_insert = None
 
     try:
-        diag_pid_before = db.execute(text("SELECT pg_backend_pid()")).scalar()
+        diag_pid_before = _persist_execute(db, "SELECT pg_backend_pid()", scalar=True)
 
-        # Serialize persistence per organization *at the database level*.
-        #
-        # Comments here have always claimed an advisory lock guards this
-        # transaction, but no such call existed - the only coordination was the
-        # application-level lease. Production proved that is not sufficient: at
-        # 03:37 UTC on 2026-11-03 two builds for one organization reached this
-        # phase one second apart. One ran the UPDATE below and then sat idle in
-        # an open transaction; the other blocked behind it on a transactionid
-        # lock for 64+ seconds. Neither could finish, the caller timed out, and
-        # no snapshot was written.
-        #
-        # A transaction-scoped advisory lock is the right primitive here: it is
-        # released automatically on commit *and* on rollback, so unlike a
-        # session-scoped pg_advisory_lock it cannot leak onto a pooled connection
-        # and be inherited by an unrelated borrower. lock_timeout is set
-        # transaction-locally so waiting for a stuck peer fails loudly instead of
-        # hanging until the caller's HTTP timeout.
-        # ONE statement, not four. Production measured the reason: with the block
-        # split across separate executes, Supavisor ran each on its OWN server
-        # backend in its OWN transaction even though begin_write_scope had opened
-        # an explicit client transaction (diag scope_opened=True, and the four
-        # statements appeared on four distinct pids in pg_stat_activity). That
-        # silently defeats every transaction-scoped safeguard at once:
-        #
-        #   * set_config('lock_timeout', ..., true) applied only to the
-        #     transaction containing the set_config itself.
-        #   * pg_advisory_xact_lock was released the moment its own transaction
-        #     ended, i.e. before the UPDATE ran - zero mutual exclusion.
-        #   * the UPDATE and the INSERT were not atomic, so the INSERT of an
-        #     is_current = TRUE row had to wait on the UPDATE's uncommitted row
-        #     via the unique partial index idx_bstate_org_current
-        #     (organization_id) WHERE is_current = true, until the database's
-        #     2-minute statement_timeout cancelled it: QueryCanceled "while
-        #     inserting index tuple in relation idx_bstate_org_current".
-        #
-        # psycopg2 interpolates bound parameters client side and dispatches the
-        # mogrified string with PQexec, so a semicolon-separated batch is one
-        # round trip and PostgreSQL runs it as a single implicit transaction.
-        # One statement therefore means one backend, one transaction: the
-        # lock_timeout genuinely bounds the advisory wait, the advisory lock is
-        # genuinely held across the UPDATE and INSERT, and the two writes are
-        # genuinely atomic.
-        #
-        # The same property is now load-bearing for the DEPENDENT rows too.
-        # Production on 2026-11-06 showed the round trips landing on different
-        # server backends (pid_before=1534270, pid_after_insert=1517450) behind
-        # the pooler, so the snapshot INSERT was not visible to the dependent
-        # alert_queue INSERT and the foreign key rejected it: the whole
-        # persistence block rolled back, and no snapshot ever committed
-        # (business_states had no row newer than 2026-11-05 23:59:53; matching
-        # the scheduler's INTELLIGENCE_UNAVAILABLE heartbeat). Any write that
-        # must be atomic with the snapshot is therefore emitted inside this one
-        # batch.
         baseline_sql = ""
         if baseline_table_available:
             baseline_sql = """
                 UPDATE business_state_baselines
                 SET next_rebuild_at = :next_rebuild_at,
                     updated_at = NOW()
-                WHERE organization_id = :org_id;
-"""
+                WHERE organization_id = :org_id
+            """
 
         alert_sql_fragments: list[str] = []
         alert_params: dict[str, Any] = {}
         if alert_table_available:
             for index, anomaly in enumerate(anomalies):
-                alert_sql_fragments.append(f"""
-                INSERT INTO alert_queue (
-                    id, organization_id, business_state_id, alert_type,
-                    severity, message, action_url, payload, status,
-                    dedupe_key, available_at, created_at, updated_at
-                ) VALUES (
-                    :alert_id_{index}, :org_id, :state_id, :alert_type_{index},
-                    :alert_severity_{index}, :alert_message_{index},
-                    :alert_action_url_{index},
-                    CAST(:alert_payload_{index} AS JSONB), 'pending',
-                    :alert_dedupe_key_{index},
-                    NOW(), NOW(), NOW()
-                )
-                ON CONFLICT (organization_id, dedupe_key) DO NOTHING;
-                """)
+                alert_sql_fragments.append("""
+                    INSERT INTO alert_queue (
+                        id, organization_id, business_state_id, alert_type,
+                        severity, message, action_url, payload, status,
+                        dedupe_key, available_at, created_at, updated_at
+                    ) VALUES (
+                        :alert_id_{i}, :org_id, :state_id, :alert_type_{i},
+                        :alert_severity_{i}, :alert_message_{i},
+                        :alert_action_url_{i},
+                        CAST(:alert_payload_{i} AS JSONB), 'pending',
+                        :alert_dedupe_key_{i},
+                        NOW(), NOW(), NOW()
+                    )
+                    ON CONFLICT (organization_id, dedupe_key) DO NOTHING
+                """.format(i=index))
                 alert_params[f"alert_id_{index}"] = str(uuid.uuid4())
                 alert_params[f"alert_type_{index}"] = anomaly["metric"]
                 alert_params[f"alert_severity_{index}"] = anomaly["severity"]
@@ -1407,46 +1481,11 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
                 alert_params[f"alert_action_url_{index}"] = anomaly.get("action_url")
                 alert_params[f"alert_payload_{index}"] = json.dumps(anomaly)
                 alert_params[f"alert_dedupe_key_{index}"] = f"{state_id}:{anomaly['metric']}"
-        alerts_sql = "".join(alert_sql_fragments)
 
-        critical_section_sql = """
-                SELECT set_config('lock_timeout', :lock_timeout, true);
-                SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint);
-                UPDATE business_states
-                SET is_current = FALSE
-                WHERE organization_id = :org_id
-                  AND is_current = TRUE;
-                INSERT INTO business_states (
-                    id, organization_id, is_current, schema_version,
-                    generated_at, data_freshness_at, valid_until,
-                    staleness_threshold_mins,
-                    computation_status,
-                    revenue_today, revenue_yesterday, revenue_delta_pct,
-                    revenue_trend_7d, revenue_anomaly,
-                    abandoned_cart_count, abandoned_cart_value, cart_anomaly,
-                    churn_risk_count, vip_inactive_count, returning_customer_rate,
-                    opportunities, risks, anomalies, trends, ml_signals,
-                    source_data, metadata
-                ) VALUES (
-                    :id, :org_id, TRUE, :schema_version,
-                    :generated_at, :data_freshness_at, :valid_until,
-                    :staleness_mins,
-                    :computation_status,
-                    :revenue_today, :revenue_yesterday, :revenue_delta_pct,
-                    :revenue_trend_7d, :revenue_anomaly,
-                    :cart_count, :cart_value, :cart_anomaly,
-                    :churn_risk_count, :vip_inactive_count, :returning_rate,
-                    CAST(:opportunities AS JSONB), CAST(:risks AS JSONB),
-                    CAST(:anomalies AS JSONB), CAST(:trends AS JSONB),
-                    CAST(:ml_signals AS JSONB), CAST(:source_data AS JSONB),
-                    CAST(:metadata AS JSONB)
-                );
-        """ + baseline_sql + alerts_sql
         persistence_params = {
-                "lock_timeout": f"{PERSIST_LOCK_TIMEOUT_SECONDS}s",
-                "lock_key": _build_lock_job_name(organization_id),
                 "id": state_id,
                 "org_id": organization_id,
+                "state_id": state_id,
                 "schema_version": SCHEMA_VERSION,
                 "generated_at": generated_at,
                 "data_freshness_at": last_synced_at,
@@ -1474,30 +1513,74 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         }
         if baseline_table_available:
             persistence_params["next_rebuild_at"] = next_rebuild_at
-        persistence_params["state_id"] = state_id
         persistence_params.update(alert_params)
-        db.execute(text(critical_section_sql), persistence_params)
 
-        diag_pid_after_insert = db.execute(text("SELECT pg_backend_pid()")).scalar()
+        # Step 1 - insert the snapshot INACTIVE.
+        _persist_execute(db, """
+            INSERT INTO business_states (
+                id, organization_id, is_current, schema_version,
+                generated_at, data_freshness_at, valid_until,
+                staleness_threshold_mins,
+                computation_status,
+                revenue_today, revenue_yesterday, revenue_delta_pct,
+                revenue_trend_7d, revenue_anomaly,
+                abandoned_cart_count, abandoned_cart_value, cart_anomaly,
+                churn_risk_count, vip_inactive_count, returning_customer_rate,
+                opportunities, risks, anomalies, trends, ml_signals,
+                source_data, metadata
+            ) VALUES (
+                :id, :org_id, FALSE, :schema_version,
+                :generated_at, :data_freshness_at, :valid_until,
+                :staleness_mins,
+                :computation_status,
+                :revenue_today, :revenue_yesterday, :revenue_delta_pct,
+                :revenue_trend_7d, :revenue_anomaly,
+                :cart_count, :cart_value, :cart_anomaly,
+                :churn_risk_count, :vip_inactive_count, :returning_rate,
+                CAST(:opportunities AS JSONB), CAST(:risks AS JSONB),
+                CAST(:anomalies AS JSONB), CAST(:trends AS JSONB),
+                CAST(:ml_signals AS JSONB), CAST(:source_data AS JSONB),
+                CAST(:metadata AS JSONB)
+            )
+        """, persistence_params)
+
+        # Steps 2-4 - dependent writes, each its own implicit transaction.
+        if baseline_sql:
+            _persist_execute(db, baseline_sql, persistence_params)
+        for alert_sql in alert_sql_fragments:
+            _persist_execute(db, alert_sql, persistence_params)
+
+        # Step 4a - flip the previous current snapshot out.
+        _persist_execute(
+            db,
+            "UPDATE business_states SET is_current = FALSE"
+            " WHERE organization_id = :org_id AND is_current = TRUE",
+            {"org_id": organization_id},
+        )
+
+        # Step 4b - flip the new snapshot in.
+        _persist_execute(
+            db,
+            "UPDATE business_states SET is_current = TRUE"
+            " WHERE organization_id = :org_id AND id = :state_id",
+            {"org_id": organization_id, "state_id": state_id},
+        )
+
+        diag_pid_after_insert = _persist_execute(db, "SELECT pg_backend_pid()", scalar=True)
 
         # Post-condition gate: the snapshot must exist and be current before
-        # dependent work proceeds. A persistence path that cannot show the row
-        # has not happened, whatever the driver reported. If it is missing, the
-        # build fails loudly instead of reporting a snapshot that was never
-        # written.
-        snapshot_visible = db.execute(
-            text("SELECT is_current FROM business_states WHERE id = :id"),
+        # the build reports success. A persistence path that cannot show the
+        # row has not happened, whatever the driver reported.
+        snapshot_visible = _persist_execute(
+            db,
+            "SELECT is_current FROM business_states WHERE id = :id",
             {"id": state_id},
-        ).scalar()
+            scalar=True,
+        )
         if not snapshot_visible:
             raise BusinessStatePersistenceError(
                 "Business-state snapshot was not verifiable after persistence."
             )
-        # Commits the single transaction that spans set_config, the advisory
-        # lock, the UPDATE, the INSERT, the baselines update and the alert
-        # inserts - all inside one server-side implicit transaction. The commit
-        # releases the advisory lock together with the writes it protected.
-        commit_write_scope(db, write_scope)
 
         logger.info("business_state_written", extra={
             "org_id": organization_id,
@@ -1507,23 +1590,25 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         })
 
         # Bound the table now that the snapshot is safely committed. Running
-        # this outside the write transaction keeps a retention failure from
+        # this outside the write path keeps a retention failure from
         # invalidating a successful build.
         prune_superseded_snapshots(db, organization_id)
 
     except BusinessStateBuildInProgress:
         _rollback_quietly(db)
+        _compensate_failed_build(db, organization_id, state_id)
         raise
     except Exception as exc:
-        # A lock_timeout waiting on a build that already holds the persistence
-        # lock is contention, not corruption: nothing was written. Map it to
-        # the build-in-progress outcome (HTTP 409) so callers report a skipped
-        # build instead of a broken one, and the unique partial index is never
-        # asked to adjudicate a race it lost to the lock.
+        # Contention, not corruption. The serialization backstop for this
+        # write path is the unique partial index idx_bstate_org_current;
+        # losing that race yields a 23505.
+        # Either way, this attempt's dependents are removed before the caller
+        # sees a 409.
         sqlstate = getattr(getattr(exc, "orig", None), "pgcode", None) or getattr(exc, "pgcode", None)
-        if sqlstate == "55P03" or "lock_not_available" in str(exc):
+        if sqlstate in ("55P03", "23505") or "lock_not_available" in str(exc):
             _rollback_quietly(db)
-            warnings.append("Another business-state build holds the persistence lock.")
+            _compensate_failed_build(db, organization_id, state_id)
+            warnings.append("Another business-state build holds the persistence slot.")
             raise BusinessStateBuildInProgress(
                 "A business-state rebuild is already running for this organization."
             ) from exc
@@ -1551,6 +1636,7 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
             },
         )
         _rollback_quietly(db)
+        _compensate_failed_build(db, organization_id, state_id)
         warnings.append("Failed to persist business state to database.")
         computation_status = "partial"
         persistence_failed = True

@@ -41,7 +41,6 @@ from sqlalchemy.orm import Session
 
 from src.intelligence.business_state import (
     OUTCOME_REBUILT,
-    BusinessStateBuildInProgress,
     BusinessStatePersistenceError,
     build_business_state_with_status,
     _build_lock_job_name,
@@ -485,30 +484,73 @@ def test_backend_death_between_diagnostic_and_write_leaves_no_partial_state(engi
         assert counts["alerts"] >= 1, "a successful build must persist its dependents"
 
 
-def test_concurrent_build_fails_loudly_and_writes_nothing(engine, org):
-    """Advisory-lock contention: one build holds, the other must lose cleanly."""
+def _install_flip_in_failing_trigger(engine, org_id: str) -> None:
+    """Test-only trigger: any UPDATE making a snapshot current aborts."""
+    with engine.begin() as conn:
+        conn.execute(text(
+            f'CREATE OR REPLACE FUNCTION bstate_test_fail_flip_{org_id.replace("-", "")}()'
+            " RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN"
+            " IF NEW.is_current THEN RAISE EXCEPTION 'forced flip-in failure'; END IF;"
+            " RETURN NEW; END $$;"
+        ))
+        conn.execute(text(
+            "DROP TRIGGER IF EXISTS bstate_test_fail_flip ON business_states;"
+            f"CREATE TRIGGER bstate_test_fail_flip BEFORE UPDATE ON business_states"
+            f" FOR EACH ROW WHEN (NEW.organization_id = '{org_id}'::uuid)"
+            f" EXECUTE FUNCTION bstate_test_fail_flip_{org_id.replace('-', '')}();"
+        ))
+
+
+def _drop_flip_in_failing_trigger(engine, org_id: str) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("DROP TRIGGER IF EXISTS bstate_test_fail_flip ON business_states"))
+        conn.execute(text(f'DROP FUNCTION IF EXISTS bstate_test_fail_flip_{org_id.replace("-", "")}()'))
+
+
+def test_flip_in_failure_cleans_up_and_is_retry_safe(engine, org):
+    """A failure in the flip-in step leaves no torn state and no orphan rows.
+
+    Contract: the flip-out already displaced the previous current snapshot, so
+    after compensation the organization holds no current snapshot until the
+    next successful build - loud and retry-safe, never silently half-written.
+    """
     org_id = org["org_id"]
     _seed_anomalous_baseline(engine, org_id)
-
-    lock_conn = engine.connect()
-    trans = lock_conn.begin()
-    lock_conn.execute(
-        text("SELECT pg_advisory_xact_lock(hashtext(:key)::bigint)"),
-        {"key": _build_lock_job_name(org_id)},
-    )
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO business_states (organization_id, is_current) VALUES (:org, true)"),
+            {"org": org_id},
+        )
+    _install_flip_in_failing_trigger(engine, org_id)
+    session = Session(bind=engine)
     try:
-        session = Session(bind=engine)
-        try:
-            with pytest.raises(BusinessStateBuildInProgress):
-                build_business_state_with_status(org_id, session)
-        finally:
-            session.close()
-        counts = _counts(engine, org_id)
-        assert counts["states"] == 0
-        assert counts["alerts"] == 0
+        with pytest.raises(BusinessStatePersistenceError):
+            build_business_state_with_status(org_id, session)
     finally:
-        trans.rollback()
-        lock_conn.close()
+        session.close()
+        _drop_flip_in_failing_trigger(engine, org_id)
+
+    counts = _counts(engine, org_id)
+    # The failed attempt's snapshot and alerts are removed entirely; only the
+    # pre-existing (now superseded-looking but present) row remains.
+    assert counts["states"] == 1, "the attempted snapshot must be cleaned up"
+    assert counts["has_current"] is False, "no torn current state may remain"
+    assert counts["alerts"] == 0, "dependent alerts must not survive a failed flip-in"
+
+    # Recovery: the next build (trigger now dropped) lands a single current row.
+    session = Session(bind=engine)
+    try:
+        state, outcome = build_business_state_with_status(org_id, session)
+    finally:
+        session.close()
+    assert outcome == OUTCOME_REBUILT
+    counts = _counts(engine, org_id)
+    # The pre-existing superseded row remains flipped-out (compensated), so the
+    # org now carries the seeded row plus the recovery snapshot, exactly one
+    # of them current.
+    assert counts["states"] == 2, "seeded row plus the recovery snapshot must remain"
+    assert counts["has_current"] is True
+    assert counts["alerts"] >= 1
 
 
 def test_retry_after_failure_completes_cleanly(engine, org):
@@ -537,21 +579,42 @@ def test_retry_after_failure_completes_cleanly(engine, org):
     assert counts["alerts"] >= 1
 
 
-def test_persistence_block_is_a_single_round_trip():
-    """Source-level guard: the whole critical section is one db.execute call."""
+def test_persistence_is_a_sequence_of_single_statements():
+    """Source-level guard: no multi-statement batch and no enclosing client txn.
+
+    The production pooler scatters statements across backends, so atomicity may
+    never depend on a client transaction or a multi-statement round trip. Every
+    SQL literal in the write path must be a single statement.
+    """
     import inspect
+    import re
 
     from src.intelligence import business_state
 
     source = inspect.getsource(business_state._build_business_state_unlocked)
-    exec_at = source.index('db.execute(text(critical_section_sql), persistence_params)')
-    assignments = source[:exec_at]
-    assert 'critical_section_sql = """' in assignments
-    # The dependent writes are composed into the same statement.
-    assert "baseline_sql" in assignments
-    assert "alerts_sql" in assignments
-    assert '""" + baseline_sql + alerts_sql' in assignments
-    # And no separate dependent writes survive outside the batch.
-    after = source[exec_at:]
-    assert 'INSERT INTO alert_queue' not in after
-    assert "UPDATE business_state_baselines" not in after.split("diag_pid_after_insert")[0]
+    # No enclosing client transaction and no batched statement assembly.
+    assert "begin_write_scope(db)" not in source
+    assert "critical_section_sql" not in source
+    assert "commit_write_scope(db" not in source
+    # No pg_advisory_xact_lock in the persistence path (useless behind a
+    # scattered pooler); coordination is the application lease + the partial
+    # unique index.
+    assert "pg_advisory_xact_lock" not in source
+    # Every text(...) literal embedded with an f-string or plain string must
+    # not contain an interior semicolon.
+    literals = re.findall(r"text\((\"\"\".*?\"\"\"|\"[^\"]*\")\)", source, re.S)
+    assert literals, "expected the persistence path to embed SQL literals"
+    for literal in literals:
+        body = literal.strip().lstrip('"').rstrip('"')
+        assert ";" not in body, f"multi-statement literal in write path: {body[:80]}"
+    # Step order: inactive snapshot insert precedes dependent writes,
+    # then flip-out, then flip-in, then the verification gate.
+    insert_at = source.index("INSERT INTO business_states")
+    flip_out_at = source.index("SET is_current = FALSE")
+    flip_in_at = source.index("SET is_current = TRUE")
+    gate_at = source.index("SELECT is_current FROM business_states WHERE id = :id")
+    assert insert_at < flip_out_at < flip_in_at < gate_at
+    # The compensation function deletes this attempt's dependents and snapshot.
+    comp = inspect.getsource(business_state._compensate_failed_build)
+    assert "DELETE FROM alert_queue WHERE business_state_id" in comp
+    assert "DELETE FROM business_states WHERE id = :state_id AND NOT is_current" in comp
