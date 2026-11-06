@@ -342,10 +342,16 @@ def test_the_old_separate_executes_are_gone(build_source):
 
 def test_the_batch_binds_the_lock_key_and_timeout(build_source):
     start = build_source.index("text(critical_section_sql)")
-    call = build_source[start:start + 400]
-    assert '"lock_timeout"' in call
-    assert '"lock_key"' in call
-    assert "_build_lock_job_name(organization_id)" in call
+    # Params are assembled into persistence_params just before the single
+    # execute; the lock key and timeout travel with that dict.
+    params_at = build_source.index("persistence_params = {")
+    assert params_at < start, "the params block must precede the execute"
+    params = build_source[params_at:start]
+    assert '"lock_timeout"' in params
+    assert '"lock_key"' in params
+    assert "_build_lock_job_name(organization_id)" in params
+    call = build_source[start:start + 120]
+    assert "persistence_params" in call
 
 
 def test_one_execute_means_one_backend_even_when_the_pooler_splits_statements():
