@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { prisma } = require('../configs/database');
 const { rfmSync } = require('./mlService');
 const { shopifyGraphql } = require('./shopifyGraphql');
@@ -497,7 +498,8 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
   }
   const redis = getRedisClient();
   const lockKey = `shopify:setup:lock:${store.id}`;
-  const lockOwner = require('crypto').randomUUID();
+  const lockOwner = crypto.randomUUID();
+  const syncJobId = crypto.randomUUID();
   const acquired = await redis.set(lockKey, lockOwner, 'EX', 900, 'NX');
   if (acquired !== 'OK') {
     return { success: false, alreadyRunning: true };
@@ -526,10 +528,22 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     // This generic Shopify sync cannot certify complete historical access, refunds,
     // or customer lifetime history. Never mint coverage here merely from pagination.
     await prisma.intelligence_order_coverage.deleteMany({ where: { store_id: store.id } });
+    const syncStartedAt = new Date();
     await prisma.stores.update({
       where: { id: store.id },
-      data: { status: 'syncing', updated_at: new Date() },
+      data: {
+        status: 'syncing',
+        initial_sync_status: 'running',
+        current_sync_job_id: syncJobId,
+        sync_started_at: syncStartedAt,
+        sync_completed_at: null,
+        sync_error_code: null,
+        sync_attempt_count: { increment: 1 },
+        recovery_status: 'recovering',
+        updated_at: syncStartedAt,
+      },
     });
+    store.current_sync_job_id = syncJobId;
     setupStage = 'webhook_reconciliation';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     // Webhook setup and read-only commerce ingestion are independent.
@@ -680,10 +694,28 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       source_unavailable: checkoutReport.unavailable,
     });
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: abandoned });
-    await prisma.stores.update({
-      where: { id: store.id },
-      data: { status: 'active', last_synced_at: new Date(), updated_at: new Date() },
+    // Products, orders and abandoned checkouts are required by the current
+    // onboarding contract. An explicit product permission limitation remains
+    // partial; any other product failure prevents a completion claim.
+    if (productsError && productsError.degraded !== 'permission_denied') throw productsError;
+    const syncCompletedAt = new Date();
+    const partialSync = Boolean(productsError) || customerSyncLimited;
+    const completion = await prisma.stores.updateMany({
+      where: { id: store.id, current_sync_job_id: syncJobId, access_token: { not: null }, integration_state: { notIn: ['disconnected', 'authorization_required', 'authorization_expired', 'authorization_revoked'] } },
+      data: {
+        status: 'active',
+        last_synced_at: syncCompletedAt,
+        initial_sync_status: partialSync ? 'partial' : 'completed',
+        sync_completed_at: syncCompletedAt,
+        sync_error_code: productsError?.code || (customerSyncLimited ? 'SHOPIFY_CUSTOMERS_ACCESS_DENIED' : null),
+        recovery_status: 'completed',
+        updated_at: syncCompletedAt,
+      },
     });
+    if (completion.count !== 1) {
+      logger.warn('shopify_stale_sync_completion_ignored', { store_id: store.id, job_id: syncJobId });
+      return { success: false, stale: true, jobId: syncJobId };
+    }
     // Certification is best-effort and strictly fail-closed. A failed proof
     // must never block routine order reconciliation or fabricate findings.
     try {
@@ -702,14 +734,34 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     const rfm = await rfmSync({ storeId: store.id, correlationId: `shopify-sync-${store.id}-${Date.now()}` });
     if (!rfm.success) logger.warn('shopify_rfm_sync_deferred', { store_id: store.id, code: rfm.error?.code });
     logger.info('shopify_sync_completed', { store_id: store.id, customers, orders, abandoned, webhook_setup_complete: !webhookSetupError, products_sync_failed: Boolean(productsError), products_error_type: productsError ? (productsError.degraded === 'permission_denied' ? 'permission_denied' : (productsError.code || productsError.name || 'product_sync_error')) : null });
-    return { success: true, customers, orders, abandoned, rfm: rfm.success, customerSyncLimited, authorizedResources, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null, products: productsError ? { status: 'failed', error_type: productsError.code || productsError.name || 'product_sync_error' } : { status: 'ok' } };
+    return { success: true, jobId: syncJobId, status: partialSync ? 'partial' : 'completed', customers, orders, abandoned, rfm: rfm.success, customerSyncLimited, authorizedResources, webhookSetupComplete: !webhookSetupError, webhookSetupErrorCode: webhookSetupError?.code || null, products: productsError ? { status: productsError.degraded === 'permission_denied' ? 'degraded' : 'failed', error_type: productsError.code || productsError.name || 'product_sync_error' } : { status: 'ok' } };
   } catch (error) {
     try {
-      await prisma.stores.update({
-        where: { id: store.id },
-        // A setup failure must never revoke a successfully authorized OAuth connection.
-        // Token invalidation belongs to explicit uninstall / verified revocation handling.
-        data: { status: 'active', updated_at: new Date() },
+      const { classifyShopifyError } = require('./integrationLifecycle');
+      const reasonCode = classifyShopifyError(error);
+      if (['AUTHORIZATION_REQUIRED', 'AUTHORIZATION_EXPIRED', 'PERMISSIONS_MISSING'].includes(reasonCode)) {
+        const { recordIntegrationEvent } = require('./integrationLifecycleStore');
+        const type = reasonCode === 'AUTHORIZATION_REQUIRED' ? 'authorization_required' : reasonCode === 'AUTHORIZATION_EXPIRED' ? 'authorization_expired' : 'permissions_missing';
+        await recordIntegrationEvent({ storeId: store.id, type, reasonCode, source: 'shopify_sync', eventReference: `sync:${syncJobId}:authorization` });
+      }
+      // Throttling, provider outages and unknown failures deliberately do not
+      // revoke or disconnect a previously verified installation.
+    } catch (classificationError) {
+      logger.warn('shopify_authorization_transition_failed', { store_id: store.id, error_type: classificationError.code || classificationError.name });
+    }
+    try {
+      await prisma.stores.updateMany({
+        where: { id: store.id, current_sync_job_id: syncJobId, access_token: { not: null } },
+        // A setup failure must never revoke a successfully authorized OAuth connection
+        // or overwrite a disconnected/newer synchronization state.
+        data: {
+          status: 'active',
+          initial_sync_status: 'failed',
+          sync_completed_at: new Date(),
+          sync_error_code: String(error.code || error.name || 'sync_error').slice(0, 120),
+          recovery_status: 'required',
+          updated_at: new Date(),
+        },
       });
     } catch (stateError) {
       logger.error('shopify_sync_failure_state_update_failed', {
