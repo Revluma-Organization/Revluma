@@ -28,3 +28,7 @@ Registration rows show the older nine topics, historical active/succeeded duplic
 5. Confirm no duplicate jobs, data deletion, checkpoint regression or cross-tenant effect.
 
 No production-complete claim is made by this document.
+
+## CI result — 2026-11-07
+
+PR #361 head `40ed6bb` passed all checks: Backend tests run `42424637513`; Backend refresh `42424637596`; release-candidate Prisma/PostgreSQL/security `42424637488`; Dashboard authentication `42424637485`; Dashboard suite/build `42424637488`; Vercel preview; and isolated Tasks 025–032. Prisma generation, schema validation, bootstrap, candidate migration application, zero-drift checks, real PostgreSQL Backend/financial/security/integration evidence suites and Python acceptance all passed. A privacy-workflow mock compatibility defect discovered by the full suite was fixed and rerun; focused Backend including privacy is 83/83. Status: **CI GREEN — DEPLOYMENT AND PRODUCTION ACCEPTANCE PENDING**.
