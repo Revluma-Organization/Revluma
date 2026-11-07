@@ -70,7 +70,15 @@ from ..intelligence.claim_guardrails import (
     validate_response_guardrails,
 )
 from ..intelligence.revenue_evidence import decompose_value_change, retrieve_revenue_evidence
-from ..intelligence.specialists import execute_specialists
+from ..intelligence.question_orchestration import (
+    build_investigation_plan,
+    cross_domain_narrative,
+    execute_orchestrated_specialists,
+    reconcile_orchestration,
+    record_domain_evidence_execution,
+    understand_question,
+    validate_orchestration,
+)
 from ..intelligence.investigation_outcomes import (
     OUTCOME_CONTRACT_VERSION,
     base_outcome,
@@ -1415,7 +1423,7 @@ def load_conversation_context(organization_id: str, user_id: str,
                               context_payload: dict | None = None) -> dict:
     context = {"summary": None, "last_investigation": None, "recent_turns": [],
                "unresolved": [], "conversation_state": None, "last_claims": [],
-               "last_specialists": [], "last_priority": None}
+               "last_specialists": [], "last_priority": None, "last_orchestration": None}
     if not conversation_id:
         return context
 
@@ -1440,6 +1448,7 @@ def load_conversation_context(organization_id: str, user_id: str,
                 item for item in (raw.get("last_specialists") or [])
                 if isinstance(item, dict) and item.get("execution_id")][:6]
             context["last_priority"] = _priority_from_window(raw)
+            context["last_orchestration"] = raw.get("last_orchestration")
 
     rows, error = safe_query(db, """
         SELECT summary, context_window
@@ -1465,6 +1474,8 @@ def load_conversation_context(organization_id: str, user_id: str,
                     if isinstance(item, dict) and item.get("execution_id")][:6]
             if context["last_priority"] is None:
                 context["last_priority"] = _priority_from_window(raw)
+            if context["last_orchestration"] is None:
+                context["last_orchestration"] = raw.get("last_orchestration")
             state = raw.get("conversation_state")
             if isinstance(state, dict):
                 context["conversation_state"] = _fresh_state(state)
@@ -2400,6 +2411,14 @@ def _comparison_facts(comparison: dict | None,
             "period": comparison.get("period"),
             "source": "orders",
             "status": STATUS_AVAILABLE,
+            "classification": "calculated_observation",
+            "calculation": {
+                "method": "current_minus_previous_over_previous",
+                "inputs": [
+                    {"role": "previous", "evidence_id": change.get("previous_evidence_id")},
+                    {"role": "current", "evidence_id": change.get("current_evidence_id")},
+                ],
+            },
         })
     return facts
 
@@ -3153,6 +3172,17 @@ def persist_investigation_context(organization_id: str, user_id: str,
             "outcome": specialist.get("investigation_outcome"),
             "evidence_references": (specialist.get("evidence_references") or [])[:20],
         } for specialist in (result.get("specialists") or [])][:6],
+        # Task 209: compact resolved domains/intent and execution identity for
+        # contextual expansions. Full evidence and conclusions are never cached
+        # as current authority; the next turn retrieves fresh evidence.
+        "last_orchestration": ({
+            "contract_version": result["orchestration"].get("contract_version"),
+            "investigation_id": result["orchestration"].get("investigation_id"),
+            "request_fingerprint": result["orchestration"].get("request_fingerprint"),
+            "state": result["orchestration"].get("state"),
+            "required_domains": (result["orchestration"].get("required_domains") or [])[:5],
+            "question_understanding": result["orchestration"].get("question_understanding"),
+        } if result.get("orchestration") else None),
         # Task 206: the recorded priority state. Follow-ups that challenge the
         # ranking ("why is that more important than the refund issue?") resolve
         # against THIS record; when a previously top finding is no longer
@@ -3880,6 +3910,30 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     investigation_id = str(uuid.uuid4())
 
     def _emit(event: dict) -> None:
+        if event.get("event") == "final" and isinstance(event.get("data"), dict):
+            data = event["data"]
+            if data.get("orchestration") is None:
+                early_understanding = understand_question(
+                    message, data.get("investigation", {}).get("intent") or intent,
+                    classification=classification, context=conversation_context)
+                early_plan = build_investigation_plan(
+                    message=message, intent=intent, understanding=early_understanding,
+                    investigation_id=investigation_id, organization_id=organization_id,
+                    store_ids=(store_context or {}).get("store_ids") or [], period=window,
+                    available_tools=set())
+                terminal = ("needs_clarification" if data.get("investigation", {}).get("intent") == INTENT_CLARIFY
+                            else "unsupported" if data.get("investigation", {}).get("intent") in {INTENT_READ_ONLY, INTENT_UNSUPPORTED}
+                            else "completed")
+                # Early exits never dispatch domain work. Preserve the resolved
+                # understanding, but do not pretend planned specialists/tools ran.
+                early_plan["tools"] = []
+                early_plan["tasks"] = []
+                early_plan["selected_specialists"] = []
+                early_plan["state"] = terminal
+                early_plan["state_history"].append({"state": terminal, "at": iso(now)})
+                early_plan["finished_at"] = iso(now)
+                data["question_understanding"] = early_understanding
+                data["orchestration"] = early_plan
         if emit is not None:
             try:
                 emit(event)
@@ -4037,17 +4091,19 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         _emit({"event": "final", "data": result})
         return result
 
-    tools = list(INTENT_TOOLS.get(intent, INTENT_TOOLS[INTENT_OVERVIEW]))
-    # Task 208: cross-domain questions retrieve each required source once in
-    # the shared investigation, then specialists consume that same evidence.
-    if intent in (INTENT_REVENUE, INTENT_REFUNDS) and re.search(
-            r"\b(?:inventory|stock|stockout|fulfil|fulfill|unfulfilled|availability)\b", message, re.I):
-        for tool in ("product_observations",):
-            if tool not in tools:
-                tools.append(tool)
+    question_understanding = understand_question(
+        message, intent, classification=classification, context=conversation_context)
+    orchestration = build_investigation_plan(
+        message=message, intent=intent, understanding=question_understanding,
+        investigation_id=investigation_id, organization_id=organization_id,
+        store_ids=(store_context or {}).get("store_ids") or [], period=window,
+        available_tools={entry["name"] for entry in catalog()})
+    tools = list(orchestration["tools"])
     result = _base_result(message=message, intent=intent, window=window,
                           investigation_id=investigation_id, store_context=store_context,
                           user_id=user_id)
+    result["question_understanding"] = question_understanding
+    result["orchestration"] = orchestration
     result["investigation"]["segment"] = classification.get("segment")
     result["investigation"]["context_used"] = {
         "followup": classification.get("followup", False),
@@ -4075,6 +4131,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             store_context=store_context, user_id=user_id, window=window, reason="no_store")
         clarification["investigation"]["steps"] = result["investigation"]["steps"]
         clarification["meta"] = result["meta"]
+        clarification["question_understanding"] = question_understanding
+        orchestration["state"] = "failed"
+        orchestration["state_history"].append({"state": "failed", "at": iso(now)})
+        clarification["orchestration"] = orchestration
         blocked = "retrieval_failed" if store_health.status == STATUS_UNAVAILABLE and any(
             item.get("metric") == "connected_store_count" for item in store_health.items) is False else "integration_disconnected"
         clarification["investigation_outcome"] = base_outcome(
@@ -4098,6 +4158,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         return clarification
 
     allowed_store_ids = set(store_health.store_ids)
+    orchestration["tenant"]["store_ids"] = sorted(allowed_store_ids)
     inherited_order_query = ((conversation_context.get("last_investigation") or {}).get("order_query")
                              if conversation_context else None)
     order_query = _order_tool_params(message, inherited_order_query)
@@ -4147,10 +4208,14 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 "rev_investigation_cancelled intent=%s investigation_id=%s completed_tools=%d",
                 intent, investigation_id, len(tool_results),
             )
+            orchestration["state"] = "cancelled"
+            orchestration["state_history"].append({"state": "cancelled", "at": iso(now)})
+            orchestration["finished_at"] = iso(now)
             _emit({"event": "cancelled", "data": {
                 "investigation_id": investigation_id,
                 "reason": "client_disconnected_or_stopped",
                 "completed_tools": [name for name in tool_results_by_name],
+                "orchestration": orchestration,
             }})
             raise InvestigationCancelled(investigation_id)
         step = step_by_tool[tool]
@@ -4257,6 +4322,14 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "items": list((comparison or {}).get("items") or []),
             "changes": [*(comparison or {}).get("changes", []), *retention_comparison.get("changes", [])],
         }
+    checkout_result = tool_results_by_name.get("checkout_observations")
+    if checkout_result is not None and checkout_result.comparison:
+        checkout_comparison = checkout_result.comparison
+        comparison = {
+            "period": (comparison or {}).get("period") or checkout_comparison.get("period"),
+            "items": list((comparison or {}).get("items") or checkout_comparison.get("items") or []),
+            "changes": [*(comparison or {}).get("changes", []), *checkout_comparison.get("changes", [])],
+        }
 
     year_over_year_facts = []
     if year_over_year and year_over_year.get("changes"):
@@ -4283,10 +4356,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "Certified order coverage does not contain the prior-year window, so no "
             "year-over-year comparison is asserted.")
     recommendations = _recommendations(intent, items)
-    specialists = execute_specialists(
-        intent=intent, question=message, organization_id=organization_id,
-        store_ids=sorted(allowed_store_ids), investigation_id=investigation_id,
-        period=window, items=items, tools=tool_results_by_name)
+    record_domain_evidence_execution(orchestration, tool_results_by_name)
+    specialists = execute_orchestrated_specialists(
+        orchestration, period=window, items=items, tools=tool_results_by_name)
+    reconcile_orchestration(orchestration, specialists, items + comparison_items, finalize=False)
     for specialist in specialists:
         logger.info("rev_specialist_outcome", extra={
             "investigation_id": investigation_id,
@@ -4381,6 +4454,15 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         warnings.append("Claim contract validation reported: " + ", ".join(claim_errors))
 
     if _cancelled():
+        orchestration["state"] = "cancelled"
+        orchestration["state_history"].append({"state": "cancelled", "at": iso(now)})
+        orchestration["finished_at"] = iso(now)
+        _emit({"event": "cancelled", "data": {
+            "investigation_id": investigation_id,
+            "reason": "client_disconnected_or_stopped",
+            "completed_tools": [name for name in tool_results_by_name],
+            "orchestration": orchestration,
+        }})
         raise InvestigationCancelled(investigation_id)
 
     # Pool invariant: no database transaction may stay open while Rev waits on
@@ -4432,6 +4514,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             social_opener=routed["social_opener"],
         )
 
+    orchestration["state"] = "composing"
+    orchestration["state_history"].append({"state": "composing", "at": iso(now)})
+    coordinated_text = cross_domain_narrative(orchestration)
+    if coordinated_text:
+        narrative = narrative.rstrip() + "\n\n" + coordinated_text
     coverage = {}
     freshness = {}
     for tool_result in tool_results:
@@ -4554,8 +4641,18 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
 
     # Generation is not action authority. Initialise the complete lifecycle
     # contract, then fail closed before persistence or either response transport.
+    orchestration["state"] = "validating"
+    orchestration["state_history"].append({"state": "validating", "at": iso(now)})
+    orchestration_errors = validate_orchestration(
+        orchestration, organization_id=organization_id,
+        evidence_ids={item["id"] for item in items + comparison_items})
+    if orchestration_errors:
+        raise ValueError("Invalid question orchestration: " + ", ".join(orchestration_errors))
     initialise_action_states(recommendations)
     validate_response_guardrails(result)
+    orchestration["state"] = orchestration.get("terminal_state") or "completed"
+    orchestration["state_history"].append({"state": orchestration["state"], "at": iso(now)})
+    orchestration["finished_at"] = iso(now)
 
     if persist and conversation_id:
         persist_investigation_context(
@@ -4676,6 +4773,22 @@ def stream_investigation(organization_id: str, user_id: str, message: str, *,
         thread.start()
         while True:
             if cancel.is_set():
+                # A client already disconnected before the worker could emit its
+                # richer cancellation payload. Still close the typed lifecycle;
+                # never leave the caller with only an accepted event.
+                cancelled_at = iso(utc_now())
+                yield {"event": "cancelled", "data": {
+                    "reason": "client_disconnected_or_stopped",
+                    "orchestration": {
+                        "contract_version": "rev-question-orchestration-v1",
+                        "organization_id": organization_id,
+                        "state": "cancelled",
+                        "state_history": [{"state": "received", "at": cancelled_at},
+                                          {"state": "cancelled", "at": cancelled_at}],
+                        "tools": [], "tasks": [], "selected_specialists": [],
+                        "domain_executions": [], "finished_at": cancelled_at,
+                    },
+                }}
                 break
             try:
                 event = events.get(timeout=STREAM_QUEUE_POLL_SECONDS)
