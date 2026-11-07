@@ -47,6 +47,43 @@ def coverage_rows():
     ]
 
 
+def order_fixture(currency, count, value, **overrides):
+    """A per-currency order aggregate row in the exact production SQL shape."""
+    amount = value if isinstance(value, Decimal) else Decimal(str(value))
+    row = {
+        "currency": currency,
+        "order_count": count,
+        "net_value": amount,
+        "gross_value": amount,
+        "gross_verified": count,
+        "refunded_to_date_value": Decimal("0"),
+        "refunded_to_date_verified": count,
+        "discount_value": Decimal("0"),
+        "discount_verified": count,
+        "line_items_value": amount,
+        "line_items_verified": count,
+        "tax_value": Decimal("0"),
+        "tax_verified": count,
+        "shipping_value": Decimal("0"),
+        "shipping_verified": count,
+        "received_value": amount,
+        "received_verified": count,
+        "outstanding_value": Decimal("0"),
+        "outstanding_verified": count,
+        "test_order_count": 0,
+        "currency_unverified_count": 0,
+        "negative_net_count": 0,
+    }
+    row.update(overrides)
+    return row
+
+
+# The Task 198 revenue aggregate is the only query carrying the test-order
+# count; the legacy order_observations query keeps its plain COUNT(*) shape.
+REVENUE_AGGREGATE_PATTERN = "AS test_order_count"
+LEGACY_ORDER_PATTERN = "COUNT(*) AS order_count"
+
+
 def workspace_db(*, order_rows=None, cart_rows=None, event_rows=None,
                  line_item_rows=None, fail=(), conversation_rows=None,
                  memory_rows=None):
@@ -55,7 +92,11 @@ def workspace_db(*, order_rows=None, cart_rows=None, event_rows=None,
     db.add("SELECT id, last_synced_at, status", store_rows())
     db.add("FROM stores s WHERE", store_rows())
     db.add("intelligence_order_coverage", coverage_rows())
-    db.add("COUNT(*) AS order_count", order_rows if order_rows is not None else [
+    db.add(REVENUE_AGGREGATE_PATTERN, order_rows if order_rows is not None else [
+        order_fixture("USD", 3, "30.31"),
+        order_fixture("NGN", 1, "1000.00"),
+    ])
+    db.add(LEGACY_ORDER_PATTERN, [
         {"currency": "USD", "order_count": 3, "order_value": Decimal("30.31")},
         {"currency": "NGN", "order_count": 1, "order_value": Decimal("1000.00")},
     ])
@@ -139,18 +180,16 @@ def test_comparison_uses_equal_length_previous_period_per_currency():
 
     def order_rows(params):
         calls.append(params)
-        if params["start"] == (NOW - timedelta(days=7)):
-            return [
-                {"currency": "USD", "order_count": 3, "order_value": Decimal("30.31")},
-                {"currency": "NGN", "order_count": 1, "order_value": Decimal("1000.00")},
-            ]
-        return [
-            {"currency": "USD", "order_count": 6, "order_value": Decimal("60.62")},
-            {"currency": "NGN", "order_count": 1, "order_value": Decimal("0")},
-        ]
+        # The current window always ends at ``now``; the comparison window
+        # ends where the current one starts. Keying on ``end`` keeps the
+        # fixture correct for any resolved calendar (merchant-timezone)
+        # boundaries.
+        if params["end"] == NOW:
+            return [order_fixture("USD", 3, "30.31"), order_fixture("NGN", 1, "1000.00")]
+        return [order_fixture("USD", 6, "60.62"), order_fixture("NGN", 1, "0")]
 
     db = workspace_db()
-    db.routes = [(pattern, order_rows if pattern == "COUNT(*) AS order_count" else rows)
+    db.routes = [(pattern, order_rows if pattern == REVENUE_AGGREGATE_PATTERN else rows)
                  for pattern, rows in db.routes]
     result = run_investigation(ORG, USER, "Why did my revenue fall this week?",
                                db=db, now=NOW, persist=False)
@@ -230,6 +269,101 @@ def test_historical_comparison_period_resolution():
     comparison_start = datetime.fromisoformat(
         window["compared_to"]["start"].replace("Z", "+00:00"))
     assert (comparison_start.year, comparison_start.month) == (2026, 9)
+
+
+def test_periods_resolve_on_the_merchant_timezone_not_utc():
+    # 2026-11-07T00:30Z is still 19:30 on 2026-11-06 in New York (EST, UTC-5):
+    # "yesterday" for that merchant is 2026-11-05, not 2026-11-06.
+    now_ny = datetime(2026, 11, 7, 0, 30, tzinfo=timezone.utc)
+    window = resolve_reporting_period("How was yesterday?", now_ny,
+                                      timezone_name="America/New_York")
+    start = datetime.fromisoformat(window["start"].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(window["end"].replace("Z", "+00:00"))
+    assert start == datetime(2026, 11, 5, 5, 0, tzinfo=timezone.utc)
+    assert end == datetime(2026, 11, 6, 5, 0, tzinfo=timezone.utc)
+    assert window["timezone"] == "America/New_York"
+    assert window["compared_to"]["timezone"] == "America/New_York"
+
+    # The same instant in Lagos (UTC+1) is already 01:30 on the 7th, so
+    # "yesterday" is the 6th: local midnights map to 23:00Z the day before.
+    window_lagos = resolve_reporting_period("How was yesterday?", now_ny,
+                                            timezone_name="Africa/Lagos")
+    start_lagos = datetime.fromisoformat(
+        window_lagos["start"].replace("Z", "+00:00"))
+    end_lagos = datetime.fromisoformat(
+        window_lagos["end"].replace("Z", "+00:00"))
+    assert start_lagos == datetime(2026, 11, 5, 23, 0, tzinfo=timezone.utc)
+    assert end_lagos == datetime(2026, 11, 6, 23, 0, tzinfo=timezone.utc)
+
+
+def test_calendar_weeks_are_monday_weeks_in_the_merchant_timezone():
+    # 2026-11-07 is a Saturday. In New York (UTC-5) it is still Friday the
+    # 6th at 19:30, so "this week" starts Monday 2026-11-02 05:00Z.
+    now_ny = datetime(2026, 11, 7, 0, 30, tzinfo=timezone.utc)
+    window = resolve_reporting_period("What about this week?", now_ny,
+                                      timezone_name="America/New_York")
+    start = datetime.fromisoformat(window["start"].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(window["end"].replace("Z", "+00:00"))
+    assert start == datetime(2026, 11, 2, 5, 0, tzinfo=timezone.utc)
+    assert end == now_ny
+    previous = resolve_reporting_period("How was last week?", now_ny,
+                                        timezone_name="America/New_York")
+    prev_start = datetime.fromisoformat(previous["start"].replace("Z", "+00:00"))
+    prev_end = datetime.fromisoformat(previous["end"].replace("Z", "+00:00"))
+    # DST-safe: that local week straddles the US DST transition (2026-11-01),
+    # so the boundaries are local midnights — 04:00Z (EDT) then 05:00Z (EST)
+    # — not a fixed 7×24h interval.
+    assert prev_start == datetime(2026, 10, 26, 4, 0, tzinfo=timezone.utc)
+    assert prev_end == datetime(2026, 11, 2, 5, 0, tzinfo=timezone.utc)
+    # The comparison of a PARTIAL "this week" is the same local-time interval
+    # one week earlier (Monday-to-now vs Monday-to-same-offset), never a full
+    # week: that would compare 5.8 days against 7.
+    comp_start = datetime.fromisoformat(
+        window["compared_to"]["start"].replace("Z", "+00:00"))
+    comp_end = datetime.fromisoformat(
+        window["compared_to"]["end"].replace("Z", "+00:00"))
+    assert comp_end == start
+    assert comp_start == start - (end - start)
+    # "Last week" is a full week, so its comparison is the full calendar week
+    # before it: Monday 2026-10-19 04:00Z (EDT) to Monday 2026-10-26 04:00Z.
+    last_comp = previous["compared_to"]
+    assert last_comp["start"] == "2026-10-19T04:00:00Z"
+    assert last_comp["end"] == "2026-10-26T04:00:00Z"
+
+
+def test_custom_date_ranges_are_half_open_on_local_midnights():
+    now_ny = datetime(2026, 11, 7, 0, 30, tzinfo=timezone.utc)
+    window = resolve_reporting_period(
+        "Show me revenue from 2026-10-01 to 2026-10-15", now_ny,
+        timezone_name="America/New_York")
+    start = datetime.fromisoformat(window["start"].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(window["end"].replace("Z", "+00:00"))
+    # Local midnights in New York: 05:00Z in October (EDT, UTC-4).
+    assert start == datetime(2026, 10, 1, 4, 0, tzinfo=timezone.utc)
+    assert end == datetime(2026, 10, 16, 4, 0, tzinfo=timezone.utc)
+    assert window["semantics"] == "[start, end)"
+    # Comparison is the equal-length window immediately before the range.
+    comp_end = datetime.fromisoformat(window["compared_to"]["end"].replace("Z", "+00:00"))
+    assert comp_end == start
+    assert (end - start) == (comp_end - datetime.fromisoformat(
+        window["compared_to"]["start"].replace("Z", "+00:00")))
+
+
+def test_year_over_year_is_flagged_and_not_assumed():
+    window = resolve_reporting_period("How does this compare year over year?", NOW)
+    assert window["year_over_year"] is True
+    assert resolve_reporting_period("Why did revenue fall this week?", NOW)[
+        "year_over_year"] is False
+
+
+def test_invalid_timezone_falls_back_to_utc_instead_of_crashing():
+    window = resolve_reporting_period("How was yesterday?", NOW,
+                                      timezone_name="Not/A_Zone")
+    # The unresolvable name never leaks into the evidence period label.
+    assert window["timezone"] == "UTC"
+    start = datetime.fromisoformat(window["start"].replace("Z", "+00:00"))
+    # Falls back to UTC midnight boundaries.
+    assert start == datetime(2026, 10, 31, 0, 0, tzinfo=timezone.utc)
 
 
 def test_partial_results_survive_one_failing_tool():

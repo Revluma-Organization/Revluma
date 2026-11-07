@@ -64,14 +64,23 @@ class RevenueAgent(BaseAgent):
         warnings = list(bs.warnings)
         data_sources = ["orders", "business_states"]
 
-        # ── Facts (directly in data) 
+        # ── Facts (directly in data)
+        # Currency comes from the business state, never assumed: the scalar
+        # revenue metrics only exist for a single-currency organization, and
+        # `revenue_currency` is None when the currency is unknown.
+        currency = getattr(bs, "revenue_currency", None)
+
+        def _money(value, metric_currency=currency):
+            amount = f"{float(value):,.2f}"
+            return f"{metric_currency} {amount}" if metric_currency else amount
+
         if bs.revenue_today is not None:
             facts.append({
                 "type": "fact",
                 "metric": "revenue_today",
                 "value": float(bs.revenue_today),
-                "currency": "USD",
-                "description": f"Revenue today: ${float(bs.revenue_today):,.2f}",
+                "currency": currency,
+                "description": f"Revenue today: {_money(bs.revenue_today)}",
                 "source": "orders table, today",
             })
 
@@ -80,8 +89,8 @@ class RevenueAgent(BaseAgent):
                 "type": "fact",
                 "metric": "revenue_yesterday",
                 "value": float(bs.revenue_yesterday),
-                "currency": "USD",
-                "description": f"Revenue yesterday: ${float(bs.revenue_yesterday):,.2f}",
+                "currency": currency,
+                "description": f"Revenue yesterday: {_money(bs.revenue_yesterday)}",
                 "source": "orders table, yesterday",
             })
 
@@ -149,7 +158,8 @@ class RevenueAgent(BaseAgent):
         if bs.cart_anomaly and bs.abandoned_cart_value:
             opportunities.append({
                 "category": "revenue_recovery",
-                "description": f"${float(bs.abandoned_cart_value):,.2f} in carts abandoned in the last 48 hours",
+                "description": (f"{float(bs.abandoned_cart_value):,.2f} in carts "
+                                f"abandoned in the last 48 hours"),
                 "estimated_value": float(bs.abandoned_cart_value),
                 "urgency": "high",
             })

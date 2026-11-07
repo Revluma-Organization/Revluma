@@ -104,6 +104,21 @@ exports.getEvidence = async (req, res, next) => {
     if (resourceId && !/^[a-z0-9][a-z0-9._-]{0,119}$/i.test(String(resourceId))) return res.status(400).json({ success: false, error: { code: 'INVALID_RESOURCE_REFERENCE' } });
     if (evidenceId && !/^ev-[a-f0-9]{24}$/.test(evidenceId)) return res.status(400).json({ success: false, error: { code: 'INVALID_EVIDENCE_REFERENCE' } });
     const service = require('../services/revEvidenceService');
+    // Task 198 — optional reporting period for the computed revenue resource:
+    // ?start=&end=&timezone= (half-open [start, end), IANA timezone).
+    let period = null;
+    const hasPeriodParam = ['start', 'end', 'timezone'].some(key => req.query?.[key] != null && req.query?.[key] !== '');
+    if (hasPeriodParam) {
+      if (resourceId !== service.REVENUE_RESOURCE_ID) {
+        return res.status(400).json({ success: false, error: { code: 'PERIOD_UNSUPPORTED', message: 'Reporting period parameters are only supported for the computed revenue resource.' } });
+      }
+      try {
+        service.resolveRevenuePeriod({ start: req.query?.start ?? null, end: req.query?.end ?? null, timezone: req.query?.timezone ?? null }, { last_synced_at: null }, new Date());
+      } catch (error) {
+        return res.status(400).json({ success: false, error: { code: error.code || 'EVIDENCE_PERIOD_INVALID', message: error.message } });
+      }
+      period = { start: String(req.query.start), end: String(req.query.end), timezone: String(req.query.timezone || 'UTC') };
+    }
     const abort = new AbortController();
     const cancel = () => abort.abort();
     req.once('aborted', cancel);
@@ -112,7 +127,7 @@ exports.getEvidence = async (req, res, next) => {
       const item = await service.retrieveEvidenceById({ organizationId: org.id, storeId, evidenceId, signal: abort.signal });
       return res.status(200).json({ success: true, read_only: true, evidence: item });
     }
-    const result = await service.retrieveEvidence({ organizationId: org.id, storeId, resourceId, limit: req.query?.limit, signal: abort.signal });
+    const result = await service.retrieveEvidence({ organizationId: org.id, storeId, resourceId, limit: req.query?.limit, period, signal: abort.signal });
     return res.status(200).json({ success: true, read_only: true, ...result });
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ success: false, error: { code: error.code || 'EVIDENCE_RETRIEVAL_FAILED', message: error.message } });

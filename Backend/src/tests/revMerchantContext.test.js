@@ -100,6 +100,72 @@ test('integration-health evidence remains available without financial coverage',
   assert.equal(certifiedFinding({ ...finding, evidence: { ...finding.evidence, storeId: 'store-b' } }), false);
 });
 
+test('reporting timezone is resolved from the shared store profile', async () => {
+  const db = {
+    stores: { findMany: async () => [{ id: 'store-a', platform: 'shopify', status: 'active' }] },
+    intelligence_findings: { findMany: async () => [] },
+    store_profiles: { findMany: async query => {
+      assert.deepEqual(query.where.store_id.in, ['store-a']);
+      return [{ store_id: 'store-a', iana_timezone: 'Africa/Lagos', currency_code: 'NGN' }];
+    } },
+  };
+  const context = await buildMerchantContext(db, 'org-a');
+  assert.equal(context.reporting_timezone, 'Africa/Lagos');
+  assert.equal(context.reporting_timezone_source, 'store_settings_or_profile');
+  assert.deepEqual(context.configured_currencies, ['NGN']);
+});
+
+test('conflicting store timezones fall back to UTC with an explicit limitation', async () => {
+  const db = {
+    stores: { findMany: async () => [
+      { id: 'store-a', platform: 'shopify', status: 'active' },
+      { id: 'store-b', platform: 'shopify', status: 'active' },
+    ] },
+    intelligence_findings: { findMany: async () => [] },
+    store_profiles: { findMany: async () => [
+      { store_id: 'store-a', iana_timezone: 'Africa/Lagos', currency_code: 'NGN' },
+      { store_id: 'store-b', iana_timezone: 'America/New_York', currency_code: 'USD' },
+    ] },
+  };
+  const context = await buildMerchantContext(db, 'org-a');
+  assert.equal(context.reporting_timezone, 'UTC');
+  assert.equal(context.reporting_timezone_source, 'utc_conflicting_stores');
+  assert.ok(context.limitations.some(note => /different configured timezones/.test(note)));
+  assert.deepEqual(context.configured_currencies, ['NGN', 'USD']);
+});
+
+test('store settings timezone takes priority over the profile timezone', async () => {
+  const db = {
+    stores: { findMany: async () => [{ id: 'store-a', platform: 'shopify', status: 'active' }] },
+    intelligence_findings: { findMany: async () => [] },
+    store_profiles: { findMany: async () => [{ store_id: 'store-a', iana_timezone: 'Africa/Lagos', currency_code: 'NGN' }] },
+    store_settings: { findMany: async () => [{ store_id: 'store-a', settings: { timezone: 'Europe/Berlin' } }] },
+  };
+  const context = await buildMerchantContext(db, 'org-a');
+  assert.equal(context.reporting_timezone, 'Europe/Berlin');
+  assert.equal(context.reporting_timezone_source, 'store_settings_or_profile');
+});
+
+test('an unresolvable or missing profile timezone never invents a calendar', async () => {
+  const db = {
+    stores: { findMany: async () => [
+      { id: 'store-a', platform: 'shopify', status: 'active' },
+      { id: 'store-b', platform: 'shopify', status: 'active' },
+    ] },
+    intelligence_findings: { findMany: async () => [] },
+    store_profiles: { findMany: async () => [
+      { store_id: 'store-a', iana_timezone: 'Not/A_Zone', currency_code: null },
+      { store_id: 'store-b', iana_timezone: null, currency_code: 'usd' },
+    ] },
+  };
+  const context = await buildMerchantContext(db, 'org-a');
+  // Only store-b has a real (lower-case, normalized) currency; the bad zone
+  // is ignored, so a single valid timezone would win — but here it is absent.
+  assert.equal(context.reporting_timezone, 'UTC');
+  assert.equal(context.reporting_timezone_source, 'default_utc');
+  assert.deepEqual(context.configured_currencies, ['USD']);
+});
+
 test('context scopes finding retrieval to the same eight selected stores', async () => {
   const selected = Array.from({ length: 8 }, (_, i) => `store-${i}`);
   const db = {
