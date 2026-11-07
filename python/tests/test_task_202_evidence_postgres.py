@@ -7,8 +7,8 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from src.intelligence.evidence import evidence_context
-from src.intelligence.finding_evidence import retrieve_finding_evidence
-from src.intelligence.product_evidence import retrieve_product_evidence
+from src.intelligence.finding_evidence import retrieve_finding_evidence, _ORDER_SQL
+from src.intelligence.product_evidence import retrieve_product_evidence, _VARIANT_SQL
 
 NOW = datetime(2026, 11, 7, 12, tzinfo=timezone.utc)
 
@@ -118,6 +118,12 @@ def test_postgres_task202_direct_identity_and_cross_tenant_isolation(task202_pos
     with evidence_context(org_a, [store_a]):
         finding = retrieve_finding_evidence(org_a, db, now=NOW, finding_reference=finding_a)
         forbidden = retrieve_finding_evidence(org_a, db, now=NOW, finding_reference=finding_b)
+        order_probe = db.execute(text(_ORDER_SQL), {"org_id": org_a, "finding_id": finding_a,
+            "previous_start": datetime(2026, 11, 5, tzinfo=timezone.utc),
+            "current_end": datetime(2026, 11, 7, tzinfo=timezone.utc)}).mappings().all()
+        variant_probe = db.execute(text(_VARIANT_SQL), {"org_id": org_a,
+            "product_ids": ["shared-product"]}).mappings().all()
+        assert order_probe and variant_probe
         product = retrieve_product_evidence(org_a, db, start=NOW-timedelta(days=7), end=NOW,
                                            now=NOW, product_reference="shared-product")
     assert finding["items"][0]["value"]["underlying_order_records"], finding
