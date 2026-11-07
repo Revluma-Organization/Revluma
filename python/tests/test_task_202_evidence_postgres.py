@@ -86,7 +86,7 @@ def test_postgres_task202_direct_identity_and_cross_tenant_isolation(task202_pos
     db.execute(text("""INSERT INTO intelligence_findings
       (id,organization_id,store_id,type,severity,status,title,description,evidence,action,
        detected_at,updated_at) VALUES (:id,:org,:store,'revenue_drop','high','open','Finding','Evidence',
-       :evidence::jsonb,'{}'::jsonb,:detected,:updated)"""), [
+       CAST(:evidence AS jsonb),'{}'::jsonb,:detected,:updated)"""), [
         {"id": finding_a, "org": org_a, "store": store_a, "evidence": json.dumps(evidence), "detected": NOW, "updated": NOW},
         {"id": finding_b, "org": org_b, "store": store_b, "evidence": json.dumps(evidence), "detected": NOW, "updated": NOW}])
     db.execute(text("""INSERT INTO orders VALUES
