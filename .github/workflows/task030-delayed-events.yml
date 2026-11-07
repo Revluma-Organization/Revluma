@@ -63,4 +63,13 @@ jobs:
           PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -f prisma/migrations/20261107023000_task199_order_evidence/migration.sql
           PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -f prisma/migrations/20261107040000_task200_checkout_evidence/migration.sql
       - name: Execute Task030 integration tests
-        run: node src/tests/task030DelayedEvents.integration.js
+        run: |
+          set +e
+          node src/tests/task030DelayedEvents.integration.js 2>&1 | tee /tmp/task030-tests.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E 'TC030|FAIL|Error|Assertion|expected|actual' /tmp/task030-tests.log | head -80 | while IFS= read -r line; do
+              printf '::error::%s\n' "${line//'%'/'%25'}"
+            done
+          fi
+          exit "$status"
