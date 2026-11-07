@@ -23,6 +23,10 @@ const axios = require('axios');
 const logger = require('../utils/logger');
 const { createSseParser } = require('./revStream');
 const { EVIDENCE_SCHEMA_VERSION, validateEvidenceCollection } = require('./revEvidenceContract');
+const {
+  CLAIM_CONTRACT_VERSION,
+  validateClaim: validateRevClaim,
+} = require('./revEpistemics');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
 const ML_INTERNAL_KEY = process.env.ML_INTERNAL_KEY;
@@ -1390,6 +1394,43 @@ function validateInvestigationResponse(data, organizationId = null, storeIds = n
   if (data.recommendations !== undefined) {
     if (!Array.isArray(data.recommendations)) return false;
     if (data.recommendations.some((rec) => rec && rec.executed === true)) return false;
+  }
+
+  // Task 204: the canonical epistemic claim contract (rev-claim-v1) is
+  // re-validated at the Node boundary with the same stable error codes
+  // Python uses. Claims may cite current items OR the comparison window's
+  // items (a calculated observation cites one evidence record per period).
+  // Restated claims (provenance follow-ups) are validated under the
+  // restatement rules and are not re-derived against this response's items.
+  if (data.claims !== undefined) {
+    if (!Array.isArray(data.claims)) return false;
+    const claimEvidence = {};
+    for (const item of [...evidence.items, ...((evidence.comparison_items || []))]) {
+      if (item && typeof item.id === 'string' && item.id) claimEvidence[item.id] = item;
+    }
+    for (const claim of data.claims) {
+      if (validateRevClaim(claim, claimEvidence, { organizationId, storeIds }).length > 0) {
+        return false;
+      }
+    }
+  }
+  if (data.epistemics !== undefined) {
+    if (!isPlainObject(data.epistemics)) return false;
+    if (data.epistemics.contract_version !== CLAIM_CONTRACT_VERSION) return false;
+    if (typeof data.epistemics.valid !== 'boolean') return false;
+    if (!Array.isArray(data.epistemics.validation_errors)) return false;
+    if (data.epistemics.valid !== (data.epistemics.validation_errors.length === 0)) return false;
+    if (!isPlainObject(data.epistemics.rollup)) return false;
+    if (!isPlainObject(data.epistemics.rollup.counts)) return false;
+  }
+  if (data.corrections !== undefined) {
+    if (!isPlainObject(data.corrections)) return false;
+    const { superseded, correction } = data.corrections;
+    if (!isPlainObject(superseded) || !isPlainObject(correction)) return false;
+    // A correction must reference the exact claim it supersedes, and the
+    // superseded claim must be flagged as such - never a silent drop.
+    if (superseded.superseded !== true) return false;
+    if (correction.corrects_claim_id !== superseded.claim_id) return false;
   }
   return true;
 }

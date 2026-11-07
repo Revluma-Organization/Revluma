@@ -937,6 +937,15 @@ function _boundedResultForPersistence(data) {
     evidence,
     facts: Array.isArray(data?.facts) ? data.facts.slice(0, 40) : [],
     comparison_facts: Array.isArray(data?.comparison_facts) ? data.comparison_facts.slice(0, 20) : [],
+    // Task 204: the versioned epistemic claim set (rev-claim-v1) and its
+    // rollup travel with the answer so the UI can present what is verified,
+    // calculated, hypothesised or unknown, and so persisted history keeps
+    // the same provenance the live answer showed.
+    claims: Array.isArray(data?.claims) ? data.claims.slice(0, 10) : [],
+    epistemics: data?.epistemics && typeof data.epistemics === 'object'
+      ? data.epistemics : null,
+    corrections: data?.corrections && typeof data.corrections === 'object'
+      ? data.corrections : null,
     hypotheses: Array.isArray(data?.hypotheses) ? data.hypotheses.slice(0, 10) : [],
     unknowns: Array.isArray(data?.unknowns) ? data.unknowns.slice(0, 12) : [],
     recommendations: Array.isArray(data?.recommendations) ? data.recommendations.slice(0, 12) : [],
