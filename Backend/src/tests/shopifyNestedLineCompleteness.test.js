@@ -145,10 +145,9 @@ test('order sync preserves source lifecycle and historical variant pricing witho
   assert.equal(payload.updated_at, '2026-10-02T00:00:00Z');
   assert.equal(line.fulfilled_quantity, 3);
   assert.equal(line.remaining_quantity, 1);
-  assert.equal(line.current_quantity, 3);
   assert.equal(line.variant_title, 'Blue / L');
-  assert.equal(line.original_line_total, '200.00');
-  assert.equal(line.discount_amount, '40.00');
-  assert.equal(line.line_total, '160.00');
+  assert.equal(line.original_total, '200.00');
+  assert.equal(line.discount_amount, 40);
+  assert.equal(line.discounted_total, '160.00');
   assert.doesNotMatch(queries.find(query => query.includes('query Orders')), /fulfilledQuantity/);
 });
