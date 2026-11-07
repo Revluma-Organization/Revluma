@@ -1,7 +1,7 @@
 # REV-AUTHORIZED-DATA-001 — bounded authorized Shopify resources
 
-Date: 2026-11-06
-Branch: `arena/3946cbd4-revluma`
+Date: 2026-11-07
+Branch: `arena/73274e0d-revluma`
 
 ## Implemented boundary
 
@@ -25,9 +25,38 @@ Rev context v2 includes bounded resource counts, freshness, and at most eight sa
 ## Local evidence
 
 - Focused tests cover fixed queries, tenant/scope enforcement, complete nested pagination, 101-page reads, staged atomic activation, stale deletion, reconciliation, Rev bounds, guarded actions, and privacy handling.
-- Production migration `20261106220000_authorized_resource_snapshots` is applied; the staged-snapshot migration is subject to the release-candidate gate.
+- Production migrations `20261106220000_authorized_resource_snapshots` and `20261106233000_streaming_authorized_snapshots` are applied.
 - `git diff --check` passed.
 
-## Not established by this document alone
+## Production verification — 2026-11-07
 
-This is implementation evidence, not universal production verification. Post-deploy CI, migration status, deployed SHA, real per-resource sync ledgers, and external scope/plan/approval state are required before changing resource verification states. No universal 100% claim is made: unsupported query roots, ungranted scopes, plan/approval restrictions, pixels, and Sidekick packaging remain external boundaries.
+Render readiness reported deployed build `34e81c7aa72d`, with database, Redis, Python, and scheduler ready. A scheduler-recovered sync of store `3ed79446-cb6d-4a1c-b174-9ec1ab91fe15` produced fresh resource ledgers between `00:15` and `00:20 UTC`. All 20 granted authorized-resource readers listed below returned `status=ok` and `pagination_complete=true`; zero-result resources are valid empty source snapshots, not missing-scope successes.
+
+| Resource | Records | Production evidence |
+| --- | ---: | --- |
+| `collections` | 3 | Complete pagination; reconciled active snapshots |
+| `content.pages` | 2 | Complete pagination; reconciled active snapshots |
+| `content.blogs` | 1 | Run `074f2fd2-7ffd-4060-97fd-d34702beb9b9`; one active blog, zero source articles, nested pagination complete, zero reconciliation errors |
+| `customer.addresses` | 12 | Complete nested pagination; reconciled active snapshots |
+| `customer.metafields` | 12 | Complete nested pagination; reconciled active snapshots |
+| `discount-nodes` | 5 | Run `0fbd5007-8ad7-4338-a0f9-98fb7140605f`; five active nodes, three code-bearing types with one code each, nested pagination complete, zero reconciliation errors |
+| `bulk-operations` | 0 | Complete pagination; valid empty snapshot |
+| `draft-orders` | 11 | Complete nested line-item pagination; reconciled active snapshots |
+| `marketing-events` | 0 | Complete pagination; valid empty snapshot |
+| `metafields.customers` | 12 | Complete nested pagination; reconciled active snapshots |
+| `metafields.orders` | 4 | Complete nested pagination; reconciled active snapshots |
+| `metafields.products` | 17 | Complete nested pagination; reconciled active snapshots |
+| `metafields.shop` | 1 | Complete nested pagination; reconciled active snapshots |
+| `order.fulfillment_orders` | 1 | Complete nested line-item pagination; reconciled active snapshots |
+| `order.returns` | 4 | Complete nested return and line-item pagination; reconciled active snapshots |
+| `order.risk` | 4 | Complete risk reads; reconciled active snapshots |
+| `product.media` | 17 | Complete nested media pagination; reconciled active snapshots |
+| `shop.shipping_configuration` | 1 | Complete pagination; reconciled active snapshots |
+| `shop.taxes` | 1 | Complete pagination; reconciled active snapshots |
+| `themes` | 3 | Complete pagination; reconciled active snapshots |
+
+The same cycle also succeeded for products (17), variants (26), customers (12), orders (4), inventory (26 across 27 pages), locations (3), fulfillments (1), refunds (2), transactions (10), and store domains (1). Registry version `2026-11-07.v6` records only these observed successes.
+
+## Remaining boundaries
+
+This evidence does not establish universal 100% Shopify coverage. Unsupported query roots, ungranted scopes, plan/approval restrictions, pixels, and Sidekick packaging remain external boundaries. Legacy `price-rules` and saved `analytics.reports` remain blocked; resources without fresh successful ledgers remain unverified. Verification applies to the identified production store and deployed implementation, not every Shopify plan or merchant configuration.

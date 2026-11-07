@@ -54,5 +54,7 @@ test('Sidekick registry is an honest nondeployable extension foundation', () => 
   assert.equal(manifest.action_intents.every(intent => intent.deployable === false), true);
   assert.equal(manifest.data_tools.some(tool => tool.name === 'revluma_list_collections'), true);
   assert.ok(manifest.blocked_prerequisites.includes('managed_installation'));
-  assert.ok(REGISTRY.find(row => row.id === 'collections').notes.includes('live scope'));
+  const collections = REGISTRY.find(row => row.id === 'collections');
+  assert.equal(collections.verification, 'live_read');
+  assert.ok(collections.notes.includes('PRODUCTION_VERIFIED'));
 });
