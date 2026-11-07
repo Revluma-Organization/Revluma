@@ -1,7 +1,7 @@
 # TASK 208 — Implementation: intelligence specialists
 
 **Consolidated Task:** 208 (original Tasks 227–229)
-**Status:** implemented and locally validated; CI/deployment/authenticated production acceptance pending.
+**Status:** merged with green CI and Vercel production verified; Render revision and authenticated production acceptance pending.
 
 ## Shared execution contract
 
