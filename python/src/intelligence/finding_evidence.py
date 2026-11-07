@@ -20,7 +20,7 @@ SELECT o.external_order_id, o.external_order_name, o.ordered_at, o.total,
  o.refunded_total, o.currency, o.recovery_status
 FROM orders o JOIN intelligence_findings f ON f.store_id = o.store_id
 JOIN stores s ON s.id = f.store_id
-WHERE f.id = :finding_id::uuid AND f.organization_id = :org_id::uuid
+WHERE f.id = CAST(:finding_id AS uuid) AND f.organization_id = :org_id::uuid
  AND s.organization_id = :org_id::uuid AND s.status IN ('active','connected','syncing')
  AND o.ordered_at >= :previous_start AND o.ordered_at < :current_end
 ORDER BY o.ordered_at, o.id LIMIT 201
@@ -98,7 +98,7 @@ def retrieve_finding_evidence(organization_id: str, db, *, now: datetime | None 
         import re
         if not re.fullmatch(r"[0-9a-fA-F-]{36}", str(finding_reference)):
             raise ValueError("invalid finding reference")
-        sql += " AND f.id = :finding_id::uuid"
+        sql += " AND f.id = CAST(:finding_id AS uuid)"
         params["finding_id"] = finding_reference
     elif lifecycle_status:
         if lifecycle_status not in {"open", "acknowledged", "resolved", "dismissed"}:
