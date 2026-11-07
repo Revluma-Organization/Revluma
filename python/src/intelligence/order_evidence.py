@@ -36,7 +36,14 @@ _ORDER_AGGREGATE_SQL = """
            COUNT(*) FILTER (WHERE o.display_fulfillment_status = 'PARTIALLY_FULFILLED') AS partially_fulfilled_count,
            COUNT(*) FILTER (WHERE o.display_fulfillment_status IS NULL) AS fulfillment_unknown_count,
            COUNT(*) FILTER (WHERE o.closed_at IS NULL AND COALESCE(o.recovery_status, '') NOT IN ('cancelled', 'canceled')) AS open_count,
-           COUNT(*) FILTER (WHERE o.closed_at IS NOT NULL) AS closed_count
+           COUNT(*) FILTER (WHERE o.closed_at IS NOT NULL) AS closed_count,
+           COUNT(*) FILTER (WHERE o.display_fulfillment_status IN ('UNFULFILLED', 'PARTIALLY_FULFILLED')
+                            AND o.closed_at IS NULL
+                            AND COALESCE(o.recovery_status, '') NOT IN ('cancelled', 'canceled')
+                            AND COALESCE(o.processed_at, o.ordered_at) < :now - INTERVAL '72 hours') AS delayed_unfulfilled_count,
+           COUNT(*) FILTER (WHERE (SELECT COUNT(*) FROM order_fulfillments f
+                            WHERE f.store_id = o.store_id AND f.external_order_id = o.external_order_id
+                              AND COALESCE(UPPER(f.status), '') NOT IN ('CANCELLED', 'ERROR')) > 1) AS split_fulfillment_count
     FROM orders o JOIN stores s ON s.id = o.store_id
     WHERE s.organization_id = :org_id AND s.status IN ('active', 'connected', 'syncing')
       AND o.ordered_at >= :start AND o.ordered_at < :end
@@ -141,6 +148,8 @@ _COUNT_DEFINITIONS = {
     "partially_fulfilled_count": "Orders with Shopify displayFulfillmentStatus PARTIALLY_FULFILLED.",
     "open_count": "Orders with no closedAt and no persisted cancellation state.",
     "closed_count": "Orders with a Shopify closedAt timestamp.",
+    "delayed_unfulfilled_count": "Open, non-cancelled unfulfilled or partially fulfilled orders whose processed/ordered timestamp is at least 72 hours before the investigation time. This is an age threshold, not a delivery estimate or breach of a merchant SLA.",
+    "split_fulfillment_count": "Distinct orders with more than one non-cancelled/non-error fulfillment record; fulfillment rows are never counted as additional orders.",
 }
 
 
@@ -352,15 +361,17 @@ def retrieve_order_evidence(organization_id: str, db, *, start: datetime, end: d
         freshness = {"state": "fresh" if age <= 3600 else "aging" if age <= 7200 else "stale",
                      "as_of": iso(min(sync_dates)), "age_seconds": age, "policy": "3600s",
                      "note": "Oldest successful order-domain synchronization in scope."}
+    relationship_complete: dict[str, bool] = {}
     for relation in ("transactions", "refunds", "fulfillments"):
         rows = [row for row in ledger_rows if _row(row, "domain") == relation]
-        if len(rows) != len(stores) or any(
+        relationship_complete[relation] = not (len(rows) != len(stores) or any(
             _row(row, "status") != "ok" or _row(row, "pagination_complete") is not True for row in rows
-        ):
+        ))
+        if not relationship_complete[relation]:
             limitations.append(f"{relation} relationship evidence is incomplete; lifecycle statuses are not substituted for complete relationships.")
 
     clauses = ""
-    params: dict[str, Any] = {"org_id": organization_id, "start": start, "end": end}
+    params: dict[str, Any] = {"org_id": organization_id, "start": start, "end": end, "now": now}
     record_mode = bool(order_reference or latest)
     if order_reference:
         reference = str(order_reference).strip()[:128]
@@ -449,10 +460,11 @@ def retrieve_order_evidence(organization_id: str, db, *, start: datetime, end: d
     totals = {key: sum(value for row in rows if (value := _int(row, key)) is not None) for key in _COUNT_DEFINITIONS}
     invalid = any(_int(row, "order_count") is None for row in rows) or (not rows and not coverage.get("complete"))
     for key, definition in _COUNT_DEFINITIONS.items():
-        value = None if invalid else totals[key]
+        relationship_incomplete = key == "split_fulfillment_count" and not relationship_complete.get("fulfillments", False)
+        value = None if invalid or relationship_incomplete else totals[key]
         items.append(evidence_item(key, label=key.replace("_", " ").capitalize(), value=value,
             window=window, source="orders", definition=definition,
-            status=STATUS_PARTIAL if invalid else STATUS_AVAILABLE,
+            status=STATUS_UNAVAILABLE if relationship_incomplete else STATUS_PARTIAL if invalid else STATUS_AVAILABLE,
             coverage=coverage, freshness=freshness, limitations=limitations,
             classification="deterministic_calculation", domain="orders",
             provenance={"retrieval": "aggregate", "transformation": definition,
@@ -530,8 +542,8 @@ def retrieve_order_evidence(organization_id: str, db, *, start: datetime, end: d
             previous_invalid = any(_int(row, "order_count") is None for row in previous_rows) or not previous_rows
             for key, definition in _COUNT_DEFINITIONS.items():
                 comparison_items.append(evidence_item(key, label=f"Comparison {key.replace('_', ' ')}",
-                    value=None if previous_invalid else previous_totals[key], window=comparison_window,
-                    source="orders", status=STATUS_UNAVAILABLE if previous_invalid else STATUS_AVAILABLE,
+                    value=None if previous_invalid or (key == "split_fulfillment_count" and not relationship_complete.get("fulfillments", False)) else previous_totals[key], window=comparison_window,
+                    source="orders", status=STATUS_UNAVAILABLE if previous_invalid or (key == "split_fulfillment_count" and not relationship_complete.get("fulfillments", False)) else STATUS_AVAILABLE,
                     definition=definition, coverage=comparison_coverage, freshness=freshness,
                     limitations=limitations, domain="orders", classification="deterministic_calculation",
                     provenance={"retrieval": "aggregate", "transformation": definition,

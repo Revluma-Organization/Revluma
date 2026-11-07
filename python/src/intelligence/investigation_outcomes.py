@@ -59,6 +59,10 @@ _CAPABILITY_RULES = (
         r"\b(?:guarantee|guaranteed|certain|promise)\b[^.?!]{0,70}\b(?:revenue|sales|conversion|recovery|recovered|improvement|growth)|\b(?:exact|definite)\s+(?:recovery|recovered\s+revenue)\b", re.I),
      "I can't guarantee future revenue, conversion improvement or recovery amounts.",
      "I can measure recorded results and distinguish observed value, eligible estimates and independently verified outcomes."),
+    ("retention_prediction", "unsupported_capability", re.compile(
+        r"\b(?:churn\s+(?:probability|risk)|likely\s+to\s+churn|future\s+(?:customer\s+)?(?:lifetime\s+value|ltv)|customer\s+(?:satisfaction|loyalty)|retention\s+campaign\s+(?:effectiveness|impact)|definite\s+(?:customer\s+)?purchase\s+intent)\b", re.I),
+     "Order history alone cannot establish satisfaction, loyalty, churn probability, future lifetime value or campaign effectiveness.",
+     "I can report observed repeat purchasing, returning-customer populations, mature cohorts and first-to-second purchase intervals without turning them into behavioral or predictive claims."),
     ("purchase_intent", "unsupported_question", re.compile(
         r"\b(?:know|prove|certain|certainty|definitive)\b[^.?!]{0,60}\b(?:customer|shopper)s?\b[^.?!]{0,40}\b(?:intent|going\s+to\s+buy|will\s+buy)\b", re.I),
      "Authorized store records cannot prove an individual customer's future purchase intent.",
