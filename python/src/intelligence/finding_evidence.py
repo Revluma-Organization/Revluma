@@ -12,7 +12,7 @@ SELECT f.id, f.store_id, f.type, f.severity, f.status, f.title, f.description,
  f.evidence, f.action, f.dedupe_key, f.detected_at, f.acknowledged_at,
  f.resolved_at, f.dismissed_at, f.updated_at
 FROM intelligence_findings f JOIN stores s ON s.id = f.store_id
-WHERE s.organization_id = :org_id::uuid AND f.organization_id = :org_id::uuid
+WHERE s.organization_id = CAST(:org_id AS uuid) AND f.organization_id = CAST(:org_id AS uuid)
  AND s.status IN ('active','connected','syncing')
 """
 _ORDER_SQL = """
@@ -20,8 +20,8 @@ SELECT o.external_order_id, o.external_order_name, o.ordered_at, o.total,
  o.refunded_total, o.currency, o.recovery_status
 FROM orders o JOIN intelligence_findings f ON f.store_id = o.store_id
 JOIN stores s ON s.id = f.store_id
-WHERE f.id = CAST(:finding_id AS uuid) AND f.organization_id = :org_id::uuid
- AND s.organization_id = :org_id::uuid AND s.status IN ('active','connected','syncing')
+WHERE f.id = CAST(:finding_id AS uuid) AND f.organization_id = CAST(:org_id AS uuid)
+ AND s.organization_id = CAST(:org_id AS uuid) AND s.status IN ('active','connected','syncing')
  AND o.ordered_at >= :previous_start AND o.ordered_at < :current_end
 ORDER BY o.ordered_at, o.id LIMIT 201
 """
