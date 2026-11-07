@@ -1,4 +1,8 @@
-import type { EvidenceItem, EvidencePeriod, RevAnswerPayload } from "./revStream";
+import type {
+  EvidenceItem, EvidencePeriod, RevAnswerConfidence,
+  RevAnswerPayload, RevClaimConfidence, RevCoverageSummary,
+  RevConfidenceCategory, RevResponseSection,
+} from "./revStream";
 
 export const textValue = (value: unknown): string => typeof value === "string" ? value : "";
 export const stringList = (value: unknown): string[] => Array.isArray(value)
@@ -29,9 +33,120 @@ export function normaliseRevAnswer(value: unknown): RevAnswerPayload | undefined
       implication: textValue(nested.implication) || textValue(outer.implication),
       recommendation: textValue(nested.recommendation) || textValue(outer.recommendation),
       confidence: response.confidence,
+      // Task 210: the backend's ordered sections are carried verbatim and
+      // validated at render time (answerSections), never re-ordered here.
+      sections: response.sections,
       warnings: stringList(nested.warnings),
     },
   };
+}
+
+// ── Task 210: adaptive answer structure & evidence-derived confidence ───────
+// The frontend renders only what the backend derived from recorded evidence.
+// Malformed or legacy-shaped values are hidden, never adapted into invented
+// certainty (the same no-fabrication discipline as the evidence state).
+
+const CONFIDENCE_CATEGORIES: readonly RevConfidenceCategory[] =
+  ["high", "moderate", "limited", "insufficient"];
+const COVERAGE_STATES = ["no_data", "partial", "complete", "unknown"] as const;
+const PERCENTAGE = /\d+(\.\d+)?\s*%/;
+
+/**
+ * The backend's ordered composable sections, kept in the exact order given.
+ * A section with an empty id/label/text is dropped (no section may render
+ * empty); a duplicated id keeps its first occurrence only.
+ */
+export function answerSections(
+  value?: RevAnswerPayload["response"] | null,
+): RevResponseSection[] {
+  const raw = record(value as unknown).sections;
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const sections: RevResponseSection[] = [];
+  for (const entry of raw) {
+    const item = record(entry);
+    const id = textValue(item.id);
+    const label = textValue(item.label).trim();
+    const text = textValue(item.text).trim();
+    if (!id || !label || !text || seen.has(id)) continue;
+    seen.add(id);
+    sections.push({ id, label, text });
+  }
+  return sections;
+}
+
+function validCoverage(value: unknown): RevCoverageSummary | undefined {
+  const cov = record(value);
+  if (!COVERAGE_STATES.includes(cov.coverage as (typeof COVERAGE_STATES)[number])) return undefined;
+  if (typeof cov.currency_comparable !== "boolean" || typeof cov.certified !== "boolean") return undefined;
+  if (typeof cov.freshness !== "string" || !cov.freshness.trim()) return undefined;
+  const window = record(cov.window);
+  return {
+    window: {
+      label: textValue(window.label) || null,
+      start: textValue(window.start) || null,
+      end: textValue(window.end) || null,
+      timezone: textValue(window.timezone) || null,
+    },
+    coverage: cov.coverage as RevCoverageSummary["coverage"],
+    freshness: cov.freshness,
+    currency_comparable: cov.currency_comparable,
+    certified: cov.certified,
+    limits: stringList(cov.limits),
+  };
+}
+
+/**
+ * The evidence-derived confidence contract. Returns `undefined` — the
+ * renderer then shows nothing — for a legacy numeric `{ score, basis }`
+ * shape, a malformed object, or a communication that carries a percentage
+ * (a number in confidence is exactly what this contract forbids).
+ */
+export function answerConfidence(
+  value?: RevAnswerPayload["response"] | null,
+): RevAnswerConfidence | undefined {
+  const confidence = record(value as unknown).confidence;
+  const entry = record(confidence);
+  if (!CONFIDENCE_CATEGORIES.includes(entry.category as RevConfidenceCategory)) return undefined;
+  const communication = textValue(entry.communication).trim();
+  if (!communication || PERCENTAGE.test(communication)) return undefined;
+  const claims: Record<string, RevClaimConfidence> = {};
+  for (const [claimId, rawClaim] of Object.entries(record(entry.claims))) {
+    const claim = record(rawClaim);
+    if (!CONFIDENCE_CATEGORIES.includes(claim.category as RevConfidenceCategory)) return undefined;
+    claims[claimId] = {
+      category: claim.category as RevConfidenceCategory,
+      basis: stringList(claim.basis),
+      limitations: stringList(claim.limitations),
+    };
+  }
+  // A malformed coverage block hides only the "How I checked" disclosure;
+  // the (separate) communication sentence still renders when it is clean.
+  const coverage = validCoverage(entry.coverage);
+  return {
+    category: entry.category as RevConfidenceCategory,
+    claims,
+    coverage,
+    communication,
+  };
+}
+
+/**
+ * Merchant copy for the coverage representation, kept separate from
+ * confidence (spec 5.D: "coverage is not confidence"). Rendered in the
+ * "How I checked" disclosure, never inline with the answer.
+ */
+export function coverageDisclosure(
+  coverage: RevCoverageSummary,
+): { summary: string; limits: string[] } {
+  const state = coverage.coverage.replace("_", " ");
+  const summary = [
+    `Coverage: ${state}`,
+    `Freshness: ${coverage.freshness}`,
+    `Currencies comparable: ${coverage.currency_comparable ? "yes" : "no"}`,
+    `Order coverage certified: ${coverage.certified ? "yes" : "no"}`,
+  ].join(" · ");
+  return { summary, limits: coverage.limits };
 }
 
 // Deduplicate only matching content, never infer that a summary covers a section.

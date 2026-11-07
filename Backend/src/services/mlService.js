@@ -31,6 +31,7 @@ const { assertResponseGuardrails } = require('./revClaimGuardrails');
 const { validateInvestigationOutcome } = require('./revInvestigationOutcomes');
 const { validateSpecialistExecution } = require('./revSpecialists');
 const { validateQuestionOrchestration } = require('./revQuestionOrchestration');
+const { validateResponseAdaptation } = require('./revResponseAdaptation');
 const { validateRecommendationBoundary } = require('./revRecommendations');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
@@ -1468,14 +1469,33 @@ function validateInvestigationResponse(data, organizationId = null, storeIds = n
   // blocks are validated fail-closed. They carry no numeric score, so the
   // checks enforce the documented shape and that every cited evidence id
   // resolves to a current or comparison-window item.
+  //
+  // Task 210 integration fix (Task 206 regression): the main flow emits these
+  // as explicit `null` when they do not apply (only INTENT_FINDINGS fills
+  // priority/comparison/change), and the meta/correction flows omit them. In
+  // JS `null !== undefined` is true, so `!== undefined` let a `null` block
+  // through to the shape validator, which rejected it — dropping every
+  // non-findings investigation in production. A nullish `!= null` treats both
+  // "absent" and "explicit null" as not-present, so only a real block is
+  // shape-validated.
   const allEvidence = {};
   for (const item of [...evidence.items, ...((evidence.comparison_items || []))]) {
     if (item && typeof item.id === 'string' && item.id) allEvidence[item.id] = item;
   }
-  if (data.priority !== undefined && !validatePriorityBlock(data.priority, allEvidence, { organizationId, storeIds })) return false;
-  if (data.priority_comparison !== undefined && !validatePriorityComparisonBlock(data.priority_comparison)) return false;
-  if (data.priority_change !== undefined && !validatePriorityChangeBlock(data.priority_change)) return false;
-  if (data.contributor_analysis !== undefined && !validateContributorAnalysis(data.contributor_analysis, allEvidence)) return false;
+  if (data.priority != null && !validatePriorityBlock(data.priority, allEvidence, { organizationId, storeIds })) return false;
+  if (data.priority_comparison != null && !validatePriorityComparisonBlock(data.priority_comparison)) return false;
+  if (data.priority_change != null && !validatePriorityChangeBlock(data.priority_change)) return false;
+  if (data.contributor_analysis != null && !validateContributorAnalysis(data.contributor_analysis, allEvidence)) return false;
+  // Task 210: the adaptive answer structure and evidence-derived confidence
+  // are validated fail-closed: closed vocabularies, every claim confidence
+  // independently re-derived from this payload's own evidence, coverage
+  // represented separately from confidence, and no fabricated numeric score
+  // or percentage anywhere in the confidence contract.
+  const adaptationErrors = validateResponseAdaptation(data);
+  if (adaptationErrors.length > 0) {
+    logger.warn('rev_adaptation_rejected', { codes: adaptationErrors });
+    return false;
+  }
   return true;
 }
 

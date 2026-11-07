@@ -1,0 +1,748 @@
+{
+  "claim_confidence": {
+    "calculated_observation_both_inputs": {
+      "basis": [
+        "stale_for_current_claim",
+        "staleness_penalty"
+      ],
+      "category": "limited",
+      "limitations": [
+        "This data is from the last successful sync and may be behind."
+      ]
+    },
+    "hypothesis_sufficient_capped": {
+      "basis": [
+        "hypothesis_unverified"
+      ],
+      "category": "limited",
+      "limitations": [
+        "This is a possible cause, not an established one."
+      ]
+    },
+    "hypothesis_unavailable": {
+      "basis": [
+        "hypothesis_unverified",
+        "source_retrieval_failed"
+      ],
+      "category": "insufficient",
+      "limitations": [
+        "This is a possible cause, not an established one.",
+        "The source could not be reached."
+      ]
+    },
+    "unknown_grade": {
+      "basis": [
+        "no_evidence_to_determine"
+      ],
+      "category": "insufficient",
+      "limitations": [
+        "The records I have do not include what this would take."
+      ]
+    },
+    "unrecognised_grade_fails_closed": {
+      "basis": [
+        "no_evidence_to_determine"
+      ],
+      "category": "insufficient",
+      "limitations": [
+        "The records I have do not include what this would take."
+      ]
+    },
+    "verified_fact_cited_id_missing": {
+      "basis": [
+        "evidence_reference_missing"
+      ],
+      "category": "insufficient",
+      "limitations": [
+        "A source for this figure is no longer in the current evidence set."
+      ]
+    },
+    "verified_fact_conflicting": {
+      "basis": [
+        "conflicting_evidence",
+        "conflicting_penalty"
+      ],
+      "category": "limited",
+      "limitations": [
+        "The sources disagree on this figure."
+      ]
+    },
+    "verified_fact_coverage_unknown": {
+      "basis": [
+        "coverage_penalty",
+        "coverage_unknown"
+      ],
+      "category": "moderate",
+      "limitations": [
+        "I cannot confirm how complete the source data is for this period."
+      ]
+    },
+    "verified_fact_mixed_currency": {
+      "basis": [
+        "currency_penalty",
+        "mixed_currencies_not_comparable"
+      ],
+      "category": "insufficient",
+      "limitations": [
+        "The values are recorded in different currencies that were not converted, so they cannot be compared directly."
+      ]
+    },
+    "verified_fact_no_evidence": {
+      "basis": [
+        "evidence_reference_missing"
+      ],
+      "category": "insufficient",
+      "limitations": [
+        "A source for this figure is no longer in the current evidence set."
+      ]
+    },
+    "verified_fact_partial_coverage": {
+      "basis": [
+        "coverage_penalty",
+        "partial_coverage"
+      ],
+      "category": "moderate",
+      "limitations": [
+        "Some records for this period are missing from the source."
+      ]
+    },
+    "verified_fact_stale": {
+      "basis": [
+        "stale_for_current_claim",
+        "staleness_penalty"
+      ],
+      "category": "limited",
+      "limitations": [
+        "This data is from the last successful sync and may be behind."
+      ]
+    },
+    "verified_fact_sufficient": {
+      "basis": [],
+      "category": "high",
+      "limitations": []
+    },
+    "verified_fact_unavailable": {
+      "basis": [
+        "source_retrieval_failed"
+      ],
+      "category": "insufficient",
+      "limitations": [
+        "The source could not be reached."
+      ]
+    },
+    "verified_fact_worst_of_two": {
+      "basis": [
+        "stale_for_current_claim",
+        "staleness_penalty"
+      ],
+      "category": "limited",
+      "limitations": [
+        "This data is from the last successful sync and may be behind."
+      ]
+    }
+  },
+  "contract_version": "rev-response-adaptation-v1",
+  "coverage": {
+    "certified_store": {
+      "certified": true,
+      "coverage": "complete",
+      "currency_comparable": true,
+      "freshness": "fresh",
+      "limits": [],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "comparison_window_included": {
+      "certified": false,
+      "coverage": "partial",
+      "currency_comparable": true,
+      "freshness": "stale",
+      "limits": [
+        "Some records for this period are missing from the source.",
+        "The data may not reflect the current state."
+      ],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "complete_beats_not_applicable": {
+      "certified": false,
+      "coverage": "complete",
+      "currency_comparable": true,
+      "freshness": "unknown",
+      "limits": [],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "complete_fresh": {
+      "certified": false,
+      "coverage": "complete",
+      "currency_comparable": true,
+      "freshness": "fresh",
+      "limits": [],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "currency_mixed": {
+      "certified": false,
+      "coverage": "complete",
+      "currency_comparable": false,
+      "freshness": "fresh",
+      "limits": [
+        "Values are recorded in currencies that were not converted."
+      ],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "currency_unknown": {
+      "certified": false,
+      "coverage": "complete",
+      "currency_comparable": false,
+      "freshness": "fresh",
+      "limits": [
+        "A currency could not be verified."
+      ],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "never_synchronized": {
+      "certified": false,
+      "coverage": "complete",
+      "currency_comparable": true,
+      "freshness": "never_synchronized",
+      "limits": [
+        "The data may not reflect the current state."
+      ],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "no_data": {
+      "certified": false,
+      "coverage": "no_data",
+      "currency_comparable": true,
+      "freshness": "unknown",
+      "limits": [],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "partial": {
+      "certified": false,
+      "coverage": "partial",
+      "currency_comparable": true,
+      "freshness": "fresh",
+      "limits": [
+        "Some records for this period are missing from the source."
+      ],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "stale_limits": {
+      "certified": false,
+      "coverage": "complete",
+      "currency_comparable": true,
+      "freshness": "stale",
+      "limits": [
+        "The data may not reflect the current state."
+      ],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "synchronizing": {
+      "certified": false,
+      "coverage": "complete",
+      "currency_comparable": true,
+      "freshness": "synchronizing",
+      "limits": [
+        "Data is still syncing, so this may be incomplete."
+      ],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "unknown_coverage": {
+      "certified": false,
+      "coverage": "partial",
+      "currency_comparable": true,
+      "freshness": "fresh",
+      "limits": [
+        "Some records for this period are missing from the source."
+      ],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    },
+    "worst_freshness_wins": {
+      "certified": false,
+      "coverage": "complete",
+      "currency_comparable": true,
+      "freshness": "stale",
+      "limits": [
+        "The data may not reflect the current state."
+      ],
+      "window": {
+        "end": "2026-11-07T12:00:00+00:00",
+        "label": "November 2026",
+        "start": "2026-11-01T00:00:00+00:00",
+        "timezone": "UTC"
+      }
+    }
+  },
+  "elements": {
+    "casual_empty": [],
+    "clarification_with_next_step_degraded": [
+      "direct_answer",
+      "confidence",
+      "unknowns",
+      "suggested_investigation"
+    ],
+    "comparative_full": [
+      "direct_answer",
+      "period_comparison",
+      "evidence",
+      "insight",
+      "confidence",
+      "limitations",
+      "recommendation"
+    ],
+    "degraded_lead_order_with_facts": [
+      "direct_answer",
+      "limitations",
+      "confidence",
+      "unknowns",
+      "suggested_investigation"
+    ],
+    "direct_evidence_only": [
+      "evidence"
+    ],
+    "direct_minimal": [
+      "direct_answer",
+      "evidence"
+    ],
+    "explanation_full": [
+      "direct_answer",
+      "situation",
+      "insight",
+      "evidence",
+      "confidence",
+      "limitations"
+    ],
+    "investigation_ordered_with_confidence": [
+      "situation",
+      "insight",
+      "implication",
+      "evidence",
+      "confidence",
+      "limitations",
+      "recommendation",
+      "follow_up"
+    ],
+    "multi_domain_no_implication": [
+      "situation",
+      "insight",
+      "evidence",
+      "confidence",
+      "limitations",
+      "recommendation",
+      "follow_up"
+    ],
+    "recommendation_leads_with_answer": [
+      "direct_answer",
+      "confidence",
+      "recommendation",
+      "evidence",
+      "limitations",
+      "follow_up"
+    ],
+    "recommendation_not_appropriate_omitted": [
+      "direct_answer"
+    ]
+  },
+  "profiles": {
+    "a_casual_capability": {
+      "clarification_required": false,
+      "complexity": "simple",
+      "confidence_communication": "implicit",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "the question needs no store investigation",
+      "recommendation_appropriate": false,
+      "response_intent": "casual_conversation"
+    },
+    "a_casual_greeting": {
+      "clarification_required": false,
+      "complexity": "simple",
+      "confidence_communication": "implicit",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "the question needs no store investigation",
+      "recommendation_appropriate": false,
+      "response_intent": "casual_conversation"
+    },
+    "b_direct_count_query": {
+      "clarification_required": false,
+      "complexity": "simple",
+      "confidence_communication": "implicit",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "a single recorded metric answers the question directly",
+      "recommendation_appropriate": false,
+      "response_intent": "direct_factual"
+    },
+    "b_direct_data_coverage": {
+      "clarification_required": false,
+      "complexity": "simple",
+      "confidence_communication": "implicit",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "a single recorded metric answers the question directly",
+      "recommendation_appropriate": false,
+      "response_intent": "direct_factual"
+    },
+    "b_direct_metric_query": {
+      "clarification_required": false,
+      "complexity": "simple",
+      "confidence_communication": "implicit",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "a single recorded metric answers the question directly",
+      "recommendation_appropriate": false,
+      "response_intent": "direct_factual"
+    },
+    "b_not_direct_when_causal": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the merchant asked for the reasoning behind the figures",
+      "recommendation_appropriate": false,
+      "response_intent": "explanation"
+    },
+    "c_explanation_single_domain": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the merchant asked for the reasoning behind the figures",
+      "recommendation_appropriate": false,
+      "response_intent": "explanation"
+    },
+    "communication_explicit_on_insufficient": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "explicit",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the answer compares recorded periods",
+      "recommendation_appropriate": true,
+      "response_intent": "comparative"
+    },
+    "communication_implicit_on_direct_high": {
+      "clarification_required": false,
+      "complexity": "simple",
+      "confidence_communication": "implicit",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "a single recorded metric answers the question directly",
+      "recommendation_appropriate": false,
+      "response_intent": "direct_factual"
+    },
+    "communication_inline_on_comparative_high": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the answer compares recorded periods",
+      "recommendation_appropriate": true,
+      "response_intent": "comparative"
+    },
+    "communication_inline_on_moderate": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the answer compares recorded periods",
+      "recommendation_appropriate": true,
+      "response_intent": "comparative"
+    },
+    "d_comparative": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the answer compares recorded periods",
+      "recommendation_appropriate": true,
+      "response_intent": "comparative"
+    },
+    "d_comparative_beats_metric": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the answer compares recorded periods",
+      "recommendation_appropriate": true,
+      "response_intent": "comparative"
+    },
+    "degraded_depth_concise": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "the answer compares recorded periods",
+      "recommendation_appropriate": true,
+      "response_intent": "comparative"
+    },
+    "e_investigation_default": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the answer combines several store checks",
+      "recommendation_appropriate": true,
+      "response_intent": "investigation"
+    },
+    "f_multi_domain_by_domains": {
+      "clarification_required": false,
+      "complexity": "complex",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "detailed",
+      "reason": "the answer combines findings from several store domains",
+      "recommendation_appropriate": true,
+      "response_intent": "multi_domain"
+    },
+    "f_multi_domain_overview": {
+      "clarification_required": false,
+      "complexity": "complex",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "detailed",
+      "reason": "the answer combines findings from several store domains",
+      "recommendation_appropriate": true,
+      "response_intent": "multi_domain"
+    },
+    "failed_depth_concise": {
+      "clarification_required": false,
+      "complexity": "complex",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "the answer combines findings from several store domains",
+      "recommendation_appropriate": true,
+      "response_intent": "multi_domain"
+    },
+    "g_recommendation_finding": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the merchant asked what to do, so the answer leads with the step",
+      "recommendation_appropriate": true,
+      "response_intent": "recommendation"
+    },
+    "g_recommendation_priority": {
+      "clarification_required": false,
+      "complexity": "moderate",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "standard",
+      "reason": "the merchant asked what to do, so the answer leads with the step",
+      "recommendation_appropriate": true,
+      "response_intent": "recommendation"
+    },
+    "h_clarification_intent": {
+      "clarification_required": true,
+      "complexity": "simple",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "the question needs clarification before any figure can be given",
+      "recommendation_appropriate": false,
+      "response_intent": "clarification"
+    },
+    "h_clarification_understanding": {
+      "clarification_required": true,
+      "complexity": "simple",
+      "confidence_communication": "inline",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "concise",
+      "reason": "the question needs clarification before any figure can be given",
+      "recommendation_appropriate": false,
+      "response_intent": "clarification"
+    },
+    "override_direct_detailed": {
+      "clarification_required": false,
+      "complexity": "simple",
+      "confidence_communication": "implicit",
+      "contract_version": "rev-response-adaptation-v1",
+      "explanation_depth": "detailed",
+      "reason": "a single recorded metric answers the question directly",
+      "recommendation_appropriate": false,
+      "response_intent": "direct_factual"
+    }
+  },
+  "response_category": {
+    "bogus_recorded_category_ignored": {
+      "claims": [
+        {
+          "claim_id": "clm-a",
+          "classification": "verified_fact",
+          "confidence": {
+            "basis": [],
+            "category": "nonsense",
+            "limitations": []
+          },
+          "evidence_ids": [],
+          "text": "Revenue was NGN 1,000,000.00.",
+          "value": "100.00",
+          "value_kind": "money"
+        }
+      ],
+      "expected": "high"
+    },
+    "claimless_all_sufficient_high": {
+      "claims": [],
+      "expected": "high"
+    },
+    "claimless_with_items_uses_sufficiency": {
+      "claims": [],
+      "expected": "moderate"
+    },
+    "claimless_with_no_items_insufficient": {
+      "claims": [],
+      "expected": "insufficient"
+    },
+    "claimless_worst_item_unavailable": {
+      "claims": [],
+      "expected": "insufficient"
+    },
+    "unknown_claims_do_not_drag": {
+      "claims": [
+        {
+          "claim_id": "clm-a",
+          "classification": "verified_fact",
+          "confidence": {
+            "basis": [],
+            "category": "high",
+            "limitations": []
+          },
+          "evidence_ids": [],
+          "text": "Revenue was NGN 1,000,000.00.",
+          "value": "100.00",
+          "value_kind": "money"
+        },
+        {
+          "claim_id": "clm-b",
+          "classification": "unknown",
+          "confidence": {
+            "basis": [],
+            "category": "insufficient",
+            "limitations": []
+          },
+          "evidence_ids": [],
+          "text": "Revenue was NGN 1,000,000.00.",
+          "value": "100.00",
+          "value_kind": "money"
+        }
+      ],
+      "expected": "high"
+    },
+    "worst_of_answer_bearing": {
+      "claims": [
+        {
+          "claim_id": "clm-a",
+          "classification": "verified_fact",
+          "confidence": {
+            "basis": [],
+            "category": "high",
+            "limitations": []
+          },
+          "evidence_ids": [],
+          "text": "Revenue was NGN 1,000,000.00.",
+          "value": "100.00",
+          "value_kind": "money"
+        },
+        {
+          "claim_id": "clm-b",
+          "classification": "calculated_observation",
+          "confidence": {
+            "basis": [],
+            "category": "moderate",
+            "limitations": []
+          },
+          "evidence_ids": [],
+          "text": "Revenue was NGN 1,000,000.00.",
+          "value": "100.00",
+          "value_kind": "money"
+        },
+        {
+          "claim_id": "clm-c",
+          "classification": "hypothesis",
+          "confidence": {
+            "basis": [],
+            "category": "high",
+            "limitations": []
+          },
+          "evidence_ids": [],
+          "text": "Revenue was NGN 1,000,000.00.",
+          "value": "100.00",
+          "value_kind": "money"
+        }
+      ],
+      "expected": "moderate"
+    }
+  }
+}

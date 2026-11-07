@@ -60,11 +60,6 @@ export interface RevFact {
 }
 
 export interface RevRecommendation {
-  recommendation_id?: string;
-  finding_id?: string | null;
-  lifecycle_state?: "proposed" | "presented" | "acknowledged" | "dismissed" | "superseded" | "invalidated" | "resolved";
-  actionability?: string;
-  prerequisites?: string[];
   label: string;
   why: string;
   measure: string;
@@ -97,17 +92,60 @@ export interface RevInvestigationMeta {
   context_used?: Record<string, unknown>;
 }
 
-export interface SelectedFindingContext {
-  contract_version: "rev-selected-finding-v1";
-  finding_id: string;
-  finding_version?: string | null;
-  title: string;
-  type?: string;
-  lifecycle_state: string;
-  current_validity: string;
-  evidence_quality: string;
-  limitations?: string[];
-  selection_source?: string;
+// Task 210 — evidence-derived confidence contract. Categories only: the
+// backend derives every value from the payload's own recorded evidence
+// (documented method D1); the frontend renders it, never recomputes or
+// invents it. A numeric `score` does not exist in this contract.
+export type RevConfidenceCategory = "high" | "moderate" | "limited" | "insufficient";
+
+export interface RevClaimConfidence {
+  category: RevConfidenceCategory;
+  basis: string[];
+  limitations: string[];
+}
+
+export interface RevCoverageSummary {
+  window: {
+    label: string | null;
+    start: string | null;
+    end: string | null;
+    timezone: string | null;
+  };
+  coverage: "no_data" | "partial" | "complete" | "unknown";
+  freshness: string;
+  currency_comparable: boolean;
+  certified: boolean;
+  limits: string[];
+}
+
+export interface RevAnswerConfidence {
+  category: RevConfidenceCategory;
+  claims: Record<string, RevClaimConfidence>;
+  /**
+   * The separate coverage representation ("How I checked" disclosure).
+   * Optional so a malformed coverage block hides only the disclosure while
+   * a clean communication sentence still renders.
+   */
+  coverage?: RevCoverageSummary;
+  /** One natural-language sentence; no percentages, no filler. */
+  communication: string;
+}
+
+export interface RevResponseSection {
+  id: string;
+  label: string;
+  text: string;
+}
+
+export interface RevResponseProfile {
+  contract_version: string;
+  response_intent: string;
+  complexity: "simple" | "moderate" | "complex";
+  explanation_depth: "concise" | "standard" | "detailed";
+  recommendation_appropriate: boolean;
+  clarification_required: boolean;
+  confidence_communication: "implicit" | "inline" | "explicit";
+  reason: string;
 }
 
 export interface RevAnswerPayload {
@@ -138,10 +176,25 @@ export interface RevAnswerPayload {
     insight?: string;
     implication?: string;
     recommendation?: string;
-    confidence?: { score: number; basis: string };
+    /**
+     * Task 210 union: new investigation responses carry the evidence-derived
+     * confidence contract; persisted legacy turns carry a numeric
+     * `{ score, basis }` that the renderer hides (badge discipline). The
+     * normaliser distinguishes the two and renders only the former.
+     */
+    confidence?: { score: number; basis: string } | RevAnswerConfidence;
+    /**
+     * Task 210: the backend's ordered, non-empty composable sections. When
+     * present they are authoritative — the renderer shows them in this
+     * order (still skipping anything the text answer already carries) and
+     * does not re-derive the legacy four keys.
+     */
+    sections?: RevResponseSection[];
     actions?: Array<{ label: string; tool?: string | null; params?: Record<string, unknown> }>;
     warnings?: string[];
   } | null;
+  /** Task 210: the deterministic A–H response profile (renderer metadata only). */
+  response_profile?: RevResponseProfile;
   investigation?: RevInvestigationMeta;
   evidence?: {
     schema_version?: string;
@@ -160,7 +213,6 @@ export interface RevAnswerPayload {
   hypotheses?: RevHypothesis[];
   unknowns?: string[];
   recommendations?: RevRecommendation[];
-  selected_finding?: SelectedFindingContext | null;
   specialists?: SpecialistsSummary[];
   warnings?: string[];
   conversation_id?: string;
