@@ -54,6 +54,18 @@ freshness):
 - `unsupported` — no dedicated sync ledger in this build; explicitly excluded
   from failure lists (it is a limitation, not a fault).
 
+**Stable state window (by-reference stability).** A state item's evidence id
+is a hash that includes its period, so the period must not depend on the wall
+clock: the state window is anchored to the *latest observed synchronization*
+(one second up to that instant, capped at the wall clock; wall clock only when
+no sync has ever been recorded). A cited id therefore stays resolvable across
+retrievals until the state actually changes (a newer sync, or a freshness-bucket
+transition — which is a real state change and correctly produces a new id).
+This mirrors the revenue surface, whose snapshot period is anchored to
+`last_synced_at` for the same reason. (Found by the RC by-reference test: the
+original wall-clock-anchored window made every cited id 404 on the next
+retrieval.)
+
 **Unrecorded scopes (production data gap).** The live test store carries
 `granted_scopes = NULL`. A store record with *no* scope list is a data gap,
 not proof of a missing grant, so it is never reported as `missing_scope`:

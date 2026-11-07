@@ -103,8 +103,10 @@ async function main() {
       assert.equal(result.stores[0].webhooks.state, 'healthy');
       const check = validateEvidenceCollection(result.items, { organizationId: orgA, storeIds: result.store_ids });
       assert.equal(check.valid, true, JSON.stringify(check.errors || null));
-      // 1 connection + 1 authorization + 9 critical capabilities + 1 webhook + 1 health
-      assert.equal(result.items.length, 14);
+      // 1 connection + 1 authorization + 9 critical capabilities + 8 optional
+      // resources without a sync ledger (reported as an explicit limitation,
+      // still a citable item) + 1 webhook + 1 health = 21.
+      assert.equal(result.items.length, 21);
     });
 
     await record('evidence is tenant-isolated: other organizations and stores are invisible', async () => {
@@ -133,6 +135,9 @@ async function main() {
     });
 
     await record('evidence-by-reference resolves a real item on PostgreSQL', async () => {
+      // Two separate retrievals with different wall-clock `now`: the state
+      // window is anchored to the last synchronization, so the id cited from
+      // the first retrieval must still resolve in the second.
       const result = await retrieveIntegrationEvidence({ organizationId: orgA, db: prisma });
       const target = result.items.find(item => item.metric === 'integration.health_overall');
       const fetched = await retrieveIntegrationEvidenceById({ organizationId: orgA, evidenceId: target.id, db: prisma });

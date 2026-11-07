@@ -887,13 +887,20 @@ def retrieve_integration_evidence(
                                       webhooks, coverage, now)
 
             # Evidence items for the citable facts of this store.
-            window_start = store["last_synced_at"] or (now - timedelta(seconds=1))
-            # Keep the window strictly half-open: end must be after start.
-            window_start = min(window_start, now - timedelta(milliseconds=1))
-            window_start = max(window_start, now - timedelta(days=1))
+            # Anchor the state window to the latest observed synchronization
+            # (capped at the wall clock) so evidence ids stay stable across
+            # retrievals: by-reference lookup must resolve a cited id until
+            # the state actually changes. Falls back to the wall clock when
+            # no sync has ever been recorded. The window is the one second up
+            # to the as-of instant (a state, not a range measurement); it is
+            # strictly half-open (end after start).
+            if store["last_synced_at"] is not None:
+                window_end = min(store["last_synced_at"], now)
+            else:
+                window_end = now
             base_window = {
-                "start": iso(window_start),
-                "end": iso(now),
+                "start": iso(window_end - timedelta(seconds=1)),
+                "end": iso(window_end),
                 "timezone": "UTC",
                 "semantics": "[start, end)",
                 "label": "Current integration state",

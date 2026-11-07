@@ -102,8 +102,8 @@ def healthy_db(**overrides):
     return make_db(stores, **kwargs)
 
 
-def retrieve(db, **kw):
-    return ie.retrieve_integration_evidence(ORG, db, now=NOW, **kw)
+def retrieve(db, now=NOW, **kw):
+    return ie.retrieve_integration_evidence(ORG, db, now=now, **kw)
 
 
 def only_store(result):
@@ -594,3 +594,16 @@ def test_unrecorded_scopes_fresh_install_is_verification_pending():
     assert store["connection"]["state"] == "installation_pending"
     orders = next(c for c in store["capabilities"] if c["resource_id"] == "orders")
     assert orders["authorization"]["state"] == "unverified_unrecorded"
+
+
+def test_state_window_anchored_to_last_sync_not_wall_clock():
+    # The state window is anchored to the latest observed synchronization,
+    # never the wall clock. The anchor is invariant to `now`, so a cited
+    # evidence id stays resolvable across retrievals until the state (e.g. a
+    # newer sync, or a freshness-bucket change) actually changes.
+    db = healthy_db()  # default store row: last_synced_at = _t(10)
+    first = retrieve(db)
+    later = retrieve(db, now=NOW + timedelta(hours=2))  # wall clock 2h later
+    assert first["items"][0]["period"]["end"] == ie.iso(_t(10))
+    assert later["items"][0]["period"]["end"] == ie.iso(_t(10))
+    assert first["items"][0]["period"]["start"] == ie.iso(_t(10) - timedelta(seconds=1))

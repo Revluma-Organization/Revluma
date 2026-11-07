@@ -447,10 +447,16 @@ function authComponent(connection, domains) {
 }
 
 function currentPeriod(store, now) {
-  const rawStart = store.last_synced_at ? Date.parse(iso(store.last_synced_at)) : now.getTime() - 1000;
-  // Keep the window strictly half-open: end must be after start.
-  const start = new Date(Math.max(now.getTime() - 86_400_000, Math.min(rawStart, now.getTime() - 1000)));
-  return { start: start.toISOString(), end: now.toISOString(), timezone: 'UTC', semantics: '[start, end)', label: 'Current integration state' };
+  // Anchor the state window to the latest observed synchronization (capped at
+  // the wall clock) so evidence ids stay stable across retrievals: by-reference
+  // lookup must resolve a cited id until the state actually changes. Falls
+  // back to the wall clock when no sync has ever been recorded. The window is
+  // the one second up to the as-of instant (a state, not a range measurement);
+  // it is strictly half-open (end after start).
+  const nowMs = now.getTime();
+  const lastSync = store.last_synced_at ? Date.parse(iso(store.last_synced_at)) : null;
+  const end = lastSync != null && Number.isFinite(lastSync) ? Math.min(lastSync, nowMs) : nowMs;
+  return { start: new Date(end - 1000).toISOString(), end: new Date(end).toISOString(), timezone: 'UTC', semantics: '[start, end)', label: 'Current integration state' };
 }
 
 function stateEvidence({ organizationId, storeIds, store, metric, label, value, period, source, definition, limitations, freshness }) {

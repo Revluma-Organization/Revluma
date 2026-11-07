@@ -297,3 +297,15 @@ test('evidence ids are resolvable by reference', async () => {
     err => err.code === 'EVIDENCE_NOT_FOUND',
   );
 });
+
+test('state window is anchored to the last sync, not the wall clock', async () => {
+  // The anchor is invariant to `now`, so a cited evidence id stays resolvable
+  // across retrievals until the state (a newer sync, or a freshness-bucket
+  // change) actually changes.
+  const fakeDb = db(); // default store: last_synced_at = FIVE_MIN
+  const first = await retrieveIntegrationEvidence(query(), { db: fakeDb, now: NOW });
+  const later = await retrieveIntegrationEvidence(query(), { db: fakeDb, now: new Date(NOW.getTime() + 2 * 3600000) });
+  assert.equal(first.items[0].period.end, FIVE_MIN.toISOString());
+  assert.equal(later.items[0].period.end, FIVE_MIN.toISOString());
+  assert.equal(first.items[0].period.start, new Date(FIVE_MIN.getTime() - 1000).toISOString());
+});
