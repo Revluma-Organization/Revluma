@@ -204,7 +204,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 196 | Phase 3 | Verify tenant-isolated conversation retrieval. | NOT STARTED | — | — | — |
 | 197 | Phase 3 | Define Rev evidence retrieval contract. | NOT STARTED | — | — | — |
 | 198 | Phase 3 | Verify revenue evidence retrieval. | NOT STARTED | — | — | — |
-| 199 | Phase 3 | Verify order evidence retrieval. | IN PROGRESS | See `TASK-199-PRE-MERGE-AUDIT.md` (10 fixed/unit-verified, 1 not reproducible, 1 partial, 1 blocked) | Local only | 2026-11-01 |
+| 199 | Phase 3 | Verify order evidence retrieval. | IN PROGRESS | Canonical lifecycle/product/order-record implementation candidate; see `implementation/TASK-199-ORDER-EVIDENCE.md` and `validation/TASK-199-ORDER-EVIDENCE.md`. CI, migration, deployment and authenticated production checks pending. | Implementation candidate | 2026-11-07 |
 | 200 | Phase 3 | Verify checkout evidence retrieval. | NOT STARTED | — | — | — |
 | 201 | Phase 3 | Verify integration evidence retrieval. | NOT STARTED | — | — | — |
 | 202 | Phase 3 | Verify finding evidence retrieval. | NOT STARTED | — | — | — |

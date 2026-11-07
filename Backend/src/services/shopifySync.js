@@ -130,7 +130,7 @@ async function syncCustomers(store) {
 async function completeLineItems(store, records, type, graphql = shopifyGraphql) {
   if (!['Order', 'AbandonedCheckout'].includes(type)) throw new Error('Unsupported Shopify parent type');
   const fields = type === 'Order'
-    ? 'id name quantity product { id } variant { id } originalUnitPriceSet { shopMoney { amount currencyCode } }'
+    ? 'id name quantity unfulfilledQuantity currentQuantity sku variantTitle product { id title } variant { id title sku } originalUnitPriceSet { shopMoney { amount currencyCode } } discountedUnitPriceSet { shopMoney { amount currencyCode } } originalTotalSet { shopMoney { amount currencyCode } } discountedTotalSet { shopMoney { amount currencyCode } } discountAllocations { allocatedAmountSet { shopMoney { amount currencyCode } } }'
     : 'id title quantity product { id } variant { id } originalUnitPriceSet { shopMoney { amount currencyCode } }';
   const query = `query RevlumaNestedLines($id: ID!, $first: Int!, $after: String!) {
     node(id: $id) { id ... on ${type} { updatedAt lineItems(first: $first, after: $after) {
@@ -182,11 +182,17 @@ function orderPayload(order) {
   const totals = shopifyGraphqlOrderTotals(order);
   return {
     id: externalId(order.id),
+    name: order.name || null,
     checkout_token: order.checkoutToken || null,
     cart_token: order.cartToken || null,
     created_at: order.createdAt,
+    updated_at: order.updatedAt || null,
+    processed_at: order.processedAt || null,
+    closed_at: order.closedAt || null,
     cancelled_at: order.cancelledAt,
+    cancel_reason: order.cancelReason || null,
     financial_status: order.displayFinancialStatus,
+    fulfillment_status: order.displayFulfillmentStatus || null,
     total_price: totals.net,
     total_refunded: totals.refunded,
     // currentTotalPriceSet is already refund-adjusted, so the webhook normaliser
@@ -209,8 +215,21 @@ function orderPayload(order) {
       product_id: externalId(item.product?.id),
       variant_id: externalId(item.variant?.id),
       title: item.name,
+      variant_title: item.variantTitle || item.variant?.title || null,
+      sku: item.sku || item.variant?.sku || null,
       quantity: item.quantity,
+      fulfilled_quantity: Number.isInteger(item.quantity) && Number.isInteger(item.unfulfilledQuantity)
+        ? Math.max(0, item.quantity - item.unfulfilledQuantity) : null,
+      remaining_quantity: Number.isInteger(item.unfulfilledQuantity) ? item.unfulfilledQuantity : null,
       price: money(item.originalUnitPriceSet),
+      discounted_price: money(item.discountedUnitPriceSet),
+      original_total: money(item.originalTotalSet),
+      discounted_total: money(item.discountedTotalSet),
+      discount_amount: (item.discountAllocations || []).reduce((sum, allocation) => {
+        const amount = money(allocation.allocatedAmountSet);
+        return amount === null ? sum : sum + amount;
+      }, 0),
+      currency: item.originalUnitPriceSet?.shopMoney?.currencyCode || null,
     })),
   };
 }
@@ -257,7 +276,8 @@ async function syncOrders(store) {
     query Orders($first: Int!, $after: String) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         nodes {
-          id checkoutToken cartToken createdAt updatedAt cancelledAt displayFinancialStatus discountCodes
+          id name checkoutToken cartToken createdAt updatedAt processedAt closedAt cancelledAt cancelReason
+          displayFinancialStatus displayFulfillmentStatus discountCodes
           currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
           totalRefundedSet { shopMoney { amount currencyCode } }
@@ -266,8 +286,13 @@ async function syncOrders(store) {
           customer { id email firstName lastName phone }
           lineItems(first: 250) {
             nodes {
-              id name quantity product { id } variant { id }
+              id name quantity unfulfilledQuantity currentQuantity sku variantTitle
+              product { id title } variant { id title sku }
               originalUnitPriceSet { shopMoney { amount currencyCode } }
+              discountedUnitPriceSet { shopMoney { amount currencyCode } }
+              originalTotalSet { shopMoney { amount currencyCode } }
+              discountedTotalSet { shopMoney { amount currencyCode } }
+              discountAllocations { allocatedAmountSet { shopMoney { amount currencyCode } } }
             }
             pageInfo { hasNextPage endCursor }
           }

@@ -323,6 +323,12 @@ async function upsertOrder(store, provider, payload) {
         store_id: store.id,
         customer_id: dbCustomer.id,
         external_order_id: orderExternalId,
+        external_order_name: payload.name || null,
+        source_updated_at: payload.updated_at ? new Date(payload.updated_at) : null,
+        cancel_reason: payload.cancel_reason || null,
+        display_fulfillment_status: payload.fulfillment_status || null,
+        processed_at: payload.processed_at ? new Date(payload.processed_at) : null,
+        closed_at: payload.closed_at ? new Date(payload.closed_at) : null,
         ...orderEvidence,
         total,
         refunded_total: refundedTotal,
@@ -337,6 +343,12 @@ async function upsertOrder(store, provider, payload) {
       },
       update: {
         customer_id: dbCustomer.id,
+        external_order_name: payload.name || undefined,
+        source_updated_at: payload.updated_at ? new Date(payload.updated_at) : undefined,
+        cancel_reason: payload.cancel_reason || undefined,
+        display_fulfillment_status: payload.fulfillment_status || undefined,
+        processed_at: payload.processed_at ? new Date(payload.processed_at) : undefined,
+        closed_at: payload.closed_at ? new Date(payload.closed_at) : undefined,
         ...safeOrderEvidence,
         // A delayed pre-refund snapshot must not resurrect refunded revenue:
         // the recorded refunded amount is monotonic and any refund this payload
@@ -358,9 +370,19 @@ async function upsertOrder(store, provider, payload) {
       const externalLineItemId = String(item.id || item.line_item_id || `${orderExternalId}:${item.product_id || item.name}`);
       const quantity = Number(item.quantity);
       const unitPrice = parseAmount(item.price ?? item.unit_price);
+      const discountedPrice = item.discounted_price == null ? null : parseAmount(item.discounted_price);
+      const originalLineTotal = item.original_total == null ? unitPrice * quantity : parseAmount(item.original_total);
+      const discountedLineTotal = item.discounted_total == null ? null : parseAmount(item.discounted_total);
+      const itemDiscount = parseAmount(item.discount_amount ?? 0);
+      const fulfilledQuantity = item.fulfilled_quantity == null ? null : Number(item.fulfilled_quantity);
+      const remainingQuantity = item.remaining_quantity == null ? null : Number(item.remaining_quantity);
       // A malformed line item is skipped rather than persisted as a zero-value
       // sale. The order's validated total is unaffected.
-      if (!Number.isInteger(quantity) || quantity < 1 || unitPrice === null) {
+      if (!Number.isInteger(quantity) || quantity < 1 || unitPrice === null || itemDiscount === null ||
+          originalLineTotal === null || (item.discounted_price != null && discountedPrice === null) ||
+          (item.discounted_total != null && discountedLineTotal === null) ||
+          (fulfilledQuantity !== null && (!Number.isInteger(fulfilledQuantity) || fulfilledQuantity < 0 || fulfilledQuantity > quantity)) ||
+          (remainingQuantity !== null && (!Number.isInteger(remainingQuantity) || remainingQuantity < 0 || remainingQuantity > quantity))) {
         logger.warn('shopify_line_item_financials_unverified', {
           store_id: store.id, external_order_id: orderExternalId,
         });
@@ -375,12 +397,31 @@ async function upsertOrder(store, provider, payload) {
           external_product_id: item.product_id ? String(item.product_id) : null,
           external_variant_id: item.variant_id ? String(item.variant_id) : null,
           product_name: item.title || item.name || 'Unknown product',
+          variant_title: item.variant_title || null,
+          sku: item.sku || null,
           quantity,
+          quantity_fulfilled: fulfilledQuantity,
+          quantity_remaining: remainingQuantity,
           unit_price: unitPrice,
-          line_total: unitPrice * quantity,
+          discounted_unit_price: discountedPrice,
+          original_line_total: originalLineTotal,
+          discount_amount: itemDiscount,
+          currency: normalizeCurrency(item.currency) || currency,
+          line_total: discountedLineTotal === null ? unitPrice * quantity : discountedLineTotal,
           ordered_at: orderDate,
         },
-        update: { quantity, unit_price: unitPrice, line_total: unitPrice * quantity, ordered_at: orderDate },
+        update: {
+          external_product_id: item.product_id ? String(item.product_id) : null,
+          external_variant_id: item.variant_id ? String(item.variant_id) : null,
+          product_name: item.title || item.name || 'Unknown product',
+          variant_title: item.variant_title || null, sku: item.sku || null,
+          quantity, quantity_fulfilled: fulfilledQuantity, quantity_remaining: remainingQuantity,
+          unit_price: unitPrice, discounted_unit_price: discountedPrice,
+          original_line_total: originalLineTotal, discount_amount: itemDiscount,
+          currency: normalizeCurrency(item.currency) || currency,
+          line_total: discountedLineTotal === null ? unitPrice * quantity : discountedLineTotal,
+          ordered_at: orderDate,
+        },
       });
     }
 
@@ -549,9 +590,15 @@ async function cancelOrder(store, payload) {
       where: { store_id_external_order_id: { store_id: store.id, external_order_id: externalOrderId } },
     });
     if (!order) return null;
-    if (order.recovery_status !== 'cancelled') {
-      await tx.orders.update({ where: { id: order.id }, data: { recovery_status: 'cancelled' } });
-    }
+    await tx.orders.update({ where: { id: order.id }, data: {
+      recovery_status: 'cancelled',
+      external_order_name: payload.name || order.external_order_name,
+      source_updated_at: payload.updated_at ? new Date(payload.updated_at) : order.source_updated_at,
+      cancel_reason: payload.cancel_reason || order.cancel_reason,
+      display_fulfillment_status: payload.fulfillment_status || order.display_fulfillment_status,
+      processed_at: payload.processed_at ? new Date(payload.processed_at) : order.processed_at,
+      closed_at: payload.closed_at ? new Date(payload.closed_at) : order.closed_at,
+    } });
     await recalculateCustomerTotals(tx, order.customer_id);
     return order;
   });
