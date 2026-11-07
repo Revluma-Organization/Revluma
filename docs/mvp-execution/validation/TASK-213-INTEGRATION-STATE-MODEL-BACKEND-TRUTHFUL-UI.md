@@ -15,7 +15,7 @@ consistent with Tasks 201–212.
 | Python keystone | `python/tests/test_rev_integration_state.py` | 57 | 12-state matrix (all states reachable), the 35-scenario acceptance set, precedence invariants (revoked never connected; disconnected never synchronizing; active sync never conceals auth failure; historical success never implies health; unknown never silently connected; unsupported resources are limits, not failures), `scope_list_recorded` convention, token non-leakage, `canonical_state_summary` projection + golden pin |
 | Golden | `python/scripts/gen_integration_state_golden.py` → `Backend/src/services/__tests__/revIntegrationState.golden.json` | 29 + 6 | Python-generated reference for the Node mirror: all 12 states, precedence edges, revocation with stale syncs, rollups; `expected_summary` per case pins the compact projection on both runtimes; token sentinel asserted absent |
 | Node mirror | `Backend/src/services/__tests__/revIntegrationState.test.js` | 42 | Byte-level parity vs the golden (full state + summary), contract constants closed sets, validator fail-closed rejections, credential-regex guard |
-| Product API | `Backend/src/tests/revIntegrationStateApi.test.js` | 8 | Real controller with mocked DB module: contract shape + actual states, single-store 200, cross-tenant 404 without existence leak, unknown id 404, 403 without membership, empty org → `[]`, revoked → `authorization_revoked`, `GET /stores` additive `integration_state` with token stripped |
+| Product API | `Backend/src/tests/revIntegrationStateApi.test.js` | 10 | Real controller with mocked DB module: contract shape + actual states, single-store 200, cross-tenant 404 without existence leak, unknown id 404, 403 without membership, empty org → `[]`, revoked → `authorization_revoked`, `GET /stores` additive `integration_state` with token stripped, `GET /stores` degrades to `integration_state: null` (still 200) when evaluation fails while the dedicated endpoints fail closed |
 | Python evidence | `python/tests/test_rev_integration_evidence.py` (new 3) | 48 total | Canonical block present + compact shape + credential-free; tracks revocation; stale sync → `limited_access` (not failure, not connected); all Task 201 evidence tests unchanged and passing |
 | Node evidence | `Backend/src/tests/revIntegrationEvidenceService.test.js` (new 2) | 19 total | Canonical block present/compact/credential-free; tracks revocation; all Task 201 mirror tests unchanged and passing |
 | Rev tool | (covered by evidence + full Python suite) | — | `_integration` availability follows the canonical worst state; `canonical_states` in diagnostics |
@@ -31,7 +31,8 @@ consistent with Tasks 201–212.
   each verified by stash/run/pop).
 - Node rev* suites: `revIntegrationState.test.js` 42/42,
   `revIntegrationEvidenceService.test.js` 19/19,
-  `revIntegrationStateApi.test.js` 8/8 (combined 69/69).
+  `revIntegrationStateApi.test.js` 10/10 (combined 71/71). Full backend
+  suite (all 94 test files, `node scripts/run-tests.js`) passes.
 - Frontend full suite: 539/539 (38 files); `tsc --noEmit` clean; eslint
   clean on all touched files; production build passes.
 - `git diff --check` clean. No DB migration. `sessionStorage` key

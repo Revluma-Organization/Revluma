@@ -259,7 +259,12 @@ foundation that this task extends — it does not start from scratch:
   `GET /api/v1/stores/integration-states` →
   `{contract_version, states[]}`; `GET /api/v1/stores/:storeId/
   integration-state` → one state (404 cross-tenant, no existence leak);
-  `GET /api/v1/stores` gains additive per-store `integration_state`.
+  `GET /api/v1/stores` gains additive per-store `integration_state`. The
+  store-list contract is "return the stores", so if canonical evaluation
+  fails the block degrades to `integration_state: null` (UI renders that as
+  `unknown` — fail-closed, never connected) and the list still returns 200;
+  the dedicated /integration-states endpoints stay strict (500) because they
+  are the authoritative state source.
   Membership-gated (403 without active membership); any invalid contract →
   500 fail-closed. **8 boundary tests**
   (`Backend/src/tests/revIntegrationStateApi.test.js`).

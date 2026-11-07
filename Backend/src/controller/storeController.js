@@ -128,9 +128,26 @@ exports.getStores = async (req, res, next) => {
 // id. The shallow connection_status/sync_status fields remain for backward
 // compatibility, but the frontend must consume `integration_state` (the
 // backend-authoritative model) and never re-derive status locally.
+//
+// This is ADDITIVE on the store-list endpoint: the list's contract is to
+// return the stores, so a failure evaluating the canonical state degrades to
+// `integration_state: null` (the UI renders that as `unknown` — fail-closed,
+// never connected) instead of failing the whole list. The dedicated
+// /integration-states endpoints stay strict (fail-closed 500) because they
+// exist to be the authoritative state source.
 async function attachCanonicalStates(responseStores, organizationId, now) {
-  const states = await retrieveIntegrationStates({ organizationId, now });
-  const byId = new Map(states.map(state => [state.store.id, state]));
+  let byId = new Map();
+  try {
+    const states = await retrieveIntegrationStates({ organizationId, now });
+    byId = new Map(states.map(state => [state.store.id, state]));
+  } catch (error) {
+    // Never leak secrets or raw error text through this log line.
+    console.warn('store_list_canonical_state_attach_skipped', {
+      service: 'revluma-api',
+      reason: 'canonical_state_evaluation_failed',
+      error_type: (error && error.constructor && error.constructor.name) || 'Error',
+    });
+  }
   for (const store of responseStores) {
     store.integration_state = byId.get(store.id) || null;
   }

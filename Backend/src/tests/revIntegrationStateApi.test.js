@@ -80,6 +80,7 @@ const state = {
   memberships: DEFAULT_MEMBERSHIPS,
   stores: DEFAULT_STORES,
   queries: [],
+  failDomainStates: false,
 };
 
 // ONE persistent mock installed BEFORE the controller is required (the
@@ -97,6 +98,7 @@ const prismaMock = {
   store_sync_domain_states: {
     findMany: async ({ where }) => {
       state.queries.push({ table: 'store_sync_domain_states', where });
+      if (state.failDomainStates) throw new Error('sync ledger unavailable');
       const rows = [...domainRows(where.store_id)];
       if (where.store_id === STORE_B) {
         // Second store: a real, current limitation (stale orders domain).
@@ -135,6 +137,7 @@ function resetState({ memberships = DEFAULT_MEMBERSHIPS, stores = DEFAULT_STORES
   state.memberships = memberships;
   state.stores = stores;
   state.queries = [];
+  state.failDomainStates = false;
 }
 
 function makeReq(user) { return { user }; }
@@ -260,4 +263,33 @@ test('GET /stores response carries the canonical integration_state per store (ad
   assert.equal(a.integration_state.overall_status, 'connected');
   const blob = JSON.stringify(res.body);
   assert.ok(!blob.includes('shpat_live_secret_value'));
+});
+
+// The store-list contract is "return the stores": if evaluating the canonical
+// state fails, the additive block degrades to null (the UI renders that as
+// `unknown`, fail-closed — never connected) and the list still returns 200.
+test('GET /stores degrades to integration_state null when canonical evaluation fails', async () => {
+  resetState();
+  state.failDomainStates = true;
+  const { res, nextError } = await call(storeController.getStores, makeReq({ id: USER_A, tenantId: ORG_A }));
+  assert.equal(nextError.error, undefined, 'store list must not fail');
+  assert.equal(res.statusCode, 200);
+  const stores = res.body.data.stores;
+  assert.equal(stores.length, 2);
+  for (const store of stores) {
+    assert.equal(store.integration_state, null, 'additive block degrades to null, never a derived status');
+    assert.ok(!('access_token' in store));
+  }
+});
+
+// The dedicated endpoints stay strict: the same failure surfaces to the
+// caller (the route maps it to a 500) — they exist to be the authoritative
+// state source and never emit a half-evaluated contract.
+test('GET /stores/integration-states fails closed when canonical evaluation fails', async () => {
+  resetState();
+  state.failDomainStates = true;
+  const { res, nextError } = await call(storeController.getIntegrationStates, makeReq({ id: USER_A, tenantId: ORG_A }));
+  assert.ok(nextError.error, 'dedicated endpoint must not swallow the failure');
+  assert.equal(res.statusCode, 200, 'no body was committed before the error');
+  assert.equal(res.body, null);
 });
