@@ -1067,19 +1067,20 @@ async function runTrainingObservationQueue() {
 }
 
 async function promoteInactiveCheckouts() {
-    // Promote only genuinely inactive, unrecovered checkouts. Do not send messages.
+    // Inactivity is not Shopify abandonment evidence. Keep these records in
+    // their explicit pending/unknown lifecycle until abandonedCheckouts or a
+    // verified order supplies a definitive transition. Do not send messages.
     const cutoff = new Date(Date.now() - ABANDONMENT_INACTIVITY_MS);
-    const result = await prisma.abandoned_carts.updateMany({
+    const count = await prisma.abandoned_carts.count({
         where: {
             status: 'pending',
             recovered_at: null,
             updated_at: { lte: cutoff },
             stores: { platform: 'shopify', status: { in: ['active', 'connected', 'syncing'] } },
         },
-        data: { status: 'abandoned' },
     });
-    logger.info('scheduler_inactive_checkouts_promoted', { count: result.count });
-    return result.count;
+    logger.info('scheduler_inactive_checkouts_observed', { count, lifecycle_changed: false });
+    return count;
 }
 
 async function runStoreSync() {

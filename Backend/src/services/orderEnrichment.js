@@ -114,10 +114,11 @@ const REFUNDS_QUERY = `query RevlumaOrderRefunds($id: ID!) {
     ... on Order {
       id
       refunds {
-        id note createdAt
+        id note createdAt updatedAt
         totalRefundedSet { shopMoney { amount currencyCode } }
-        refundLineItems(first: 250) { nodes { quantity subtotalSet { shopMoney { amount currencyCode } } restockType lineItem { id } } }
-        transactions(first: 100) { nodes { id kind status amountSet { shopMoney { amount currencyCode } } processedAt } }
+        refundLineItems(first: 250) { nodes { id quantity subtotalSet { shopMoney { amount currencyCode } } restockType lineItem { id } } pageInfo { hasNextPage endCursor } }
+        transactions(first: 100) { nodes { id kind status amountSet { shopMoney { amount currencyCode } } processedAt } pageInfo { hasNextPage endCursor } }
+        orderAdjustments(first: 250) { nodes { id reason amountSet { shopMoney { amount currencyCode } } taxAmountSet { shopMoney { amount currencyCode } } } pageInfo { hasNextPage endCursor } }
       }
     }
   }
@@ -129,10 +130,12 @@ const FUL_CONNECTION_QUERY = `query RevlumaOrderFulfillments($id: ID!, $first: I
       id
       fulfillments(first: $first, after: $after) {
         nodes {
-          id status createdAt updatedAt
+          id status displayStatus createdAt updatedAt deliveredAt
           location { name }
           trackingInfo { number url company }
-                  }
+          fulfillmentLineItems(first: 250) { nodes { id quantity lineItem { id } } pageInfo { hasNextPage endCursor } }
+          events(first: 250) { nodes { id status happenedAt estimatedDeliveryAt } pageInfo { hasNextPage endCursor } }
+        }
         pageInfo { hasNextPage endCursor }
       }
     }
@@ -147,7 +150,9 @@ const FUL_LIST_QUERY = `query RevlumaOrderFulfillmentsLegacy($id: ID!) {
         id status createdAt updatedAt
         location { name }
         trackingInfo { number url company }
-              }
+        fulfillmentLineItems(first: 250) { nodes { id quantity lineItem { id } } pageInfo { hasNextPage endCursor } }
+        events(first: 250) { nodes { id status happenedAt estimatedDeliveryAt } pageInfo { hasNextPage endCursor } }
+      }
     }
   }
 }`;
@@ -198,6 +203,7 @@ function mapTransactionRow(storeId, externalOrderId, txn) {
 
 function mapRefundLineItem(item) {
   return {
+    id: item.id ? externalId(item.id) : null,
     line_item_id: item.lineItem?.id ? externalId(item.lineItem.id) : null,
     quantity: Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : null,
     amount: moneyDecimal(item.subtotalSet?.shopMoney),
@@ -230,9 +236,15 @@ function mapRefundRow(storeId, externalOrderId, refund) {
     refund_amount: moneyDecimal(refund.totalRefundedSet?.shopMoney),
     refund_currency: refund.totalRefundedSet?.shopMoney?.currencyCode || null,
     refunded_shipping: null, // queried only when the version exposes it reliably; see notes
+    source_updated_at: refund.updatedAt && !Number.isNaN(new Date(refund.updatedAt).getTime()) ? new Date(refund.updatedAt) : null,
     created_at: refund.createdAt && !Number.isNaN(new Date(refund.createdAt).getTime()) ? new Date(refund.createdAt) : null,
     refund_line_items: lineItems,
     transactions,
+    order_adjustments: Array.isArray(refund.orderAdjustments?.nodes) ? refund.orderAdjustments.nodes.map(adjustment => ({
+      id: externalId(adjustment.id), reason: adjustment.reason || null,
+      amount: moneyDecimal(adjustment.amountSet?.shopMoney), currency: adjustment.amountSet?.shopMoney?.currencyCode || null,
+      tax_amount: moneyDecimal(adjustment.taxAmountSet?.shopMoney),
+    })) : [],
     synced_at: new Date(),
   };
 }
@@ -242,17 +254,26 @@ function mapFulfillmentRow(storeId, externalOrderId, ful) {
   const trackingInfo = Array.isArray(ful.trackingInfo)
     ? ful.trackingInfo.map(t => ({ number: t?.number || null, url: t?.url || null, company: t?.company || null })).slice(0, 20)
     : [];
-  const lineItems = Array.isArray(ful.lineItems?.nodes)
-    ? ful.lineItems.nodes.map(item => ({ id: externalId(item.id), quantity: Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : null })).slice(0, 250)
+  const lineItems = Array.isArray(ful.fulfillmentLineItems?.nodes)
+    ? ful.fulfillmentLineItems.nodes.map(item => ({
+      id: externalId(item.id), line_item_id: externalId(item.lineItem?.id),
+      quantity: Number.isFinite(Number(item.quantity)) ? Number(item.quantity) : null,
+    }))
     : [];
   return {
     store_id: storeId,
     external_order_id: String(externalOrderId),
     external_id: externalId(ful.id),
     status: ful.status ? String(ful.status).slice(0, 32) : null,
+    display_status: ful.displayStatus ? String(ful.displayStatus).slice(0, 64) : null,
+    delivered_at: ful.deliveredAt && !Number.isNaN(new Date(ful.deliveredAt).getTime()) ? new Date(ful.deliveredAt) : null,
     location_name: ful.location?.name ? String(ful.location.name).slice(0, 255) : null,
     tracking_company: trackingInfo.length ? (trackingInfo[0].company ? String(trackingInfo[0].company).slice(0, 255) : null) : null,
     tracking_info: trackingInfo,
+    fulfillment_events: Array.isArray(ful.events?.nodes) ? ful.events.nodes.map(event => ({
+      id: externalId(event.id), status: event.status || null,
+      happened_at: event.happenedAt || null, estimated_delivery_at: event.estimatedDeliveryAt || null,
+    })) : [],
     line_items: lineItems,
     created_at: ful.createdAt && !Number.isNaN(new Date(ful.createdAt).getTime()) ? new Date(ful.createdAt) : null,
     updated_at: ful.updatedAt && !Number.isNaN(new Date(ful.updatedAt).getTime()) ? new Date(ful.updatedAt) : null,
@@ -337,6 +358,80 @@ async function fetchFamily(store, id, cfg, cache = {}) {
   const failure = errors[errors.length - 1] || new Error(`${kind}: acquisition failed`);
   failure.accessDenied = accessDenied;
   throw failure;
+}
+
+const REFUND_RELATIONS_PAGE_QUERY = `query RevlumaRefundRelationsPage($id: ID!, $first: Int!, $linesAfter: String, $transactionsAfter: String, $adjustmentsAfter: String) {
+  node(id: $id) { ... on Refund { id
+    refundLineItems(first: $first, after: $linesAfter) { nodes { id quantity subtotalSet { shopMoney { amount currencyCode } } restockType lineItem { id } } pageInfo { hasNextPage endCursor } }
+    transactions(first: 100, after: $transactionsAfter) { nodes { id kind status amountSet { shopMoney { amount currencyCode } } processedAt } pageInfo { hasNextPage endCursor } }
+    orderAdjustments(first: $first, after: $adjustmentsAfter) { nodes { id reason amountSet { shopMoney { amount currencyCode } } taxAmountSet { shopMoney { amount currencyCode } } } pageInfo { hasNextPage endCursor } }
+  } }
+}`;
+
+const FULFILLMENT_LINES_PAGE_QUERY = `query RevlumaFulfillmentLinesPage($id: ID!, $first: Int!, $linesAfter: String, $eventsAfter: String) {
+  node(id: $id) { ... on Fulfillment { id
+    fulfillmentLineItems(first: $first, after: $linesAfter) { nodes { id quantity lineItem { id } } pageInfo { hasNextPage endCursor } }
+    events(first: $first, after: $eventsAfter) { nodes { id status happenedAt estimatedDeliveryAt } pageInfo { hasNextPage endCursor } }
+  } }
+}`;
+
+function assertNestedConnection(connection, kind) {
+  if (!Array.isArray(connection?.nodes) || typeof connection.pageInfo?.hasNextPage !== 'boolean') {
+    const error = new Error(`${kind}: nested response is incomplete`);
+    error.code = 'SHOPIFY_ORDER_NESTED_RELATION_INVALID'; error.noFallback = true; throw error;
+  }
+}
+
+async function completeNestedField(store, parent, type, field, query, kind) {
+  assertNestedConnection(parent[field], kind);
+  const nodes = [...parent[field].nodes];
+  const ids = new Set();
+  const add = rows => rows.forEach(row => {
+    if (!row?.id || ids.has(row.id)) {
+      const error = new Error(`${kind}: duplicate or missing nested ID`);
+      error.code = 'SHOPIFY_ORDER_NESTED_RELATION_INVALID'; error.noFallback = true; throw error;
+    }
+    ids.add(row.id);
+  });
+  add(nodes);
+  let connection = parent[field];
+  const cursors = new Set();
+  let pages = 1;
+  while (connection.pageInfo.hasNextPage) {
+    const cursor = connection.pageInfo.endCursor;
+    if (!cursor || cursors.has(cursor) || ++pages > MAX_TRANSACTION_PAGES) {
+      const error = new Error(`${kind}: nested pagination did not complete`);
+      error.code = 'SHOPIFY_ORDER_ENRICHMENT_PAGE_CEILING'; error.noFallback = true; throw error;
+    }
+    cursors.add(cursor);
+    const variables = type === 'Refund'
+      ? { id: parent.id, first: 250, ...(field === 'refundLineItems' ? { linesAfter: cursor } : field === 'orderAdjustments' ? { adjustmentsAfter: cursor } : { transactionsAfter: cursor }) }
+      : { id: parent.id, first: 250, ...(field === 'events' ? { eventsAfter: cursor } : { linesAfter: cursor }) };
+    const data = await shopifyGraphql(store, query, variables);
+    if (data?.node?.id !== parent.id) {
+      const error = new Error(`${kind}: parent identity changed`);
+      error.code = 'SHOPIFY_ORDER_NESTED_RELATION_INVALID'; error.noFallback = true; throw error;
+    }
+    connection = data.node[field];
+    assertNestedConnection(connection, kind);
+    add(connection.nodes); nodes.push(...connection.nodes);
+  }
+  parent[field] = { nodes, pageInfo: connection.pageInfo };
+}
+
+async function completeRefundRelations(store, refunds) {
+  for (const refund of refunds) {
+    await completeNestedField(store, refund, 'Refund', 'refundLineItems', REFUND_RELATIONS_PAGE_QUERY, 'refundLineItems');
+    await completeNestedField(store, refund, 'Refund', 'transactions', REFUND_RELATIONS_PAGE_QUERY, 'refundTransactions');
+    await completeNestedField(store, refund, 'Refund', 'orderAdjustments', REFUND_RELATIONS_PAGE_QUERY, 'orderAdjustments');
+  }
+}
+
+async function completeFulfillmentRelations(store, fulfillments) {
+  for (const fulfillment of fulfillments) {
+    await completeNestedField(store, fulfillment, 'Fulfillment', 'fulfillmentLineItems', FULFILLMENT_LINES_PAGE_QUERY, 'fulfillmentLineItems');
+    await completeNestedField(store, fulfillment, 'Fulfillment', 'events', FULFILLMENT_LINES_PAGE_QUERY, 'fulfillmentEvents');
+  }
 }
 
 async function upsertRows(db, table, rows, { storeId, externalOrderId }, reconcile = true) {
@@ -441,6 +536,7 @@ async function enrichOrder(store, orderGid, db = prisma, shapeCache = {}, option
       error.accessDenied = false;
       throw error;
     }
+    await completeRefundRelations(store, refunds);
     const rows = refunds.map(r => mapRefundRow(store.id, internal.externalOrderId, r)).filter(Boolean);
     const writes = await upsertRows(db, 'order_refunds', rows, { storeId: store.id, externalOrderId: internal.externalOrderId }, true);
     const report = { discovered: rows.length, ...writes, paginationComplete: true, pagesCompleted: 1 };
@@ -451,7 +547,7 @@ async function enrichOrder(store, orderGid, db = prisma, shapeCache = {}, option
     await failure('refunds', error);
     attachReport(summary, 'refunds', { status: 'failed', errorCode: error?.code || error?.name, paginationComplete: false });
     summary.refunds = 'failed';
-    logger.warn('order_enrichment_refunds_failed', { store_id: store.id, external_order_id: internal.externalOrderId, error_type: error?.code || error?.name });
+    logger.warn('order_enrichment_refunds_failed', { store_id: store.id, external_order_id: internal.externalOrderId, error_type: error?.code || error?.name, error_message: error?.message });
   }
 
   // E4 fulfillments
@@ -471,6 +567,7 @@ async function enrichOrder(store, orderGid, db = prisma, shapeCache = {}, option
       kind: 'fulfillments', connectionQuery: FUL_CONNECTION_QUERY, listQuery: FUL_LIST_QUERY,
       extractField: 'fulfillments', first: 100,
     }, shapeCache);
+    await completeFulfillmentRelations(store, fetched.nodes);
     const rows = fetched.nodes.map(f => mapFulfillmentRow(store.id, internal.externalOrderId, f)).filter(Boolean);
     const writes = await upsertRows(db, 'order_fulfillments', rows, { storeId: store.id, externalOrderId: internal.externalOrderId }, fetched.complete);
     const report = { discovered: rows.length, ...writes, paginationComplete: fetched.complete, pagesCompleted: fetched.pagesCompleted };

@@ -203,14 +203,14 @@ INTENT_TOOLS = {
                       "order_observations", "cart_observations", "findings"],
     INTENT_REVENUE: ["store_health", "data_coverage", "revenue_observations",
                      "order_observations", "cart_observations", "refund_observations"],
-    INTENT_CHECKOUT: ["store_health", "data_coverage", "cart_observations",
-                      "checkout_observations", "revenue_observations", "traffic_observations"],
+    INTENT_CHECKOUT: ["store_health", "data_coverage", "checkout_observations",
+                      "revenue_observations", "traffic_observations"],
     INTENT_CUSTOMERS: ["store_health", "customer_observations", "order_observations",
                        "revenue_observations"],
     INTENT_REFUNDS: ["store_health", "revenue_observations", "order_observations",
                      "refund_observations"],
     INTENT_PRODUCTS: ["store_health", "product_observations", "inventory_observations",
-                      "revenue_observations"],
+                      "revenue_observations", "order_observations"],
     INTENT_TRAFFIC: ["store_health", "traffic_observations", "checkout_observations",
                      "order_observations"],
     INTENT_COVERAGE: ["store_health", "data_coverage"],
@@ -1411,6 +1411,63 @@ def _item_fact(item: dict, text: str) -> dict:
     }
 
 
+def _order_tool_params(message: str, inherited: dict | None = None) -> dict:
+    """Resolve allowlisted order filters while preserving explicit follow-ups."""
+    text = (message or "").lower()
+    followup = bool(re.search(r"\b(?:those|them|that order|this order|these orders|cancelled ones)\b", text))
+    params = dict(inherited or {}) if followup else {}
+    reference = re.search(r"(?:order\s+)?(#\d{1,64})\b", message or "", re.I)
+    stable = re.search(r"\border(?:\s+id)?\s+([0-9a-f]{8}-[0-9a-f-]{27,}|\d{5,})\b", message or "", re.I)
+    if stable:
+        params["order_reference"] = stable.group(1)
+        params.pop("latest", None)
+    elif reference:
+        params["order_reference"] = reference.group(1)
+        params.pop("latest", None)
+    elif re.search(r"\b(?:latest|most recent|last)\s+(?:\d+\s+)?orders?\b", text):
+        params["latest"] = True
+        params.pop("order_reference", None)
+    if re.search(r"\bpartially\s+fulfilled\b", text):
+        params["fulfillment_status"] = "PARTIALLY_FULFILLED"
+    elif re.search(r"\bunfulfilled\b|\bnot fulfilled\b", text):
+        params["fulfillment_status"] = "UNFULFILLED"
+    elif re.search(r"\bfulfilled\b", text) and not re.search(r"\bunfulfilled\b", text):
+        params["fulfillment_status"] = "FULFILLED"
+    if re.search(r"\bpartially\s+paid\b", text):
+        params["financial_status"] = "PARTIALLY_PAID"
+    elif re.search(r"\bawaiting payment\b|\bpending payment\b|\bunpaid\b", text):
+        params["financial_status"] = "PENDING"
+    elif re.search(r"\bpartially\s+refunded\b", text):
+        params["financial_status"] = "PARTIALLY_REFUNDED"
+    elif re.search(r"\bfully refunded\b", text):
+        params["financial_status"] = "REFUNDED"
+    elif re.search(r"\bpaid orders\b", text):
+        params["financial_status"] = "PAID"
+    if re.search(r"\bcancelled\b|\bcanceled\b", text):
+        params["cancelled"] = True
+    return params
+
+
+def _checkout_tool_params(message: str, inherited: dict | None = None) -> dict:
+    """Resolve explicit checkout drill-downs and preserve concise follow-ups."""
+    text = (message or "").lower()
+    followup = bool(re.search(r"\b(?:those|them|that checkout|this checkout|these checkouts|abandoned ones)\b", text))
+    params = dict(inherited or {}) if followup else {}
+    stable = re.search(r"\bcheckout(?:\s+id)?\s+([0-9a-f]{8}-[0-9a-f-]{27,}|\d{5,})\b", message or "", re.I)
+    named = re.search(r"\bcheckout\s+(#[A-Za-z0-9_-]{1,64})\b", message or "", re.I)
+    if stable or named:
+        params["checkout_reference"] = (stable or named).group(1)
+        params.pop("latest", None)
+    elif re.search(r"\b(?:latest|most recent|last)\s+(?:\d+\s+)?checkouts?\b", text):
+        params["latest"] = True
+        params.pop("checkout_reference", None)
+    if re.search(r"\babandoned(?:\s+ones)?\b|\babandonment\b", text):
+        params["abandoned_only"] = True
+    if re.search(r"\bline items\b|\bproducts in\b|\bwhich checkout\b|\bshow\b.{0,30}\bcheckouts?\b|\bcheckout\s+(?:id\s+)?[#0-9a-f]", text):
+        params["include_records"] = True
+    return params
+
+
 def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
     facts: list[dict] = []
     by_metric: dict[str, list[dict]] = {}
@@ -1459,16 +1516,17 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
         add("test_order_count", lambda i: (
             f"{i['value']} test-mode order(s) excluded from revenue "
             f"({i.get('currency') or 'all currencies'})"))
-    if intent in (INTENT_OVERVIEW, INTENT_CHECKOUT, INTENT_REVENUE):
-        add("unrecovered_cart_value", lambda i: (
-            f"Recorded abandoned-cart value {_money_text(i['value'], i.get('currency'))} "
-            f"across {_count_for(by_metric, 'unrecovered_cart_count', i.get('currency'))} unrecovered carts"))
-        add("unrecovered_cart_count", lambda i: (
-            f"{i['value']} unrecovered abandoned carts recorded"
-            + (f" ({i.get('currency')})" if i.get("currency") else "")))
     if intent in (INTENT_OVERVIEW, INTENT_CHECKOUT):
-        add("recorded_checkout_completion_count", lambda i: (
-            f"{i['value']} tracked carts later recorded as completed"))
+        add("abandoned_checkout_recorded_value", lambda i: (
+            f"Recorded value of explicitly observed abandoned checkouts: {_money_text(i['value'], i.get('currency'))}; "
+            "this is not lost or recoverable revenue"))
+        add("abandoned_checkout_count", lambda i: f"{i['value']} explicitly observed, uncompleted abandoned checkouts")
+        add("observed_checkout_count", lambda i: f"{i['value']} observed stored checkout records (not universal checkout starts)")
+        add("completed_checkout_count", lambda i: f"{i['value']} observed checkouts with completedAt or a verified exact order relationship")
+        add("unknown_lifecycle_count", lambda i: f"{i['value']} observed checkouts retain unknown lifecycle")
+        add("incomplete_checkout_count", lambda i: f"{i['value']} observed checkouts have incomplete evidence")
+        add("observed_checkout_completion_rate", lambda i: f"Observed checkout completion rate: {Decimal(str(i['value'])) * 100:.2f}% of definitive completed-plus-abandoned records")
+        add("observed_checkout_abandonment_rate", lambda i: f"Observed checkout abandonment rate: {Decimal(str(i['value'])) * 100:.2f}% of definitive completed-plus-abandoned records")
     if intent in (INTENT_OVERVIEW, INTENT_CUSTOMERS):
         add("ordering_customer_count", lambda i: (
             f"{i['value']} ordering customers"
@@ -1476,6 +1534,26 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
         add("first_time_customer_count", lambda i: (
             f"{i['value']} first-time ordering customers"
             + (f" ({i.get('currency')})" if i.get("currency") else "")))
+    if intent in (INTENT_OVERVIEW, INTENT_REVENUE, INTENT_REFUNDS, INTENT_PRODUCTS, INTENT_CUSTOMERS, INTENT_TRAFFIC):
+        add("order_count", lambda i: f"{i['value']} orders recorded in the requested period, including later cancellations and refunds")
+        for metric in ("paid_count", "pending_payment_count", "partially_paid_count", "cancelled_count",
+                       "refunded_count", "partially_refunded_count", "fulfilled_count", "unfulfilled_count",
+                       "partially_fulfilled_count", "open_count", "closed_count"):
+            add(metric, lambda i, metric=metric: f"{i['value']} {metric.replace('_', ' ')}")
+        for item in by_metric.get("order_record", []):
+            if item.get("status") != STATUS_AVAILABLE or not isinstance(item.get("value"), dict):
+                continue
+            record = item["value"]
+            reference = record.get("name") or record.get("external_order_id")
+            products = ", ".join(str(line.get("product_title_at_order")) for line in record.get("line_items", [])[:5] if line.get("product_title_at_order"))
+            facts.append(_item_fact(item, (
+                f"{reference}: lifecycle {record.get('lifecycle_status') or 'unknown'}; "
+                f"financial status {record.get('financial_status') or 'unavailable'}; "
+                f"fulfillment status {record.get('fulfillment_status') or 'unavailable'}; "
+                f"{len(record.get('line_items') or [])} line items; {len(record.get('relationships') or [])} refund/fulfillment relationships"
+                + (f"; products at order time: {products}" if products else "")
+                + ". Fulfillment does not verify delivery and no unfulfilled reason is inferred.")))
+        add("average_order_value", lambda i: f"Average order value {_money_text(i['value'], i.get('currency'))} using Task 198 net recorded order definitions")
     if intent in (INTENT_PRODUCTS,):
         add("product_units_sold", lambda i: f"{i['label']}: {i['value']} units")
         add("product_recorded_value", lambda i: f"{i['label']}: {_money_text(i['value'], i.get('currency'))}")
@@ -1558,6 +1636,14 @@ def _comparison_facts(comparison: dict | None,
                     f"{abs(float(change['percent'])):.1f}% "
                     f"({_money_text(change['previous'], currency)} to "
                     f"{_money_text(change['current'], currency)}) {qualifier}")
+        elif change.get("metric") in {"observed_checkout_count", "completed_checkout_count", "abandoned_checkout_count", "unknown_lifecycle_count"}:
+            text = (f"{change['metric'].replace('_', ' ').capitalize()} moved {change['direction']} "
+                    f"{abs(float(change['percent'])):.1f}% ({change['previous']} to {change['current']}) {qualifier}; "
+                    "this is an observed population, not universal checkout starts")
+        elif change.get("metric") == "abandoned_checkout_recorded_value":
+            text = (f"Recorded abandoned-checkout value moved {change['direction']} "
+                    f"{abs(float(change['percent'])):.1f}% ({_money_text(change['previous'], currency)} to "
+                    f"{_money_text(change['current'], currency)}) {qualifier}; not lost or recoverable revenue")
         else:
             continue
         facts.append({
@@ -1746,8 +1832,12 @@ def _follow_ups(intent: str, window: dict, segment: str | None,
         if any("customer" in metric for metric in metrics):
             suggestions.append("How did customer activity compare with order activity?")
     elif intent == INTENT_CHECKOUT:
-        if any(("checkout" in metric or "cart" in metric) for metric in metrics):
-            suggestions.append("Where does the recorded checkout activity drop off?")
+        if "abandoned_checkout_variant_lines" in metrics:
+            suggestions.append("Which historical products and variants appear in the observed abandoned checkouts?")
+        if "checkout_activity_by_date" in metrics:
+            suggestions.append("How did observed checkout activity change by day?")
+        if "abandoned_checkout_count" in metrics:
+            suggestions.append("Show the abandoned checkouts and their exact order relationships.")
         if "device" in unknown_text or "mobile" in unknown_text:
             suggestions.append("What device-level data would be needed to verify a mobile difference?")
     elif intent == INTENT_CUSTOMERS:
@@ -2095,6 +2185,7 @@ def persist_investigation_context(organization_id: str, user_id: str,
             "evidence_ids": [item["id"] for item in result["evidence"]["items"]][:20],
             "currencies": sorted(group_by_currency(result["evidence"]["items"]).keys()),
             "segment": result["investigation"].get("segment"),
+            "order_query": result["investigation"].get("order_query") or {},
         },
         "unresolved": result.get("unknowns", [])[:5],
     }
@@ -2553,6 +2644,14 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         return clarification
 
     allowed_store_ids = set(store_health.store_ids)
+    inherited_order_query = ((conversation_context.get("last_investigation") or {}).get("order_query")
+                             if conversation_context else None)
+    order_query = _order_tool_params(message, inherited_order_query)
+    inherited_checkout_query = ((conversation_context.get("last_investigation") or {}).get("checkout_query")
+                                if conversation_context else None)
+    checkout_query = _checkout_tool_params(message, inherited_checkout_query)
+    result["investigation"]["order_query"] = order_query
+    result["investigation"]["checkout_query"] = checkout_query
     if any(not set(item.get("store_ids") or []).issubset(allowed_store_ids) for item in external_items):
         raise ValueError("Merchant evidence contains an unauthorized store reference")
     plan = _plan_steps(tools, TOOL_STEP_LABELS)
@@ -2606,8 +2705,9 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "start": window["start"],
             "end": window["end"],
         }
-        if tool == "revenue_observations":
+        if tool in ("revenue_observations", "order_observations", "cart_observations", "checkout_observations"):
             params["compare"] = bool(window.get("compared_to"))
+        if tool in ("revenue_observations", "order_observations", "cart_observations", "checkout_observations"):
             params["timezone"] = window.get("timezone") or "UTC"
             compared = window.get("compared_to")
             if compared:
@@ -2617,6 +2717,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 params["comparison_end"] = compared["end"]
             if window.get("year_over_year"):
                 params["year_over_year"] = True
+        if tool == "order_observations":
+            params.update(order_query)
+        if tool in ("cart_observations", "checkout_observations"):
+            params.update(checkout_query)
         if classification.get("segment"):
             params["segment"] = classification["segment"]
         try:

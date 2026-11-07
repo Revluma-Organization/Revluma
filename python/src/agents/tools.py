@@ -138,14 +138,29 @@ _spec("revenue_observations", "Revenue observations",
       params={"compare": {"type": "boolean", "required": False,
                           "description": "Include an equal-length previous-period comparison."}})
 _spec("order_observations", "Order observations",
-      "Order volume, value and customer mix, separated by currency.",
-      requires_period=True, data_sources=["stores", "orders"])
-_spec("cart_observations", "Checkout cart observations",
-      "Deduplicated unrecovered cart count and recorded value per currency.",
-      requires_period=True, data_sources=["stores", "abandoned_carts"])
-_spec("checkout_observations", "Checkout observations",
-      "Recorded checkout events and cart completion observations.",
-      requires_period=True, data_sources=["stores", "events", "abandoned_carts"])
+      "Order lifecycle, historical products/variants, individual orders and Task 198 financial semantics.",
+      requires_period=True, data_sources=["stores", "orders", "order_items", "order_refunds", "order_fulfillments"],
+      params={"order_reference": {"type": "string", "required": False},
+              "latest": {"type": "boolean", "required": False},
+              "financial_status": {"type": "string", "required": False},
+              "fulfillment_status": {"type": "string", "required": False},
+              "cancelled": {"type": "boolean", "required": False},
+              "compare": {"type": "boolean", "required": False}})
+_spec("cart_observations", "Observed abandoned checkout evidence",
+      "Explicitly observed uncompleted abandoned checkouts, historical products and currency-separated recorded values—not lost or recoverable revenue.",
+      requires_period=True, data_sources=["stores", "abandoned_carts", "abandoned_cart_items", "orders", "store_sync_domain_states"],
+      params={"abandoned_only": {"type": "boolean", "required": False},
+              "include_records": {"type": "boolean", "required": False},
+              "compare": {"type": "boolean", "required": False}})
+_spec("checkout_observations", "Canonical Shopify checkout evidence",
+      "Observed checkout lifecycle, history, exact order links and coverage.",
+      requires_period=True, data_sources=["stores", "abandoned_carts", "abandoned_cart_items", "orders", "store_sync_domain_states"],
+      params={"checkout_reference": {"type": "string", "required": False},
+              "latest": {"type": "boolean", "required": False},
+              "abandoned_only": {"type": "boolean", "required": False},
+              "include_records": {"type": "boolean", "required": False},
+              "compare": {"type": "boolean", "required": False},
+              "year_over_year": {"type": "boolean", "required": False}})
 _spec("customer_observations", "Customer observations",
       "Ordering customers, first-time share and lifetime value by currency.",
       requires_period=True, data_sources=["stores", "customers", "orders"])
@@ -304,166 +319,71 @@ def _money_rows(rows: list, *, metric_prefix: str, count_key: str, value_key: st
 
 
 def _orders(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    rows, error = safe_query(db, f"""
-        SELECT o.currency,
-               COUNT(*) AS order_count,
-               COALESCE(SUM(o.total), 0) AS order_value,
-               COUNT(DISTINCT o.customer_id) AS ordering_customers
-        FROM orders o JOIN stores s ON s.id = o.store_id
-        WHERE {_STORE_FILTER}
-          AND o.ordered_at >= :start AND o.ordered_at < :end
-          AND (o.recovery_status IS NULL OR o.recovery_status NOT IN
-               ('cancelled', 'canceled', 'voided', 'deleted'))
-        GROUP BY o.currency ORDER BY o.currency
-    """, {"org_id": org_id, "start": window["start"], "end": window["end"]})
-    if error:
-        return ToolResult("order_observations", STATUS_UNAVAILABLE,
-                          warnings=["order_query_failed"], data_sources=["orders"])
-    items, warnings = _money_rows(
-        rows, metric_prefix="recorded_order", count_key="order_count",
-        value_key="order_value", label_count="Recorded order count",
-        label_value="Recorded order value", window=window, source="orders",
-        definition_count="Non-cancelled orders with ordered_at in [start, end).",
-        definition_value="Sum of persisted non-cancelled order totals.",
-        limitations=["Recorded order total, not audited net revenue."],
+    from ..intelligence.order_evidence import retrieve_order_evidence
+    comparison_start = params.get("comparison_start")
+    comparison_end = params.get("comparison_end")
+    result = retrieve_order_evidence(
+        org_id, db,
+        start=datetime.fromisoformat(window["start"].replace("Z", "+00:00")),
+        end=datetime.fromisoformat(window["end"].replace("Z", "+00:00")),
+        now=params.get("_now"), order_reference=params.get("order_reference"),
+        latest=bool(params.get("latest")), financial_status=params.get("financial_status"),
+        fulfillment_status=params.get("fulfillment_status"), cancelled=bool(params.get("cancelled")),
+        compare=bool(params.get("compare")), year_over_year=bool(params.get("year_over_year")),
+        timezone=params.get("timezone") or window.get("timezone") or "UTC",
+        comparison_start=(datetime.fromisoformat(str(comparison_start).replace("Z", "+00:00"))
+                          if comparison_start else None),
+        comparison_end=(datetime.fromisoformat(str(comparison_end).replace("Z", "+00:00"))
+                        if comparison_end else None),
     )
-    if not rows:
-        items.append(evidence_item(
-            "recorded_order_count", label="Recorded order count", value=0,
-            window=window, source="orders",
-            definition="Non-cancelled orders with ordered_at in [start, end).",
-            limitations=["The query succeeded and returned no orders."],
-        ))
-        items.append(evidence_item(
-            "recorded_order_value", label="Recorded order value", value=None,
-            unit=UNIT_CURRENCY, window=window, source="orders", status=STATUS_UNSUPPORTED,
-            definition="Sum of persisted non-cancelled order totals.",
-            limitations=["No currency can be attributed to an empty order set."],
-            discriminator="currencyless-zero",
-        ))
-    for row in rows:
-        currency = normalize_currency(_row(row, "currency"))
-        customers = _row(row, "ordering_customers")
-        if currency and isinstance(customers, int):
-            items.append(evidence_item(
-                "ordering_customer_count", label=f"Ordering customers ({currency})",
-                value=customers, window=window, source="orders",
-                definition="Distinct customers with a non-cancelled order in the window.",
-                discriminator=currency,
-            ))
-    return ToolResult("order_observations", STATUS_AVAILABLE if not error else STATUS_UNAVAILABLE,
-                      items=items, warnings=warnings,
-                      limitations=["Order totals are recorded values, not settled revenue."],
-                      data_sources=["stores", "orders"], row_count=len(rows))
+    comparison_items = [item for item in result.get("comparison_items", []) if item.get("domain") == "orders"]
+    return ToolResult(
+        "order_observations", result.get("overall_status", STATUS_UNAVAILABLE),
+        items=result.get("items", []) + comparison_items, warnings=result.get("warnings", []),
+        limitations=result.get("limitations", []),
+        data_sources=["stores", "orders", "order_items", "order_refunds", "order_fulfillments", "store_sync_domain_states"],
+        row_count=len(result.get("items", [])) + len(comparison_items), comparison=result.get("comparison"),
+        year_over_year=result.get("year_over_year"),
+    )
+
+def _checkout_evidence(org_id: str, db, params: dict, window: dict, *, abandoned_only: bool) -> dict:
+    from ..intelligence.checkout_evidence import retrieve_checkout_evidence
+    comparison_start = params.get("comparison_start")
+    comparison_end = params.get("comparison_end")
+    return retrieve_checkout_evidence(
+        org_id, db,
+        start=datetime.fromisoformat(window["start"].replace("Z", "+00:00")),
+        end=datetime.fromisoformat(window["end"].replace("Z", "+00:00")),
+        now=params.get("_now"), timezone=params.get("timezone") or window.get("timezone") or "UTC",
+        abandoned_only=abandoned_only or bool(params.get("abandoned_only")),
+        checkout_reference=params.get("checkout_reference"), latest=bool(params.get("latest")),
+        include_records=bool(params.get("include_records")), compare=bool(params.get("compare")),
+        year_over_year=bool(params.get("year_over_year")),
+        comparison_start=(datetime.fromisoformat(str(comparison_start).replace("Z", "+00:00")) if comparison_start else None),
+        comparison_end=(datetime.fromisoformat(str(comparison_end).replace("Z", "+00:00")) if comparison_end else None),
+    )
+
+
+def _checkout_tool_result(tool_name: str, result: dict) -> ToolResult:
+    comparison_items = result.get("comparison_items", [])
+    return ToolResult(tool_name, result.get("overall_status", STATUS_UNAVAILABLE),
+        items=result.get("items", []) + comparison_items,
+        warnings=result.get("warnings", []), limitations=result.get("limitations", []),
+        data_sources=["stores", "abandoned_carts", "abandoned_cart_items", "orders",
+                      "order_checkout_reconciliation_cases", "store_sync_domain_states"],
+        row_count=len(result.get("items", [])) + len(comparison_items),
+        comparison=({"period": item.get("period") for item in comparison_items[:1]} if comparison_items else None),
+        year_over_year=result.get("year_over_year"))
 
 
 def _carts(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    rows, error = safe_query(db, f"""
-        WITH ranked AS (
-            SELECT c.store_id, c.currency, c.cart_value,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY c.store_id,
-                         COALESCE(NULLIF(c.external_cart_id, ''), c.id::text)
-                       ORDER BY c.updated_at DESC NULLS LAST,
-                                c.created_at DESC NULLS LAST, c.id DESC
-                   ) AS rn
-            FROM abandoned_carts c JOIN stores s ON s.id = c.store_id
-            WHERE {_STORE_FILTER}
-              AND c.abandoned_at >= :start AND c.abandoned_at < :end
-              AND c.status = 'abandoned' AND c.recovered_at IS NULL
-        )
-        SELECT currency, COUNT(*) AS cart_count, COALESCE(SUM(cart_value), 0) AS cart_value
-        FROM ranked WHERE rn = 1
-        GROUP BY currency ORDER BY currency
-    """, {"org_id": org_id, "start": window["start"], "end": window["end"]})
-    if error:
-        return ToolResult("cart_observations", STATUS_UNAVAILABLE,
-                          warnings=["cart_query_failed"], data_sources=["abandoned_carts"])
-    items, warnings = _money_rows(
-        rows, metric_prefix="unrecovered_cart", count_key="cart_count",
-        value_key="cart_value", label_count="Unrecovered abandoned carts",
-        label_value="Recorded abandoned-cart value", window=window,
-        source="abandoned_carts",
-        definition_count="Deduplicated unrecovered carts abandoned in [start, end).",
-        definition_value="Deduplicated recorded cart value; not recoverable revenue.",
-        limitations=["Recorded cart value is not guaranteed recoverable revenue."],
-    )
-    if not rows:
-        items.append(evidence_item(
-            "unrecovered_cart_count", label="Unrecovered abandoned carts", value=0,
-            window=window, source="abandoned_carts",
-            definition="Deduplicated unrecovered carts abandoned in [start, end).",
-            limitations=["No unrecovered carts are recorded; tracking completeness is unverified."],
-        ))
-    return ToolResult("cart_observations", STATUS_AVAILABLE, items=items, warnings=warnings,
-                      limitations=["Cart value is recorded merchant data, never verified loss."],
-                      data_sources=["stores", "abandoned_carts"], row_count=len(rows))
+    result = _checkout_evidence(org_id, db, params, window, abandoned_only=True)
+    return _checkout_tool_result("cart_observations", result)
 
 
 def _checkout(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    event_rows, event_error = safe_query(db, f"""
-        SELECT e.event_type, COUNT(*) AS event_count
-        FROM events e JOIN stores s ON s.id = e.store_id
-        WHERE {_STORE_FILTER}
-          AND e.created_at >= :start AND e.created_at < :end
-          AND e.event_type IN ('checkout_started', 'checkout_completed',
-                               'checkout_abandoned', 'checkout_step_viewed',
-                               'payment_info_submitted')
-        GROUP BY e.event_type ORDER BY e.event_type
-    """, {"org_id": org_id, "start": window["start"], "end": window["end"]})
-    completed, completed_error = safe_query(db, f"""
-        SELECT COUNT(*) AS completed_count
-        FROM abandoned_carts c JOIN stores s ON s.id = c.store_id
-        WHERE {_STORE_FILTER}
-          AND c.recovered_at >= :start AND c.recovered_at < :end
-    """, {"org_id": org_id, "start": window["start"], "end": window["end"]})
-    items: list[dict] = []
-    warnings: list[str] = []
-    limitations: list[str] = []
-    status = STATUS_AVAILABLE
-
-    if event_error:
-        status = STATUS_PARTIAL
-        warnings.append("Checkout event query failed; no checkout-stage claim is possible.")
-        items.append(evidence_item(
-            "checkout_event_count", label="Recorded checkout events", value=None,
-            window=window, source="events", status=STATUS_UNAVAILABLE,
-            definition="Storefront checkout events received from the tracked pixel.",
-            limitations=["The event query failed."],
-        ))
-    else:
-        for row in event_rows:
-            event_type = str(_row(row, "event_type") or "")
-            count = _row(row, "event_count")
-            if not event_type or not isinstance(count, int):
-                continue
-            items.append(evidence_item(
-                f"event_{event_type}", label=f"Recorded {event_type.replace('_', ' ')} events",
-                value=count, window=window, source="events", discriminator=event_type,
-                definition="Events of this type received from the tracked storefront pixel.",
-                limitations=["Pixel coverage is not certified; absence is not proof of zero traffic."],
-            ))
-        if not event_rows:
-            status = STATUS_PARTIAL
-            limitations.append("No checkout events were recorded in this window. "
-                               "This does not prove that no checkouts occurred.")
-    if completed_error:
-        status = STATUS_PARTIAL
-        warnings.append("Checkout completion query failed.")
-    else:
-        count = _row(completed[0], "completed_count") if completed else 0
-        if isinstance(count, int):
-            items.append(evidence_item(
-                "recorded_checkout_completion_count", label="Recorded checkout completions",
-                value=count, window=window, source="abandoned_carts",
-                definition="Carts with a recovered_at timestamp in the window.",
-                limitations=["Only carts previously tracked as abandoned are counted."],
-            ))
-    return ToolResult("checkout_observations", status, items=items, warnings=warnings,
-                      limitations=limitations,
-                      data_sources=["stores", "events", "abandoned_carts"],
-                      row_count=len(event_rows))
-
+    result = _checkout_evidence(org_id, db, params, window, abandoned_only=False)
+    return _checkout_tool_result("checkout_observations", result)
 
 def _customers(org_id: str, db, params: dict, window: dict) -> ToolResult:
     rows, error = safe_query(db, f"""
@@ -766,9 +686,29 @@ def run_tool(tool_name: str, organization_id: str, db: Any, params: dict | None 
         raise ToolAuthorizationError("Authenticated organization context is required")
     params = dict(params or {})
     allowed = {"start", "end", "segment", "compare", "timezone",
-               "comparison_start", "comparison_end", "year_over_year"}
+               "comparison_start", "comparison_end", "year_over_year",
+               "order_reference", "checkout_reference", "latest", "financial_status", "fulfillment_status", "cancelled",
+               "abandoned_only", "include_records"}
     if set(params) - allowed:
         raise ToolAuthorizationError("Unsupported tool parameter")
+    if params.get("financial_status") is not None and params["financial_status"] not in {
+        "AUTHORIZED", "EXPIRED", "PAID", "PARTIALLY_PAID", "PARTIALLY_REFUNDED",
+        "PENDING", "REFUNDED", "VOIDED", "CANCELLED",
+    }:
+        raise ToolAuthorizationError("Unsupported financial status filter")
+    if params.get("fulfillment_status") is not None and params["fulfillment_status"] not in {
+        "FULFILLED", "UNFULFILLED", "PARTIALLY_FULFILLED", "IN_PROGRESS",
+        "ON_HOLD", "OPEN", "PENDING_FULFILLMENT", "RESTOCKED", "SCHEDULED",
+    }:
+        raise ToolAuthorizationError("Unsupported fulfillment status filter")
+    for field_name in ("order_reference", "checkout_reference"):
+        if params.get(field_name) is not None and (
+            not isinstance(params[field_name], str) or not params[field_name].strip() or len(params[field_name]) > 128
+        ):
+            raise ToolAuthorizationError("Invalid record reference")
+    for flag in ("latest", "cancelled", "compare", "abandoned_only", "include_records", "year_over_year"):
+        if flag in params and not isinstance(params[flag], bool):
+            raise ToolAuthorizationError("Invalid boolean tool parameter")
     now = ensure_utc(now or utc_now(), field="now")
     spec = _SPECS[tool_name]
     if spec.requires_period:
