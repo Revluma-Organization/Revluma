@@ -91,7 +91,7 @@ def test_postgres_task202_direct_identity_and_cross_tenant_isolation(task202_pos
         {"id": finding_b, "org": org_b, "store": store_b, "evidence": json.dumps(evidence), "detected": NOW, "updated": NOW}])
     db.execute(text("""INSERT INTO orders VALUES
       (:id,:store,'order-a','#1001',:ordered,10,0,'USD','paid')"""),
-      {"id": order_id, "store": store_a, "ordered": NOW-timedelta(hours=2)})
+      {"id": order_id, "store": store_a, "ordered": datetime(2026, 11, 6, 12, tzinfo=timezone.utc)})
     db.execute(text("""INSERT INTO products
       (id,store_id,external_id,name,type,status,vendor,sku,updated_at,manage_stock,stock_quantity,stock_status)
       VALUES (:id,:store,'shared-product','PostgreSQL product','Physical','ACTIVE','Vendor','BASE',:updated,true,0,'outofstock')"""), [

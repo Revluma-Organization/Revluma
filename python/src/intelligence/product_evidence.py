@@ -20,7 +20,7 @@ SELECT v.store_id, v.product_external_id, v.external_id, v.title, v.sku, v.barco
  v.position, v.tracked, v.available_for_sale, v.created_at, v.updated_at, v.synced_at
 FROM product_variants v JOIN stores s ON s.id = v.store_id
 WHERE s.organization_id = :org_id::uuid AND s.status IN ('active','connected','syncing')
- AND v.product_external_id = ANY(:product_ids::text[])
+ AND v.product_external_id = ANY(CAST(:product_ids AS text[]))
 ORDER BY v.product_external_id, v.position, v.external_id LIMIT 1000
 """
 _INVENTORY_SQL = """
@@ -33,7 +33,7 @@ LEFT JOIN inventory_levels il ON il.store_id=i.store_id AND il.inventory_item_ex
 LEFT JOIN locations l ON l.store_id=il.store_id AND l.external_id=il.location_external_id
 JOIN stores s ON s.id=v.store_id
 WHERE s.organization_id=:org_id::uuid AND s.status IN ('active','connected','syncing')
- AND v.product_external_id=ANY(:product_ids::text[])
+ AND v.product_external_id=ANY(CAST(:product_ids AS text[]))
 ORDER BY v.product_external_id,v.external_id,l.external_id LIMIT 2000
 """
 _LEDGER_SQL = """
@@ -49,7 +49,7 @@ SELECT oi.store_id, oi.external_product_id, oi.external_variant_id, o.currency,
 FROM order_items oi JOIN orders o ON o.id=oi.order_id AND o.store_id=oi.store_id
 JOIN stores s ON s.id=oi.store_id
 WHERE s.organization_id=:org_id::uuid AND s.status IN ('active','connected','syncing')
- AND oi.external_product_id=ANY(:product_ids::text[])
+ AND oi.external_product_id=ANY(CAST(:product_ids AS text[]))
  AND oi.ordered_at>=:start AND oi.ordered_at<:end
  AND (o.recovery_status IS NULL OR o.recovery_status NOT IN ('cancelled','canceled','voided','deleted'))
 GROUP BY oi.store_id,oi.external_product_id,oi.external_variant_id,o.currency
@@ -70,7 +70,7 @@ SELECT f.id,f.store_id,f.type,f.severity,f.status,f.title,f.detected_at,f.update
 FROM intelligence_findings f JOIN products p ON p.store_id=f.store_id
 JOIN stores s ON s.id=f.store_id
 WHERE s.organization_id=:org_id::uuid AND f.organization_id=:org_id::uuid
- AND s.status IN ('active','connected','syncing') AND p.external_id=ANY(:product_ids::text[])
+ AND s.status IN ('active','connected','syncing') AND p.external_id=ANY(CAST(:product_ids AS text[]))
  AND (f.evidence->>'productId'=p.external_id OR f.evidence->>'product_id'=p.external_id)
 ORDER BY f.detected_at DESC LIMIT 100
 """
