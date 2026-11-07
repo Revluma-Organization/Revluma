@@ -35,4 +35,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Run complete backend test suite
-        run: npm test
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee /tmp/revluma-backend-tests.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -B 3 -A 22 'not ok' /tmp/revluma-backend-tests.log | head -80 | while IFS= read -r line; do
+              printf '::error::%s\n' "${line//'%'/'%25'}"
+            done
+          fi
+          exit "$status"
