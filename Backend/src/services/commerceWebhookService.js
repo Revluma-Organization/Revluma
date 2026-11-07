@@ -67,7 +67,7 @@ async function findStore(provider, domain) {
 async function claimDelivery(provider, deliveryId, storeId, topic) {
   try {
     return await prisma.webhook_deliveries.create({
-      data: { provider, delivery_id: deliveryId, store_id: storeId, topic },
+      data: { provider, delivery_id: deliveryId, store_id: storeId, topic, last_attempt_at: new Date(), attempt_count: 1 },
     });
   } catch (error) {
     if (error.code === 'P2002') {
@@ -76,11 +76,19 @@ async function claimDelivery(provider, deliveryId, storeId, topic) {
       if (!existing || existing.store_id !== storeId || existing.topic !== topic) {
         throw Object.assign(new Error('Webhook delivery identity does not match'), { code: 'WEBHOOK_DELIVERY_IDENTITY_MISMATCH' });
       }
-      if (existing.status === 'processed') return null;
+      if (existing.status === 'processed') {
+        const duplicateData = { duplicate_count: { increment: 1 }, last_attempt_at: new Date() };
+        if (typeof prisma.webhook_deliveries.update === 'function') {
+          await prisma.webhook_deliveries.update({ where: key, data: duplicateData });
+        } else {
+          await prisma.webhook_deliveries.updateMany({ where: { id: existing.id }, data: duplicateData });
+        }
+        return null;
+      }
       if (existing.status === 'failed') {
         const retry = await prisma.webhook_deliveries.updateMany({
           where: { provider, delivery_id: deliveryId, store_id: storeId, topic, status: 'failed' },
-          data: { status: 'received', last_error: null, received_at: new Date() },
+          data: { status: 'received', last_error: null, failed_at: null, last_attempt_at: new Date(), attempt_count: { increment: 1 }, received_at: new Date() },
         });
         if (retry.count) {
           const claimed = await prisma.webhook_deliveries.findUnique({ where: key });
@@ -888,7 +896,7 @@ async function handleProductWebhook(store, topic, payload) {
   }
 }
 
-async function processCommerceWebhook({ provider, store, topic, payload }) {
+async function processCommerceWebhook({ provider, store, topic, payload, occurredAt, eventReference }) {
   const normalizedTopic = String(topic || '').toLowerCase();
   // Mandatory Shopify privacy/compliance topics are handled by the dedicated
   // durable workflow: recorded in `privacy_requests`, processed idempotently,
@@ -902,11 +910,19 @@ async function processCommerceWebhook({ provider, store, topic, payload }) {
     return handleProductWebhook(store, normalizedTopic, payload);
   }
   if (normalizedTopic === 'app/uninstalled') {
-    await prisma.stores.update({
-      where: { id: store.id },
-      data: { status: 'inactive', access_token: null, updated_at: new Date() },
+    const { recordIntegrationEvent } = require('./integrationLifecycleStore');
+    const transition = await recordIntegrationEvent({
+      storeId: store.id,
+      type: 'app_uninstalled',
+      reasonCode: 'APP_UNINSTALLED',
+      observedAt: occurredAt || new Date(),
+      source: 'shopify_webhook',
+      eventReference: eventReference || null,
     });
-    return { action: 'store_deactivated' };
+    if (!transition.accepted && !['stale_uninstall', 'stale_event', 'duplicate_event'].includes(transition.reason)) {
+      throw Object.assign(new Error('Uninstall transition could not be persisted'), { code: 'INTEGRATION_TRANSITION_FAILED' });
+    }
+    return { action: transition.accepted ? 'store_deactivated' : 'stale_uninstall_ignored' };
   }
   if (normalizedTopic.includes('customers/') || normalizedTopic.includes('customer.')) {
     await upsertCustomer(store, payload);
@@ -952,9 +968,19 @@ async function processCommerceWebhook({ provider, store, topic, payload }) {
 }
 
 async function markDelivery(deliveryId, status, errorMessage = null) {
+  const now = new Date();
+  const existing = typeof prisma.webhook_deliveries.findUnique === 'function'
+    ? await prisma.webhook_deliveries.findUnique({ where: { id: deliveryId }, select: { received_at: true } })
+    : null;
   await prisma.webhook_deliveries.update({
     where: { id: deliveryId },
-    data: { status, processed_at: status === 'processed' ? new Date() : null, last_error: errorMessage?.slice(0, 500) || null },
+    data: {
+      status,
+      processed_at: status === 'processed' ? now : null,
+      failed_at: status === 'failed' ? now : null,
+      processing_latency_ms: status === 'processed' && existing?.received_at ? Math.max(0, now.getTime() - new Date(existing.received_at).getTime()) : null,
+      last_error: errorMessage?.slice(0, 500) || null,
+    },
   });
 }
 

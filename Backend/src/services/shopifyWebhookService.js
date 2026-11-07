@@ -13,7 +13,11 @@ async function listSubscriptions(store) {
   `;
   try {
     const data = await shopifyGraphql(store, query);
-    return data.webhookSubscriptions?.nodes || [];
+    const nodes = data.webhookSubscriptions?.nodes;
+    if (!Array.isArray(nodes) || nodes.some(item => typeof item?.id !== 'string' || typeof item?.topic !== 'string' || typeof item?.uri !== 'string')) {
+      throw Object.assign(new Error('Shopify webhook subscription response was invalid'), { code: 'SHOPIFY_WEBHOOK_LIST_MALFORMED' });
+    }
+    return nodes;
   } catch (error) {
     // Listing subscriptions is a prerequisite for reconciliation. Preserve the original
     // provider/network failure so the caller's final sync log records the actionable cause.
@@ -64,12 +68,12 @@ function safeShopifyErrors(error) {
   }));
 }
 
-async function persistTopicFailure({ store, topic, uri, failureRecordId, safeMessage }) {
+async function persistTopicFailure({ store, topic, uri, failureRecordId, safeMessage, errorCode }) {
   // Persistence failures must not abort attempts for other independent webhook topics.
   const operations = [
     () => prisma.webhook_registrations.update({
       where: { store_id_external_id: { store_id: store.id, external_id: `setup-state:${topic}` } },
-      data: { status: 'failed', last_error: safeMessage.slice(0, 2000), completed_at: new Date(), updated_at: new Date() },
+      data: { status: 'failed', last_error: safeMessage.slice(0, 2000), last_error_code: String(errorCode || 'WEBHOOK_REGISTRATION_FAILED').slice(0, 120), remediation_required: true, last_registration_attempt_at: new Date(), completed_at: new Date(), updated_at: new Date() },
     }),
     () => prisma.webhook_registrations.upsert({
       where: { store_id_external_id: { store_id: store.id, external_id: failureRecordId } },
@@ -80,9 +84,12 @@ async function persistTopicFailure({ store, topic, uri, failureRecordId, safeMes
         delivery_url: uri,
         status: 'failed',
         last_error: safeMessage.slice(0, 2000),
+        last_error_code: String(errorCode || 'WEBHOOK_REGISTRATION_FAILED').slice(0, 120),
+        remediation_required: true,
+        last_registration_attempt_at: new Date(),
         completed_at: new Date(),
       },
-      update: { topic, delivery_url: uri, status: 'failed', last_error: safeMessage.slice(0, 2000), completed_at: new Date(), updated_at: new Date() },
+      update: { topic, delivery_url: uri, status: 'failed', last_error: safeMessage.slice(0, 2000), last_error_code: String(errorCode || 'WEBHOOK_REGISTRATION_FAILED').slice(0, 120), remediation_required: true, last_registration_attempt_at: new Date(), completed_at: new Date(), updated_at: new Date() },
     }),
   ];
 
@@ -117,8 +124,8 @@ async function reconcileShopifyWebhooks(store) {
       try {
         await prisma.webhook_registrations.upsert({
           where: { store_id_external_id: { store_id: store.id, external_id: `setup-state:${topic}` } },
-          create: { store_id: store.id, external_id: `setup-state:${topic}`, topic, delivery_url: uri, status: 'running', attempt_count: 1, started_at: new Date(), last_error: null },
-          update: { topic, delivery_url: uri, status: 'running', attempt_count: { increment: 1 }, started_at: new Date(), completed_at: null, last_error: null, updated_at: new Date() },
+          create: { store_id: store.id, external_id: `setup-state:${topic}`, topic, delivery_url: uri, status: 'running', attempt_count: 1, started_at: new Date(), last_registration_attempt_at: new Date(), last_error: null, last_error_code: null, remediation_required: false, required: true },
+          update: { topic, delivery_url: uri, status: 'running', attempt_count: { increment: 1 }, started_at: new Date(), last_registration_attempt_at: new Date(), completed_at: null, last_error: null, last_error_code: null, remediation_required: false, required: true, updated_at: new Date() },
         });
       } catch (persistenceError) {
         logger.error('shopify_webhook_setup_state_persistence_failed', {
@@ -162,17 +169,22 @@ async function reconcileShopifyWebhooks(store) {
           topic,
           delivery_url: effectiveUri,
           status: 'active',
-          last_error: adoptedLegacy ? 'legacy_callback_url_adopted: remote subscription kept at its existing URI; URL migration pending operator review (see drift report)' : null,
+          last_error: adoptedLegacy ? 'legacy_callback_url_adopted' : null,
+          last_error_code: adoptedLegacy ? 'WEBHOOK_CALLBACK_URL_DRIFT' : null,
+          remediation_required: adoptedLegacy,
+          required: true,
+          last_verified_at: new Date(),
+          last_registration_attempt_at: new Date(),
           completed_at: new Date(),
         },
-        update: { topic, delivery_url: effectiveUri, status: 'active', last_error: adoptedLegacy ? 'legacy_callback_url_adopted: remote subscription kept at its existing URI; URL migration pending operator review (see drift report)' : null, completed_at: new Date(), updated_at: new Date() },
+        update: { topic, delivery_url: effectiveUri, status: 'active', last_error: adoptedLegacy ? 'legacy_callback_url_adopted' : null, last_error_code: adoptedLegacy ? 'WEBHOOK_CALLBACK_URL_DRIFT' : null, remediation_required: adoptedLegacy, required: true, last_verified_at: new Date(), last_registration_attempt_at: new Date(), completed_at: new Date(), updated_at: new Date() },
       });
       await prisma.webhook_registrations.deleteMany({
         where: { store_id: store.id, external_id: failureRecordId },
       });
       await prisma.webhook_registrations.update({
         where: { store_id_external_id: { store_id: store.id, external_id: `setup-state:${topic}` } },
-        data: { status: 'succeeded', last_error: null, completed_at: new Date(), updated_at: new Date() },
+        data: { status: 'succeeded', last_error: null, last_error_code: null, remediation_required: adoptedLegacy, last_verified_at: new Date(), last_registration_attempt_at: new Date(), completed_at: new Date(), updated_at: new Date() },
       });
       logger.info('shopify_webhook_topic_setup', { store_id: store.id, topic, outcome: adoptedLegacy ? 'adopted_legacy_subscription' : (created ? 'registered_or_confirmed' : 'registered') });
     } catch (error) {
@@ -184,7 +196,7 @@ async function reconcileShopifyWebhooks(store) {
         ? 'Shopify rejected the webhook subscription.'
         : 'Webhook registration failed. Check server diagnostics.')).slice(0, 2000);
 
-      await persistTopicFailure({ store, topic, uri, failureRecordId, safeMessage });
+      await persistTopicFailure({ store, topic, uri, failureRecordId, safeMessage, errorCode: code });
       logger.error('shopify_webhook_topic_setup', {
         store_id: store.id,
         topic,
