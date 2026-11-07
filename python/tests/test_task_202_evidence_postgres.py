@@ -120,6 +120,7 @@ def test_postgres_task202_direct_identity_and_cross_tenant_isolation(task202_pos
         forbidden = retrieve_finding_evidence(org_a, db, now=NOW, finding_reference=finding_b)
         product = retrieve_product_evidence(org_a, db, start=NOW-timedelta(days=7), end=NOW,
                                            now=NOW, product_reference="shared-product")
+    assert finding["items"][0]["value"]["underlying_order_records"], finding
     assert finding["items"][0]["value"]["underlying_order_records"][0]["order_name"] == "#1001"
     assert not forbidden["items"]
     record = product["items"][0]["value"]
