@@ -13,7 +13,7 @@ from typing import Any
 
 from .evidence import (
     STATUS_AVAILABLE, STATUS_PARTIAL, STATUS_UNAVAILABLE, UNIT_COUNT,
-    UNIT_CURRENCY, availability_of, ensure_utc, evidence_item, iso, period,
+    UNIT_CURRENCY, availability_of, ensure_utc, evidence_item, iso, money, period,
     previous_period, utc_now,
 )
 from .query import safe_query
@@ -501,7 +501,8 @@ def retrieve_order_evidence(organization_id: str, db, *, start: datetime, end: d
             value=average, unit=UNIT_CURRENCY, currency=count["currency"], window=window, source="orders",
             definition="Task 198 net recorded order value divided by its non-cancelled order count for the same currency and period.",
             coverage=coverage, freshness=freshness, discriminator=count["currency"],
-            classification="deterministic_calculation", measurement={**value["measurement"], "amount": str(average),
+            classification="deterministic_calculation", measurement={**value["measurement"],
+                "amount": money(average),
                 "numerator": value["definition"], "denominator": count["definition"],
                 "formula": "net_recorded_order_value / non_cancelled_order_count"},
             provenance={"retrieval": "calculation", "transformation": "Divide Task 198 value by its matching order count.",

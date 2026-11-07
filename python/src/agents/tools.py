@@ -468,92 +468,22 @@ def _customers(org_id: str, db, params: dict, window: dict) -> ToolResult:
                       data_sources=["stores", "customers", "orders"], row_count=len(rows))
 
 
-def _products(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    rows, error = safe_query(db, f"""
-        SELECT oi.product_name, o.currency,
-               SUM(oi.quantity) AS units,
-               SUM(oi.line_total) AS line_value
-        FROM order_items oi
-        JOIN orders o ON o.id = oi.order_id
-        JOIN stores s ON s.id = oi.store_id
-        WHERE {_STORE_FILTER}
-          AND oi.ordered_at >= :start AND oi.ordered_at < :end
-          AND (o.recovery_status IS NULL OR o.recovery_status NOT IN
-               ('cancelled', 'canceled', 'voided', 'deleted'))
-        GROUP BY oi.product_name, o.currency
-        ORDER BY line_value DESC
-        LIMIT 5
-    """, {"org_id": org_id, "start": window["start"], "end": window["end"]})
-    if error:
-        return ToolResult("product_observations", STATUS_UNAVAILABLE,
-                          warnings=["product_query_failed"], data_sources=["order_items"])
-    items: list[dict] = []
-    warnings: list[str] = []
-    for row in rows:
-        currency = normalize_currency(_row(row, "currency"))
-        name = str(_row(row, "product_name") or "").strip()[:120]
-        units = _row(row, "units")
-        value = _row(row, "line_value")
-        if not name or currency is None or not isinstance(units, int):
-            warnings.append("An unvalidated product aggregate was excluded.")
-            continue
-        if decimal_value(value) is None:
-            continue
-        items.append(evidence_item(
-            "product_units_sold", label=f"Units sold: {name} ({currency})", value=units,
-            window=window, source="order_items", discriminator=f"{name}:{currency}",
-            definition="Units recorded on non-cancelled order line items in the window.",
-        ))
-        items.append(evidence_item(
-            "product_recorded_value", label=f"Recorded value: {name} ({currency})",
-            value=value, unit=UNIT_CURRENCY, currency=currency, window=window,
-            source="order_items", discriminator=f"{name}:{currency}",
-            definition="Recorded line-item value, not profit.",
-            limitations=["Line-item value excludes refunds recorded after the order snapshot."],
-        ))
-    return ToolResult("product_observations", STATUS_AVAILABLE if items else STATUS_PARTIAL,
-                      items=items, warnings=warnings,
-                      limitations=["Product value is recorded line-item value, not margin."],
-                      data_sources=["stores", "order_items", "orders"], row_count=len(rows))
+def _products(org_id: str, db: Any, params: dict, window: dict) -> ToolResult:
+    from src.intelligence.product_evidence import retrieve_product_evidence
+    result = retrieve_product_evidence(org_id, db, start=datetime.fromisoformat(window["start"].replace("Z", "+00:00")),
+        end=datetime.fromisoformat(window["end"].replace("Z", "+00:00")), now=params.get("_now"),
+        timezone_name=params.get("timezone") or window.get("timezone") or "UTC",
+        product_reference=params.get("product_reference"), latest=bool(params.get("latest")))
+    return ToolResult("product_observations", result["overall_status"], items=result["items"],
+        warnings=result["warnings"], limitations=result["limitations"],
+        data_sources=["products", "product_variants", "inventory_items", "inventory_levels", "locations", "order_items", "intelligence_findings"],
+        row_count=len(result["items"]))
 
 
-def _inventory(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    rows, error = safe_query(db, f"""
-        SELECT
-          COUNT(*) FILTER (WHERE p.stock_status IN ('outofstock', 'out_of_stock')) AS out_of_stock,
-          COUNT(*) FILTER (WHERE p.manage_stock = true AND p.stock_quantity IS NOT NULL
-                            AND p.low_stock_amount IS NOT NULL
-                            AND p.stock_quantity <= p.low_stock_amount
-                            AND p.stock_quantity > 0) AS low_stock,
-          COUNT(*) AS tracked_products
-        FROM products p JOIN stores s ON s.id = p.store_id
-        WHERE {_STORE_FILTER}
-    """, {"org_id": org_id})
-    if error or not rows:
-        return ToolResult("inventory_observations", STATUS_UNAVAILABLE,
-                          warnings=["inventory_query_failed"], data_sources=["products"])
-    row = rows[0]
-    out_of_stock = _row(row, "out_of_stock")
-    low_stock = _row(row, "low_stock")
-    tracked = _row(row, "tracked_products")
-    items = [
-        evidence_item("products_out_of_stock", label="Products recorded out of stock",
-                      value=out_of_stock if isinstance(out_of_stock, int) else None,
-                      window=window, source="products",
-                      definition="Products whose stored stock status is out of stock.",
-                      status=STATUS_AVAILABLE if isinstance(out_of_stock, int) else STATUS_UNAVAILABLE,
-                      limitations=["Inventory sync completeness is not certified."]),
-        evidence_item("products_low_stock", label="Products at or below low-stock threshold",
-                      value=low_stock if isinstance(low_stock, int) else None,
-                      window=window, source="products",
-                      definition="Products with managed stock at or below their low-stock amount.",
-                      status=STATUS_AVAILABLE if isinstance(low_stock, int) else STATUS_UNAVAILABLE,
-                      limitations=["Only products with a configured low-stock amount are counted."]),
-    ]
-    return ToolResult("inventory_observations", STATUS_PARTIAL if tracked == 0 else STATUS_AVAILABLE,
-                      items=items,
-                      warnings=[] if tracked else ["No products are recorded for this organization."],
-                      data_sources=["stores", "products"], row_count=tracked or 0)
+def _inventory(org_id: str, db: Any, params: dict, window: dict) -> ToolResult:
+    result = _products(org_id, db, params, window)
+    result.name = "inventory_observations"
+    return result
 
 
 def _traffic(org_id: str, db, params: dict, window: dict) -> ToolResult:
@@ -635,26 +565,15 @@ def _refunds(org_id: str, db, params: dict, window: dict) -> ToolResult:
                       row_count=len(refund_items))
 
 
-def _findings(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    rows, error = safe_query(db, f"""
-        SELECT f.id, f.type, f.severity, f.title, f.description, f.evidence, f.detected_at
-        FROM intelligence_findings f
-        JOIN stores s ON s.id = f.store_id
-        WHERE {_STORE_FILTER} AND f.status = 'open'
-        ORDER BY f.detected_at DESC LIMIT 10
-    """, {"org_id": org_id})
-    if error:
-        return ToolResult("findings", STATUS_UNAVAILABLE, warnings=["findings_query_failed"],
-                          data_sources=["intelligence_findings"])
-    items = [evidence_item(
-        "open_finding_count", label="Open verified findings", value=len(rows),
-        window=window, source="intelligence_findings",
-        definition="Evidence-gated findings currently open for the organization.",
-        status=STATUS_AVAILABLE,
-        limitations=["No findings does not prove there is no operational issue."],
-    )]
-    return ToolResult("findings", STATUS_AVAILABLE if rows else STATUS_PARTIAL,
-                      items=items, data_sources=["intelligence_findings"], row_count=len(rows))
+def _findings(org_id: str, db: Any, params: dict, window: dict) -> ToolResult:
+    from src.intelligence.finding_evidence import retrieve_finding_evidence
+    result = retrieve_finding_evidence(org_id, db, now=params.get("_now"),
+        timezone_name=params.get("timezone") or window.get("timezone") or "UTC",
+        finding_reference=params.get("finding_reference"), latest=bool(params.get("latest")),
+        include_history=bool(params.get("include_history")), lifecycle_status=params.get("lifecycle_status"))
+    return ToolResult("findings", result["overall_status"], items=result["items"],
+        warnings=result["warnings"], limitations=result["limitations"],
+        data_sources=["intelligence_findings", "orders"], row_count=len(result["items"]))
 
 
 _HANDLERS: dict[str, Callable[[str, Any, dict, dict], ToolResult]] = {
@@ -688,7 +607,8 @@ def run_tool(tool_name: str, organization_id: str, db: Any, params: dict | None 
     allowed = {"start", "end", "segment", "compare", "timezone",
                "comparison_start", "comparison_end", "year_over_year",
                "order_reference", "checkout_reference", "latest", "financial_status", "fulfillment_status", "cancelled",
-               "abandoned_only", "include_records"}
+               "abandoned_only", "include_records", "product_reference", "finding_reference",
+               "include_history", "lifecycle_status"}
     if set(params) - allowed:
         raise ToolAuthorizationError("Unsupported tool parameter")
     if params.get("financial_status") is not None and params["financial_status"] not in {
@@ -701,12 +621,12 @@ def run_tool(tool_name: str, organization_id: str, db: Any, params: dict | None 
         "ON_HOLD", "OPEN", "PENDING_FULFILLMENT", "RESTOCKED", "SCHEDULED",
     }:
         raise ToolAuthorizationError("Unsupported fulfillment status filter")
-    for field_name in ("order_reference", "checkout_reference"):
+    for field_name in ("order_reference", "checkout_reference", "product_reference", "finding_reference"):
         if params.get(field_name) is not None and (
             not isinstance(params[field_name], str) or not params[field_name].strip() or len(params[field_name]) > 128
         ):
             raise ToolAuthorizationError("Invalid record reference")
-    for flag in ("latest", "cancelled", "compare", "abandoned_only", "include_records", "year_over_year"):
+    for flag in ("latest", "cancelled", "compare", "abandoned_only", "include_records", "year_over_year", "include_history"):
         if flag in params and not isinstance(params[flag], bool):
             raise ToolAuthorizationError("Invalid boolean tool parameter")
     now = ensure_utc(now or utc_now(), field="now")

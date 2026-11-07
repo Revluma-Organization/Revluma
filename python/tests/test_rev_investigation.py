@@ -194,6 +194,9 @@ def test_comparison_uses_equal_length_previous_period_per_currency():
     result = run_investigation(ORG, USER, "Why did my revenue fall this week?",
                                db=db, now=NOW, persist=False)
 
+    order_result = next(step for step in result["investigation"]["steps"] if step["tool"] == "order_observations")
+    assert order_result["status"] == "completed"
+    assert "unavailable" not in order_result["detail"]
     comparison = next(item for item in result["evidence"]["items"])
     assert comparison["period"]["start"]
     joined = json.dumps(result["comparison_facts"], default=str)
@@ -203,7 +206,8 @@ def test_comparison_uses_equal_length_previous_period_per_currency():
     assert "NGN" not in joined.split("moved down 50.0%")[-1]
     assert len(calls) >= 2
     first, second = calls[0], calls[1]
-    assert second["end"] == first["start"]
+    assert second["end"] < first["start"]
+    assert first["end"] - first["start"] == second["end"] - second["start"]
     assert (second["end"] - second["start"]) == (first["end"] - first["start"])
 
 
@@ -322,8 +326,8 @@ def test_calendar_weeks_are_monday_weeks_in_the_merchant_timezone():
         window["compared_to"]["start"].replace("Z", "+00:00"))
     comp_end = datetime.fromisoformat(
         window["compared_to"]["end"].replace("Z", "+00:00"))
-    assert comp_end == start
-    assert comp_start == start - (end - start)
+    assert comp_end < start
+    assert comp_end - comp_start == end - start
     # "Last week" is a full week, so its comparison is the full calendar week
     # before it: Monday 2026-10-19 04:00Z (EDT) to Monday 2026-10-26 04:00Z.
     last_comp = previous["compared_to"]

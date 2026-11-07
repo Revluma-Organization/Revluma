@@ -54,3 +54,7 @@ This initial documentation branch changes only this directory. Production remain
 ## 2026-10-30 follow-up
 
 The user supplied the earlier report export and explicitly authorized publishing the documentation to GitHub main. Reports TASK-002 through TASK-007 are now separated under diagnostics/, alongside 008–010. Task001 was not included and remains marked report unavailable. Earlier consolidation/publication limitations are preserved as history, not current instructions. The main publication changes documentation only; it does not authorize unrelated application or infrastructure changes. Connected Git integrations may react automatically to publication; no manual deployment is part of this change.
+
+## 2026-11-07 Task 202 follow-up
+
+Task 202 consolidates the authorized original Tasks 202–206 without starting later work. Its [diagnosis](diagnostics/TASK-202-FINDING-PRODUCT-TEMPORAL-EVIDENCE.md), [implementation record](implementation/TASK-202-FINDING-PRODUCT-TEMPORAL-EVIDENCE.md) and [validation record](validation/TASK-202-FINDING-PRODUCT-TEMPORAL-EVIDENCE.md) cover lifecycle-aware finding evidence, product/variant/inventory/order-line identity and deterministic merchant-calendar comparisons. Local tests do not establish production behavior; deployment identity and authenticated read-only verification on the active test store remain required before a production-complete status.

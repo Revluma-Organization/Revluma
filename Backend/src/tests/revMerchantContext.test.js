@@ -162,7 +162,9 @@ test('an unresolvable or missing profile timezone never invents a calendar', asy
   // Only store-b has a real (lower-case, normalized) currency; the bad zone
   // is ignored, so a single valid timezone would win — but here it is absent.
   assert.equal(context.reporting_timezone, 'UTC');
-  assert.equal(context.reporting_timezone_source, 'default_utc');
+  assert.equal(context.reporting_timezone_source, 'unverified_missing');
+  assert.equal(context.reporting_timezone_verified, false);
+  assert(context.limitations.some(item => item.includes('IANA timezone is unavailable')));
   assert.deepEqual(context.configured_currencies, ['USD']);
 });
 

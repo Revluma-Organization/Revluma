@@ -207,7 +207,7 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 199 | Phase 3 | Verify order evidence retrieval. | IN PROGRESS | Canonical lifecycle/product/order-record implementation candidate; see `implementation/TASK-199-ORDER-EVIDENCE.md` and `validation/TASK-199-ORDER-EVIDENCE.md`. CI, migration, deployment and authenticated production checks pending. | Implementation candidate | 2026-11-07 |
 | 200 | Phase 3 | Verify checkout evidence retrieval. | NOT STARTED | — | — | — |
 | 201 | Phase 3 | Verify integration evidence retrieval. | NOT STARTED | — | — | — |
-| 202 | Phase 3 | Verify finding evidence retrieval. | NOT STARTED | — | — | — |
+| 202 | Phase 3 | Verify finding evidence retrieval; consolidated original Tasks 202–206 include product/variant/inventory/order-line evidence and deterministic temporal interpretation. | IMPLEMENTATION CANDIDATE — LOCAL VERIFIED; CI/DEPLOYMENT/PRODUCTION PENDING | [Diagnosis](diagnostics/TASK-202-FINDING-PRODUCT-TEMPORAL-EVIDENCE.md); [implementation](implementation/TASK-202-FINDING-PRODUCT-TEMPORAL-EVIDENCE.md); [validation](validation/TASK-202-FINDING-PRODUCT-TEMPORAL-EVIDENCE.md) | Branch `arena/603881e0-revluma`; local Python 1620 passed/11 skipped; Backend 80 files; REV-DEC-0013 | 2026-11-07 local only |
 | 203 | Phase 3 | Verify product evidence retrieval where available. | NOT STARTED | — | — | — |
 | 204 | Phase 3 | Verify relative date interpretation. | NOT STARTED | — | — | — |
 | 205 | Phase 3 | Verify comparison period calculation. | NOT STARTED | — | — | — |

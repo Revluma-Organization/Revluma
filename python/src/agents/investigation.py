@@ -129,6 +129,7 @@ INTENT_CHECKOUT = "checkout_investigation"
 INTENT_CUSTOMERS = "customer_retention"
 INTENT_REFUNDS = "refund_investigation"
 INTENT_PRODUCTS = "product_investigation"
+INTENT_FINDINGS = "finding_investigation"
 INTENT_TRAFFIC = "traffic_investigation"
 INTENT_COVERAGE = "data_coverage"
 INTENT_READ_ONLY = "read_only_boundary"
@@ -181,6 +182,7 @@ INTENT_LABELS = {
     INTENT_CUSTOMERS: "Customer and retention investigation",
     INTENT_REFUNDS: "Refund and cancellation reconciliation",
     INTENT_PRODUCTS: "Product and inventory investigation",
+    INTENT_FINDINGS: "Finding and recommendation investigation",
     INTENT_TRAFFIC: "Traffic and event investigation",
     INTENT_COVERAGE: "Data availability review",
     INTENT_READ_ONLY: "Read-only boundary",
@@ -195,7 +197,7 @@ INTENT_LABELS = {
 
 STORE_INTENTS = {
     INTENT_OVERVIEW, INTENT_REVENUE, INTENT_CHECKOUT, INTENT_CUSTOMERS,
-    INTENT_REFUNDS, INTENT_PRODUCTS, INTENT_TRAFFIC, INTENT_COVERAGE,
+    INTENT_REFUNDS, INTENT_PRODUCTS, INTENT_FINDINGS, INTENT_TRAFFIC, INTENT_COVERAGE,
 }
 
 INTENT_TOOLS = {
@@ -209,6 +211,7 @@ INTENT_TOOLS = {
                        "revenue_observations"],
     INTENT_REFUNDS: ["store_health", "revenue_observations", "order_observations",
                      "refund_observations"],
+    INTENT_FINDINGS: ["store_health", "findings"],
     INTENT_PRODUCTS: ["store_health", "product_observations", "inventory_observations",
                       "revenue_observations", "order_observations"],
     INTENT_TRAFFIC: ["store_health", "traffic_observations", "checkout_observations",
@@ -221,6 +224,7 @@ INTENT_DOMAINS = {
     INTENT_CHECKOUT: ["revenue", "retention"],
     INTENT_CUSTOMERS: ["customer", "retention"],
     INTENT_PRODUCTS: ["revenue", "inventory"],
+    INTENT_FINDINGS: ["revenue", "retention"],
     INTENT_TRAFFIC: ["marketing"],
     INTENT_OVERVIEW: ["revenue", "retention"],
     INTENT_REFUNDS: ["finance"],
@@ -533,6 +537,7 @@ FOLLOWUP_ELLIPSIS = {
 SHORT_FOLLOWUP_WORDS = 6
 
 INTENT_PATTERNS = (
+    (re.compile(r"\b(?:high.priority\s+)?finding\b|\bfinding\s+id\b|\bwhy (?:is|was) this (?:a )?(?:high.priority )?(?:issue|recommendation)"), INTENT_FINDINGS),
     (re.compile(r"\brefund(?:s|ed)?\b|\bcancell?ed\s+order|\bcancell?ation"
                 r"|\bchargeback|\breturn(?:s|ed)?\b|\bdispute(?:s|d)?\b"), INTENT_REFUNDS),
     (re.compile(r"\bcheckout(?:s)?\b|\babandon(?:s|ed|ment)?\b|\bcart(?:s)?\b"), INTENT_CHECKOUT),
@@ -631,6 +636,44 @@ def _week_bounds(now: datetime, tz, *, previous: bool) -> tuple[datetime, dateti
     return this_monday, now
 
 
+def _quarter_bounds(now: datetime, tz, *, previous: bool) -> tuple[datetime, datetime]:
+    local = now.astimezone(tz)
+    first_month = ((local.month - 1) // 3) * 3 + 1
+    start = _local_midnight_utc(_date(local.year, first_month, 1), tz)
+    if previous:
+        previous_year = local.year if first_month > 1 else local.year - 1
+        previous_month = first_month - 3 if first_month > 1 else 10
+        return _local_midnight_utc(_date(previous_year, previous_month, 1), tz), start
+    return start, now
+
+
+def _year_bounds(now: datetime, tz, *, previous: bool) -> tuple[datetime, datetime]:
+    local = now.astimezone(tz)
+    start = _local_midnight_utc(_date(local.year, 1, 1), tz)
+    return ((_local_midnight_utc(_date(local.year - 1, 1, 1), tz), start)
+            if previous else (start, now))
+
+
+def _add_months_local(value: datetime, months: int, tz) -> datetime:
+    """Same local elapsed instant in another month, clamping only short months."""
+    local = value.astimezone(tz)
+    index = local.year * 12 + local.month - 1 + months
+    year, month0 = divmod(index, 12)
+    month = month0 + 1
+    import calendar
+    day = min(local.day, calendar.monthrange(year, month)[1])
+    return local.replace(year=year, month=month, day=day).astimezone(timezone.utc)
+
+
+def _add_years_local(value: datetime, years: int, tz) -> datetime:
+    local = value.astimezone(tz)
+    try:
+        shifted = local.replace(year=local.year + years)
+    except ValueError:  # February 29 -> February 28 in a non-leap year.
+        shifted = local.replace(year=local.year + years, day=28)
+    return shifted.astimezone(timezone.utc)
+
+
 _DATE_TOKEN = re.compile(
     r"\b(\d{4}-\d{1,2}-\d{1,2}"
     r"|\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*,?\s+\d{4}"
@@ -681,10 +724,38 @@ def _custom_range_bounds(text: str, tz) -> tuple[datetime, datetime, str] | None
     if start_day is None or end_day is None:
         return None
     if start_day > end_day:
-        start_day, end_day = end_day, start_day
+        raise ValueError("custom reporting range start must not follow its end")
     start = _local_midnight_utc(start_day, tz)
     end = _local_midnight_utc(end_day + timedelta(days=1), tz)  # half-open
     return start, end, f"{start_day.isoformat()} to {end_day.isoformat()}"
+
+
+def _named_calendar_bounds(text: str, now: datetime, tz) -> tuple[datetime, datetime, str] | None:
+    """Resolve a named month/year without letting a model infer its boundaries."""
+    quarter_match = re.search(r"\bq([1-4])(?:\s+|\s*-\s*)(\d{4})\b", text)
+    if quarter_match:
+        quarter, year = int(quarter_match.group(1)), int(quarter_match.group(2))
+        month = (quarter - 1) * 3 + 1
+        end_year, end_month = (year + 1, 1) if quarter == 4 else (year, month + 3)
+        return (_local_midnight_utc(_date(year, month, 1), tz),
+                _local_midnight_utc(_date(end_year, end_month, 1), tz), f"Calendar Q{quarter} {year}")
+    month_match = re.search(r"\b(january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(\d{4}))?\b", text)
+    if month_match and not _DATE_TOKEN.search(text):
+        month = _MONTHS[month_match.group(1)]
+        local = now.astimezone(tz)
+        year = int(month_match.group(2) or local.year)
+        if not month_match.group(2) and (year, month) > (local.year, local.month):
+            year -= 1
+        next_year, next_month = (year + 1, 1) if month == 12 else (year, month + 1)
+        return (_local_midnight_utc(_date(year, month, 1), tz),
+                _local_midnight_utc(_date(next_year, next_month, 1), tz),
+                f"Calendar {month_match.group(1).title()} {year}")
+    year_match = re.search(r"\b(?:in|during|for)\s+(\d{4})\b", text)
+    if year_match:
+        year = int(year_match.group(1))
+        return (_local_midnight_utc(_date(year, 1, 1), tz),
+                _local_midnight_utc(_date(year + 1, 1, 1), tz), f"Calendar year {year}")
+    return None
 
 
 def _year_over_year_requested(text: str) -> bool:
@@ -716,20 +787,47 @@ def resolve_reporting_period(message: str, now: datetime | None = None,
     label = None
 
     custom = _custom_range_bounds(text, tz)
+    named = _named_calendar_bounds(text, now, tz)
+    rolling = re.search(r"\b(?:last|past|previous)\s+(\d+)\s+days\b", text)
     if custom is not None:
         start, end, label = custom
+    elif named is not None:
+        start, end, label = named
+    elif rolling:
+        days = int(rolling.group(1))
+        if not 1 <= days <= 365:
+            raise ValueError("rolling reporting periods must be between 1 and 365 days")
+        start, end = now - timedelta(days=days), now
+        label = f"Last {days} days (rolling)"
     elif re.search(r"\blast month\b|\bprevious month\b", text):
         start, end = _month_bounds(now, tz, previous=True)
         label = "Previous calendar month"
-    elif re.search(r"\bthis month\b|\bmonth to date\b|\bmonth-to-date\b", text):
+    elif re.search(r"\bthis month\b|\bmonth to date\b|\bmonth-to-date\b|since (?:the )?(?:beginning|start) of (?:this )?month\b", text):
         start, end = _month_bounds(now, tz, previous=False)
         label = "Month to date"
+    elif re.search(r"\blast quarter\b|\bprevious quarter\b", text):
+        start, end = _quarter_bounds(now, tz, previous=True)
+        label = "Previous calendar quarter"
+    elif re.search(r"\bthis quarter\b|\bquarter to date\b|\bquarter-to-date\b", text):
+        start, end = _quarter_bounds(now, tz, previous=False)
+        label = "Quarter to date"
+    elif re.search(r"\blast year\b|\bprevious year\b", text):
+        start, end = _year_bounds(now, tz, previous=True)
+        label = "Previous calendar year"
+    elif re.search(r"\bthis year\b|\byear to date\b|\byear-to-date\b", text):
+        start, end = _year_bounds(now, tz, previous=False)
+        label = "Year to date"
     elif re.search(r"\blast week\b|\bprevious week\b", text):
         start, end = _week_bounds(now, tz, previous=True)
         label = "Previous calendar week"
     elif re.search(r"\bthis week\b", text):
         start, end = _week_bounds(now, tz, previous=False)
         label = "This calendar week"
+    elif re.search(r"\bsince monday\b", text):
+        local = now.astimezone(tz)
+        start = _local_midnight_utc((local - timedelta(days=local.weekday())).date(), tz)
+        end = now
+        label = "Since Monday"
     elif re.search(r"\byesterday\b", text):
         local_date = now.astimezone(tz).date()
         start = _local_midnight_utc(local_date - timedelta(days=1), tz)
@@ -740,15 +838,6 @@ def resolve_reporting_period(message: str, now: datetime | None = None,
         start = _local_midnight_utc(local_date, tz)
         end = now
         label = "Today"
-    elif re.search(r"\blast 30 days\b|\bpast 30 days\b|\b30 days\b", text):
-        start, end = now - timedelta(days=30), now
-        label = "Last 30 days"
-    elif re.search(r"\blast 14 days\b|\bpast 14 days\b|\b14 days\b", text):
-        start, end = now - timedelta(days=14), now
-        label = "Last 14 days"
-    elif re.search(r"\blast 7 days\b|\bpast 7 days\b|\bthis week\b|\blast week['\u2019]?s\b", text):
-        start, end = now - timedelta(days=7), now
-        label = "Last seven days"
     elif inherited and inherited.get("start") and inherited.get("end"):
         start = datetime.fromisoformat(str(inherited["start"]).replace("Z", "+00:00"))
         end = datetime.fromisoformat(str(inherited["end"]).replace("Z", "+00:00"))
@@ -756,51 +845,99 @@ def resolve_reporting_period(message: str, now: datetime | None = None,
 
     if start is None or end is None:
         start, end = now - timedelta(days=7), now
-        label = "Last seven days"
+        label = "Last 7 days (rolling)"
+
+    if start > now or (custom is not None and end > now):
+        raise ValueError("reporting period cannot start or end in the future")
+    if end > now:
+        end = now
+        label = label + " to date"
 
     # Comparison windows are computed on the merchant's local calendar
     # (midnights and week starts resolved through the zone), never with a
     # fixed 24h*N absolute shift — which drifts across DST transitions.
-    if label == "Previous calendar month":
-        # Compare calendar month with calendar month, not a 31-vs-30-day window.
-        comparison_start = _local_midnight_utc(
-            (start - timedelta(days=1)).astimezone(tz).replace(day=1).date(), tz)
+    current_completeness = "partial" if "to date" in label.lower() or label in {"This calendar week", "Today", "Since Monday"} or label.startswith("Last ") and "rolling" in label else "complete"
+    comparison_completeness = "complete"
+    if label.startswith("Calendar Q"):
+        comparison_start = _add_months_local(start, -3, tz)
+        comparison_end = _add_months_local(end, -3, tz) if "to date" in label.lower() else start
+        comparison_label = "Same elapsed portion of the previous calendar quarter" if "to date" in label.lower() else "Calendar quarter before that"
+        comparison_completeness = "equivalent_partial" if "to date" in label.lower() else "complete"
+    elif label.startswith("Calendar year "):
+        comparison_start = _add_years_local(start, -1, tz)
+        comparison_end = _add_years_local(end, -1, tz) if "to date" in label.lower() else start
+        comparison_label = "Same elapsed portion of the previous calendar year" if "to date" in label.lower() else "Calendar year before that"
+        comparison_completeness = "equivalent_partial" if "to date" in label.lower() else "complete"
+    elif label.startswith("Calendar ") and "Q" not in label:
+        comparison_start = _add_months_local(start, -1, tz)
+        comparison_end = _add_months_local(end, -1, tz) if "to date" in label.lower() else start
+        comparison_label = "Same elapsed portion of the previous calendar month" if "to date" in label.lower() else "Calendar month before that"
+        comparison_completeness = "equivalent_partial" if "to date" in label.lower() else "complete"
+    elif label == "Previous calendar month":
+        comparison_start = _add_months_local(start, -1, tz)
         comparison_end = start
         comparison_label = "Calendar month before that"
     elif label == "Month to date":
-        elapsed = end - start
-        previous_month_start = _local_midnight_utc(
-            (start - timedelta(days=1)).astimezone(tz).replace(day=1).date(), tz)
-        comparison_start = previous_month_start
-        comparison_end = min(start, previous_month_start + elapsed)
-        comparison_label = "Same elapsed period in the previous month"
+        comparison_start = _add_months_local(start, -1, tz)
+        comparison_end = min(start, _add_months_local(end, -1, tz))
+        comparison_label = "Same elapsed local-calendar portion of the previous month"
+        comparison_completeness = "equivalent_partial"
+    elif label in {"Previous calendar quarter", "Previous calendar year"}:
+        comparison_start = _add_months_local(start, -3 if "quarter" in label else -12, tz)
+        comparison_end = start
+        comparison_label = "Calendar quarter before that" if "quarter" in label else "Calendar year before that"
+    elif label == "Quarter to date":
+        comparison_start = _add_months_local(start, -3, tz)
+        comparison_end = min(start, _add_months_local(end, -3, tz))
+        comparison_label = "Same elapsed local-calendar portion of the previous quarter"
+        comparison_completeness = "equivalent_partial"
+    elif label == "Year to date":
+        comparison_start = _add_years_local(start, -1, tz)
+        comparison_end = min(start, _add_years_local(end, -1, tz))
+        comparison_label = "Same elapsed local-calendar portion of the previous year"
+        comparison_completeness = "equivalent_partial"
     elif label == "Previous calendar week":
-        comparison_start = _local_midnight_utc(
-            (start - timedelta(days=7)).astimezone(tz).date(), tz)
+        comparison_start = _local_midnight_utc((start - timedelta(days=7)).astimezone(tz).date(), tz)
         comparison_end = start
         comparison_label = "Calendar week before that"
+    elif label in {"This calendar week", "Since Monday"}:
+        comparison_start = _local_midnight_utc((start - timedelta(days=7)).astimezone(tz).date(), tz)
+        comparison_end = comparison_start + (end - start)
+        comparison_label = "Same elapsed duration in the previous calendar week"
+        comparison_completeness = "equivalent_partial"
     elif label == "Yesterday":
         local_date = end.astimezone(tz).date()
         comparison_start = _local_midnight_utc(local_date - timedelta(days=2), tz)
         comparison_end = start
         comparison_label = "Day before that"
     elif label == "Today":
-        local_date = start.astimezone(tz).date()
-        comparison_start = _local_midnight_utc(local_date - timedelta(days=1), tz)
-        comparison_end = start
-        comparison_label = "Yesterday"
+        comparison_start = _local_midnight_utc((start - timedelta(days=1)).astimezone(tz).date(), tz)
+        comparison_end = comparison_start + (end - start)
+        comparison_label = "Same elapsed duration yesterday"
+        comparison_completeness = "equivalent_partial"
     else:
         comparison_start, comparison_end = previous_period(start, end)
         comparison_label = "Immediately preceding equal-length period"
     window = period(start, end, comparison_start=comparison_start,
                     comparison_end=comparison_end, label=label,
                     timezone_label=timezone_name)
+    if not comparison_start < comparison_end <= start:
+        raise ValueError("comparison window must be non-empty and precede the reporting window")
     window["compared_to"] = {
         "start": iso(comparison_start),
         "end": iso(comparison_end),
         "label": comparison_label,
         "timezone": timezone_name,
+        "semantics": "[start, end)",
+        "completeness": comparison_completeness,
     }
+    window["kind"] = ("rolling" if "rolling" in label else "calendar_quarter" if "quarter" in label.lower() or label.startswith("Calendar Q")
+                      else "calendar_year" if "year" in label.lower() else "calendar_month" if "month" in label.lower() or label.startswith("Calendar ") and "year" not in label.lower()
+                      else "calendar_day" if "day" in label.lower() or label in {"Today", "Yesterday"} else "calendar")
+    window["completeness"] = current_completeness
+    window["is_partial"] = current_completeness == "partial"
+    window["comparison_semantics"] = "equal_elapsed_time_non_overlapping" if comparison_completeness == "equivalent_partial" else "preceding_calendar_or_equal_length_non_overlapping"
+    window["week_start"] = "Monday"
     window["year_over_year"] = _year_over_year_requested(text)
     return window
 
@@ -1231,7 +1368,8 @@ def resolve_store_context(organization_id: str, db) -> dict:
         "platforms": [],
         "currencies": [],
         "timezone": "UTC",
-        "timezone_source": "default_utc",
+        "timezone_source": "unverified_missing",
+        "timezone_verified": False,
         "last_synced_at": None,
         "warnings": [],
     }
@@ -1240,7 +1378,8 @@ def resolve_store_context(organization_id: str, db) -> dict:
         return context
     seen_stores = set()
     currencies = set()
-    store_timezones: dict[str, str] = {}
+    store_timezones: dict[str, str | None] = {}
+    invalid_timezone = False
     for row in rows:
         store_id = _get(row, "id")
         seen_stores.add(store_id)
@@ -1261,29 +1400,30 @@ def resolve_store_context(organization_id: str, db) -> dict:
             settings_tz = _valid_iana_timezone(
                 settings.get("timezone") or settings.get("store_timezone"))
         profile_tz = _valid_iana_timezone(_get(row, "iana_timezone"))
+        if (_get(row, "iana_timezone") and not profile_tz) or (isinstance(settings, dict) and (settings.get("timezone") or settings.get("store_timezone")) and not settings_tz):
+            invalid_timezone = True
+            context["warnings"].append(f"Store {store_id} has an invalid configured IANA timezone.")
         profile_currency = normalize_currency(_get(row, "currency_code"))
         if profile_currency:
             currencies.add(profile_currency)
-        # Priority: merchant-set store settings, then the Shopify profile
-        # timezone, then UTC.
-        store_timezones[store_id] = settings_tz or profile_tz or "UTC"
+        # Priority: merchant-set store settings, then the verified Shopify profile.
+        store_timezones[store_id] = settings_tz or profile_tz
     context["store_count"] = len(seen_stores)
     if seen_stores:
-        distinct = {tz for tz in store_timezones.values() if tz != "UTC"}
-        if len(distinct) == 1:
-            # A store configured a timezone (settings or profile), so the
-            # window resolves on the merchant's local calendar.
+        distinct = {tz for tz in store_timezones.values() if tz}
+        if len(distinct) == 1 and all(store_timezones.values()) and not invalid_timezone:
             context["timezone"] = next(iter(distinct))
             context["timezone_source"] = "store_settings_or_profile"
+            context["timezone_verified"] = True
         elif len(distinct) > 1:
-            # Multiple stores with different configured timezones: a single
-            # merchant-local calendar cannot be asserted, so fall back to UTC
-            # and say so instead of picking one silently.
             context["timezone"] = "UTC"
             context["timezone_source"] = "utc_conflicting_stores"
             context["warnings"].append(
                 "The connected stores use different configured timezones "
-                f"({', '.join(sorted(distinct))}); reporting periods use UTC.")
+                f"({', '.join(sorted(distinct))}); reporting uses an explicit UTC fallback.")
+        else:
+            context["warnings"].append(
+                "A verified merchant IANA timezone is unavailable; reporting uses an explicit UTC fallback and date-specific confidence is reduced.")
     context["currencies"] = sorted(currencies)
     context["last_synced_at"] = iso(context["last_synced_at"])
     return context
@@ -1468,6 +1608,32 @@ def _checkout_tool_params(message: str, inherited: dict | None = None) -> dict:
     return params
 
 
+def _finding_tool_params(message: str) -> dict:
+    params: dict[str, Any] = {}
+    match = re.search(r"(?:finding\s+id\s*:\s*|\bfinding\s+)([0-9a-f]{8}-[0-9a-f-]{27,})", message or "", re.I)
+    if match:
+        params["finding_reference"] = match.group(1)
+    elif re.search(r"\b(?:latest|most recent|last)\s+finding\b", message or "", re.I):
+        params["latest"] = True
+    if re.search(r"\b(?:resolved|dismissed|historical|history)\b", message or "", re.I):
+        params["include_history"] = True
+    return params
+
+
+def _product_tool_params(message: str) -> dict:
+    params: dict[str, Any] = {}
+    match = re.search(r"(?:shopify\s+product\s+id|product\s+id)\s*[:#]?\s*([A-Za-z0-9-]+)", message or "", re.I)
+    if match:
+        params["product_reference"] = match.group(1)
+    else:
+        match = re.search(r"product\s+(?:named|called)\s+[\"']([^\"']+)[\"']", message or "", re.I)
+        if match:
+            params["product_reference"] = match.group(1)
+    if re.search(r"\b(?:latest|most recent)\s+product\b", message or "", re.I):
+        params["latest"] = True
+    return params
+
+
 def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
     facts: list[dict] = []
     by_metric: dict[str, list[dict]] = {}
@@ -1559,6 +1725,28 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
         add("product_recorded_value", lambda i: f"{i['label']}: {_money_text(i['value'], i.get('currency'))}")
         add("products_out_of_stock", lambda i: f"{i['value']} products recorded out of stock")
         add("products_low_stock", lambda i: f"{i['value']} products at or below their low-stock threshold")
+    if intent in (INTENT_OVERVIEW, INTENT_FINDINGS):
+        for item in by_metric.get("finding_evidence", []):
+            record = item.get("value") if isinstance(item.get("value"), dict) else {}
+            evidence = record.get("supporting_evidence") or {}
+            facts.append(_item_fact(item, (
+                f"{record.get('title') or 'Finding'}: severity {record.get('severity') or 'unknown'}; "
+                f"lifecycle {record.get('lifecycle_status') or 'unknown'}; validity {record.get('current_validity') or 'unknown'}. "
+                f"Detected {record.get('detected_at') or 'unknown'} and last updated {record.get('updated_at') or 'unknown'}. "
+                f"Source evidence: current {evidence.get('currentCount', 'unavailable')} orders / {evidence.get('currentRevenue', 'unavailable')} recorded value, "
+                f"previous {evidence.get('previousCount', 'unavailable')} orders / {evidence.get('previousRevenue', 'unavailable')}. "
+                "This supports why the stored finding was prioritized; it does not prove an independent cause or that a historical/stale issue is still current.")))
+    if intent == INTENT_PRODUCTS:
+        for item in by_metric.get("product_evidence", []):
+            record = item.get("value") if isinstance(item.get("value"), dict) else {}
+            variants = record.get("variants") or []
+            lines = record.get("order_line_evidence") or []
+            inventory_known = sum(1 for variant in variants if variant.get("inventory_levels"))
+            facts.append(_item_fact(item, (
+                f"Product {record.get('title') or record.get('product_id')} (Shopify ID {record.get('product_id')}): "
+                f"catalog status {record.get('catalog_status') or 'unknown'}; {len(variants)} stored variant(s); "
+                f"{inventory_known} variant(s) have ingested location inventory; {len(lines)} variant/currency order-line aggregate(s) in the requested period. "
+                "Missing inventory is not evidence of stockout, and order lines do not establish a cause of revenue change.")))
     if intent == INTENT_TRAFFIC:
         for metric in by_metric:
             if metric.startswith("event_"):
@@ -1695,6 +1883,9 @@ def _unknowns(items: list[dict], intent: str, segment: str | None,
             "The reason a shopper abandoned checkout is not recorded in the available data.")
     if comparison and comparison.get("overall_status") != STATUS_AVAILABLE:
         unknowns.append("The previous-period comparison is not fully verified.")
+    if not store_context.get("timezone_verified"):
+        unknowns.append(
+            "The merchant timezone could not be verified; the displayed UTC period is an explicit fallback, not a verified merchant-local calendar period.")
     if not store_context.get("currencies"):
         unknowns.append(
             "The store's configured currency is not exposed in the available settings; "
@@ -2570,6 +2761,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         message, now,
         inherited=(conversation_context or {}).get("last_investigation"),
         timezone_name=(store_context or {}).get("timezone") or "UTC")
+    window["timezone_source"] = (store_context or {}).get("timezone_source") or "unverified_missing"
+    window["timezone_verified"] = bool((store_context or {}).get("timezone_verified"))
 
     if intent in (INTENT_GREETING, INTENT_IDENTITY, INTENT_CAPABILITY, INTENT_GENERAL,
                   INTENT_SOCIAL, INTENT_KNOWLEDGE, INTENT_CLARIFY):
@@ -2719,6 +2912,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 params["year_over_year"] = True
         if tool == "order_observations":
             params.update(order_query)
+        if tool == "findings":
+            params.update(_finding_tool_params(message))
+        if tool in ("product_observations", "inventory_observations"):
+            params.update(_product_tool_params(message))
+            params["timezone"] = window.get("timezone") or "UTC"
         if tool in ("cart_observations", "checkout_observations"):
             params.update(checkout_query)
         if classification.get("segment"):
