@@ -33,6 +33,9 @@ const { validateSpecialistExecution } = require('./revSpecialists');
 const { validateQuestionOrchestration } = require('./revQuestionOrchestration');
 const { validateResponseAdaptation } = require('./revResponseAdaptation');
 const { validateRecommendationBoundary } = require('./revRecommendations');
+const {
+  TIMEOUT_POLICY_MS, safeId, safeFailure, normalizePythonFailure,
+} = require('./revFailureContract');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
 const ML_INTERNAL_KEY = process.env.ML_INTERNAL_KEY;
@@ -233,6 +236,7 @@ async function pythonRequest({
       success: false,
       error: {
         code: ML_ERRORS.NOT_CONFIGURED,
+        failure: safeFailure('provider_unavailable', 'node_python_transport', { correlationId }),
         message:
           'Rev Intelligence is not configured. Contact support.',
       },
@@ -254,6 +258,16 @@ async function pythonRequest({
     getCorrelationId(correlationId);
 
   const startTime = Date.now();
+  if (body && typeof body === 'object') {
+    body.correlation_id = requestCorrelationId;
+    body.execution_id = requestCorrelationId;
+    body.context_payload = {
+      ...(body.context_payload || {}),
+      correlation_id: requestCorrelationId,
+      execution_id: requestCorrelationId,
+      execution_policy: { overall_timeout_ms: TIMEOUT_POLICY_MS.overallInvestigation - 5000 },
+    };
+  }
 
   try {
     const response = await axios({
@@ -294,6 +308,7 @@ async function pythonRequest({
         success: false,
         error: {
           code: ML_ERRORS.AUTH_FAILED,
+          failure: safeFailure('authorization_failed', 'node_python_transport', { correlationId: requestCorrelationId }),
           message:
             'Intelligence service authentication failed.',
         },
@@ -304,7 +319,9 @@ async function pythonRequest({
       return {
         success: false,
         error: {
-          code: ML_ERRORS.UNAVAILABLE,
+          code: response.status === 422 ? ML_ERRORS.INVALID_RESPONSE : ML_ERRORS.UNAVAILABLE,
+          failure: safeFailure(response.status === 422 ? 'schema_validation_failed' : 'invalid_request',
+            'node_python_transport', { correlationId: requestCorrelationId }),
           message:
             'Intelligence service request failed.',
         },
@@ -337,6 +354,7 @@ async function pythonRequest({
         success: false,
         error: {
           code: ML_ERRORS.TIMEOUT,
+          failure: safeFailure('timeout', 'node_python_transport', { correlationId: requestCorrelationId }),
           message:
             'Intelligence service timed out.',
         },
@@ -358,6 +376,7 @@ async function pythonRequest({
       success: false,
       error: {
         code: ML_ERRORS.UNAVAILABLE,
+        failure: safeFailure('connection_failed', 'node_python_transport', { correlationId: requestCorrelationId }),
         message:
           'Intelligence service is unavailable.',
       },
@@ -1365,7 +1384,7 @@ async function checkPythonHealth() {
 /* -------------------------------------------------------------------------- */
 
 const INVESTIGATION_CONTRACT = 'rev-investigation-v1';
-const STREAM_TIMEOUT_MS = parseInt(process.env.ML_STREAM_TIMEOUT_MS || '120000', 10);
+const STREAM_TIMEOUT_MS = parseInt(process.env.ML_STREAM_TIMEOUT_MS || String(TIMEOUT_POLICY_MS.overallInvestigation), 10);
 
 function authorizedContextStoreIds(contextPayload) {
   const context = contextPayload?.merchant_context;
@@ -1375,7 +1394,7 @@ function authorizedContextStoreIds(contextPayload) {
   return [...ids];
 }
 
-function validateInvestigationResponse(data, organizationId = null, storeIds = null) {
+function validateInvestigationResponse(data, organizationId = null, storeIds = null, correlationId = null) {
   if (!isPlainObject(data) || data.success === false) return false;
   if (data.read_only !== true) return false;
   if (typeof data.text !== 'string') return false;
@@ -1407,6 +1426,46 @@ function validateInvestigationResponse(data, organizationId = null, storeIds = n
       if (validateSpecialistExecution(specialist, {
         organizationId, evidenceIds: authorizedEvidenceIds,
       }).length > 0) return false;
+    }
+  }
+  if (data.structured_summary !== undefined) {
+    const summary = data.structured_summary;
+    if (!isPlainObject(summary) || summary.contract_version !== 'rev-conversation-context-v2' ||
+        summary.summary_method !== 'deterministic_bounded_projection_no_model' ||
+        summary.tenant?.organization_id !== organizationId || !Array.isArray(summary.tenant?.store_ids) ||
+        !['verified_findings', 'calculated_findings', 'hypotheses', 'unknowns', 'recommendations',
+          'finding_history', 'evidence_references'].every(key => Array.isArray(summary[key]))) return false;
+  }
+  if (data.consistency !== undefined) {
+    if (!isPlainObject(data.consistency) || data.consistency.contract_version !== 'rev-consistency-v1' ||
+        !['new_context', 'context_changed', 'unchanged', 'evidence_changed'].includes(data.consistency.status) ||
+        !Array.isArray(data.consistency.changed_fields)) return false;
+  }
+  if (data.reliability !== undefined) {
+    if (!isPlainObject(data.reliability) || data.reliability.contract_version !== 'rev-reliability-v1' ||
+        !Array.isArray(data.reliability.failures)) return false;
+    data.reliability.failures = data.reliability.failures.map(failure => normalizePythonFailure(
+      failure, safeFailure('internal_error', 'python_execution', { correlationId, executionId: investigation.id }), correlationId, investigation.id));
+  }
+  // One malformed optional recommendation must not erase valid evidence,
+  // calculations, or other recommendations. The rejected record is never
+  // persisted or forwarded; the independent valid subset remains typed.
+  if (Array.isArray(data.recommendations)) {
+    const originalCount = data.recommendations.length;
+    data.recommendations = data.recommendations.filter(recommendation =>
+      validateRecommendationBoundary(
+        recommendation?.finding_id ? data.selected_finding : null, [recommendation],
+        { organizationId, evidenceIds: authorizedEvidenceIds }).length === 0);
+    if (data.recommendations.length !== originalCount) {
+      data.warnings = [...(Array.isArray(data.warnings) ? data.warnings : []),
+        'An invalid recommendation was excluded; independent evidence and findings were preserved.'];
+      if (!data.reliability) {
+        data.reliability = { contract_version: 'rev-reliability-v1', failures: [],
+          fallback_used: true, partial_results_preserved: true };
+      }
+      data.reliability.failures.push(safeFailure('schema_validation_failed', 'recommendation_validation', {
+        partial: true, fallback: true, executionId: investigation.id,
+      }));
     }
   }
   if (validateRecommendationBoundary(data.selected_finding, data.recommendations || [], {
@@ -1615,9 +1674,10 @@ async function investigate({
       context_payload: contextPayload,
     },
     correlationId: requestCorrelationId,
+    timeout: TIMEOUT_POLICY_MS.overallInvestigation,
   });
   if (!result.success) return result;
-  if (!validateInvestigationResponse(result.data, organizationId, authorizedContextStoreIds(contextPayload))) {
+  if (!validateInvestigationResponse(result.data, organizationId, authorizedContextStoreIds(contextPayload), requestCorrelationId)) {
     logger.error('rev_investigation_invalid_response', {
       correlationId: requestCorrelationId,
     });
@@ -1625,6 +1685,7 @@ async function investigate({
       success: false,
       error: {
         code: ML_ERRORS.INVALID_RESPONSE,
+        failure: safeFailure('schema_validation_failed', 'response_validation', { correlationId: requestCorrelationId }),
         message: 'Intelligence service returned an invalid response.',
       },
     };
@@ -1678,7 +1739,14 @@ async function streamInvestigation({
         user_id: userId,
         message,
         conversation_id: conversationId || null,
-        context_payload: contextPayload,
+        correlation_id: requestCorrelationId,
+        execution_id: requestCorrelationId,
+        context_payload: {
+          ...contextPayload,
+          correlation_id: requestCorrelationId,
+          execution_id: requestCorrelationId,
+          execution_policy: { overall_timeout_ms: TIMEOUT_POLICY_MS.overallInvestigation - 5000 },
+        },
       }),
       signal: combined,
     });
@@ -1688,6 +1756,7 @@ async function streamInvestigation({
         success: false,
         error: {
           code: signal && signal.aborted ? 'CANCELLED' : ML_ERRORS.TIMEOUT,
+          failure: safeFailure(signal && signal.aborted ? 'cancelled' : 'timeout', 'node_python_stream', { correlationId: requestCorrelationId }),
           message: signal && signal.aborted
             ? 'Generation stopped.'
             : 'Intelligence service timed out.',
@@ -1699,16 +1768,20 @@ async function streamInvestigation({
     });
     return {
       success: false,
-      error: { code: ML_ERRORS.UNAVAILABLE, message: 'Intelligence service is unavailable.' },
+      error: { code: ML_ERRORS.UNAVAILABLE,
+        failure: safeFailure('connection_failed', 'node_python_stream', { correlationId: requestCorrelationId }),
+        message: 'Intelligence service is unavailable.' },
     };
   }
 
   if (response.status === 401 || response.status === 403) {
     return { success: false, error: { code: ML_ERRORS.AUTH_FAILED,
+      failure: safeFailure('authorization_failed', 'node_python_stream', { correlationId: requestCorrelationId }),
       message: 'Intelligence service authentication failed.' } };
   }
   if (!response.ok || !response.body) {
     return { success: false, error: { code: ML_ERRORS.UNAVAILABLE,
+      failure: safeFailure('provider_unavailable', 'node_python_stream', { correlationId: requestCorrelationId }),
       message: 'Intelligence service request failed.' } };
   }
 
@@ -1754,11 +1827,12 @@ async function streamInvestigation({
     parser.push(decoder.decode());
     parser.flush();
   } catch (error) {
-    if (error.name === 'AbortError') {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
       return {
         success: false,
         error: {
           code: signal && signal.aborted ? 'CANCELLED' : ML_ERRORS.TIMEOUT,
+          failure: safeFailure(signal && signal.aborted ? 'cancelled' : 'timeout', 'node_python_stream', { correlationId: requestCorrelationId }),
           message: signal && signal.aborted ? 'Generation stopped.' : 'Intelligence service timed out.',
         },
       };
@@ -1767,6 +1841,7 @@ async function streamInvestigation({
       correlationId: requestCorrelationId, errorType: error.name,
     });
     return { success: false, error: { code: ML_ERRORS.UNAVAILABLE,
+      failure: safeFailure('connection_failed', 'node_python_stream', { correlationId: requestCorrelationId }),
       message: 'The intelligence stream was interrupted.' } };
   } finally {
     try { reader.releaseLock(); } catch { /* no-op */ }
@@ -1782,7 +1857,9 @@ async function streamInvestigation({
     });
     return {
       success: false,
-      error: { code: 'CANCELLED', message: 'Generation stopped.' },
+      error: { code: 'CANCELLED',
+        failure: safeFailure('cancelled', 'python_execution', { correlationId: requestCorrelationId }),
+        message: 'Generation stopped.' },
     };
   }
   if (streamError) {
@@ -1790,12 +1867,17 @@ async function streamInvestigation({
       success: false,
       error: {
         code: streamError.code || ML_ERRORS.UNAVAILABLE,
-        message: streamError.message || 'Rev could not complete the investigation.',
+        failure: safeFailure(streamError.code === ML_ERRORS.TIMEOUT ? 'timeout' : 'provider_unavailable',
+          'python_execution', { correlationId: requestCorrelationId }),
+        message: streamError.code === ML_ERRORS.TIMEOUT
+          ? 'Intelligence service timed out.'
+          : 'Rev could not complete the investigation. Please retry.',
       },
     };
   }
-  if (!validateInvestigationResponse(finalPayload, organizationId, authorizedContextStoreIds(contextPayload))) {
+  if (!validateInvestigationResponse(finalPayload, organizationId, authorizedContextStoreIds(contextPayload), requestCorrelationId)) {
     return { success: false, error: { code: ML_ERRORS.INVALID_RESPONSE,
+      failure: safeFailure('schema_validation_failed', 'response_validation', { correlationId: requestCorrelationId }),
       message: 'Intelligence service returned an invalid response.' } };
   }
   return { success: true, data: finalPayload };

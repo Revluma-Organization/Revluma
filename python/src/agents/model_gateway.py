@@ -12,9 +12,18 @@ GEMINI_FAST_MODEL = os.environ.get("GEMINI_FAST_MODEL", "gemini-2.5-flash-lite")
 
 
 class ModelProviderError(RuntimeError):
-    def __init__(self, provider, status=None):
+    def __init__(self, provider, status=None, *, category=None):
         self.provider = provider
         self.status = status
+        if category is None:
+            category = ("rate_limited" if status == 429 else
+                        "provider_unavailable" if status in {404, 500, 502, 503, 504, "missing_key"} else
+                        "connection_failed" if status == "network" else
+                        "timeout" if status == "timeout_budget_exhausted" else
+                        "malformed_output" if status in {"invalid_response", "empty_text", "truncated"} else
+                        "invalid_request" if status in {"unsupported_provider"} or isinstance(status, int) and 400 <= status < 500 else
+                        "internal_error")
+        self.category = category
         super().__init__(f"{provider} request failed (HTTP {status or 'unknown'})")
 
 
@@ -57,12 +66,13 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
                 payload["tools"] = [{"google_search": {}}]
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             try:
-                with httpx.Client(timeout=attempt_timeout) as client:
+                transport_timeout = httpx.Timeout(attempt_timeout, connect=min(5.0, attempt_timeout))
+                with httpx.Client(timeout=transport_timeout) as client:
                     response = client.post(url, headers={"x-goog-api-key": key}, json=payload)
             except httpx.HTTPError as exc:
                 logger.warning("model_provider_network_error provider=gemini error_type=%s model=%s attempt=%d",
                                type(exc).__name__, model, attempt + 1)
-                last_error = ModelProviderError("gemini", "network")
+                last_error = ModelProviderError("gemini", "timeout_budget_exhausted" if isinstance(exc, httpx.TimeoutException) else "network")
                 continue
             if response.status_code >= 400:
                 logger.warning("model_provider_http_error provider=gemini status=%s model=%s attempt=%d",
@@ -82,6 +92,9 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
                 raise ModelProviderError("gemini", "invalid_response") from exc
             if not output.strip():
                 raise ModelProviderError("gemini", "empty_text")
+            finish_reason = str((candidates[0] if candidates else {}).get("finishReason") or "").upper()
+            if finish_reason in {"MAX_TOKENS", "LENGTH", "TRUNCATED"}:
+                raise ModelProviderError("gemini", "truncated")
             if web_search:
                 sources = []
                 for chunk in (candidates[0].get("groundingMetadata") or {}).get("groundingChunks", []):
@@ -109,9 +122,14 @@ def generate(prompt, *, role="fast", max_tokens=500, timeout=30.0,
         if image_base64 and image_media_type:
             blocks.insert(0, {"type": "image", "source": {
                 "type": "base64", "media_type": image_media_type, "data": image_base64}})
-        client = anthropic.Anthropic(api_key=key, timeout=timeout)
+        client = anthropic.Anthropic(api_key=key, timeout=httpx.Timeout(timeout, connect=min(5.0, timeout)))
         result = client.messages.create(model=model, max_tokens=max_tokens,
                                         messages=[{"role": "user", "content": blocks}])
-        return "".join(b.text for b in result.content
-                       if getattr(b, "type", "") == "text").strip()
+        output = "".join(b.text for b in result.content
+                         if getattr(b, "type", "") == "text").strip()
+        if not output:
+            raise ModelProviderError("anthropic", "empty_text")
+        if getattr(result, "stop_reason", None) == "max_tokens":
+            raise ModelProviderError("anthropic", "truncated")
+        return output
     raise ModelProviderError("configuration", "unsupported_provider")

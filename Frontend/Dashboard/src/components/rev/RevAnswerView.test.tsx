@@ -46,6 +46,22 @@ describe("RevAnswerView evidence references", () => {
   });
 });
 
+describe("RevAnswerView reliability disclosure", () => {
+  it("names failed domains while preserving independently valid evidence", () => {
+    render(<RevAnswerView payload={{
+      ...payload,
+      reliability: {
+        contract_version: "rev-reliability-v1",
+        failures: [{ category: "timeout", stage: "response_composition", retryable: true }],
+        fallback_used: true,
+        partial_results_preserved: true,
+      },
+    }} />);
+    expect(screen.getByText(/Some checks did not complete/i).textContent).toMatch(/response composition/i);
+    expect(screen.getByRole("button", { name: "Open evidence: Recorded order value" })).toBeTruthy();
+  });
+});
+
 describe("RevAnswerView streaming discipline (ChatGPT-UI study §3/§6)", () => {
   const tablePayload = {
     ...payload,

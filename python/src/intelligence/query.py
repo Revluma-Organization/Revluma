@@ -54,7 +54,7 @@ def _rollback(db: Any) -> None:
         logger.warning("rev_query_rollback_failed")
 
 
-def safe_query(db: Any, sql: str, params: dict | None = None) -> tuple[list, str | None]:
+def safe_query(db: Any, sql: str, params: dict | None = None, *, statement_timeout_ms: int = 10000) -> tuple[list, str | None]:
     """Execute a read-only statement, isolating failures.
 
     Returns ``(rows, error_code)``.  ``error_code`` is ``None`` on success.
@@ -81,6 +81,10 @@ def safe_query(db: Any, sql: str, params: dict | None = None) -> tuple[list, str
             except Exception:  # pragma: no cover - driver without savepoints
                 savepoint = None
     try:
+        dialect = getattr(getattr(db, "bind", None), "dialect", None)
+        if getattr(dialect, "name", None) == "postgresql":
+            db.execute(text("SELECT set_config('statement_timeout', :timeout_ms, true)"),
+                       {"timeout_ms": str(max(100, min(int(statement_timeout_ms), 10000)))})
         result = db.execute(text(sql), params)
         rows = _as_rows(result)
     except Exception as exc:
@@ -91,8 +95,10 @@ def safe_query(db: Any, sql: str, params: dict | None = None) -> tuple[list, str
                 pass
         else:
             _rollback(db)
-        logger.warning("rev_query_failed error_type=%s", type(exc).__name__)
-        return [], "query_failed"
+        pgcode = getattr(getattr(exc, "orig", None), "pgcode", None)
+        timed_out = isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.lower() or pgcode == "57014"
+        logger.warning("rev_query_failed error_type=%s timed_out=%s", type(exc).__name__, timed_out)
+        return [], "query_timeout" if timed_out else "query_failed"
 
     if savepoint is not None:
         # Release each successful savepoint immediately. Returning from inside

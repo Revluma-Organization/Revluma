@@ -138,15 +138,20 @@ test('an invalid final payload is rejected rather than passed through', async ()
   assert.equal(result.error.code, ML_ERRORS.INVALID_RESPONSE);
 });
 
-test('a final payload that invents an executed action is rejected', async () => {
+test('a final payload quarantines an invented executed action and preserves valid evidence', async () => {
   const broken = {
     ...finalPayload,
     recommendations: [{ label: 'Change price', executed: true }],
   };
   global.fetch = async () => sseResponse([frame('final', broken)]);
   const result = await streamInvestigation({ ...args });
-  assert.equal(result.success, false);
-  assert.equal(result.error.code, ML_ERRORS.INVALID_RESPONSE);
+  assert.equal(result.success, true);
+  assert.deepEqual(result.data.recommendations, []);
+  assert.equal(result.data.read_only, true);
+  assert.equal(result.data.evidence.items.length, 1);
+  assert.match(result.data.warnings.join(' '), /invalid recommendation was excluded/i);
+  assert.equal(result.data.reliability.failures[0].category, 'schema_validation_failed');
+  assert.equal(JSON.stringify(result.data).includes('"executed":true'), false);
 });
 
 test('authentication failures and upstream outages are classified, not exposed', async () => {

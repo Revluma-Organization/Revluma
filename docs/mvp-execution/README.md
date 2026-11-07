@@ -66,3 +66,7 @@ Task 207 consolidates original Tasks 224–226. Its [diagnosis](diagnostics/TASK
 ## 2026-11-07 Task 208
 
 Task 208 consolidates original Tasks 227–229. Its [diagnosis](diagnostics/TASK-208-INTELLIGENCE-SPECIALISTS.md), [implementation](implementation/TASK-208-INTELLIGENCE-SPECIALISTS.md) and [validation](validation/TASK-208-INTELLIGENCE-SPECIALISTS.md) record the executable specialist contract, revenue metrics, retention populations/cohorts, operational evidence, coordination, persistence decision and 40-scenario acceptance suite. Production success is not inferred from tests, a merge or deployment trigger; deployed revisions and authenticated active-store behavior remain separate evidence.
+
+## 2026-11-07 Task 212
+
+User-assigned Task 212 consolidates original Tasks 246–251 without starting Task 213. Its [implementation](implementation/TASK-212-AI-FAILURE-HANDLING-INTELLIGENCE-REGRESSION.md) and [validation](validation/TASK-212-AI-FAILURE-HANDLING-INTELLIGENCE-REGRESSION.md) records cover bounded failure/deadline contracts, strict output, deterministic safe partial results, canonical repeats, typed long-conversation context, privacy-safe observability and exactly 110 deterministic regression scenarios. This user-assigned number is distinct from the older backlog item 212 already consolidated into Task 204. Local tests, merges, `/ready` and deployment state do not replace authenticated active-store acceptance.

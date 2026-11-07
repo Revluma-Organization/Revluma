@@ -144,6 +144,29 @@ describe("streamRevAnswer", () => {
     expect(rejection.code).toBe("CURRENCY_UNVERIFIED");
   });
 
+  it("distinguishes an initial connection timeout from merchant cancellation", async () => {
+    const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      (init.signal as AbortSignal).addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(streamRevAnswer({ message: "Wait", handlers: {}, timeoutMs: 5, inactivityTimeoutMs: 1000 }))
+      .rejects.toMatchObject({ code: "INTELLIGENCE_TIMEOUT" });
+  });
+
+  it("fails a silent in-flight stream instead of reporting cancellation or success", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          (init.signal as AbortSignal).addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")));
+        },
+      });
+      return new Response(body, { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(streamRevAnswer({ message: "Wait", handlers: {}, timeoutMs: 1000, inactivityTimeoutMs: 5 }))
+      .rejects.toMatchObject({ code: "INTELLIGENCE_TIMEOUT" });
+  });
+
   it("resolves completed:false when the request is aborted", async () => {
     const encoder = new TextEncoder();
     const fetchMock = vi.fn().mockImplementation(async (_url: string, init: RequestInit) => {

@@ -79,10 +79,15 @@ test('investigation contract rejects missing read-only guarantee', () => {
   assert.equal(_validateInvestigationResponse(result), false);
 });
 
-test('investigation contract rejects unauthorised execution claims', () => {
+test('investigation contract quarantines an unauthorised recommendation without trusting it', () => {
   const result = validResult();
   result.recommendations = [{ label: 'Change price', executed: true }];
-  assert.equal(_validateInvestigationResponse(result), false);
+  assert.equal(_validateInvestigationResponse(result), true);
+  assert.deepEqual(result.recommendations, []);
+  assert.match(result.warnings.join(' '), /invalid recommendation was excluded/i);
+  assert.equal(result.reliability.failures[0].category, 'schema_validation_failed');
+  assert.equal(result.read_only, true);
+  assert.equal(result.evidence.items.length, 1);
 });
 
 test('investigation contract rejects monetary evidence without a currency', () => {

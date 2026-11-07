@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 
 logger = logging.getLogger("rev.understanding")
@@ -149,70 +150,71 @@ def understand(message: str, history: list[dict],
         + "\n\nReturn only the JSON object."
     )
 
+    started = time.monotonic()
     try:
         from .model_gateway import generate
-        raw = generate(text_prompt, role="fast", max_tokens=700, timeout=12.0,
-                       image_base64=image_base64, image_media_type=image_media_type)
-
-        parsed = _parse(raw)
-        if parsed:
-            logger.info("understanding_ok", extra={
-                "intent": parsed.intent,
-                "store":  parsed.requires_store_data,
-                "mode":   parsed.response_mode,
-            })
-            return parsed
-
-        logger.warning("understanding_parse_failed")
-        return _safe_fallback(message, history, "parse failed")
+        for attempt in range(2):
+            remaining = 12.0 - (time.monotonic() - started)
+            if remaining <= 0:
+                break
+            prompt = text_prompt if attempt == 0 else text_prompt + "\nThe previous output was invalid. Return one complete JSON object matching every required field and type; no markup or extra text."
+            raw = generate(prompt, role="fast", max_tokens=700, timeout=remaining,
+                           image_base64=image_base64, image_media_type=image_media_type)
+            parsed = _parse(raw)
+            if parsed:
+                logger.info("understanding_ok", extra={
+                    "intent": parsed.intent, "store": parsed.requires_store_data,
+                    "mode": parsed.response_mode, "repair_attempt": attempt,
+                })
+                return parsed
+            logger.warning("understanding_parse_failed attempt=%d", attempt + 1)
+        return _safe_fallback(message, history, "malformed_output")
 
     except Exception as e:
-        logger.warning(
-            "understanding_failed",
-            extra={"error_type": type(e).__name__},
-        )
+        logger.warning("understanding_failed", extra={"error_type": type(e).__name__})
         return _safe_fallback(message, history, type(e).__name__)
 
 
 def _parse(raw: str) -> Understanding | None:
+    """Strict versioned-shape validation; never scavenges JSON from prose."""
     try:
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```(json)?", "", cleaned).strip()
-            cleaned = re.sub(r"```$", "", cleaned).strip()
-        # Grab the first JSON object if the model added stray text
-        brace = cleaned.find("{")
-        if brace > 0:
-            cleaned = cleaned[brace:]
-        last = cleaned.rfind("}")
-        if last != -1:
-            cleaned = cleaned[:last + 1]
-
-        d = json.loads(cleaned)
-        if not isinstance(d, dict) or "intent" not in d:
+        if not isinstance(raw, str):
             return None
-
-        mode = d.get("response_mode", MODE_CONVERSATIONAL)
-        valid_modes = {
-            MODE_CONVERSATIONAL, MODE_DIRECT_ANSWER, MODE_EXPLANATION,
-            MODE_ANALYSIS, MODE_CLARIFICATION, MODE_ACTION_PLAN,
-        }
-        if mode not in valid_modes:
-            mode = MODE_CONVERSATIONAL
-
+        cleaned = raw.strip()
+        fenced = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", cleaned, re.S)
+        if fenced:
+            cleaned = fenced.group(1)
+        if not cleaned.startswith("{") or not cleaned.endswith("}"):
+            return None
+        d = json.loads(cleaned)
+        required = {"intent", "goal", "requires_store_data", "requires_web", "requires_action",
+                    "response_mode", "entities", "domains", "urgency", "confidence"}
+        valid_intents = {"greeting", "casual", "identity", "capability", "knowledge", "strategy",
+                         "diagnosis", "metrics", "recommendation", "action", "web_research", "followup",
+                         "preference", "feedback", "clarification_needed"}
+        valid_modes = {MODE_CONVERSATIONAL, MODE_DIRECT_ANSWER, MODE_EXPLANATION,
+                       MODE_ANALYSIS, MODE_CLARIFICATION, MODE_ACTION_PLAN}
+        if not isinstance(d, dict) or not required.issubset(d):
+            return None
+        if d["intent"] not in valid_intents or d["response_mode"] not in valid_modes:
+            return None
+        if not isinstance(d["goal"], str) or any(not isinstance(d[key], bool) for key in
+                ("requires_store_data", "requires_web", "requires_action")):
+            return None
+        if not isinstance(d["entities"], dict) or not isinstance(d["domains"], list) or \
+                any(not isinstance(domain, str) for domain in d["domains"]):
+            return None
+        if d["urgency"] not in {"low", "medium", "high"} or isinstance(d["confidence"], bool) or \
+                not isinstance(d["confidence"], (int, float)) or not 0 <= d["confidence"] <= 1:
+            return None
         return Understanding(
-            intent=str(d.get("intent", "casual")).lower().strip(),
-            goal=str(d.get("goal", "")),
-            requires_store_data=bool(d.get("requires_store_data", False)),
-            requires_web=bool(d.get("requires_web", False)),
-            requires_action=bool(d.get("requires_action", False)),
-            response_mode=mode,
-            entities=d.get("entities") if isinstance(d.get("entities"), dict) else {},
-            domains=d.get("domains") if isinstance(d.get("domains"), list) else [],
-            urgency=str(d.get("urgency", "low")),
-            confidence=float(d.get("confidence", 0.5)) if isinstance(d.get("confidence"), (int, float)) else 0.5,
+            intent=d["intent"], goal=d["goal"][:300],
+            requires_store_data=d["requires_store_data"], requires_web=d["requires_web"],
+            requires_action=d["requires_action"], response_mode=d["response_mode"],
+            entities=d["entities"], domains=d["domains"][:8], urgency=d["urgency"],
+            confidence=float(d["confidence"]),
         )
-    except Exception:
+    except (ValueError, TypeError, json.JSONDecodeError):
         return None
 
 

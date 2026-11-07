@@ -107,7 +107,11 @@ def test_gemini_network_timeout_reports_safe_error_type(monkeypatch, caplog):
     monkeypatch.setenv("GEMINI_API_KEY", "test-only-secret")
     class FakeClient:
         def __init__(self, **kwargs):
-            assert 0 < kwargs["timeout"] <= 30.0
+                timeout = kwargs["timeout"]
+                assert 0 < timeout.connect <= 5.0
+                assert 0 < timeout.read <= 30.0
+                assert 0 < timeout.write <= 30.0
+                assert 0 < timeout.pool <= 30.0
         def __enter__(self):
             return self
         def __exit__(self, *args):
@@ -117,7 +121,8 @@ def test_gemini_network_timeout_reports_safe_error_type(monkeypatch, caplog):
     monkeypatch.setattr(model_gateway.httpx, "Client", FakeClient)
     with pytest.raises(model_gateway.ModelProviderError) as error:
         model_gateway.generate("private merchant prompt")
-    assert error.value.status == "network"
+    assert error.value.status == "timeout_budget_exhausted"
+    assert error.value.category == "timeout"
     assert "ReadTimeout" in caplog.text
     assert "test-only-secret" not in caplog.text
     assert "private merchant prompt" not in caplog.text
@@ -144,7 +149,8 @@ def test_transient_gemini_503_fails_over_to_approved_gemini_model(monkeypatch):
     assert model_gateway.generate("private merchant question", timeout=10) == "Safe answer"
     assert "gemini-3.5-flash-lite" in requests[0][0]
     assert "gemini-2.5-flash-lite" in requests[1][0]
-    assert requests[0][1] <= 5.1
+    assert requests[0][1].connect <= 5.1
+    assert requests[0][1].read <= 5.1
     assert all("generativelanguage.googleapis.com" in url for url, _ in requests)
 
 
