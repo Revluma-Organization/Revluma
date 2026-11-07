@@ -200,23 +200,35 @@ STORE_INTENTS = {
     INTENT_REFUNDS, INTENT_PRODUCTS, INTENT_FINDINGS, INTENT_TRAFFIC, INTENT_COVERAGE,
 }
 
+# Task 201 — ``integration_health`` runs in every investigation, right after the
+# store gate: its evidence (connection state, per-resource authorization and
+# synchronization, webhook health, overall health) is the validity context for
+# all other claims, and it lets Rev answer "is it connected / healthy / syncing,
+# which resources are accessible, why is a source unavailable".
 INTENT_TOOLS = {
-    INTENT_OVERVIEW: ["store_health", "data_coverage", "revenue_observations",
-                      "order_observations", "cart_observations", "findings"],
-    INTENT_REVENUE: ["store_health", "data_coverage", "revenue_observations",
-                     "order_observations", "cart_observations", "refund_observations"],
-    INTENT_CHECKOUT: ["store_health", "data_coverage", "checkout_observations",
+    INTENT_OVERVIEW: ["store_health", "integration_health", "data_coverage",
+                      "revenue_observations", "order_observations",
+                      "cart_observations", "findings"],
+    INTENT_REVENUE: ["store_health", "integration_health", "data_coverage",
+                     "revenue_observations", "order_observations",
+                     "cart_observations", "refund_observations"],
+    INTENT_CHECKOUT: ["store_health", "integration_health", "data_coverage",
+                      "checkout_observations",
                       "revenue_observations", "traffic_observations"],
-    INTENT_CUSTOMERS: ["store_health", "customer_observations", "order_observations",
+    INTENT_CUSTOMERS: ["store_health", "integration_health", "customer_observations",
+                       "order_observations",
                        "revenue_observations"],
-    INTENT_REFUNDS: ["store_health", "revenue_observations", "order_observations",
+    INTENT_REFUNDS: ["store_health", "integration_health", "revenue_observations",
+                     "order_observations",
                      "refund_observations"],
-    INTENT_FINDINGS: ["store_health", "findings"],
-    INTENT_PRODUCTS: ["store_health", "product_observations", "inventory_observations",
-                      "revenue_observations", "order_observations"],
-    INTENT_TRAFFIC: ["store_health", "traffic_observations", "checkout_observations",
+    INTENT_FINDINGS: ["store_health", "integration_health", "findings"],
+    INTENT_PRODUCTS: ["store_health", "integration_health", "product_observations",
+                      "inventory_observations", "revenue_observations",
+                      "order_observations"],
+    INTENT_TRAFFIC: ["store_health", "integration_health", "traffic_observations",
+                     "checkout_observations",
                      "order_observations"],
-    INTENT_COVERAGE: ["store_health", "data_coverage"],
+    INTENT_COVERAGE: ["store_health", "integration_health", "data_coverage"],
 }
 
 INTENT_DOMAINS = {
@@ -1443,6 +1455,7 @@ def _plan_steps(tools: list[str], labels: dict[str, str]) -> list[dict]:
 
 TOOL_STEP_LABELS = {
     "store_health": "Verifying store connection and sync",
+    "integration_health": "Verifying integration evidence and health",
     "data_coverage": "Checking certified order coverage",
     "revenue_observations": "Retrieving currency-separated revenue evidence",
     "order_observations": "Reviewing order volume and customer mix",
@@ -1767,6 +1780,24 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
     add("open_finding_count", lambda i: (
         "One verified operational finding is open." if i["value"] == 1
         else f"{i['value']} verified operational findings are open."))
+    # Task 201 — the integration's explicit health state is validity context for
+    # every other claim. Only a determined (available) state becomes a fact; the
+    # reason travels with the item's limitations, so the model answers "why is a
+    # source unavailable?" and "does this affect revenue?" from evidence.
+    for item in by_metric.get("integration.health_overall", []):
+        state = str(item.get("value") or "unknown")
+        if state in ("healthy", "verification_pending"):
+            if state == "verification_pending":
+                facts.append(_item_fact(
+                    item, "The Shopify integration just connected and is still "
+                          "being verified; no data is certified yet."))
+            continue
+        limitation = (item.get("limitations") or [""])[0]
+        text = f"The Shopify integration is {state}."
+        if limitation:
+            text += f" {limitation}"
+        facts.append(_item_fact(item, text))
+        break  # one integration verdict, not one per store
     # Two tools can verify the same sentence (order value from revenue and
     # order observations): cite both records under one fact, never repeat it.
     deduped: list[dict] = []
@@ -2083,6 +2114,39 @@ def _verification_answer(*, items: list[dict], window: dict) -> tuple[str, list[
                     return None
         return None
 
+    def _metric_states(metric: str) -> list[str]:
+        return [str(entry.get("value")) for entry in items
+                if entry.get("metric") == metric
+                and entry.get("status") in (STATUS_AVAILABLE, "verified_zero")]
+
+    # Task 201 — canonical integration evidence (explicit states, never a
+    # boolean): connection state, overall health, per-resource problems.
+    connection_states = _metric_states("integration.connection_state")
+    health_states = _metric_states("integration.health_overall")
+    resource_problems: list[tuple[str, str, dict]] = []
+    for entry in items:
+        metric = str(entry.get("metric") or "")
+        if metric.startswith("integration.resource.") \
+                and entry.get("status") in (STATUS_AVAILABLE, "verified_zero"):
+            value = str(entry.get("value") or "")
+            if value != "operational":
+                resource_problems.append((metric.rsplit(".", 1)[-1], value, entry))
+    missing_scope_notes = [
+        str(entry["limitations"][0])
+        for entry in items
+        if str(entry.get("metric") or "").startswith("integration.resource.")
+        and entry.get("value") == "missing_scope"
+        and (entry.get("limitations") or [])
+        and isinstance(entry.get("limitations"), (list, tuple))]
+    syncing_now = sorted({
+        str(entry.get("metric") or "").rsplit(".", 1)[-1]
+        for entry in items
+        if str(entry.get("metric") or "").startswith("integration.resource.")
+        and (entry.get("freshness") or {}).get("state") == "synchronizing"})
+    _PROBLEM_PRIORITY = {"failed": 0, "stale": 1, "missing_scope": 1, "partial": 2,
+                         "never_synchronized": 2, "synchronizing": 3, "unsupported": 4}
+    resource_problems.sort(key=lambda problem: _PROBLEM_PRIORITY.get(problem[1], 9))
+
     connected = _metric_value("connected_store_count")
     synced = _metric_value("stores_with_sync")
     certified = _metric_value("certified_store_count")
@@ -2109,6 +2173,12 @@ def _verification_answer(*, items: list[dict], window: dict) -> tuple[str, list[
             "is disconnected. Try again shortly, or check the Integrations page."
         ), []
     if connected == 0:
+        if connection_states and all(s == "not_installed" for s in connection_states):
+            return (
+                "No — no Shopify store has been installed for this workspace yet, "
+                "so I won't invent store figures. Connect Shopify, complete one "
+                "sync, and I'll start answering from recorded evidence."
+            ), [sync_recommendation]
         return (
             "The store health check found no connected Shopify store for this "
             "workspace, so I won't invent store figures. Connect Shopify and complete "
@@ -2117,29 +2187,138 @@ def _verification_answer(*, items: list[dict], window: dict) -> tuple[str, list[
 
     connection_sentence = ("Yes — your Shopify store is connected." if connected == 1
                            else f"Yes — {connected} Shopify stores are connected.")
+
+    # Task 201 — the explicit integration state is the answer itself for
+    # connection/sync/permission questions. A record existing is never
+    # presented as operational; the verdict comes from the evidence.
+    reconnect_recommendation = {
+        "label": "Reconnect the Shopify store",
+        "why": "The stored credentials stopped being accepted; reconnecting "
+               "refreshes the OAuth grant and restarts synchronization.",
+        "measure": "Connection state and a completed sync.",
+        "executed": False, "evidence_ids": [],
+    }
+    scope_recommendation = {
+        "label": "Reinstall the app with the missing Shopify permissions",
+        "why": "Shopify is rejecting syncs that need permissions this "
+               "installation was not granted.",
+        "measure": "Authorization state per resource.",
+        "executed": False, "evidence_ids": [],
+    }
+    if health_states:
+        severity = {"disconnected": 0, "revoked": 0, "unauthorized": 1,
+                    "attention_required": 2, "partially_operational": 3,
+                    "verification_pending": 4, "degraded": 5, "healthy": 6}
+        worst = min(health_states, key=lambda s: severity.get(s, -1))
+        if worst in ("disconnected", "revoked"):
+            return (
+                f"No — the Shopify integration is {worst}, so I won't quote "
+                "store figures. Reconnect the store, let one sync complete, "
+                "and ask me again."
+            ), [reconnect_recommendation]
+        if worst == "attention_required":
+            return (
+                f"{connection_sentence} But the latest sync evidence shows Shopify "
+                "rejected the stored credentials (connection state: "
+                f"{next((s for s in connection_states if s == 'verification_failed'), 'verification_failed')}). "
+                "Until the store is reconnected I can't verify the data is current."
+            ), [reconnect_recommendation]
+        if worst == "unauthorized":
+            if missing_scope_notes:
+                match = re.search(r"not granted:\s*(.+?)\s*\.?\s*$",
+                                  missing_scope_notes[0])
+                scopes = match.group(1) if match else None
+                return (
+                    f"{connection_sentence} But Shopify authorization is missing for "
+                    f"{scopes or 'required permissions'}, so the affected sources are "
+                    "unavailable and any figures I give are bounded by what is "
+                    "accessible."
+                ), [scope_recommendation]
+            # No recorded-scope gap: the most recent syncs were rejected by
+            # Shopify, which is a credential problem, not a scope problem.
+            return (
+                f"{connection_sentence} But the most recent synchronizations "
+                "were rejected by Shopify, so the affected sources are "
+                "unavailable and any figures I give are bounded by what is "
+                "accessible. Reconnecting the store should resolve it."
+            ), [reconnect_recommendation]
+        if worst == "partially_operational":
+            problems = [f"{rid} ({state})" for rid, state, _ in resource_problems
+                        if state not in ("running", "unsupported")][:3]
+            return (
+                f"{connection_sentence} But part of the integration is not "
+                f"operational: {', '.join(problems) or 'a required capability is unavailable'}. "
+                "Data for those sources may be missing or stale, so figures that "
+                "depend on them are bounded."
+            ), [reconnect_recommendation]
+        if worst == "verification_pending":
+            running = "a synchronization is running now" if syncing_now else \
+                "the first synchronization has not completed"
+            return (
+                f"{connection_sentence} The installation just completed, so {running}. "
+                "Nothing is certified yet; once the sync finishes I can answer "
+                "financial questions from recorded evidence."
+            ), [sync_recommendation]
+        if worst == "unknown":
+            return (
+                f"{connection_sentence} But I could not determine the integration "
+                "health from the recorded evidence — the store record and the sync "
+                "ledger do not agree. Check the Integrations page; I won't claim "
+                "data is current."
+            ), []
+        if worst == "degraded":
+            webhook_states = _metric_states("integration.webhook_health")
+            if "failed" in webhook_states:
+                caveat = ("webhook deliveries are failing, so data between syncs "
+                          "may be missed")
+            elif "unknown" in webhook_states:
+                caveat = ("webhooks are registered but no events were observed "
+                          "recently, so I can't verify events are flowing")
+            elif "not_registered" in webhook_states:
+                caveat = ("no webhooks are registered, so the store relies on "
+                          "scheduled syncs only")
+            else:
+                problems = [f"{rid} ({state})" for rid, state, _ in resource_problems
+                            if state != "unsupported"][:2]
+                caveat = (", ".join(problems) if problems
+                          else "an optional capability is not fully operational")
+                caveat += ", which does not block the core figures"
+            if syncing_now:
+                caveat += (f"; a synchronization is running now ({', '.join(syncing_now[:2])})"
+                           if caveat else
+                           f"a synchronization is running now ({', '.join(syncing_now[:2])})")
+        else:
+            caveat = (f"a synchronization is running now ({', '.join(syncing_now[:2])})"
+                      if syncing_now else "")
+    else:
+        caveat = (f"a synchronization is running now ({', '.join(syncing_now[:2])})"
+                  if syncing_now else "")
+    caveat_text = (f" One caveat: {caveat}." if caveat else "")
     if synced is None:
         return (
-            f"{connection_sentence} I could not verify the sync status, so I can't "
-            "certify any data coverage yet. Try again shortly."
+            f"{connection_sentence}{caveat_text} I could not verify the sync "
+            "status, so I can't certify any data coverage yet. Try again shortly."
         ), []
     if synced == 0:
         return (
-            f"{connection_sentence} The initial sync has not completed yet, so no "
-            "store data is certified. Once the sync finishes I can answer financial "
-            "questions from recorded evidence."
+            f"{connection_sentence}{caveat_text} The initial sync has not completed "
+            "yet, so no store data is certified. Once the sync finishes I can "
+            "answer financial questions from recorded evidence."
         ), [sync_recommendation]
 
     sync_sentence = ("The latest sync completed successfully." if synced == 1
                      else f"{synced} stores completed a sync.")
     if certified:
         return (
-            f"{connection_sentence} {sync_sentence} Order coverage is certified for "
-            f"{period_text}, so I can answer financial questions about that window."
+            f"{connection_sentence} {sync_sentence}{caveat_text} Order coverage is "
+            f"certified for {period_text}, so I can answer financial questions "
+            "about that window."
         ), []
     return (
         f"{connection_sentence} {sync_sentence} One caveat: order coverage is not "
         f"certified for {period_text}, so I won't quote financial totals from that "
         "window yet — certification needs recorded orders inside it."
+        + (f" Also, {caveat}." if caveat else "")
     ), [coverage_recommendation]
 
 
@@ -3024,7 +3203,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     verification_only = (
         intent == INTENT_COVERAGE
         and bool(tool_results_by_name)
-        and set(tool_results_by_name) <= {"store_health", "data_coverage"}
+        and set(tool_results_by_name) <= {"store_health", "integration_health",
+                                          "data_coverage"}
     )
     if verification_only:
         deterministic, recommendations = _verification_answer(items=items, window=window)

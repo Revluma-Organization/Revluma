@@ -32,7 +32,7 @@ Task 202 comparison tests exposed an existing order-evidence AOV mismatch: the e
 - Rev integration: `python/src/agents/tools.py`, `investigation.py`; `Backend/src/services/findingChatContext.js`, `revMerchantContext.js`.
 - Financial measurement compatibility: `python/src/intelligence/order_evidence.py`.
 - Tests: `python/tests/test_task_202_evidence.py`, `test_task_202_evidence_postgres.py`, updated investigation and merchant-context regressions.
-- Records: this report, diagnostic, validation, audit register and REV-DEC-0013.
+- Records: this report, diagnostic, validation, audit register and REV-DEC-0014.
 
 No schema migration, new dependency, merchant action or extra platform was introduced.
 
@@ -43,5 +43,7 @@ No schema migration, new dependency, merchant action or extra platform was intro
 - Backend full runner: **80 test files passed** using the explicitly local, uncommitted Prisma import shim. This is not real Prisma or production database evidence.
 - `npx prisma generate` was attempted and blocked by unreachable `binaries.prisma.sh`; no local generation success is claimed.
 - JavaScript syntax checks and `git diff --check` are required in the final pre-commit gate.
+
+After merging current `main` (Task 201) into this branch and preserving integration-health planning alongside the new finding/product paths, the combined local suites passed: **1677 Python tests, 11 skipped** and **81 Backend test files**. These remain local results.
 
 Local fixtures are synthetic and isolated. They do not certify deployed revisions, live tenant isolation, authenticated Rev behavior or the active Shopify store.
