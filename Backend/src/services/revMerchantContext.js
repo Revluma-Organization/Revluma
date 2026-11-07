@@ -90,8 +90,32 @@ async function buildMerchantContext(prisma, organizationId) {
     samples.push([String(row.resource_id).slice(0, 64), String(row.source_id).slice(0, 160), safeTimestamp(row.synced_at), JSON.stringify(row.payload).slice(0, 360)].join(' | ').slice(0, 620));
     if (samples.length >= 8) break;
   }
+  let evidence = [];
+  let evidenceErrors = [];
+  let evidenceComplete = false;
+  // The canonical contract is additive to the legacy bounded fields during
+  // migration. Python validates and consumes these typed items directly.
+  if (allowedStores.size && prisma.store_sync_domain_states && prisma.commerce_resource_records) {
+    try {
+      const retrieved = await require('./revEvidenceService').retrieveEvidence({
+        organizationId, limit: 2,
+      }, { db: prisma });
+      evidence = retrieved.items;
+      evidenceErrors = retrieved.errors;
+      evidenceComplete = retrieved.complete;
+    } catch (error) {
+      evidenceErrors = [{ code: error.code || 'EVIDENCE_STORAGE_FAILURE' }];
+      evidenceComplete = false;
+    }
+  }
   return {
-    schema_version: 'rev-merchant-context-v2',
+    schema_version: 'rev-merchant-context-v3',
+    evidence_schema_version: require('./revEvidenceContract').EVIDENCE_SCHEMA_VERSION,
+    organization_id: organizationId,
+    store_ids: [...allowedStores],
+    evidence,
+    evidence_errors: evidenceErrors,
+    evidence_complete: evidenceComplete,
     observed_at: new Date().toISOString(),
     // Python's normalizer permits only three nested levels; array entries
     // must be primitive strings rather than nested objects.

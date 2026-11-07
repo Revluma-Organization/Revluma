@@ -22,6 +22,7 @@
 const axios = require('axios');
 const logger = require('../utils/logger');
 const { createSseParser } = require('./revStream');
+const { EVIDENCE_SCHEMA_VERSION, validateEvidenceCollection } = require('./revEvidenceContract');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
 const ML_INTERNAL_KEY = process.env.ML_INTERNAL_KEY;
@@ -1355,7 +1356,15 @@ async function checkPythonHealth() {
 const INVESTIGATION_CONTRACT = 'rev-investigation-v1';
 const STREAM_TIMEOUT_MS = parseInt(process.env.ML_STREAM_TIMEOUT_MS || '120000', 10);
 
-function validateInvestigationResponse(data) {
+function authorizedContextStoreIds(contextPayload) {
+  const context = contextPayload?.merchant_context;
+  if (!context || context.schema_version !== 'rev-merchant-context-v3') return null;
+  const ids = new Set([...(context.store_ids || []), ...(context.evidence?.items || []).flatMap(item => item.store_ids || [])]);
+  for (const store of context.store_health || []) if (store?.store_id) ids.add(store.store_id);
+  return [...ids];
+}
+
+function validateInvestigationResponse(data, organizationId = null, storeIds = null) {
   if (!isPlainObject(data) || data.success === false) return false;
   if (data.read_only !== true) return false;
   if (typeof data.text !== 'string') return false;
@@ -1368,18 +1377,14 @@ function validateInvestigationResponse(data) {
   if (!isPlainObject(investigation.period)) return false;
   const evidence = data.evidence;
   if (!isPlainObject(evidence) || !Array.isArray(evidence.items)) return false;
-  for (const item of evidence.items) {
-    if (!isPlainObject(item)) return false;
-    if (typeof item.id !== 'string' || !item.id.startsWith('ev-')) return false;
-    if (typeof item.metric !== 'string' || !item.metric) return false;
-    if (!['available', 'partial', 'unavailable', 'unsupported'].includes(item.status)) return false;
-    if (item.unit === 'currency' && item.status === 'available') {
-      if (!/^[A-Z]{3}$/.test(String(item.currency || ''))) return false;
-      if (item.value === null || item.value === undefined) return false;
-    }
-  }
+  if (evidence.schema_version !== EVIDENCE_SCHEMA_VERSION) return false;
+  if (!validateEvidenceCollection(evidence.items, { organizationId, storeIds }).valid) return false;
+  const knownIds = new Set(evidence.items.map(item => item.id));
   if (data.facts !== undefined && !Array.isArray(data.facts)) return false;
+  if ((data.facts || []).some(fact => !(fact?.evidence_ids || []).length || fact.evidence_ids.some(id => !knownIds.has(id)))) return false;
   if (data.hypotheses !== undefined && !Array.isArray(data.hypotheses)) return false;
+  if ((data.hypotheses || []).some(hypothesis => hypothesis?.verified === true ||
+    (hypothesis?.basis_evidence_ids || hypothesis?.evidence_ids || []).some(id => !knownIds.has(id)))) return false;
   if (data.unknowns !== undefined && !Array.isArray(data.unknowns)) return false;
   if (data.recommendations !== undefined) {
     if (!Array.isArray(data.recommendations)) return false;
@@ -1413,7 +1418,7 @@ async function investigate({
     correlationId: requestCorrelationId,
   });
   if (!result.success) return result;
-  if (!validateInvestigationResponse(result.data)) {
+  if (!validateInvestigationResponse(result.data, organizationId, authorizedContextStoreIds(contextPayload))) {
     logger.error('rev_investigation_invalid_response', {
       correlationId: requestCorrelationId,
     });
@@ -1520,6 +1525,14 @@ async function streamInvestigation({
       streamError = payload;
       return;
     }
+    if (event === 'evidence') {
+      if (!isPlainObject(payload) || payload.schema_version !== EVIDENCE_SCHEMA_VERSION ||
+          !Array.isArray(payload.items) ||
+          !validateEvidenceCollection(payload.items, { organizationId, storeIds: authorizedContextStoreIds(contextPayload) }).valid) {
+        streamError = { code: ML_ERRORS.INVALID_RESPONSE, message: 'Intelligence service returned invalid evidence.' };
+        return;
+      }
+    }
     if (event === 'cancelled') {
       // The Python orchestrator abandoned the turn because the merchant
       // pressed Stop or the browser went away. That is not a failure and there
@@ -1582,7 +1595,7 @@ async function streamInvestigation({
       },
     };
   }
-  if (!validateInvestigationResponse(finalPayload)) {
+  if (!validateInvestigationResponse(finalPayload, organizationId, authorizedContextStoreIds(contextPayload))) {
     return { success: false, error: { code: ML_ERRORS.INVALID_RESPONSE,
       message: 'Intelligence service returned an invalid response.' } };
   }

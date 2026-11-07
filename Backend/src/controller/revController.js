@@ -90,6 +90,36 @@ function _generateTitle(message) {
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
+// ── Authenticated Rev evidence retrieval ─────────────────────────────────────
+// Tenant identity is resolved exclusively from the verified JWT and membership.
+// Query parameters can narrow that scope, never expand it.
+exports.getEvidence = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    const storeId = req.query?.store_id || null;
+    const resourceId = req.query?.resource_id || null;
+    const evidenceId = req.params?.id || null;
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (storeId && !uuid.test(String(storeId))) return res.status(400).json({ success: false, error: { code: 'INVALID_STORE_REFERENCE' } });
+    if (resourceId && !/^[a-z0-9][a-z0-9._-]{0,119}$/i.test(String(resourceId))) return res.status(400).json({ success: false, error: { code: 'INVALID_RESOURCE_REFERENCE' } });
+    if (evidenceId && !/^ev-[a-f0-9]{24}$/.test(evidenceId)) return res.status(400).json({ success: false, error: { code: 'INVALID_EVIDENCE_REFERENCE' } });
+    const service = require('../services/revEvidenceService');
+    const abort = new AbortController();
+    const cancel = () => abort.abort();
+    req.once('aborted', cancel);
+    res.once('close', cancel);
+    if (evidenceId) {
+      const item = await service.retrieveEvidenceById({ organizationId: org.id, storeId, evidenceId, signal: abort.signal });
+      return res.status(200).json({ success: true, read_only: true, evidence: item });
+    }
+    const result = await service.retrieveEvidence({ organizationId: org.id, storeId, resourceId, limit: req.query?.limit, signal: abort.signal });
+    return res.status(200).json({ success: true, read_only: true, ...result });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, error: { code: error.code || 'EVIDENCE_RETRIEVAL_FAILED', message: error.message } });
+    return next(error);
+  }
+};
+
 // ── POST /api/v1/rev/chat ─────────────────────────────────────────────────────
 
 exports.chat = async (req, res, next) => {

@@ -30,6 +30,7 @@ from ..intelligence.evidence import (
     decimal_value,
     ensure_utc,
     evidence_item,
+    evidence_context,
     group_by_currency,
     iso,
     money,
@@ -61,6 +62,7 @@ class ToolResult:
     data_sources: list[str] = field(default_factory=list)
     row_count: int = 0
     comparison: dict | None = None
+    store_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -72,6 +74,7 @@ class ToolResult:
             "data_sources": self.data_sources,
             "row_count": self.row_count,
             "comparison": self.comparison,
+            "store_ids": self.store_ids,
             "read_only": READ_ONLY,
             "schema_version": EVIDENCE_SCHEMA_VERSION,
         }
@@ -236,6 +239,7 @@ def _revenue(org_id: str, db, params: dict, window: dict) -> ToolResult:
         org_id, db,
         start=datetime.fromisoformat(window["start"].replace("Z", "+00:00")),
         end=datetime.fromisoformat(window["end"].replace("Z", "+00:00")),
+        now=params.get("_now"),
         compare=bool(params.get("compare")),
     )
     return ToolResult(
@@ -741,8 +745,18 @@ def run_tool(tool_name: str, organization_id: str, db: Any, params: dict | None 
         # Undated tools still need an explicit, non-monetary evidence window.
         snapshot = now.replace(microsecond=0)
         window = period(snapshot - timedelta(seconds=1), snapshot)
+    scope_rows, scope_error = safe_query(db, f"""
+        SELECT s.id FROM stores s WHERE {_STORE_FILTER} ORDER BY s.id
+    """, {"org_id": organization_id})
+    if scope_error:
+        return ToolResult(tool_name, "storage_failure", warnings=["authorized_store_scope_query_failed"], data_sources=["stores"])
+    store_ids = [str(_row(row, "id")) for row in scope_rows if _row(row, "id")]
+    if not store_ids:
+        return ToolResult(tool_name, STATUS_UNAVAILABLE, warnings=["no_authorized_store"], data_sources=["stores"])
     try:
-        result = _HANDLERS[tool_name](organization_id, db, params, window)
+        with evidence_context(organization_id, store_ids):
+            result = _HANDLERS[tool_name](organization_id, db, {**params, "_now": now}, window)
+        result.store_ids = store_ids
     except Exception as exc:  # defensive: a tool must never abort the investigation
         logger.warning("rev_tool_failed tool=%s error_type=%s", tool_name, type(exc).__name__)
         result = ToolResult(tool_name, STATUS_UNAVAILABLE,

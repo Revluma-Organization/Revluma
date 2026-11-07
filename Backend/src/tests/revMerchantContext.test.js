@@ -85,7 +85,7 @@ test('authorized snapshots are bounded, fresh, and restricted to selected tenant
     },
   };
   const context = await buildMerchantContext(db, 'org-a');
-  assert.equal(context.schema_version, 'rev-merchant-context-v2');
+  assert.equal(context.schema_version, 'rev-merchant-context-v3');
   assert.match(context.authorized_resources[0], /persisted_records=2/);
   assert.equal(context.authorized_resource_samples.length, 1);
   assert.match(context.authorized_resource_samples[0], /Summer/);

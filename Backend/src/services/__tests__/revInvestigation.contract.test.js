@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const { _validateInvestigationResponse } = require('../mlService');
+const { createEvidence } = require('../revEvidenceContract');
 
 function validResult() {
   return {
@@ -21,10 +22,23 @@ function validResult() {
       steps: [],
     },
     evidence: {
-      items: [{
-        id: 'ev-abc123', metric: 'recorded_order_value', value: '30.31',
-        currency: 'USD', unit: 'currency', status: 'available',
-      }],
+      schema_version: 'rev-evidence-v2',
+      items: [createEvidence({
+        organization_id: '11111111-1111-4111-8111-111111111111',
+        store_id: '22222222-2222-4222-8222-222222222222',
+        store_ids: ['22222222-2222-4222-8222-222222222222'], store_scope: 'store',
+        evidence_type: 'calculation', domain: 'orders', classification: 'deterministic_calculation',
+        metric: 'recorded_order_value', label: 'Recorded order value', value: '30.31',
+        currency: 'USD', unit: 'currency', status: 'available', definition: 'Gross recorded order value.',
+        period: { start: '2026-10-25T12:00:00Z', end: '2026-11-01T12:00:00Z', timezone: 'UTC', semantics: '[start, end)' },
+        source: { system: 'shopify', resource: 'orders', references: [{ source_id: 'order-1', resource: 'orders', sync_run_id: 'run-1' }] },
+        retrieved_at: '2026-11-01T12:00:00Z', computed_at: '2026-11-01T12:00:00Z',
+        coverage: { status: 'complete', complete: true, period_status: 'covered', source: 'orders', note: 'Complete.' },
+        freshness: { state: 'fresh', as_of: '2026-11-01T12:00:00Z', age_seconds: 0, policy: '3600s', note: 'Fresh.' },
+        provenance: { retrieval: 'calculation', transformation: 'Sum totals.', calculation_version: 'v2', lineage: ['order-1'], reproducible: true },
+        measurement: { amount: '30.31', currency: 'USD', interpretation: 'gross', tax: 'included', shipping: 'included', discounts: 'included', refunds: 'excluded', cancellations: 'excluded', numerator: null, denominator: null, formula: 'sum(total_price_set)' },
+        confidence: { level: 'high', score: 0.95, basis: 'Complete.' }, limitations: [],
+      })],
     },
     facts: [],
     hypotheses: [],

@@ -63,7 +63,7 @@ def test_verified_zero_is_not_a_currency_zero():
     count = next(item for item in evidence["items"] if item["metric"] == "recorded_order_count")
     value = next(item for item in evidence["items"] if item["metric"] == "recorded_order_value")
     assert evidence["overall_status"] == "available"
-    assert count["value"] == 0 and count["status"] == "available"
+    assert count["value"] == 0 and count["status"] == "verified_zero"
     assert value["value"] is None and value["currency"] is None
     assert value["status"] == "unsupported"
 

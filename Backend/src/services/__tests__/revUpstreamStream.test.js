@@ -12,8 +12,25 @@ process.env.ML_INTERNAL_KEY = 'test-internal-key';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { streamInvestigation, ML_ERRORS } = require('../mlService');
+const { createEvidence } = require('../revEvidenceContract');
 
 const frame = (event, data) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+
+const evidence = createEvidence({
+  organization_id: '11111111-1111-4111-8111-111111111111', store_id: '44444444-4444-4444-8444-444444444444',
+  store_ids: ['44444444-4444-4444-8444-444444444444'], store_scope: 'store',
+  evidence_type: 'calculation', domain: 'orders', classification: 'deterministic_calculation',
+  metric: 'recorded_order_value', label: 'Recorded order value', value: '1571.90', unit: 'currency', currency: 'USD', status: 'available',
+  definition: 'Sum of recorded non-cancelled order totals.',
+  period: { start: '2026-10-01T00:00:00Z', end: '2026-10-08T00:00:00Z', timezone: 'UTC', semantics: '[start, end)' },
+  source: { system: 'shopify', resource: 'orders', references: [{ source_id: 'order-1', resource: 'orders', sync_run_id: 'run-1' }] },
+  retrieved_at: '2026-10-08T00:00:00Z', computed_at: '2026-10-08T00:00:00Z',
+  coverage: { status: 'complete', complete: true, period_status: 'covered', source: 'orders', note: 'Complete.' },
+  freshness: { state: 'fresh', as_of: '2026-10-08T00:00:00Z', age_seconds: 0, policy: '3600s', note: 'Fresh.' },
+  provenance: { retrieval: 'calculation', transformation: 'Sum totals.', calculation_version: 'v2', lineage: ['order-1'], reproducible: true },
+  measurement: { amount: '1571.90', currency: 'USD', interpretation: 'gross', tax: 'included', shipping: 'included', discounts: 'included', refunds: 'excluded', cancellations: 'excluded', numerator: null, denominator: null, formula: 'sum(total_price_set)' },
+  confidence: { level: 'high', score: 0.95, basis: 'Complete.' }, limitations: [],
+});
 
 const finalPayload = {
   success: true,
@@ -26,15 +43,8 @@ const finalPayload = {
     status: 'complete',
     period: { start: '2026-10-01T00:00:00Z', end: '2026-10-08T00:00:00Z' },
   },
-  evidence: {
-    items: [{
-      id: 'ev-orders-1', metric: 'recorded_order_value', label: 'Recorded order value',
-      value: '1571.90', unit: 'currency', currency: 'USD', status: 'available',
-      period: { start: '2026-10-01T00:00:00Z', end: '2026-10-08T00:00:00Z' },
-      source: 'orders', definition: 'Sum of recorded non-cancelled order totals.',
-    }],
-  },
-  facts: [{ text: 'Recorded order value USD 1571.90', evidence_ids: ['ev-orders-1'] }],
+  evidence: { schema_version: 'rev-evidence-v2', items: [evidence] },
+  facts: [{ text: 'Recorded order value USD 1571.90', evidence_ids: [evidence.id] }],
   recommendations: [{ label: 'Review checkout', why: 'x', measure: 'y', executed: false }],
 };
 
@@ -76,7 +86,7 @@ test('forwards plan/step/evidence frames and returns the validated final payload
   });
 
   assert.equal(result.success, true);
-  assert.equal(result.data.evidence.items[0].id, 'ev-orders-1');
+  assert.equal(result.data.evidence.items[0].id, evidence.id);
   assert.deepEqual(events.map(([event]) => event), ['accepted', 'plan', 'step']);
   assert.equal(events[1][1].steps[0].tool, 'orders_summary');
 
