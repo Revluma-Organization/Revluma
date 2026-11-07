@@ -58,5 +58,9 @@ jobs:
         run: |
           PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -c 'DROP INDEX IF EXISTS idx_carts_store_checkout_id; DROP INDEX IF EXISTS idx_carts_store_checkout_token; DROP INDEX IF EXISTS idx_carts_store_cart_token; ALTER TABLE abandoned_carts DROP COLUMN source_checkout_id, DROP COLUMN source_checkout_token, DROP COLUMN source_cart_token; ALTER TABLE orders DROP COLUMN source_checkout_id, DROP COLUMN source_checkout_token, DROP COLUMN source_cart_token;'
           PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -f prisma/migrations/20261030093000_task028_source_identifiers/migration.sql
+      - name: Apply current checkout/order evidence columns to legacy fixture
+        run: |
+          PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -f prisma/migrations/20261107023000_task199_order_evidence/migration.sql
+          PGPASSWORD=task030_local_only psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U task030 -d task030 -f prisma/migrations/20261107040000_task200_checkout_evidence/migration.sql
       - name: Execute Task030 integration tests
         run: node src/tests/task030DelayedEvents.integration.js
