@@ -2,6 +2,14 @@
 
 // Builds a bounded read-only context from organization-scoped, verified records.
 const { TRUSTED_SOURCE } = require('./intelligenceOrderCoverage');
+const { normalizeCurrency } = require('./financialIntegrity');
+
+function validIanaTimezone(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const candidate = value.trim().slice(0, 64);
+  try { new Intl.DateTimeFormat('en', { timeZone: candidate }); return candidate; }
+  catch { return null; }
+}
 const FINANCIAL_FINDING_TYPES = new Set(['revenue_change', 'order_volume_change', 'returning_customer_change']);
 const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
 function certifiedFinding(finding) {
@@ -108,11 +116,68 @@ async function buildMerchantContext(prisma, organizationId) {
       evidenceComplete = false;
     }
   }
+  const limitations = [
+    'Connection does not prove complete order coverage.',
+    'No verified checkout abandonment rate is available in this context.',
+    'No findings does not prove the store has no issues.',
+    'Authorized resource samples are bounded; use the resource API for complete paginated records and the capability report for exclusions.',
+  ];
+  // Task 198 — merchant reporting timezone + configured currencies.
+  // Priority mirrors the Python intelligence layer: the synced Shopify
+  // profile timezone, then UTC. Stores that configure DIFFERENT timezones
+  // are never silently collapsed: the context says UTC and says why, so
+  // periods resolve on an asserted calendar.
+  let reportingTimezone = 'UTC';
+  let reportingTimezoneSource = 'default_utc';
+  const configuredCurrencies = new Set();
+  const perStoreTimezones = [];
+  if (allowedStores.size) {
+    let profiles = [];
+    if (prisma.store_profiles) {
+      profiles = await prisma.store_profiles.findMany({
+        where: { store_id: { in: [...allowedStores] } },
+        select: { store_id: true, iana_timezone: true, currency_code: true },
+      });
+    }
+    let settingsRows = [];
+    if (prisma.store_settings) {
+      settingsRows = await prisma.store_settings.findMany({
+        where: { store_id: { in: [...allowedStores] } },
+        select: { store_id: true, settings: true },
+      });
+    }
+    const settingsByStore = new Map(settingsRows.map(row => [row.store_id, row.settings]));
+    const profileByStore = new Map(profiles.map(profile => [profile.store_id, profile]));
+    for (const storeId of allowedStores) {
+      const profile = profileByStore.get(storeId) || {};
+      const settings = (settingsByStore.get(storeId) && typeof settingsByStore.get(storeId) === 'object')
+        ? settingsByStore.get(storeId) : {};
+      const settingsTimezone = validIanaTimezone(settings.timezone || settings.store_timezone);
+      const profileTimezone = validIanaTimezone(profile.iana_timezone);
+      const settingsCurrency = normalizeCurrency(settings.currency || settings.store_currency);
+      const profileCurrency = normalizeCurrency(profile.currency_code);
+      if (settingsCurrency) configuredCurrencies.add(settingsCurrency);
+      else if (profileCurrency) configuredCurrencies.add(profileCurrency);
+      perStoreTimezones.push(settingsTimezone || profileTimezone);
+    }
+    const distinct = [...new Set(perStoreTimezones.filter(Boolean))];
+    if (distinct.length === 1) {
+      reportingTimezone = distinct[0];
+      reportingTimezoneSource = 'store_settings_or_profile';
+    } else if (distinct.length > 1) {
+      reportingTimezoneSource = 'utc_conflicting_stores';
+      limitations.push(`Connected stores use different configured timezones (${distinct.join(', ')}); reporting periods use UTC.`);
+    }
+  }
+
   return {
     schema_version: 'rev-merchant-context-v3',
     evidence_schema_version: require('./revEvidenceContract').EVIDENCE_SCHEMA_VERSION,
     organization_id: organizationId,
     store_ids: [...allowedStores],
+    reporting_timezone: reportingTimezone,
+    reporting_timezone_source: reportingTimezoneSource,
+    configured_currencies: [...configuredCurrencies].sort(),
     evidence,
     evidence_errors: evidenceErrors,
     evidence_complete: evidenceComplete,
@@ -133,10 +198,7 @@ async function buildMerchantContext(prisma, organizationId) {
           compactEvidence(f.evidence)].join(' | ').slice(0, 620)),
     authorized_resources: resourceCounts.map(row => [String(row.resource_id).slice(0, 64), `persisted_records=${Number(row._count?._all || 0)}`, `last_synced=${safeTimestamp(row._max?.synced_at)}`].join(' | ')),
     authorized_resource_samples: samples,
-    limitations: ['Connection does not prove complete order coverage.',
-      'No verified checkout abandonment rate is available in this context.',
-      'No findings does not prove the store has no issues.',
-      'Authorized resource samples are bounded; use the resource API for complete paginated records and the capability report for exclusions.'],
+    limitations,
   };
 }
 module.exports = { buildMerchantContext, boundedEvidence, certifiedFinding };

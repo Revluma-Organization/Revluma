@@ -115,6 +115,7 @@ def _persist_execute(db, sql: str, params: dict | None = None, *, scalar: bool =
 DAILY_REVENUE_SQL = """
     SELECT
         DATE(ordered_at AT TIME ZONE 'UTC') as order_date,
+        COALESCE(NULLIF(currency, ''), 'UNKNOWN') as order_currency,
         SUM(total) as daily_revenue,
         COUNT(*) as order_count,
         AVG(total) as avg_order_value
@@ -123,9 +124,68 @@ DAILY_REVENUE_SQL = """
       AND ordered_at >= :cutoff
       AND (recovery_status IS NULL OR recovery_status NOT IN
            ('cancelled', 'canceled', 'voided', 'deleted'))
-    GROUP BY DATE(ordered_at AT TIME ZONE 'UTC')
+    GROUP BY DATE(ordered_at AT TIME ZONE 'UTC'),
+             COALESCE(NULLIF(currency, ''), 'UNKNOWN')
     ORDER BY order_date DESC
 """
+
+def daily_revenue_scalars(rows, *, today, yesterday, seven_days_ago,
+                          fourteen_days_ago) -> dict:
+    """Reduce ``DAILY_REVENUE_SQL`` rows to scalar revenue metrics.
+
+    Currency-safe by construction (Task 198): rows are grouped by currency
+    and a scalar is only produced when exactly one currency is present.
+    Multiple currencies are never summed into one number — the scalars come
+    back ``None`` with ``multi_currency`` set, and the caller degrades to a
+    partial snapshot with an explicit warning.
+
+    Row shape: (order_date, order_currency, daily_revenue, order_count,
+    avg_order_value).
+    """
+    by_currency: dict[str, dict[str, dict]] = {}
+    for row in rows:
+        currency = str(row[1]).upper() if row[1] else "UNKNOWN"
+        by_currency.setdefault(currency, {})[str(row[0])] = {
+            "revenue": Decimal(str(row[2])),
+            "orders": row[3],
+            "aov": Decimal(str(row[4])),
+        }
+    currencies = sorted(by_currency)
+    result = {
+        "currency": currencies[0] if len(currencies) == 1 else None,
+        "currencies": currencies,
+        "multi_currency": len(currencies) > 1,
+        "daily": by_currency.get(currencies[0], {}) if len(currencies) == 1 else {},
+        "revenue_today": None,
+        "revenue_yesterday": None,
+        "revenue_delta_pct": None,
+        "revenue_trend_7d": None,
+    }
+    if len(currencies) > 1:
+        return result
+
+    # Single currency (or no orders): the scalar is safe. An empty order set
+    # records zero, matching the previous behaviour.
+    daily = result["daily"]
+    revenue_today = daily.get(str(today), {}).get("revenue", Decimal("0"))
+    revenue_yesterday = daily.get(str(yesterday), {}).get("revenue", Decimal("0"))
+    revenue_delta_pct = None
+    revenue_trend_7d = None
+    if revenue_yesterday and revenue_yesterday > 0:
+        revenue_delta_pct = float((revenue_today - revenue_yesterday) / revenue_yesterday * 100)
+    # 7d trend: compare last 7 days vs prior 7 days
+    recent_7d = sum(v["revenue"] for k, v in daily.items() if str(seven_days_ago) <= k <= str(today))
+    prior_7d = sum(v["revenue"] for k, v in daily.items() if str(fourteen_days_ago) <= k < str(seven_days_ago))
+    if prior_7d and prior_7d > 0:
+        revenue_trend_7d = float((recent_7d - prior_7d) / prior_7d * 100)
+    result.update({
+        "revenue_today": revenue_today,
+        "revenue_yesterday": revenue_yesterday,
+        "revenue_delta_pct": revenue_delta_pct,
+        "revenue_trend_7d": revenue_trend_7d,
+    })
+    return result
+
 
 SCHEMA_VERSION = "1.1"
 DEFAULT_STALENESS_MINS = 30
@@ -711,6 +771,10 @@ class BusinessState:
     next_rebuild_at: datetime
     cart_delta_pct_vs_avg: float | None = None
     observed_drivers: list[dict] = field(default_factory=list)
+    # The currency of the scalar revenue metrics. None means either "no
+    # orders recorded" or "multiple currencies — scalar suppressed" (see
+    # warnings). Never assume USD.
+    revenue_currency: str | None = None
 
     def is_stale(self) -> bool:
         age_secs = (datetime.now(timezone.utc) - self.generated_at).total_seconds()
@@ -997,12 +1061,13 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     next_rebuild_at = generated_at + next_interval
     staleness_threshold_mins = max(1, int(next_interval.total_seconds() / 60))
 
-    # ── 2. Revenue metrics 
+    # ── 2. Revenue metrics
     revenue_today = None
     revenue_yesterday = None
     revenue_delta_pct = None
     revenue_trend_7d = None
     revenue_anomaly = False
+    revenue_currency: str | None = None
 
     try:
         today = generated_at.date()
@@ -1015,25 +1080,39 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
             {**store_params, "cutoff": fourteen_days_ago},
         ).fetchall()
 
-        daily = {str(r[0]): {"revenue": Decimal(str(r[1])), "orders": r[2], "aov": Decimal(str(r[3]))} for r in rev_result}
-
-        revenue_today = daily.get(str(today), {}).get("revenue", Decimal("0"))
-        revenue_yesterday = daily.get(str(yesterday), {}).get("revenue", Decimal("0"))
-
-        if revenue_yesterday and revenue_yesterday > 0:
-            revenue_delta_pct = float((revenue_today - revenue_yesterday) / revenue_yesterday * 100)
-
-        # 7d trend: compare last 7 days vs prior 7 days
-        recent_7d = sum(v["revenue"] for k, v in daily.items() if str(seven_days_ago) <= k <= str(today))
-        prior_7d  = sum(v["revenue"] for k, v in daily.items() if str(fourteen_days_ago) <= k < str(seven_days_ago))
-        if prior_7d and prior_7d > 0:
-            revenue_trend_7d = float((recent_7d - prior_7d) / prior_7d * 100)
+        # Currency-safe scalars (Task 198): incompatible currencies are never
+        # summed. A single-currency organization keeps the scalar revenue
+        # metrics; a multi-currency one gets no scalar at all (explicit
+        # warning) rather than a fabricated cross-currency total.
+        scalars = daily_revenue_scalars(
+            rev_result,
+            today=today,
+            yesterday=yesterday,
+            seven_days_ago=seven_days_ago,
+            fourteen_days_ago=fourteen_days_ago,
+        )
+        revenue_currency = scalars["currency"]
+        if scalars["multi_currency"]:
+            warnings.append(
+                f"Orders in multiple currencies ({', '.join(scalars['currencies'])}) "
+                "cannot be summed into one scalar; single-currency revenue metrics "
+                "are suppressed. Use the currency-separated revenue evidence.")
+            computation_status = "partial"
+        revenue_today = scalars["revenue_today"]
+        revenue_yesterday = scalars["revenue_yesterday"]
+        revenue_delta_pct = scalars["revenue_delta_pct"]
+        revenue_trend_7d = scalars["revenue_trend_7d"]
+        daily = scalars["daily"]
 
         weekday_baselines = _json_value(baseline.get("day_of_week_baseline"), {})
         weekday_baseline = weekday_baselines.get(str(today.weekday()), {})
         expected_revenue = float(weekday_baseline.get("average_revenue") or 0)
         revenue_stddev = float(weekday_baseline.get("stddev_revenue") or 0)
-        if expected_revenue > 0:
+        if revenue_today is None:
+            # Multi-currency organizations carry no scalar; anomaly detection
+            # on a scalar that does not exist is a fabrication.
+            revenue_anomaly = False
+        elif expected_revenue > 0:
             baseline_delta = abs(float(revenue_today) - expected_revenue)
             revenue_anomaly = (
                 baseline_delta > 2 * revenue_stddev
@@ -1353,6 +1432,7 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
     }
     state_metadata = {
         "warnings": warnings,
+        "revenue_currency": revenue_currency,
         "anomaly_severity": anomaly_severity,
         "root_causes": root_causes,
         "observed_drivers": observed_drivers,
@@ -1689,6 +1769,7 @@ def _build_business_state_unlocked(organization_id: str, db) -> BusinessState:
         next_rebuild_at=next_rebuild_at,
         cart_delta_pct_vs_avg=cart_delta_pct_vs_avg,
         observed_drivers=observed_drivers,
+        revenue_currency=revenue_currency,
     )
 
 
@@ -1845,6 +1926,7 @@ def load_current_business_state(organization_id: str, db) -> BusinessState | Non
             next_rebuild_at=next_rebuild_at,
             cart_delta_pct_vs_avg=source_data.get("cart_delta_pct_vs_avg"),
             observed_drivers=metadata.get("observed_drivers", []) if isinstance(metadata.get("observed_drivers", []), list) else [],
+            revenue_currency=metadata.get("revenue_currency") if isinstance(metadata.get("revenue_currency"), str) else None,
         )
     except Exception as exc:
         logger.exception(

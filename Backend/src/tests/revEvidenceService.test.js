@@ -12,7 +12,9 @@ const NOW = new Date('2026-11-07T12:00:00.000Z');
 const store = (overrides = {}) => ({ id: STORE, organization_id: ORG, status: 'active', last_synced_at: NOW, granted_scopes: 'read_orders', ...overrides });
 const ledger = (overrides = {}) => ({ store_id: STORE, domain: 'orders', status: 'ok', last_succeeded_at: NOW, last_checked_at: NOW, records_discovered: 1, pagination_complete: true, error_code: null, checkpoint: { sync_run_id: 'run-1', reconciliation: { missing: 0, duplicates: 0, mapping_errors: 0 } }, ...overrides });
 const record = (overrides = {}) => ({ store_id: STORE, resource_id: 'orders', source_id: 'order-1', sync_run_id: 'run-1', content_hash: 'hash-1', synced_at: NOW, ...overrides });
-function db({ stores = [store()], ledgers = [ledger()], records = [record()], fail = null } = {}) {
+const orderRow = (overrides = {}) => ({ store_id: STORE, ordered_at: '2026-11-07T10:00:00.000Z', total: '100.00', currency: 'USD', ...overrides });
+const profile = (overrides = {}) => ({ store_id: STORE, currency_code: 'USD', ...overrides });
+function db({ stores = [store()], ledgers = [ledger()], records = [record()], orders = [], profiles = [profile()], fail = null } = {}) {
   const calls = [];
   return {
     calls,
@@ -20,7 +22,9 @@ function db({ stores = [store()], ledgers = [ledger()], records = [record()], fa
       findFirst: async (args) => { calls.push(['store', args]); return stores.find(s => s.id === args.where.id && s.organization_id === args.where.organization_id) || null; },
       findMany: async (args) => { calls.push(['stores', args]); return stores; },
     },
-    store_sync_domain_states: { findMany: async (args) => { if (fail === 'ledger') throw new Error('storage unavailable'); calls.push(['ledgers', args]); return ledgers; } },
+    store_sync_domain_states: { findMany: async (args) => { if (fail === 'ledger') throw new Error('storage unavailable'); calls.push(['ledgers', args]); return ledgers.filter(row => row.store_id === STORE || (args.where.OR && args.where.OR.some(pair => pair.store_id === row.store_id))); } },
+    store_profiles: { findMany: async (args) => { calls.push(['profiles', args]); return profiles.filter(row => args.where.store_id.in.includes(row.store_id)); } },
+    orders: { findMany: async (args) => { if (fail === 'orders') throw new Error('storage unavailable'); calls.push(['orders', args]); return orders.filter(row => row.store_id === args.where.store_id && row.ordered_at >= args.where.ordered_at.gte && row.ordered_at < args.where.ordered_at.lt); } },
     commerce_resource_records: {
       findMany: async (args) => { calls.push(['records', args]); return records; },
       groupBy: async (args) => { if (fail === 'records') throw new Error('storage unavailable'); calls.push(['counts', args]); return records.length ? [{ store_id: STORE, resource_id: 'orders', _count: { _all: records.length }, _max: { synced_at: NOW } }] : []; },
@@ -99,4 +103,116 @@ test('unsupported evidence and errors contain no credentials', async () => {
   const serialized = JSON.stringify(result);
   assert.equal(result.items[0].status, 'unsupported');
   assert.doesNotMatch(serialized, /access_token|password|authorization: bearer/i);
+});
+
+// ── Task 198 — computed revenue resource ─────────────────────────────────────
+
+const PERIOD = { start: '2026-11-01T00:00:00.000Z', end: '2026-11-08T00:00:00.000Z', timezone: 'Africa/Lagos' };
+
+test('revenue sums a single verified currency as a decimal string with measurement', async () => {
+  const result = await retrieveEvidence(query({ resourceId: 'revenue', period: PERIOD }), { db: db({ orders: [orderRow({ total: '100.00' }), orderRow({ total: '25.50' })] }), now: NOW });
+  const item = result.items[0];
+  assert.equal(item.status, 'partial'); // explicit period => partial completeness
+  assert.equal(item.metric, 'revenue.recorded_order_value');
+  assert.equal(item.value, '125.50');
+  assert.equal(item.unit, 'currency');
+  assert.equal(item.currency, 'USD');
+  assert.equal(item.measurement.amount, '125.50');
+  assert.equal(item.measurement.currency, 'USD');
+  assert.equal(item.period.timezone, 'Africa/Lagos');
+  assert.equal(result.complete, false);
+});
+
+test('revenue never sums incompatible currencies into one scalar', async () => {
+  const result = await retrieveEvidence(query({ resourceId: 'revenue', period: PERIOD }), {
+    db: db({ orders: [orderRow({ currency: 'USD', total: '10.00' }), orderRow({ currency: 'NGN', total: '1000.00' })], profiles: [profile({ currency_code: null })] }),
+    now: NOW,
+  });
+  const item = result.items[0];
+  assert.equal(item.status, 'partial');
+  assert.equal(item.value, null);
+  assert.equal(item.classification, 'unknown');
+  assert.match(item.definition, /multiple currencies/i);
+  assert.match(item.definition, /NGN, USD/);
+  // No fabricated cross-currency total anywhere.
+  assert.doesNotMatch(JSON.stringify(result), /1010\.00/);
+});
+
+test('revenue with no orders asserts a labelled currency zero only when certified', async () => {
+  // Default (non-explicit) period + fully certified empty window + known store
+  // currency => an asserted "0.00", not a count zero and not unlabelled.
+  const result = await retrieveEvidence(query({ resourceId: 'revenue' }), { db: db({ orders: [] }), now: NOW });
+  const item = result.items[0];
+  assert.equal(item.status, 'available');
+  assert.equal(item.value, '0.00');
+  assert.equal(item.currency, 'USD');
+  assert.equal(result.complete, true);
+});
+
+test('revenue with no orders and no verified currency is not asserted', async () => {
+  const result = await retrieveEvidence(query({ resourceId: 'revenue', period: PERIOD }), {
+    db: db({ orders: [], profiles: [profile({ currency_code: null })] }), now: NOW,
+  });
+  const item = result.items[0];
+  assert.equal(item.value, null);
+  assert.equal(item.classification, 'unknown');
+  assert.match(item.definition, /no verified currency/i);
+});
+
+test('orders without a verified currency are excluded and reported, never coerced', async () => {
+  const result = await retrieveEvidence(query({ resourceId: 'revenue', period: PERIOD }), {
+    db: db({ orders: [orderRow({ currency: 'USD', total: '10.00' }), orderRow({ currency: 'us', total: '999.00' })] }), now: NOW,
+  });
+  const item = result.items[0];
+  assert.equal(item.status, 'partial');
+  assert.equal(item.currency, 'USD');
+  assert.equal(item.value, '10.00');
+  assert.ok(item.limitations.some(line => /1 order row\(s\) without a verified ISO currency code/i.test(line)));
+});
+
+test('revenue inherits the orders ledger certification and fails closed', async () => {
+  const notSynced = await retrieveEvidence(query({ resourceId: 'revenue', period: PERIOD }), { db: db({ ledgers: [], orders: [orderRow()] }), now: NOW });
+  assert.equal(notSynced.items[0].status, 'not_synchronized');
+  assert.equal(notSynced.items[0].value, null);
+
+  const running = await retrieveEvidence(query({ resourceId: 'revenue', period: PERIOD }), { db: db({ ledgers: [ledger({ status: 'running' })] }), now: NOW });
+  assert.equal(running.items[0].status, 'pending');
+  assert.equal(running.items[0].value, null);
+
+  const partial = await retrieveEvidence(query({ resourceId: 'revenue', period: PERIOD }), { db: db({ ledgers: [ledger({ pagination_complete: false })] }), now: NOW });
+  assert.equal(partial.items[0].status, 'partial');
+  assert.equal(partial.items[0].value, null);
+
+  const unauthorized = await retrieveEvidence(query({ resourceId: 'revenue', period: PERIOD }), { db: db({ stores: [store({ granted_scopes: '' })] }), now: NOW });
+  assert.equal(unauthorized.items[0].status, 'unauthorized');
+  assert.equal(unauthorized.items[0].value, null);
+});
+
+test('revenue respects the requested half-open period and excludes test orders', async () => {
+  const fixture = db({ orders: [
+    orderRow({ ordered_at: '2026-10-31T23:59:59.000Z', total: '1.00' }),   // before start
+    orderRow({ ordered_at: '2026-11-01T00:00:00.000Z', total: '5.00' }),    // start boundary (inclusive)
+    orderRow({ ordered_at: '2026-11-07T23:59:59.000Z', total: '7.00' }),    // inside
+    orderRow({ ordered_at: '2026-11-08T00:00:00.000Z', total: '9.00' }),    // end boundary (exclusive)
+  ] });
+  const result = await retrieveEvidence(query({ resourceId: 'revenue', period: PERIOD }), { db: fixture, now: NOW });
+  assert.equal(result.items[0].value, '12.00');
+  const ordersCall = fixture.calls.find(([kind]) => kind === 'orders');
+  assert.equal(ordersCall[1].where.ordered_at.gte, PERIOD.start);
+  assert.equal(ordersCall[1].where.ordered_at.lt, PERIOD.end);
+});
+
+test('revenue period must be half-open with a valid IANA timezone', async () => {
+  await assert.rejects(
+    () => retrieveEvidence(query({ resourceId: 'revenue', period: { start: '2026-11-08T00:00:00.000Z', end: '2026-11-01T00:00:00.000Z' } }), { db: db(), now: NOW }),
+    (error) => error.code === 'EVIDENCE_PERIOD_INVALID');
+  await assert.rejects(
+    () => retrieveEvidence(query({ resourceId: 'revenue', period: { start: '2026-11-01T00:00:00.000Z', end: '2026-11-08T00:00:00.000Z', timezone: 'Not/A_Zone' } }), { db: db(), now: NOW }),
+    (error) => error.code === 'EVIDENCE_PERIOD_INVALID');
+});
+
+test('period parameters are rejected for snapshot resources, not silently ignored', async () => {
+  await assert.rejects(
+    () => retrieveEvidence(query({ resourceId: 'orders', period: PERIOD }), { db: db(), now: NOW }),
+    (error) => error.code === 'EVIDENCE_PERIOD_UNSUPPORTED');
 });

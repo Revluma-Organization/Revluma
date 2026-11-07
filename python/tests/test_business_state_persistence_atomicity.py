@@ -195,6 +195,7 @@ _SCHEMA = [
         store_id UUID NOT NULL,
         ordered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         total NUMERIC(12,2) NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'USD',
         recovery_status TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )""",

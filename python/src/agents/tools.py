@@ -62,6 +62,7 @@ class ToolResult:
     data_sources: list[str] = field(default_factory=list)
     row_count: int = 0
     comparison: dict | None = None
+    year_over_year: dict | None = None
     store_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -74,6 +75,7 @@ class ToolResult:
             "data_sources": self.data_sources,
             "row_count": self.row_count,
             "comparison": self.comparison,
+            "year_over_year": self.year_over_year,
             "store_ids": self.store_ids,
             "read_only": READ_ONLY,
             "schema_version": EVIDENCE_SCHEMA_VERSION,
@@ -235,12 +237,20 @@ def _data_coverage(org_id: str, db, params: dict, window: dict) -> ToolResult:
 
 
 def _revenue(org_id: str, db, params: dict, window: dict) -> ToolResult:
+    comparison_start = params.get("comparison_start")
+    comparison_end = params.get("comparison_end")
     result = retrieve_revenue_evidence(
         org_id, db,
         start=datetime.fromisoformat(window["start"].replace("Z", "+00:00")),
         end=datetime.fromisoformat(window["end"].replace("Z", "+00:00")),
         now=params.get("_now"),
         compare=bool(params.get("compare")),
+        year_over_year=bool(params.get("year_over_year")),
+        timezone=params.get("timezone") or window.get("timezone") or "UTC",
+        comparison_start=(datetime.fromisoformat(str(comparison_start).replace("Z", "+00:00"))
+                          if comparison_start else None),
+        comparison_end=(datetime.fromisoformat(str(comparison_end).replace("Z", "+00:00"))
+                        if comparison_end else None),
     )
     return ToolResult(
         "revenue_observations",
@@ -248,9 +258,12 @@ def _revenue(org_id: str, db, params: dict, window: dict) -> ToolResult:
         items=result.get("items", []),
         warnings=result.get("warnings", []),
         limitations=result.get("limitations", []),
-        data_sources=["stores", "orders", "intelligence_order_coverage"],
+        data_sources=["stores", "orders", "intelligence_order_coverage",
+                      "order_refunds", "order_transactions",
+                      "store_sync_domain_states"],
         row_count=len(result.get("items", [])),
         comparison=result.get("comparison"),
+        year_over_year=result.get("year_over_year"),
     )
 
 
@@ -658,25 +671,48 @@ def _traffic(org_id: str, db, params: dict, window: dict) -> ToolResult:
 
 
 def _refunds(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    # The schema stores a per-order refunded amount (orders.refunded_total) and
-    # a net order total; individual refund transactions are not stored, so this
-    # tool stays unavailable and says exactly why.
-    item = evidence_item(
-        "refund_adjustment", label="Itemised refund ledger", value=None,
-        unit=UNIT_CURRENCY, window=window, source="orders",
-        status=STATUS_UNAVAILABLE,
-        definition=("Per-order refunded amount stored with the net order total; "
-                    "individual refund transactions are not stored."),
-        limitations=["Refunds are reflected inside persisted net order totals and "
-                     "orders.refunded_total; no per-transaction refund ledger and no "
-                     "aggregate refund total are available."],
-        discriminator="refund-ledger",
+    """Itemised refund-ledger observations (Task 198).
+
+    Delegates to the single revenue-evidence pipeline so tenant scope,
+    window, coverage and refund semantics are identical to the revenue
+    figures: refund money is never computed a second way. The persisted
+    ``order_refunds`` ledger is attributed to the refund date; the
+    per-domain sync ledger decides whether the figure is certified.
+    """
+    result = retrieve_revenue_evidence(
+        org_id, db,
+        start=datetime.fromisoformat(window["start"].replace("Z", "+00:00")),
+        end=datetime.fromisoformat(window["end"].replace("Z", "+00:00")),
+        now=params.get("_now"),
+        compare=False,
+        timezone=params.get("timezone") or window.get("timezone") or "UTC",
     )
-    return ToolResult("refund_observations", STATUS_UNAVAILABLE, items=[item],
-                      warnings=["No itemised refund ledger is available; refund-adjusted "
-                                "order totals and per-order refunded amounts are the only "
-                                "monetary sources."],
-                      data_sources=["orders"], row_count=0)
+    warnings = list(result.get("warnings", []))
+    if result.get("overall_status") == "unavailable":
+        return ToolResult("refund_observations", STATUS_UNAVAILABLE,
+                          warnings=warnings or ["No store scope available."],
+                          data_sources=["stores", "orders", "order_refunds"])
+    refund_items = [item for item in result.get("items", [])
+                    if item["metric"] in ("refund_amount", "refund_amount_window_orders")]
+    if not refund_items:
+        return ToolResult("refund_observations", STATUS_UNAVAILABLE,
+                          warnings=warnings or ["No refund evidence could be retrieved."],
+                          data_sources=["stores", "orders", "order_refunds"])
+    statuses = {item.get("status") for item in refund_items}
+    if statuses <= {STATUS_AVAILABLE, "verified_zero"}:
+        status = STATUS_AVAILABLE
+    elif statuses == {"not_synchronized"}:
+        status = STATUS_UNAVAILABLE
+        warnings.append("The refund ledger has not been synchronized for every "
+                        "store; refund money for this window cannot be reported.")
+    elif statuses <= {STATUS_UNAVAILABLE, STATUS_UNSUPPORTED, "not_synchronized"}:
+        status = STATUS_UNAVAILABLE
+    else:
+        status = STATUS_PARTIAL
+    return ToolResult("refund_observations", status, items=refund_items,
+                      warnings=warnings,
+                      data_sources=["stores", "orders", "order_refunds"],
+                      row_count=len(refund_items))
 
 
 def _findings(org_id: str, db, params: dict, window: dict) -> ToolResult:
@@ -729,7 +765,8 @@ def run_tool(tool_name: str, organization_id: str, db: Any, params: dict | None 
     if not organization_id or not isinstance(organization_id, str):
         raise ToolAuthorizationError("Authenticated organization context is required")
     params = dict(params or {})
-    allowed = {"start", "end", "segment", "compare"}
+    allowed = {"start", "end", "segment", "compare", "timezone",
+               "comparison_start", "comparison_end", "year_over_year"}
     if set(params) - allowed:
         raise ToolAuthorizationError("Unsupported tool parameter")
     now = ensure_utc(now or utc_now(), field="now")
@@ -740,7 +777,8 @@ def run_tool(tool_name: str, organization_id: str, db: Any, params: dict | None 
         if not start or not end:
             raise ToolAuthorizationError("This tool requires an explicit period")
         window = period(datetime.fromisoformat(str(start).replace("Z", "+00:00")),
-                        datetime.fromisoformat(str(end).replace("Z", "+00:00")))
+                        datetime.fromisoformat(str(end).replace("Z", "+00:00")),
+                        timezone_label=params.get("timezone") or "UTC")
     else:
         # Undated tools still need an explicit, non-monetary evidence window.
         snapshot = now.replace(microsecond=0)
