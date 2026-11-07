@@ -9,8 +9,13 @@ let writes = 0;
 let queries = [];
 let nested = null;
 let orderPayloads = [];
+let checkoutPayloads = [];
 const graphqlPath = require.resolve('../services/shopifyGraphql');
 const commercePath = require.resolve('../services/commerceWebhookService');
+const databasePath = require.resolve('../configs/database');
+require.cache[databasePath] = { id: databasePath, filename: databasePath, loaded: true, exports: {
+  prisma: { abandoned_carts: { updateMany: async () => ({ count: 0 }) } },
+} };
 require.cache[graphqlPath] = { id: graphqlPath, filename: graphqlPath, loaded: true, exports: {
   shopifyGraphql: async (_store, query) => {
     queries.push(query);
@@ -21,7 +26,7 @@ require.cache[graphqlPath] = { id: graphqlPath, filename: graphqlPath, loaded: t
 } };
 require.cache[commercePath] = { id: commercePath, filename: commercePath, loaded: true, exports: {
   upsertOrder: async (_store, _provider, payload) => { writes++; orderPayloads.push(payload); }, cancelOrder: async () => { writes++; },
-  upsertAbandonedCart: async () => { writes++; return null; },
+  upsertAbandonedCart: async (_store, payload) => { writes++; checkoutPayloads.push(payload); return null; },
 } };
 const { syncOrders, syncAbandonedCheckouts, completeLineItems } = require('../services/shopifySync');
 const terminal = nodes => ({ nodes, pageInfo: { hasNextPage: false, endCursor: null } });
@@ -40,8 +45,8 @@ for (const [name, sync, key] of [['orders', syncOrders, 'orders'], ['checkouts',
   test(`${name} fails closed before persistence for a malformed child page`, async () => {
     writes = 0; queries = [];
     response = { [key]: terminal([
-      { lineItems: terminal([]) },
-      { lineItems: { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'more' } } },
+      { id: 'parent-1', lineItems: terminal([]) },
+      { id: 'parent-2', lineItems: { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'more' } } },
     ]) };
     await assert.rejects(sync(store), { code: 'SHOPIFY_LINE_ITEMS_INCOMPLETE' });
     assert.equal(writes, 0);
@@ -49,7 +54,7 @@ for (const [name, sync, key] of [['orders', syncOrders, 'orders'], ['checkouts',
   });
   test(`${name} does not persist when child pageInfo is absent`, async () => {
     writes = 0;
-    response = { [key]: terminal([{ lineItems: { nodes: [] } }]) };
+    response = { [key]: terminal([{ id: 'parent-1', lineItems: { nodes: [] } }]) };
     await assert.rejects(sync(store), { code: 'SHOPIFY_LINE_ITEMS_INCOMPLETE' });
     assert.equal(writes, 0);
   });
@@ -116,4 +121,74 @@ test('order sync makes no writes if the parent changes during child pagination',
   nested = { node: { id, updatedAt: '2026-10-02T00:00:00Z', lineItems: terminal([]) } };
   await assert.rejects(syncOrders(store), { code: 'SHOPIFY_LINE_ITEMS_INCOMPLETE' });
   assert.equal(writes, 0);
+});
+
+
+// The acquisition DTO uses discounted_total; commerceWebhookService maps it to line_total.
+test('order sync preserves source lifecycle and historical variant pricing without assuming fulfilledQuantity', async () => {
+  writes = 0; orderPayloads = []; queries = [];
+  const id = 'gid://shopify/Order/199';
+  response = { orders: terminal([{
+    id, name: '#199', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z',
+    processedAt: '2026-10-01T00:01:00Z', displayFinancialStatus: 'PARTIALLY_REFUNDED',
+    displayFulfillmentStatus: 'PARTIALLY_FULFILLED',
+    lineItems: terminal([{
+      id: 'gid://shopify/LineItem/199', name: 'Historical jacket', quantity: 4,
+      unfulfilledQuantity: 1, currentQuantity: 3, sku: 'J-BLUE-L', variantTitle: 'Blue / L',
+      product: { id: 'gid://shopify/Product/1', title: 'Renamed jacket' },
+      variant: { id: 'gid://shopify/ProductVariant/2', title: 'Blue / L', sku: 'J-BLUE-L' },
+      originalUnitPriceSet: { shopMoney: { amount: '50.00', currencyCode: 'USD' } },
+      discountedUnitPriceSet: { shopMoney: { amount: '40.00', currencyCode: 'USD' } },
+      originalTotalSet: { shopMoney: { amount: '200.00', currencyCode: 'USD' } },
+      discountedTotalSet: { shopMoney: { amount: '160.00', currencyCode: 'USD' } },
+      discountAllocations: [{ allocatedAmountSet: { shopMoney: { amount: '40.00', currencyCode: 'USD' } } }],
+    }]),
+  }]) };
+  assert.equal(await syncOrders(store), 1);
+  const payload = orderPayloads[0];
+  const line = payload.line_items[0];
+  assert.equal(payload.name, '#199');
+  assert.equal(payload.updated_at, '2026-10-02T00:00:00Z');
+  assert.equal(line.fulfilled_quantity, 3);
+  assert.equal(line.remaining_quantity, 1);
+  assert.equal(line.variant_title, 'Blue / L');
+  assert.equal(line.original_total, 200);
+  assert.equal(line.discount_amount, 40);
+  assert.equal(line.discounted_total, 160);
+  assert.doesNotMatch(queries.find(query => query.includes('query Orders')), /\sfulfilledQuantity\s/);
+});
+
+test('checkout acquisition preserves source lifecycle, financials and historical variant evidence', async () => {
+  writes = 0; checkoutPayloads = []; queries = [];
+  const amount = value => ({ shopMoney: { amount: value, currencyCode: 'USD' } });
+  response = { abandonedCheckouts: terminal([{
+    id: 'gid://shopify/AbandonedCheckout/123', name: '#CHECKOUT-1',
+    createdAt: '2026-10-31T10:00:00Z', updatedAt: '2026-10-31T10:05:00Z', completedAt: null,
+    subtotalPriceSet: amount('100.00'), totalDiscountsSet: amount('10.00'),
+    totalTaxSet: amount('9.00'), totalDutiesSet: amount('2.00'),
+    totalPriceSet: amount('101.00'), taxesIncluded: false,
+    lineItems: terminal([{ id: 'line-1', title: 'Historical product', variantTitle: 'Old size', sku: 'OLD-SKU',
+      quantity: 2, product: { id: 'gid://shopify/Product/1' }, variant: { id: 'gid://shopify/ProductVariant/2' },
+      originalUnitPriceSet: amount('50.00'), discountedUnitPriceSet: amount('45.00'),
+      originalTotalPriceSet: amount('100.00'), discountedTotalPriceWithCodeDiscount: amount('90.00') }]),
+  }]) };
+  const report = {};
+  assert.equal(await syncAbandonedCheckouts(store, report), 1);
+  const payload = checkoutPayloads[0];
+  assert.equal(payload.source_abandoned, true);
+  assert.equal(payload.source_resource, 'abandonedCheckouts');
+  assert.equal(payload.name, '#CHECKOUT-1');
+  assert.equal(payload.subtotal_price, 100);
+  assert.equal(payload.discount_amount, 10);
+  assert.equal(payload.tax_amount, 9);
+  assert.equal(payload.duties_amount, 2);
+  assert.equal(payload.shipping_amount, null);
+  assert.equal(payload.line_items[0].sku, 'OLD-SKU');
+  assert.equal(payload.line_items[0].original_total, 100);
+  assert.equal(payload.line_items[0].discounted_total, 90);
+  assert.equal(payload.line_items[0].discount_amount, 10);
+  assert.equal(report.scopeVerified, true);
+  assert.equal(report.reconciliationComplete, true);
+  assert.match(queries.find(query => query.includes('abandonedCheckouts')), /completedAt/);
+  assert.match(queries.find(query => query.includes('abandonedCheckouts')), /discountedTotalPriceWithCodeDiscount/);
 });

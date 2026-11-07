@@ -27,6 +27,11 @@ test('new and active checkouts stay pending', () => {
   assert.equal(nextCheckoutStatus({}), 'pending');
   assert.equal(nextCheckoutStatus({ existingStatus: 'abandoned' }), 'pending');
 });
+test('only explicit source abandonment permits the abandoned transition', () => {
+  assert.equal(nextCheckoutStatus({ sourceAbandoned: false }), 'pending');
+  assert.equal(nextCheckoutStatus({ sourceAbandoned: true }), 'abandoned');
+  assert.equal(nextCheckoutStatus({ completedAt: now.toISOString(), sourceAbandoned: true }), 'recovered');
+});
 test('completed checkouts remain recovered even after late webhook events', () => {
   assert.equal(nextCheckoutStatus({ completedAt: now.toISOString() }), 'recovered');
   assert.equal(nextCheckoutStatus({ existingStatus: 'recovered' }), 'recovered');

@@ -8,7 +8,7 @@ const { getRedisClient, isRedisReady } = require('../configs/redis');
 const { shopifyGraphqlOrderTotals } = require('./shopifyOrderFinancials');
 const { FEATURE_FIELDS, runPredictionChain } = require('./featureWorkerService');
 const { syncProducts } = require('./productSync');
-const { beginAttempt, recordSuccess, recordFailure, recordDegraded, domainForSetupStage } = require('./syncDomainState');
+const { beginAttempt, recordSuccess, recordFailure, recordDegraded, mergeCheckpoint, domainForSetupStage } = require('./syncDomainState');
 
 const PAGE_SIZE = 100;
 const MAX_SYNC_PAGES = 100; // Explicit cap: never report a partial import as successful.
@@ -58,6 +58,7 @@ function nextConnectionCursor(connection, previousCursor, rootName) {
 
 async function fetchConnection(store, query, rootName, fetchPage = shopifyGraphql) {
   const nodes = [];
+  const sourceIds = new Set();
   let cursor = null;
   let pages = 0;
   const seenCursors = new Set();
@@ -73,9 +74,18 @@ async function fetchConnection(store, query, rootName, fetchPage = shopifyGraphq
       throw new Error(`shopify_${rootName}_pagination_stalled`);
     }
     if (nextCursor) seenCursors.add(nextCursor);
-    nodes.push(...connection.nodes);
+    for (const node of connection.nodes) {
+      const id = externalId(node?.id);
+      if (!id) throw Object.assign(new Error(`shopify_${rootName}_identity_missing`), { code: 'SHOPIFY_SOURCE_IDENTITY_INVALID' });
+      if (sourceIds.has(id)) {
+        throw Object.assign(new Error(`shopify_${rootName}_duplicate_record`), { code: 'SHOPIFY_SOURCE_DUPLICATE_RECORD' });
+      }
+      sourceIds.add(id);
+      nodes.push(node);
+    }
     cursor = nextCursor;
   } while (cursor);
+  Object.defineProperty(nodes, 'pagesCompleted', { value: pages, enumerable: false });
   return nodes;
 }
 
@@ -130,8 +140,8 @@ async function syncCustomers(store) {
 async function completeLineItems(store, records, type, graphql = shopifyGraphql) {
   if (!['Order', 'AbandonedCheckout'].includes(type)) throw new Error('Unsupported Shopify parent type');
   const fields = type === 'Order'
-    ? 'id name quantity product { id } variant { id } originalUnitPriceSet { shopMoney { amount currencyCode } }'
-    : 'id title quantity product { id } variant { id } originalUnitPriceSet { shopMoney { amount currencyCode } }';
+    ? 'id name quantity unfulfilledQuantity currentQuantity sku variantTitle product { id title } variant { id title sku } originalUnitPriceSet { shopMoney { amount currencyCode } } discountedUnitPriceSet { shopMoney { amount currencyCode } } originalTotalSet { shopMoney { amount currencyCode } } discountedTotalSet { shopMoney { amount currencyCode } } discountAllocations { allocatedAmountSet { shopMoney { amount currencyCode } } }'
+    : 'id title variantTitle sku quantity product { id } variant { id } originalUnitPriceSet { shopMoney { amount currencyCode } }';
   const query = `query RevlumaNestedLines($id: ID!, $first: Int!, $after: String!) {
     node(id: $id) { id ... on ${type} { updatedAt lineItems(first: $first, after: $after) {
       nodes { ${fields} } pageInfo { hasNextPage endCursor }
@@ -182,11 +192,17 @@ function orderPayload(order) {
   const totals = shopifyGraphqlOrderTotals(order);
   return {
     id: externalId(order.id),
+    name: order.name || null,
     checkout_token: order.checkoutToken || null,
     cart_token: order.cartToken || null,
     created_at: order.createdAt,
+    updated_at: order.updatedAt || null,
+    processed_at: order.processedAt || null,
+    closed_at: order.closedAt || null,
     cancelled_at: order.cancelledAt,
+    cancel_reason: order.cancelReason || null,
     financial_status: order.displayFinancialStatus,
+    fulfillment_status: order.displayFulfillmentStatus || null,
     total_price: totals.net,
     total_refunded: totals.refunded,
     // currentTotalPriceSet is already refund-adjusted, so the webhook normaliser
@@ -209,8 +225,21 @@ function orderPayload(order) {
       product_id: externalId(item.product?.id),
       variant_id: externalId(item.variant?.id),
       title: item.name,
+      variant_title: item.variantTitle || item.variant?.title || null,
+      sku: item.sku || item.variant?.sku || null,
       quantity: item.quantity,
+      fulfilled_quantity: Number.isInteger(item.quantity) && Number.isInteger(item.unfulfilledQuantity)
+        ? Math.max(0, item.quantity - item.unfulfilledQuantity) : null,
+      remaining_quantity: Number.isInteger(item.unfulfilledQuantity) ? item.unfulfilledQuantity : null,
       price: money(item.originalUnitPriceSet),
+      discounted_price: money(item.discountedUnitPriceSet),
+      original_total: money(item.originalTotalSet),
+      discounted_total: money(item.discountedTotalSet),
+      discount_amount: (item.discountAllocations || []).reduce((sum, allocation) => {
+        const amount = money(allocation.allocatedAmountSet);
+        return amount === null ? sum : sum + amount;
+      }, 0),
+      currency: item.originalUnitPriceSet?.shopMoney?.currencyCode || null,
     })),
   };
 }
@@ -257,7 +286,8 @@ async function syncOrders(store) {
     query Orders($first: Int!, $after: String) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         nodes {
-          id checkoutToken cartToken createdAt updatedAt cancelledAt displayFinancialStatus discountCodes
+          id name checkoutToken cartToken createdAt updatedAt processedAt closedAt cancelledAt cancelReason
+          displayFinancialStatus displayFulfillmentStatus discountCodes
           currentTotalPriceSet { shopMoney { amount currencyCode } }
           totalPriceSet { shopMoney { amount currencyCode } }
           totalRefundedSet { shopMoney { amount currencyCode } }
@@ -266,8 +296,13 @@ async function syncOrders(store) {
           customer { id email firstName lastName phone }
           lineItems(first: 250) {
             nodes {
-              id name quantity product { id } variant { id }
+              id name quantity unfulfilledQuantity currentQuantity sku variantTitle
+              product { id title } variant { id title sku }
               originalUnitPriceSet { shopMoney { amount currencyCode } }
+              discountedUnitPriceSet { shopMoney { amount currencyCode } }
+              originalTotalSet { shopMoney { amount currencyCode } }
+              discountedTotalSet { shopMoney { amount currencyCode } }
+              discountAllocations { allocatedAmountSet { shopMoney { amount currencyCode } } }
             }
             pageInfo { hasNextPage endCursor }
           }
@@ -324,11 +359,20 @@ function abandonedPayload(checkout) {
   return {
     id: externalId(checkout.id),
     checkout_id: checkout.id || null,
+    name: checkout.name || null,
+    source_resource: 'abandonedCheckouts',
+    source_abandoned: true,
     created_at: checkout.createdAt,
     updated_at: checkout.updatedAt,
     completed_at: checkout.completedAt,
     abandoned_checkout_url: checkout.abandonedCheckoutUrl,
     total_price: money(checkout.totalPriceSet),
+    subtotal_price: money(checkout.subtotalPriceSet),
+    discount_amount: money(checkout.totalDiscountsSet),
+    tax_amount: money(checkout.totalTaxSet),
+    duties_amount: money(checkout.totalDutiesSet),
+    shipping_amount: null, // Not exposed by Shopify's AbandonedCheckout object.
+    taxes_included: typeof checkout.taxesIncluded === 'boolean' ? checkout.taxesIncluded : null,
     currency: checkout.totalPriceSet?.shopMoney?.currencyCode ?? null,
     customer: checkout.customer ? {
       id: externalId(checkout.customer.id),
@@ -342,24 +386,42 @@ function abandonedPayload(checkout) {
       product_id: externalId(item.product?.id),
       variant_id: externalId(item.variant?.id),
       title: item.title || item.name || 'Unknown product',
+      variant_title: item.variantTitle || null,
+      sku: item.sku || null,
       quantity: item.quantity,
       price: money(item.originalUnitPriceSet),
+      discounted_price: money(item.discountedUnitPriceSet),
+      original_total: money(item.originalTotalPriceSet),
+      discounted_total: money(item.discountedTotalPriceWithCodeDiscount),
+      discount_amount: [money(item.originalTotalPriceSet), money(item.discountedTotalPriceWithCodeDiscount)].every(value => value !== null)
+        ? Number((money(item.originalTotalPriceSet) - money(item.discountedTotalPriceWithCodeDiscount)).toFixed(2)) : null,
+      currency: item.originalUnitPriceSet?.shopMoney?.currencyCode || null,
     })),
   };
 }
 
-async function syncAbandonedCheckouts(store) {
+async function syncAbandonedCheckouts(store, report = {}) {
+  // Shopify's 2026-10 AbandonedCheckout object requires read_orders and the
+  // merchant's manage_abandoned_checkouts permission, not a scope assumption.
+  await verifyOrderReadScope(store);
   const query = `
     query AbandonedCheckouts($first: Int!, $after: String) {
       abandonedCheckouts(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         nodes {
-          id createdAt updatedAt completedAt abandonedCheckoutUrl
+          id name createdAt updatedAt completedAt abandonedCheckoutUrl taxesIncluded
           totalPriceSet { shopMoney { amount currencyCode } }
+          subtotalPriceSet { shopMoney { amount currencyCode } }
+          totalDiscountSet { shopMoney { amount currencyCode } }
+          totalTaxSet { shopMoney { amount currencyCode } }
+          totalDutiesSet { shopMoney { amount currencyCode } }
           customer { id email firstName lastName phone }
           lineItems(first: 250) {
             nodes {
-              id title quantity product { id } variant { id }
+              id title variantTitle sku quantity product { id } variant { id }
               originalUnitPriceSet { shopMoney { amount currencyCode } }
+              discountedUnitPriceSet { shopMoney { amount currencyCode } }
+              originalTotalPriceSet { shopMoney { amount currencyCode } }
+              discountedTotalPriceWithCodeDiscount { shopMoney { amount currencyCode } }
             }
             pageInfo { hasNextPage endCursor }
           }
@@ -375,32 +437,6 @@ async function syncAbandonedCheckouts(store) {
     const payload = abandonedPayload(checkout);
     const cart = await upsertAbandonedCart(store, payload);
     if (!cart) continue;
-    await prisma.$transaction(async (tx) => {
-      if (payload.line_items.length) {
-        const validatedItems = payload.line_items.map((item) => {
-          const price = Number(item.price);
-          const quantity = Number(item.quantity);
-          if (!Number.isFinite(price) || price < 0 || !Number.isInteger(quantity) || quantity < 1) {
-            logger.warn('shopify_checkout_item_financials_unverified', {
-              store_id: store.id, checkout_id: externalId(checkout.id),
-            });
-            return null;
-          }
-          return {
-            abandoned_cart_id: cart.id,
-            external_product_id: item.product_id || 'unknown',
-            external_variant_id: item.variant_id || null,
-            product_name: item.title,
-            price,
-            quantity,
-          };
-        }).filter(Boolean);
-        if (validatedItems.length) {
-          await tx.abandoned_cart_items.deleteMany({ where: { abandoned_cart_id: cart.id } });
-          await tx.abandoned_cart_items.createMany({ data: validatedItems });
-        }
-      }
-    });
     logger.info('shopify_checkout_sync_processing', { store_id: store.id, checkout_id: externalId(checkout.id), stage: 'persisted' });
     if (cart.customer_id && cart.status === 'abandoned') {
       const snapshot = await prisma.ml_session_features.findFirst({
@@ -430,7 +466,26 @@ async function syncAbandonedCheckouts(store) {
       }
     }
   }
-  logger.info('shopify_checkout_sync_batch_completed', { store_id: store.id, count: checkouts.length });
+  const sourceIds = checkouts.map(checkout => externalId(checkout.id));
+  const unavailable = await prisma.abandoned_carts.updateMany({
+    where: {
+      store_id: store.id, source_resource: 'abandonedCheckouts',
+      ...(sourceIds.length ? { external_cart_id: { notIn: sourceIds } } : {}),
+    },
+    data: { source_state: 'unavailable', retrieved_at: new Date() },
+  });
+  Object.assign(report, {
+    pagesCompleted: checkouts.pagesCompleted,
+    discovered: checkouts.length,
+    unavailable: unavailable.count,
+    oldestSourceCreatedAt: checkouts.length ? checkouts[checkouts.length - 1].createdAt : null,
+    newestSourceCreatedAt: checkouts.length ? checkouts[0].createdAt : null,
+    unfilteredRoot: true,
+    nestedComplete: true,
+    scopeVerified: true,
+    reconciliationComplete: true,
+  });
+  logger.info('shopify_checkout_sync_batch_completed', { store_id: store.id, count: checkouts.length, source_unavailable: unavailable.count });
   return checkouts.length;
 }
 
@@ -611,8 +666,19 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
     setupStage = 'abandoned_checkout_sync';
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'started' });
     await beginAttempt(store.id, 'abandoned_checkouts');
-    const abandoned = await syncAbandonedCheckouts(store);
-    await recordSuccess(store.id, 'abandoned_checkouts', { discovered: abandoned, inserted: abandoned, paginationComplete: true });
+    const checkoutReport = {};
+    const abandoned = await syncAbandonedCheckouts(store, checkoutReport);
+    await recordSuccess(store.id, 'abandoned_checkouts', {
+      discovered: abandoned, inserted: abandoned, paginationComplete: true,
+      pagesCompleted: checkoutReport.pagesCompleted,
+    });
+    await mergeCheckpoint(store.id, 'abandoned_checkouts', {
+      source_resource: 'abandonedCheckouts', unfiltered_root: true,
+      nested_complete: true, scope_verified: true, reconciliation_complete: true,
+      oldest_source_created_at: checkoutReport.oldestSourceCreatedAt,
+      newest_source_created_at: checkoutReport.newestSourceCreatedAt,
+      source_unavailable: checkoutReport.unavailable,
+    });
     logger.info('shopify_setup_stage', { store_id: store.id, stage: setupStage, outcome: 'completed', count: abandoned });
     await prisma.stores.update({
       where: { id: store.id },

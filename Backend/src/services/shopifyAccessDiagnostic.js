@@ -20,6 +20,8 @@ const { shopifyGraphql } = require('./shopifyGraphql');
 const logger = require('../utils/logger');
 
 const SCOPES_QUERY = 'query RevlumaDiagnosticScopes { currentAppInstallation { accessScopes { handle } } }';
+// read_orders authorizes the AbandonedCheckout GraphQL resource. read_checkouts
+// remains required by the app's broader checkout/webhook integration.
 const REQUIRED_SCOPES = ['read_products', 'read_orders', 'read_customers', 'read_inventory', 'read_checkouts'];
 
 const PROBE_QUERIES = Object.freeze({

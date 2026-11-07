@@ -14,9 +14,12 @@ function isCheckoutInactive(updatedAt, now = new Date()) {
     now.getTime() - activity.getTime() >= ABANDONMENT_INACTIVITY_MS;
 }
 
-function nextCheckoutStatus({ completedAt, existingStatus, isStale }) {
+function nextCheckoutStatus({ completedAt, existingStatus, isStale, sourceAbandoned }) {
   if (completedAt || existingStatus === 'recovered') return 'recovered';
   if (isStale) return existingStatus || 'pending';
+  // Only Shopify's abandonedCheckouts resource proves abandonment. Age alone
+  // remains inactivity, never a lifecycle classification.
+  if (sourceAbandoned) return 'abandoned';
   return 'pending';
 }
 
