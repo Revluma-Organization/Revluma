@@ -12,6 +12,10 @@ let orderPayloads = [];
 let checkoutPayloads = [];
 const graphqlPath = require.resolve('../services/shopifyGraphql');
 const commercePath = require.resolve('../services/commerceWebhookService');
+const databasePath = require.resolve('../configs/database');
+require.cache[databasePath] = { id: databasePath, filename: databasePath, loaded: true, exports: {
+  abandoned_carts: { updateMany: async () => ({ count: 0 }) },
+} };
 require.cache[graphqlPath] = { id: graphqlPath, filename: graphqlPath, loaded: true, exports: {
   shopifyGraphql: async (_store, query) => {
     queries.push(query);
