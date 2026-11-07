@@ -999,7 +999,7 @@ async def internal_feature_compute(req: FeatureComputeRequest) -> dict:
             req.session_events,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail={"code": "SCHEMA_VALIDATION_FAILED", "message": "The intelligence response failed contract validation."}) from exc
     except Exception as exc:
         logger.error(
             "feature_compute_failed",

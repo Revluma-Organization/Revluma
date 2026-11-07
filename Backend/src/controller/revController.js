@@ -25,6 +25,7 @@ const logger            = require('../utils/logger');
 const { formatSseFrame } = require('../services/revStream');
 const { safePersistedNarrative } = require('../services/revClaimGuardrails');
 const { retryabilityForError, investigationOutcomeFromTransportError } = require('../services/revInvestigationOutcomes');
+const { withTimeout, TIMEOUT_POLICY_MS } = require('../services/revFailureContract');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -357,10 +358,9 @@ exports.chat = async (req, res, next) => {
         insight:        revData.insight,
         implication:    revData.implication,
         recommendation: revData.recommendation,
-        confidence: {
-          score: revData.confidence_score ?? 0.7,
-          basis: revData.confidence_basis || '',
-        },
+        confidence: revData.response?.confidence || null,
+        sections: revData.response?.sections || [],
+        response_profile: revData.response_profile || null,
         actions:     revData.actions     || [],
         agents_used: revData.agents_used || [],
         warnings:    revData.warnings    || [],
@@ -380,6 +380,9 @@ exports.chat = async (req, res, next) => {
         question_understanding: mlResult.data?.question_understanding || null,
         orchestration: mlResult.data?.orchestration || null,
         selected_finding: mlResult.data?.selected_finding || null,
+        claims: mlResult.data?.claims || [],
+        consistency: mlResult.data?.consistency || null,
+        reliability: mlResult.data?.reliability || null,
       };
     }
 
@@ -396,7 +399,7 @@ exports.chat = async (req, res, next) => {
       ) VALUES (
         ${revMsgId}::uuid, ${activeConvId}::uuid, ${org.id}::uuid, ${req.user.id}::uuid,
         'rev', ${revContentStr}::jsonb, ${revSequence},
-        ${agentNameStr}, 'claude-sonnet-4-6', 'anthropic',
+        ${agentNameStr}, 'investigation-pipeline', 'rev-model-gateway',
         ${correlationId}::uuid, ${confidenceScore}, false
       )
     `;
@@ -446,6 +449,9 @@ exports.chat = async (req, res, next) => {
       question_understanding: mlResult.data?.question_understanding || null,
       orchestration: mlResult.data?.orchestration || null,
       selected_finding: mlResult.data?.selected_finding || null,
+      claims: mlResult.data?.claims || [],
+      consistency: mlResult.data?.consistency || null,
+      reliability: mlResult.data?.reliability || null,
       read_only:       mlResult.data?.read_only ?? true,
       meta: {
         correlation_id:             correlationId,
@@ -774,7 +780,8 @@ exports.deleteConversation = async (req, res, next) => {
 
     // Soft delete — mark as deleted so history is preserved but hidden
     await prisma.$executeRaw`
-      UPDATE conversations SET status = 'deleted', updated_at = NOW()
+      UPDATE conversations
+      SET status = 'deleted', summary = NULL, context_window = NULL, updated_at = NOW()
       WHERE id = ${id}::uuid AND organization_id = ${org.id}::uuid
     `;
 
@@ -1032,7 +1039,7 @@ async function _insertRevMessage({
     ) VALUES (
       ${messageId}::uuid, ${conversationId}::uuid, ${organizationId}::uuid,
       ${userId}::uuid, 'rev', ${contentStr}::jsonb, ${sequenceNumber},
-      ${(agentsUsed || []).join(',')}, 'claude-sonnet-4-6', 'anthropic',
+      ${(agentsUsed || []).join(',')}, 'investigation-pipeline', 'rev-model-gateway',
       ${correlationId}::uuid, ${confidenceScore}, ${hasError}, ${errorCode},
       ${errorMessage}, ${steps}::jsonb, ${toolStatuses}::jsonb, ${latencyMs},
       ${investigation?.intent || null}, ${content?.response?.confidence?.basis || null}
@@ -1063,10 +1070,16 @@ async function _persistFindingContext(conversationId, organizationId, data) {
     UPDATE conversations
     SET context_window = jsonb_set(
           jsonb_set(
-            COALESCE(context_window, '{}'::jsonb),
-            '{last_selected_finding}', ${JSON.stringify(selected)}::jsonb, true
+            jsonb_set(
+              jsonb_set(
+                COALESCE(context_window, '{}'::jsonb),
+                '{last_selected_finding}', ${JSON.stringify(selected)}::jsonb, true
+              ),
+              '{last_recommendations}', ${JSON.stringify(recommendations)}::jsonb, true
+            ),
+            '{last_consistency}', ${JSON.stringify(data.consistency || null)}::jsonb, true
           ),
-          '{last_recommendations}', ${JSON.stringify(recommendations)}::jsonb, true
+          '{structured_summary}', ${JSON.stringify(data.structured_summary || null)}::jsonb, true
         ),
         updated_at = NOW()
     WHERE id = ${conversationId}::uuid
@@ -1089,13 +1102,13 @@ async function _touchConversation(conversationId, { titleHint, increment = 2 }) 
 
 async function _loadConversationContext(conversationId, organizationId) {
   try {
-    const rows = await prisma.$queryRaw`
+    const rows = await withTimeout(prisma.$queryRaw`
       SELECT summary, context_window
       FROM conversations
       WHERE id = ${conversationId}::uuid
         AND organization_id = ${organizationId}::uuid
       LIMIT 1
-    `;
+    `, TIMEOUT_POLICY_MS.contextRetrieval, 'context_retrieval');
     const row = rows?.[0] || {};
     let contextWindow = row.context_window ?? null;
     if (typeof contextWindow === 'string') {
@@ -1108,12 +1121,13 @@ async function _loadConversationContext(conversationId, organizationId) {
     };
     // Leave room for merchant context within the Python 16 KiB request limit.
     if (Buffer.byteLength(JSON.stringify(context), 'utf8') > 8 * 1024) {
-      return { summary: context.summary, context_window: null };
+      return { summary: context.summary, context_window: null, context_error: 'context_summary_truncated' };
     }
     return context;
   } catch (error) {
     logger.warn('rev_conversation_context_unavailable', { errorType: error.name });
-    return { summary: null, context_window: null };
+    return { summary: null, context_window: null,
+      context_error: error.code === 'REV_TIMEOUT' ? 'context_timeout' : 'context_unavailable' };
   }
 }
 
@@ -1343,6 +1357,7 @@ exports.chatStream = async (req, res, next) => {
       conversation_id: activeConvId,
       code: error.code,
       message: error.message,
+      failure: error.failure || null,
       retryable: retryabilityForError(error.code),
       investigation_outcome: investigationOutcomeFromTransportError({
         code: error.code, organizationId: org.id,

@@ -161,9 +161,15 @@ export function RevAnswerView({
     ].flatMap(fact => stringList(fact?.evidence_ids));
     return [...new Set(cited)].filter(id => evidenceById.has(id));
   }, [payload, evidenceById]);
+  const reliabilityFailures = Array.isArray(payload.reliability?.failures)
+    ? payload.reliability.failures.filter(failure => failure && typeof failure.stage === "string")
+    : [];
   const warnings = [
     ...stringList(payload.warnings),
     ...stringList(payload.response?.warnings),
+    ...(reliabilityFailures.length
+      ? [`Some checks did not complete (${reliabilityFailures.map(failure => failure.stage.replace(/_/g, " ")).join(", ")}). Available results are shown without treating the failed checks as successful.`]
+      : []),
   ].filter((warning, index, list) => list.indexOf(warning) === index);
   const partialSpecialists = recordList<SpecialistsSummary>(payload.specialists).filter(
     (specialist) => specialist.status !== "success",

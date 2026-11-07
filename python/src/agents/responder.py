@@ -400,23 +400,14 @@ def _static_knowledge(message: str, understanding) -> str:
 
     # General ecommerce concepts — still give a real answer
     try:
-        import anthropic as _anth, os as _os
-        api_key = _os.environ.get("ANTHROPIC_API_KEY")
-        if api_key:
-            client = _anth.Anthropic(api_key=api_key, timeout=6.0)
-            resp = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=300,
-                messages=[{"role": "user", "content": (
-                    "You are Rev, an ecommerce intelligence assistant. "
-                    "Answer this question concisely and accurately in 2-4 sentences. "
-                    "Be specific and practical. No corporate language. No em dashes. "
-                    f"Question: {message[:300]}"
-                )}]
-            )
-            text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
-            if text:
-                return text
+        from .model_gateway import generate
+        text = generate(
+            "You are Rev, an ecommerce intelligence assistant. "
+            "Answer this question concisely and accurately in 2-4 sentences. "
+            "Be specific and practical. No corporate language. No em dashes. "
+            f"Question: {message[:300]}", role="fast", max_tokens=300, timeout=6.0)
+        if text:
+            return text
     except Exception as exc:
         logger.error(
             "responder_static_fallback_failed",
@@ -563,31 +554,34 @@ def compose_analysis(message: str, understanding, state_json: str, agent_json: s
 
 
 def _parse_analysis(raw: str) -> dict | None:
+    """Validate the complete structured answer without guessing or repair."""
     try:
+        if not isinstance(raw, str):
+            return None
         cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = re.sub(r"^```(json)?", "", cleaned).strip()
-            cleaned = re.sub(r"```$", "", cleaned).strip()
-        b = cleaned.find("{")
-        if b > 0:
-            cleaned = cleaned[b:]
-        e = cleaned.rfind("}")
-        if e != -1:
-            cleaned = cleaned[:e + 1]
+        fenced = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", cleaned, re.S)
+        if fenced:
+            cleaned = fenced.group(1)
+        if not cleaned.startswith("{") or not cleaned.endswith("}"):
+            return None
         d = json.loads(cleaned)
         required = {"situation", "insight", "implication", "recommendation", "confidence", "actions"}
-        if not isinstance(d, dict) or not required.issubset(d.keys()):
+        if not isinstance(d, dict) or not required.issubset(d):
             return None
-        if not isinstance(d.get("confidence"), dict):
-            d["confidence"] = {"score": 0.7, "basis": ""}
-        sc = d["confidence"].get("score", 0.7)
-        if not isinstance(sc, (int, float)) or not (0 <= sc <= 1):
-            d["confidence"]["score"] = 0.7
-        if not isinstance(d.get("actions"), list):
-            d["actions"] = []
-        for f in ("situation", "insight", "implication", "recommendation"):
-            if isinstance(d.get(f), str) and len(d[f]) > 600:
-                d[f] = d[f][:600]
+        if any(not isinstance(d.get(field), str) for field in
+               ("situation", "insight", "implication", "recommendation")):
+            return None
+        confidence = d.get("confidence")
+        if not isinstance(confidence, dict) or not isinstance(confidence.get("basis"), str) or \
+                isinstance(confidence.get("score"), bool) or not isinstance(confidence.get("score"), (int, float)) or \
+                not 0 <= confidence["score"] <= 1:
+            return None
+        if not isinstance(d.get("actions"), list) or len(d["actions"]) > 3:
+            return None
+        for action in d["actions"]:
+            if not isinstance(action, dict) or not isinstance(action.get("label"), str) or \
+                    action.get("tool") not in {None, "view_carts", "view_customers", "view_revenue", "view_analytics", "view_products", "view_checkout"}:
+                return None
         return d
-    except Exception:
+    except (ValueError, TypeError, json.JSONDecodeError):
         return None

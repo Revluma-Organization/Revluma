@@ -213,6 +213,18 @@ export interface RevAnswerPayload {
   hypotheses?: RevHypothesis[];
   unknowns?: string[];
   recommendations?: RevRecommendation[];
+  selected_finding?: SelectedFindingContext | null;
+  consistency?: {
+    contract_version: "rev-consistency-v1";
+    status: "new_context" | "context_changed" | "unchanged" | "evidence_changed";
+    changed_fields: string[];
+  } | null;
+  reliability?: {
+    contract_version: "rev-reliability-v1";
+    failures: Array<{ category: string; stage: string; retryable: boolean }>;
+    fallback_used?: boolean;
+    partial_results_preserved?: boolean;
+  } | null;
   specialists?: SpecialistsSummary[];
   warnings?: string[];
   conversation_id?: string;
@@ -244,6 +256,8 @@ export interface RevStreamRequest {
   findingId?: string | null;
   reuseUserMessage?: boolean;
   signal?: AbortSignal;
+  timeoutMs?: number;
+  inactivityTimeoutMs?: number;
   handlers: RevStreamHandlers;
 }
 
@@ -309,26 +323,48 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export async function streamRevAnswer({
   message, conversationId, findingId, reuseUserMessage, signal, handlers,
+  timeoutMs = 130000, inactivityTimeoutMs = 45000,
 }: RevStreamRequest): Promise<{ conversationId: string | null; completed: boolean }> {
   const authHeaders = await getStreamingAuthHeaders();
-  const response = await fetch(`${getApiBaseUrl()}/rev/stream`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      ...authHeaders,
-    },
-    credentials: "include",
-    signal,
-    body: JSON.stringify({
-      message,
-      ...(conversationId ? { conversation_id: conversationId } : {}),
-      ...(findingId ? { finding_id: findingId } : {}),
-      ...(reuseUserMessage ? { reuse_user_message: true } : {}),
-    }),
-  });
+  const controller = new AbortController();
+  let timedOut = false;
+  const onUserAbort = () => controller.abort();
+  signal?.addEventListener("abort", onUserAbort, { once: true });
+  if (signal?.aborted) controller.abort();
+  const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, Math.max(1, timeoutMs));
+  let inactivity = setTimeout(() => { timedOut = true; controller.abort(); }, Math.max(1, inactivityTimeoutMs));
+  const clearTimers = () => {
+    clearTimeout(timeout);
+    clearTimeout(inactivity);
+    signal?.removeEventListener("abort", onUserAbort);
+  };
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}/rev/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        ...authHeaders,
+      },
+      credentials: "include",
+      signal: controller.signal,
+      body: JSON.stringify({
+        message,
+        ...(conversationId ? { conversation_id: conversationId } : {}),
+        ...(findingId ? { finding_id: findingId } : {}),
+        ...(reuseUserMessage ? { reuse_user_message: true } : {}),
+      }),
+    });
+  } catch (error) {
+    clearTimers();
+    if (timedOut) throw new RevStreamError("INTELLIGENCE_TIMEOUT", "Rev took too long to respond. No answer was completed; please retry.");
+    if (signal?.aborted) return { conversationId: conversationId ?? null, completed: false };
+    throw error;
+  }
 
   if (!response.ok) {
+    clearTimers();
     let code = "STREAM_START_FAILED";
     let detail = "Rev could not start this response. Please try again.";
     try {
@@ -341,6 +377,7 @@ export async function streamRevAnswer({
     throw new RevStreamError(code, detail, response.status);
   }
   if (!response.body) {
+    clearTimers();
     throw new RevStreamError("STREAM_UNSUPPORTED", "Streaming is not available in this browser.", 0);
   }
 
@@ -419,16 +456,20 @@ export async function streamRevAnswer({
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      clearTimeout(inactivity);
+      inactivity = setTimeout(() => { timedOut = true; controller.abort(); }, Math.max(1, inactivityTimeoutMs));
       parser.push(decoder.decode(value, { stream: true }));
     }
     parser.push(decoder.decode());
     parser.flush();
   } catch (error) {
-    if ((error as Error).name === "AbortError") {
+    if (timedOut) throw new RevStreamError("INTELLIGENCE_TIMEOUT", "Rev took too long to respond. No answer was completed; please retry.");
+    if ((error as Error).name === "AbortError" && signal?.aborted) {
       return { conversationId: resolvedConversationId, completed: false };
     }
     throw error;
   } finally {
+    clearTimers();
     try { reader.releaseLock(); } catch { /* noop */ }
   }
 

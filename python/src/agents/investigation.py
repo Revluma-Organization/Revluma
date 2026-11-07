@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -73,6 +74,13 @@ from ..intelligence.revenue_evidence import decompose_value_change, retrieve_rev
 from ..intelligence.recommendations import (
     build_selected_finding, enrich_recommendations, selected_finding_reference,
     validate_recommendation_contract,
+)
+from ..intelligence.reliability import (
+    InvestigationDeadline, canonical_request, classify_exception, compare_consistency,
+    record_failure, safe_failure, validate_consistency,
+)
+from ..intelligence.conversation_reliability import (
+    bounded_history_text, build_context_summary, validate_context_summary,
 )
 from ..intelligence.question_orchestration import (
     build_investigation_plan,
@@ -1229,7 +1237,11 @@ def classify_investigation(message: str, context: dict | None = None) -> dict:
 # ── Conversational routing: understanding-driven investigation gate ──────────
 
 def _history_text(context: dict | None) -> str:
-    turns = (context or {}).get("recent_turns") or []
+    context = context or {}
+    turns = context.get("recent_turns") or []
+    if context.get("structured_summary"):
+        return bounded_history_text(context["structured_summary"], turns,
+                                    selected_finding=context.get("last_selected_finding"))
     lines = []
     for turn in turns[-6:]:
         role = turn.get("role")
@@ -1467,7 +1479,9 @@ def load_conversation_context(organization_id: str, user_id: str,
     context = {"summary": None, "last_investigation": None, "recent_turns": [],
                "unresolved": [], "conversation_state": None, "last_claims": [],
                "last_specialists": [], "last_priority": None, "last_orchestration": None,
-               "last_selected_finding": None, "last_recommendations": []}
+               "last_selected_finding": None, "last_recommendations": [],
+               "structured_summary": None, "last_consistency": None,
+               "context_warnings": []}
     if not conversation_id:
         return context
 
@@ -1496,6 +1510,15 @@ def load_conversation_context(organization_id: str, user_id: str,
             context["last_selected_finding"] = raw.get("last_selected_finding")
             context["last_recommendations"] = [entry for entry in (raw.get("last_recommendations") or [])
                                                if isinstance(entry, dict) and entry.get("recommendation_id")][:6]
+            summary = raw.get("structured_summary")
+            if not validate_context_summary(summary, organization_id=organization_id,
+                                            conversation_id=conversation_id):
+                context["structured_summary"] = summary
+            elif summary is not None:
+                context["context_warnings"].append("invalid_context_summary_discarded")
+            consistency = raw.get("last_consistency")
+            if not validate_consistency(consistency):
+                context["last_consistency"] = consistency
 
     rows, error = safe_query(db, """
         SELECT summary, context_window
@@ -1528,6 +1551,17 @@ def load_conversation_context(organization_id: str, user_id: str,
             if not context["last_recommendations"]:
                 context["last_recommendations"] = [entry for entry in (raw.get("last_recommendations") or [])
                                                    if isinstance(entry, dict) and entry.get("recommendation_id")][:6]
+            if context["structured_summary"] is None:
+                summary = raw.get("structured_summary")
+                if not validate_context_summary(summary, organization_id=organization_id,
+                                                conversation_id=conversation_id):
+                    context["structured_summary"] = summary
+                elif summary is not None:
+                    context["context_warnings"].append("invalid_context_summary_discarded")
+            if context["last_consistency"] is None:
+                consistency = raw.get("last_consistency")
+                if not validate_consistency(consistency):
+                    context["last_consistency"] = consistency
             state = raw.get("conversation_state")
             if isinstance(state, dict):
                 context["conversation_state"] = _fresh_state(state)
@@ -3076,8 +3110,13 @@ def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[d
                        comparison_facts: list[dict], hypotheses: list[dict],
                        unknowns: list[str], recommendations: list[dict],
                        items: list[dict], deterministic: str,
-                       social_opener: bool = False) -> tuple[str, bool]:
+                       social_opener: bool = False, deadline: InvestigationDeadline | None = None,
+                       on_failure: Callable[[str, str], None] | None = None) -> tuple[str, bool]:
     if not _narrative_enabled():
+        return deterministic, False
+    if deadline is not None and deadline.expired():
+        if on_failure:
+            on_failure("timeout", "response_composition")
         return deterministic, False
     from .model_gateway import generate
     evidence_payload = {
@@ -3116,13 +3155,19 @@ def _compose_narrative(*, message: str, intent: str, window: dict, facts: list[d
         "number the recommended next steps. Do not repeat the raw JSON."
     )
     try:
-        candidate = generate(prompt, role="deep", max_tokens=900, timeout=25.0)
+        timeout = deadline.operation_seconds("response_composition", 25.0) if deadline else 25.0
+        candidate = generate(prompt, role="deep", max_tokens=900, timeout=timeout)
     except Exception as exc:
         logger.info("rev_narrative_unavailable error_type=%s", type(exc).__name__)
+        if on_failure:
+            failure = classify_exception(exc, stage="response_composition")
+            on_failure(failure["category"], "response_composition")
         return deterministic, False
     valid, reason = _validate_narrative(candidate, facts + comparison_facts, items)
     if not valid:
         logger.warning("rev_narrative_rejected reason=%s", reason)
+        if on_failure:
+            on_failure("malformed_output", "response_composition")
         return deterministic, False
     return candidate.strip(), True
 
@@ -3173,7 +3218,8 @@ def _conversation_state(previous: dict | None, *, intent: str, window: dict,
 
 def persist_investigation_context(organization_id: str, user_id: str,
                                   conversation_id: str | None, db, result: dict,
-                                  conversation_state: dict | None = None) -> bool:
+                                  conversation_state: dict | None = None,
+                                  previous_summary: dict | None = None) -> bool:
     """Persist bounded conversation context and one verified investigation memory.
 
     Conversation transcripts belong to Node. This function only writes the
@@ -3260,6 +3306,11 @@ def persist_investigation_context(organization_id: str, user_id: str,
         # ranked, the answer explains the change instead of restating it.
         "last_priority": _bounded_priority_record(result.get("priority")),
     }
+    context_window["last_consistency"] = result.get("consistency")
+    context_window["structured_summary"] = build_context_summary(
+        result, conversation_id=conversation_id, organization_id=organization_id,
+        store_ids=(result.get("investigation_outcome", {}).get("tenant", {}) or {}).get("store_ids") or [],
+        previous=previous_summary)
     if conversation_state:
         context_window["conversation_state"] = conversation_state
     summary = (f"{INTENT_LABELS.get(result['investigation']['intent'], 'Investigation')} "
@@ -4093,6 +4144,19 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     external_items = validate_context_evidence(merchant_context, organization_id) if merchant_context is not None else []
     now = ensure_utc(now or utc_now(), field="now")
     investigation_id = str(uuid.uuid4())
+    execution_policy = (context_payload or {}).get("execution_policy") or {}
+    deadline = InvestigationDeadline.start(execution_policy.get("overall_timeout_ms"))
+    reliability_failures: list[dict] = []
+    supplied_context_error = ((context_payload or {}).get("conversation_context") or {}).get("context_error")
+
+    def _record(category: str, stage: str, *, retry_count: int = 0,
+                partial: bool = False, fallback: bool = False) -> dict:
+        failure = safe_failure(category, stage, retry_count=retry_count,
+                               partial=partial, fallback=fallback, execution_id=investigation_id)
+        reliability_failures.append(failure)
+        record_failure(failure, correlation_id=(context_payload or {}).get("correlation_id"),
+                       investigation_id=investigation_id)
+        return failure
 
     def _emit(event: dict) -> None:
         if event.get("event") == "final" and isinstance(event.get("data"), dict):
@@ -4124,6 +4188,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 emit(event)
             except Exception:  # streaming must never break investigation logic
                 pass
+
+    if supplied_context_error:
+        _record("timeout" if supplied_context_error == "context_timeout" else "evidence_retrieval_failed",
+                "context_retrieval", fallback=True)
 
     conversation_context = load_conversation_context(
         organization_id, user_id, conversation_id, db, context_payload=context_payload)
@@ -4434,6 +4502,15 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     for tool in tools:
         if tool == "store_health":
             continue
+        if deadline.expired():
+            failure = _record("timeout", "evidence_retrieval", partial=bool(tool_results), fallback=True)
+            step = step_by_tool[tool]
+            step["status"] = "failed"
+            step["detail"] = "The investigation deadline was reached before this check completed."
+            tool_failures[tool] = {"outcome": "retrieval_failed", "error_class": "timeout", "retry_eligible": True}
+            skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: timed out.")
+            _emit({"event": "step", "data": step})
+            continue
         if _cancelled():
             logger.info(
                 "rev_investigation_cancelled intent=%s investigation_id=%s completed_tools=%d",
@@ -4492,27 +4569,45 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             params.update(checkout_query)
         if classification.get("segment"):
             params["segment"] = classification["segment"]
-        try:
-            tool_result = run_tool(tool, organization_id, db, params, now=now)
-        except ToolAuthorizationError as exc:
-            logger.error("rev_tool_authorization_failed tool=%s", tool)
-            tool_result = None
-            tool_failures[tool] = {"outcome": "permission_insufficient", "error_class": "authorization", "retry_eligible": False}
-            step["status"] = "failed"
-            step["detail"] = "The authenticated organization is not authorised for this evidence source."
-            skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: not authorised.")
-        except Exception as exc:  # defensive: partial results must survive
-            logger.warning("rev_tool_exception tool=%s error_type=%s", tool, type(exc).__name__)
-            tool_result = None
-            error_name = type(exc).__name__.lower()
-            transient = any(token in error_name for token in ("timeout", "connection", "temporary", "operational"))
-            tool_failures[tool] = {
-                "outcome": "retrieval_failed", "error_class": type(exc).__name__,
-                "retry_eligible": transient,
-            }
-            step["status"] = "failed"
-            step["detail"] = "The read-only query failed; this evidence is unavailable."
-            skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: query failed.")
+        tool_attempt = 0
+        while True:
+            try:
+                tool_result = run_tool(tool, organization_id, db, params, now=now)
+                break
+            except ToolAuthorizationError:
+                logger.error("rev_tool_authorization_failed tool=%s", tool)
+                tool_result = None
+                _record("authorization_failed", "evidence_retrieval", partial=bool(tool_results))
+                tool_failures[tool] = {"outcome": "permission_insufficient", "error_class": "authorization", "retry_eligible": False}
+                step["status"] = "failed"
+                step["detail"] = "The authenticated organization is not authorised for this evidence source."
+                skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: not authorised.")
+                break
+            except Exception as exc:  # defensive: partial results must survive
+                logger.warning("rev_tool_exception tool=%s error_type=%s", tool, type(exc).__name__)
+                tool_result = None
+                error_name = type(exc).__name__.lower()
+                transient = any(token in error_name for token in ("timeout", "connection", "temporary", "operational"))
+                if transient and tool_attempt == 0 and not deadline.expired() and not _cancelled():
+                    tool_attempt = 1
+                    _record("timeout" if "timeout" in error_name else "connection_failed",
+                            "evidence_retrieval", retry_count=1, partial=bool(tool_results))
+                    time.sleep(min(0.05, deadline.remaining_ms() / 1000))
+                    continue
+                failure = classify_exception(exc, stage="evidence_retrieval", partial=bool(tool_results), fallback=True)
+                if failure["category"] == "internal_error":
+                    failure["category"] = "evidence_retrieval_failed"
+                reliability_failures.append(failure)
+                record_failure(failure, correlation_id=(context_payload or {}).get("correlation_id"),
+                               investigation_id=investigation_id)
+                tool_failures[tool] = {
+                    "outcome": "retrieval_failed", "error_class": failure["category"],
+                    "retry_eligible": failure["retryable"],
+                }
+                step["status"] = "failed"
+                step["detail"] = "The read-only query failed; this evidence is unavailable."
+                skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: query failed.")
+                break
         if tool_result is not None:
             tool_results.append(tool_result)
             tool_results_by_name[tool] = tool_result
@@ -4614,6 +4709,9 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         unknowns.append("The selected finding could not be re-resolved in the authenticated organization and active store scope; no finding details or recommendation are assumed.")
     recommendations = _recommendations(intent, items)
     record_domain_evidence_execution(orchestration, tool_results_by_name)
+    orchestration["overall_deadline_ms"] = max(1, min(orchestration["overall_deadline_ms"], deadline.remaining_ms()))
+    if deadline.expired() and orchestration.get("selected_specialists"):
+        _record("timeout", "specialist_execution", partial=bool(items), fallback=True)
     specialists = execute_orchestrated_specialists(
         orchestration, period=window, items=items, tools=tool_results_by_name)
     reconcile_orchestration(orchestration, specialists, items + comparison_items, finalize=False)
@@ -4710,6 +4808,12 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     if claim_errors:
         warnings.append("Claim contract validation reported: " + ", ".join(claim_errors))
 
+    current_consistency = canonical_request(
+        organization_id=organization_id, store_ids=sorted(allowed_store_ids), intent=intent,
+        period=window, items=items + comparison_items, selected_finding=selected_finding,
+        metric=((routed.get("understanding") or {}).get("entities") or {}).get("metric"))
+    consistency = compare_consistency(conversation_context.get("last_consistency"), current_consistency)
+
     if _cancelled():
         orchestration["state"] = "cancelled"
         orchestration["state_history"].append({"state": "cancelled", "at": iso(now)})
@@ -4764,12 +4868,19 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             contributor_analysis=contributor_analysis,
             contribution_facts=contribution_facts,
         )
-        narrative, used_model = _compose_narrative(
-            message=message, intent=intent, window=window, facts=facts,
-            comparison_facts=all_comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
-            recommendations=recommendations, items=items, deterministic=deterministic,
-            social_opener=routed["social_opener"],
-        )
+        if consistency["status"] == "unchanged":
+            narrative, used_model = deterministic, "deterministic_consistent_repeat"
+        else:
+            narrative, used_model = _compose_narrative(
+                message=message, intent=intent, window=window, facts=facts,
+                comparison_facts=all_comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
+                recommendations=recommendations, items=items, deterministic=deterministic,
+                social_opener=routed["social_opener"], deadline=deadline,
+                on_failure=lambda category, stage: _record(category, stage, partial=bool(items), fallback=True),
+            )
+    if consistency["status"] == "evidence_changed":
+        narrative += ("\n\n## Updated evidence\nThe authorized evidence snapshot changed since the equivalent previous question. "
+                      "This answer uses the newly retrieved values and coverage; the earlier conclusion is not reused as current evidence.")
 
     orchestration["state"] = "composing"
     orchestration["state_history"].append({"state": "composing", "at": iso(now)})
@@ -4780,6 +4891,18 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         recommendations, items=items + comparison_items, selected_item=selected_item,
         selected=selected_finding, organization_id=organization_id,
         investigation_id=investigation_id, intent=intent, now=now)
+    valid_recommendations = []
+    for recommendation in recommendations:
+        errors = validate_recommendation_contract(
+            selected_finding if recommendation.get("finding_id") else None, [recommendation],
+            organization_id=organization_id,
+            evidence_ids={item["id"] for item in items + comparison_items})
+        if errors:
+            _record("schema_validation_failed", "recommendation_validation", partial=True, fallback=True)
+            warnings.append("An invalid recommendation was excluded; independent evidence and findings were preserved.")
+            continue
+        valid_recommendations.append(recommendation)
+    recommendations = valid_recommendations
     if selected_finding:
         selected_finding["recommendation_history"] = [
             *[{"recommendation_id": entry.get("recommendation_id"),
@@ -4803,6 +4926,16 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     result.update({
         "response_type": "analysis",
         "text": narrative,
+        "consistency": consistency,
+        "reliability": {
+            "contract_version": "rev-reliability-v1",
+            "overall_deadline_ms": deadline.timeout_ms,
+            "remaining_budget_ms": deadline.remaining_ms(),
+            "failures": reliability_failures[:12],
+            "fallback_used": any(failure.get("fallback_used") for failure in reliability_failures),
+            "partial_results_preserved": bool(items) and any(failure.get("partial_results_preserved") for failure in reliability_failures),
+            "context_warnings": (conversation_context.get("context_warnings") or [])[:4],
+        },
         "response": {
             # Empty strings, never filler (spec §8: no robotic placeholder
             # prose). The renderer omits sections the evidence does not carry.
@@ -4881,6 +5014,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         "evidence_count": len(items),
     })
 
+    if any(failure.get("category") == "timeout" for failure in reliability_failures):
+        overall = "partial" if items else "insufficient_data"
+        result["investigation"]["status"] = overall
+        warnings.append("Some checks timed out; only independently validated evidence is included.")
+
     result["investigation_outcome"] = derive_outcome(
         investigation_id=investigation_id, question=message, intent=intent,
         organization_id=organization_id, store_ids=sorted(allowed_store_ids), tools=tools,
@@ -4943,6 +5081,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     orchestration["state"] = orchestration.get("terminal_state") or "completed"
     orchestration["state_history"].append({"state": orchestration["state"], "at": iso(now)})
     orchestration["finished_at"] = iso(now)
+    result["structured_summary"] = build_context_summary(
+        result, conversation_id=conversation_id or investigation_id,
+        organization_id=organization_id, store_ids=sorted(allowed_store_ids),
+        previous=conversation_context.get("structured_summary"))
 
     if persist and conversation_id:
         persist_investigation_context(
@@ -4950,7 +5092,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             conversation_state=_conversation_state(
                 conversation_context.get("conversation_state"), intent=intent,
                 window=window, topic_change=routed["topic_change"],
-                open_clarification=False, understanding=routed["understanding"]))
+                open_clarification=False, understanding=routed["understanding"]),
+            previous_summary=conversation_context.get("structured_summary"))
         result["understanding"] = {
             "intent": (routed["understanding"] or {}).get("intent") or intent,
             "gate": routed["gate"],
