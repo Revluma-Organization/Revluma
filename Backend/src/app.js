@@ -204,6 +204,7 @@ app.get('/ready', async (req, res) => {
     python_model_status: python.modelStatus || null,
     python_models_missing: python.modelsMissing || [],
     python_version: python.version || null,
+    python_build: python.build || null,
     node_build: NODE_BUILD,
     beta_automation_enabled: automationEnabled,
     beta_automation_ready: automationReady,

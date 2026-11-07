@@ -16,7 +16,9 @@ import binascii
 import json
 import logging
 import os
+import re
 import secrets
+import subprocess
 import sys
 import threading
 import time
@@ -154,6 +156,28 @@ async def _lifespan(_: FastAPI):
 
     await _preload_models()
     yield
+
+
+def _source_revision() -> str:
+    """Return verifiable source identity, never package version as a build proxy."""
+    for name in ("REVLUMA_BUILD_COMMIT", "RENDER_GIT_COMMIT_SHA", "RENDER_GIT_COMMIT", "SOURCE_COMMIT"):
+        value = os.getenv(name, "").strip().lower()
+        if re.fullmatch(r"[0-9a-f]{7,64}", value):
+            return value
+    try:
+        value = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")),
+            check=True, capture_output=True, text=True, timeout=2,
+        ).stdout.strip().lower()
+        if re.fullmatch(r"[0-9a-f]{40}", value):
+            return value
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "unknown"
+
+
+_SOURCE_REVISION = _source_revision()
 
 
 app = FastAPI(
@@ -1006,6 +1030,7 @@ async def health_check():
         "status": "ok",
         "service": "revluma-ml-serving",
         "version": app.version,
+        "build": _SOURCE_REVISION,
         "model_status": model_status,
         "models_ready": not missing_models,
         "production_models_ready": production_models_ready,

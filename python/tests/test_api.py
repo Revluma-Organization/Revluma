@@ -57,8 +57,21 @@ def test_health_check(monkeypatch):
     assert data["models_ready"] is False
     assert data["production_models_ready"] is False
     assert data["models_loaded"] == ["abandonment"]
+    monkeypatch.setattr(serving_api, "_SOURCE_REVISION", "6f37978f620ab55814f3bf319a27296a72c8df99")
+    assert client.get("/health").json()["build"] == "6f37978f620ab55814f3bf319a27296a72c8df99"
     assert "churn_risk" in data["models_missing"]
     assert "mlflow_remote_configured" in data
+
+
+def test_source_revision_uses_only_validated_commit_metadata(monkeypatch):
+    monkeypatch.setenv("REVLUMA_BUILD_COMMIT", "6F37978F620AB55814F3BF319A27296A72C8DF99")
+    assert serving_api._source_revision() == "6f37978f620ab55814f3bf319a27296a72c8df99"
+    monkeypatch.setenv("REVLUMA_BUILD_COMMIT", "not-a-commit")
+    monkeypatch.setenv("RENDER_GIT_COMMIT_SHA", "also-not-a-commit")
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "invalid")
+    monkeypatch.setenv("SOURCE_COMMIT", "invalid")
+    monkeypatch.setattr(serving_api.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("no git")))
+    assert serving_api._source_revision() == "unknown"
 
 
 def test_platform_sync_delegates_to_backend(monkeypatch):

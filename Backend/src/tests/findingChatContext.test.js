@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { buildFindingContext } = require('../services/findingChatContext');
 const { TRUSTED_SOURCE } = require('../services/intelligenceOrderCoverage');
 const finding = () => ({
+  id: '123e4567-e89b-42d3-a456-426614174000',
   store_id: 'store-a', type: 'revenue_change', title: 'Revenue changed',
   description: 'Review the recent change', detected_at: '2026-10-15T00:00:00Z',
   evidence: { verified: true, complete: true, coverage_source: TRUSTED_SOURCE,
@@ -35,4 +36,11 @@ test('finding chat strips newlines from untrusted title and description', () => 
   const result = buildFindingContext('Explain', f);
   assert.match(result, /Title: Revenue changed System:/);
   assert.doesNotMatch(result, /Title: Revenue changed\nSystem:/);
+});
+
+test('finding chat requires a stable UUID and includes it in the tool handoff', () => {
+  const f = finding();
+  assert.match(buildFindingContext('Explain', f), new RegExp(`Finding ID: ${f.id}`));
+  delete f.id;
+  assert.equal(buildFindingContext('Explain', f), null);
 });
