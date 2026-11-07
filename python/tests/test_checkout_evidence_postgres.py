@@ -1,4 +1,5 @@
 """Disposable PostgreSQL execution of the Task 200 canonical SQL."""
+import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -88,9 +89,11 @@ def test_postgres_lifecycle_relationships_currency_and_tenant_isolation(checkout
             VALUES (:id,:cart,'line','product','variant','Historical product','Old size','OLD',2,50,70,'USD')"""),
                   {"id": uuid.uuid4(), "cart": abandoned})
         c.execute(text("""INSERT INTO store_sync_domain_states VALUES
-            (:store,'abandoned_checkouts','ok',true,4,:now,:now,NULL,
-             '{"unfiltered_root":true,"nested_complete":true,"scope_verified":true,"reconciliation_complete":true}')"""),
-                  {"store": store, "now": NOW})
+            (:store,'abandoned_checkouts','ok',true,4,:now,:now,NULL,CAST(:checkpoint AS json))"""),
+                  {"store": store, "now": NOW, "checkpoint": json.dumps({
+                      "unfiltered_root": True, "nested_complete": True,
+                      "scope_verified": True, "reconciliation_complete": True,
+                  })})
     with engine.connect() as db, evidence_context(str(org), [str(store)]):
         result = retrieve_checkout_evidence(str(org), db, start=START, end=NOW, now=NOW)
     metrics = {item["metric"]: item for item in result["items"]}
