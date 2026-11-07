@@ -308,6 +308,11 @@ def evidence_item(
         "store_scope": store_scope,
         "limitations": list(limitations or []),
     }
+    # Task 203: attach the six-dimension evidence-quality assessment so the
+    # metadata is born with the item and survives every service boundary.
+    # Lazy import: evidence_quality imports from this module.
+    from .evidence_quality import quality_of
+    item["quality"] = quality_of(item)
     return EvidenceItem.model_validate(item).model_dump(mode="json")
 
 

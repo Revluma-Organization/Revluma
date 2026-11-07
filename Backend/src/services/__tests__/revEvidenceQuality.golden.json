@@ -1,0 +1,740 @@
+{
+  "aggregate_currency": {
+    "empty": {
+      "combined": null,
+      "currencies": {},
+      "malformed_amounts": [],
+      "mixed": false,
+      "reason": "no currency-attributed amounts were provided",
+      "unknown_currency_amounts": [],
+      "usable": false
+    },
+    "inf": {
+      "combined": null,
+      "currencies": {},
+      "malformed_amounts": [
+        {
+          "currency": "USD",
+          "source": null
+        }
+      ],
+      "mixed": false,
+      "reason": "one or more amounts are not numeric; the total is not reliable",
+      "unknown_currency_amounts": [],
+      "usable": false
+    },
+    "mixed": {
+      "combined": null,
+      "currencies": {
+        "NGN": {
+          "count": 1,
+          "total": "100000.00"
+        },
+        "USD": {
+          "count": 1,
+          "total": "100.00"
+        }
+      },
+      "malformed_amounts": [],
+      "mixed": true,
+      "reason": "amounts span multiple currencies and must not be combined",
+      "unknown_currency_amounts": [],
+      "usable": false
+    },
+    "precision": {
+      "combined": "0.30",
+      "currencies": {
+        "USD": {
+          "count": 2,
+          "total": "0.30"
+        }
+      },
+      "malformed_amounts": [],
+      "mixed": false,
+      "reason": "single verified currency",
+      "unknown_currency_amounts": [],
+      "usable": true
+    },
+    "rounding": {
+      "combined": "1.01",
+      "currencies": {
+        "USD": {
+          "count": 1,
+          "total": "1.01"
+        }
+      },
+      "malformed_amounts": [],
+      "mixed": false,
+      "reason": "single verified currency",
+      "unknown_currency_amounts": [],
+      "usable": true
+    },
+    "single": {
+      "combined": "14.75",
+      "currencies": {
+        "USD": {
+          "count": 3,
+          "total": "14.75"
+        }
+      },
+      "malformed_amounts": [],
+      "mixed": false,
+      "reason": "single verified currency",
+      "unknown_currency_amounts": [],
+      "usable": true
+    },
+    "unknown": {
+      "combined": null,
+      "currencies": {
+        "USD": {
+          "count": 1,
+          "total": "5.00"
+        }
+      },
+      "malformed_amounts": [],
+      "mixed": false,
+      "reason": "one or more amounts have an unknown or invalid currency",
+      "unknown_currency_amounts": [
+        {
+          "amount": "7",
+          "source": null
+        },
+        {
+          "amount": "9",
+          "source": null
+        }
+      ],
+      "usable": false
+    }
+  },
+  "classify_zero_value": {
+    "failed_sync": {
+      "explanation": "The source failed to synchronize or was not queried; the absence of rows is not evidence of zero.",
+      "state": "failed_or_incomplete_sync",
+      "verified_zero": false
+    },
+    "incomplete": {
+      "explanation": "The observed zero is over an incomplete population, so it cannot be certified as a true zero.",
+      "state": "incomplete_coverage",
+      "verified_zero": false
+    },
+    "missing": {
+      "explanation": "No value could be read from the source.",
+      "state": "missing_record",
+      "verified_zero": false
+    },
+    "never_synced": {
+      "explanation": "The source failed to synchronize or was not queried; the absence of rows is not evidence of zero.",
+      "state": "failed_or_incomplete_sync",
+      "verified_zero": false
+    },
+    "nonzero": {
+      "explanation": "A non-zero value was observed.",
+      "state": "observed_nonzero",
+      "verified_zero": false
+    },
+    "null_field": {
+      "explanation": "Records exist but the value field is unpopulated; a null is not a zero.",
+      "state": "null_field",
+      "verified_zero": false
+    },
+    "records_but_null": {
+      "explanation": "Records exist but the value field is unpopulated; a null is not a zero.",
+      "state": "null_field",
+      "verified_zero": false
+    },
+    "unauthorized": {
+      "explanation": "The source is not authorized, so no population was queried; zero must not be claimed.",
+      "state": "unauthorized_or_unavailable",
+      "verified_zero": false
+    },
+    "verified_zero_amount": {
+      "explanation": "The value is zero over a certified complete population; the zero is genuine.",
+      "state": "verified_zero",
+      "verified_zero": true
+    },
+    "verified_zero_count": {
+      "explanation": "The fully-queried population contains no matching records; this is a verified zero count.",
+      "state": "no_match_verified_population",
+      "verified_zero": true
+    }
+  },
+  "compare_currency": {
+    "documented": {
+      "a": {
+        "amount": "100",
+        "currency": "USD"
+      },
+      "b": {
+        "amount": "160000",
+        "currency": "NGN"
+      },
+      "basis": "explicit_conversion",
+      "comparable": true,
+      "conversion": {
+        "from_currency": "USD",
+        "rate": "1600",
+        "rate_at": "2026-11-07T00:00:00Z",
+        "source": "fx-table",
+        "to_currency": "NGN"
+      },
+      "difference": "0.00",
+      "higher": "equal"
+    },
+    "documented_reverse": {
+      "a": {
+        "amount": "160000",
+        "currency": "NGN"
+      },
+      "b": {
+        "amount": "100",
+        "currency": "USD"
+      },
+      "basis": "explicit_conversion",
+      "comparable": true,
+      "conversion": {
+        "from_currency": "USD",
+        "rate": "1600",
+        "rate_at": null,
+        "source": "fx-table",
+        "to_currency": "NGN"
+      },
+      "difference": "0.00",
+      "higher": "equal"
+    },
+    "none": {
+      "a": {
+        "amount": "100",
+        "currency": "USD"
+      },
+      "b": {
+        "amount": "160000",
+        "currency": "NGN"
+      },
+      "comparable": false,
+      "reason": "different currencies with no documented conversion; amounts are not directly comparable"
+    },
+    "same": {
+      "a": {
+        "amount": "100",
+        "currency": "USD"
+      },
+      "b": {
+        "amount": "90",
+        "currency": "USD"
+      },
+      "basis": "same_currency",
+      "comparable": true,
+      "difference": "10.00",
+      "higher": "a"
+    },
+    "undocumented": {
+      "a": {
+        "amount": "100",
+        "currency": "USD"
+      },
+      "b": {
+        "amount": "160000",
+        "currency": "NGN"
+      },
+      "comparable": false,
+      "reason": "conversion is not documented or lacks a positive rate"
+    },
+    "wrong_pair": {
+      "a": {
+        "amount": "100",
+        "currency": "USD"
+      },
+      "b": {
+        "amount": "160000",
+        "currency": "NGN"
+      },
+      "comparable": false,
+      "reason": "conversion does not cover the compared currency pair"
+    },
+    "zero_rate": {
+      "a": {
+        "amount": "100",
+        "currency": "USD"
+      },
+      "b": {
+        "amount": "160000",
+        "currency": "NGN"
+      },
+      "comparable": false,
+      "reason": "conversion is not documented or lacks a positive rate"
+    }
+  },
+  "detect_contradictions": {
+    "different_currencies": [],
+    "different_periods": [],
+    "identical_values": [],
+    "recency": [
+      {
+        "confidence_impact": "none",
+        "contradictory": true,
+        "currency": "USD",
+        "metric": "net_revenue",
+        "period": {
+          "end": "2026-11-07T12:00:00+00:00",
+          "start": "2026-11-06T12:00:00+00:00"
+        },
+        "reason": "the fresh current record supersedes the stale one",
+        "resolution": "recency_supersession",
+        "resolved": true,
+        "unit": "currency",
+        "values": [
+          "90.00",
+          "100.00"
+        ],
+        "winner_id": "ev-c1",
+        "winner_value": "100.00"
+      }
+    ],
+    "source_of_truth": [
+      {
+        "confidence_impact": "none",
+        "contradictory": true,
+        "currency": "USD",
+        "metric": "net_revenue",
+        "period": {
+          "end": "2026-11-07T12:00:00+00:00",
+          "start": "2026-11-06T12:00:00+00:00"
+        },
+        "reason": "resolved to the authoritative record for 'net_revenue'",
+        "resolution": "source_of_truth",
+        "resolved": true,
+        "unit": "currency",
+        "values": [
+          "90.00",
+          "100.00"
+        ],
+        "winner_id": "ev-c1",
+        "winner_value": "100.00"
+      }
+    ],
+    "unresolved": [
+      {
+        "confidence_impact": "reduce",
+        "contradictory": true,
+        "currency": "USD",
+        "metric": "net_revenue",
+        "period": {
+          "end": "2026-11-07T12:00:00+00:00",
+          "start": "2026-11-06T12:00:00+00:00"
+        },
+        "reason": "no documented source-of-truth and no unambiguous supersedence; the conflict is preserved and the conclusion must stay uncertain",
+        "resolution": "unresolved",
+        "resolved": false,
+        "unit": "currency",
+        "values": [
+          "90.00",
+          "100.00"
+        ],
+        "winner_id": null,
+        "winner_value": null
+      }
+    ]
+  },
+  "evaluate_freshness": {
+    "aging": {
+      "age_seconds": 7200.0,
+      "as_of": "2026-11-07T10:00:00Z",
+      "policy_seconds": 3600.0,
+      "reason": "evidence is aging (7200s old, policy 3600s)",
+      "state": "aging",
+      "supports_current_claim": true,
+      "supports_historical_claim": false
+    },
+    "failed": {
+      "age_seconds": null,
+      "reason": "the source's latest synchronization failed",
+      "state": "failed",
+      "supports_current_claim": false,
+      "supports_historical_claim": false
+    },
+    "fresh": {
+      "age_seconds": 60.0,
+      "as_of": "2026-11-07T11:59:00Z",
+      "policy_seconds": 3600.0,
+      "reason": "evidence is fresh (60s old, policy 3600s)",
+      "state": "fresh",
+      "supports_current_claim": true,
+      "supports_historical_claim": false
+    },
+    "historical_before_period": {
+      "age_seconds": 4579200.0,
+      "as_of": "2026-09-15T12:00:00Z",
+      "policy_seconds": 3600.0,
+      "reason": "latest observation is 4579200s old (policy 3600s); too old to support a current-state claim",
+      "state": "stale",
+      "supports_current_claim": false,
+      "supports_historical_claim": false
+    },
+    "historical_ok": {
+      "age_seconds": 1987200.0,
+      "as_of": "2026-10-15T12:00:00Z",
+      "policy_seconds": 3600.0,
+      "reason": "latest observation is 1987200s old (policy 3600s); too old to support a current-state claim",
+      "state": "stale",
+      "supports_current_claim": false,
+      "supports_historical_claim": true
+    },
+    "inventory_aging": {
+      "age_seconds": 2700.0,
+      "as_of": "2026-11-07T11:15:00Z",
+      "policy_seconds": 1800.0,
+      "reason": "evidence is aging (2700s old, policy 1800s)",
+      "state": "aging",
+      "supports_current_claim": true,
+      "supports_historical_claim": false
+    },
+    "never": {
+      "age_seconds": null,
+      "reason": "the source has never synchronized",
+      "state": "never_synchronized",
+      "supports_current_claim": false,
+      "supports_historical_claim": false
+    },
+    "orders_fresh": {
+      "age_seconds": 2700.0,
+      "as_of": "2026-11-07T11:15:00Z",
+      "policy_seconds": 3600.0,
+      "reason": "evidence is fresh (2700s old, policy 3600s)",
+      "state": "fresh",
+      "supports_current_claim": true,
+      "supports_historical_claim": false
+    },
+    "stale": {
+      "age_seconds": 518400.0,
+      "as_of": "2026-11-01T12:00:00Z",
+      "policy_seconds": 3600.0,
+      "reason": "latest observation is 518400s old (policy 3600s); too old to support a current-state claim",
+      "state": "stale",
+      "supports_current_claim": false,
+      "supports_historical_claim": false
+    },
+    "synchronizing": {
+      "age_seconds": null,
+      "reason": "synchronization is in progress",
+      "state": "synchronizing",
+      "supports_current_claim": false,
+      "supports_historical_claim": false
+    }
+  },
+  "quality_of": {
+    "contradictory": {
+      "availability": "available",
+      "consistency": "conflicting",
+      "coverage": "complete",
+      "currency_integrity": "single_verified_currency",
+      "freshness": "fresh",
+      "reasons": [
+        "conflicting_evidence"
+      ],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "partial",
+      "value_state": "observed_nonzero"
+    },
+    "healthy": {
+      "availability": "available",
+      "consistency": "consistent",
+      "coverage": "complete",
+      "currency_integrity": "single_verified_currency",
+      "freshness": "fresh",
+      "reasons": [],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "sufficient",
+      "value_state": "observed_nonzero"
+    },
+    "not_synchronized": {
+      "availability": "not_synchronized",
+      "consistency": "unverified",
+      "coverage": "unknown",
+      "currency_integrity": "not_applicable",
+      "freshness": "never_synchronized",
+      "reasons": [
+        "source_not_synchronized"
+      ],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "unavailable",
+      "value_state": "missing"
+    },
+    "null_field": {
+      "availability": "available",
+      "consistency": "consistent",
+      "coverage": "complete",
+      "currency_integrity": "single_verified_currency",
+      "freshness": "fresh",
+      "reasons": [],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "sufficient",
+      "value_state": "null"
+    },
+    "partial_coverage": {
+      "availability": "available",
+      "consistency": "consistent",
+      "coverage": "partial",
+      "currency_integrity": "single_verified_currency",
+      "freshness": "fresh",
+      "reasons": [
+        "partial_coverage"
+      ],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "partial",
+      "value_state": "observed_nonzero"
+    },
+    "ratio_unit": {
+      "availability": "available",
+      "consistency": "consistent",
+      "coverage": "complete",
+      "currency_integrity": "not_applicable",
+      "freshness": "fresh",
+      "reasons": [],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "sufficient",
+      "value_state": "observed_nonzero"
+    },
+    "record_unit": {
+      "availability": "available",
+      "consistency": "consistent",
+      "coverage": "complete",
+      "currency_integrity": "not_applicable",
+      "freshness": "fresh",
+      "reasons": [],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "sufficient",
+      "value_state": "not_applicable"
+    },
+    "retrieval_failed": {
+      "availability": "retrieval_failed",
+      "consistency": "unverified",
+      "coverage": "unknown",
+      "currency_integrity": "unknown_currency",
+      "freshness": "failed",
+      "reasons": [
+        "source_retrieval_failed"
+      ],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "unavailable",
+      "value_state": "missing"
+    },
+    "stale": {
+      "availability": "available",
+      "consistency": "consistent",
+      "coverage": "complete",
+      "currency_integrity": "single_verified_currency",
+      "freshness": "stale",
+      "reasons": [
+        "stale_for_current_claim"
+      ],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "partial",
+      "value_state": "observed_nonzero"
+    },
+    "synchronizing": {
+      "availability": "partially_available",
+      "consistency": "unverified",
+      "coverage": "unknown",
+      "currency_integrity": "not_applicable",
+      "freshness": "synchronizing",
+      "reasons": [
+        "coverage_unknown",
+        "synchronizing_for_current_claim"
+      ],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "insufficient",
+      "value_state": "observed_nonzero"
+    },
+    "unauthorized": {
+      "availability": "unauthorized",
+      "consistency": "unverified",
+      "coverage": "unknown",
+      "currency_integrity": "unknown_currency",
+      "freshness": "unknown",
+      "reasons": [
+        "source_unauthorized"
+      ],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "unavailable",
+      "value_state": "missing"
+    },
+    "unsupported_currency": {
+      "availability": "unsupported",
+      "consistency": "unverified",
+      "coverage": "unknown",
+      "currency_integrity": "unknown_currency",
+      "freshness": "fresh",
+      "reasons": [
+        "source_unsupported"
+      ],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "unavailable",
+      "value_state": "missing"
+    },
+    "verified_zero": {
+      "availability": "available",
+      "consistency": "consistent",
+      "coverage": "complete",
+      "currency_integrity": "single_verified_currency",
+      "freshness": "fresh",
+      "reasons": [],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "sufficient",
+      "value_state": "verified_zero"
+    },
+    "zero_incomplete": {
+      "availability": "available",
+      "consistency": "consistent",
+      "coverage": "partial",
+      "currency_integrity": "single_verified_currency",
+      "freshness": "fresh",
+      "reasons": [
+        "value_unknown",
+        "partial_coverage"
+      ],
+      "schema_version": "rev-evidence-quality-v1",
+      "sufficiency": "insufficient",
+      "value_state": "unknown"
+    }
+  },
+  "quality_of_collection": {
+    "currency_integrity": "unknown_currency",
+    "item_count": 3,
+    "items": [
+      {
+        "availability": "available",
+        "consistency": "consistent",
+        "coverage": "complete",
+        "currency_integrity": "single_verified_currency",
+        "freshness": "fresh",
+        "id": "ev-a1",
+        "reasons": [],
+        "schema_version": "rev-evidence-quality-v1",
+        "sufficiency": "sufficient",
+        "value_state": "observed_nonzero"
+      },
+      {
+        "availability": "available",
+        "consistency": "consistent",
+        "coverage": "complete",
+        "currency_integrity": "single_verified_currency",
+        "freshness": "fresh",
+        "id": "ev-a8",
+        "reasons": [],
+        "schema_version": "rev-evidence-quality-v1",
+        "sufficiency": "sufficient",
+        "value_state": "verified_zero"
+      },
+      {
+        "availability": "unauthorized",
+        "consistency": "unverified",
+        "coverage": "unknown",
+        "currency_integrity": "unknown_currency",
+        "freshness": "unknown",
+        "id": "ev-a4",
+        "reasons": [
+          "source_unauthorized"
+        ],
+        "schema_version": "rev-evidence-quality-v1",
+        "sufficiency": "unavailable",
+        "value_state": "missing"
+      }
+    ],
+    "overall_sufficiency": "unavailable",
+    "reasons": [
+      "source_unauthorized"
+    ],
+    "schema_version": "rev-evidence-quality-v1"
+  },
+  "quality_of_collection_mixed": {
+    "currency_integrity": "mixed_not_comparable",
+    "item_count": 2,
+    "items": [
+      {
+        "availability": "available",
+        "consistency": "consistent",
+        "coverage": "complete",
+        "currency_integrity": "single_verified_currency",
+        "freshness": "fresh",
+        "id": "ev-a1",
+        "reasons": [],
+        "schema_version": "rev-evidence-quality-v1",
+        "sufficiency": "sufficient",
+        "value_state": "observed_nonzero"
+      },
+      {
+        "availability": "available",
+        "consistency": "consistent",
+        "coverage": "complete",
+        "currency_integrity": "single_verified_currency",
+        "freshness": "fresh",
+        "id": "ev-c8",
+        "reasons": [],
+        "schema_version": "rev-evidence-quality-v1",
+        "sufficiency": "sufficient",
+        "value_state": "observed_nonzero"
+      }
+    ],
+    "overall_sufficiency": "sufficient",
+    "reasons": [],
+    "schema_version": "rev-evidence-quality-v1"
+  },
+  "safe_percent_change": {
+    "down": {
+      "ok": true,
+      "percent": "-50.0",
+      "reason": null
+    },
+    "missing": {
+      "ok": false,
+      "percent": null,
+      "reason": "missing_values"
+    },
+    "negative_baseline": {
+      "note": "The denominator is zero or non-positive, so no ratio or percentage is computed; an invented denominator would be a fabricated value.",
+      "ok": false,
+      "percent": null,
+      "reason": "zero_or_nonpositive_baseline"
+    },
+    "up": {
+      "ok": true,
+      "percent": "50.0",
+      "reason": null
+    },
+    "zero_baseline": {
+      "note": "The denominator is zero or non-positive, so no ratio or percentage is computed; an invented denominator would be a fabricated value.",
+      "ok": false,
+      "percent": null,
+      "reason": "zero_or_nonpositive_baseline"
+    }
+  },
+  "safe_ratio": {
+    "inf": {
+      "ok": false,
+      "reason": "missing_numerics",
+      "value": null
+    },
+    "nan": {
+      "ok": false,
+      "reason": "missing_numerics",
+      "value": null
+    },
+    "ok": {
+      "ok": true,
+      "reason": null,
+      "value": 2.5
+    },
+    "third": {
+      "ok": true,
+      "reason": null,
+      "value": 0.333333
+    },
+    "zero_denominator": {
+      "note": "The denominator is zero or non-positive, so no ratio or percentage is computed; an invented denominator would be a fabricated value.",
+      "ok": false,
+      "reason": "zero_denominator",
+      "value": null
+    }
+  }
+}
