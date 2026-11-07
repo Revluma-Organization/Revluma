@@ -129,6 +129,13 @@ def _spec(*args, **kwargs):
 _spec("store_health", "Store connection health",
       "Connection status and sync freshness for the organization's stores.",
       requires_period=False, data_sources=["stores"])
+_spec("integration_health", "Integration evidence and health",
+      "Explicit integration states: connection, per-resource authorization and "
+      "synchronization evidence, webhook health and deterministic overall health.",
+      requires_period=False, data_sources=["stores", "store_sync_domain_states",
+                                          "webhook_registrations",
+                                          "webhook_deliveries",
+                                          "intelligence_order_coverage"])
 _spec("data_coverage", "Order data coverage",
       "Certified order coverage windows and provenance per store.",
       requires_period=False, data_sources=["stores", "intelligence_order_coverage"])
@@ -217,6 +224,40 @@ def _store_health(org_id: str, db, params: dict, window: dict) -> ToolResult:
                           data_sources=["stores"], row_count=len(rows))
     return ToolResult("store_health", STATUS_AVAILABLE, items=items,
                       data_sources=["stores"], row_count=len(rows))
+
+
+_INTEGRATION_STATUS_BY_STATE = {
+    "healthy": STATUS_AVAILABLE,
+    "disconnected": STATUS_UNAVAILABLE,
+    "unauthorized": "unauthorized",
+    "partially_operational": STATUS_PARTIAL,
+    "degraded": STATUS_PARTIAL,
+    "verification_pending": STATUS_PARTIAL,
+    "attention_required": STATUS_PARTIAL,
+    "unknown": STATUS_UNAVAILABLE,
+}
+
+
+def _integration(org_id: str, db, params: dict, window: dict) -> ToolResult:
+    """Task 201 — canonical integration evidence (connection, authorization,
+    per-resource sync, webhooks, overall health) from persisted state only.
+
+    A stored connection record, a granted scope, or an enqueued job is never
+    reported as a working capability; every state is derived from evidence.
+    """
+    from ..intelligence.integration_evidence import retrieve_integration_evidence
+    evidence = retrieve_integration_evidence(org_id, db, now=params.get("_now"))
+    overall = evidence.get("overall_status", "unknown")
+    return ToolResult(
+        "integration_health",
+        _INTEGRATION_STATUS_BY_STATE.get(overall, STATUS_UNAVAILABLE),
+        items=evidence.get("items", []),
+        warnings=evidence.get("warnings", []),
+        limitations=evidence.get("limitations", []),
+        data_sources=["stores", "store_sync_domain_states", "webhook_registrations",
+                      "webhook_deliveries", "intelligence_order_coverage"],
+        row_count=len(evidence.get("items", [])),
+    )
 
 
 def _data_coverage(org_id: str, db, params: dict, window: dict) -> ToolResult:
@@ -659,6 +700,7 @@ def _findings(org_id: str, db, params: dict, window: dict) -> ToolResult:
 
 _HANDLERS: dict[str, Callable[[str, Any, dict, dict], ToolResult]] = {
     "store_health": _store_health,
+    "integration_health": _integration,
     "data_coverage": _data_coverage,
     "revenue_observations": _revenue,
     "order_observations": _orders,

@@ -239,7 +239,7 @@
 - [x] **TASK 198** — Verify revenue evidence retrieval. *(code complete; see `implementation/TASK-198-REV-REVENUE-EVIDENCE.md` — currency-safe, merchant-timezone, currency-honest revenue retrieval; CI + live acceptance outstanding)*
 - [ ] **TASK 199** — Verify order evidence retrieval. *(implementation candidate; see `implementation/TASK-199-ORDER-EVIDENCE.md` and `validation/TASK-199-ORDER-EVIDENCE.md`; CI, migration, deployment and authenticated production verification pending)*
 - [ ] **TASK 200** — Verify checkout evidence retrieval.
-- [ ] **TASK 201** — Verify integration evidence retrieval.
+- [x] **TASK 201** — Verify integration evidence retrieval. *(code complete; see `implementation/TASK-201-REV-INTEGRATION-EVIDENCE.md` — fail-closed current-state integration evidence, tenant- and secret-safe, Python tool + Node endpoint parity; CI + live acceptance outstanding)*
 - [ ] **TASK 202** — Verify finding evidence retrieval.
 - [ ] **TASK 203** — Verify product evidence retrieval where available.
 - [ ] **TASK 204** — Verify relative date interpretation.

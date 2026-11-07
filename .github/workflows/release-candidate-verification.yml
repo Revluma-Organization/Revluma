@@ -166,6 +166,20 @@ jobs:
             exit "$status"
           fi
 
+      - name: Integration evidence tenant and secret regressions on real PostgreSQL
+        working-directory: Backend
+        env:
+          RELEASE_CANDIDATE_ISOLATED_DB: 'true'
+        run: |
+          set +e
+          node src/tests/integrationEvidence.integration.js 2>&1 | tee /tmp/integration-evidence.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 25 /tmp/integration-evidence.log | tr '\n' ' ' | tr -s ' ')
+            echo "::error title=integration-evidence::${summary:0:1200}"
+            exit "$status"
+          fi
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11.9'
@@ -203,6 +217,21 @@ jobs:
           if [ "$status" -ne 0 ]; then
             summary=$(tail -n 12 /tmp/acceptance.log | tr '\n' ' ' | cut -c1-1200)
             echo "::error title=revenue-acceptance::${summary:-exited $status}"
+            exit "$status"
+          fi
+
+      - name: Integration evidence acceptance on real PostgreSQL
+        working-directory: python
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/revluma_rc
+          PYTHONPATH: .
+        run: |
+          set +e
+          python scripts/staging_integration_acceptance.py 2>&1 | tee /tmp/integration-acceptance.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            summary=$(tail -n 12 /tmp/integration-acceptance.log | tr '\n' ' ' | cut -c1-1200)
+            echo "::error title=integration-acceptance::${summary:-exited $status}"
             exit "$status"
           fi
 
