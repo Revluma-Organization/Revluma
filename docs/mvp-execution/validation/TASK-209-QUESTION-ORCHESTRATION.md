@@ -19,10 +19,15 @@
 
 The Backend environment could not download Prisma engines from the network-restricted host. The complete mocked Node suite used the existing ignored local test-client convention; real Prisma generation and PostgreSQL integration remain required in CI and are not represented by that stub.
 
-## Merge, deployment and production acceptance
+## Merge, CI and deployment evidence
 
-Not yet performed. No Task 209 commit, pull request, CI result, deployed revision or authenticated production conversation is claimed by this record.
+- PR #354 merged as `e37a24f5851c905472fe416968fdfc3eb513c1f5`. All five PR workflows passed on `324ab163ee56e2e5bf4ebd950a379cff8729c9bf`, including real Prisma/PostgreSQL financial and security regressions. Both main-branch test workflows passed on the merge commit.
+- Vercel `dpl_H9coPivjMtVttYS2BeJsEu1edzfu` is READY/PROMOTED on `e37a24f`, aliases assigned without error; the production sign-in page is reachable.
+- The active store remains `3ed79446-cb6d-4a1c-b174-9ec1ab91fe15`, `revluma-test-store-v1.myshopify.com`, status `active`. This is scope evidence, not authenticated Rev behavior.
+- Render `/ready` remained healthy but reported Node/Python `c7f8f6c` after the merge. Task 209 backend deployment identity is not yet established.
 
-Local fixtures do not prove merchant authentication, live Shopify authorization or production JSON/SSE behavior. Production acceptance must use active store `revluma-test-store-v1.myshopify.com`, verify deployed Node/Python revision identity, and run real authenticated single-domain, mixed-domain, contextual-follow-up and partial-failure conversations. Readiness endpoints and direct database aggregates are insufficient. The retired store was not used.
+## Production acceptance not established
 
-**Task 209 remains incomplete until merge, CI, deployment and authenticated active-store acceptance are established.**
+Local fixtures do not prove merchant authentication, live Shopify authorization or production JSON/SSE behavior. Production acceptance must verify deployed Node/Python revision identity and run real authenticated single-domain, mixed-domain, contextual-follow-up and partial-failure conversations on the active store. Readiness endpoints and direct database aggregates are insufficient. No merchant session is available, and no production conversation is claimed. The retired store was not used.
+
+**Task 209 remains incomplete until backend deployment and authenticated active-store acceptance are established.**

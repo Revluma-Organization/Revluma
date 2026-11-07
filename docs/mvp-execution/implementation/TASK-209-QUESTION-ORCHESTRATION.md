@@ -1,7 +1,7 @@
 # TASK 209 — Implementation: question routing and coherent multi-domain orchestration
 
 **Consolidated Task:** 209 (original Tasks 230–234)
-**Status:** implementation and local regressions complete; merge, deployment and authenticated production acceptance pending.
+**Status:** merged with green CI and Vercel production verified; Render revision and authenticated production acceptance pending.
 
 ## Understanding and deterministic planning
 
