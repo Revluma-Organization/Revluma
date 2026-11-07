@@ -20,7 +20,7 @@ SELECT v.store_id, v.product_external_id, v.external_id, v.title, v.sku, v.barco
  v.position, v.tracked, v.available_for_sale, v.created_at, v.updated_at, v.synced_at
 FROM product_variants v JOIN stores s ON s.id = v.store_id
 WHERE s.organization_id = CAST(:org_id AS uuid) AND s.status IN ('active','connected','syncing')
- AND v.product_external_id IN :product_ids
+ AND v.product_external_id = ANY(:product_ids)
 ORDER BY v.product_external_id, v.position, v.external_id LIMIT 1000
 """
 _INVENTORY_SQL = """
