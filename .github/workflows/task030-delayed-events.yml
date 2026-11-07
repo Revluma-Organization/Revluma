@@ -68,8 +68,6 @@ jobs:
           node src/tests/task030DelayedEvents.integration.js 2>&1 | tee /tmp/task030-tests.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            grep -E 'TC030|FAIL|Error|Assertion|expected|actual' /tmp/task030-tests.log | head -80 | while IFS= read -r line; do
-              printf '::error::%s\n' "${line//'%'/'%25'}"
-            done
+            node -e "const fs=require('fs');const line=fs.readFileSync('/tmp/task030-tests.log','utf8').split(/\r?\n/).find(x=>x.startsWith('TASK030_RESULTS='));if(line){for(const r of JSON.parse(line.slice(16)).filter(x=>x.status==='FAIL')){console.log('::error::'+r.id+' '+String(r.error).replace(/%/g,'%25').replace(/\r/g,'%0D').replace(/\n/g,'%0A'));}}"
           fi
           exit "$status"

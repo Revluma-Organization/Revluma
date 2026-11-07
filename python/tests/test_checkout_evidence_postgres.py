@@ -78,7 +78,7 @@ def test_postgres_lifecycle_relationships_currency_and_tenant_isolation(checkout
             {"id": outsider, "store": store, "external": "5", "name": "#OUT", "resource": "abandonedCheckouts", "state": "available", "created": START, "completed": None, "status": "abandoned", "recovered": None},
         ])
         # Move the final row to another tenant's store so it can never enter this result.
-        other_store = c.execute(text("SELECT id FROM stores WHERE organization_id=:org", {"org": other})).scalar()
+        other_store = c.execute(text("SELECT id FROM stores WHERE organization_id=:org"), {"org": other}).scalar()
         c.execute(text("UPDATE abandoned_carts SET store_id=:store WHERE id=:id"), {"store": other_store, "id": outsider})
         c.execute(text("INSERT INTO orders VALUES (:id,:store,:cart,'900','#900',:at)"),
                   {"id": order, "store": store, "cart": completed, "at": START + timedelta(days=1)})

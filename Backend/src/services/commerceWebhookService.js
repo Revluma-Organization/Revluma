@@ -697,6 +697,12 @@ async function reconcileOrdersOnCheckoutArrival(store, cart) {
 async function upsertAbandonedCart(store, payload) {
   const externalId = String(payload.checkout_id || payload.id || payload.cart_token || payload.checkout_token || '');
   if (!externalId) return null;
+  const sourceDate = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = value instanceof Date ? value : new Date(value);
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  };
+  const completedAt = sourceDate(payload.completed_at);
   const customer = payload.customer ? customerData(store.platform, payload) : null;
   const dbCustomer = customer
     ? await prisma.customers.upsert({
@@ -733,7 +739,7 @@ async function upsertAbandonedCart(store, payload) {
   // A stale non-completion snapshot cannot replace independently verified state.
   const activityAt = lastCheckoutActivity(payload);
   const isStaleEvent = Boolean(existing?.updated_at && activityAt < existing.updated_at);
-  if (isStaleEvent && !payload.completed_at) return existing;
+  if (isStaleEvent && !completedAt) return existing;
   const incomingCartValue = parseAmount(payload.total_price ?? payload.total);
   const incomingCartCurrency = normalizeCurrency(payload.currency ?? payload.currency_code);
   let cartValue;
@@ -770,9 +776,9 @@ async function upsertAbandonedCart(store, payload) {
     external_checkout_name: payload.name || existing?.external_checkout_name || null,
     source_resource: payload.source_resource || existing?.source_resource || null,
     source_state: 'available',
-    source_created_at: payload.created_at ? new Date(payload.created_at) : (existing?.source_created_at || null),
-    source_updated_at: payload.updated_at ? new Date(payload.updated_at) : (existing?.source_updated_at || null),
-    completed_at: payload.completed_at ? new Date(payload.completed_at) : (existing?.completed_at || null),
+    source_created_at: sourceDate(payload.created_at) || existing?.source_created_at || null,
+    source_updated_at: sourceDate(payload.updated_at) || existing?.source_updated_at || null,
+    completed_at: completedAt || existing?.completed_at || null,
     abandonment_observed_at: payload.source_abandoned ? (existing?.abandonment_observed_at || new Date()) : (existing?.abandonment_observed_at || null),
     retrieved_at: new Date(),
     recovery_url: payload.abandoned_checkout_url || payload.recovery_url || null,
@@ -784,9 +790,9 @@ async function upsertAbandonedCart(store, payload) {
     duties_amount: financialField(payload.duties_amount, existing?.duties_amount),
     taxes_included: typeof payload.taxes_included === 'boolean' ? payload.taxes_included : (existing?.taxes_included ?? null),
     currency: cartCurrency,
-    status: nextCheckoutStatus({ completedAt: payload.completed_at, existingStatus: existing?.status, isStale: isStaleEvent, sourceAbandoned: payload.source_abandoned }),
-    abandoned_at: existing?.abandoned_at || new Date(payload.created_at || Date.now()),
-    recovered_at: payload.completed_at ? new Date(payload.completed_at) : (existing?.recovered_at || null),
+    status: nextCheckoutStatus({ completedAt, existingStatus: existing?.status, isStale: isStaleEvent, sourceAbandoned: payload.source_abandoned }),
+    abandoned_at: existing?.abandoned_at || sourceDate(payload.created_at) || new Date(),
+    recovered_at: completedAt || existing?.recovered_at || null,
     // Never move the activity watermark backwards, including for delayed
     // completion evidence whose Shopify source timestamp predates a newer update.
     updated_at: existing?.updated_at && existing.updated_at > activityAt ? existing.updated_at : activityAt,
