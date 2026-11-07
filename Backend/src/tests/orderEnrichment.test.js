@@ -12,8 +12,26 @@ const DB_PATH = require.resolve('../configs/database');
 const STORE = { id: '11111111-1111-1111-1111-111111111111' };
 
 function loadEnrichment(graphqlImpl, prisma) {
+  const withNestedDefaults = async (...args) => {
+    const data = await graphqlImpl(...args);
+    const terminal = nodes => ({ nodes, pageInfo: { hasNextPage: false, endCursor: null } });
+    for (const refund of data?.node?.refunds || []) {
+      if (Array.isArray(refund.refundLineItems)) refund.refundLineItems = terminal(refund.refundLineItems);
+      else if (!refund.refundLineItems) refund.refundLineItems = terminal([]);
+      else if (!refund.refundLineItems.pageInfo) refund.refundLineItems.pageInfo = { hasNextPage: false, endCursor: null };
+      if (Array.isArray(refund.transactions)) refund.transactions = terminal(refund.transactions);
+      else if (!refund.transactions) refund.transactions = terminal([]);
+      else if (!refund.transactions.pageInfo) refund.transactions.pageInfo = { hasNextPage: false, endCursor: null };
+      if (!refund.orderAdjustments) refund.orderAdjustments = terminal([]);
+    }
+    for (const fulfillment of data?.node?.fulfillments?.nodes || data?.node?.fulfillments || []) {
+      if (!fulfillment.fulfillmentLineItems) fulfillment.fulfillmentLineItems = terminal([]);
+      if (!fulfillment.events) fulfillment.events = terminal([]);
+    }
+    return data;
+  };
   require.cache[DB_PATH] = { id: DB_PATH, filename: DB_PATH, loaded: true, exports: { prisma } };
-  require.cache[GRAPHQL_PATH] = { id: GRAPHQL_PATH, filename: GRAPHQL_PATH, loaded: true, exports: { shopifyGraphql: graphqlImpl } };
+  require.cache[GRAPHQL_PATH] = { id: GRAPHQL_PATH, filename: GRAPHQL_PATH, loaded: true, exports: { shopifyGraphql: withNestedDefaults } };
   for (const key of Object.keys(require.cache)) {
     if (key.includes('orderEnrichment') || key.includes('syncDomainState')) delete require.cache[key];
   }
@@ -151,7 +169,7 @@ test('enrichment failure in one domain never fabricates rows in another', async 
     if (query.includes('RevlumaOrderTransactions')) throw new Error('transactions exploded');
     if (query.includes('RevlumaOrderOverview')) return { node: { id: GID } };
     if (query.includes('RevlumaOrderRefunds')) return { node: { id: GID, refunds: [
-      { id: 'gid://shopify/Refund/55', note: 'changed mind', createdAt: '2026-10-31T09:00:00Z', totalRefundedSet: { shopMoney: { amount: '12.50', currencyCode: 'USD' } }, refundLineItems: { nodes: [{ quantity: 1, subtotalSet: { shopMoney: { amount: '12.50', currencyCode: 'USD' } }, restockType: 'RETURN', lineItem: { id: 'gid://shopify/LineItem/77' } }] }, transactions: [{ id: 'gid://shopify/OrderTransaction/8', kind: 'REFUND', status: 'SUCCESS', amountSet: { shopMoney: { amount: '12.50', currencyCode: 'USD' } }, processedAt: '2026-10-31T09:00:00Z' }] },
+      { id: 'gid://shopify/Refund/55', note: 'changed mind', createdAt: '2026-10-31T09:00:00Z', totalRefundedSet: { shopMoney: { amount: '12.50', currencyCode: 'USD' } }, refundLineItems: { nodes: [{ id: 'gid://shopify/RefundLineItem/55-1', quantity: 1, subtotalSet: { shopMoney: { amount: '12.50', currencyCode: 'USD' } }, restockType: 'RETURN', lineItem: { id: 'gid://shopify/LineItem/77' } }], pageInfo: { hasNextPage: false, endCursor: null } }, transactions: [{ id: 'gid://shopify/OrderTransaction/8', kind: 'REFUND', status: 'SUCCESS', amountSet: { shopMoney: { amount: '12.50', currencyCode: 'USD' } }, processedAt: '2026-10-31T09:00:00Z' }] },
     ] } };
     if (query.includes('RevlumaOrderFulfillmentsLegacy')) throw new Error('fulfillments exploded');
     if (query.includes('RevlumaOrderFulfillments')) throw new Error('fulfillments exploded');
@@ -332,4 +350,62 @@ test('fulfillment rows with the same external ID remain isolated by store', asyn
   await enrichOrder(other, GID, prisma, {});
   assert.equal(prisma.state.fulfillments.length, 2);
   assert.deepEqual(new Set(prisma.state.fulfillments.map(row => row.store_id)), new Set([STORE.id, other.id]));
+});
+
+
+test('refund and fulfillment nested relationships paginate without truncation or duplicates', async () => {
+  const prisma = prismaStub();
+  const refund = {
+    id: 'gid://shopify/Refund/55', createdAt: '2026-10-31T09:00:00Z', updatedAt: '2026-10-31T09:01:00Z',
+    totalRefundedSet: { shopMoney: { amount: '12.50', currencyCode: 'USD' } },
+    refundLineItems: { nodes: [{ id: 'gid://shopify/RefundLineItem/55-1', lineItem: { id: 'gid://shopify/LineItem/1' }, quantity: 1 }], pageInfo: { hasNextPage: true, endCursor: 'r1' } },
+    transactions: { nodes: [{ id: 'gid://shopify/OrderTransaction/1', status: 'SUCCESS' }], pageInfo: { hasNextPage: true, endCursor: 't1' } },
+    orderAdjustments: { nodes: [{ id: 'gid://shopify/OrderAdjustment/1' }], pageInfo: { hasNextPage: true, endCursor: 'a1' } },
+  };
+  const ful = fulfillment(88);
+  ful.fulfillmentLineItems = { nodes: [{ id: 'gid://shopify/FulfillmentLineItem/1', quantity: 1 }], pageInfo: { hasNextPage: true, endCursor: 'f1' } };
+  ful.events = { nodes: [{ id: 'gid://shopify/FulfillmentEvent/1', status: 'LABEL_PRINTED' }], pageInfo: { hasNextPage: true, endCursor: 'e1' } };
+  const graphql = async (_store, query, variables) => {
+    if (query.includes('RevlumaOrderOverview')) return { node: { id: variables.id } };
+    if (query.includes('RevlumaOrderTransactions')) return { node: { id: variables.id, transactions: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } } } };
+    if (query.includes('RevlumaRefundRelationsPage')) return { node: { id: refund.id,
+      refundLineItems: { nodes: [{ id: 'gid://shopify/RefundLineItem/55-2', lineItem: { id: 'gid://shopify/LineItem/2' }, quantity: 2 }], pageInfo: { hasNextPage: false, endCursor: 'r2' } },
+      transactions: { nodes: [{ id: 'gid://shopify/OrderTransaction/2', status: 'PENDING' }], pageInfo: { hasNextPage: false, endCursor: 't2' } },
+      orderAdjustments: { nodes: [{ id: 'gid://shopify/OrderAdjustment/2', reason: 'REFUND_DISCREPANCY' }], pageInfo: { hasNextPage: false, endCursor: 'a2' } },
+    } };
+    if (query.includes('RevlumaFulfillmentLinesPage')) return { node: { id: ful.id,
+      fulfillmentLineItems: { nodes: [{ id: 'gid://shopify/FulfillmentLineItem/2', quantity: 2 }], pageInfo: { hasNextPage: false, endCursor: 'f2' } },
+      events: { nodes: [{ id: 'gid://shopify/FulfillmentEvent/2', status: 'DELIVERED', happenedAt: '2026-11-01T00:00:00Z' }], pageInfo: { hasNextPage: false, endCursor: 'e2' } },
+    } };
+    if (query.includes('RevlumaOrderRefunds')) return { node: { id: GID, refunds: [refund] } };
+    return { node: { fulfillments: { nodes: [ful], pageInfo: { hasNextPage: false, endCursor: null } } } };
+  };
+  const { enrichOrder } = loadEnrichment(graphql, prisma);
+  const summary = await enrichOrder(STORE, GID, prisma, {});
+  assert.equal(summary.transactions, 0);
+  assert.equal(summary.refunds, 1);
+  assert.equal(summary.fulfillments, 1);
+  const savedRefund = prisma.state.refunds[0];
+  assert.equal(savedRefund.refund_line_items.length, 2);
+  assert.equal(savedRefund.transactions.length, 2);
+  assert.equal(savedRefund.order_adjustments.length, 2);
+  const savedFulfillment = prisma.state.fulfillments[0];
+  assert.equal(savedFulfillment.line_items.length, 2);
+  assert.equal(savedFulfillment.fulfillment_events.length, 2);
+  assert.equal(savedFulfillment.fulfillment_events[1].status, 'DELIVERED');
+});
+
+test('failed nested event pagination fails closed and preserves existing rows', async () => {
+  const prisma = prismaStub();
+  prisma.state.fulfillments.push({ external_id: 'keep' });
+  const ful = fulfillment(88);
+  ful.events = { nodes: [], pageInfo: { hasNextPage: true, endCursor: 'events-1' } };
+  const graphql = standardGraphql(async (_store, query) => {
+    if (query.includes('RevlumaFulfillmentLinesPage')) throw new Error('nested source failed');
+    return { node: { fulfillments: { nodes: [ful], pageInfo: { hasNextPage: false, endCursor: null } } } };
+  });
+  const { enrichOrder } = loadEnrichment(graphql, prisma);
+  assert.equal((await enrichOrder(STORE, GID, prisma, {})).fulfillments, 'failed');
+  assert.equal(prisma.state.fulfillments[0].external_id, 'keep');
+  assert.equal(prisma.state.domainRows.get(`${STORE.id}|fulfillments`).pagination_complete, false);
 });

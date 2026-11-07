@@ -117,3 +117,38 @@ test('order sync makes no writes if the parent changes during child pagination',
   await assert.rejects(syncOrders(store), { code: 'SHOPIFY_LINE_ITEMS_INCOMPLETE' });
   assert.equal(writes, 0);
 });
+
+
+test('order sync preserves source lifecycle and historical variant pricing without assuming fulfilledQuantity', async () => {
+  writes = 0; orderPayloads = []; queries = [];
+  const id = 'gid://shopify/Order/199';
+  response = { orders: terminal([{
+    id, name: '#199', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z',
+    processedAt: '2026-10-01T00:01:00Z', displayFinancialStatus: 'PARTIALLY_REFUNDED',
+    displayFulfillmentStatus: 'PARTIALLY_FULFILLED',
+    lineItems: terminal([{
+      id: 'gid://shopify/LineItem/199', name: 'Historical jacket', quantity: 4,
+      unfulfilledQuantity: 1, currentQuantity: 3, sku: 'J-BLUE-L', variantTitle: 'Blue / L',
+      product: { id: 'gid://shopify/Product/1', title: 'Renamed jacket' },
+      variant: { id: 'gid://shopify/ProductVariant/2', title: 'Blue / L', sku: 'J-BLUE-L' },
+      originalUnitPriceSet: { shopMoney: { amount: '50.00', currencyCode: 'USD' } },
+      discountedUnitPriceSet: { shopMoney: { amount: '40.00', currencyCode: 'USD' } },
+      originalTotalSet: { shopMoney: { amount: '200.00', currencyCode: 'USD' } },
+      discountedTotalSet: { shopMoney: { amount: '160.00', currencyCode: 'USD' } },
+      discountAllocations: [{ allocatedAmountSet: { shopMoney: { amount: '40.00', currencyCode: 'USD' } } }],
+    }]),
+  }]) };
+  assert.equal(await syncOrders(store), 1);
+  const payload = orderPayloads[0];
+  const line = payload.line_items[0];
+  assert.equal(payload.name, '#199');
+  assert.equal(payload.updated_at, '2026-10-02T00:00:00Z');
+  assert.equal(line.fulfilled_quantity, 3);
+  assert.equal(line.remaining_quantity, 1);
+  assert.equal(line.current_quantity, 3);
+  assert.equal(line.variant_title, 'Blue / L');
+  assert.equal(line.original_line_total, '200.00');
+  assert.equal(line.discount_amount, '40.00');
+  assert.equal(line.line_total, '160.00');
+  assert.doesNotMatch(queries.find(query => query.includes('query Orders')), /fulfilledQuantity/);
+});

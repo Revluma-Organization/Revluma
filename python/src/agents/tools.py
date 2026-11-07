@@ -136,8 +136,14 @@ _spec("revenue_observations", "Revenue observations",
       params={"compare": {"type": "boolean", "required": False,
                           "description": "Include an equal-length previous-period comparison."}})
 _spec("order_observations", "Order observations",
-      "Order volume, value and customer mix, separated by currency.",
-      requires_period=True, data_sources=["stores", "orders"])
+      "Order lifecycle, historical products/variants, individual orders and Task 198 financial semantics.",
+      requires_period=True, data_sources=["stores", "orders", "order_items", "order_refunds", "order_fulfillments"],
+      params={"order_reference": {"type": "string", "required": False},
+              "latest": {"type": "boolean", "required": False},
+              "financial_status": {"type": "string", "required": False},
+              "fulfillment_status": {"type": "string", "required": False},
+              "cancelled": {"type": "boolean", "required": False},
+              "compare": {"type": "boolean", "required": False}})
 _spec("cart_observations", "Checkout cart observations",
       "Deduplicated unrecovered cart count and recorded value per currency.",
       requires_period=True, data_sources=["stores", "abandoned_carts"])
@@ -291,58 +297,24 @@ def _money_rows(rows: list, *, metric_prefix: str, count_key: str, value_key: st
 
 
 def _orders(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    rows, error = safe_query(db, f"""
-        SELECT o.currency,
-               COUNT(*) AS order_count,
-               COALESCE(SUM(o.total), 0) AS order_value,
-               COUNT(DISTINCT o.customer_id) AS ordering_customers
-        FROM orders o JOIN stores s ON s.id = o.store_id
-        WHERE {_STORE_FILTER}
-          AND o.ordered_at >= :start AND o.ordered_at < :end
-          AND (o.recovery_status IS NULL OR o.recovery_status NOT IN
-               ('cancelled', 'canceled', 'voided', 'deleted'))
-        GROUP BY o.currency ORDER BY o.currency
-    """, {"org_id": org_id, "start": window["start"], "end": window["end"]})
-    if error:
-        return ToolResult("order_observations", STATUS_UNAVAILABLE,
-                          warnings=["order_query_failed"], data_sources=["orders"])
-    items, warnings = _money_rows(
-        rows, metric_prefix="recorded_order", count_key="order_count",
-        value_key="order_value", label_count="Recorded order count",
-        label_value="Recorded order value", window=window, source="orders",
-        definition_count="Non-cancelled orders with ordered_at in [start, end).",
-        definition_value="Sum of persisted non-cancelled order totals.",
-        limitations=["Recorded order total, not audited net revenue."],
+    from ..intelligence.order_evidence import retrieve_order_evidence
+    result = retrieve_order_evidence(
+        org_id, db,
+        start=datetime.fromisoformat(window["start"].replace("Z", "+00:00")),
+        end=datetime.fromisoformat(window["end"].replace("Z", "+00:00")),
+        now=params.get("_now"), order_reference=params.get("order_reference"),
+        latest=bool(params.get("latest")), financial_status=params.get("financial_status"),
+        fulfillment_status=params.get("fulfillment_status"), cancelled=bool(params.get("cancelled")),
+        compare=bool(params.get("compare")),
     )
-    if not rows:
-        items.append(evidence_item(
-            "recorded_order_count", label="Recorded order count", value=0,
-            window=window, source="orders",
-            definition="Non-cancelled orders with ordered_at in [start, end).",
-            limitations=["The query succeeded and returned no orders."],
-        ))
-        items.append(evidence_item(
-            "recorded_order_value", label="Recorded order value", value=None,
-            unit=UNIT_CURRENCY, window=window, source="orders", status=STATUS_UNSUPPORTED,
-            definition="Sum of persisted non-cancelled order totals.",
-            limitations=["No currency can be attributed to an empty order set."],
-            discriminator="currencyless-zero",
-        ))
-    for row in rows:
-        currency = normalize_currency(_row(row, "currency"))
-        customers = _row(row, "ordering_customers")
-        if currency and isinstance(customers, int):
-            items.append(evidence_item(
-                "ordering_customer_count", label=f"Ordering customers ({currency})",
-                value=customers, window=window, source="orders",
-                definition="Distinct customers with a non-cancelled order in the window.",
-                discriminator=currency,
-            ))
-    return ToolResult("order_observations", STATUS_AVAILABLE if not error else STATUS_UNAVAILABLE,
-                      items=items, warnings=warnings,
-                      limitations=["Order totals are recorded values, not settled revenue."],
-                      data_sources=["stores", "orders"], row_count=len(rows))
-
+    comparison_items = [item for item in result.get("comparison_items", []) if item.get("domain") == "orders"]
+    return ToolResult(
+        "order_observations", result.get("overall_status", STATUS_UNAVAILABLE),
+        items=result.get("items", []) + comparison_items, warnings=result.get("warnings", []),
+        limitations=result.get("limitations", []),
+        data_sources=["stores", "orders", "order_items", "order_refunds", "order_fulfillments", "store_sync_domain_states"],
+        row_count=len(result.get("items", [])) + len(comparison_items), comparison=result.get("comparison"),
+    )
 
 def _carts(org_id: str, db, params: dict, window: dict) -> ToolResult:
     rows, error = safe_query(db, f"""
@@ -729,9 +701,26 @@ def run_tool(tool_name: str, organization_id: str, db: Any, params: dict | None 
     if not organization_id or not isinstance(organization_id, str):
         raise ToolAuthorizationError("Authenticated organization context is required")
     params = dict(params or {})
-    allowed = {"start", "end", "segment", "compare"}
+    allowed = {"start", "end", "segment", "compare", "order_reference", "latest", "financial_status", "fulfillment_status", "cancelled"}
     if set(params) - allowed:
         raise ToolAuthorizationError("Unsupported tool parameter")
+    if params.get("financial_status") is not None and params["financial_status"] not in {
+        "AUTHORIZED", "EXPIRED", "PAID", "PARTIALLY_PAID", "PARTIALLY_REFUNDED",
+        "PENDING", "REFUNDED", "VOIDED", "CANCELLED",
+    }:
+        raise ToolAuthorizationError("Unsupported financial status filter")
+    if params.get("fulfillment_status") is not None and params["fulfillment_status"] not in {
+        "FULFILLED", "UNFULFILLED", "PARTIALLY_FULFILLED", "IN_PROGRESS",
+        "ON_HOLD", "OPEN", "PENDING_FULFILLMENT", "RESTOCKED", "SCHEDULED",
+    }:
+        raise ToolAuthorizationError("Unsupported fulfillment status filter")
+    if params.get("order_reference") is not None and (
+        not isinstance(params["order_reference"], str) or not params["order_reference"].strip() or len(params["order_reference"]) > 128
+    ):
+        raise ToolAuthorizationError("Invalid order reference")
+    for flag in ("latest", "cancelled", "compare"):
+        if flag in params and not isinstance(params[flag], bool):
+            raise ToolAuthorizationError("Invalid boolean tool parameter")
     now = ensure_utc(now or utc_now(), field="now")
     spec = _SPECS[tool_name]
     if spec.requires_period:

@@ -210,7 +210,7 @@ INTENT_TOOLS = {
     INTENT_REFUNDS: ["store_health", "revenue_observations", "order_observations",
                      "refund_observations"],
     INTENT_PRODUCTS: ["store_health", "product_observations", "inventory_observations",
-                      "revenue_observations"],
+                      "revenue_observations", "order_observations"],
     INTENT_TRAFFIC: ["store_health", "traffic_observations", "checkout_observations",
                      "order_observations"],
     INTENT_COVERAGE: ["store_health", "data_coverage"],
@@ -1215,6 +1215,43 @@ def _item_fact(item: dict, text: str) -> dict:
     }
 
 
+def _order_tool_params(message: str, inherited: dict | None = None) -> dict:
+    """Resolve allowlisted order filters while preserving explicit follow-ups."""
+    text = (message or "").lower()
+    followup = bool(re.search(r"\b(?:those|them|that order|this order|these orders|cancelled ones)\b", text))
+    params = dict(inherited or {}) if followup else {}
+    reference = re.search(r"(?:order\s+)?(#\d{1,64})\b", message or "", re.I)
+    stable = re.search(r"\border(?:\s+id)?\s+([0-9a-f]{8}-[0-9a-f-]{27,}|\d{5,})\b", message or "", re.I)
+    if stable:
+        params["order_reference"] = stable.group(1)
+        params.pop("latest", None)
+    elif reference:
+        params["order_reference"] = reference.group(1)
+        params.pop("latest", None)
+    elif re.search(r"\b(?:latest|most recent|last)\s+(?:\d+\s+)?orders?\b", text):
+        params["latest"] = True
+        params.pop("order_reference", None)
+    if re.search(r"\bpartially\s+fulfilled\b", text):
+        params["fulfillment_status"] = "PARTIALLY_FULFILLED"
+    elif re.search(r"\bunfulfilled\b|\bnot fulfilled\b", text):
+        params["fulfillment_status"] = "UNFULFILLED"
+    elif re.search(r"\bfulfilled\b", text) and not re.search(r"\bunfulfilled\b", text):
+        params["fulfillment_status"] = "FULFILLED"
+    if re.search(r"\bpartially\s+paid\b", text):
+        params["financial_status"] = "PARTIALLY_PAID"
+    elif re.search(r"\bawaiting payment\b|\bpending payment\b|\bunpaid\b", text):
+        params["financial_status"] = "PENDING"
+    elif re.search(r"\bpartially\s+refunded\b", text):
+        params["financial_status"] = "PARTIALLY_REFUNDED"
+    elif re.search(r"\bfully refunded\b", text):
+        params["financial_status"] = "REFUNDED"
+    elif re.search(r"\bpaid orders\b", text):
+        params["financial_status"] = "PAID"
+    if re.search(r"\bcancelled\b|\bcanceled\b", text):
+        params["cancelled"] = True
+    return params
+
+
 def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
     facts: list[dict] = []
     by_metric: dict[str, list[dict]] = {}
@@ -1252,6 +1289,26 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
         add("first_time_customer_count", lambda i: (
             f"{i['value']} first-time ordering customers"
             + (f" ({i.get('currency')})" if i.get("currency") else "")))
+    if intent in (INTENT_OVERVIEW, INTENT_REVENUE, INTENT_REFUNDS, INTENT_PRODUCTS, INTENT_CUSTOMERS, INTENT_TRAFFIC):
+        add("order_count", lambda i: f"{i['value']} orders recorded in the requested period, including later cancellations and refunds")
+        for metric in ("paid_count", "pending_payment_count", "partially_paid_count", "cancelled_count",
+                       "refunded_count", "partially_refunded_count", "fulfilled_count", "unfulfilled_count",
+                       "partially_fulfilled_count", "open_count", "closed_count"):
+            add(metric, lambda i, metric=metric: f"{i['value']} {metric.replace('_', ' ')}")
+        for item in by_metric.get("order_record", []):
+            if item.get("status") != STATUS_AVAILABLE or not isinstance(item.get("value"), dict):
+                continue
+            record = item["value"]
+            reference = record.get("name") or record.get("external_order_id")
+            products = ", ".join(str(line.get("product_title_at_order")) for line in record.get("line_items", [])[:5] if line.get("product_title_at_order"))
+            facts.append(_item_fact(item, (
+                f"{reference}: lifecycle {record.get('lifecycle_status') or 'unknown'}; "
+                f"financial status {record.get('financial_status') or 'unavailable'}; "
+                f"fulfillment status {record.get('fulfillment_status') or 'unavailable'}; "
+                f"{len(record.get('line_items') or [])} line items; {len(record.get('relationships') or [])} refund/fulfillment relationships"
+                + (f"; products at order time: {products}" if products else "")
+                + ". Fulfillment does not verify delivery and no unfulfilled reason is inferred.")))
+        add("average_order_value", lambda i: f"Average order value {_money_text(i['value'], i.get('currency'))} using Task 198 net recorded order definitions")
     if intent in (INTENT_PRODUCTS,):
         add("product_units_sold", lambda i: f"{i['label']}: {i['value']} units")
         add("product_recorded_value", lambda i: f"{i['label']}: {_money_text(i['value'], i.get('currency'))}")
@@ -1855,6 +1912,7 @@ def persist_investigation_context(organization_id: str, user_id: str,
             "evidence_ids": [item["id"] for item in result["evidence"]["items"]][:20],
             "currencies": sorted(group_by_currency(result["evidence"]["items"]).keys()),
             "segment": result["investigation"].get("segment"),
+            "order_query": result["investigation"].get("order_query") or {},
         },
         "unresolved": result.get("unknowns", [])[:5],
     }
@@ -2312,6 +2370,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         return clarification
 
     allowed_store_ids = set(store_health.store_ids)
+    inherited_order_query = ((conversation_context.get("last_investigation") or {}).get("order_query")
+                             if conversation_context else None)
+    order_query = _order_tool_params(message, inherited_order_query)
+    result["investigation"]["order_query"] = order_query
     if any(not set(item.get("store_ids") or []).issubset(allowed_store_ids) for item in external_items):
         raise ValueError("Merchant evidence contains an unauthorized store reference")
     plan = _plan_steps(tools, TOOL_STEP_LABELS)
@@ -2365,8 +2427,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "start": window["start"],
             "end": window["end"],
         }
-        if tool == "revenue_observations":
+        if tool in ("revenue_observations", "order_observations"):
             params["compare"] = bool(window.get("compared_to"))
+        if tool == "order_observations":
+            params.update(order_query)
         if classification.get("segment"):
             params["segment"] = classification["segment"]
         try:

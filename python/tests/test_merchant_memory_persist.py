@@ -322,5 +322,5 @@ class TestPersistedContextIsBounded:
         assert value["intent"] == "revenue_investigation"
         assert value["status"] == "complete"
         assert set(value) <= {
-            "id", "intent", "status", "period", "evidence_ids", "currencies", "segment",
+            "id", "intent", "status", "period", "evidence_ids", "currencies", "segment", "order_query",
         }
