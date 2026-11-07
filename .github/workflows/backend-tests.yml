@@ -34,6 +34,8 @@ jobs:
           cache-dependency-path: Backend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Validate Prisma schema
+        run: npm run prisma -- validate
       - name: Run complete backend test suite
         run: |
           set -o pipefail

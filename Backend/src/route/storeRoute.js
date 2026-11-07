@@ -8,6 +8,8 @@ router.get('/', authenticateToken, storeController.getStores);
 // /integration-states route must be declared before the parameterized
 // /:storeId route so Express matches it literally.
 router.get('/integration-states', authenticateToken, storeController.getIntegrationStates);
+// Task 214 — tenant-scoped integration diagnostics (lifecycle + webhook + sync).
+router.get('/shopify/diagnostics', authenticateToken, storeController.getShopifyDiagnostics);
 router.get('/:storeId/integration-state', authenticateToken, storeController.getIntegrationState);
 
 module.exports = router;

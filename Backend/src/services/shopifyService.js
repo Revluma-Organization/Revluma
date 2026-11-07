@@ -104,7 +104,13 @@ const upsertStore = async ({
       access_token: encrypt(accessToken),
       granted_scopes: grantedScopes,
       status: "active",
-      installed_at: new Date(),
+      integration_state: "reconnecting",
+      integration_reason_code: "AUTHORIZATION_REQUIRED",
+      integration_changed_at: new Date(),
+      integration_version: { increment: 1 },
+      initial_sync_status: "queued",
+      recovery_status: "recovering",
+      sync_error_code: null,
       updated_at: new Date(),
     },
 
@@ -115,6 +121,11 @@ const upsertStore = async ({
       access_token: encrypt(accessToken),
       granted_scopes: grantedScopes,
       status: "active",
+      integration_state: "reconnecting",
+      integration_reason_code: "AUTHORIZATION_REQUIRED",
+      integration_changed_at: new Date(),
+      initial_sync_status: "queued",
+      recovery_status: "recovering",
       installed_at: new Date(),
     },
   });
@@ -138,11 +149,11 @@ const getStoreAccessToken = (store) => {
 };
 
 /*Fire-and-forget background synchronization.*/
-const syncShopifyStore = async (store) => {
+const syncShopifyStore = async (store, options = {}) => {
   try {
     logger.info('shopify_sync_started', { shop_domain: store.shop_domain });
     const { syncShopifyStore: runSync } = require('./shopifySync');
-    return await runSync(store);
+    return await runSync(store, options);
   } catch (error) {
     logger.error('shopify_sync_failed', {
       store_id: store.id,

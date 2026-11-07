@@ -51,6 +51,30 @@ interface WebhookDetail {
   attempt_count?: number;
   started_at?: string | null;
   completed_at?: string | null;
+  registration_status?: string;
+  last_verified_at?: string | null;
+  delivery?: { status: string; last_processed_at: string | null; failed_deliveries: number; duplicate_deliveries: number; backlog: number };
+}
+
+interface IntegrationDiagnostic {
+  reason_code: string;
+  severity: "info" | "warning" | "error";
+  explanation: string;
+  merchant_action_required: boolean;
+  recommended_action: string;
+  retry_eligible: boolean;
+  reconnect_eligible: boolean;
+}
+
+interface SyncResource {
+  resource: string;
+  required: boolean;
+  status: string;
+  retrieved_record_count: number | null;
+  persisted_record_count: number | null;
+  pagination_complete: boolean;
+  last_successful_sync: string | null;
+  error_code: string | null;
 }
 
 interface ConnectedStore {
@@ -60,6 +84,14 @@ interface ConnectedStore {
   status: string;
   installed_at: string | null;
   connection_status: "connected" | "disconnected";
+  connection_state?: string;
+  reconnect_eligible?: boolean;
+  diagnostic?: IntegrationDiagnostic;
+  diagnostics?: {
+    connection: { authorization: string; authorization_verified_at: string | null };
+    synchronization: { status: string; attempt_count: number; required_resources_complete: boolean; resources: SyncResource[] };
+    webhooks: { registration: { complete: boolean }; delivery: { status: string; note: string } };
+  };
   setup_status: "disconnected" | "webhooks_pending" | "in_progress" | "failed" | "pending" | "complete";
   webhooks_registered: number | null;
   webhooks_required: number | null;
@@ -178,12 +210,14 @@ export default function Integrations() {
 
   // Task 213 — the canonical integration states (server-evaluated, polled
   // adaptively, never cached in sessionStorage) are the source of truth for
-  // the connection status shown to the merchant.
+  // the connection status shown to the merchant. Task 214's reconnect /
+  // retry / diagnostics workspace consumes the same authoritative store rows.
   const { states, byStoreId, refetch: refetchStates } = useIntegrationStates();
   const [stores, setStores] = useState<ConnectedStore[]>([]);
   const [loading, setLoading] = useState(true);
   const [storeLoadError, setStoreLoadError] = useState(false);
   const [retryingStoreIds, setRetryingStoreIds] = useState<string[]>([]);
+  const [reconnectingStoreIds, setReconnectingStoreIds] = useState<string[]>([]);
   const [webhookDetailsStoreId, setWebhookDetailsStoreId] = useState<string | null>(null);
   const [retryFeedback, setRetryFeedback] = useState<{ storeId: string; state: "running" | "success" | "partial" | "failed"; message: string } | null>(null);
 
@@ -244,19 +278,19 @@ export default function Integrations() {
   useEffect(() => {
     const callbackStatus = searchParams.get("shopify");
     if (callbackStatus === "cancelled") {
-      showStatusCard("error", "Shopify Authorization Cancelled", "No Shopify connection was saved. You can start the connection again whenever you're ready.");
+      showStatusCard("error", "Shopify Authorization Cancelled", "No new Shopify authorization was saved. Any previous connection state is shown below; you can start again when ready.");
       const next = new URLSearchParams(searchParams);
       next.delete("shopify");
       next.delete("shop");
       next.delete("stage");
       next.delete("reference");
+      next.delete("reason");
       setSearchParams(next, { replace: true });
       void fetchStatuses();
       void refetchStates();
       return;
     }
-    const connectionAttempt = callbackStatus === "connected" ||
-      callbackStatus === "error" ||
+    const connectionAttempt = ["connected", "authorized", "recovery_pending", "reconnect_failed", "error"].includes(callbackStatus || "") ||
       searchParams.has("connected");
     if (connectionAttempt) {
       const callbackShop = searchParams.get("shop");
@@ -279,17 +313,14 @@ export default function Integrations() {
               : "Shopify returned to Revluma, but no saved connection was found for this store in your account. Please try connecting again.",
           );
         } else if (!isStoreSetupComplete(shopifyStore)) {
+          const setupFailed = shopifyStore.setup_status === "failed";
           showStatusCard(
-            "error",
-            shopifyStore.setup_status === "failed"
-              ? "Shopify Connected — Setup Needs Attention"
-              : "Shopify Connected — Setup Incomplete",
-            shopifyStore.setup_status === "failed"
-              ? shopifyStore.monitoring_mode === "sync_only_limited"
-                ? "Your store data synchronized, but webhook setup failed. Monitoring is limited and may not reflect recent changes immediately. Review setup details or retry."
-                : "Your store credentials are saved, but webhook setup or synchronization failed. Use Retry setup on the store card."
-              : "Your store credentials are saved. Webhook registration or initial synchronization is still pending; the current setup status is shown below.",
-            "View setup status",
+            setupFailed ? "error" : "success",
+            setupFailed ? "Shopify Authorized — Recovery Needs Attention" : "Shopify Authorization Verified",
+            setupFailed
+              ? shopifyStore.diagnostic?.explanation || "Authorization was verified, but webhook or synchronization recovery needs attention. Review the diagnostics below."
+              : "Shopify authorization is verified. Webhook registration and synchronization have their own status below; initial sync is not claimed complete until every required resource finishes.",
+            "View recovery status",
           );
         } else {
           showStatusCard(
@@ -306,6 +337,7 @@ export default function Integrations() {
       next.delete("shop");
       next.delete("stage");
       next.delete("reference");
+      next.delete("reason");
       setSearchParams(next, { replace: true });
       void refetchStates();
     } else {
@@ -313,7 +345,7 @@ export default function Integrations() {
     }
   }, [fetchStatuses, refetchStates, searchParams, setSearchParams, showStatusCard]);
 
-  const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && store.connection_status === "connected" && (store.setup_status === "in_progress" || store.setup_status === "webhooks_pending" || store.setup_status === "pending"));
+  const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && (store.connection_state === "reconnecting" || (store.connection_status === "connected" && (store.setup_status === "in_progress" || store.setup_status === "webhooks_pending" || store.setup_status === "pending"))));
   useEffect(() => {
     if (!shopifySetupInProgress) return;
     const intervalId = window.setInterval(() => {
@@ -369,6 +401,21 @@ export default function Integrations() {
       showStatusCard("error", "Shopify Setup Retry Failed", detail);
     } finally {
       setRetryingStoreIds((current) => current.filter((id) => id !== storeId));
+      await fetchStatuses();
+    }
+  }
+
+  async function handleReconnect(store: ConnectedStore) {
+    if (reconnectingStoreIds.includes(store.id)) return;
+    setReconnectingStoreIds(current => [...current, store.id]);
+    try {
+      const res = await api.get("/shopify/install", { shop: store.shop_domain, store_id: store.id, mode: "reconnect" });
+      const targetUrl = (res.data as { redirectUrl?: string })?.redirectUrl;
+      if (!targetUrl) throw new Error("Shopify did not return an authorization URL.");
+      window.location.assign(targetUrl);
+    } catch (error) {
+      showStatusCard("error", "Reconnect Could Not Start", getErrorMessage(error, "Reconnect could not be started. Refresh the integration state and try again."));
+      setReconnectingStoreIds(current => current.filter(id => id !== store.id));
       await fetchStatuses();
     }
   }
@@ -487,7 +534,7 @@ export default function Integrations() {
       )}
 
       {/* No-store warning -> Premium Empty State */}
-      {!loading && !storeLoadError && !anyConnected && (
+      {!loading && !storeLoadError && stores.length === 0 && (
         <div className={DESIGN_TOKENS.emptyState.container}>
           <div className={DESIGN_TOKENS.emptyState.iconWrapper}>
             <WifiOff className={DESIGN_TOKENS.emptyState.icon} strokeWidth={1.5} />
@@ -604,13 +651,17 @@ export default function Integrations() {
                       ["CUSTOMERS_UPDATE", "Customer updated"],
                       ["CHECKOUTS_CREATE", "Checkout created"],
                       ["CHECKOUTS_UPDATE", "Checkout updated"],
+                      ["PRODUCTS_CREATE", "Product created"],
+                      ["PRODUCTS_UPDATE", "Product updated"],
+                      ["PRODUCTS_DELETE", "Product deleted"],
                     ] as const;
                     const registeredCount = details.filter((item) => item.status === "registered").length;
                     const failedCount = details.filter((item) => item.status === "failed").length;
                     const runningCount = details.filter((item) => item.status === "running").length;
-                    const syncRunning = store.status === "syncing";
-                    const syncFailed = store.status === "error";
-                    const heading = setupDone ? "Your store is ready!" : failedCount > 0 || store.setup_status === "failed" ? "Setup needs attention" : isRetrying ? "Getting your store ready..." : "Shopify setup";
+                    const syncRunning = store.diagnostics?.synchronization.status === "running" || store.status === "syncing";
+                    const syncFailed = store.diagnostics?.synchronization.status === "failed" || store.status === "error";
+                    const needsReconnect = store.reconnect_eligible === true || store.diagnostic?.reconnect_eligible === true;
+                    const heading = setupDone ? "Your store is ready!" : needsReconnect ? "Shopify reconnect required" : failedCount > 0 || store.setup_status === "failed" ? "Setup needs attention" : isRetrying ? "Getting your store ready..." : "Shopify setup";
                     const rowDetail = (topic: string) => details.find((item) => item.topic === topic);
                     const rowState = (topic: string) => rowDetail(topic)?.status ?? "unknown";
                     return (
@@ -621,8 +672,23 @@ export default function Integrations() {
                             <IntegrationStatusBadge status={storeState} size="sm" />
                           </div>
                           <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{heading}</h3>
+                          {store.diagnostic && store.diagnostic.reason_code !== "CONNECTED" && (
+                            <div role={store.diagnostic.severity === "error" ? "alert" : "status"} className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                              <p>{store.diagnostic.explanation}</p>
+                              <p className="mt-1 text-xs opacity-80">Reason: {store.diagnostic.reason_code}. {store.diagnostic.reconnect_eligible ? "Merchant reconnect is available." : store.diagnostic.retry_eligible ? "A bounded retry is available." : "No automatic recovery is claimed."}</p>
+                            </div>
+                          )}
                           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{setupDone ? "Your store is connected, all required webhooks are registered, and initial synchronization is complete." : isRetrying ? "Connecting your store and configuring its webhook subscriptions." : store.setup_status === "failed" || failedCount > 0 ? "Webhook registration or initial synchronization needs attention." : "Store setup is in progress or awaiting verification."}</p>
-                          {!setupDone && store.connection_status === "connected" && (
+                          <div className="mt-5 flex flex-wrap gap-2">
+                            {needsReconnect && (
+                              <button type="button" onClick={() => void handleReconnect(store)} disabled={reconnectingStoreIds.includes(store.id)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#007FFF] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#007FFF]/90 disabled:opacity-60">
+                                {reconnectingStoreIds.includes(store.id) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plug className="h-4 w-4" />}
+                                {reconnectingStoreIds.includes(store.id) ? "Starting secure reconnect…" : "Reconnect Shopify"}
+                              </button>
+                            )}
+                            <button type="button" onClick={() => setWebhookDetailsStoreId(store.id)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">View diagnostics</button>
+                          </div>
+                          {!setupDone && !needsReconnect && store.connection_status === "connected" && (
                             <button type="button" onClick={() => { setWebhookDetailsStoreId(store.id); void handleRetryStoreSetup(store.id); }} disabled={isRetrying}
                               className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800">
                               {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
@@ -644,8 +710,8 @@ export default function Integrations() {
                             {setupDone ? "Your Shopify store is connected and synchronized." : "Connecting your store and configuring its webhook subscriptions."}
                           </p>
                           <div className="mt-5 mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                            <span>{registeredCount} of 9 webhooks registered</span>
-                            <span>{store.last_synced_at ? "Initial sync complete" : "Initial sync pending"}</span>
+                            <span>{registeredCount} of {store.webhooks_required ?? 12} webhooks provider-verified</span>
+                            <span>Initial sync: {store.diagnostics?.synchronization.status || (store.last_synced_at ? "historical completion recorded" : "pending")}</span>
                             {runningCount > 0 && <span className="font-medium text-teal-700 dark:text-teal-400">{runningCount} in progress</span>}
                             {failedCount > 0 && <span className="font-medium text-red-600 dark:text-red-400">{failedCount} failed</span>}
                           </div>
@@ -669,7 +735,7 @@ export default function Integrations() {
                                   <div className="min-w-0 flex-1 pb-5">
                                     <p className={cn("text-sm font-medium", registered ? "text-emerald-700 dark:text-emerald-400" : failed ? "text-red-700 dark:text-red-400" : running ? "font-semibold text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400")}>{label}</p>
                                     <p className={cn("mt-0.5 break-words text-xs", registered ? "text-emerald-700/80 dark:text-emerald-400/80" : failed ? "text-red-600 dark:text-red-400" : running ? "text-teal-700 dark:text-teal-400" : "text-slate-400 dark:text-slate-500")}>
-                                      {registered ? "Registered successfully" : failed ? (detail?.error || "Registration failed. Check server diagnostics and retry setup.") : running ? "Registration in progress" : notAttempted ? "Not attempted" : "No individual result recorded yet"}
+                                      {registered ? `Provider registration verified. Delivery: ${detail?.delivery?.status || "no evidence"}.` : failed ? (detail?.error || "Registration failed. Check server diagnostics and retry setup.") : running ? "Registration in progress" : notAttempted ? "Missing or not attempted" : "Provider verification unavailable; registration is not claimed healthy"}
                                     </p>
                                   </div>
                                 </li>
@@ -685,6 +751,18 @@ export default function Integrations() {
                               </div>
                             </li>
                           </ol>
+                          <section aria-label="Resource synchronization" className="mt-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                            <h4 className="text-sm font-semibold">Resource coverage</h4>
+                            <p className="mt-1 text-xs text-slate-500">Counts are recorded execution results, not progress estimates. Required resources must complete pagination before initial sync is complete.</p>
+                            <ul className="mt-3 space-y-2">
+                              {(store.diagnostics?.synchronization.resources || []).map(resource => (
+                                <li key={resource.resource} className="flex items-start justify-between gap-3 text-xs">
+                                  <span className="font-medium">{resource.resource.replaceAll("_", " ")}{resource.required ? " · required" : " · optional"}</span>
+                                  <span className="text-right text-slate-500">{resource.status}{resource.retrieved_record_count !== null ? ` · ${resource.retrieved_record_count} retrieved` : ""}{resource.error_code ? ` · ${resource.error_code}` : ""}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </section>
                           {retryFeedback?.storeId === store.id && (
                             <p role={retryFeedback.state === "failed" ? "alert" : "status"} className={cn("mt-4 rounded-lg border p-3 text-xs leading-relaxed", retryFeedback.state === "success" ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300" : retryFeedback.state === "failed" ? "border-red-500/25 bg-red-500/5 text-red-700 dark:text-red-300" : "border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300")}>{retryFeedback.message}</p>
                           )}

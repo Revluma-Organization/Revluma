@@ -17,11 +17,13 @@ const mockPrisma = {
       status: 'error',
       updated_at: new Date('2026-01-01T00:00:00Z'),
     }),
+    update: async () => ({}),
     findMany: async () => [{
       id: 'store-123',
       platform: 'shopify',
       shop_domain: 'revluma-test-store.myshopify.com',
       status: 'active',
+      integration_state: 'connected',
       access_token: 'encrypted-token',
       installed_at: new Date('2026-01-01T00:00:00Z'),
       last_synced_at: new Date('2026-01-02T00:00:00Z'),
@@ -67,6 +69,16 @@ mockModule('../../services/shopifyService', {
     syncStarted = true;
     return Promise.reject(syncFailure);
   },
+});
+mockModule('../../services/shopifyAuthorization', {
+  verifyShopifyAuthorization: async () => ({ verified: true, grantedScopes: ['read_orders', 'read_products', 'read_inventory', 'read_checkouts'], verifiedAt: new Date('2026-01-03T00:00:00Z') }),
+});
+mockModule('../../services/shopifyWebhookService', {
+  REQUIRED_SUBSCRIPTIONS: require('../../services/shopifyWebhookTopics').REQUIRED_SUBSCRIPTIONS,
+  reconcileShopifyWebhooks: async () => ({ required: 12, created: 0, failures: [] }),
+});
+mockModule('../../services/integrationLifecycleStore', {
+  recordIntegrationEvent: async () => ({ accepted: true, state: 'connected', reasonCode: 'CONNECTED' }),
 });
 mockPrisma.webhook_deliveries = {
   create: async () => {
@@ -142,7 +154,7 @@ async function verifyCallbackSurvivesDeferredSetupFailure() {
 
   assert.ok(syncStarted, 'initial setup should start after the token is persisted');
   assert.ok(callback.response.redirectUrl, 'the merchant should be redirected despite deferred webhook failure');
-  assert.strictEqual(new URL(callback.response.redirectUrl).searchParams.get('shopify'), 'connected');
+  assert.strictEqual(new URL(callback.response.redirectUrl).searchParams.get('shopify'), 'authorized');
   assert.strictEqual(new URL(callback.response.redirectUrl).searchParams.get('shop'), query.shop);
   assert.strictEqual(tokenExchangeCalls, 1);
 }
@@ -202,7 +214,7 @@ async function verifyAuthorizationDenialAndRetrySetup() {
   const denied = callbackRequest({ error: 'access_denied' }, {});
   await denied.invoke();
   assert.strictEqual(new URL(denied.response.redirectUrl).searchParams.get('shopify'), 'cancelled');
-  assert.deepStrictEqual(denied.response.clearedCookies.sort(), ['oauth_user', 'shopify_organization', 'shopify_shop', 'shopify_state', 'shopify_user']);
+  assert.deepStrictEqual(denied.response.clearedCookies.sort(), ['oauth_user', 'shopify_organization', 'shopify_reconnect_attempt', 'shopify_reconnect_store', 'shopify_shop', 'shopify_state', 'shopify_user']);
 
   let retryResponse;
   const res = {
@@ -232,6 +244,7 @@ async function verifyPersistedStoreIsReturnedWithoutCredentials() {
     topic,
     status: 'active',
     external_id: `gid://shopify/WebhookSubscription/${topic}`,
+    last_verified_at: new Date('2026-01-03T00:00:00Z'),
   }));
 
   let response;
@@ -266,6 +279,7 @@ async function verifyHistoricalFailuresDoNotOverrideActiveWebhooks() {
       topic,
       status: 'active',
       external_id: `gid://shopify/WebhookSubscription/${topic}`,
+    last_verified_at: new Date('2026-01-03T00:00:00Z'),
     })),
     ...REQUIRED_SUBSCRIPTIONS.map(([topic]) => ({
       store_id: 'store-123',
