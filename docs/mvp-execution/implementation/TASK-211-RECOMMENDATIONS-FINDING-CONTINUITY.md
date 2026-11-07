@@ -1,7 +1,7 @@
 # TASK 211 — Evidence-backed recommendations and selected-finding continuity
 
 **Consolidated Task:** 211 (original Tasks 241–245)  
-**Implementation status:** locally implemented and regression-tested; deployment and authenticated active-store acceptance are separate gates.
+**Implementation status:** merged with green CI and Vercel production verified; Render revision and authenticated active-store acceptance remain separate gates.
 
 ## Contracts and authoritative evidence
 

@@ -26,6 +26,9 @@ The complete Python/Backend counts above include the final prompt-injection and 
 - Node's successful JSON/SSE response persistence and Python's persistence both retain bounded selected-finding state. A direct Node persistence test verifies atomic JSONB update, organization scoping, three-item bound, redaction and topic-change clearing.
 - The complete UI suite verifies history restoration, retained follow-up context and topic-change clearing without aborting the new stream.
 
-## External gates — not yet evidence
+## Release and external gates
 
-No commit/PR deployment identity, Render production revision, Vercel production revision, or authenticated active-store conversation acceptance is established by this local record. Those gates must be updated with observed identifiers and results after release. An authenticated merchant session is required for actual multi-turn/navigation/refresh production verification on `revluma-test-store-v1.myshopify.com`; synthetic fixtures and readiness responses cannot substitute for it.
+- PR **#356** passed all GitHub checks, including real Prisma/PostgreSQL bootstrap, financial and security regressions, and was merged as `028cc99d7910825dd57fcfbeea19fafbf8d62524`. Main-branch Python and Backend CI also passed.
+- Vercel production deployment `dpl_HAsXzrtmkaz7Ejs3mZPSAvKTPWJ9` is **READY / PROMOTED** at that merge SHA and aliases `revluma.vercel.app`. The production sign-in route responds at `/auth/login.html`.
+- Render `/ready` initially continued to report Node/Python `9749b716…`; final Task 211 Render revision verification remains pending until the new deployment is observed.
+- A direct read-only production aggregate confirmed `revluma-test-store-v1.myshopify.com` is active and recently synced, but has **zero persisted findings**. No authenticated merchant session is available. Real selected-finding, multi-turn, navigation and refresh acceptance therefore remains blocked; synthetic fixtures, direct aggregates, readiness and a visible card cannot substitute for it.
