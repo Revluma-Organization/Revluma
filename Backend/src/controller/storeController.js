@@ -1,6 +1,11 @@
 const { requireMembership } = require('../utils/organizationContext');
 const prisma = require("../configs/database").prisma;
 const { REQUIRED_SUBSCRIPTIONS } = require('../services/shopifyWebhookService');
+const {
+  INTEGRATION_STATE_CONTRACT_VERSION,
+  retrieveIntegrationStates,
+  validateIntegrationState,
+} = require('../services/revIntegrationState');
 
 exports.getStores = async (req, res, next) => {
   try {
@@ -108,7 +113,66 @@ exports.getStores = async (req, res, next) => {
       };
     });
 
+    // Task 213 — attach the backend-authoritative canonical state to every
+    // store. The shallow fields above remain for backward compatibility; the
+    // frontend consumes integration_state and never re-derives status.
+    await attachCanonicalStates(responseStores, organizationId);
+
     return res.status(200).json({ success: true, data: { stores: responseStores } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Attach the canonical rev-integration-state-v1 contract to each store, by
+// id. The shallow connection_status/sync_status fields remain for backward
+// compatibility, but the frontend must consume `integration_state` (the
+// backend-authoritative model) and never re-derive status locally.
+async function attachCanonicalStates(responseStores, organizationId, now) {
+  const states = await retrieveIntegrationStates({ organizationId, now });
+  const byId = new Map(states.map(state => [state.store.id, state]));
+  for (const store of responseStores) {
+    store.integration_state = byId.get(store.id) || null;
+  }
+}
+
+exports.getIntegrationStates = async (req, res, next) => {
+  try {
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
+    const organizationId = membership.organization_id;
+    const states = await retrieveIntegrationStates({ organizationId });
+    for (const state of states) {
+      const check = validateIntegrationState(state);
+      if (!check.valid) {
+        // Fail closed: never emit a malformed contract to the client.
+        return res.status(500).json({ success: false, error: 'Integration state contract validation failed.' });
+      }
+    }
+    return res.status(200).json({
+      success: true,
+      data: { contract_version: INTEGRATION_STATE_CONTRACT_VERSION, states },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getIntegrationState = async (req, res, next) => {
+  try {
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
+    const organizationId = membership.organization_id;
+    const storeId = req.params.storeId;
+    const state = await retrieveIntegrationStates({ organizationId, storeId });
+    // A store id that does not belong to this organization resolves to
+    // nothing: 404 with no existence leak (cross-tenant rejection).
+    if (!state) {
+      return res.status(404).json({ success: false, error: 'Store not found.' });
+    }
+    const check = validateIntegrationState(state);
+    if (!check.valid) {
+      return res.status(500).json({ success: false, error: 'Integration state contract validation failed.' });
+    }
+    return res.status(200).json({ success: true, data: state });
   } catch (error) {
     next(error);
   }

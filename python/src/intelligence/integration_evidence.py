@@ -764,7 +764,7 @@ def _component_auth(conn_state: str, domains: dict[str, dict]) -> str:
 
 _STORE_SQL = """
     SELECT s.id, s.platform, s.status, s.shop_domain, s.granted_scopes,
-           s.last_synced_at, s.installed_at,
+           s.last_synced_at, s.installed_at, s.updated_at,
            (s.access_token IS NOT NULL) AS has_token
     FROM stores s
     WHERE s.organization_id = :org_id
@@ -839,6 +839,8 @@ def retrieve_integration_evidence(
                 if isinstance(_row_value(row, "last_synced_at"), datetime) else None,
                 "installed_at": _row_value(row, "installed_at")
                 if isinstance(_row_value(row, "installed_at"), datetime) else None,
+                "updated_at": _row_value(row, "updated_at")
+                if isinstance(_row_value(row, "updated_at"), datetime) else None,
                 "has_token": bool(_row_value(row, "has_token")),
             }
             sid = store["id"]
@@ -996,10 +998,40 @@ def retrieve_integration_evidence(
                              or ["No critical integration problems were found."]),
             ))
 
+            # Task 213 — the canonical rev-integration-state-v1 contract for
+            # this store, evaluated from the same persisted records (Python
+            # keystone; the Node gateway mirror serves the same contract via
+            # the product API). Capability-aware Rev answers read this block.
+            from .integration_state import (
+                canonical_state_summary, evaluate_integration_state,
+            )
+            canonical_cov = {"status": coverage.get("status")}
+            cov_starts = [_row_value(r, "coverage_start") for r in cov_rows
+                          if isinstance(_row_value(r, "coverage_start"), datetime)]
+            cov_ends = [_row_value(r, "coverage_end") for r in cov_rows
+                        if isinstance(_row_value(r, "coverage_end"), datetime)]
+            if cov_starts:
+                canonical_cov["start"] = iso(max(cov_starts))
+            if cov_ends:
+                canonical_cov["end"] = iso(max(cov_ends))
+            canonical_state = evaluate_integration_state({
+                "organization_id": organization_id,
+                "store": {**store, "organization_id": organization_id,
+                          "scope_list_recorded": bool(store["granted_scopes"])},
+                "domain_states": ledger_rows,
+                "webhook_registrations": reg_rows,
+                "webhook_deliveries": deliv_rows,
+                "order_coverage": canonical_cov,
+            }, now=now)
+
             stores_out.append({
                 "store_id": store["id"],
                 "shop_domain": store["shop_domain"],
                 "platform": store["platform"],
+                # Compact projection only (the full rev-integration-state-v1
+                # contract is served by the product API; the Rev merchant
+                # context has a hard size budget).
+                "integration_state": canonical_state_summary(canonical_state),
                 "connection": {
                     "state": connection[0],
                     "notes": connection[1],

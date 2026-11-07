@@ -243,6 +243,26 @@ _INTEGRATION_STATUS_BY_STATE = {
     "unknown": STATUS_UNAVAILABLE,
 }
 
+# Task 213 — tool availability follows the canonical rev-integration-state-v1
+# overall status (the authoritative product state), not the Task 201 health
+# rollup. connected => the capabilities the integration advertises may be
+# asserted; limited states => answer within covered capability and say what
+# is limited; no data state => say the data is unavailable, never manufacture.
+_CANONICAL_STATUS_BY_STATE = {
+    "connected": STATUS_AVAILABLE,
+    "synchronizing": STATUS_PARTIAL,
+    "limited_access": STATUS_PARTIAL,
+    "needs_attention": STATUS_PARTIAL,
+    "sync_failed": STATUS_PARTIAL,
+    "sync_partial": STATUS_PARTIAL,
+    "disconnected": STATUS_UNAVAILABLE,
+    "authorization_required": "unauthorized",
+    "authorization_expired": "unauthorized",
+    "authorization_revoked": "unauthorized",
+    "unsupported": STATUS_UNAVAILABLE,
+    "unknown": STATUS_UNAVAILABLE,
+}
+
 
 def _integration(org_id: str, db, params: dict, window: dict) -> ToolResult:
     """Task 201 — canonical integration evidence (connection, authorization,
@@ -254,9 +274,24 @@ def _integration(org_id: str, db, params: dict, window: dict) -> ToolResult:
     from ..intelligence.integration_evidence import retrieve_integration_evidence
     evidence = retrieve_integration_evidence(org_id, db, now=params.get("_now"))
     overall = evidence.get("overall_status", "unknown")
+    # The canonical state (rev-integration-state-v1) governs the tool's
+    # availability: a synchronizing/limited/partially-failed integration is
+    # PARTIAL (answer within the covered capability, disclose the limit);
+    # disconnected/revoked/unknown integrations are UNAVAILABLE (never
+    # manufacture data).
+    canonical = [st.get("integration_state") for st in evidence.get("stores", [])
+                 if st.get("integration_state")]
+    if canonical:
+        # Multi-store orgs: the worst canonical state governs (a single
+        # unavailable store prevents claiming the org's data is current).
+        from ..intelligence.integration_state import STATE_SEVERITY, worst_state
+        worst = worst_state([c.get("overall_status") for c in canonical])
+        status = _CANONICAL_STATUS_BY_STATE.get(worst, STATUS_UNAVAILABLE)
+    else:
+        status = _INTEGRATION_STATUS_BY_STATE.get(overall, STATUS_UNAVAILABLE)
     return ToolResult(
         "integration_health",
-        _INTEGRATION_STATUS_BY_STATE.get(overall, STATUS_UNAVAILABLE),
+        status,
         items=evidence.get("items", []),
         warnings=evidence.get("warnings", []),
         limitations=evidence.get("limitations", []),
@@ -266,6 +301,19 @@ def _integration(org_id: str, db, params: dict, window: dict) -> ToolResult:
         diagnostics={"integration": {
             "overall_status": evidence.get("overall_status"),
             "components": evidence.get("components"),
+            "canonical_states": [
+                {
+                    "store_id": st.get("store_id"),
+                    "shop_domain": st.get("shop_domain"),
+                    "overall_status": c.get("overall_status"),
+                    "status_reason": c.get("status_reason"),
+                    "authorization": c.get("authorization"),
+                    "synchronization": c.get("synchronization"),
+                    "limited_capabilities": c.get("limited_capabilities"),
+                    "merchant_action_required": c.get("merchant_action_required"),
+                    "recommended_next_step": c.get("recommended_next_step"),
+                } for st, c in zip(evidence.get("stores", []), canonical)
+            ],
             "stores": evidence.get("stores", []),
         }},
     )
