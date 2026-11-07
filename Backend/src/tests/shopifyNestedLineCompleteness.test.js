@@ -119,6 +119,7 @@ test('order sync makes no writes if the parent changes during child pagination',
 });
 
 
+// The acquisition DTO uses discounted_total; commerceWebhookService maps it to line_total.
 test('order sync preserves source lifecycle and historical variant pricing without assuming fulfilledQuantity', async () => {
   writes = 0; orderPayloads = []; queries = [];
   const id = 'gid://shopify/Order/199';
