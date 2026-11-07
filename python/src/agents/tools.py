@@ -36,6 +36,7 @@ from ..intelligence.evidence import (
     money,
     normalize_currency,
     period,
+    previous_period,
     utc_now,
 )
 from ..intelligence.query import safe_query
@@ -437,87 +438,38 @@ def _checkout(org_id: str, db, params: dict, window: dict) -> ToolResult:
     return _checkout_tool_result("checkout_observations", result)
 
 def _customers(org_id: str, db, params: dict, window: dict) -> ToolResult:
-    rows, error = safe_query(db, f"""
-        SELECT o.currency,
-               COUNT(DISTINCT o.customer_id) AS ordering_customers,
-               COUNT(DISTINCT CASE WHEN NOT EXISTS (
-                   SELECT 1 FROM orders p
-                   WHERE p.store_id = o.store_id AND p.customer_id = o.customer_id
-                     AND p.ordered_at < :start
-                     AND (p.recovery_status IS NULL OR p.recovery_status NOT IN
-                          ('cancelled', 'canceled', 'voided', 'deleted'))
-               ) THEN o.customer_id END) AS first_time_customers
-        FROM orders o JOIN stores s ON s.id = o.store_id
-        WHERE {_STORE_FILTER}
-          AND o.ordered_at >= :start AND o.ordered_at < :end
-          AND (o.recovery_status IS NULL OR o.recovery_status NOT IN
-               ('cancelled', 'canceled', 'voided', 'deleted'))
-        GROUP BY o.currency ORDER BY o.currency
-    """, {"org_id": org_id, "start": window["start"], "end": window["end"]})
-    ltv_rows, ltv_error = safe_query(db, f"""
-        SELECT c.ltv, COUNT(*) AS customer_count
-        FROM customers c JOIN stores s ON s.id = c.store_id
-        WHERE {_STORE_FILTER} AND c.ltv IS NOT NULL
-        GROUP BY c.ltv
-    """, {"org_id": org_id})
-    items: list[dict] = []
-    warnings: list[str] = []
-    if error:
-        return ToolResult("customer_observations", STATUS_UNAVAILABLE,
-                          warnings=["customer_query_failed"],
-                          data_sources=["stores", "customers", "orders"])
-    for row in rows:
-        currency = normalize_currency(_row(row, "currency"))
-        customers = _row(row, "ordering_customers")
-        first_time = _row(row, "first_time_customers")
-        if currency is None:
-            warnings.append("Customer rows without a currency code were excluded.")
-            continue
-        if isinstance(customers, int):
-            items.append(evidence_item(
-                "ordering_customer_count", label=f"Ordering customers ({currency})",
-                value=customers, window=window, source="orders", discriminator=currency,
-                definition="Distinct customers with a non-cancelled order in the window.",
-            ))
-        if isinstance(first_time, int):
-            items.append(evidence_item(
-                "first_time_customer_count", label=f"First-time ordering customers ({currency})",
-                value=first_time, window=window, source="orders", discriminator=currency,
-                definition="Ordering customers with no earlier non-cancelled order in the store.",
-            ))
-    if not rows:
-        items.append(evidence_item(
-            "ordering_customer_count", label="Ordering customers", value=0,
-            window=window, source="orders",
-            definition="Distinct customers with a non-cancelled order in the window.",
-            limitations=["No orders are recorded in this window."],
-        ))
-    if ltv_error:
-        items.append(evidence_item(
-            "customer_lifetime_value", label="Customer lifetime value", value=None,
-            unit=UNIT_CURRENCY, window=window, source="customers", status=STATUS_UNAVAILABLE,
-            definition="Stored customer lifetime value per customer.",
-            limitations=["The customer lifetime value query failed."],
-        ))
-    else:
-        currencies_unverified = True
-        items.append(evidence_item(
-            "customer_lifetime_value", label="Customer lifetime value", value=None,
-            unit=UNIT_CURRENCY, window=window, source="customers", status=STATUS_UNSUPPORTED,
-            definition=("Stored per-customer lifetime value in the store's own currency. "
-                        "It cannot be totalled here because the customer currency is not "
-                        "stored with the lifetime value."),
-            coverage={"mixed_currency_totals": "forbidden"},
-            limitations=["LTV totals are not reported without a per-customer currency."],
-        ))
-        if currencies_unverified and ltv_rows:
-            warnings.append("Customer lifetime value is stored without a currency and is "
-                            "therefore never totalled or compared across currencies.")
-    return ToolResult("customer_observations", STATUS_PARTIAL if warnings else STATUS_AVAILABLE,
-                      items=items, warnings=warnings,
-                      limitations=["Customer lifetime value is a stored merchant value, not a forecast."],
-                      data_sources=["stores", "customers", "orders"], row_count=len(rows))
-
+    from ..intelligence.retention_evidence import retrieve_retention_evidence, retention_comparison_changes
+    start = datetime.fromisoformat(window["start"].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(window["end"].replace("Z", "+00:00"))
+    timezone_name = params.get("timezone") or window.get("timezone") or "UTC"
+    result = retrieve_retention_evidence(
+        org_id, db, start=start, end=end, now=params.get("_now"), timezone=timezone_name)
+    items = list(result.get("items", []))
+    warnings = list(result.get("warnings", []))
+    comparison = None
+    if params.get("compare"):
+        comparison_start = params.get("comparison_start")
+        comparison_end = params.get("comparison_end")
+        if comparison_start is None:
+            comparison_start, comparison_end = previous_period(start, end)
+        else:
+            comparison_start = datetime.fromisoformat(str(comparison_start).replace("Z", "+00:00"))
+            comparison_end = datetime.fromisoformat(str(comparison_end).replace("Z", "+00:00"))
+        previous = retrieve_retention_evidence(
+            org_id, db, start=comparison_start, end=comparison_end,
+            now=params.get("_now"), timezone=timezone_name)
+        comparison_items = [{**entry, "period": {**entry.get("period", {}), "label": "previous period"}}
+                            for entry in previous.get("items", [])]
+        items.extend(comparison_items)
+        warnings.extend(f"comparison_{warning}" for warning in previous.get("warnings", []))
+        comparison = {"items": comparison_items,
+                      "period": items[0].get("period") if items else None,
+                      "changes": retention_comparison_changes(result.get("items", []), comparison_items),
+                      "overall_status": previous.get("overall_status")}
+    return ToolResult("customer_observations", result.get("overall_status", STATUS_UNAVAILABLE),
+        items=items, warnings=warnings, limitations=result.get("limitations", []),
+        data_sources=["stores", "orders", "intelligence_order_coverage"],
+        row_count=result.get("coverage", {}).get("certified_store_count", 0), comparison=comparison)
 
 def _products(org_id: str, db: Any, params: dict, window: dict) -> ToolResult:
     from src.intelligence.product_evidence import retrieve_product_evidence

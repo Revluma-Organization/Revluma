@@ -29,6 +29,7 @@ const {
 } = require('./revEpistemics');
 const { assertResponseGuardrails } = require('./revClaimGuardrails');
 const { validateInvestigationOutcome } = require('./revInvestigationOutcomes');
+const { validateSpecialistExecution } = require('./revSpecialists');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
 const ML_INTERNAL_KEY = process.env.ML_INTERNAL_KEY;
@@ -1391,6 +1392,16 @@ function validateInvestigationResponse(data, organizationId = null, storeIds = n
   if (evidence.schema_version !== EVIDENCE_SCHEMA_VERSION) return false;
   if (!validateEvidenceCollection(evidence.items, { organizationId, storeIds }).valid) return false;
   const knownIds = new Set(evidence.items.map(item => item.id));
+  // Task 208: selected specialists must return a complete, tenant-safe
+  // execution whose facts and recommendations cite this investigation only.
+  if (data.specialists !== undefined) {
+    if (!Array.isArray(data.specialists)) return false;
+    for (const specialist of data.specialists) {
+      if (validateSpecialistExecution(specialist, {
+        organizationId, evidenceIds: new Set([...knownIds, ...(evidence.comparison_items || []).map(item => item.id)]),
+      }).length > 0) return false;
+    }
+  }
   if (data.facts !== undefined && !Array.isArray(data.facts)) return false;
   if ((data.facts || []).some(fact => !(fact?.evidence_ids || []).length || fact.evidence_ids.some(id => !knownIds.has(id)))) return false;
   if (data.hypotheses !== undefined && !Array.isArray(data.hypotheses)) return false;

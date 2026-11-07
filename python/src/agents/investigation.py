@@ -64,6 +64,7 @@ from ..intelligence.claim_guardrails import (
     validate_response_guardrails,
 )
 from ..intelligence.revenue_evidence import retrieve_revenue_evidence
+from ..intelligence.specialists import execute_specialists
 from ..intelligence.investigation_outcomes import (
     OUTCOME_CONTRACT_VERSION,
     base_outcome,
@@ -236,8 +237,8 @@ STORE_INTENTS = {
 # which resources are accessible, why is a source unavailable".
 INTENT_TOOLS = {
     INTENT_OVERVIEW: ["store_health", "integration_health", "data_coverage",
-                      "revenue_observations", "order_observations",
-                      "cart_observations", "findings"],
+                      "revenue_observations", "order_observations", "customer_observations",
+                      "product_observations", "cart_observations", "findings"],
     INTENT_REVENUE: ["store_health", "integration_health", "data_coverage",
                      "revenue_observations", "order_observations",
                      "cart_observations", "refund_observations"],
@@ -348,7 +349,7 @@ SOCIAL_FAREWELL_PATTERN = re.compile(
 BUSINESS_NOUN_PATTERN = re.compile(
     r"\bstore|shop|shopify|business|revenue|sales|order|customer|client|cart"
     r"|checkout|product|inventory|stock|coverage|sync|finding|refund|chargeback"
-    r"|dispute|churn|retention|loyal|traffic|session|conversion|discount|campaign"
+    r"|dispute|churn|retention|repeat|returning|cohort|purchase|loyal|traffic|session|conversion|discount|campaign"
     r"|metric|figure|overview|summary|briefing|priorit|trading|evidence|profit"
     r"|margin|income|webhook|scope|permission|connected|connection|forecast\b", re.I)
 
@@ -1327,7 +1328,7 @@ def load_conversation_context(organization_id: str, user_id: str,
                               conversation_id: str | None, db,
                               context_payload: dict | None = None) -> dict:
     context = {"summary": None, "last_investigation": None, "recent_turns": [],
-               "unresolved": [], "conversation_state": None, "last_claims": []}
+               "unresolved": [], "conversation_state": None, "last_claims": [], "last_specialists": []}
     if not conversation_id:
         return context
 
@@ -1348,6 +1349,9 @@ def load_conversation_context(organization_id: str, user_id: str,
             context["last_investigation"] = raw.get("last_investigation")
             context["unresolved"] = raw.get("unresolved") or []
             context["last_claims"] = _claims_from_window(raw)
+            context["last_specialists"] = [
+                item for item in (raw.get("last_specialists") or [])
+                if isinstance(item, dict) and item.get("execution_id")][:6]
 
     rows, error = safe_query(db, """
         SELECT summary, context_window
@@ -1367,6 +1371,10 @@ def load_conversation_context(organization_id: str, user_id: str,
                 context["unresolved"] = raw.get("unresolved") or []
             if not context["last_claims"]:
                 context["last_claims"] = _claims_from_window(raw)
+            if not context["last_specialists"]:
+                context["last_specialists"] = [
+                    item for item in (raw.get("last_specialists") or [])
+                    if isinstance(item, dict) and item.get("execution_id")][:6]
             state = raw.get("conversation_state")
             if isinstance(state, dict):
                 context["conversation_state"] = _fresh_state(state)
@@ -1799,11 +1807,27 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
         add("first_time_customer_count", lambda i: (
             f"{i['value']} first-time ordering customers"
             + (f" ({i.get('currency')})" if i.get("currency") else "")))
+        add("returning_customer_count", lambda i: f"{i['value']} customers had an earlier non-cancelled order")
+        add("newly_observed_customer_count", lambda i: f"{i['value']} customers were newly observed; incomplete lifetime history does not prove they were first-time")
+        add("repeat_within_window_customer_count", lambda i: f"{i['value']} customers placed at least two orders inside this period")
+        add("repeat_within_window_customer_rate", lambda i: f"Within-window repeat-purchase rate: {Decimal(str(i['value'])) * 100:.2f}% of ordering customers")
+        add("returning_customer_rate", lambda i: f"Returning-customer rate: {Decimal(str(i['value'])) * 100:.2f}% of ordering customers")
+        for item in by_metric.get("repeat_purchase_interval_days", []):
+            if item.get("status") in (STATUS_AVAILABLE, "verified_zero") and isinstance(item.get("value"), dict):
+                value = item["value"]
+                if value.get("median_days") is not None:
+                    facts.append(_item_fact(item, f"Median first-to-second purchase interval: {Decimal(value['median_days']):.1f} days across {value.get('observed_second_purchases', 0)} observed second purchases"))
+        for item in by_metric.get("customer_cohort_90d", []):
+            if item.get("status") in (STATUS_AVAILABLE, "verified_zero") and isinstance(item.get("value"), dict):
+                value = item["value"]
+                rate = f"; 90-day repeat rate {Decimal(value['repeat_within_90d_rate']) * 100:.2f}%" if value.get("repeat_within_90d_rate") is not None else "; not yet mature enough for a 90-day rate"
+                facts.append(_item_fact(item, f"Cohort {value.get('cohort')}: {value.get('entered_customers')} entered customers, {value.get('mature_customers')} mature{rate}"))
     if intent in (INTENT_OVERVIEW, INTENT_REVENUE, INTENT_REFUNDS, INTENT_PRODUCTS, INTENT_CUSTOMERS, INTENT_TRAFFIC):
         add("order_count", lambda i: f"{i['value']} orders recorded in the requested period, including later cancellations and refunds")
         for metric in ("paid_count", "pending_payment_count", "partially_paid_count", "cancelled_count",
                        "refunded_count", "partially_refunded_count", "fulfilled_count", "unfulfilled_count",
-                       "partially_fulfilled_count", "open_count", "closed_count"):
+                       "partially_fulfilled_count", "open_count", "closed_count",
+                       "delayed_unfulfilled_count", "split_fulfillment_count"):
             add(metric, lambda i, metric=metric: f"{i['value']} {metric.replace('_', ' ')}")
         for item in by_metric.get("order_record", []):
             if item.get("status") != STATUS_AVAILABLE or not isinstance(item.get("value"), dict):
@@ -1950,6 +1974,14 @@ def _comparison_facts(comparison: dict | None,
             text = (f"Recorded abandoned-checkout value moved {change['direction']} "
                     f"{abs(float(change['percent'])):.1f}% ({_money_text(change['previous'], currency)} to "
                     f"{_money_text(change['current'], currency)}) {qualifier}; not lost or recoverable revenue")
+        elif change.get("metric") in {"ordering_customer_count", "repeat_within_window_customer_count",
+                                     "repeat_within_window_customer_rate", "returning_customer_count", "returning_customer_rate"}:
+            metric = change["metric"]
+            label = metric.replace("_", " ")
+            previous = f"{Decimal(str(change['previous'])) * 100:.2f}%" if metric.endswith("_rate") else str(change["previous"])
+            current = f"{Decimal(str(change['current'])) * 100:.2f}%" if metric.endswith("_rate") else str(change["current"])
+            text = (f"{label.capitalize()} moved {change['direction']} {abs(float(change['percent'])):.1f}% "
+                    f"({previous} to {current}) {qualifier}; this is a relative change with the metric's disclosed denominator")
         else:
             continue
         facts.append({
@@ -2676,6 +2708,18 @@ def persist_investigation_context(organization_id: str, user_id: str,
         "last_claims": [claim for claim in (result.get("claims") or [])
                         if isinstance(claim, dict)
                         and claim.get("contract_version") == CLAIM_CONTRACT_VERSION][:10],
+        # Task 208: compact references support specialist follow-ups without
+        # duplicating evidence payloads or treating stale conclusions as facts.
+        "last_specialists": [{
+            "execution_id": specialist.get("execution_id"),
+            "investigation_id": specialist.get("investigation_id"),
+            "name": (specialist.get("specialist") or {}).get("name"),
+            "version": (specialist.get("specialist") or {}).get("version"),
+            "resolved_intent": specialist.get("resolved_intent"),
+            "status": specialist.get("status"),
+            "outcome": specialist.get("investigation_outcome"),
+            "evidence_references": (specialist.get("evidence_references") or [])[:20],
+        } for specialist in (result.get("specialists") or [])][:6],
     }
     if conversation_state:
         context_window["conversation_state"] = conversation_state
@@ -3451,7 +3495,14 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         _emit({"event": "final", "data": result})
         return result
 
-    tools = INTENT_TOOLS.get(intent, INTENT_TOOLS[INTENT_OVERVIEW])
+    tools = list(INTENT_TOOLS.get(intent, INTENT_TOOLS[INTENT_OVERVIEW]))
+    # Task 208: cross-domain questions retrieve each required source once in
+    # the shared investigation, then specialists consume that same evidence.
+    if intent in (INTENT_REVENUE, INTENT_REFUNDS) and re.search(
+            r"\b(?:inventory|stock|stockout|fulfil|fulfill|unfulfilled|availability)\b", message, re.I):
+        for tool in ("product_observations",):
+            if tool not in tools:
+                tools.append(tool)
     result = _base_result(message=message, intent=intent, window=window,
                           investigation_id=investigation_id, store_context=store_context,
                           user_id=user_id)
@@ -3462,6 +3513,9 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         "previous_investigation": bool(conversation_context.get("last_investigation")),
         "conversation_summary_used": bool(conversation_context.get("summary")),
         "segment": classification.get("segment"),
+        "previous_specialist_executions": [
+            item.get("execution_id") for item in conversation_context.get("last_specialists", [])
+            if isinstance(item, dict) and item.get("execution_id")][:6],
     }
 
     # Store connection is checked first: without it, no other tool can help.
@@ -3564,9 +3618,9 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "start": window["start"],
             "end": window["end"],
         }
-        if tool in ("revenue_observations", "order_observations", "cart_observations", "checkout_observations"):
+        if tool in ("revenue_observations", "order_observations", "customer_observations", "cart_observations", "checkout_observations"):
             params["compare"] = bool(window.get("compared_to"))
-        if tool in ("revenue_observations", "order_observations", "cart_observations", "checkout_observations"):
+        if tool in ("revenue_observations", "order_observations", "customer_observations", "cart_observations", "checkout_observations"):
             params["timezone"] = window.get("timezone") or "UTC"
             compared = window.get("compared_to")
             if compared:
@@ -3645,12 +3699,22 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             ).get("comparison")
         except Exception:
             comparison = None
+    retention_result = tool_results_by_name.get("customer_observations")
+    if retention_result is not None and retention_result.comparison:
+        retention_comparison = retention_result.comparison
+        comparison = {
+            "period": (comparison or {}).get("period") or retention_comparison.get("period"),
+            "items": list((comparison or {}).get("items") or []),
+            "changes": [*(comparison or {}).get("changes", []), *retention_comparison.get("changes", [])],
+        }
 
     year_over_year_facts = []
     if year_over_year and year_over_year.get("changes"):
         year_over_year_facts = _comparison_facts(
             year_over_year, qualifier="versus the same period last year")
     comparison_items = list(((comparison or {}).get("items") or []))[:40]
+    if retention_result is not None and retention_result.comparison:
+        comparison_items.extend((retention_result.comparison.get("items") or [])[:40])
     validation_errors = validate_collection(items)
     attribution_errors = validate_attribution(
         [fact for fact in _facts_from_items(items, intent)],
@@ -3669,9 +3733,35 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "Certified order coverage does not contain the prior-year window, so no "
             "year-over-year comparison is asserted.")
     recommendations = _recommendations(intent, items)
-    specialists = _run_specialists(organization_id, db, intent, message)
+    specialists = execute_specialists(
+        intent=intent, question=message, organization_id=organization_id,
+        store_ids=sorted(allowed_store_ids), investigation_id=investigation_id,
+        period=window, items=items, tools=tool_results_by_name)
+    for specialist in specialists:
+        logger.info("rev_specialist_outcome", extra={
+            "investigation_id": investigation_id,
+            "execution_id": specialist.get("execution_id"),
+            "specialist": (specialist.get("specialist") or {}).get("name"),
+            "specialist_status": specialist.get("status"),
+            "specialist_outcome": specialist.get("investigation_outcome"),
+            "evidence_reference_count": len(specialist.get("evidence_references") or []),
+            "contradiction_count": len(specialist.get("contradictions") or []),
+        })
+    if any(specialist.get("status") == "error" for specialist in specialists):
+        # Independent evidence may still support a partial investigation, but a
+        # failed selected specialist is never rolled up as complete success.
+        overall = "partial" if items else "insufficient_data"
+    # Domain-specific specialist recommendations augment, rather than replace,
+    # the existing deterministic investigation recommendations.
+    for specialist in specialists:
+        for recommendation in specialist.get("recommendations", []):
+            if recommendation.get("label") not in {r.get("label") for r in recommendations}:
+                recommendations.append(recommendation)
 
     warnings: list[str] = []
+    failed_specialists = [s["specialist"]["name"] for s in specialists if s.get("status") == "error"]
+    if failed_specialists:
+        warnings.append("Specialist execution failed for: " + ", ".join(failed_specialists))
     for tool_result in tool_results:
         warnings.extend(tool_result.warnings)
     if validation_errors:

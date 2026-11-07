@@ -62,3 +62,7 @@ Task 202 consolidates the authorized original Tasks 202–206 without starting l
 ## 2026-11-07 Task 207
 
 Task 207 consolidates original Tasks 224–226. Its [diagnosis](diagnostics/TASK-207-INVESTIGATION-OUTCOMES.md), [implementation](implementation/TASK-207-INVESTIGATION-OUTCOMES.md) and [validation](validation/TASK-207-INVESTIGATION-OUTCOMES.md) record the versioned investigation outcome contract, integration/retry distinctions, certified history/comparison eligibility, unsupported-question policy, JSON/SSE/Node parity and continuity. Production acceptance is not inferred from local tests or a merge; deployed revisions and authenticated active-store behavior must be verified separately.
+
+## 2026-11-07 Task 208
+
+Task 208 consolidates original Tasks 227–229. Its [diagnosis](diagnostics/TASK-208-INTELLIGENCE-SPECIALISTS.md), [implementation](implementation/TASK-208-INTELLIGENCE-SPECIALISTS.md) and [validation](validation/TASK-208-INTELLIGENCE-SPECIALISTS.md) record the executable specialist contract, revenue metrics, retention populations/cohorts, operational evidence, coordination, persistence decision and 40-scenario acceptance suite. Production success is not inferred from tests, a merge or deployment trigger; deployed revisions and authenticated active-store behavior remain separate evidence.
