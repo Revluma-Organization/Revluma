@@ -250,7 +250,8 @@
 - [ ] **TASK 207** — Verify currency-aware response calculation.
 - [ ] **TASK 208** — Verify zero-value evidence handling.
 - [ ] **TASK 209** — Verify incomplete evidence fallback.
-- [ ] **TASK 210** — Verify stale evidence warning.
+- [ ] **TASK 210** — Verify stale evidence warning. *(the number was reused for the adaptive answer structure task — see the TASK 210 line below; the stale-evidence mechanics themselves — `stale` freshness status, stale-only-blocks-current-claims, stale confidence penalty — live in the TASK 203/208 evidence-quality and outcome contracts)*
+- [x] **TASK 210** — Adaptive answer structure & confidence communication (spec lines 1–10; consolidates original TASK 235–240). *(see `implementation/TASK-210-ADAPTIVE-ANSWER-STRUCTURE-CONFIDENCE.md` and `validation/TASK-210-ADAPTIVE-ANSWER-STRUCTURE-CONFIDENCE.md`; decision REV-DEC-0019; numbering collision with the line above documented there)*
 - [ ] **TASK 211** — Verify contradictory evidence handling.
 - [x] **TASK 212** — Label verified facts in reasoning output. *(consolidated into TASK 204 — reasoning epistemics; see `implementation/TASK-204-REASONING-EPISTEMICS.md`)*
 - [x] **TASK 213** — Label calculated findings in reasoning output. *(consolidated into TASK 204 — reasoning epistemics)*
@@ -279,12 +280,12 @@
 - [ ] **TASK 232** — Verify orchestration routes integration question.
 - [ ] **TASK 233** — Verify mixed-domain question coordination.
 - [ ] **TASK 234** — Ensure one coherent Rev response.
-- [ ] **TASK 235** — Verify situation section when appropriate.
-- [ ] **TASK 236** — Verify insight section when appropriate.
-- [ ] **TASK 237** — Verify implication section when appropriate.
-- [ ] **TASK 238** — Verify recommendation section when appropriate.
-- [ ] **TASK 239** — Verify confidence explanation.
-- [ ] **TASK 240** — Avoid forced template for simple questions.
+- [x] **TASK 235** — Verify situation section when appropriate. *(consolidated into TASK 210 — adaptive sections: each of the four headings appears only when its profile selects it; see `implementation/TASK-210-ADAPTIVE-ANSWER-STRUCTURE-CONFIDENCE.md`)*
+- [x] **TASK 236** — Verify insight section when appropriate. *(consolidated into TASK 210 — adaptive sections)*
+- [x] **TASK 237** — Verify implication section when appropriate. *(consolidated into TASK 210 — adaptive sections)*
+- [x] **TASK 238** — Verify recommendation section when appropriate. *(consolidated into TASK 210 — adaptive sections)*
+- [x] **TASK 239** — Verify confidence explanation. *(consolidated into TASK 210 — per-claim earned confidence communicated as a natural-language section, never a score/badge)*
+- [x] **TASK 240** — Avoid forced template for simple questions. *(consolidated into TASK 210 — `direct_factual`/degraded profiles emit only the earned sections; no forced 4-slot template)*
 - [ ] **TASK 241** — Verify recommendations are merchant-executable.
 - [ ] **TASK 242** — Verify recommendations do not execute changes.
 - [ ] **TASK 243** — Verify context from selected Command Center finding.

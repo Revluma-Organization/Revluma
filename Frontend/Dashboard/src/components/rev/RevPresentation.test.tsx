@@ -138,6 +138,159 @@ describe("answer validation and content", () => {
   });
 });
 
+describe("Task 210 adaptive answer structure and confidence", () => {
+  const communication = "Treat this as a partial reading — some records for this period are missing from the source.";
+  const adaptivePayload = (overrides: Partial<RevAnswerPayload> = {}): RevAnswerPayload => ({
+    response_type: "analysis", read_only: true,
+    text: "## What I can verify\n\nFor Yesterday (1 day, UTC):\n\n- Recorded order value USD 30.31 across 3 orders",
+    evidence: evidence(),
+    response: {
+      situation: "Recorded order value USD 30.31 across 3 orders",
+      confidence: {
+        category: "limited",
+        claims: { "clm-1": { category: "limited", basis: ["partial_coverage"], limitations: ["Some records for this period are missing from the source."] } },
+        coverage: {
+          window: { label: "Yesterday", start: "2026-11-06", end: "2026-11-07", timezone: "UTC" },
+          coverage: "partial", freshness: "fresh", currency_comparable: true, certified: false,
+          limits: ["Some records for this period are missing from the source."],
+        },
+        communication,
+      },
+      sections: [
+        { id: "direct_answer", label: "Direct answer", text: "Recorded order value USD 30.31 across 3 orders" },
+        { id: "evidence", label: "Evidence", text: "Store records for Yesterday: 3 source entries, currencies USD." },
+        { id: "confidence", label: "Confidence", text: communication },
+      ],
+    },
+    response_profile: {
+      contract_version: "rev-response-adaptation-v1", response_intent: "direct_factual",
+      complexity: "simple", explanation_depth: "concise",
+      recommendation_appropriate: false, clarification_required: false,
+      confidence_communication: "inline", reason: "a single recorded metric answers the question directly",
+    },
+    ...overrides,
+  });
+
+  it("renders the backend's sections in the given order without re-deriving the legacy keys", () => {
+    const { container } = render(<RevAnswerView payload={adaptivePayload({
+      text: "Something the text answer already says.",
+      response: {
+        situation: "A situation the backend did not select.",
+        insight: "An insight the backend did not select.",
+        confidence: adaptivePayload().response?.confidence,
+        sections: [
+          { id: "limitations", label: "Limitations", text: "The gap in recorded data." },
+          { id: "confidence", label: "Confidence", text: communication },
+        ],
+      },
+    })} />);
+    expect(screen.queryByRole("heading", { name: "Situation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Insight" })).not.toBeInTheDocument();
+    const headings = [...container.querySelectorAll("h3")].map(h => h.textContent);
+    expect(headings.indexOf("Limitations")).toBeGreaterThan(-1);
+    expect(headings.indexOf("Confidence")).toBeGreaterThan(headings.indexOf("Limitations"));
+  });
+
+  it("never renders an empty section", () => {
+    render(<RevAnswerView payload={adaptivePayload({
+      response: {
+        ...adaptivePayload().response,
+        sections: [
+          { id: "limitations", label: "Limitations", text: "A real limitation." },
+          { id: "unknowns", label: "Unknowns", text: "   " },
+        ],
+      },
+    })} />);
+    expect(screen.getByRole("heading", { name: "Limitations" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Unknowns" })).not.toBeInTheDocument();
+  });
+
+  it("renders the confidence standing as natural language, never a badge", () => {
+    const { container } = render(<RevAnswerView payload={adaptivePayload()} />);
+    expect(screen.getAllByText(communication).length).toBe(1);
+    // No badge chrome around the category: nothing styled as a pill with a
+    // bare category word.
+    expect(screen.queryByText(/^limited$/i)).not.toBeInTheDocument();
+    expect(container.querySelector("[data-confidence-badge]")).toBeNull();
+  });
+
+  it("does not duplicate a confidence sentence that its sections already carry", () => {
+    render(<RevAnswerView payload={adaptivePayload({ text: "No overlap with the standing." })} />);
+    expect(screen.getAllByText(communication)).toHaveLength(1);
+  });
+
+  it("renders the standing once when the sections omit the confidence element", () => {
+    const base = adaptivePayload();
+    render(<RevAnswerView payload={adaptivePayload({
+      text: "No overlap with the standing.",
+      response: { ...base.response, sections: (base.response?.sections ?? []).filter(s => s.id !== "confidence") },
+    })} />);
+    expect(screen.getAllByText(communication)).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "Confidence" })).not.toBeInTheDocument();
+  });
+
+  it("discloses coverage and data state under How I checked, separate from confidence", () => {
+    render(<RevAnswerView payload={adaptivePayload({ text: "No overlap with the standing." })} />);
+    fireEvent.click(screen.getByText("How I checked"));
+    expect(screen.getByText("Coverage and data state")).toBeInTheDocument();
+    expect(screen.getByText(/Coverage: partial/)).toBeInTheDocument();
+    expect(screen.getByText(/Freshness: fresh/)).toBeInTheDocument();
+    expect(screen.getByText(/Currencies comparable: yes/)).toBeInTheDocument();
+    expect(screen.getByText(/Order coverage certified: no/)).toBeInTheDocument();
+    expect(screen.getByText("Some records for this period are missing from the source.")).toBeInTheDocument();
+  });
+
+  it("never renders a legacy numeric confidence as a standing", () => {
+    render(<RevAnswerView payload={adaptivePayload({
+      text: "Short summary.",
+      response: {
+        situation: "Orders were spread across the day.",
+        confidence: { score: 0.6, basis: "partial evidence" },
+      },
+    })} />);
+    expect(screen.getByRole("heading", { name: "Situation" })).toBeInTheDocument();
+    expect(screen.getByText("Orders were spread across the day.")).toBeInTheDocument();
+    expect(screen.queryByText(communication)).not.toBeInTheDocument();
+    expect(screen.queryByText(/60%|0\.6/)).not.toBeInTheDocument();
+  });
+
+  it("refuses to render a communication that carries a percentage", () => {
+    const base = adaptivePayload();
+    render(<RevAnswerView payload={adaptivePayload({
+      text: "No overlap with the standing.",
+      response: { ...base.response, sections: [], confidence: { ...base.response!.confidence, communication: "I am 80% sure about this." } },
+    })} />);
+    expect(screen.queryByText(/80% sure/)).not.toBeInTheDocument();
+  });
+
+  it("hides a malformed confidence object entirely", () => {
+    const base = adaptivePayload();
+    render(<RevAnswerView payload={adaptivePayload({
+      response: {
+        ...base.response,
+        sections: [],
+        confidence: { category: "medium", claims: {}, coverage: null, communication: "Whatever." } as never,
+      },
+    })} />);
+    expect(screen.queryByText(/Whatever/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("How I checked"));
+    expect(screen.queryByText("Coverage and data state")).not.toBeInTheDocument();
+  });
+
+  it("keeps legacy four-key section rendering when no sections are supplied", () => {
+    render(<RevAnswerView payload={adaptivePayload({
+      text: "Short summary.",
+      response: {
+        situation: "The observed situation.",
+        insight: "A distinct insight.",
+        confidence: adaptivePayload().response?.confidence,
+      },
+    })} />);
+    expect(screen.getByRole("heading", { name: "Situation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Insight" })).toBeInTheDocument();
+  });
+});
+
 describe("formatPeriod merchant copy", () => {
   it("renders microsecond UTC windows as human dates with one timezone note", () => {
     expect(formatPeriod({ start: "2026-10-28T08:43:22.111755Z", end: "2026-11-04T08:43:22.111755Z", timezone: "UTC", semantics: "[start, end)" } as never))

@@ -83,6 +83,13 @@ from ..intelligence.question_orchestration import (
     understand_question,
     validate_orchestration,
 )
+from ..intelligence.response_adaptation import (
+    META_FOLLOWUP_ORDINAL, META_FOLLOWUP_SIMPLIFY,
+    classify_response_profile, confidence_language, compose_ordinal_explanation,
+    compose_simplification, compose_verification, coverage_summary,
+    derive_claim_confidence, resolve_meta_followup,
+    response_confidence_category, select_elements,
+)
 from ..intelligence.investigation_outcomes import (
     OUTCOME_CONTRACT_VERSION,
     base_outcome,
@@ -99,6 +106,30 @@ logger = logging.getLogger("rev.investigation")
 
 CONTRACT_VERSION = "rev-investigation-v1"
 MAX_MESSAGE_CHARS = 2000
+
+# Task 210: merchant-facing headings for the composable answer elements.
+_SECTION_LABELS = {
+    "direct_answer": "Direct answer",
+    "situation": "Situation",
+    "insight": "Insight",
+    "period_comparison": "Period comparison",
+    # "Evidence" — the disclosure's own heading is "How I checked"; a
+    # same-named answer section and disclosure toggle would read as one.
+    "evidence": "Evidence",
+    "implication": "Implication",
+    "confidence": "Confidence",
+    "limitations": "Limitations",
+    "alternatives": "Alternatives",
+    "unknowns": "Unknowns",
+    "suggested_investigation": "Suggested next step",
+    "recommendation": "Recommendation",
+    "follow_up": "Follow-up",
+}
+
+# Task 210: the question explicitly asks for a period comparison.
+_COMPARISON_ASK_RE = re.compile(
+    r"\b(?:compared?|comparing|versus|vs\.?|against|change[d]?\b|"
+    r"(?:last|previous)\s+(?:week|month|day|period|year|quarter))\b", re.I)
 
 # Stream consumer settings. The poll interval bounds how long the generator
 # blocks on the queue so it can notice a client disconnect; the join timeout
@@ -1327,6 +1358,14 @@ def route_message(message: str, context: dict | None, store_context: dict | None
     inherited = (context or {}).get("last_investigation") or {}
     inherited_intent = inherited.get("intent")
     if continuing_investigation and inherited_intent in STORE_INTENTS:
+        return done({"intent": inherited_intent, "segment": None, "followup": True,
+                     "inherited_intent": inherited_intent}, "fast_path")
+    # Task 210: a pure challenge ("no, I think that's wrong.") names no
+    # business subject, so without this it routes conversational and the
+    # explicit correction (Task 204) never runs. Deterministically inherit
+    # the previous subject so the challenged figure is retracted explicitly
+    # instead of answered with small talk.
+    if CORRECTION_PATTERN.search(message) and inherited_intent in STORE_INTENTS:
         return done({"intent": inherited_intent, "segment": None, "followup": True,
                      "inherited_intent": inherited_intent}, "fast_path")
     is_followup = (bool(FOLLOWUP_PATTERN.match(lower)) or lower in FOLLOWUP_ELLIPSIS) \
@@ -3666,6 +3705,120 @@ def _provenance_result(message: str, classification: dict, *, organization_id: s
     return result
 
 
+def _meta_followup_result(message: str, meta: dict, classification: dict, *,
+                          organization_id: str, investigation_id: str,
+                          store_context: dict, user_id: str, window: dict,
+                          conversation_context: dict) -> dict:
+    """Answer a meta follow-up from the RECORDED claims only (Task 210).
+
+    Ordinal reference ("explain the second point"), simplification ("make it
+    simpler") and verification ("are you sure?") resolve against the previous
+    investigation's recorded claim set — the same recorded-claims-only rule
+    the provenance handler uses: no fresh retrieval, no memory
+    reconstruction, no new tools. Each restated claim keeps its recorded
+    value, grade, evidence references and derived confidence.
+    """
+    result = _base_result(message=message, intent=INTENT_OVERVIEW, window=window,
+                          investigation_id=investigation_id,
+                          store_context=store_context, user_id=user_id)
+    last = conversation_context.get("last_investigation") or {}
+    claims = [claim for claim in (conversation_context.get("last_claims") or [])
+              if isinstance(claim, dict) and claim.get("organization_id") == organization_id]
+    kind = meta["kind"]
+    last_period = last.get("period") or {}
+    if kind == META_FOLLOWUP_ORDINAL:
+        label = "Explanation of a previous point"
+        text = compose_ordinal_explanation(meta["claim"], meta["ordinal"])
+        presented = [meta["claim"]]
+    elif kind == META_FOLLOWUP_SIMPLIFY:
+        label = "Simpler restatement of the previous answer"
+        text = compose_simplification(claims, window=last_period)
+        presented = claims[:3]
+    else:
+        label = "Verification of the previous answer"
+        text = compose_verification(claims, window=last_period)
+        presented = claims[:4]
+    result["investigation"]["label"] = label
+    result["investigation"]["status"] = "complete"
+    result["investigation"]["context_used"] = {
+        "followup": True,
+        "inherited_intent": last.get("intent"),
+        "previous_investigation": bool(last),
+        "conversation_summary_used": bool(conversation_context.get("summary")),
+        "segment": None,
+        "meta_followup": kind,
+    }
+    result["investigation"]["tools_used"] = []
+    restated = []
+    for claim in presented:
+        record = dict(claim)
+        record["restated"] = True
+        record["source_investigation"] = last.get("id")
+        if validate_claim(record, known_evidence={}, organization_id=organization_id,
+                          store_ids=claim.get("store_ids")) == []:
+            restated.append(record)
+    result["claims"] = restated
+    result["epistemics"] = {
+        "contract_version": CLAIM_CONTRACT_VERSION, "valid": True,
+        "validation_errors": [], "rollup": epistemic_rollup(restated),
+    }
+    result["text"] = text
+    result["response_type"] = "analysis"
+    result["response_mode"] = "insight"
+    result["mode_reason"] = (
+        f"answered from the recorded claims ({kind}), not fresh retrieval")
+
+    # Task 210: the restated answer carries the adaptation contract too —
+    # an explanation of the previous answer, at the depth the ask needs,
+    # with the recorded per-claim confidence (the figures never change).
+    claim_categories = [
+        (claim.get("confidence") or {}).get("category")
+        for claim in restated if claim.get("confidence")]
+    profile = classify_response_profile(
+        intent="general", response_intent="explanation",
+        explanation_depth=("concise" if kind == META_FOLLOWUP_SIMPLIFY
+                           else "standard"),
+        claim_categories=claim_categories)
+    has_hypotheses = any(
+        claim.get("classification") == "hypothesis" for claim in restated)
+    has_limitations = any(
+        (claim.get("confidence") or {}).get("limitations") for claim in restated)
+    elements = select_elements(
+        profile, has_facts=bool(
+            any(claim.get("value") is not None for claim in restated)),
+        has_evidence=False, has_hypotheses=has_hypotheses,
+        has_limitations=has_limitations)
+    category = response_confidence_category(restated)
+    limitations = list(dict.fromkeys(
+        phrase for claim in restated
+        for phrase in ((claim.get("confidence") or {}).get("limitations") or [])))
+    section_texts = {
+        "direct_answer": text.split("\n", 1)[-1].split("\n\n")[0] if restated else "",
+        "confidence": confidence_language(category, limitations),
+        "limitations": " ".join(limitations) if limitations else "",
+        "evidence": "",
+    }
+    result["response"] = {
+        "situation": "", "insight": "", "implication": "", "recommendation": "",
+        "sections": [
+            {"id": element, "label": _SECTION_LABELS.get(element, element),
+             "text": section_texts.get(element, "")}
+            for element in elements if section_texts.get(element)
+        ],
+        "confidence": {
+            "category": category,
+            "claims": {claim["claim_id"]: claim["confidence"] for claim in restated
+                       if isinstance(claim.get("confidence"), dict)},
+            "coverage": coverage_summary([], window=last_period),
+            "communication": confidence_language(category, limitations),
+        },
+        "actions": [],
+        "warnings": [],
+    }
+    result["response_profile"] = profile
+    return result
+
+
 # ── Public runtime ────────────────────────────────────────────────────────────
 
 def _base_result(*, message: str, intent: str, window: dict, investigation_id: str,
@@ -4042,6 +4195,27 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         # conversational intent even though it is about the recorded figure.
         result = _provenance_result(
             message, classification, organization_id=organization_id,
+            investigation_id=investigation_id,
+            store_context=store_context, user_id=user_id, window=window,
+            conversation_context=conversation_context)
+        validate_response_guardrails(result)
+        _emit({"event": "final", "data": result})
+        return result
+
+    meta_followup = resolve_meta_followup(
+        message,
+        [claim for claim in (conversation_context.get("last_claims") or [])
+         if isinstance(claim, dict) and claim.get("organization_id") == organization_id],
+        matches_correction=bool(CORRECTION_PATTERN.search(message)),
+    )
+    if meta_followup:
+        # Task 210: "explain the second point", "make it simpler", "are you
+        # sure?" resolve against the recorded claim set — the previous answer
+        # keeps its meaning, its figures and its evidence standing, and no
+        # tool runs again. Runs before the conversational early-return for
+        # the same reason the provenance handler does.
+        result = _meta_followup_result(
+            message, meta_followup, classification, organization_id=organization_id,
             investigation_id=investigation_id,
             store_context=store_context, user_id=user_id, window=window,
             conversation_context=conversation_context)
@@ -4637,11 +4811,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "implication": ("Causes are not established by this evidence."
                             if hypotheses else ""),
             "recommendation": (recommendations[0]["label"] if recommendations else ""),
-            "confidence": {
-                "score": _confidence(overall, items),
-                "basis": ("Verified, currency-explicit evidence only; "
-                          "hypotheses are labelled and excluded from the score."),
-            },
+            # Task 210: confidence is no longer a fabricated global score.
+            # ``_apply_response_adaptation`` (below) replaces this with the
+            # evidence-derived category, the per-claim map, the separate
+            # coverage representation and the natural-language sentence.
+            "confidence": {},
             "actions": [],
             "warnings": warnings,
         },
@@ -4739,6 +4913,17 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     result["response_mode"] = mode
     result["mode_reason"] = mode_reason
 
+    # Task 210: adapt the answer structure to the question and replace the
+    # fabricated global confidence score with the evidence-derived,
+    # claim-specific contract. Deterministic; no extra model call.
+    _apply_response_adaptation(
+        result, message=message, intent=intent, items=items,
+        comparison_items=comparison_items, comparison_facts=comparison_facts,
+        year_over_year_facts=year_over_year_facts, facts=facts,
+        hypotheses=hypotheses, unknowns=unknowns,
+        recommendations=recommendations, window=window, routed=routed,
+        is_priority_question=(intent == INTENT_FINDINGS))
+
     # Generation is not action authority. Initialise the complete lifecycle
     # contract, then fail closed before persistence or either response transport.
     orchestration["state"] = "validating"
@@ -4783,14 +4968,137 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     return result
 
 
-def _confidence(overall: str, items: list[dict]) -> float:
-    if overall == "complete":
-        return 0.82
-    if overall == "partial":
-        return 0.6
-    if overall == "insufficient_data":
-        return 0.0 if not items else 0.25
-    return 0.4
+def _apply_response_adaptation(result: dict, *, message: str, intent: str,
+                               items: list, comparison_items: list,
+                               comparison_facts: list, year_over_year_facts: list,
+                               facts: list, hypotheses: list, unknowns: list,
+                               recommendations: list, window: dict,
+                               routed: dict, is_priority_question: bool) -> None:
+    """Adapt the answer to the question and derive claim-specific confidence.
+
+    Task 210. Runs after the response mode is selected; everything here is
+    deterministic — no model calls:
+
+    * every recorded claim gets its evidence-derived confidence category
+      (documented method D1 in ``response_adaptation``);
+    * the response gets its A–H profile (response intent, complexity,
+      explanation depth, confidence-communication requirement);
+    * ``response.sections`` is the ordered set of composable elements this
+      answer actually carries — an element with no content is never emitted,
+      so a simple question never gets a report skeleton;
+    * ``response.confidence`` is restructured: a category, the per-claim
+      map, a separate coverage representation (coverage is never conflated
+      with confidence) and one natural-language sentence. The fabricated
+      numeric score is gone.
+
+    The four legacy keys (situation/insight/implication/recommendation) stay
+    populated exactly as before for existing consumers.
+    """
+    items_by_id = {item["id"]: item for item in items if item.get("id")}
+    for item in comparison_items:
+        if item.get("id"):
+            items_by_id[item["id"]] = item
+    for claim in result.get("claims") or []:
+        if isinstance(claim, dict) and claim.get("claim_id"):
+            claim["confidence"] = derive_claim_confidence(claim, items_by_id)
+
+    understanding = routed.get("understanding") or {}
+    all_comparison_facts = list(comparison_facts) + list(year_over_year_facts)
+
+    # The comparison signal for the PROFILE is "the answer actually compares
+    # recorded periods": a material (non-flat) change fact, or a question that
+    # explicitly asks for the comparison. Incidental flat comparison output
+    # on a direct count question must not turn it into a comparative answer.
+    def _direction(fact):
+        value = fact.get("value") if isinstance(fact, dict) else None
+        return value.get("direction") if isinstance(value, dict) else None
+
+    has_comparison_signal = any(
+        _direction(fact) != "flat" for fact in all_comparison_facts) or \
+        bool(_COMPARISON_ASK_RE.search(message))
+
+    coverage = coverage_summary(items, window=window,
+                                comparison_items=comparison_items)
+    limitation_phrases = list(dict.fromkeys(
+        list(result["evidence"]["limitations"]) + coverage["limits"]))
+    outcome = result["investigation_outcome"]
+    degraded = outcome["outcome"] not in ("success", "partial_success")
+    profile = classify_response_profile(
+        intent=intent, understanding=understanding, status=result["investigation"]["status"],
+        has_comparison=has_comparison_signal,
+        domains=understanding.get("domains") or [],
+        is_priority_question=is_priority_question,
+        message=message,
+        claim_categories=[(claim.get("confidence") or {}).get("category")
+                          for claim in result.get("claims") or []
+                          if isinstance(claim, dict)],
+    )
+    elements = select_elements(
+        profile,
+        has_facts=bool(facts),
+        has_comparison=has_comparison_signal,
+        has_evidence=bool(items),
+        has_hypotheses=bool(hypotheses),
+        has_recommendations=bool(recommendations),
+        has_unknowns=bool(unknowns),
+        has_limitations=bool(limitation_phrases),
+        has_follow_ups=bool(result["investigation"]["follow_ups"]),
+        insufficient_next_step=(outcome.get("next_step") if degraded else None),
+    )
+
+    category = response_confidence_category(result.get("claims") or [],
+                                            items_by_id)
+    claim_limitations = list(dict.fromkeys(
+        phrase for claim in result.get("claims") or []
+        if isinstance(claim, dict)
+        for phrase in ((claim.get("confidence") or {}).get("limitations") or [])))
+    communication = confidence_language(
+        category, claim_limitations or coverage["limits"],
+        next_step=(outcome.get("next_step") if degraded else None))
+
+    currencies = sorted(result["evidence"].get("by_currency") or {})
+    window_label = (window or {}).get("label") or "the period"
+    timezone = (window or {}).get("timezone")
+    evidence_line = ""
+    if items:
+        evidence_line = (
+            f"Store records for {window_label}: {len(items)} source entries"
+            + (f", currencies {', '.join(currencies)}" if currencies else "")
+            + (f", {timezone}" if timezone else "") + ".")
+    section_texts = {
+        "direct_answer": (facts[0]["text"] if facts
+                          else (all_comparison_facts[0]["text"]
+                                if all_comparison_facts else "")),
+        "situation": result["response"].get("situation") or "",
+        "insight": result["response"].get("insight") or "",
+        "period_comparison": "\n".join(f["text"] for f in all_comparison_facts[:5]),
+        "evidence": evidence_line,
+        "implication": result["response"].get("implication") or "",
+        "confidence": communication,
+        "limitations": " ".join(limitation_phrases)[:600],
+        "alternatives": " ".join(
+            (h.get("statement") or "") for h in hypotheses).strip(),
+        "unknowns": " ".join(unknowns)[:600],
+        "suggested_investigation": (outcome.get("next_step") or "") if degraded else "",
+        "recommendation": (recommendations[0]["label"] if recommendations else ""),
+        "follow_up": (result["investigation"]["follow_ups"][0]
+                      if result["investigation"]["follow_ups"] else ""),
+    }
+    result["response_profile"] = profile
+    result["response"]["sections"] = [
+        {"id": element, "label": _SECTION_LABELS.get(element, element),
+         "text": section_texts.get(element, "")}
+        for element in elements if section_texts.get(element)
+    ]
+    result["response"]["confidence"] = {
+        "category": category,
+        "claims": {claim["claim_id"]: claim["confidence"]
+                   for claim in result.get("claims") or []
+                   if isinstance(claim, dict) and claim.get("claim_id")
+                   and isinstance(claim.get("confidence"), dict)},
+        "coverage": coverage,
+        "communication": communication,
+    }
 
 
 def stream_investigation(organization_id: str, user_id: str, message: str, *,

@@ -8,7 +8,7 @@ import { parseVerifiedComparison } from "@/lib/revComparison";
 import { InvestigationTimeline } from "@/components/rev/InvestigationTimeline";
 import type { EvidenceItem, RevAnswerPayload, RevFact, RevHypothesis, RevRecommendation, SpecialistsSummary, InvestigationStep } from "@/lib/revStream";
 
-import { coveredBy, evidenceState, formatPeriod, normaliseRevAnswer, recordList, stringList, textValue } from "@/lib/revPresentation";
+import { answerConfidence, answerSections, coverageDisclosure, coveredBy, evidenceState, formatPeriod, normaliseRevAnswer, recordList, stringList, textValue } from "@/lib/revPresentation";
 import { responseModeOf, type RevResponseMode } from "@/lib/revStream";
 
 interface Props {
@@ -203,12 +203,40 @@ export function RevAnswerView({
   const gateQuiet = gate === "conversational" || gate === "clarify" || gate === "refuse";
   const quiet = gateQuiet || mode === "conversational" || mode === "quick_verification";
   let shown = body;
-  const sections = (["situation", "insight", "implication", "recommendation"] as const).flatMap(key => {
-    const text = textValue(payload.response?.[key]);
-    if (!text || coveredBy(shown, text)) return [];
+  // A section renders only if it is non-empty and not already carried by the
+  // text answer; the text it adds is folded into `shown` so downstream
+  // facts/recommendations still dedupe against it.
+  const appendSection = (label: string, text: string): { id?: string; label: string; text: string } | null => {
+    if (!text || coveredBy(shown, text)) return null;
     shown += `\n${text}`;
-    return [{ label: key[0].toUpperCase() + key.slice(1), text }];
-  });
+    return { label, text };
+  };
+  // Task 210: when the backend supplies its ordered composable sections they
+  // are authoritative — rendered in the given order, each still deduped and
+  // never empty — and the legacy four keys are not re-derived on top.
+  const adaptiveSections = answerSections(payload.response);
+  const sections = adaptiveSections.length > 0
+    ? adaptiveSections.flatMap(section => {
+        const added = appendSection(section.label, section.text);
+        return added ? [{ ...added, id: section.id }] : [];
+      })
+    : (["situation", "insight", "implication", "recommendation"] as const).flatMap(key => {
+        const added = appendSection(key[0].toUpperCase() + key.slice(1), textValue(payload.response?.[key]));
+        return added ? [added] : [];
+      });
+  // The evidence-derived confidence sentence (never a badge). Normally it
+  // arrives as the ordered `confidence` section; if a payload carries the
+  // contract without that section, the clean sentence still renders once —
+  // deduped, so it is never shown twice.
+  const confidence = answerConfidence(payload.response);
+  const confidenceSentence = confidence && !coveredBy(shown, confidence.communication)
+    ? confidence.communication
+    : null;
+  // Coverage is a separate representation from confidence (spec 5.D): it is
+  // disclosed under "How I checked", never rendered as a certainty statement.
+  const coverageDisclosureData = confidence?.coverage
+    ? coverageDisclosure(confidence.coverage)
+    : null;
   // Inline citations (spec §6): a chip sits at the claim it supports, numbered
   // against the cited-evidence list below. An id that does not resolve to a
   // retrieved record never becomes a chip.
@@ -224,7 +252,6 @@ export function RevAnswerView({
   const hypotheses = recordList<RevHypothesis>(payload.hypotheses).map(item => textValue(item.statement)).filter(text => text && !coveredBy(shown, text));
   const unknowns = stringList(payload.unknowns).filter(text => !coveredBy(shown, text));
   const recommendations = recordList<RevRecommendation>(payload.recommendations).filter(item => {
-    if (["invalidated", "superseded", "resolved", "dismissed"].includes(item.lifecycle_state || "")) return false;
     const parts = [item.label, item.why, item.measure].map(textValue).filter(Boolean);
     return parts.length > 0 && !parts.every(text => coveredBy(shown, text));
   });
@@ -269,10 +296,13 @@ export function RevAnswerView({
 
       <div style={{ fontSize: "0.9rem", lineHeight: 1.65, color: strong }}>
         {body && <RevMarkdown text={body} tone={dark ? "dark" : "light"} streaming={streaming} />}
-        {!quiet && sections.map(section => <section key={section.label} className="mt-3">
+        {!quiet && sections.map(section => <section key={section.id ?? section.label} className="mt-3">
           <h3 className="text-xs font-semibold mb-1">{section.label}</h3>
           <RevMarkdown text={section.text} tone={dark ? "dark" : "light"} streaming={streaming} />
         </section>)}
+        {!quiet && confidenceSentence && (
+          <p className="mt-2" style={{ margin: "0.5rem 0 0", fontSize: "0.9rem", lineHeight: 1.65 }}>{confidenceSentence}</p>
+        )}
         {!body && !sections.length && !facts.length && !comparisonFacts.length && !hypotheses.length && !unknowns.length && !recommendations.length && <p>No answer content was returned.</p>}
         {!quiet && factSections.map(({ label, entries }) => entries.length > 0 && <section key={label} className="mt-3">
           <h3 className="text-xs font-semibold mb-1">{label}</h3>
@@ -371,6 +401,15 @@ export function RevAnswerView({
                 </p>
               )}
             </div>
+            {coverageDisclosureData && (
+              <div>
+                <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Coverage and data state</p>
+                <p style={{ ...DISCLOSURE_LINE, color: muted }}>{coverageDisclosureData.summary}</p>
+                {coverageDisclosureData.limits.map(limit => (
+                  <p key={limit} style={{ ...DISCLOSURE_LINE, color: muted, marginTop: 2 }}>{limit}</p>
+                ))}
+              </div>
+            )}
             {evidenceItems.length > 0 && (
               <div>
                 <p style={{ ...DISCLOSURE_HEADING, color: muted }}>Per-source detail</p>
@@ -437,7 +476,7 @@ export function RevAnswerView({
           </p>
           <p className="text-xs" style={{ color: muted }}>Recommendations only — nothing was changed or sent.</p>
           {recommendations.map((recommendation, index) => (
-            <div key={recommendation.recommendation_id || index} className="flex gap-2">
+            <div key={index} className="flex gap-2">
               <Check size={13} color="#1F06AC" style={{ marginTop: 3, flexShrink: 0 }} />
               <div>
                 <p style={{ margin: 0, fontSize: "0.8rem", fontWeight: 600, color: strong }}>
@@ -446,7 +485,6 @@ export function RevAnswerView({
                 <p style={{ margin: "1px 0 0", fontSize: "0.72rem", color: muted, lineHeight: 1.5 }}>
                   {textValue(recommendation.why)}
                   {textValue(recommendation.measure) ? ` Measure: ${recommendation.measure}` : ""}
-                  {recommendation.prerequisites?.length ? ` Prerequisite: ${recommendation.prerequisites[0]}` : ""}
                 </p>
               </div>
             </div>
