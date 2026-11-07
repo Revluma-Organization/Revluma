@@ -94,6 +94,29 @@ def _evidence_lookup(response: dict) -> dict[str, dict]:
             if isinstance(item, dict) and item.get("id")}
 
 
+def _declared_calculation_input(claim: dict, item: dict) -> bool:
+    """A calculated_observation claim may reference each of its declared
+    calculation inputs, in any window, under the input's own metric.
+
+    A derived figure (a value-decomposition effect, a line-value change, a
+    comparison) legitimately spans windows and metrics: its value is
+    re-derivable from the declared inputs, so the inputs are *the* provenance.
+    This is the same reference channel as the ``current`` role escape below —
+    only broader (previous windows, count inputs) and limited to claims whose
+    ``calculation`` block the epistemic validator already required to carry a
+    formula, version, rounding and valued inputs (the claim's value must be
+    re-derivable from them, so a calculation cannot cite arbitrary evidence).
+    Eligibility (quality_eligible / status / currency) is still enforced.
+    """
+    if claim.get("classification") != "calculated_observation":
+        return False
+    calculation = claim.get("calculation") or {}
+    if not str(calculation.get("method") or "").strip():
+        return False
+    return any(isinstance(entry, dict) and entry.get("evidence_id") == item.get("id")
+               for entry in calculation.get("inputs") or [])
+
+
 def _references_allowed(claim: dict, item: dict) -> bool:
     eligible_status = item.get("status") in {"available", "verified_zero"} or (
         item.get("status") == "partial" and claim.get("status") == "partial")
@@ -105,7 +128,8 @@ def _references_allowed(claim: dict, item: dict) -> bool:
                          and item.get("id") == claim["value"].get("current_evidence_id")) or any(
         entry.get("role") == "current" and entry.get("evidence_id") == item.get("id")
         for entry in calculation_inputs if isinstance(entry, dict))
-    if claim_period and item.get("period") and claim_period != item.get("period") and not current_reference:
+    if claim_period and item.get("period") and claim_period != item.get("period") \
+            and not current_reference and not _declared_calculation_input(claim, item):
         return False
     claim_currency = claim.get("currency")
     if claim_currency and item.get("currency") and claim_currency != item.get("currency"):
@@ -119,7 +143,8 @@ def _relevant(claim: dict, item: dict) -> bool:
     text = str(claim.get("text") or "").lower()
     metric = str(item.get("metric") or "").lower()
     if claim.get("metric"):
-        return str(claim["metric"]).lower() == metric
+        return str(claim["metric"]).lower() == metric \
+            or _declared_calculation_input(claim, item)
     for family, terms in _METRIC_TERMS.items():
         if any(re.search(rf"\b{re.escape(term)}\w*\b", text) for term in terms):
             return any(term in metric for term in terms)

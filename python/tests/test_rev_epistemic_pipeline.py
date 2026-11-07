@@ -388,11 +388,14 @@ def test_s10_mixed_currencies_are_never_combined():
     for claim in money_claims:
         assert claim["value"] not in ("1030.31", "1,030.31")
     assert "1,030.31" not in result["text"]
-    # No calculation mixes currencies in its inputs.
+    # No calculation mixes currencies in its inputs. (Count inputs carry no
+    # currency; the contract checks recorded currency codes only.)
     for claim in result["claims"]:
         calc = claim.get("calculation")
         if isinstance(calc, dict):
-            input_currencies = {normalize(entry.get("currency")) for entry in calc.get("inputs", [])}
+            input_currencies = {normalize(entry.get("currency"))
+                                for entry in calc.get("inputs", [])
+                                if entry.get("currency")}
             assert len(input_currencies) <= 1, f"mixed-currency calculation: {input_currencies}"
     assert "USD 30.31" in result["text"] and "NGN 1,000.00" in result["text"]
 

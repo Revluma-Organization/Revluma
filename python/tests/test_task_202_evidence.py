@@ -109,6 +109,24 @@ def test_resolved_stale_and_missing_findings_do_not_impersonate_current_problems
     assert not missing["items"] and missing["overall_status"] == "partial"
 
 
+def test_invalid_measured_period_degrades_instead_of_crashing():
+    # Task 206 hardening (REV-DEC-0018): a recorded period whose
+    # previousStart is not before currentEnd used to build a zero-length
+    # period(detected, detected) and raise ValueError, taking down the whole
+    # findings tool. It must degrade to a minimal window plus a named warning.
+    row = finding_row()
+    row["evidence"]["previousStart"] = "2026-11-08T00:00:00Z"  # after currentEnd
+    row["evidence"]["previousEnd"] = "2026-11-09T00:00:00Z"
+    db = DB([("FROM intelligence_findings f", [row])])
+    result = retrieve_finding_evidence(ORG, db, now=NOW, finding_reference=FINDING)
+    assert result["items"], "a finding with a bad window must still surface"
+    assert any(w.startswith("finding_measurement_period_invalid") for w in result["warnings"])
+    period = result["items"][0]["period"]
+    assert period["start"] < period["end"], "fallback period must be non-zero-length"
+    # The order join is skipped for an invalid window, so no orders are claimed.
+    assert result["items"][0]["value"]["underlying_order_records"] == []
+
+
 def product_row():
     return {"id": "p-internal", "store_id": STORE, "external_id": "1001", "name": "Test product",
         "type": "Physical", "status": "ACTIVE", "vendor": "Vendor", "sku": "BASE", "created_at": NOW,

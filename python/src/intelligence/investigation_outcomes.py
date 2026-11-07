@@ -76,8 +76,30 @@ _AMBIGUOUS_RANGE = re.compile(
     r"\bcompare\b[^.?!]{0,70}\b(?:that|it|before|earlier|last\s+time)\b|\b(?:last\s+month|this\s+week)\s+(?:or|versus|vs\.?)\s+(?:the\s+)?(?:other|previous)\b", re.I)
 
 
-def capability_decision(message: str, *, has_conversation_context: bool = False) -> dict | None:
-    """Return a deterministic unsupported/ambiguity decision, if applicable."""
+# Intents the evidence-backed investigation pipeline supports (the string
+# values of the INTENT_* constants in agents/investigation.py — kept as
+# literals here so intelligence/ does not import from agents/). A question
+# the classifier has already routed to one of these is, by definition, about
+# the store's recorded evidence, so the general-knowledge heuristic below
+# must not preempt it (e.g. "What should I fix first?" carries no commerce
+# noun but is a supported findings question). Explicit out-of-domain phrases,
+# capability rules and ambiguity checks still apply to every intent.
+_SUPPORTED_INVESTIGATION_INTENTS = frozenset({
+    "store_overview", "revenue_investigation", "checkout_investigation",
+    "customer_retention", "refund_investigation", "product_investigation",
+    "finding_investigation", "traffic_investigation", "data_coverage",
+})
+
+
+def capability_decision(message: str, *, has_conversation_context: bool = False,
+                        intent: str | None = None) -> dict | None:
+    """Return a deterministic unsupported/ambiguity decision, if applicable.
+
+    ``intent`` is the classifier's routing decision when the caller already
+    has one; it only suppresses the general-knowledge heuristic (see
+    ``_SUPPORTED_INVESTIGATION_INTENTS``). Callers without a classification
+    (unit tests, the Node mirror) get the original conservative behavior.
+    """
     text = (message or "").strip()
     for code, outcome, pattern, unavailable, answerable in _CAPABILITY_RULES:
         if pattern.search(text):
@@ -101,6 +123,7 @@ def capability_decision(message: str, *, has_conversation_context: bool = False)
         r"checkout|carts?|customers?|products?|inventory|refunds?|discounts?|fulfil|fulfill|"
         r"conversion|retention|churn|ltv|traffic|campaign|marketing|margin|profit|sku|merchant)\b", re.I)
     if not has_conversation_context \
+            and intent not in _SUPPORTED_INVESTIGATION_INTENTS \
             and re.match(r"^(?:what|who|where|when)\b", text, re.I) \
             and not re.match(r"^(?:what\s+(?:can\s+you|are\s+you|is\s+rev|about)\b|where\s+did\b)", text, re.I) \
             and not commerce_terms.search(text):

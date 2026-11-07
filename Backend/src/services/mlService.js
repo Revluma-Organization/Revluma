@@ -1455,7 +1455,112 @@ function validateInvestigationResponse(data, organizationId = null, storeIds = n
     logger.warn('rev_advisor_guardrail_rejected', { codes: error.guardrailErrors || ['unsafe_advisor_response'] });
     return false;
   }
+  // Task 206: priority, challenge-comparison and volume/value decomposition
+  // blocks are validated fail-closed. They carry no numeric score, so the
+  // checks enforce the documented shape and that every cited evidence id
+  // resolves to a current or comparison-window item.
+  const allEvidence = {};
+  for (const item of [...evidence.items, ...((evidence.comparison_items || []))]) {
+    if (item && typeof item.id === 'string' && item.id) allEvidence[item.id] = item;
+  }
+  if (data.priority !== undefined && !validatePriorityBlock(data.priority, allEvidence, { organizationId, storeIds })) return false;
+  if (data.priority_comparison !== undefined && !validatePriorityComparisonBlock(data.priority_comparison)) return false;
+  if (data.priority_change !== undefined && !validatePriorityChangeBlock(data.priority_change)) return false;
+  if (data.contributor_analysis !== undefined && !validateContributorAnalysis(data.contributor_analysis, allEvidence)) return false;
   return true;
+}
+
+// Task 206 priority change note (scenario L): a previously top finding that
+// is no longer ranked, with the documented reason for the change.
+function validatePriorityChangeBlock(change) {
+  if (!isPlainObject(change)) return false;
+  if (typeof change.finding_id !== 'string' || !change.finding_id) return false;
+  if (change.title !== undefined && change.title !== null && typeof change.title !== 'string') return false;
+  if (typeof change.reason !== 'string' || !change.reason) return false;
+  if (typeof change.statement !== 'string' || !change.statement.trim()) return false;
+  return true;
+}
+
+// Task 206 priority block: a documented deterministic ranking, never a
+// fabricated impact score.
+function validatePriorityBlock(priority, knownIds, { organizationId, storeIds }) {
+  if (!isPlainObject(priority)) return false;
+  if (priority.method_version !== 'finding-priority-v1') return false;
+  if (typeof priority.no_valid_findings !== 'boolean') return false;
+  if (priority.no_valid_findings_reason !== null &&
+      typeof priority.no_valid_findings_reason !== 'string') return false;
+  if (priority.no_valid_findings &&
+      priority.no_valid_findings_reason !== null &&
+      ![
+        'verified_no_open_findings', 'evidence_unavailable',
+        'stale_findings_require_reverification', 'only_historical_findings',
+        'evidence_unverified', 'no_currently_verified_findings',
+      ].includes(priority.no_valid_findings_reason)) return false;
+  const ranked = priority.ranked;
+  if (ranked !== undefined) {
+    if (!Array.isArray(ranked)) return false;
+    for (let index = 0; index < ranked.length; index += 1) {
+      const entry = ranked[index];
+      if (!isPlainObject(entry)) return false;
+      if (Number.isInteger(entry.rank) && entry.rank !== index + 1) return false;
+      if (entry.severity !== undefined && entry.severity !== null && typeof entry.severity !== 'string') return false;
+      if (entry.title !== undefined && entry.title !== null && typeof entry.title !== 'string') return false;
+    }
+  }
+  if (priority.tie !== undefined) {
+    if (priority.tie !== null) {
+      if (!isPlainObject(priority.tie)) return false;
+      if (!Array.isArray(priority.tie.finding_ids)) return false;
+      if (typeof priority.tie.statement !== 'string') return false;
+    }
+  }
+  if (priority.excluded !== undefined && !Array.isArray(priority.excluded)) return false;
+  if ((priority.excluded || []).some(entry => !isPlainObject(entry) ||
+    typeof entry.reason !== 'string')) return false;
+  if (typeof priority.computed_at !== 'string') return false;
+  return true;
+}
+
+// Task 206 challenge comparison ("why is that more important than X?").
+function validatePriorityComparisonBlock(comparison) {
+  if (!isPlainObject(comparison)) return false;
+  if (typeof comparison.matched !== 'boolean') return false;
+  if (typeof comparison.statement !== 'string' || !comparison.statement.trim()) return false;
+  if (comparison.matched === false) {
+    if (typeof comparison.reason !== 'string') return false;
+    return true;
+  }
+  if (!isPlainObject(comparison.referenced)) return false;
+  if (typeof comparison.ranking_changed !== 'boolean') return false;
+  if (comparison.invalidated_previous_top !== undefined) {
+    if (!isPlainObject(comparison.invalidated_previous_top)) return false;
+    if (typeof comparison.invalidated_previous_top.statement !== 'string') return false;
+  }
+  return true;
+}
+
+// Task 206 volume/value decomposition of the recorded order-value change.
+function validateContributorAnalysis(contributor, knownIds) {
+  if (!Array.isArray(contributor)) return false;
+  return contributor.every(entry => {
+    if (!isPlainObject(entry)) return false;
+    if (entry.method_version !== 'value-decomposition-v1') return false;
+    if (entry.status !== 'available' && entry.status !== 'unsupported') return false;
+    if (entry.status === 'unsupported') {
+      return typeof entry.reason === 'string' && entry.reason.length > 0;
+    }
+    for (const key of ['previous_order_count', 'current_order_count', 'previous_order_value',
+      'current_order_value', 'value_change', 'average_order_value_previous',
+      'order_count_effect', 'order_value_effect']) {
+      if (typeof entry[key] !== 'string') return false;
+    }
+    if (![
+      'volume-driven', 'value-driven', 'mixed-offsetting', 'equally-split', 'no_change',
+    ].includes(entry.driver)) return false;
+    // Every cited evidence id must resolve to a current or comparison item.
+    const ids = Object.values({ ...(entry.current_evidence_ids || {}), ...(entry.previous_evidence_ids || {}) });
+    return ids.every(id => id && knownIds[id]);
+  });
 }
 
 async function investigate({

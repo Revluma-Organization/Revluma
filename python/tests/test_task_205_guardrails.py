@@ -9,7 +9,7 @@ from src.intelligence.claim_guardrails import (
     narrative_guardrail_errors,
     validate_response_guardrails,
 )
-from python.tests.test_rev_investigation import NOW, ORG, USER, workspace_db
+from tests.test_rev_investigation import NOW, ORG, USER, workspace_db
 
 
 def response():

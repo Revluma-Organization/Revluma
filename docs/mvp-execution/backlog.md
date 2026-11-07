@@ -245,7 +245,8 @@
 - [x] **TASK 204** — Verify relative date interpretation. *(subject delivered by TASK 198 merchant-calendar reporting periods, REV-DEC-0012 — calendar-week/month relative periods in the merchant timezone; the number was reused for the consolidated reasoning-epistemics task, see the TASK 204 line below)*
 - [x] **TASK 204** — Productionize reasoning epistemics and numeric integrity (consolidates original TASK 212–216). *(see `implementation/TASK-204-REASONING-EPISTEMICS.md` and `validation/TASK-204-REASONING-EPISTEMICS.md`; numbering collision with the line above documented there)*
 - [ ] **TASK 205** — Verify comparison period calculation.
-- [ ] **TASK 206** — Verify merchant timezone interpretation.
+- [ ] **TASK 206** — Verify merchant timezone interpretation. *(subject delivered by TASK 198/202 merchant-timezone period resolution, REV-DEC-0012/0014 — local-calendar, DST-safe windows with disclosed unverified UTC; the number was reused for the consolidated investigation task, see the TASK 206 line below)*
+- [x] **TASK 206** — Revenue drop, checkout abandonment and priority recommendation investigations (consolidates original TASK 221–223). *(see `implementation/TASK-206-REVENUE-CHECKOUT-PRIORITY-INVESTIGATION.md` and `validation/TASK-206-REVENUE-CHECKOUT-PRIORITY-INVESTIGATION.md`; decision REV-DEC-0018; numbering collision with the line above documented there)*
 - [ ] **TASK 207** — Verify currency-aware response calculation.
 - [ ] **TASK 208** — Verify zero-value evidence handling.
 - [ ] **TASK 209** — Verify incomplete evidence fallback.
@@ -261,9 +262,9 @@
 - [ ] **TASK 218** — Consolidated into Task 205.
 - [ ] **TASK 219** — Consolidated into Task 205.
 - [ ] **TASK 220** — Consolidated into Task 205.
-- [ ] **TASK 221** — Test revenue drop investigation.
-- [ ] **TASK 222** — Test checkout abandonment investigation.
-- [ ] **TASK 223** — Test priority recommendation question.
+- [x] **TASK 221** — Test revenue drop investigation. *(consolidated into TASK 206 — revenue/checkout/priority investigation; scenarios A/B/I, `tests/test_rev_investigation_scenarios.py`)*
+- [x] **TASK 222** — Test checkout abandonment investigation. *(consolidated into TASK 206 — scenarios D/E/F; comparable-period deterioration verified)*
+- [x] **TASK 223** — Test priority recommendation question. *(consolidated into TASK 206 — scenarios G/H/J/K/L; findings prioritisation + challenge + invalidation)*
 - [ ] **TASK 224** — Test integration failure investigation.
 - [ ] **TASK 225** — Test insufficient history question.
 - [ ] **TASK 226** — Test unsupported question response.

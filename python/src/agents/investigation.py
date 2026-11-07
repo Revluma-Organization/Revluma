@@ -47,6 +47,7 @@ from ..intelligence.evidence import (
 from ..intelligence.epistemics import (
     CLAIM_CONTRACT_VERSION,
     build_calculation_claim,
+    build_contribution_claim,
     build_fact_claim,
     build_hypothesis_claim,
     build_unknown_claim,
@@ -56,6 +57,11 @@ from ..intelligence.epistemics import (
     epistemic_rollup,
     validate_claim,
 )
+from ..intelligence.finding_prioritization import (
+    compare_priority,
+    explain_priority,
+    prioritize_findings,
+)
 from ..intelligence.query import release_read_transaction, safe_query
 from ..intelligence.claim_guardrails import (
     direct_action_or_recovery_answer,
@@ -63,7 +69,7 @@ from ..intelligence.claim_guardrails import (
     narrative_guardrail_errors,
     validate_response_guardrails,
 )
-from ..intelligence.revenue_evidence import retrieve_revenue_evidence
+from ..intelligence.revenue_evidence import decompose_value_change, retrieve_revenue_evidence
 from ..intelligence.specialists import execute_specialists
 from ..intelligence.investigation_outcomes import (
     OUTCOME_CONTRACT_VERSION,
@@ -351,7 +357,10 @@ BUSINESS_NOUN_PATTERN = re.compile(
     r"|checkout|product|inventory|stock|coverage|sync|finding|refund|chargeback"
     r"|dispute|churn|retention|repeat|returning|cohort|purchase|loyal|traffic|session|conversion|discount|campaign"
     r"|metric|figure|overview|summary|briefing|priorit|trading|evidence|profit"
-    r"|margin|income|webhook|scope|permission|connected|connection|forecast\b", re.I)
+    r"|margin|income|webhook|scope|permission|connected|connection|forecast"
+    # Task 206: change nouns are store facts too — "what caused most of the
+    # decline?" is a revenue question even without the word "revenue".
+    r"|\bdecline\b|\bdrop\b|\bfell\b|\bfalling\b|\babandonment\b|\bworse\b|\bbetter\b", re.I)
 
 
 def _social_kind(message: str):
@@ -581,7 +590,39 @@ FOLLOWUP_ELLIPSIS = {
 SHORT_FOLLOWUP_WORDS = 6
 
 INTENT_PATTERNS = (
-    (re.compile(r"\b(?:high.priority\s+)?finding\b|\bfinding\s+id\b|\bwhy (?:is|was) this (?:a )?(?:high.priority )?(?:issue|recommendation)"), INTENT_FINDINGS),
+    # Task 206: priority questions and priority challenges are FIRST — they
+    # answer "what deserves my attention" from the recorded findings and the
+    # recorded ranking, and they must win over the domain keywords they
+    # mention ("the refund issue", "that checkout problem").
+    #
+    # Deliberately narrow: general orientation questions ("where should I
+    # focus today?", "what are my priorities this week?", "what's the
+    # biggest problem in my shop?") remain store_overview (golden set).
+    # Findings prioritisation needs an explicit fix/action word, a recorded
+    # finding, "most important" paired with a first/action word, or a
+    # challenge against the ranking.
+    (re.compile(
+        r"\b(?:high.priority\s+)?finding\b|\bfinding\s+id\b"
+        r"|\bwhy (?:is|was) this (?:a )?(?:high.priority )?(?:issue|recommendation)"
+        # priority questions (Task 206 scenario G)
+        r"|\bfix (?:this )?first\b|\bstart (?:with|by fixing) (?:the )?what\b"
+        r"|\bwhat should i (?:fix|do|investigate|tackle|address) (?:first|next)\b"
+        r"|\bwhat (?:deserves|is worth) (?:my|its) (?:attention|focus|time)\b"
+        # "most important" only when the question also asks what comes first
+        # or what to act on — "the most important issue in my business
+        # right now?" stays an overview question.
+        r"|\bmost important\b(?=[^?]{0,60}\b(?:first|next|fix|address|look at|investigate|tackle|start)\b)"
+        r"|\bwhat matters most\b|\bmatters most\b"
+        r"|\bwhich (?:finding|issue|problem|thing) (?:is )?most (?:important|urgent|critical)\b"
+        r"|\bwhich (?:finding|issue|problem) matters most\b"
+        r"|\bwhat (?:should i|do i) (?:worry|care) about (?:most|first)\b"
+        r"|\bshould i (?:be )?worried\b"
+        # priority challenges (Task 206 scenario H)
+        r"|\bmore important than\b|\bmore (?:urgent|critical|pressing) than\b"
+        r"|\bwhy (?:is|was) that (?:so |more |the )?(?:important|bigger|worse|higher priority|the priority)\b"
+        r"|\brather than the\b|\binstead of the\b"
+        r"|\bwhat about the (?:refund|checkout|product|inventory|delivery) (?:issues?|problems?|findings?)\b"
+        ), INTENT_FINDINGS),
     (re.compile(r"\brefund(?:s|ed)?\b|\bcancell?ed\s+order|\bcancell?ation"
                 r"|\bchargeback|\breturn(?:s|ed)?\b|\bdispute(?:s|d)?\b"), INTENT_REFUNDS),
     (re.compile(r"\bcheckout(?:s)?\b|\babandon(?:s|ed|ment)?\b|\bcart(?:s)?\b"), INTENT_CHECKOUT),
@@ -603,10 +644,16 @@ INTENT_PATTERNS = (
                 r"|\bdrop(?:s|ped|ping)?\b|\bfell\b|\bfall(?:s|ing)?\b|\bdown\b"
                 r"|\bgrowth\b|\bgrew\b|\bpurchase(?:s|d|ing)?\b|\bbuying\b"
                 r"|\bprofit(?:s|ability)?\b|\bmargin(?:s)?\b|\brefund rate\b"), INTENT_REVENUE),
+    # Task 206: the ACTIONABLE priority phrasings (fix-first, "most important
+    # ... first", challenges) moved to the findings intent (first position) so
+    # "what should I fix first?" ranks real findings instead of returning a
+    # store summary. The general orientation phrasings stay here (golden set):
+    # "where should I focus today?", "what are my priorities this week?",
+    # "what's the biggest problem?", "what should I look at first?".
     (re.compile(r"\b(?:my|our|the)\s+(?:shopify\s+)?(?:store|shop|business)\b"
-                r"|\boverview\b|\bmost important\b|\bpriorit(?:y|ies|ise|ize)\b"
+                r"|\boverview\b|\bmost important\b|\bpriorit(?:y|ies|ise|ize|ised|ized)\b"
                 r"|\bbiggest (?:issue|problem|risk)\b|\blook at first\b|\bsummary\b"
-                r"|\bbriefing\b|\bwhere should i (?:start|focus|look)\b"
+                r"|\bbriefing\b|\bwhere should i (?:start|focus|look)\b|\bwhere do i start\b"
                 r"|\bwhat (?:do i|should i) need to know\b|\bhow (?:is|are)\b(?![^.?!]{0,40}\byou\b)[^.?!]{0,40}"
                 r"\b(?:performing|doing)\b|\bhealth\b"), INTENT_OVERVIEW),
 )
@@ -624,6 +671,36 @@ PROVENANCE_PATTERN = re.compile(
     r"what(?:'s| is| was)? the source (?:of|for)|source of that|"
     r"how do you know|show me the evidence|show your work|what evidence|"
     r"evidence for that|prove that|prove it|on what basis)\b", re.I)
+
+# Task 206: actionable priority questions explicitly ask Rev to rank the
+# store's recorded findings, so store data is justified even when the message
+# carries no domain noun ("what should I fix first?"). The deterministic layer
+# must settle these without the understanding model. General orientation
+# questions ("where should I focus today?") are NOT here — they stay overview.
+PRIORITY_QUESTION_PATTERN = re.compile(
+    r"\bfix (?:this )?first\b"
+    r"|\bwhat should i (?:fix|do|investigate|tackle|address) (?:first|next)\b"
+    r"|\bwhat (?:deserves|is worth) (?:my|its) (?:attention|focus|time)\b"
+    r"|\bmost important\b(?=[^?]{0,60}\b(?:first|next|fix|address|look at|investigate|tackle|start)\b)"
+    r"|\bmatters? most\b"
+    r"|\bwhich (?:finding|issue|problem|thing) (?:is )?most (?:important|urgent|critical)\b"
+    r"|\bwhat (?:should i|do i) (?:worry|care) about (?:most|first)\b"
+    r"|\bmore important than\b|\bmore (?:urgent|critical|pressing) than\b"
+    r"|\bwhy (?:is|was) (?:that|it|this) (?:so |more |the )?(?:important|bigger|worse|higher priority)\b"
+    r"|\brather than the\b|\binstead of the\b",
+    re.I)
+
+# Task 206: a priority CHALLENGE ("why is that more important than the refund
+# issue?") is a finding-investigation question that must be answered by
+# comparing the actual recorded findings on the documented ranking slots, not
+# by re-answering the referenced domain.
+PRIORITY_CHALLENGE_PATTERN = re.compile(
+    r"\bmore important than\b|\bmore (?:urgent|critical|pressing) than\b"
+    r"|\bwhy (?:is|was) that (?:so |more |the )?(?:important|bigger|worse|higher priority)\b"
+    r"|\bwhy (?:is|was) (?:it|this) (?:so |more )?(?:important|the priority)\b"
+    r"|\brather than the\b|\binstead of the\b"
+    r"|\bwhat about the (?:refund|checkout|product|inventory|delivery) (?:issues?|problems?|findings?)\b",
+    re.I)
 
 
 # Task 204: the answer text must never affirmatively claim a financial
@@ -1260,6 +1337,14 @@ def route_message(message: str, context: dict | None, store_context: dict | None
             and (store_ref or metric_query) and not emotional_expression:
         return done({"intent": keyword_intent, "segment": None, "followup": False},
                     "fast_path")
+    # Task 206: a priority question ("what should I fix first?", "why is that
+    # more important than the refund issue?") explicitly asks to rank the
+    # store's recorded findings — store data is justified even without a
+    # domain noun, deterministically, with or without the understanding model.
+    if keyword_intent is not None and PRIORITY_QUESTION_PATTERN.search(lower) \
+            and not emotional_expression:
+        return done({"intent": keyword_intent, "segment": None, "followup": False},
+                    "fast_path")
 
     # L2: model understanding for everything the safeguards do not settle.
     from .understanding import understand
@@ -1280,7 +1365,8 @@ def route_message(message: str, context: dict | None, store_context: dict | None
         # deterministic layer rescues clear business subjects; explicit
         # store language still justifies tools; anything else stays
         # conversational. Ambiguity never becomes an investigation.
-        if keyword_intent is not None and BUSINESS_NOUN_PATTERN.search(text) \
+        if keyword_intent is not None and (
+                BUSINESS_NOUN_PATTERN.search(text) or PRIORITY_QUESTION_PATTERN.search(lower)) \
                 and not emotional_expression:
             return done({"intent": keyword_intent, "segment": None, "followup": False},
                         "fallback_deterministic")
@@ -1328,7 +1414,8 @@ def load_conversation_context(organization_id: str, user_id: str,
                               conversation_id: str | None, db,
                               context_payload: dict | None = None) -> dict:
     context = {"summary": None, "last_investigation": None, "recent_turns": [],
-               "unresolved": [], "conversation_state": None, "last_claims": [], "last_specialists": []}
+               "unresolved": [], "conversation_state": None, "last_claims": [],
+               "last_specialists": [], "last_priority": None}
     if not conversation_id:
         return context
 
@@ -1352,6 +1439,7 @@ def load_conversation_context(organization_id: str, user_id: str,
             context["last_specialists"] = [
                 item for item in (raw.get("last_specialists") or [])
                 if isinstance(item, dict) and item.get("execution_id")][:6]
+            context["last_priority"] = _priority_from_window(raw)
 
     rows, error = safe_query(db, """
         SELECT summary, context_window
@@ -1375,6 +1463,8 @@ def load_conversation_context(organization_id: str, user_id: str,
                 context["last_specialists"] = [
                     item for item in (raw.get("last_specialists") or [])
                     if isinstance(item, dict) and item.get("execution_id")][:6]
+            if context["last_priority"] is None:
+                context["last_priority"] = _priority_from_window(raw)
             state = raw.get("conversation_state")
             if isinstance(state, dict):
                 context["conversation_state"] = _fresh_state(state)
@@ -1409,6 +1499,50 @@ def _claims_from_window(raw: dict) -> list[dict]:
     claims = [claim for claim in raw_claims
               if isinstance(claim, dict) and claim.get("contract_version") == CLAIM_CONTRACT_VERSION]
     return claims[:10]
+
+
+def _bounded_priority_record(priority: dict | None) -> dict | None:
+    """The bounded priority record written to the conversation context.
+
+    Carries just enough for a follow-up to resolve "why is that more
+    important than X?": the method version, the top finding, and a short
+    ranked/excluded list. No raw finding payloads, no unbounded lists.
+    """
+    if not isinstance(priority, dict):
+        return None
+    ranked = [entry for entry in (priority.get("ranked") or []) if isinstance(entry, dict)][:5]
+    excluded = [entry for entry in (priority.get("excluded") or []) if isinstance(entry, dict)][:5]
+    record = {
+        "method_version": priority.get("method_version"),
+        "no_valid_findings": bool(priority.get("no_valid_findings")),
+        "no_valid_findings_reason": priority.get("no_valid_findings_reason"),
+        "computed_at": priority.get("computed_at"),
+        "ranked": [
+            {"rank": entry.get("rank"), "finding_id": entry.get("finding_id"),
+             "title": entry.get("title"), "severity": entry.get("severity"),
+             "freshness": entry.get("freshness")}
+            for entry in ranked],
+        "excluded": [
+            {"finding_id": entry.get("finding_id"), "title": entry.get("title"),
+             "reason": entry.get("reason")}
+            for entry in excluded],
+    }
+    if ranked:
+        record["top_finding_id"] = ranked[0].get("finding_id")
+        record["top_title"] = ranked[0].get("title")
+    return record
+
+
+def _priority_from_window(raw: dict) -> dict | None:
+    """Read back the recorded priority state, validating it is well-formed."""
+    record = raw.get("last_priority")
+    if not isinstance(record, dict):
+        return None
+    if record.get("method_version") != "finding-priority-v1":
+        return None
+    if not isinstance(record.get("ranked"), list) or not isinstance(record.get("excluded"), list):
+        return None
+    return record
 
 
 def _fresh_state(state: dict) -> dict | None:
@@ -1710,7 +1844,10 @@ def _checkout_tool_params(message: str, inherited: dict | None = None) -> dict:
         params.pop("checkout_reference", None)
     if re.search(r"\babandoned(?:\s+ones)?\b|\babandonment\b", text):
         params["abandoned_only"] = True
-    if re.search(r"\bline items\b|\bproducts in\b|\bwhich checkout\b|\bshow\b.{0,30}\bcheckouts?\b|\bcheckout\s+(?:id\s+)?[#0-9a-f]", text):
+    # A checkout reference is a #name or a long hex/numeric id — never a
+    # single hex-looking letter, so "checkout abandonment" is not a drill-down.
+    if re.search(r"\bline items\b|\bproducts in\b|\bwhich checkout\b|\bshow\b.{0,30}\bcheckouts?\b"
+                 r"|\bcheckout\s+(?:id\s+)?#[0-9A-Za-z]|\bcheckout\s+(?:id\s+)?[0-9A-F]{8,}", text):
         params["include_records"] = True
     return params
 
@@ -1739,6 +1876,274 @@ def _product_tool_params(message: str) -> dict:
     if re.search(r"\b(?:latest|most recent)\s+product\b", message or "", re.I):
         params["latest"] = True
     return params
+
+
+# ── Task 206: priority recommendation, product contribution, value split ─────
+def _finding_items(items: list[dict]) -> list[dict]:
+    return [item for item in items if isinstance(item, dict)
+            and item.get("metric") == "finding_evidence"]
+
+
+def _priority_blocks(items: list[dict], message: str, conversation_context: dict,
+                     tool_results_by_name: dict, *, now: datetime) -> tuple:
+    """Rank the recorded findings deterministically (finding-priority-v1).
+
+    Returns ``(priority, explanation, challenge)``:
+    - ``priority`` is always present when the findings tool ran; when the tool
+      failed the state is forced to the explicit ``evidence_unavailable``
+      reason (a failed retrieval is not "no open findings").
+    - ``explanation`` explains the top finding from recorded fields only.
+    - ``challenge`` answers "why is that more important than X?" by comparing
+      the actual recorded findings on the documented slots (scenario H), and
+      surfaces scenario L (a previously top finding no longer ranked) when the
+      previous recorded priority differs.
+    """
+    finding_items = _finding_items(items)
+    findings_tool = tool_results_by_name.get("findings")
+    tool_ok = findings_tool is not None and \
+        findings_tool.status in (STATUS_AVAILABLE, STATUS_PARTIAL)
+    priority = prioritize_findings(finding_items, now=now)
+    if not tool_ok:
+        priority = dict(priority)
+        priority["no_valid_findings"] = True
+        priority["no_valid_findings_reason"] = "evidence_unavailable"
+    explanation = explain_priority(priority, finding_items)
+    challenge = None
+    if PRIORITY_CHALLENGE_PATTERN.search(message or ""):
+        challenge = compare_priority(priority, finding_items, message or "")
+    change_note = _priority_change_note(priority, conversation_context)
+    return priority, explanation, challenge, change_note
+
+
+def _priority_change_note(priority: dict, conversation_context: dict) -> dict | None:
+    """Scenario L: a previously recorded top priority that is no longer ranked
+    must not be presented as current. Explain the change (invalidated,
+    superseded, or no longer verified) before recommending anything else.
+    """
+    last_priority = (conversation_context or {}).get("last_priority") or {}
+    previous_top_id = last_priority.get("top_finding_id")
+    if not previous_top_id or not isinstance(priority, dict):
+        return None
+    current_ranked = priority.get("ranked") or []
+    current_top_id = current_ranked[0].get("finding_id") if current_ranked else None
+    if current_top_id == previous_top_id:
+        return None
+    previous_top_title = last_priority.get("top_title") or str(previous_top_id)
+    excluded_reason = next(
+        (entry["reason"] for entry in (priority.get("excluded") or [])
+         if entry.get("finding_id") == previous_top_id), None)
+    still_ranked = any(entry.get("finding_id") == previous_top_id
+                       for entry in current_ranked)
+    if excluded_reason:
+        statement = (f"The finding I ranked first before ({previous_top_title}) is no longer "
+                     f"ranked: it is now excluded as {excluded_reason}. Its recorded evidence "
+                     "was not re-verified for the current window, so I recomputed the ranking "
+                     "before recommending anything else. Nothing about it is presented as still "
+                     "current.")
+        reason = excluded_reason
+    elif still_ranked:
+        statement = (f"The finding I ranked first before ({previous_top_title}) is still valid "
+                     "but now ranks lower than the current top, so I recomputed the priority "
+                     "from the current recorded evidence before answering.")
+        reason = "re-ranked_lower"
+    else:
+        statement = (f"The finding I ranked first before ({previous_top_title}) is no longer in "
+                     "the current recorded set, so I recomputed the priority from the current "
+                     "evidence before recommending anything else.")
+        reason = "no_longer_in_recorded_set"
+    return {"finding_id": previous_top_id, "title": previous_top_title,
+            "reason": reason, "statement": statement}
+
+
+def _priority_fact(explanation: dict, items: list[dict]) -> dict | None:
+    """One verified fact anchoring the top-priority recommendation.
+
+    The finding's own evidence item is cited, so the claim is resolvable to
+    the recorded detection and its supporting evidence.
+    """
+    if not explanation:
+        return None
+    target = next(
+        (item for item in items
+         if item.get("metric") == "finding_evidence"
+         and str((item.get("value") or {}).get("finding_id")) == explanation.get("finding_id")),
+        None)
+    if target is None:
+        return None
+    return {
+        "text": (f"Top priority (ranked on recorded evidence): {explanation['observed']} "
+                 f"{explanation['why_it_matters']}"),
+        "evidence_ids": [target["id"]],
+        "metric": "priority_recommendation",
+        "currency": None,
+        "value": None,
+        "unit": None,
+        "period": target.get("period"),
+        "source": target.get("source"),
+        "status": target.get("status"),
+    }
+
+
+def _contribution_facts(comparison: dict | None, items: list[dict],
+                        window: dict) -> list[dict]:
+    """Per-product contribution to the recorded line-value change.
+
+    Contribution is the largest magnitude of a currency-matched,
+    BOTH-sides-recorded line-value delta. It is a contribution to the
+    recorded change, never an established cause; the historical line title is
+    not a current product identity, and that caveat travels with the fact.
+    """
+    facts: list[dict] = []
+    if not comparison or comparison.get("overall_status") == STATUS_UNAVAILABLE:
+        return facts
+    changes = [c for c in (comparison.get("changes") or [])
+               if c.get("status") == STATUS_AVAILABLE and c.get("delta") is not None]
+    if not changes:
+        return facts
+    for change in changes[:3]:
+        currency = change.get("currency")
+        current_id = change.get("current_evidence_id")
+        previous_id = change.get("previous_evidence_id")
+        direction_word = {"up": "up", "down": "down"}.get(change.get("direction"), "changed")
+        text = (f"{change['product_name']} ({currency}): recorded line value moved "
+                f"{direction_word} {_money_text(change['delta'], currency)} "
+                f"({_money_text(change['previous'], currency)} to "
+                f"{_money_text(change['current'], currency)}) versus the previous period; "
+                "this is a contribution to the recorded change, not an established cause.")
+        if change.get("percent") is not None:
+            text = (f"{change['product_name']} ({currency}): recorded line value moved "
+                    f"{direction_word} {change['percent']}% "
+                    f"({_money_text(change['previous'], currency)} to "
+                    f"{_money_text(change['current'], currency)}) versus the previous period; "
+                    "this is a contribution to the recorded change, not an established cause.")
+        period = dict(comparison.get("period") or {})
+        facts.append({
+            "text": text,
+            "evidence_ids": [e for e in (current_id, previous_id) if e],
+            "metric": "product_recorded_value_change",
+            "currency": currency,
+            "value": change.get("delta"),
+            "unit": "currency",
+            "period": period,
+            "source": {"system": "shopify", "resource": "order_items"},
+            "status": STATUS_AVAILABLE,
+            "change": change,
+        })
+    return facts
+
+
+def _priority_text(priority: dict | None, explanation: dict | None,
+                   comparison: dict | None, change_note: dict | None = None) -> list[str]:
+    """Deterministic priority section (Task 206 scenarios G/H/J/L)."""
+    lines: list[str] = []
+    if not priority:
+        return lines
+    if priority.get("no_valid_findings"):
+        reason = priority.get("no_valid_findings_reason")
+        sentences = {
+            "verified_no_open_findings": ("No open findings with verified current evidence are recorded, so there "
+                "is nothing I can rank. That is a verified-healthy state for the findings I can see — it is not a "
+                "claim that the store has no problems of any kind."),
+            "evidence_unavailable": ("I could not read the recorded findings (the read-only query did not "
+                "complete), so I will not rank or recommend from them. Nothing is presented as a priority."),
+            "stale_findings_require_reverification": ("The recorded findings are older than the 48-hour re-verification "
+                "policy, so their evidence is not current. I will not rank a stale finding as a present priority; "
+                "a fresh sync is needed before I can recommend what to fix first."),
+            "only_historical_findings": ("The only recorded findings are resolved or dismissed history, so there is no "
+                "currently open finding to rank. History is not a present problem."),
+            "evidence_unverified": ("The recorded findings' source evidence is not verified for the current window, so "
+                "I cannot rank them as current priorities."),
+            "no_currently_verified_findings": ("None of the recorded findings is currently verified, so I cannot rank "
+                "them as present priorities."),
+        }
+        lines.append("## What I would work on first")
+        lines.append(sentences.get(reason, "I cannot rank a priority from the current evidence."))
+        return lines
+    lines.append("## What I would work on first")
+    ranked = priority.get("ranked") or []
+    if not explanation or not ranked:
+        lines.append("I could not build a ranking from the recorded findings.")
+        return lines
+    top = ranked[0]
+    lines.append(f"1. **{explanation['title']}** — {explanation['observed']}")
+    lines.append(f"   Why it matters: {explanation['why_it_matters']}")
+    lines.append(f"   Evidence: {explanation['evidence']}")
+    lines.append(f"   Why it ranks ahead: {explanation['why_ranks_ahead']}")
+    lines.append(f"   Not established: {explanation['uncertain']}")
+    lines.append(f"   Next step: {explanation['next_step']} Nothing has been executed; Rev is read-only.")
+    for entry in ranked[1:4]:
+        lines.append(f"{entry['rank']}. **{entry['title']}** — "
+                     f"{'recorded severity ' + entry['severity'] + '; ' if entry.get('severity') else 'no recorded severity; '}")
+    if priority.get("tie"):
+        tie = priority["tie"]
+        lines.append(f"Note: {tie['statement']}")
+    for entry in (priority.get("excluded") or [])[:3]:
+        title = entry.get("title") or entry.get("finding_id") or "a recorded finding"
+        note = (f" — {entry['note']}" if entry.get("note") else "")
+        lines.append(f"Not ranked: {title} (excluded as {entry.get('reason')}).{note}")
+    lines.append("This ranking uses only recorded attributes (severity, freshness, measured order "
+                 "sample). It is not a scored impact model, and nothing has been executed.")
+    if change_note:
+        lines.append("## How this differs from what I told you before")
+        lines.append(change_note.get("statement", ""))
+    if comparison:
+        lines.append("## Why that, versus the one you asked about")
+        lines.append(comparison.get("statement", ""))
+    return lines
+
+
+def _decomposition_text_line(entry: dict) -> str:
+    driver_words = {
+        "volume-driven": "an order-volume effect dominates",
+        "value-driven": "an average-order-value effect dominates",
+        "mixed-offsetting": "order-volume and order-value effects partly offset each other",
+        "equally-split": "order-volume and order-value effects are equal",
+        "no_change": "there is no recorded change",
+    }
+    return (f"{entry['currency']}: of the {entry['value_change']} recorded order-value change, "
+            f"{entry['order_count_effect']} is the order-count effect and "
+            f"{entry['order_value_effect']} is the order-value effect "
+            f"(previous average order value {entry['average_order_value_previous']}); "
+            f"{driver_words.get(entry.get('driver'), 'a recorded split')}")
+
+
+def _decomposition_facts(decompositions: list[dict], window: dict) -> list[dict]:
+    """Volume-vs-order-value split of the recorded order-value change."""
+    facts: list[dict] = []
+    for entry in decompositions or []:
+        if entry.get("status") != STATUS_AVAILABLE:
+            continue
+        currency = entry.get("currency")
+        driver_words = {
+            "volume-driven": "an order-volume effect dominates",
+            "value-driven": "an average-order-value effect dominates",
+            "mixed-offsetting": "order-volume and order-value effects partly offset",
+            "equally-split": "order-volume and order-value effects are equal",
+            "no_change": "there is no recorded change",
+        }
+        text = (f"{currency}: of the {entry['value_change']} recorded order-value change, "
+                f"{entry['order_count_effect']} is the order-count effect and "
+                f"{entry['order_value_effect']} is the order-value effect "
+                f"(previous average order value {entry['average_order_value_previous']}); "
+                f"this is {driver_words.get(entry.get('driver'), 'a recorded split')}. "
+                "It explains the size of the recorded change, not its cause.")
+        current_ids = entry.get("current_evidence_ids") or {}
+        previous_ids = entry.get("previous_evidence_ids") or {}
+        facts.append({
+            "text": text,
+            "evidence_ids": [e for e in (
+                current_ids.get("order_value"), previous_ids.get("order_value"),
+                current_ids.get("order_count"), previous_ids.get("order_count")) if e],
+            "metric": "order_value_change_decomposition",
+            "currency": currency,
+            "value": entry.get("value_change"),
+            "unit": "currency",
+            "period": dict(window or {}),
+            "source": {"system": "shopify", "resource": "orders"},
+            "status": STATUS_AVAILABLE,
+            "entry": entry,
+        })
+    return facts
 
 
 def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
@@ -2447,20 +2852,48 @@ def _compose_text(*, intent: str, label: str, window: dict, facts: list[dict],
                   comparison_facts: list[dict], hypotheses: list[dict],
                   unknowns: list[str], recommendations: list[dict],
                   skipped: list[str], store_context: dict,
-                  overall_status: str) -> str:
+                  overall_status: str,
+                  priority: dict | None = None,
+                  priority_explanation: dict | None = None,
+                  priority_comparison: dict | None = None,
+                  priority_change: dict | None = None,
+                  contributor_analysis: list[dict] | None = None,
+                  contribution_facts: list[dict] | None = None) -> str:
     period_text = describe_period(window)
     lines: list[str] = []
-    if not facts:
-        lines.append("## What I can verify")
-        lines.append("I don't have enough verified store evidence to answer this without guessing.")
+    if intent == INTENT_FINDINGS:
+        lines.extend(_priority_text(priority, priority_explanation, priority_comparison,
+                                    priority_change))
     else:
-        lines.append("## What I can verify")
-        lines.append(f"For {period_text}:")
-        lines.extend(f"- {fact['text']}" for fact in facts)
+        if not facts:
+            lines.append("## What I can verify")
+            lines.append("I don't have enough verified store evidence to answer this without guessing.")
+        else:
+            lines.append("## What I can verify")
+            lines.append(f"For {period_text}:")
+            lines.extend(f"- {fact['text']}" for fact in facts)
+    if contribution_facts:
+        lines.append("## Which recorded products moved the most")
+        lines.extend(f"- {fact['text']}" for fact in contribution_facts)
+        lines.append("These are the largest recorded line-value movements among the line names "
+                     "recorded in both periods. A historical line title is not a current product "
+                     "identity, and a movement is a contribution to the recorded change, not a "
+                     "proven cause.")
     if comparison_facts:
         lines.append("## Compared with the previous period")
         lines.extend(f"- {fact['text']}" for fact in comparison_facts)
         lines.append("This is an arithmetic description of the change, not an explanation of its cause.")
+    if contributor_analysis:
+        lines.append("## Volume versus order value")
+        for entry in contributor_analysis:
+            if entry.get("status") != STATUS_AVAILABLE:
+                lines.append(f"- {entry.get('currency') or 'Recorded orders'}: the volume-vs-order-value "
+                             f"split is not computable ({entry.get('reason') or 'inputs not recorded'}); "
+                             "I won't guess which one drove the change.")
+                continue
+            lines.append(f"- {entry['text_line']}")
+        lines.append("This split explains the size of the recorded change. It does not establish "
+                     "why orders or order values changed.")
     if hypotheses:
         lines.append("## What is not established")
         lines.extend(f"- {hypothesis['statement']}" for hypothesis in hypotheses)
@@ -2720,6 +3153,11 @@ def persist_investigation_context(organization_id: str, user_id: str,
             "outcome": specialist.get("investigation_outcome"),
             "evidence_references": (specialist.get("evidence_references") or [])[:20],
         } for specialist in (result.get("specialists") or [])][:6],
+        # Task 206: the recorded priority state. Follow-ups that challenge the
+        # ranking ("why is that more important than the refund issue?") resolve
+        # against THIS record; when a previously top finding is no longer
+        # ranked, the answer explains the change instead of restating it.
+        "last_priority": _bounded_priority_record(result.get("priority")),
     }
     if conversation_state:
         context_window["conversation_state"] = conversation_state
@@ -2849,7 +3287,10 @@ def _build_claims(*, facts: list, comparison_facts: list, year_over_year_facts: 
                   comparison: dict | None, year_over_year: dict | None,
                   hypotheses: list, unknowns: list, items_by_id: dict,
                   tools_used: list, organization_id: str, store_ids: list,
-                  investigation_id: str) -> tuple[list, list]:
+                  investigation_id: str,
+                  contribution_facts: list | None = None,
+                  decomposition_facts: list | None = None,
+                  priority_explanation: dict | None = None) -> tuple[list, list]:
     """Build rev-claim-v1 claims from the deterministic result, fail-closed.
 
     Returns ``(valid_claims, error_codes)``. A claim that fails the contract
@@ -2890,6 +3331,102 @@ def _build_claims(*, facts: list, comparison_facts: list, year_over_year_facts: 
         claims.append(build_unknown_claim(
             text, organization_id=organization_id, store_ids=store_ids,
             investigation_id=investigation_id, attempts=tools_used))
+    # Task 206: contribution and decomposition figures are calculated
+    # observations with explicit, re-computable calculation blocks — each
+    # input carries its recorded value AND evidence id, per currency.
+    for fact in contribution_facts or []:
+        change = fact.get("change") or {}
+        if change.get("status") != STATUS_AVAILABLE or change.get("delta") is None:
+            continue
+        claims.append(build_contribution_claim(
+            metric="product_recorded_value_change", value=change["delta"],
+            unit="currency", currency=change.get("currency"), fact=fact,
+            calculation={
+                "version": "line-value-change-v1",
+                "method": "line_value_change",
+                "formula": "delta = current_recorded_line_value - previous_recorded_line_value",
+                "primary_evidence_id": change.get("current_evidence_id"),
+                "inputs": [
+                    {"role": "current", "evidence_id": change.get("current_evidence_id"),
+                     "value": change.get("current"), "currency": change.get("currency")},
+                    {"role": "previous", "evidence_id": change.get("previous_evidence_id"),
+                     "value": change.get("previous"), "currency": change.get("currency")},
+                ],
+                "assumptions": ["Line names are historical order-line titles, not current product identity."],
+            },
+            organization_id=organization_id, store_ids=store_ids,
+            investigation_id=investigation_id, items_by_id=items_by_id))
+    for fact in decomposition_facts or []:
+        entry = fact.get("entry") or {}
+        if entry.get("status") != STATUS_AVAILABLE:
+            continue
+        ids = (entry.get("current_evidence_ids") or {}, entry.get("previous_evidence_ids") or {})
+        current_ids, previous_ids = ids
+        base_inputs = [
+            {"role": "current_count", "evidence_id": current_ids.get("order_count"),
+             "value": entry.get("current_order_count")},
+            {"role": "previous_count", "evidence_id": previous_ids.get("order_count"),
+             "value": entry.get("previous_order_count")},
+            {"role": "current_value", "evidence_id": current_ids.get("order_value"),
+             "value": entry.get("current_order_value"), "currency": entry.get("currency")},
+            {"role": "previous_value", "evidence_id": previous_ids.get("order_value"),
+             "value": entry.get("previous_order_value"), "currency": entry.get("currency")},
+        ]
+        formula = ("count_effect = (current_count - previous_count) * (previous_value / previous_count); "
+                   "value_effect = value_change - count_effect")
+        for effect_metric, effect_value, effect_note in (
+                ("order_count_effect_on_recorded_order_value", entry.get("order_count_effect"),
+                 "the order-count effect"),
+                ("order_value_effect_on_recorded_order_value", entry.get("order_value_effect"),
+                 "the order-value effect")):
+            if effect_value is None:
+                continue
+            claims.append(build_contribution_claim(
+                metric=effect_metric, value=effect_value, unit="currency",
+                currency=entry.get("currency"), fact=fact,
+                calculation={
+                    "version": entry.get("method_version") or "value-decomposition-v1",
+                    "method": "value_change_decomposition",
+                    "formula": formula,
+                    "primary_evidence_id": current_ids.get("order_value"),
+                    "inputs": base_inputs,
+                    "assumptions": [f"{effect_note}; the two effects sum exactly to the recorded value change"],
+                },
+                organization_id=organization_id, store_ids=store_ids,
+                investigation_id=investigation_id, items_by_id=items_by_id))
+    if priority_explanation:
+        # The top-priority recommendation is anchored to the finding's own
+        # recorded evidence: a verified fact whose value is a recorded figure
+        # from the finding's supporting evidence (never an invented score).
+        target = None
+        for item in items_by_id.values():
+            if item.get("metric") == "finding_evidence" and \
+                    str((item.get("value") or {}).get("finding_id")) == priority_explanation.get("finding_id"):
+                target = item
+                break
+        if target is not None:
+            record = target.get("value") or {}
+            evidence = record.get("supporting_evidence") or {}
+            value = None
+            currency = evidence.get("currency")
+            for key in ("currentRevenue", "previousRevenue"):
+                if evidence.get(key) is not None:
+                    value = str(evidence.get(key))
+                    break
+            if value is not None:
+                fact_text = (f"Top priority (ranked on recorded evidence): "
+                             f"{priority_explanation.get('observed', '')} "
+                             f"{priority_explanation.get('why_it_matters', '')}")
+                claims.append(build_fact_claim(
+                    {"text": fact_text, "evidence_ids": [target["id"]],
+                     # The claim carries the finding's recorded figure, so it
+                     # takes the cited item's own metric (verified facts must
+                     # match their evidence under the claim guardrails).
+                     "metric": target.get("metric") or "finding_evidence", "value": value,
+                     "unit": "currency", "currency": currency,
+                     "period": target.get("period")},
+                    organization_id=organization_id, store_ids=store_ids,
+                    investigation_id=investigation_id, item=target))
     causal_by_grade = {
         "verified_fact": "observed",
         "calculated_observation": "observed_difference",
@@ -3379,9 +3916,14 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     # Task 207: deterministic capability and ambiguity safeguards run before
     # model-authored answers. Re-evaluated on every turn, so a later supported
     # question or newly available capability is not trapped by old context.
+    # The classifier's routing decision is passed through: a question routed
+    # to a supported evidence-backed intent (e.g. "What should I fix
+    # first?" -> findings) must not be preempted by the general-knowledge
+    # heuristic, which has no commerce nouns to latch onto.
     capability = capability_decision(
         message, has_conversation_context=bool(
-            conversation_context.get("last_investigation") or conversation_context.get("recent_turns")))
+            conversation_context.get("last_investigation") or conversation_context.get("recent_turns")),
+        intent=intent)
     if capability is not None and intent != INTENT_READ_ONLY:
         result = _unsupported_result(
             message, capability, investigation_id=investigation_id,
@@ -3637,6 +4179,14 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         if tool in ("product_observations", "inventory_observations"):
             params.update(_product_tool_params(message))
             params["timezone"] = window.get("timezone") or "UTC"
+            # Task 206: product contribution ("which product contributed most")
+            # needs the previous window exactly like the revenue tool: the
+            # resolved comparison window is the single source of truth.
+            compared = window.get("compared_to")
+            if compared and tool == "product_observations":
+                params["compare"] = True
+                params["comparison_start"] = compared["start"]
+                params["comparison_end"] = compared["end"]
         if tool in ("cart_observations", "checkout_observations"):
             params.update(checkout_query)
         if classification.get("segment"):
@@ -3758,6 +4308,33 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             if recommendation.get("label") not in {r.get("label") for r in recommendations}:
                 recommendations.append(recommendation)
 
+    # ── Task 206: priority, product contribution, volume/value split ──────
+    priority = None
+    priority_explanation = None
+    priority_comparison = None
+    priority_change = None
+    contributor_analysis: list[dict] = []
+    decomposition_facts: list[dict] = []
+    contribution_facts: list[dict] = []
+    if intent == INTENT_FINDINGS:
+        priority, priority_explanation, priority_comparison, priority_change = _priority_blocks(
+            items, message, conversation_context, tool_results_by_name, now=now)
+    revenue_comparison = (revenue_result.comparison
+                          if revenue_result is not None else None)
+    if revenue_comparison and revenue_comparison.get("changes") and \
+            intent in (INTENT_REVENUE, INTENT_OVERVIEW, INTENT_PRODUCTS, INTENT_REFUNDS):
+        contributor_analysis = decompose_value_change({"comparison": revenue_comparison})
+        for entry in contributor_analysis:
+            if entry.get("status") == STATUS_AVAILABLE:
+                entry["text_line"] = _decomposition_text_line(entry)
+        decomposition_facts = _decomposition_facts(contributor_analysis, window)
+    product_result = tool_results_by_name.get("product_observations")
+    product_comparison = (getattr(product_result, "comparison", None)
+                          if product_result is not None else None)
+    if product_comparison and product_comparison.get("changes") and \
+            intent in (INTENT_PRODUCTS, INTENT_REVENUE, INTENT_OVERVIEW):
+        contribution_facts = _contribution_facts(product_comparison, items, window)
+
     warnings: list[str] = []
     failed_specialists = [s["specialist"]["name"] for s in specialists if s.get("status") == "error"]
     if failed_specialists:
@@ -3772,6 +4349,13 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         comparison_facts = []
         hypotheses = []
         recommendations = []
+        priority = None
+        priority_explanation = None
+        priority_comparison = None
+        priority_change = None
+        contributor_analysis = []
+        decomposition_facts = []
+        contribution_facts = []
         overall = "insufficient_data"
 
     # Task 204: the canonical, versioned epistemic claims. They are derived
@@ -3789,7 +4373,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         comparison=comparison, year_over_year=year_over_year,
         hypotheses=hypotheses, unknowns=unknowns, items_by_id=items_by_id,
         tools_used=list(tool_results_by_name), organization_id=organization_id,
-        store_ids=sorted(allowed_store_ids), investigation_id=investigation_id)
+        store_ids=sorted(allowed_store_ids), investigation_id=investigation_id,
+        contribution_facts=contribution_facts,
+        decomposition_facts=decomposition_facts,
+        priority_explanation=priority_explanation)
     if claim_errors:
         warnings.append("Claim contract validation reported: " + ", ".join(claim_errors))
 
@@ -3833,6 +4420,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             comparison_facts=all_comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
             recommendations=recommendations, skipped=skipped, store_context=store_context,
             overall_status=overall,
+            priority=priority, priority_explanation=priority_explanation,
+            priority_comparison=priority_comparison, priority_change=priority_change,
+            contributor_analysis=contributor_analysis,
+            contribution_facts=contribution_facts,
         )
         narrative, used_model = _compose_narrative(
             message=message, intent=intent, window=window, facts=facts,
@@ -3885,6 +4476,14 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         "comparison_facts": comparison_facts,
         "year_over_year": year_over_year,
         "year_over_year_facts": year_over_year_facts,
+        # Task 206: the recorded priority state (method, ranked, excluded,
+        # no-valid-findings reason), the challenge comparison when the merchant
+        # asked "why is that more important than X?", and the volume/value
+        # decomposition of the recorded order-value change.
+        "priority": priority,
+        "priority_comparison": priority_comparison,
+        "priority_change": priority_change,
+        "contributor_analysis": contributor_analysis,
         # Task 204: the versioned epistemic claim set (rev-claim-v1) and its
         # rollup. Facts/comparison_facts above are kept for backward
         # compatibility; claims are the canonical, validated classification.

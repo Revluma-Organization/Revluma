@@ -259,6 +259,80 @@ def build_calculation_claim(
     }
 
 
+def build_contribution_claim(
+    *, metric: str, value: Any, unit: str, currency: str | None,
+    calculation: dict, fact: dict, organization_id: str,
+    store_ids: Iterable[str], investigation_id: str,
+    items_by_id: dict[str, dict] | None = None,
+    qualifier: str = "versus the previous period",
+) -> dict:
+    """A calculated_observation claim for a contribution/decomposition figure.
+
+    ``build_calculation_claim`` is fixed to the percent-change method; the
+    decomposition (volume vs value effect), the per-product line-value change
+    and a finding's recorded count/value change are all calculated
+    observations but with different formulas and inputs. This builder keeps
+    the same fail-closed contract: a complete, re-computable ``calculation``
+    block (method, version, formula, inputs with evidence ids AND values,
+    declared rounding) and currency integrity, or it is dropped by the
+    validator.
+    """
+    items_by_id = items_by_id or {}
+    currency = normalize_currency(currency)
+    rounding = (ROUNDING_MONEY if unit == UNIT_CURRENCY
+                else ROUNDING_PERCENT if unit == "percent"
+                else ROUNDING_INTEGER if unit == "count" else None)
+    period = fact.get("period") or {}
+    primary_id = (calculation.get("primary_evidence_id"))
+    item = items_by_id.get(primary_id) if primary_id else None
+    quality = item.get("quality") if isinstance(item, dict) else None
+    limitations: list[str] = []
+    if isinstance(quality, dict):
+        limitations = [str(reason) for reason in (quality.get("reasons") or [])]
+    if not limitations and isinstance(item, dict):
+        limitations = [str(x) for x in (item.get("limitations") or [])]
+    calc_inputs = calculation.get("inputs") or []
+    return {
+        "claim_id": claim_id(CLAIM_CONTRACT_VERSION, organization_id,
+                             investigation_id, CLAIM_CALCULATED_OBSERVATION,
+                             metric, currency, period.get("start"), period.get("end"),
+                             str(value)),
+        "contract_version": CLAIM_CONTRACT_VERSION,
+        "classification": CLAIM_CALCULATED_OBSERVATION,
+        "text": fact.get("text") or "",
+        "metric": metric,
+        "value": str(value) if value is not None else None,
+        "unit": unit,
+        "currency": currency,
+        "rounding": rounding,
+        "period": period or None,
+        "period_timezone": (period or {}).get("timezone"),
+        "retrieved_at": (item or {}).get("retrieved_at"),
+        "observed_at": None,
+        "computed_at": iso(utc_now()),
+        "evidence_ids": [e for e in (fact.get("evidence_ids") or []) if e],
+        "source": (item or {}).get("source") or {"system": "shopify", "resource": "orders"},
+        "organization_id": organization_id,
+        "store_ids": list(store_ids),
+        "quality": quality,
+        "limitations": limitations[:10],
+        "financial_impact": None,
+        "calculation": {
+            "id": f"contribution:{metric}:{period.get('start')}:{period.get('end')}",
+            "version": calculation.get("version"),
+            "method": calculation.get("method"),
+            "formula": calculation.get("formula"),
+            "qualifier": qualifier,
+            "inputs": calc_inputs,
+            "rounding": rounding,
+            "assumptions": calculation.get("assumptions") or [],
+            "exclusions": calculation.get("exclusions") or [],
+        },
+        "hypothesis": None,
+        "unknown": None,
+    }
+
+
 def build_hypothesis_claim(
     hypothesis: dict, *, organization_id: str, store_ids: Iterable[str],
     investigation_id: str,

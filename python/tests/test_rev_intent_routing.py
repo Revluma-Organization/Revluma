@@ -25,6 +25,7 @@ from src.agents.investigation import (
     INTENT_CHECKOUT,
     INTENT_COVERAGE,
     INTENT_CUSTOMERS,
+    INTENT_FINDINGS,
     INTENT_GENERAL,
     INTENT_OVERVIEW,
     INTENT_PRODUCTS,
@@ -43,7 +44,9 @@ LIVE_QUESTIONS = (
     ("How much revenue did we generate last month?", INTENT_REVENUE),
     ("Which products contributed the most to revenue?", INTENT_PRODUCTS),
     ("Why might purchases be dropping?", INTENT_REVENUE),
-    ("What is the most important issue I should look at first?", INTENT_OVERVIEW),
+    # Task 206: a priority question ranks the recorded findings (finding
+    # investigation), it no longer returns a generic store overview.
+    ("What is the most important issue I should look at first?", INTENT_FINDINGS),
     ("What is my conversion rate?", INTENT_TRAFFIC),
     ("How much money did refunds remove from revenue?", INTENT_REFUNDS),
     ("Which customers are most valuable?", INTENT_CUSTOMERS),
