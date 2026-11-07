@@ -1,6 +1,6 @@
 # Task 202 — finding/product evidence and deterministic temporal interpretation
 
-Status: **IMPLEMENTATION CANDIDATE — LOCAL VERIFICATION COMPLETE; CI, DEPLOYMENT AND AUTHENTICATED PRODUCTION VERIFICATION PENDING**.
+Status: **MERGED AND CI-VERIFIED; PRODUCTION VERIFICATION INCOMPLETE — BACKEND/PYTHON REVISION AND AUTHENTICATED REV ACCEPTANCE OUTSTANDING**.
 
 ## Implemented behavior
 
@@ -47,3 +47,11 @@ No schema migration, new dependency, merchant action or extra platform was intro
 After merging current `main` (Task 201) into this branch and preserving integration-health planning alongside the new finding/product paths, the combined local suites passed: **1677 Python tests, 11 skipped** and **81 Backend test files**. These remain local results.
 
 Local fixtures are synthetic and isolated. They do not certify deployed revisions, live tenant isolation, authenticated Rev behavior or the active Shopify store.
+
+## Merge, CI and production evidence — 2026-11-07
+
+PR #342 merged as `6f37978f620ab55814f3bf319a27296a72c8df99` after every check on source `04b091651301c07921793b343c0e49b3ed0948bb` passed: `python-regressions` (run 42366587763), Prisma bootstrap/financial/security regressions and dashboard build (run 42366587822), Backend suites (runs 42366587819 and 42366587756), and Vercel preview comments. Real disposable PostgreSQL exposed and required explicit UUID casts and driver-compatible product array binding; the final test executes direct finding/order and product/variant probes and cross-tenant assertions successfully. Vercel deployment `dpl_GuP1yWh2N8re7rEXkbf57sUTmYxc` is READY/PROMOTED at the merge SHA with `revluma.vercel.app` aliased.
+
+Read-only production Supabase checks found the authorized active store `revluma-test-store-v1.myshopify.com` with `America/New_York` and USD. A canonical-shape product/variant/inventory query returned four distinct Gift Card variants with their own inventory item IDs and Shop location quantity records. Products and variants ledgers were `ok`/fully paginated (17 products, 26 variants), and locations was complete. No `inventory_items` or `inventory_levels` domain-ledger rows were returned, so inventory coverage must remain partial despite level rows existing; this is intentional fail-closed behavior. The store currently has zero finding rows, so latest/direct finding and stale/historical behavior cannot be demonstrated on production without creating data, which was not done.
+
+Backend `/ready` responded ready with database/Python readiness but `node_build=ade43ca96a71`; that commit is not a descendant of the Task 202 merge and therefore does not establish the Task 202 backend revision. Python readiness does not expose a source SHA. No Render deployment control or authenticated merchant session/internal service credential was available or requested. Thus actual Task 202 Node/Python deployment identity and authenticated Rev finding/product/temporal request-path checks remain unverified. Vercel, SQL shape/data checks and local/CI tests are not substitutes for those criteria.
