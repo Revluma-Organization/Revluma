@@ -72,8 +72,9 @@ Existing Task 197/203 contract tests continue to cover tenant/store isolation, m
 
 Local, isolated tests on 2026-11-07:
 
-- Python full suite: **1,758 passed, 11 skipped** with the repository dependencies and a non-connecting test DSN.
-- Backend runner: **84 test files passed** using the ignored mock-only Prisma stand-in.
+- Python full suite after rebasing onto Task 204: **1,827 passed, 11 skipped** with the repository dependencies and a non-connecting test DSN.
+- Backend runner after rebasing onto Task 204: **85 test files passed** using the ignored mock-only Prisma stand-in.
+- Task 204's canonical `claims` are covered in addition to legacy facts/hypotheses. Unknown and restatement semantics are preserved; asserted canonical financial impact fails without Task 205 attribution authority.
 - Focused real conversation-path tests use the existing isolated workspace fixture; they are not production evidence.
 
 Required subsequent gates, to be filled only from observed results:

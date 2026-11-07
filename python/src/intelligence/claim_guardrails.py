@@ -100,8 +100,11 @@ def _references_allowed(claim: dict, item: dict) -> bool:
     if item.get("quality_eligible") is False or not eligible_status:
         return False
     claim_period = claim.get("period")
-    current_reference = isinstance(claim.get("value"), dict) and \
-        item.get("id") == claim["value"].get("current_evidence_id")
+    calculation_inputs = (claim.get("calculation") or {}).get("inputs") or []
+    current_reference = (isinstance(claim.get("value"), dict)
+                         and item.get("id") == claim["value"].get("current_evidence_id")) or any(
+        entry.get("role") == "current" and entry.get("evidence_id") == item.get("id")
+        for entry in calculation_inputs if isinstance(entry, dict))
     if claim_period and item.get("period") and claim_period != item.get("period") and not current_reference:
         return False
     claim_currency = claim.get("currency")
@@ -205,7 +208,7 @@ def validate_response_guardrails(response: dict) -> None:
     for item in items.values():
         errors.extend(financial_evidence_errors(item))
     claims = []
-    for key in ("facts", "comparison_facts", "year_over_year_facts", "hypotheses"):
+    for key in ("facts", "comparison_facts", "year_over_year_facts", "hypotheses", "claims"):
         claims.extend(response.get(key) or [])
     for claim in claims:
         state = claim.get("causal_status")
@@ -213,16 +216,21 @@ def validate_response_guardrails(response: dict) -> None:
             errors.append("invalid_causal_state")
         if state == "verified_causal" and not causal_methodology_eligible(claim.get("causal_methodology")):
             errors.append("verified_causal_methodology_required")
-        references = claim.get("evidence_ids") or claim.get("basis_evidence_ids") or []
-        if not references:
+        references = (claim.get("evidence_ids") or claim.get("basis_evidence_ids")
+                      or (claim.get("hypothesis") or {}).get("supports") or [])
+        is_unknown = claim.get("classification") == "unknown"
+        is_restated = claim.get("restated") is True
+        if not references and not is_unknown and not is_restated:
             errors.append("material_claim_evidence_required")
-        for reference in references:
+        if claim.get("financial_impact") in {"lost", "recoverable", "saved", "prevented", "avoided", "leakage"}:
+            errors.append("canonical_financial_impact_not_eligible")
+        for reference in [] if is_restated or is_unknown else references:
             item = items.get(str(reference))
             if item is None:
                 errors.append("material_claim_unknown_evidence")
             elif not _references_allowed(claim, item):
                 errors.append("material_claim_irrelevant_or_ineligible_evidence")
-            elif claim.get("status") != "hypothesis" and not _relevant(claim, item):
+            elif claim.get("status") != "hypothesis" and claim.get("classification") != "hypothesis" and not _relevant(claim, item):
                 errors.append("material_claim_irrelevant_or_ineligible_evidence")
         text = str(claim.get("text") or claim.get("statement") or "")
         errors.extend(narrative_guardrail_errors(text))

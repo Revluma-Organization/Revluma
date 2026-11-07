@@ -61,7 +61,8 @@ function financialEvidenceErrors(item) {
 function relevant(claim, item) {
   const eligibleStatus = ['available', 'verified_zero'].includes(item.status) || (item.status === 'partial' && claim.status === 'partial');
   if (item.quality_eligible === false || !eligibleStatus) return false;
-  const currentReference = claim.value && typeof claim.value === 'object' && item.id === claim.value.current_evidence_id;
+  const currentReference = (claim.value && typeof claim.value === 'object' && item.id === claim.value.current_evidence_id) ||
+    (claim.calculation?.inputs || []).some((entry) => entry?.role === 'current' && entry?.evidence_id === item.id);
   if (claim.period && item.period && JSON.stringify(claim.period) !== JSON.stringify(item.period) && !currentReference) return false;
   if (claim.currency && item.currency && claim.currency !== item.currency) return false;
   const text = String(claim.text || claim.statement || '').toLowerCase();
@@ -112,17 +113,20 @@ function responseGuardrailErrors(payload) {
     if (index < 1 || index > sourceReferences.length || !sourceReferences[index - 1]) errors.push('unresolved_citation_reference');
   }
   for (const item of items.values()) errors.push(...financialEvidenceErrors(item));
-  const claims = ['facts', 'comparison_facts', 'year_over_year_facts', 'hypotheses'].flatMap((key) => payload?.[key] || []);
+  const claims = ['facts', 'comparison_facts', 'year_over_year_facts', 'hypotheses', 'claims'].flatMap((key) => payload?.[key] || []);
   for (const claim of claims) {
     if (claim.causal_status != null && !CAUSAL_STATES.has(claim.causal_status)) errors.push('invalid_causal_state');
     if (claim.causal_status === 'verified_causal' && !causalMethodologyEligible(claim.causal_methodology)) errors.push('verified_causal_methodology_required');
-    const references = claim.evidence_ids?.length ? claim.evidence_ids : (claim.basis_evidence_ids || []);
-    if (!references.length) errors.push('material_claim_evidence_required');
-    for (const reference of references) {
+    const references = claim.evidence_ids?.length ? claim.evidence_ids : (claim.basis_evidence_ids?.length ? claim.basis_evidence_ids : (claim.hypothesis?.supports || []));
+    const isUnknown = claim.classification === 'unknown';
+    const isRestated = claim.restated === true;
+    if (!references.length && !isUnknown && !isRestated) errors.push('material_claim_evidence_required');
+    if (['lost', 'recoverable', 'saved', 'prevented', 'avoided', 'leakage'].includes(claim.financial_impact)) errors.push('canonical_financial_impact_not_eligible');
+    for (const reference of (isRestated || isUnknown ? [] : references)) {
       const item = items.get(String(reference));
       if (!item) errors.push('material_claim_unknown_evidence');
       else if (item.quality_eligible === false || (!['available', 'verified_zero'].includes(item.status) && !(item.status === 'partial' && claim.status === 'partial'))) errors.push('material_claim_irrelevant_or_ineligible_evidence');
-      else if (claim.status !== 'hypothesis' && !relevant(claim, item)) errors.push('material_claim_irrelevant_or_ineligible_evidence');
+      else if (claim.status !== 'hypothesis' && claim.classification !== 'hypothesis' && !relevant(claim, item)) errors.push('material_claim_irrelevant_or_ineligible_evidence');
     }
     errors.push(...narrativeGuardrailErrors(claim.text || claim.statement));
   }

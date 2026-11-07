@@ -2817,9 +2817,16 @@ def _build_claims(*, facts: list, comparison_facts: list, year_over_year_facts: 
         claims.append(build_unknown_claim(
             text, organization_id=organization_id, store_ids=store_ids,
             investigation_id=investigation_id, attempts=tools_used))
+    causal_by_grade = {
+        "verified_fact": "observed",
+        "calculated_observation": "observed_difference",
+        "hypothesis": "hypothesis",
+        "unknown": "unknown",
+    }
     valid: list = []
     errors: set = set()
     for claim in claims:
+        claim["causal_status"] = causal_by_grade[claim["classification"]]
         claim_errors = validate_claim(
             claim, known_evidence=items_by_id, organization_id=organization_id,
             store_ids=store_ids)
@@ -3266,6 +3273,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             investigation_id=investigation_id,
             store_context=store_context, user_id=user_id, window=window,
             conversation_context=conversation_context)
+        validate_response_guardrails(result)
         _emit({"event": "final", "data": result})
         return result
 
@@ -3289,6 +3297,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                                     topic_change=routed["topic_change"],
                                     open_clarification=True,
                                     understanding=routed["understanding"]))
+        validate_response_guardrails(result)
         _emit({"event": "final", "data": result})
         return result
 
@@ -3297,6 +3306,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                                    investigation_id=investigation_id,
                                    store_context=store_context, user_id=user_id,
                                    window=window)
+        validate_response_guardrails(result)
         _emit({"event": "final", "data": result})
         return result
 
@@ -3309,6 +3319,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         result["text"] = guardrail_answer
         result["response_type"] = "recommendation"
         result["mode_reason"] = "action reports and financial recovery require independent authority"
+        validate_response_guardrails(result)
         _emit({"event": "final", "data": result})
         return result
 
@@ -3341,6 +3352,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                 f"(claim {target.get('claim_id')}). I will not repeat it as established. "
                 "Tell me the correct figure or period and I'll re-run the check against "
                 "the store records; until then it is marked superseded.")
+        validate_response_guardrails(result)
         _emit({"event": "final", "data": result})
         return result
 
@@ -3373,6 +3385,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         clarification["investigation"]["steps"] = result["investigation"]["steps"]
         clarification["meta"] = result["meta"]
         _emit({"event": "step", "data": clarification["investigation"]["steps"][0]})
+        validate_response_guardrails(clarification)
         _emit({"event": "final", "data": clarification})
         return clarification
 
@@ -3717,6 +3730,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         }
 
     _emit({"event": "evidence", "data": result["evidence"]})
+    validate_response_guardrails(result)
     _emit({"event": "final", "data": result})
     logger.info(
         "rev_investigation_complete intent=%s status=%s evidence=%d tools=%d model=%s",

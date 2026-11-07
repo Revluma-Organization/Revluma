@@ -132,6 +132,28 @@ def test_numeric_citation_must_resolve_to_returned_source_reference():
     validate_response_guardrails(value)
 
 
+def test_canonical_claims_are_also_checked_without_revalidating_unknowns_or_restatements():
+    value = response()
+    canonical = deepcopy(value["facts"][0])
+    canonical.update({"classification": "verified_fact", "causal_status": "observed"})
+    value["claims"] = [canonical]
+    validate_response_guardrails(value)
+    canonical["financial_impact"] = "recoverable"
+    with pytest.raises(ValueError, match="canonical_financial_impact_not_eligible"):
+        validate_response_guardrails(value)
+    canonical["financial_impact"] = None
+    canonical["metric"] = "inventory_units"
+    with pytest.raises(ValueError, match="material_claim_irrelevant"):
+        validate_response_guardrails(value)
+    value["claims"] = [{"classification": "unknown", "causal_status": "unknown",
+                        "text": "The operational cause is unknown.", "evidence_ids": []}]
+    validate_response_guardrails(value)
+    value["claims"] = [{"classification": "verified_fact", "causal_status": "observed",
+                        "restated": True, "text": "The prior recorded value was USD 10.00.",
+                        "evidence_ids": ["ev-original-not-in-this-response"]}]
+    validate_response_guardrails(value)
+
+
 def test_action_state_contract_rejects_merchant_confirmation_as_execution_or_verification():
     value = response()
     value["recommendations"] = [{

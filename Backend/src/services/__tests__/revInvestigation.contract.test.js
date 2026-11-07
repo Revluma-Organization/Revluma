@@ -124,13 +124,14 @@ function baseClaim(over = {}) {
     claim_id: 'clm-boundary1',
     contract_version: 'rev-claim-v1',
     classification: 'verified_fact',
+    causal_status: 'observed',
     text: 'Recorded order value USD 30.31 across 3 orders',
     metric: 'recorded_order_value',
     value: '30.31',
     unit: 'currency',
     currency: 'USD',
     rounding: '2dp_money',
-    period: { start: '2026-10-25T12:00:00Z', end: '2026-11-01T12:00:00Z', timezone: 'UTC' },
+    period: { start: '2026-10-25T12:00:00Z', end: '2026-11-01T12:00:00Z', timezone: 'UTC', semantics: '[start, end)' },
     retrieved_at: '2026-11-01T12:00:00Z',
     evidence_ids: [validResult().evidence.items[0].id],
     source: { system: 'shopify', resource: 'orders' },
@@ -187,6 +188,7 @@ test('claim contract accepts a hypothesis that is not verified', () => {
   const result = validResult();
   result.claims = [baseClaim({
     classification: 'hypothesis',
+    causal_status: 'hypothesis',
     value: null,
     unit: null,
     currency: null,
@@ -194,7 +196,7 @@ test('claim contract accepts a hypothesis that is not verified', () => {
     evidence_ids: [],
     hypothesis: {
       verified: false,
-      supports: [],
+      supports: [validResult().evidence.items[0].id],
       missing_evidence: ['a dedicated investigation'],
       confidence: 0.2,
     },
@@ -251,6 +253,7 @@ test('claim contract rejects asserted impact without a recorded method', () => {
   const withCalc = validResult();
   withCalc.claims = [baseClaim({
     classification: 'calculated_observation',
+    causal_status: 'observed_difference',
     value: '50.0',
     unit: 'percent',
     rounding: '1dp_percent',
@@ -264,7 +267,8 @@ test('claim contract rejects asserted impact without a recorded method', () => {
       rounding: '1dp_percent',
     },
   })];
-  assert.equal(_validateInvestigationResponse(withCalc, ORG_ID, [STORE_ID]), true);
+  // Task 205: a percent-change method alone is not recovery attribution authority.
+  assert.equal(_validateInvestigationResponse(withCalc, ORG_ID, [STORE_ID]), false);
 });
 
 test('claim contract rejects cross-tenant and cross-store claims', () => {
