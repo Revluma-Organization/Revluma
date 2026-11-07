@@ -10,6 +10,7 @@ from src.intelligence.evidence import (
     UNIT_CURRENCY,
     describe_period,
     evidence_item,
+    evidence_context,
     group_by_currency,
     money,
     money_percent_change,
@@ -22,6 +23,13 @@ from src.intelligence.evidence import (
 
 NOW = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
 WINDOW = period(NOW - timedelta(days=7), NOW, label="Last seven days")
+COMPLETE = {"status": "complete", "complete": True, "source": "orders", "note": "Certified test coverage."}
+
+
+@pytest.fixture(autouse=True)
+def authorized_evidence_scope():
+    with evidence_context("org-a", ["store-a"]):
+        yield
 
 
 def test_currency_normalisation_never_substitutes_usd():
@@ -62,9 +70,9 @@ def test_monetary_item_requires_currency_and_is_unsupported_otherwise():
 def test_verified_count_zero_is_distinct_from_unsupported_value():
     count = evidence_item(
         "recorded_order_count", label="Orders", value=0, unit=UNIT_COUNT,
-        window=WINDOW, source="orders", definition="Non-cancelled order count.",
+        window=WINDOW, source="orders", definition="Non-cancelled order count.", coverage=COMPLETE,
     )
-    assert count["status"] == STATUS_AVAILABLE and count["value"] == 0
+    assert count["status"] == "verified_zero" and count["value"] == 0
 
 
 def test_currency_grouping_never_sums_across_currencies():

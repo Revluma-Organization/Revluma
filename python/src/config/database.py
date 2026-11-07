@@ -93,6 +93,8 @@ def _caller_frames(limit: int = 5) -> str:
     would surface as a connection failure.
     """
     try:
+        if limit <= 0:
+            return ""
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         frames = [
             frame

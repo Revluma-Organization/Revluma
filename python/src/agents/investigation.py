@@ -1184,7 +1184,7 @@ def _dedupe_items(results: list) -> list[dict]:
 def _overall_status(items: list[dict], tool_results: list) -> str:
     if not items:
         return "insufficient_data"
-    available = [item for item in items if item.get("status") == STATUS_AVAILABLE]
+    available = [item for item in items if item.get("status") in (STATUS_AVAILABLE, "verified_zero")]
     degraded = [item for item in items
                 if item.get("status") in (STATUS_PARTIAL, STATUS_UNAVAILABLE, STATUS_UNSUPPORTED)]
     if not available:
@@ -1223,7 +1223,7 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
 
     def add(metric: str, formatter: Callable[[dict], str]) -> None:
         for item in by_metric.get(metric, []):
-            if item.get("status") != STATUS_AVAILABLE:
+            if item.get("status") not in (STATUS_AVAILABLE, "verified_zero"):
                 continue
             facts.append(_item_fact(item, formatter(item)))
 
@@ -1296,7 +1296,7 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
 
 def _count_for(by_metric: dict, metric: str, currency: str | None) -> str:
     for item in by_metric.get(metric, []):
-        if item.get("currency") == currency and item.get("status") == STATUS_AVAILABLE:
+        if item.get("currency") == currency and item.get("status") in (STATUS_AVAILABLE, "verified_zero"):
             return str(item.get("value"))
     return "an unverified number of"
 
@@ -1353,7 +1353,7 @@ def _unknowns(items: list[dict], intent: str, segment: str | None,
         unknowns.append(
             "Device-level segmentation (for example mobile versus desktop) is not stored "
             "in the verified checkout evidence, so a device-specific conclusion cannot be made.")
-    if any(item.get("metric") == "refund_adjustment" and item.get("status") != STATUS_AVAILABLE
+    if any(item.get("metric") == "refund_adjustment" and item.get("status") not in (STATUS_AVAILABLE, "verified_zero")
            for item in items) or "refund_adjustment" not in statuses:
         if intent in (INTENT_REVENUE, INTENT_REFUNDS, INTENT_OVERVIEW):
             unknowns.append(
@@ -1380,7 +1380,7 @@ def _unknowns(items: list[dict], intent: str, segment: str | None,
 
 
 def _hypotheses(items: list[dict], intent: str) -> list[dict]:
-    ids = [item["id"] for item in items if item.get("status") == STATUS_AVAILABLE][:4]
+    ids = [item["id"] for item in items if item.get("status") in (STATUS_AVAILABLE, "verified_zero")][:4]
     hypothesis_map = {
         INTENT_REVENUE: (
             "Possible contributors to a revenue change, none established by this evidence: "
@@ -1419,7 +1419,7 @@ def _hypotheses(items: list[dict], intent: str) -> list[dict]:
 
 
 def _recommendations(intent: str, items: list[dict]) -> list[dict]:
-    available = [item for item in items if item.get("status") == STATUS_AVAILABLE][:3]
+    available = [item for item in items if item.get("status") in (STATUS_AVAILABLE, "verified_zero")][:3]
     ids = [item["id"] for item in available]
     common = {
         "executed": False,
@@ -1897,7 +1897,7 @@ def persist_investigation_context(organization_id: str, user_id: str,
         return False
 
     has_verified_evidence = any(
-        item.get("status") == STATUS_AVAILABLE for item in result["evidence"]["items"])
+        item.get("status") in (STATUS_AVAILABLE, "verified_zero") for item in result["evidence"]["items"])
     if not has_verified_evidence:
         # The context window is still worth keeping for follow-ups, but a memory
         # without verified evidence would be a fabricated record.
@@ -2097,7 +2097,7 @@ def select_response_mode(*, intent: str, status: str, tool_names: list,
                   INTENT_READ_ONLY):
         return RESPONSE_MODE_CONVERSATIONAL, "the question needs no store investigation"
     verified = [item for item in evidence_items
-                if item.get("status") == STATUS_AVAILABLE]
+                if item.get("status") in (STATUS_AVAILABLE, "verified_zero")]
     if status == "insufficient_data" or not verified:
         return "insufficient_evidence", "no verified evidence supports an answer yet"
     if comparison_facts:
@@ -2202,6 +2202,9 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     message = (message or "").strip()[:MAX_MESSAGE_CHARS]
     if not message:
         raise ValueError("Message is required")
+    from ..intelligence.evidence_schema import validate_context_evidence
+    merchant_context = (context_payload or {}).get("merchant_context")
+    external_items = validate_context_evidence(merchant_context, organization_id) if merchant_context is not None else []
     now = ensure_utc(now or utc_now(), field="now")
     investigation_id = str(uuid.uuid4())
 
@@ -2308,6 +2311,9 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         _emit({"event": "final", "data": clarification})
         return clarification
 
+    allowed_store_ids = set(store_health.store_ids)
+    if any(not set(item.get("store_ids") or []).issubset(allowed_store_ids) for item in external_items):
+        raise ValueError("Merchant evidence contains an unauthorized store reference")
     plan = _plan_steps(tools, TOOL_STEP_LABELS)
     result["investigation"]["steps"] = plan
     result["investigation"]["status"] = "running"
@@ -2325,6 +2331,13 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
 
     tool_results = [store_health]
     tool_results_by_name = {"store_health": store_health}
+    if external_items:
+        from .tools import ToolResult
+        external_result = ToolResult("authorized_resource_snapshots", STATUS_PARTIAL,
+                                     items=external_items, data_sources=["commerce_resource_records"],
+                                     row_count=len(external_items), store_ids=store_health.store_ids)
+        tool_results.append(external_result)
+        tool_results_by_name["authorized_resource_snapshots"] = external_result
     step_by_tool = {step["tool"]: step for step in plan}
     step_by_tool["store_health"]["status"] = "completed"
     step_by_tool["store_health"]["detail"] = "Store connection verified."
@@ -2419,13 +2432,13 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         warnings.extend(tool_result.warnings)
     if validation_errors:
         warnings.append("Evidence validation reported: " + ", ".join(validation_errors))
-        # Structural invalidity fails closed for monetary claims.
-        items = [item for item in items if item.get("unit") != "currency"] + [
-            item for item in items if item.get("unit") == "currency"
-            and normalize_currency(item.get("currency")) and item.get("status") != STATUS_AVAILABLE
-        ]
-        facts = _facts_from_items(items, intent)
-        overall = "partial" if any(item.get("status") == STATUS_AVAILABLE for item in items) else "insufficient_data"
+        items = []
+        comparison_items = []
+        facts = []
+        comparison_facts = []
+        hypotheses = []
+        recommendations = []
+        overall = "insufficient_data"
 
     if _cancelled():
         raise InvestigationCancelled(investigation_id)

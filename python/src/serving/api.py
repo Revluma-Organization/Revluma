@@ -767,6 +767,10 @@ class OrchestrateRequest(BaseModel):
             raise ValueError("Either user_id or customer_id must be provided.")
         if len(json.dumps(self.context_payload, default=str).encode("utf-8")) > 16_384:
             raise ValueError("context_payload must not exceed 16 KiB.")
+        merchant_context = self.context_payload.get("merchant_context")
+        if merchant_context is not None:
+            from src.intelligence.evidence_schema import validate_context_evidence
+            validate_context_evidence(merchant_context, self.organization_id)
         if bool(self.image_base64) != bool(self.image_media_type):
             raise ValueError("image_base64 and image_media_type must be provided together.")
         if self.image_media_type not in (None, *_ALLOWED_IMAGE_MEDIA_TYPES):
@@ -1351,6 +1355,10 @@ class InvestigateRequest(BaseModel):
     def validate_context(self):
         if len(json.dumps(self.context_payload, default=str).encode("utf-8")) > 16_384:
             raise ValueError("context_payload must not exceed 16 KiB.")
+        merchant_context = self.context_payload.get("merchant_context")
+        if merchant_context is not None:
+            from src.intelligence.evidence_schema import validate_context_evidence
+            validate_context_evidence(merchant_context, self.organization_id)
         return self
 
 
@@ -1402,6 +1410,12 @@ async def rev_investigate(req: InvestigateRequest):
 
     try:
         result = await run_in_threadpool(_run)
+        from src.intelligence.evidence import validate_collection
+        evidence = result.get("evidence") or {}
+        errors = validate_collection((evidence.get("items") or []) + (evidence.get("comparison_items") or []))
+        if errors:
+            logger.error("rev_response_evidence_rejected codes=%s", ",".join(errors))
+            raise ValueError("Intelligence response evidence failed contract validation")
         return {"contract_version": CONTRACT_VERSION, **result}
     except InvestigationCancelled:
         # The client went away mid-investigation. Nothing is persisted and

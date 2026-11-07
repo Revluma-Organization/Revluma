@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { streamInvestigation } = require('../mlService');
+const { createEvidence } = require('../revEvidenceContract');
 
 const frames = (...list) => list.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
 
@@ -57,12 +58,29 @@ const conversationalFinal = {
     label: 'Social', status: 'complete', period, segment: null,
     steps: [], follow_ups: [], tools_used: [], context_used: {},
   },
-  evidence: { items: [], limitations: [] },
+  evidence: { schema_version: 'rev-evidence-v2', items: [], limitations: [] },
   facts: [], hypotheses: [], unknowns: [], recommendations: [],
   response_mode: 'conversational',
   mode_reason: 'the answer uses no store investigation',
   understanding: { intent: 'social', gate: 'conversational', source: 'fast_path', confidence: 1.0 },
 };
+
+const revenueEvidence = createEvidence({
+  organization_id: argsOrganization(), store_id: '44444444-4444-4444-8444-444444444444',
+  store_ids: ['44444444-4444-4444-8444-444444444444'], store_scope: 'store',
+  evidence_type: 'calculation', domain: 'orders', classification: 'deterministic_calculation',
+  metric: 'recorded_order_value', label: 'Recorded order value', value: '1571.90', unit: 'currency', currency: 'USD', status: 'available',
+  definition: 'Sum of recorded non-cancelled order totals.',
+  period: { ...period, timezone: 'UTC', semantics: '[start, end)' },
+  source: { system: 'shopify', resource: 'orders', references: [{ source_id: 'order-1', resource: 'orders', sync_run_id: 'run-1' }] },
+  retrieved_at: period.end, computed_at: period.end,
+  coverage: { status: 'complete', complete: true, period_status: 'covered', source: 'orders', note: 'Complete.' },
+  freshness: { state: 'fresh', as_of: period.end, age_seconds: 0, policy: '3600s', note: 'Fresh.' },
+  provenance: { retrieval: 'calculation', transformation: 'Sum totals.', calculation_version: 'v2', lineage: ['order-1'], reproducible: true },
+  measurement: { amount: '1571.90', currency: 'USD', interpretation: 'gross', tax: 'included', shipping: 'included', discounts: 'included', refunds: 'excluded', cancellations: 'excluded', numerator: null, denominator: null, formula: 'sum(total_price_set)' },
+  confidence: { level: 'high', score: 0.95, basis: 'Complete.' }, limitations: [],
+});
+function argsOrganization() { return '11111111-1111-4111-8111-111111111111'; }
 
 const investigationFinal = {
   contract_version: 'rev-investigation-v1',
@@ -76,14 +94,8 @@ const investigationFinal = {
     steps: [{ id: 's1', tool: 'revenue_observations', label: 'Revenue', status: 'completed' }],
     follow_ups: [], tools_used: ['revenue_observations'], context_used: {},
   },
-  evidence: {
-    items: [{
-      id: 'ev-1', metric: 'recorded_order_value', label: 'Recorded order value',
-      value: '1571.90', unit: 'currency', currency: 'USD', status: 'available',
-      period, source: 'orders', definition: 'Sum of recorded non-cancelled order totals.',
-    }],
-  },
-  facts: [{ text: 'Recorded order value USD 1571.90', evidence_ids: ['ev-1'] }],
+  evidence: { schema_version: 'rev-evidence-v2', items: [revenueEvidence] },
+  facts: [{ text: 'Recorded order value USD 1571.90', evidence_ids: [revenueEvidence.id] }],
   recommendations: [{ label: 'Review checkout', why: 'x', measure: 'y', executed: false }],
   response_mode: 'investigation',
   mode_reason: 'the answer combines several store checks',

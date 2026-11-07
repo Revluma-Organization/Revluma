@@ -84,6 +84,10 @@ router.post('/stream',                    authenticateToken, chatLimiter,   revC
 // Conversation retry — re-runs the last user message without duplicating it
 router.post('/conversation/:id/retry',    authenticateToken, chatLimiter,   revController.retryConversation);
 
+// Canonical evidence retrieval — authenticated organization/store scoped
+router.get('/evidence',                   authenticateToken,               revController.getEvidence);
+router.get('/evidence/:id',               authenticateToken,               revController.getEvidence);
+
 // Read-only tool catalog (authorised capabilities only)
 router.get('/tools',                      authenticateToken,               revController.getToolCatalog);
 

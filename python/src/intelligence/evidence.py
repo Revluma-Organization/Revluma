@@ -18,22 +18,45 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Iterable
 
-EVIDENCE_SCHEMA_VERSION = "rev-evidence-v1"
+from .evidence_schema import EVIDENCE_SCHEMA_VERSION, STATUSES, EvidenceItem
 
 STATUS_AVAILABLE = "available"
 STATUS_PARTIAL = "partial"
 STATUS_UNAVAILABLE = "unavailable"
 STATUS_UNSUPPORTED = "unsupported"
-EVIDENCE_STATUSES = (STATUS_AVAILABLE, STATUS_PARTIAL, STATUS_UNAVAILABLE, STATUS_UNSUPPORTED)
+EVIDENCE_STATUSES = STATUSES
 
 UNIT_CURRENCY = "currency"
 UNIT_COUNT = "count"
 UNIT_RATIO = "ratio"
-UNITS = (UNIT_CURRENCY, UNIT_COUNT, UNIT_RATIO)
+UNIT_RECORD = "record"
+UNIT_REFERENCE = "reference"
+UNITS = (UNIT_CURRENCY, UNIT_COUNT, UNIT_RATIO, UNIT_RECORD, UNIT_REFERENCE)
+
+_EVIDENCE_OWNERSHIP: ContextVar[dict | None] = ContextVar("rev_evidence_ownership", default=None)
+
+
+@contextmanager
+def evidence_context(organization_id: str, store_ids: Iterable[str], *, timezone_label: str = "UTC"):
+    """Bind trusted server-side ownership to every item built in this scope."""
+    ids = list(dict.fromkeys(str(value) for value in store_ids if value))
+    if not organization_id or not ids:
+        raise ValueError("authenticated organization and authorized store scope are required")
+    token = _EVIDENCE_OWNERSHIP.set({"organization_id": organization_id, "store_ids": ids, "timezone": timezone_label})
+    try:
+        yield
+    finally:
+        _EVIDENCE_OWNERSHIP.reset(token)
+
+
+def current_evidence_context() -> dict | None:
+    return _EVIDENCE_OWNERSHIP.get()
 
 #: The four claim grades Rev may use, in descending order of strength.
 #: A grade is a property of the evidence behind a statement, never a tone the
@@ -135,11 +158,13 @@ def previous_period(start: datetime, end: datetime) -> tuple[datetime, datetime]
 
 def _evidence_id(metric: str, currency: str | None, window: dict, source: str,
                  discriminator: str = "") -> str:
+    ownership = _EVIDENCE_OWNERSHIP.get() or {}
     payload = json.dumps(
-        [metric, currency, window.get("start"), window.get("end"), source, discriminator],
+        [metric, currency, window.get("start"), window.get("end"), source, discriminator,
+         ownership.get("organization_id"), ownership.get("store_ids")],
         sort_keys=True,
     )
-    return "ev-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    return "ev-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
 
 
 def evidence_item(
@@ -158,6 +183,13 @@ def evidence_item(
     limitations: Iterable[str] | None = None,
     store_scope: str = "organization",
     discriminator: str = "",
+    classification: str | None = None,
+    evidence_type: str = "metric",
+    domain: str | None = None,
+    source_references: Iterable[dict] | None = None,
+    measurement: dict | None = None,
+    provenance: dict | None = None,
+    confidence: dict | None = None,
 ) -> dict:
     """Build one validated evidence item.
 
@@ -194,23 +226,89 @@ def evidence_item(
     elif unit == UNIT_RATIO:
         normalized_value = None if normalized_value is None else float(normalized_value)
 
+    ownership = _EVIDENCE_OWNERSHIP.get()
+    if not ownership:
+        raise ValueError("authenticated evidence ownership context is required")
+    store_ids = list(ownership["store_ids"])
+    if store_scope == "store" and len(store_ids) != 1:
+        raise ValueError("store-scoped evidence requires exactly one authorized store")
+    raw_coverage = dict(coverage or {})
+    complete = raw_coverage.get("complete") is True and raw_coverage.get("status", "complete") == "complete"
+    normalized_coverage = {
+        **raw_coverage,
+        "status": raw_coverage.get("status") or ("complete" if complete else "unknown"),
+        "period_status": raw_coverage.get("period_status") or ("covered" if complete else "unavailable"),
+        "complete": complete,
+        "source": raw_coverage.get("source") or source,
+        "note": raw_coverage.get("note") or "Historical coverage is not certified by this source query.",
+    }
+    if status == STATUS_AVAILABLE and normalized_value == 0 and not complete:
+        status = STATUS_PARTIAL
+        normalized_value = None
+    raw_freshness = dict(freshness or {})
+    normalized_freshness = {
+        "state": raw_freshness.get("state") or "unknown",
+        "as_of": raw_freshness.get("as_of"),
+        "age_seconds": raw_freshness.get("age_seconds"),
+        "policy": raw_freshness.get("policy") or "domain-policy-unavailable",
+        "note": raw_freshness.get("note") or "Source freshness is unknown.",
+    }
+    if raw_freshness.get("age_seconds") is None and raw_freshness.get("age_minutes") is not None:
+        normalized_freshness["age_seconds"] = float(raw_freshness["age_minutes"]) * 60
+    if normalized_freshness["state"] == "stale" and status == STATUS_AVAILABLE:
+        status = "stale"
+    if classification is None:
+        classification = "unknown" if status in (STATUS_UNAVAILABLE, STATUS_UNSUPPORTED, "not_synchronized", "pending", "unauthorized", "retrieval_failed", "storage_failure", "invalid", "contradictory", "period_unavailable", "consent_unavailable") else ("deterministic_calculation" if unit == UNIT_RATIO else "verified_fact")
+    if classification == "unknown":
+        normalized_value = None
+    if unit == UNIT_CURRENCY and measurement is None and normalized_value is not None:
+        measurement = {
+            "amount": normalized_value, "currency": normalized_currency,
+            "interpretation": "net" if "net order" in definition.lower() or "net of refund" in definition.lower() else "gross",
+            "tax": "unknown", "shipping": "unknown", "discounts": "unknown",
+            "refunds": "deducted" if "refund" in definition.lower() else "unknown",
+            "cancellations": "excluded" if "non-cancelled" in definition.lower() else "unknown",
+            "numerator": None, "denominator": None, "formula": definition,
+        }
+    normalized_provenance = provenance or {
+        "retrieval": "aggregate", "transformation": definition,
+        "calculation_version": "metric-definition-v1", "lineage": [f"source:{source}"],
+        "reproducible": True,
+    }
+    normalized_confidence = confidence or ({
+        "level": "high" if complete and normalized_freshness["state"] == "fresh" else "medium",
+        "score": 0.95 if complete and normalized_freshness["state"] == "fresh" else 0.55,
+        "basis": "Validated source query with explicit coverage and freshness metadata.",
+    } if classification != "unknown" else {"level": "none", "score": 0, "basis": "No affirmative value is established."})
     item = {
         "id": _evidence_id(metric, normalized_currency, window, source, discriminator),
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
+        "organization_id": ownership["organization_id"],
+        "store_id": store_ids[0] if store_scope == "store" else None,
+        "store_ids": store_ids,
+        "evidence_type": evidence_type,
+        "domain": domain or source,
+        "classification": classification,
         "metric": metric,
         "label": label,
         "value": normalized_value,
         "unit": unit,
         "currency": normalized_currency,
-        "status": status,
-        "period": window,
-        "source": source,
+        "status": "verified_zero" if status == STATUS_AVAILABLE and normalized_value == 0 and complete else status,
+        "period": {**window, "timezone": window.get("timezone") or ownership["timezone"]},
+        "source": {"system": "shopify", "resource": source, "references": list(source_references or [])},
+        "retrieved_at": iso(utc_now()),
+        "computed_at": iso(utc_now()) if classification in ("deterministic_calculation", "analytical_finding") else None,
+        "coverage": normalized_coverage,
+        "freshness": normalized_freshness,
+        "provenance": normalized_provenance,
+        "measurement": measurement,
+        "confidence": normalized_confidence,
         "definition": definition,
         "store_scope": store_scope,
-        "coverage": coverage or {},
-        "freshness": freshness or {"state": "unknown", "as_of": None},
         "limitations": list(limitations or []),
     }
-    return item
+    return EvidenceItem.model_validate(item).model_dump(mode="json")
 
 
 def availability_of(items: Iterable[dict]) -> str:
@@ -222,7 +320,7 @@ def availability_of(items: Iterable[dict]) -> str:
         return STATUS_UNSUPPORTED
     if all(status == STATUS_UNAVAILABLE for status in statuses):
         return STATUS_UNAVAILABLE
-    if any(status in (STATUS_PARTIAL, STATUS_UNAVAILABLE, STATUS_UNSUPPORTED) for status in statuses):
+    if any(status not in (STATUS_AVAILABLE, "verified_zero") for status in statuses):
         return STATUS_PARTIAL
     return STATUS_AVAILABLE
 
@@ -241,7 +339,7 @@ def group_by_currency(items: Iterable[dict]) -> dict:
 
 
 def validate_collection(items: Iterable[dict]) -> list[str]:
-    """Deterministic structural checks for a set of evidence items."""
+    """Strict runtime validation, including ownership and source lineage."""
     errors: list[str] = []
     seen: set[str] = set()
     for item in items:
@@ -251,21 +349,14 @@ def validate_collection(items: Iterable[dict]) -> list[str]:
         elif identifier in seen:
             errors.append("duplicate_evidence_id")
         seen.add(identifier)
-        if item.get("status") not in EVIDENCE_STATUSES:
+        if item.get("status") not in STATUSES:
             errors.append("invalid_evidence_status")
-        if item.get("unit") == UNIT_CURRENCY:
-            if item.get("status") == STATUS_AVAILABLE:
-                if not normalize_currency(item.get("currency")):
-                    errors.append("currency_missing")
-                if money(item.get("value")) is None:
-                    errors.append("currency_value_invalid")
-            elif item.get("value") is not None:
-                errors.append("unsupported_currency_has_value")
-        period_value = item.get("period") or {}
-        if not period_value.get("start") or not period_value.get("end"):
-            errors.append("missing_period")
         if not item.get("source") or not item.get("definition"):
             errors.append("missing_provenance")
+        try:
+            EvidenceItem.model_validate(item)
+        except Exception:
+            errors.append("invalid_evidence_contract")
     return sorted(set(errors))
 
 
@@ -307,7 +398,7 @@ def validate_claim_grades(
                 item = known.get(identifier)
                 if item is None:
                     errors.append("verified_fact_cites_unknown_evidence")
-                elif item.get("status") != STATUS_AVAILABLE:
+                elif item.get("status") not in (STATUS_AVAILABLE, "verified_zero"):
                     errors.append("verified_fact_cites_unavailable_evidence")
                 elif (claim.get("unit") == UNIT_CURRENCY
                       and normalize_currency(claim.get("currency")) is not None

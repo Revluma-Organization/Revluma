@@ -14,6 +14,7 @@ from decimal import Decimal
 from typing import Any
 
 from .evidence import (
+    EVIDENCE_SCHEMA_VERSION,
     STATUS_AVAILABLE,
     STATUS_PARTIAL,
     STATUS_UNAVAILABLE,
@@ -24,6 +25,8 @@ from .evidence import (
     describe_period,
     ensure_utc,
     evidence_item,
+    evidence_context,
+    current_evidence_context,
     group_by_currency,
     iso,
     money,
@@ -125,6 +128,27 @@ def _coverage(stores: list, coverage_rows: list | None, start: datetime,
     }
 
 
+def _with_evidence_ownership(function):
+    def owned(organization_id: str, db, **kwargs):
+        current = current_evidence_context()
+        if current and current.get("organization_id") == organization_id:
+            return function(organization_id, db, **kwargs)
+        rows, error = safe_query(db, _STORE_SQL, {"org_id": organization_id})
+        store_ids = [str(_row_value(row, "id")) for row in rows if _row_value(row, "id")]
+        if error or not store_ids:
+            now = ensure_utc(kwargs.get("now") or utc_now())
+            start = ensure_utc(kwargs["start"])
+            end = ensure_utc(kwargs["end"])
+            return _empty_result(organization_id, period(start, end), now,
+                                 ["Store scope could not be read; no revenue claim is possible." if error else "No active or connected store is available for this organization."],
+                                 overall_status="storage_failure" if error else STATUS_UNAVAILABLE,
+                                 reason="store_scope_query_failed" if error else "no_connected_store")
+        with evidence_context(organization_id, store_ids):
+            return function(organization_id, db, **kwargs)
+    return owned
+
+
+@_with_evidence_ownership
 def retrieve_revenue_evidence(
     organization_id: str,
     db,
@@ -215,8 +239,8 @@ def retrieve_revenue_evidence(
             currency_rows.append((code, count, value))
 
         if not currency_rows:
-            verified_zero = sum(int(_row_value(row, "order_count", 0) or 0) for row in rows) == 0
-            count_status = STATUS_AVAILABLE if verified_zero else STATUS_UNAVAILABLE
+            verified_zero = coverage["complete"] and sum(int(_row_value(row, "order_count", 0) or 0) for row in rows) == 0
+            count_status = STATUS_AVAILABLE if verified_zero else STATUS_PARTIAL
             items.append(evidence_item(
                 "recorded_order_count", label="Recorded order count",
                 value=0 if verified_zero else None, unit=UNIT_COUNT, window=window,
@@ -289,7 +313,7 @@ def retrieve_revenue_evidence(
         }
 
     result = {
-        "schema_version": "rev-evidence-v1",
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
         "metric_family": "revenue",
         "organization_scope": {
             "type": "authenticated_organization",
@@ -320,7 +344,7 @@ def _changes(previous_items: list[dict], current_items: list[dict]) -> list[dict
     def index(items: list[dict], metric: str) -> dict:
         result = {}
         for item in items:
-            if item.get("metric") == metric and item.get("status") == STATUS_AVAILABLE:
+            if item.get("metric") == metric and item.get("status") in (STATUS_AVAILABLE, "verified_zero"):
                 key = item.get("currency") or "__none__"
                 result[key] = item
         return result
@@ -381,7 +405,7 @@ def _percent(current: Any, previous: Any) -> dict:
 def _empty_result(organization_id: str, window: dict, now: datetime,
                   warnings: list[str], *, overall_status: str, reason: str) -> dict:
     return {
-        "schema_version": "rev-evidence-v1",
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
         "metric_family": "revenue",
         "organization_scope": {
             "type": "authenticated_organization",
