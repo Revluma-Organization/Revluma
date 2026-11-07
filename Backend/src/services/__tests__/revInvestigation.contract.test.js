@@ -8,7 +8,7 @@ const { _validateInvestigationResponse } = require('../mlService');
 const { createEvidence } = require('../revEvidenceContract');
 
 function validResult() {
-  return {
+  const result = {
     contract_version: 'rev-investigation-v1',
     success: true,
     read_only: true,
@@ -50,12 +50,25 @@ function validResult() {
     facts: [],
     hypotheses: [],
     unknowns: [],
-    recommendations: [{ label: 'Compare periods', executed: false, action_state: 'recommended', execution_status: 'not_requested', merchant_confirmation: 'not_confirmed', independent_verification: 'unverified' }],
+    recommendations: [{
+      contract_version: 'rev-recommendation-v1',
+      recommendation_id: '123e4567-e89b-42d3-a456-426614174010',
+      tenant: { organization_id: '11111111-1111-4111-8111-111111111111', store_ids: ['22222222-2222-4222-8222-222222222222'] },
+      lifecycle_state: 'presented', read_only: true, executed: false,
+      action_state: 'recommended', execution_status: 'not_requested',
+      merchant_confirmation: 'not_confirmed', independent_verification: 'unverified',
+      step: 'Compare order count and average order value for the selected periods.',
+      why_it_matters: 'The arithmetic driver narrows the investigation without claiming causation.',
+      validation_method: 'Repeat the same comparison after an equivalent period.',
+      evidence_references: [], // Filled from the generated evidence id below.
+    }],
   };
+  result.recommendations[0].evidence_references = [result.evidence.items[0].id];
+  return result;
 }
 
 test('valid investigation contract is accepted', () => {
-  assert.equal(_validateInvestigationResponse(validResult()), true);
+  assert.equal(_validateInvestigationResponse(validResult(), ORG_ID, [STORE_ID]), true);
 });
 
 test('investigation contract rejects missing read-only guarantee', () => {

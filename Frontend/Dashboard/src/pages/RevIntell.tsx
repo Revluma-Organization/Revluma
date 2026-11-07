@@ -98,9 +98,13 @@ interface FindingContext {
   id: string;
   title: string;
   description: string;
+  lifecycleState?: string;
+  currentValidity?: string;
+  evidenceQuality?: string;
 }
 
 const FINDING_ERRORS = ["INVALID_FINDING_ID", "FINDING_NOT_FOUND", "FINDING_EVIDENCE_UNVERIFIED"];
+const EXPLICIT_FINDING_TOPIC_CHANGE = /\b(?:instead|new topic|different topic|leave (?:this|the) finding|unrelated question|forget (?:this|the) finding)\b/i;
 const HISTORY_PAGE_SIZE = 20;
 const MESSAGE_PAGE_SIZE = 50;
 
@@ -751,7 +755,9 @@ export default function RevIntell() {
       if (!result.data.success || !finding || typeof finding.id !== "string" || finding.id.toLowerCase() !== id.toLowerCase() || typeof finding.title !== "string" || !finding.title.trim()) {
         throw new Error("Finding details are unavailable.");
       }
-      setFindingContext({ id, title: finding.title, description: typeof finding.description === "string" ? finding.description : "" });
+      setFindingContext({ id, title: finding.title, description: typeof finding.description === "string" ? finding.description : "",
+        lifecycleState: typeof (finding as any).status === "string" ? (finding as any).status : undefined,
+        currentValidity: (finding as any).evidence?.verified === true ? "recorded_source_verified" : "evidence_unverified" });
       if (!inputEditedRef.current) setInput(`Help me investigate this finding: ${finding.title}. Explain the observed change, limitations and supported next steps.`);
     } catch (error) {
       if (request !== findingRequestRef.current) return;
@@ -916,6 +922,15 @@ export default function RevIntell() {
       messagesOffset.current = offset + msgs.length;
       setMessagesMore(msgs.length === MESSAGE_PAGE_SIZE);
       setMessages(previous => [...new Map([...(append ? previous : []), ...parsed].map(item => [item.id, item])).values()]);
+      if (!append && !findingId) {
+        const persistedFinding = [...parsed].reverse().find(message => message.payload?.selected_finding)?.payload?.selected_finding;
+        setFindingContext(persistedFinding ? {
+          id: persistedFinding.finding_id, title: persistedFinding.title,
+          description: "", lifecycleState: persistedFinding.lifecycle_state,
+          currentValidity: persistedFinding.current_validity,
+          evidenceQuality: persistedFinding.evidence_quality,
+        } : null);
+      }
     } catch (err: any) {
       if (request !== conversationRequestRef.current) return;
       if (append) {
@@ -932,7 +947,7 @@ export default function RevIntell() {
         setMessagesMoreLoading(false);
       }
     }
-  }, []);
+  }, [findingId]);
 
   // ── URL → state sync (on mount and when URL changes) ─────────────────────
   // Run on mount (to handle refresh) and whenever the URL conversationId changes.
@@ -1114,7 +1129,9 @@ export default function RevIntell() {
     turnPendingRef.current = true;
     pinnedRef.current = true;
     const isCurrent = () => turn === turnRequestRef.current;
-    const turnFindingId = findingContext?.id;
+    const topicChange = EXPLICIT_FINDING_TOPIC_CHANGE.test(text);
+    const turnFindingId = topicChange ? undefined : findingContext?.id;
+    if (topicChange) setFindingContext(null);
     const findingRejected = (code?: string) => {
       if (isCurrent() && turnFindingId && code && FINDING_ERRORS.includes(code)) setFindingError(cleanError(code));
     };
@@ -1295,6 +1312,9 @@ export default function RevIntell() {
         if (abortRef.current === controller) abortRef.current = null;
         turnPendingRef.current = false;
         setThinking(false);
+        if (topicChange && findingId) {
+          navigate(turnConversationId ? `/dashboard/rev-intell/${turnConversationId}` : "/dashboard/rev-intell", { replace: true });
+        }
       }
     }
   }, [activeId, convLoading, convError, convNotFound, findingId, findingContext, findingLoading, findingError, findingRetryDraft, navigate, imageAttachment, loadConversations, messagesMore]);
@@ -1526,6 +1546,12 @@ export default function RevIntell() {
           <p className="mb-1 text-xs font-semibold" style={{ color: t2 }}>Finding to investigate</p>
           <h2 className="text-sm font-semibold">{findingContext.title}</h2>
           {findingContext.description && <p className="mt-1 line-clamp-2 text-xs" style={{ color: t2 }}>{findingContext.description}</p>}
+          {(findingContext.currentValidity === "stale_unreverified" || findingContext.currentValidity?.startsWith("historical_") || findingContext.lifecycleState === "resolved" || findingContext.lifecycleState === "dismissed") &&
+            <p role="status" className="mt-2 rounded-lg border px-2 py-1 text-xs" style={{ borderColor: bdr, color: t2 }}>
+              {findingContext.lifecycleState === "resolved" ? "Resolved finding — historical context, not a current priority." :
+                findingContext.lifecycleState === "dismissed" ? "Dismissed finding — historical context, not a current priority." :
+                "Stale or historical finding — Rev will revalidate it before offering current advice."}
+            </p>}
           {!findingError && <p className="mt-2 text-xs" style={{ color: t2 }}>Rev will verify this finding against your workspace records when you send. You can edit the question first.</p>}
         </>}
         {findingError && <div role="alert" className="text-sm">

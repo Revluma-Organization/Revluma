@@ -207,6 +207,7 @@ exports.chat = async (req, res, next) => {
 
     // Finding context is always resolved server-side under the authenticated organization.
     let intelligenceMessage = message;
+    let selectedFinding = null;
     if (req.body?.finding_id != null) {
       const { resolveFindingChatContext } = require('../services/findingChatContext');
       const findingContext = await resolveFindingChatContext(prisma, org.id, req.body.finding_id, message);
@@ -217,9 +218,9 @@ exports.chat = async (req, res, next) => {
         return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
       }
       if (findingContext.status !== 'ok') return res.status(409).json({
-        success: false, error: { code: 'FINDING_EVIDENCE_UNVERIFIED' },
+        success: false, error: { code: 'FINDING_CONTEXT_UNAVAILABLE' },
       });
-      intelligenceMessage = findingContext.context;
+      selectedFinding = findingContext.selected_finding;
     }
 
     logger.info('rev_chat_request', {
@@ -283,6 +284,7 @@ exports.chat = async (req, res, next) => {
       contextPayload: {
         merchant_context: merchantContext,
         conversation_context: conversationContext,
+        selected_finding: selectedFinding,
         _node_owns_chat_persistence: true,
       },
       conversationId: activeConvId,
@@ -377,6 +379,7 @@ exports.chat = async (req, res, next) => {
         understanding:  mlResult.data?.understanding || null,
         question_understanding: mlResult.data?.question_understanding || null,
         orchestration: mlResult.data?.orchestration || null,
+        selected_finding: mlResult.data?.selected_finding || null,
       };
     }
 
@@ -397,6 +400,8 @@ exports.chat = async (req, res, next) => {
         ${correlationId}::uuid, ${confidenceScore}, false
       )
     `;
+
+    await _persistFindingContext(activeConvId, org.id, mlResult.data);
 
     // Generate intelligent title from first meaningful user message
     const titleHint = _generateTitle(message);
@@ -440,6 +445,7 @@ exports.chat = async (req, res, next) => {
       specialists:     mlResult.data?.specialists    || [],
       question_understanding: mlResult.data?.question_understanding || null,
       orchestration: mlResult.data?.orchestration || null,
+      selected_finding: mlResult.data?.selected_finding || null,
       read_only:       mlResult.data?.read_only ?? true,
       meta: {
         correlation_id:             correlationId,
@@ -987,6 +993,7 @@ function _boundedResultForPersistence(data) {
     specialists: Array.isArray(data?.specialists) ? data.specialists : [],
     question_understanding: data?.question_understanding || null,
     orchestration: data?.orchestration || null,
+    selected_finding: data?.selected_finding || null,
     read_only: data?.read_only !== false,
     warnings: Array.isArray(data?.warnings) ? data.warnings.slice(0, 12) : [],
     // The mode decides how the answer is presented (quiet chat vs verified
@@ -1033,6 +1040,41 @@ async function _insertRevMessage({
   `;
   return messageId;
 }
+
+async function _persistFindingContext(conversationId, organizationId, data) {
+  if (!data || !Object.prototype.hasOwnProperty.call(data, 'selected_finding')) return;
+  const selected = data.selected_finding ? {
+    finding_id: data.selected_finding.finding_id,
+    selection_source: data.selected_finding.selection_source || 'conversation_context',
+    selected_at: data.selected_finding.selected_at || new Date().toISOString(),
+  } : null;
+  const recommendations = (Array.isArray(data.recommendations) ? data.recommendations : [])
+    .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
+    .slice(0, 3)
+    .map((item) => ({
+      recommendation_id: typeof item.recommendation_id === 'string' ? item.recommendation_id : null,
+      finding_id: typeof item.finding_id === 'string' ? item.finding_id : null,
+      lifecycle_state: typeof item.lifecycle_state === 'string' ? item.lifecycle_state : 'active',
+      title: typeof item.title === 'string' ? item.title.slice(0, 240) : '',
+    }));
+  // Atomic JSONB updates avoid read/modify/write races with other bounded
+  // context fields. Both conversation and organization are authorized here.
+  await prisma.$executeRaw`
+    UPDATE conversations
+    SET context_window = jsonb_set(
+          jsonb_set(
+            COALESCE(context_window, '{}'::jsonb),
+            '{last_selected_finding}', ${JSON.stringify(selected)}::jsonb, true
+          ),
+          '{last_recommendations}', ${JSON.stringify(recommendations)}::jsonb, true
+        ),
+        updated_at = NOW()
+    WHERE id = ${conversationId}::uuid
+      AND organization_id = ${organizationId}::uuid
+  `;
+}
+
+exports._persistFindingContext = _persistFindingContext;
 
 async function _touchConversation(conversationId, { titleHint, increment = 2 }) {
   await prisma.$executeRaw`
@@ -1118,13 +1160,13 @@ function _validateChatPayload(body) {
 }
 
 async function _resolveFindingMessage(req, org, message) {
-  if (req.body?.finding_id == null) return { message };
+  if (req.body?.finding_id == null) return { message, selected_finding: null };
   const { resolveFindingChatContext } = require('../services/findingChatContext');
   const resolved = await resolveFindingChatContext(prisma, org.id, req.body.finding_id, message);
   if (resolved.status === 'invalid') return { error: { status: 400, code: 'INVALID_FINDING_ID' } };
   if (resolved.status === 'not_found') return { error: { status: 404, code: 'FINDING_NOT_FOUND' } };
-  if (resolved.status !== 'ok') return { error: { status: 409, code: 'FINDING_EVIDENCE_UNVERIFIED' } };
-  return { message: resolved.context };
+  if (resolved.status !== 'ok') return { error: { status: 409, code: 'FINDING_CONTEXT_UNAVAILABLE' } };
+  return { message, selected_finding: resolved.selected_finding };
 }
 
 // ── POST /api/v1/rev/stream ───────────────────────────────────────────────────
@@ -1217,6 +1259,7 @@ exports.chatStream = async (req, res, next) => {
       correlationId,
       contextPayload: {
         merchant_context: merchantContext,
+        selected_finding: finding.selected_finding,
         _node_owns_chat_persistence: true,
         conversation_context: conversationContext,
       },
@@ -1249,6 +1292,7 @@ exports.chatStream = async (req, res, next) => {
         titleHint: _generateTitle(validated.message),
         increment: reuseUserMessage ? 1 : 2,
       });
+      await _persistFindingContext(activeConvId, org.id, data);
       finished = true;
       sse.send('final', {
         success: true,

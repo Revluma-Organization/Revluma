@@ -70,6 +70,10 @@ from ..intelligence.claim_guardrails import (
     validate_response_guardrails,
 )
 from ..intelligence.revenue_evidence import decompose_value_change, retrieve_revenue_evidence
+from ..intelligence.recommendations import (
+    build_selected_finding, enrich_recommendations, selected_finding_reference,
+    validate_recommendation_contract,
+)
 from ..intelligence.question_orchestration import (
     build_investigation_plan,
     cross_domain_narrative,
@@ -1423,7 +1427,8 @@ def load_conversation_context(organization_id: str, user_id: str,
                               context_payload: dict | None = None) -> dict:
     context = {"summary": None, "last_investigation": None, "recent_turns": [],
                "unresolved": [], "conversation_state": None, "last_claims": [],
-               "last_specialists": [], "last_priority": None, "last_orchestration": None}
+               "last_specialists": [], "last_priority": None, "last_orchestration": None,
+               "last_selected_finding": None, "last_recommendations": []}
     if not conversation_id:
         return context
 
@@ -1449,6 +1454,9 @@ def load_conversation_context(organization_id: str, user_id: str,
                 if isinstance(item, dict) and item.get("execution_id")][:6]
             context["last_priority"] = _priority_from_window(raw)
             context["last_orchestration"] = raw.get("last_orchestration")
+            context["last_selected_finding"] = raw.get("last_selected_finding")
+            context["last_recommendations"] = [entry for entry in (raw.get("last_recommendations") or [])
+                                               if isinstance(entry, dict) and entry.get("recommendation_id")][:6]
 
     rows, error = safe_query(db, """
         SELECT summary, context_window
@@ -1476,6 +1484,11 @@ def load_conversation_context(organization_id: str, user_id: str,
                 context["last_priority"] = _priority_from_window(raw)
             if context["last_orchestration"] is None:
                 context["last_orchestration"] = raw.get("last_orchestration")
+            if context["last_selected_finding"] is None:
+                context["last_selected_finding"] = raw.get("last_selected_finding")
+            if not context["last_recommendations"]:
+                context["last_recommendations"] = [entry for entry in (raw.get("last_recommendations") or [])
+                                                   if isinstance(entry, dict) and entry.get("recommendation_id")][:6]
             state = raw.get("conversation_state")
             if isinstance(state, dict):
                 context["conversation_state"] = _fresh_state(state)
@@ -3183,6 +3196,25 @@ def persist_investigation_context(organization_id: str, user_id: str,
             "required_domains": (result["orchestration"].get("required_domains") or [])[:5],
             "question_understanding": result["orchestration"].get("question_understanding"),
         } if result.get("orchestration") else None),
+        # Task 211: only the authoritative identifier/version and compact
+        # recommendation history are continued. Fresh turns re-resolve both
+        # against tenant-scoped evidence; no stale finding payload is authority.
+        "last_selected_finding": ({
+            "finding_id": result["selected_finding"].get("finding_id"),
+            "finding_version": result["selected_finding"].get("finding_version"),
+            "title": result["selected_finding"].get("title"),
+            "type": result["selected_finding"].get("type"),
+            "lifecycle_state": result["selected_finding"].get("lifecycle_state"),
+            "selected_at": result["selected_finding"].get("selected_at"),
+            "selection_source": result["selected_finding"].get("selection_source"),
+        } if result.get("selected_finding") else None),
+        "last_recommendations": [{
+            "recommendation_id": rec.get("recommendation_id"),
+            "finding_id": rec.get("finding_id"), "finding_version": rec.get("finding_version"),
+            "lifecycle_state": rec.get("lifecycle_state"), "step": rec.get("step"),
+            "evidence_references": (rec.get("evidence_references") or [])[:10],
+            "updated_at": rec.get("updated_at"),
+        } for rec in (result.get("recommendations") or [])[:6]],
         # Task 206: the recorded priority state. Follow-ups that challenge the
         # ranking ("why is that more important than the refund issue?") resolve
         # against THIS record; when a previously top finding is no longer
@@ -3949,6 +3981,15 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     routed["has_store"] = (store_context or {}).get("store_count", 0) > 0
     classification = routed["classification"]
     intent = classification["intent"]
+    selected_reference = selected_finding_reference(
+        message, context_payload, conversation_context,
+        topic_change=bool(routed.get("topic_change")))
+    if selected_reference and intent != INTENT_READ_ONLY:
+        # Selection is investigation scope, not a prompt. Natural pronoun
+        # follow-ups stay on this finding until an explicit topic change.
+        intent = INTENT_FINDINGS
+        classification = {**classification, "intent": INTENT_FINDINGS,
+                          "followup": selected_reference.get("selection_source") == "conversation_context"}
     logger.info(
         "rev_routing",
         extra={
@@ -4093,6 +4134,22 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
 
     question_understanding = understand_question(
         message, intent, classification=classification, context=conversation_context)
+    if selected_reference:
+        # Retrieve only the selected finding plus domains explicitly requested
+        # by this follow-up. "Why?" alone must not launch unrelated specialists.
+        related_domains = []
+        if re.search(r"\bproducts?|variants?|inventory|stock|fulfil", message, re.I):
+            related_domains.append("operational")
+        if re.search(r"\brevenue|sales|order value|refund", message, re.I):
+            related_domains.append("revenue")
+        if re.search(r"\brepeat|returning|retention|customer", message, re.I):
+            related_domains.append("retention")
+        if re.search(r"\bcheckout|cart", message, re.I):
+            related_domains.append("checkout")
+        if re.search(r"\bsync|integration|authoriz|connect", message, re.I):
+            related_domains.append("integration")
+        question_understanding["required_domains"] = list(dict.fromkeys(related_domains))
+        question_understanding["context_used"]["selected_finding_id"] = selected_reference["finding_id"]
     orchestration = build_investigation_plan(
         message=message, intent=intent, understanding=question_understanding,
         investigation_id=investigation_id, organization_id=organization_id,
@@ -4241,6 +4298,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             params.update(order_query)
         if tool == "findings":
             params.update(_finding_tool_params(message))
+            if selected_reference:
+                # Server-side identifier wins over prompt text and historical
+                # latest-finding filters on every selected-finding turn.
+                params["finding_reference"] = selected_reference["finding_id"]
+                params.pop("latest", None)
         if tool in ("product_observations", "inventory_observations"):
             params.update(_product_tool_params(message))
             params["timezone"] = window.get("timezone") or "UTC"
@@ -4355,6 +4417,27 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         unknowns.append(
             "Certified order coverage does not contain the prior-year window, so no "
             "year-over-year comparison is asserted.")
+    selected_item = next((item for item in items
+                          if selected_reference and item.get("metric") == "finding_evidence"
+                          and isinstance(item.get("value"), dict)
+                          and str(item["value"].get("finding_id") or "").lower()
+                          == selected_reference["finding_id"].lower()), None)
+    selected_finding = build_selected_finding(
+        selected_item, organization_id=organization_id, investigation_id=investigation_id,
+        reference=selected_reference, now=now) if selected_reference and selected_item else None
+    if selected_finding:
+        prior_finding = conversation_context.get("last_selected_finding") or {}
+        if prior_finding.get("finding_id") == selected_finding["finding_id"]:
+            changed = prior_finding.get("finding_version") != selected_finding.get("finding_version")
+            selected_finding["investigation_history"] = [{
+                "finding_version": prior_finding.get("finding_version"),
+                "lifecycle_state": prior_finding.get("lifecycle_state"),
+                "comparison": "finding_updated_recommendations_reevaluated" if changed else "reresolved_no_version_change",
+            }]
+            if changed:
+                selected_finding["limitations"].append("The finding version changed since the previous turn; earlier recommendations are historical and were re-evaluated.")
+    if selected_reference and not selected_finding:
+        unknowns.append("The selected finding could not be re-resolved in the authenticated organization and active store scope; no finding details or recommendation are assumed.")
     recommendations = _recommendations(intent, items)
     record_domain_evidence_execution(orchestration, tool_results_by_name)
     specialists = execute_orchestrated_specialists(
@@ -4519,6 +4602,22 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     coordinated_text = cross_domain_narrative(orchestration)
     if coordinated_text:
         narrative = narrative.rstrip() + "\n\n" + coordinated_text
+    recommendations = enrich_recommendations(
+        recommendations, items=items + comparison_items, selected_item=selected_item,
+        selected=selected_finding, organization_id=organization_id,
+        investigation_id=investigation_id, intent=intent, now=now)
+    if selected_finding:
+        selected_finding["recommendation_history"] = [
+            *[{"recommendation_id": entry.get("recommendation_id"),
+               "finding_version": entry.get("finding_version"),
+               "lifecycle_state": "superseded" if entry.get("finding_version") != selected_finding.get("finding_version") else entry.get("lifecycle_state"),
+               "updated_at": entry.get("updated_at")}
+              for entry in (conversation_context.get("last_recommendations") or [])
+              if entry.get("finding_id") == selected_finding["finding_id"]][:5],
+            *[{"recommendation_id": rec["recommendation_id"], "finding_version": rec.get("finding_version"),
+               "lifecycle_state": rec.get("lifecycle_state"), "updated_at": rec.get("updated_at")}
+              for rec in recommendations if rec.get("finding_id") == selected_finding["finding_id"]],
+        ][:6]
     coverage = {}
     freshness = {}
     for tool_result in tool_results:
@@ -4584,6 +4683,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         "hypotheses": hypotheses,
         "unknowns": unknowns,
         "recommendations": recommendations,
+        "selected_finding": selected_finding,
         "specialists": specialists,
         "data_sources": sorted({source for tool_result in tool_results
                                 for source in tool_result.data_sources}),
@@ -4648,6 +4748,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         evidence_ids={item["id"] for item in items + comparison_items})
     if orchestration_errors:
         raise ValueError("Invalid question orchestration: " + ", ".join(orchestration_errors))
+    recommendation_errors = validate_recommendation_contract(
+        selected_finding, recommendations, organization_id=organization_id,
+        evidence_ids={item["id"] for item in items + comparison_items})
+    if recommendation_errors:
+        raise ValueError("Invalid recommendation contract: " + ", ".join(recommendation_errors))
     initialise_action_states(recommendations)
     validate_response_guardrails(result)
     orchestration["state"] = orchestration.get("terminal_state") or "completed"

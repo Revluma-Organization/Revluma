@@ -32,6 +32,7 @@ async function resolveFindingChatContext(prisma, organizationId, findingId, mess
     select: {
       id: true, store_id: true, type: true, title: true,
       description: true, evidence: true, detected_at: true,
+      status: true, severity: true, updated_at: true,
     },
   });
   if (!finding) return { status: 'not_found' };
@@ -39,8 +40,13 @@ async function resolveFindingChatContext(prisma, organizationId, findingId, mess
     where: { id: finding.store_id, organization_id: organizationId }, select: { id: true },
   });
   if (!ownedStore) return { status: 'not_found' };
-  const context = buildFindingContext(message, finding);
-  return context ? { status: 'ok', context } : { status: 'unverified' };
+  // Selection is a reference, not evidence or a prompt. Python re-resolves the
+  // same identifier through its authorized finding tool, including stale and
+  // historical rows so the response can qualify or invalidate old advice.
+  return { status: 'ok', selected_finding: {
+    finding_id: finding.id.toLowerCase(), selection_source: 'explicit_selection',
+    selected_at: new Date().toISOString(),
+  } };
 }
 
 module.exports = { validFindingId, buildFindingContext, resolveFindingChatContext };

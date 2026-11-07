@@ -436,6 +436,31 @@ describe('finding investigation handoff', () => {
     expect(screen.getByText('First answer')).toBeInTheDocument();
     expect(screen.getByText('Follow-up answer')).toBeInTheDocument();
   });
+  it('restores authoritative selected-finding context from persisted history and retains it on the next turn', async () => {
+    replies.set('/rev/conversation/A', Promise.resolve(reply({ messages: [{
+      id: 'rev-selected', role: 'rev', created_at: '2026-11-02T12:00:00Z',
+      content: { ...answer('A', 'Finding answer'), selected_finding: {
+        contract_version: 'rev-selected-finding-v1', finding_id: findingOne,
+        title: 'Persisted refund finding', lifecycle_state: 'stale_unreverified',
+        current_validity: 'stale_unreverified', evidence_quality: 'stale',
+      } },
+    }] })));
+    renderPage('/dashboard/rev-intell/A');
+    await screen.findByRole('heading', { name: 'Persisted refund finding' });
+    expect(screen.getByText(/Stale or historical finding/)).toBeInTheDocument();
+    send('What should I do first?');
+    expect(streams[0].request).toMatchObject({ conversationId: 'A', findingId: findingOne });
+  });
+
+  it('drops selected-finding context on an explicit topic change', async () => {
+    await openFinding();
+    send('Instead, how is inventory?');
+    expect(streams[0].request.findingId).toBeUndefined();
+    await act(async () => streams[0].result.resolve({ conversationId: null, completed: true }));
+    await waitFor(() => expect(screen.getByLabelText('Current search')).toBeEmptyDOMElement());
+    expect(screen.queryByRole('heading', { name: 'Revenue decline' })).not.toBeInTheDocument();
+  });
+
   it.each(['new chat', 'conversation', 'another finding'])('ignores a late finding response after navigating to %s', async destination => {
     const pending = deferred<Reply>(); replies.set(`/rev/findings/${findingOne}`, pending.promise);
     replies.set(`/rev/findings/${findingTwo}`, Promise.resolve(findingReply(findingTwo, 'Orders decline')));
