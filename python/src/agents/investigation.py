@@ -569,40 +569,175 @@ CORRECTION_PATTERN = re.compile(
 
 # ── Period resolution ─────────────────────────────────────────────────────────
 
-def _month_bounds(now: datetime, *, previous: bool = False) -> tuple[datetime, datetime]:
-    first_this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+from datetime import date as _date  # noqa: E402
+
+from zoneinfo import ZoneInfo  # noqa: E402
+
+# Task 198: reporting periods are resolved on the merchant's configured IANA
+# timezone (DST-safe wall-clock boundaries), half-open, with an explicit
+# comparison window and an optional year-over-year flag. The same resolved
+# window drives retrieval, aggregation and response; its timezone is
+# preserved on every evidence period.
+
+_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11,
+    "december": 12,
+}
+_MONTH_ABBR = {name[:3]: number for name, number in _MONTHS.items()}
+
+
+def _safe_zoneinfo(name: str | None):
+    if not name:
+        return None
+    try:
+        return ZoneInfo(str(name))
+    except Exception:
+        return None
+
+
+def _local_midnight_utc(day: _date, tz) -> datetime:
+    """Wall-clock midnight of ``day`` in the merchant timezone, as UTC.
+
+    If midnight does not exist on that date (a DST transition through 00:00),
+    ZoneInfo normalises to the next existing wall-clock time, so the boundary
+    is always a valid instant.
+    """
+    return datetime(day.year, day.month, day.day, tzinfo=tz).astimezone(timezone.utc)
+
+
+def _month_bounds(now: datetime, tz, *, previous: bool) -> tuple[datetime, datetime]:
+    """Calendar-month bounds on the merchant's local calendar, DST-safe."""
+    local_now = now.astimezone(tz)
+    first_this_month = _local_midnight_utc(
+        _date(local_now.year, local_now.month, 1), tz)
     if previous:
-        end = first_this_month
-        start = (end - timedelta(days=1)).replace(day=1)
-        return start, end
+        first_previous_month = _local_midnight_utc(
+            (first_this_month - timedelta(days=1)).astimezone(tz).replace(day=1).date(),
+            tz)
+        return first_previous_month, first_this_month
     return first_this_month, now
 
 
+def _week_bounds(now: datetime, tz, *, previous: bool) -> tuple[datetime, datetime]:
+    """ISO calendar-week bounds (Monday 00:00 local), DST-safe."""
+    local_now = now.astimezone(tz)
+    this_monday = _local_midnight_utc(
+        (local_now - timedelta(days=local_now.weekday())).date(), tz)
+    if previous:
+        last_monday = _local_midnight_utc(
+            (local_now - timedelta(days=local_now.weekday() + 7)).date(), tz)
+        return last_monday, this_monday
+    return this_monday, now
+
+
+_DATE_TOKEN = re.compile(
+    r"\b(\d{4}-\d{1,2}-\d{1,2}"
+    r"|\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*,?\s+\d{4}"
+    r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4})\b",
+    re.I)
+
+
+def _parse_local_date(token: str) -> _date | None:
+    token = token.strip().lower()
+    match = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", token)
+    if match:
+        year, month, day = (int(part) for part in match.groups())
+    else:
+        match = re.fullmatch(
+            r"(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+),?\s+(\d{4})", token)
+        if match:
+            day, month_name, year = match.groups()
+        else:
+            match = re.fullmatch(
+                r"([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})", token)
+            if not match:
+                return None
+            month_name, day, year = match.groups()
+        month = _MONTHS.get(month_name[:5]) or _MONTH_ABBR.get(month_name[:3])
+        if month is None:
+            return None
+        year, month, day = int(year), month, int(day)
+    try:
+        return _date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _custom_range_bounds(text: str, tz) -> tuple[datetime, datetime, str] | None:
+    """Explicit date ranges: "from 2026-10-01 to 2026-10-15" and friends."""
+    tokens = list(_DATE_TOKEN.finditer(text))
+    if len(tokens) < 2:
+        return None
+    first, second = tokens[0], tokens[1]
+    before_first = text[:first.start()].lower()
+    between = text[first.end():second.start()].lower()
+    if not re.search(r"\b(from|between|starting|start)\b", before_first + " " + between):
+        return None
+    if not re.search(r"\b(to|through|until|and)\b", between):
+        return None
+    start_day = _parse_local_date(first.group(1))
+    end_day = _parse_local_date(second.group(1))
+    if start_day is None or end_day is None:
+        return None
+    if start_day > end_day:
+        start_day, end_day = end_day, start_day
+    start = _local_midnight_utc(start_day, tz)
+    end = _local_midnight_utc(end_day + timedelta(days=1), tz)  # half-open
+    return start, end, f"{start_day.isoformat()} to {end_day.isoformat()}"
+
+
+def _year_over_year_requested(text: str) -> bool:
+    return bool(re.search(
+        r"year[- ]over[- ]year|\byoy\b|same (?:period|time) (?:as )?last year"
+        r"|compared? (?:to|with) last year|\bvs\.? last year\b", text))
+
+
 def resolve_reporting_period(message: str, now: datetime | None = None,
-                             inherited: dict | None = None) -> dict:
-    """Resolve a merchant's requested reporting period, with a comparison window."""
+                             inherited: dict | None = None,
+                             timezone_name: str = "UTC") -> dict:
+    """Resolve a merchant's requested reporting period, with a comparison window.
+
+    Boundaries are wall-clock in the merchant's IANA timezone (DST-safe), the
+    window is half-open ``[start, end)``, and the resolved timezone is kept on
+    the window so retrieval, aggregation and response share one period
+    definition.
+    """
     now = ensure_utc(now or utc_now(), field="now")
     text = (message or "").lower()
+    tz = _safe_zoneinfo(timezone_name)
+    if tz is None:
+        # An unresolvable timezone name must not leak into evidence periods:
+        # fall back to UTC and label the window as UTC.
+        tz = timezone.utc
+        timezone_name = "UTC"
     start: datetime | None = None
     end: datetime | None = None
     label = None
 
-    if re.search(r"\blast month\b|\bprevious month\b", text):
-        start, end = _month_bounds(now, previous=True)
+    custom = _custom_range_bounds(text, tz)
+    if custom is not None:
+        start, end, label = custom
+    elif re.search(r"\blast month\b|\bprevious month\b", text):
+        start, end = _month_bounds(now, tz, previous=True)
         label = "Previous calendar month"
     elif re.search(r"\bthis month\b|\bmonth to date\b|\bmonth-to-date\b", text):
-        start, end = _month_bounds(now)
+        start, end = _month_bounds(now, tz, previous=False)
         label = "Month to date"
     elif re.search(r"\blast week\b|\bprevious week\b", text):
-        week_start = now - timedelta(days=7)
-        start, end = week_start - timedelta(days=7), week_start
-        label = "Previous seven days"
+        start, end = _week_bounds(now, tz, previous=True)
+        label = "Previous calendar week"
+    elif re.search(r"\bthis week\b", text):
+        start, end = _week_bounds(now, tz, previous=False)
+        label = "This calendar week"
     elif re.search(r"\byesterday\b", text):
-        day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        start, end = day - timedelta(days=1), day
+        local_date = now.astimezone(tz).date()
+        start = _local_midnight_utc(local_date - timedelta(days=1), tz)
+        end = _local_midnight_utc(local_date, tz)
         label = "Yesterday"
-    elif re.search(r"\btoday\b", text):
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif re.search(r"\btoday\b|\bday to date\b|\bdtc\b", text):
+        local_date = now.astimezone(tz).date()
+        start = _local_midnight_utc(local_date, tz)
         end = now
         label = "Today"
     elif re.search(r"\blast 30 days\b|\bpast 30 days\b|\b30 days\b", text):
@@ -611,7 +746,7 @@ def resolve_reporting_period(message: str, now: datetime | None = None,
     elif re.search(r"\blast 14 days\b|\bpast 14 days\b|\b14 days\b", text):
         start, end = now - timedelta(days=14), now
         label = "Last 14 days"
-    elif re.search(r"\blast 7 days\b|\bpast 7 days\b|\bthis week\b|\blast week['’]?s\b", text):
+    elif re.search(r"\blast 7 days\b|\bpast 7 days\b|\bthis week\b|\blast week['\u2019]?s\b", text):
         start, end = now - timedelta(days=7), now
         label = "Last seven days"
     elif inherited and inherited.get("start") and inherited.get("end"):
@@ -623,29 +758,53 @@ def resolve_reporting_period(message: str, now: datetime | None = None,
         start, end = now - timedelta(days=7), now
         label = "Last seven days"
 
+    # Comparison windows are computed on the merchant's local calendar
+    # (midnights and week starts resolved through the zone), never with a
+    # fixed 24h*N absolute shift — which drifts across DST transitions.
     if label == "Previous calendar month":
         # Compare calendar month with calendar month, not a 31-vs-30-day window.
-        comparison_start = (start - timedelta(days=1)).replace(day=1)
+        comparison_start = _local_midnight_utc(
+            (start - timedelta(days=1)).astimezone(tz).replace(day=1).date(), tz)
         comparison_end = start
+        comparison_label = "Calendar month before that"
     elif label == "Month to date":
         elapsed = end - start
-        previous_month_start = (start - timedelta(days=1)).replace(day=1)
+        previous_month_start = _local_midnight_utc(
+            (start - timedelta(days=1)).astimezone(tz).replace(day=1).date(), tz)
         comparison_start = previous_month_start
         comparison_end = min(start, previous_month_start + elapsed)
+        comparison_label = "Same elapsed period in the previous month"
+    elif label == "Previous calendar week":
+        comparison_start = _local_midnight_utc(
+            (start - timedelta(days=7)).astimezone(tz).date(), tz)
+        comparison_end = start
+        comparison_label = "Calendar week before that"
+    elif label == "Yesterday":
+        local_date = end.astimezone(tz).date()
+        comparison_start = _local_midnight_utc(local_date - timedelta(days=2), tz)
+        comparison_end = start
+        comparison_label = "Day before that"
+    elif label == "Today":
+        local_date = start.astimezone(tz).date()
+        comparison_start = _local_midnight_utc(local_date - timedelta(days=1), tz)
+        comparison_end = start
+        comparison_label = "Yesterday"
     else:
         comparison_start, comparison_end = previous_period(start, end)
+        comparison_label = "Immediately preceding equal-length period"
     window = period(start, end, comparison_start=comparison_start,
-                    comparison_end=comparison_end, label=label)
+                    comparison_end=comparison_end, label=label,
+                    timezone_label=timezone_name)
     window["compared_to"] = {
         "start": iso(comparison_start),
         "end": iso(comparison_end),
-        "label": "Immediately preceding equal-length period",
-        "timezone": "UTC",
+        "label": comparison_label,
+        "timezone": timezone_name,
     }
+    window["year_over_year"] = _year_over_year_requested(text)
     return window
 
 
-# ── Intent classification ─────────────────────────────────────────────────────
 
 def detect_prohibited_actions(message: str) -> list[dict]:
     requested = []
@@ -1043,12 +1202,26 @@ def _json(row, key, default=None):
     return value if value is not None else default
 
 
+def _valid_iana_timezone(name: Any) -> str | None:
+    if not isinstance(name, str):
+        return None
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_+\-]*(?:/[A-Za-z0-9_+\-]+)+", name):
+        return None
+    try:
+        ZoneInfo(name)
+    except Exception:
+        return None
+    return name
+
+
 def resolve_store_context(organization_id: str, db) -> dict:
     rows, error = safe_query(db, """
         SELECT s.id, s.platform, s.status, s.last_synced_at,
-               ss.settings_group, ss.settings
+               ss.settings_group, ss.settings,
+               sp.iana_timezone, sp.currency_code
         FROM stores s
         LEFT JOIN store_settings ss ON ss.store_id = s.id
+        LEFT JOIN store_profiles sp ON sp.store_id = s.id
         WHERE s.organization_id = :org_id::uuid
           AND s.status IN ('active', 'connected', 'syncing')
         ORDER BY s.id
@@ -1067,6 +1240,7 @@ def resolve_store_context(organization_id: str, db) -> dict:
         return context
     seen_stores = set()
     currencies = set()
+    store_timezones: dict[str, str] = {}
     for row in rows:
         store_id = _get(row, "id")
         seen_stores.add(store_id)
@@ -1079,15 +1253,37 @@ def resolve_store_context(organization_id: str, db) -> dict:
             if context["last_synced_at"] is None or synced < context["last_synced_at"]:
                 context["last_synced_at"] = synced
         settings = _json(row, "settings")
+        settings_tz = None
         if isinstance(settings, dict):
             currency = normalize_currency(settings.get("currency") or settings.get("store_currency"))
             if currency:
                 currencies.add(currency)
-            timezone_name = settings.get("timezone") or settings.get("store_timezone")
-            if isinstance(timezone_name, str) and re.fullmatch(r"[A-Za-z_]+/[A-Za-z_]+", timezone_name):
-                context["timezone"] = timezone_name
-                context["timezone_source"] = "store_settings"
+            settings_tz = _valid_iana_timezone(
+                settings.get("timezone") or settings.get("store_timezone"))
+        profile_tz = _valid_iana_timezone(_get(row, "iana_timezone"))
+        profile_currency = normalize_currency(_get(row, "currency_code"))
+        if profile_currency:
+            currencies.add(profile_currency)
+        # Priority: merchant-set store settings, then the Shopify profile
+        # timezone, then UTC.
+        store_timezones[store_id] = settings_tz or profile_tz or "UTC"
     context["store_count"] = len(seen_stores)
+    if seen_stores:
+        distinct = {tz for tz in store_timezones.values() if tz != "UTC"}
+        if len(distinct) == 1:
+            # A store configured a timezone (settings or profile), so the
+            # window resolves on the merchant's local calendar.
+            context["timezone"] = next(iter(distinct))
+            context["timezone_source"] = "store_settings_or_profile"
+        elif len(distinct) > 1:
+            # Multiple stores with different configured timezones: a single
+            # merchant-local calendar cannot be asserted, so fall back to UTC
+            # and say so instead of picking one silently.
+            context["timezone"] = "UTC"
+            context["timezone_source"] = "utc_conflicting_stores"
+            context["warnings"].append(
+                "The connected stores use different configured timezones "
+                f"({', '.join(sorted(distinct))}); reporting periods use UTC.")
     context["currencies"] = sorted(currencies)
     context["last_synced_at"] = iso(context["last_synced_at"])
     return context
@@ -1272,6 +1468,34 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
             f"{i['value']} non-cancelled orders recorded for {i.get('period', {}).get('label', 'the period')}")
             if not any(f.get("metric") == "recorded_order_value" and f.get("currency") == i.get("currency") for f in facts)
             else f"Order count ({i.get('currency') or 'all currencies'}): {i['value']}")
+        # Task 198: the certified financial definitions, each currency-explicit.
+        # Only available/verified_zero items become facts; partial figures stay
+        # in the evidence with their limitations and never become prose.
+        add("gross_sales", lambda i: (
+            f"Gross sales {_money_text(i['value'], i.get('currency'))} "
+            f"({i.get('currency') or 'currency'}) before refunds"))
+        add("refund_amount", lambda i: (
+            f"Refunds issued {_money_text(i['value'], i.get('currency'))} "
+            f"in this period (refund-date attributed)"))
+        add("refund_amount_window_orders", lambda i: (
+            f"Refund adjustments on orders in this period: "
+            f"{_money_text(i['value'], i.get('currency'))}"))
+        add("captured_payment_amount", lambda i: (
+            f"Captured payments {_money_text(i['value'], i.get('currency'))} "
+            f"(successful sales and captures)"))
+        add("discount_amount", lambda i: (
+            f"Order discounts {_money_text(i['value'], i.get('currency'))}"))
+        add("line_items_value", lambda i: (
+            f"Line-item subtotal {_money_text(i['value'], i.get('currency'))}"))
+        add("tax_amount", lambda i: (
+            f"Recorded tax {_money_text(i['value'], i.get('currency'))}"))
+        add("shipping_amount", lambda i: (
+            f"Recorded shipping {_money_text(i['value'], i.get('currency'))}"))
+        add("outstanding_amount", lambda i: (
+            f"Outstanding order balance {_money_text(i['value'], i.get('currency'))}"))
+        add("test_order_count", lambda i: (
+            f"{i['value']} test-mode order(s) excluded from revenue "
+            f"({i.get('currency') or 'all currencies'})"))
     if intent in (INTENT_OVERVIEW, INTENT_CHECKOUT, INTENT_REVENUE):
         add("unrecovered_cart_value", lambda i: (
             f"Recorded abandoned-cart value {_money_text(i['value'], i.get('currency'))} "
@@ -1358,7 +1582,8 @@ def _count_for(by_metric: dict, metric: str, currency: str | None) -> str:
     return "an unverified number of"
 
 
-def _comparison_facts(comparison: dict | None) -> list[dict]:
+def _comparison_facts(comparison: dict | None,
+                      qualifier: str = "versus the previous period") -> list[dict]:
     facts = []
     if not comparison:
         return facts
@@ -1371,52 +1596,67 @@ def _comparison_facts(comparison: dict | None) -> list[dict]:
         change_ids = [identifier for identifier in (
             change.get("previous_evidence_id"), change.get("current_evidence_id")) if identifier]
         if change.get("metric") == "recorded_order_value":
-            facts.append({
-                "text": (f"Recorded order value moved {change['direction']} "
-                         f"{abs(float(change['percent'])):.1f}% "
-                         f"({_money_text(change['previous'], currency)} to "
-                         f"{_money_text(change['current'], currency)}) versus the previous period"),
-                "evidence_ids": change_ids,
-                "metric": change["metric"],
-                "currency": currency,
-                "value": change,
-                "unit": "percent",
-                "period": comparison.get("period"),
-                "source": "orders",
-                "status": STATUS_AVAILABLE,
-            })
+            text = (f"Recorded order value moved {change['direction']} "
+                    f"{abs(float(change['percent'])):.1f}% "
+                    f"({_money_text(change['previous'], currency)} to "
+                    f"{_money_text(change['current'], currency)}) {qualifier}")
         elif change.get("metric") == "recorded_order_count":
-            facts.append({
-                "text": (f"Order count ({currency}) moved {change['direction']} "
-                         f"{abs(float(change['percent'])):.1f}% "
-                         f"({change['previous']} to {change['current']})"),
-                "evidence_ids": change_ids,
-                "metric": change["metric"],
-                "currency": currency,
-                "value": change,
-                "unit": "percent",
-                "period": comparison.get("period"),
-                "source": "orders",
-                "status": STATUS_AVAILABLE,
-            })
+            currency_label = f" ({currency})" if currency else ""
+            text = (f"Order count{currency_label} moved {change['direction']} "
+                    f"{abs(float(change['percent'])):.1f}% "
+                    f"({change['previous']} to {change['current']}) {qualifier}")
+        elif change.get("metric") == "gross_sales":
+            text = (f"Gross sales moved {change['direction']} "
+                    f"{abs(float(change['percent'])):.1f}% "
+                    f"({_money_text(change['previous'], currency)} to "
+                    f"{_money_text(change['current'], currency)}) {qualifier}")
+        elif change.get("metric") == "refund_amount":
+            text = (f"Refunds issued moved {change['direction']} "
+                    f"{abs(float(change['percent'])):.1f}% "
+                    f"({_money_text(change['previous'], currency)} to "
+                    f"{_money_text(change['current'], currency)}) {qualifier}")
+        else:
+            continue
+        facts.append({
+            "text": text,
+            "evidence_ids": change_ids,
+            "metric": change["metric"],
+            "currency": currency,
+            "value": change,
+            "unit": "percent",
+            "period": comparison.get("period"),
+            "source": "orders",
+            "status": STATUS_AVAILABLE,
+        })
     return facts
 
 
 def _unknowns(items: list[dict], intent: str, segment: str | None,
               comparison: dict | None, store_context: dict) -> list[str]:
     unknowns: list[str] = []
-    statuses = {item.get("metric"): item.get("status") for item in items}
     if segment in ("mobile", "desktop"):
         unknowns.append(
             "Device-level segmentation (for example mobile versus desktop) is not stored "
             "in the verified checkout evidence, so a device-specific conclusion cannot be made.")
-    if any(item.get("metric") == "refund_adjustment" and item.get("status") not in (STATUS_AVAILABLE, "verified_zero")
-           for item in items) or "refund_adjustment" not in statuses:
-        if intent in (INTENT_REVENUE, INTENT_REFUNDS, INTENT_OVERVIEW):
-            unknowns.append(
-                "No itemised refund ledger is stored. Order totals are already refund-adjusted "
-                "and a per-order refunded amount is recorded, but individual refund transactions "
-                "and an aggregate refunded total cannot be reported.")
+    refund_statuses = {item.get("status") for item in items
+                       if item.get("metric") in ("refund_amount", "refund_amount_window_orders")}
+    if refund_statuses:
+        if refund_statuses <= {STATUS_AVAILABLE, "verified_zero"}:
+            pass  # refund ledger certified: no unknown to report
+        elif intent in (INTENT_REVENUE, INTENT_REFUNDS, INTENT_OVERVIEW):
+            if refund_statuses == {"not_synchronized"}:
+                unknowns.append(
+                    "The refund ledger has not been synchronized for every store, so "
+                    "refund money for this window cannot be reported.")
+            elif refund_statuses <= {STATUS_UNAVAILABLE, STATUS_UNSUPPORTED,
+                                     "not_synchronized"}:
+                unknowns.append(
+                    "No refund money can be reported for this window from the available "
+                    "refund ledger.")
+            else:
+                unknowns.append(
+                    "The refund ledger is only partially certified for this window; refund "
+                    "figures cover the synchronized and fully recorded records only.")
     if intent in (INTENT_CHECKOUT, INTENT_TRAFFIC):
         unknowns.append(
             "Absence of a recorded event does not prove that no checkout or traffic occurred; "
@@ -2295,7 +2535,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     )
     window = resolve_reporting_period(
         message, now,
-        inherited=(conversation_context or {}).get("last_investigation"))
+        inherited=(conversation_context or {}).get("last_investigation"),
+        timezone_name=(store_context or {}).get("timezone") or "UTC")
 
     if intent in (INTENT_GREETING, INTENT_IDENTITY, INTENT_CAPABILITY, INTENT_GENERAL,
                   INTENT_SOCIAL, INTENT_KNOWLEDGE, INTENT_CLARIFY):
@@ -2429,6 +2670,16 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         }
         if tool in ("revenue_observations", "order_observations"):
             params["compare"] = bool(window.get("compared_to"))
+        if tool in ("revenue_observations", "order_observations"):
+            params["timezone"] = window.get("timezone") or "UTC"
+            compared = window.get("compared_to")
+            if compared:
+                # The resolved comparison window is the single source of truth;
+                # retrieval must not invent its own period definition.
+                params["comparison_start"] = compared["start"]
+                params["comparison_end"] = compared["end"]
+            if window.get("year_over_year"):
+                params["year_over_year"] = True
         if tool == "order_observations":
             params.update(order_query)
         if classification.get("segment"):
@@ -2458,9 +2709,12 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
 
     items = _dedupe_items(tool_results)
     comparison = None
+    year_over_year = None
     revenue_result = tool_results_by_name.get("revenue_observations")
-    if revenue_result is not None and revenue_result.comparison:
-        comparison = revenue_result.comparison
+    if revenue_result is not None:
+        if revenue_result.comparison:
+            comparison = revenue_result.comparison
+        year_over_year = revenue_result.year_over_year
     elif intent in (INTENT_REVENUE, INTENT_OVERVIEW) and revenue_result is None:
         # The tool failed; attempt a direct, equally scoped comparison so a
         # partial result is not silently reduced to "no data".
@@ -2474,6 +2728,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         except Exception:
             comparison = None
 
+    year_over_year_facts = []
+    if year_over_year and year_over_year.get("changes"):
+        year_over_year_facts = _comparison_facts(
+            year_over_year, qualifier="versus the same period last year")
     comparison_items = list(((comparison or {}).get("items") or []))[:40]
     validation_errors = validate_collection(items)
     attribution_errors = validate_attribution(
@@ -2488,6 +2746,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     comparison_facts = _comparison_facts(comparison)
     hypotheses = _hypotheses(items, intent)
     unknowns = _unknowns(items, intent, classification.get("segment"), comparison, store_context)
+    if (year_over_year or {}).get("status") == "insufficient_history":
+        unknowns.append(
+            "Certified order coverage does not contain the prior-year window, so no "
+            "year-over-year comparison is asserted.")
     recommendations = _recommendations(intent, items)
     specialists = _run_specialists(organization_id, db, intent, message)
 
@@ -2535,15 +2797,16 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         hypotheses = []
         unknowns = []
     else:
+        all_comparison_facts = comparison_facts + year_over_year_facts
         deterministic = _compose_text(
             intent=intent, label=INTENT_LABELS.get(intent, intent), window=window, facts=facts,
-            comparison_facts=comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
+            comparison_facts=all_comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
             recommendations=recommendations, skipped=skipped, store_context=store_context,
             overall_status=overall,
         )
         narrative, used_model = _compose_narrative(
             message=message, intent=intent, window=window, facts=facts,
-            comparison_facts=comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
+            comparison_facts=all_comparison_facts, hypotheses=hypotheses, unknowns=unknowns,
             recommendations=recommendations, items=items, deterministic=deterministic,
             social_opener=routed["social_opener"],
         )
@@ -2590,6 +2853,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         },
         "facts": facts,
         "comparison_facts": comparison_facts,
+        "year_over_year": year_over_year,
+        "year_over_year_facts": year_over_year_facts,
         "hypotheses": hypotheses,
         "unknowns": unknowns,
         "recommendations": recommendations,

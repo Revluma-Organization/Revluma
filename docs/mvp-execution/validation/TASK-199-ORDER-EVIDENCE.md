@@ -5,7 +5,7 @@ Date: 2026-11-07. Branch: `arena/7084d7dd-revluma`.
 ## Local regression evidence
 
 - Focused Python order, investigation, evidence-contract and persisted-context selection: **69 passed**.
-- Fresh full Python suite after the persisted-context allowlist correction: **1582 passed, 9 skipped**. Python `compileall` passed.
+- Fresh full Python suite after merging the completed Task 198 implementation: **1607 passed, 9 skipped**. Python `compileall` passed.
 - `orderEnrichment.test.js`: **16/16 passed**, including independent nested success/failure pagination, cursor failures, duplicate prevention, tenant isolation and stale-row preservation.
 - Focused existing Node money/refund/webhook selection: **72 passed, 1 environment failure**; the remaining process could not load an ungenerated Prisma Client. This is not a genuine full-suite pass.
 - New source-lifecycle/historical-line acquisition test added to `shopifyNestedLineCompleteness.test.js`; genuine Prisma-backed execution is delegated to CI because local Prisma engine download is unavailable.

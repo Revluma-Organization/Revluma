@@ -1,8 +1,24 @@
 """Staging acceptance: revenue evidence against a real PostgreSQL database.
 
-Seeds synthetic, isolated fixtures inside one transaction, asks the production
-evidence service for a revenue window, asserts the verified values, then rolls
-everything back. Nothing is written permanently and no merchant data is used.
+Seeds synthetic, isolated fixtures inside one transaction, exercises the
+production evidence service against them, asserts the verified values, then
+rolls everything back. Nothing is written permanently and no merchant data is
+used.
+
+The seed is two-phase on purpose:
+
+1. Orders carry persisted ``refunded_total`` values while the itemised refund
+   ledger and the financial sub-domain sync ledger are empty.  The service
+   must refuse to certify (overall ``partial``), flag every unreconciled
+   order, and mark refund/transaction money ``not_synchronized`` — a ledger
+   gap is a visible gap, never a silent zero.
+
+2. The itemised ``order_refunds`` rows matching each order's recorded refund
+   total are seeded, and both stores complete fully paginated refunds and
+   transactions synchronizations.  The service must now certify the window:
+   overall ``available``, reconciliation clean (``verified_zero``), refund
+   money attributed to the refund date and separated by currency, cancelled
+   orders excluded, and currencies never summed.
 
 Run against the local zero-cost staging database (not production):
 
@@ -27,6 +43,13 @@ def _money(items: list[dict], metric: str) -> dict[str, str]:
         for item in items
         if item["metric"] == metric and item.get("currency") and item.get("value") is not None
     }
+
+
+def _item(items: list[dict], metric: str, currency: str | None = None) -> dict:
+    for item in items:
+        if item["metric"] == metric and item.get("currency") == currency:
+            return item
+    raise AssertionError(f"evidence item not found: {metric} ({currency})")
 
 
 def main() -> int:
@@ -77,7 +100,10 @@ def main() -> int:
              "start": start - timedelta(days=1), "end": end + timedelta(days=1)},
         )
         # #1004 ($1,025 -> $0) and #1001 ($100 -> $0) are fully refunded; #2001 is
-        # partially refunded; #2003 is cancelled and must be excluded.
+        # partially refunded; #2002 is clean; #2003 is cancelled and must be
+        # excluded from every metric. Refund money is recorded on the order
+        # rows (persisted refunded_total) while the itemised ledger below is
+        # still empty in phase 1.
         rows = [
             (usd_store, usd_customer, "1004", "0.00", "1025.00", "USD", 1, "completed"),
             (usd_store, usd_customer, "1001", "0.00", "100.00", "USD", 2, "completed"),
@@ -96,6 +122,65 @@ def main() -> int:
              for store, customer, external, total, refunded, currency, hours, status in rows],
         )
 
+        failures: list[str] = []
+
+        # ── Phase 1: ledger uncertified. Gaps must be visible, not silent. ──
+        uncertified = retrieve_revenue_evidence(
+            org, connection, start=start, end=end, now=now)
+        net = _money(uncertified["items"], "recorded_order_value")
+        counts = {
+            item["currency"]: item["value"]
+            for item in uncertified["items"]
+            if item["metric"] == "recorded_order_count"
+        }
+        print(f"[phase 1] overall_status={uncertified['overall_status']}")
+        print(f"[phase 1] recorded_order_value={net}")
+        print(f"[phase 1] recorded_order_count={counts}")
+        if net != {"EUR": "25.00", "USD": "120.00"}:
+            failures.append(f"phase 1 net value mismatch: {net}")
+        if counts != {"EUR": 1, "USD": 4}:
+            failures.append(f"phase 1 order count mismatch: {counts}")
+        if uncertified["overall_status"] != "partial":
+            failures.append(
+                f"phase 1 must not certify with an unreconciled ledger: "
+                f"{uncertified['overall_status']}")
+        recon = _item(uncertified["items"], "reconciliation_discrepancy_count")
+        if recon["value"] != 4:
+            failures.append(
+                f"phase 1 must flag the 4 orders whose recorded refund total "
+                f"has no itemised ledger row, got {recon['value']}")
+        for metric in ("refund_amount", "captured_payment_amount"):
+            if _item(uncertified["items"], metric)["status"] != "not_synchronized":
+                failures.append(
+                    f"phase 1 {metric} must be not_synchronized without a "
+                    f"completed sub-domain synchronization")
+
+        # ── Phase 2: ledger reconciled and sub-domains certified. ──
+        # Itemised refund rows matching each order's recorded refund total
+        # (2002's 0.00 needs no row; 2003 is cancelled and has none).
+        connection.execute(
+            text("INSERT INTO order_refunds (id, store_id, external_order_id, external_id, "
+                 "refund_amount, refund_currency, created_at) VALUES "
+                 "(:id, :store, '1004', 'acc-refund-1004', 1025.00, 'USD', :at), "
+                 "(:id2, :store, '1001', 'acc-refund-1001', 100.00, 'USD', :at2), "
+                 "(:id3, :store, '2001', 'acc-refund-2001', 30.00, 'USD', :at3), "
+                 "(:id4, :eur_store, '3001', 'acc-refund-3001', 5.00, 'EUR', :at4)"),
+            {"id": str(uuid.uuid4()), "id2": str(uuid.uuid4()), "id3": str(uuid.uuid4()),
+             "id4": str(uuid.uuid4()), "store": usd_store, "eur_store": eur_store,
+             "at": start + timedelta(hours=2), "at2": start + timedelta(hours=3),
+             "at3": start + timedelta(hours=4), "at4": start + timedelta(hours=7)},
+        )
+        # Both stores completed fully paginated refunds and transactions runs.
+        for sid in (usd_store, eur_store):
+            for domain in ("refunds", "transactions"):
+                connection.execute(
+                    text("INSERT INTO store_sync_domain_states (id, store_id, domain, status, "
+                         "pagination_complete, last_succeeded_at) VALUES "
+                         "(:id, :store, :domain, 'ok', true, :succeeded)"),
+                    {"id": str(uuid.uuid4()), "store": sid, "domain": domain,
+                     "succeeded": now - timedelta(minutes=5)},
+                )
+
         evidence = retrieve_revenue_evidence(org, connection, start=start, end=end, now=now)
         net = _money(evidence["items"], "recorded_order_value")
         counts = {
@@ -103,30 +188,54 @@ def main() -> int:
             for item in evidence["items"]
             if item["metric"] == "recorded_order_count"
         }
-        print(f"overall_status={evidence['overall_status']}")
-        print(f"recorded_order_value={net}")
-        print(f"recorded_order_count={counts}")
-
-        failures = []
+        print(f"[phase 2] overall_status={evidence['overall_status']}")
+        print(f"[phase 2] recorded_order_value={net}")
+        print(f"[phase 2] recorded_order_count={counts}")
         if net != {"EUR": "25.00", "USD": "120.00"}:
-            failures.append(f"net revenue mismatch: {net}")
+            failures.append(f"net value mismatch: {net}")
         if counts != {"EUR": 1, "USD": 4}:
             failures.append(f"order count mismatch: {counts}")
         if "999.00" in str(evidence) or "1025.00" in str(evidence):
             failures.append("cancelled or refunded gross value leaked into evidence")
         if evidence["overall_status"] != "available":
             failures.append(f"coverage not verified: {evidence['overall_status']}")
-
-        refund_items = [i for i in evidence["items"] if i["metric"] == "refund_adjustment"]
-        if not refund_items or refund_items[0]["status"] not in ("unavailable", "unsupported"):
-            failures.append("refund ledger limitation is not stated")
+        if not evidence["domain_coverage"]["refunds"]["complete"] \
+                or not evidence["domain_coverage"]["transactions"]["complete"]:
+            failures.append("financial sub-domain coverage is not certified")
+        # Refunds are netted exactly once: net + itemised refund ledger rows
+        # reconstruct gross, per currency, attributed to the refund date.
+        refunds = _money(evidence["items"], "refund_amount")
+        if refunds != {"EUR": "5.00", "USD": "1155.00"}:
+            failures.append(f"refund ledger mismatch: {refunds}")
+        if _item(evidence["items"], "refund_amount", "USD")["status"] != "available" \
+                or _item(evidence["items"], "refund_amount", "EUR")["status"] != "available":
+            failures.append("refunded sub-domain is certified but refund_amount is not available")
+        if _money(evidence["items"], "gross_sales") != {"EUR": "30.00", "USD": "1275.00"}:
+            failures.append(
+                f"gross (net + refunded) mismatch: {_money(evidence['items'], 'gross_sales')}")
+        if _money(evidence["items"], "refund_amount_window_orders") != {
+                "EUR": "5.00", "USD": "1155.00"}:
+            failures.append(
+                "window-order refund totals do not bridge gross and net")
+        # Captured payments: the certified ledger recorded none, so the
+        # per-currency figure is a verified zero — never an unknown.
+        if _money(evidence["items"], "captured_payment_amount") != {
+                "EUR": "0.00", "USD": "0.00"}:
+            failures.append(
+                f"captured payment mismatch: {_money(evidence['items'], 'captured_payment_amount')}")
+        recon = _item(evidence["items"], "reconciliation_discrepancy_count")
+        if recon["value"] != 0 or recon["status"] != "verified_zero":
+            failures.append(
+                f"reconciliation must be a verified zero once the ledger "
+                f"matches, got value={recon['value']} status={recon['status']}")
 
         if failures:
             for failure in failures:
                 print(f"FAIL: {failure}")
             return 1
-        print("PASS: refunds netted once, cancellations excluded, currencies separated, "
-              "coverage verified, refund limitation stated")
+        print("PASS: ledger gaps visible when uncertified, refunds netted exactly "
+              "once when certified, cancellations excluded, currencies separated, "
+              "coverage verified, reconciliation a verified zero")
         return 0
     finally:
         transaction.rollback()

@@ -10,6 +10,8 @@ from src.intelligence.evidence import evidence_context
 from src.intelligence.order_evidence import retrieve_order_evidence
 from tests.rev_fakes import FakeDB
 from tests.test_rev_investigation import NOW, ORG, USER, store_rows, coverage_rows, workspace_db
+from tests.test_rev_revenue_evidence import (ORDER_PATTERN, REFUND_PATTERN, REFUND_UNDATED_PATTERN,
+    TXN_PATTERN, TXN_UNDATED_PATTERN, RECON_PATTERN, order_row, clean_recon)
 
 START = NOW - timedelta(days=7)
 STORE_IDS = ["store-a1", "store-a2"]
@@ -43,6 +45,12 @@ def db_fixture(*, aggregate=None, ledgers_rows=None, coverage=None):
         {"dimension": "fulfillment", "source_status": "UNFULFILLED", "status_count": 4},
     ])
     db.add("COUNT(*) AS order_count", [{"currency": "USD", "order_count": 4, "order_value": Decimal("400.00")}])
+    db.add(ORDER_PATTERN, [order_row("USD", 4, Decimal("400.00"))])
+    db.add(REFUND_PATTERN, [])
+    db.add(REFUND_UNDATED_PATTERN, [{"undated_count": 0}])
+    db.add(TXN_PATTERN, [])
+    db.add(TXN_UNDATED_PATTERN, [{"undated_count": 0}])
+    db.add(RECON_PATTERN, clean_recon())
     db.add("FROM business_states", [])
     return db
 

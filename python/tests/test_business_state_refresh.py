@@ -1,4 +1,4 @@
-﻿"""
+"""
 Unit tests for dynamic Business State refresh behavior.
 Tests the _get_next_rebuild_interval function in business_state.py.
 """
@@ -253,6 +253,61 @@ def test_daily_revenue_sql_excludes_cancelled_orders():
     assert "recovery_status" in DAILY_REVENUE_SQL
     for status in ("cancelled", "canceled", "voided", "deleted"):
         assert status in DAILY_REVENUE_SQL
+
+
+def test_daily_revenue_scalars_group_by_currency_and_never_sum_mixed_currencies():
+    from datetime import date, timedelta
+    from decimal import Decimal
+
+    from src.intelligence.business_state import daily_revenue_scalars
+
+    today = date(2026, 11, 7)
+    args = dict(
+        today=today,
+        yesterday=today - timedelta(days=1),
+        seven_days_ago=today - timedelta(days=7),
+        fourteen_days_ago=today - timedelta(days=14),
+    )
+
+    # Single currency: scalars are produced and carry the real currency.
+    single = daily_revenue_scalars([
+        ("2026-11-07", "ngn", "1000.00", 4, "250.00"),
+        ("2026-11-06", "NGN", "500.00", 2, "250.00"),
+    ], **args)
+    assert single["currency"] == "NGN"
+    assert single["multi_currency"] is False
+    assert single["revenue_today"] == Decimal("1000.00")
+    assert single["revenue_yesterday"] == Decimal("500.00")
+    assert single["revenue_delta_pct"] == 100.0
+
+    # Multiple currencies: no scalar at all — never a summed figure.
+    mixed = daily_revenue_scalars([
+        ("2026-11-07", "USD", "10.00", 1, "10.00"),
+        ("2026-11-07", "NGN", "1000.00", 1, "1000.00"),
+    ], **args)
+    assert mixed["multi_currency"] is True
+    assert mixed["currencies"] == ["NGN", "USD"]
+    assert mixed["currency"] is None
+    assert mixed["revenue_today"] is None
+    assert mixed["revenue_yesterday"] is None
+    assert mixed["revenue_delta_pct"] is None
+    assert mixed["revenue_trend_7d"] is None
+    assert "1010" not in str(mixed)  # no cross-currency total anywhere
+
+    # No orders: zero scalar, no currency assumed.
+    empty = daily_revenue_scalars([], **args)
+    assert empty["currency"] is None
+    assert empty["revenue_today"] == Decimal("0")
+    assert empty["revenue_yesterday"] == Decimal("0")
+
+    # Missing currency codes bucket into UNKNOWN and still stay separate from
+    # a real currency — an unknown is never merged into another code.
+    unknown = daily_revenue_scalars([
+        ("2026-11-07", None, "5.00", 1, "5.00"),
+        ("2026-11-07", "USD", "7.00", 1, "7.00"),
+    ], **args)
+    assert unknown["multi_currency"] is True
+    assert unknown["currencies"] == ["UNKNOWN", "USD"]
 
 
 class FakeLockDB:

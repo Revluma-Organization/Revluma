@@ -7,18 +7,19 @@ lifecycle, relationships and deterministic counts.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from decimal import Decimal
 from typing import Any
 
 from .evidence import (
     STATUS_AVAILABLE, STATUS_PARTIAL, STATUS_UNAVAILABLE, UNIT_COUNT,
     UNIT_CURRENCY, availability_of, ensure_utc, evidence_item, iso, period,
-    utc_now,
+    previous_period, utc_now,
 )
 from .query import safe_query
 from .revenue_evidence import (
-    _STORE_SQL, _COVERAGE_SQL, _coverage, _freshness, retrieve_revenue_evidence,
+    _STORE_SQL, _COVERAGE_SQL, _coverage, _freshness, _safe_zoneinfo,
+    retrieve_revenue_evidence,
 )
 
 _ORDER_AGGREGATE_SQL = """
@@ -235,7 +236,8 @@ def _record(row: Any, items: list, relations: list) -> dict:
 
 def _product_evidence(organization_id: str, db, *, start: datetime, end: datetime,
                       coverage: dict, freshness: dict, limitations: list[str],
-                      filter_sql: str = "", extra_params: dict | None = None) -> tuple[list[dict], str | None]:
+                      filter_sql: str = "", extra_params: dict | None = None,
+                      timezone: str = "UTC") -> tuple[list[dict], str | None]:
     """Historical product/variant line evidence; never substitutes current catalog data."""
     sql = _PRODUCT_AGGREGATE_SQL.replace("LIMIT 500", "LIMIT 501")
     if filter_sql:
@@ -243,7 +245,7 @@ def _product_evidence(organization_id: str, db, *, start: datetime, end: datetim
     rows, error = safe_query(db, sql, {"org_id": organization_id, "start": start, "end": end, **(extra_params or {})})
     if error or len(rows) > 500:
         return [], "product_aggregate_unavailable" if error else "product_aggregate_limit_exceeded"
-    window = period(start, end)
+    window = period(start, end, timezone_label=timezone)
     items: list[dict] = []
     products: dict[tuple, dict] = {}
     definition = ("Historical order-line quantities, distinct order count and discounted line totals grouped by source product, "
@@ -306,7 +308,9 @@ def retrieve_order_evidence(organization_id: str, db, *, start: datetime, end: d
                             now: datetime | None = None, order_reference: str | None = None,
                             latest: bool = False, financial_status: str | None = None,
                             fulfillment_status: str | None = None, cancelled: bool = False,
-                            compare: bool = False) -> dict:
+                            compare: bool = False, year_over_year: bool = False,
+                            timezone: str = "UTC", comparison_start: datetime | None = None,
+                            comparison_end: datetime | None = None) -> dict:
     """Retrieve deterministic order evidence using only authenticated org scope."""
     if not organization_id or not isinstance(organization_id, str):
         raise ValueError("Authenticated organization is required")
@@ -316,7 +320,7 @@ def retrieve_order_evidence(organization_id: str, db, *, start: datetime, end: d
     if end <= start:
         raise ValueError("end must be after start")
     now = ensure_utc(now or utc_now(), field="now")
-    window = period(start, end)
+    window = period(start, end, timezone_label=timezone)
     stores, store_error = safe_query(db, _STORE_SQL, {"org_id": organization_id})
     if store_error or not stores:
         return {"items": [], "warnings": ["authorized_store_scope_unavailable" if store_error else "no_authorized_store"],
@@ -475,14 +479,16 @@ def retrieve_order_evidence(organization_id: str, db, *, start: datetime, end: d
 
     product_items, product_error = _product_evidence(organization_id, db, start=start, end=end,
         coverage=coverage, freshness=freshness, limitations=limitations,
-        filter_sql=order_filter_sql, extra_params=aggregate_params)
+        filter_sql=order_filter_sql, extra_params=aggregate_params, timezone=timezone)
     items.extend(product_items)
     if product_error:
         warnings.append(product_error)
 
     # Reuse Task 198 for money and average order value; never recalculate revenue here.
     revenue = ({} if order_filter_sql else retrieve_revenue_evidence(
-        organization_id, db, start=start, end=end, now=now, compare=compare))
+        organization_id, db, start=start, end=end, now=now, compare=compare,
+        year_over_year=year_over_year, timezone=timezone,
+        comparison_start=comparison_start, comparison_end=comparison_end))
     current = [item for item in revenue.get("items", []) if item.get("period", {}).get("start") == window["start"]]
     counts = [item for item in current if item.get("metric") == "recorded_order_count" and item.get("status") in ("available", "verified_zero")]
     values = [item for item in current if item.get("metric") == "recorded_order_value" and item.get("status") == "available"]
@@ -502,8 +508,16 @@ def retrieve_order_evidence(organization_id: str, db, *, start: datetime, end: d
                         "calculation_version": "task198-aov-v1", "lineage": [value["id"], count["id"]], "reproducible": True}))
     comparison_items = list(revenue.get("comparison_items", []))
     if compare:
-        comparison_start, comparison_end = start - (end - start), start
-        comparison_window = period(comparison_start, comparison_end)
+        if (comparison_start is None) != (comparison_end is None):
+            raise ValueError("comparison_start and comparison_end must be supplied together")
+        if comparison_start is not None:
+            comparison_start = ensure_utc(comparison_start, field="comparison_start")
+            comparison_end = ensure_utc(comparison_end, field="comparison_end")
+            if not (comparison_start < comparison_end <= start):
+                raise ValueError("comparison window must precede the reporting window")
+        else:
+            comparison_start, comparison_end = previous_period(start, end)
+        comparison_window = period(comparison_start, comparison_end, timezone_label=timezone)
         comparison_coverage = _coverage(stores, coverage_rows, comparison_start, comparison_end)
         comparison_params = {**aggregate_params, "start": comparison_start, "end": comparison_end}
         previous_rows, previous_error = safe_query(db, aggregate_sql, comparison_params)
@@ -524,11 +538,29 @@ def retrieve_order_evidence(organization_id: str, db, *, start: datetime, end: d
         previous_products, previous_product_error = _product_evidence(organization_id, db,
             start=comparison_start, end=comparison_end, coverage=comparison_coverage,
             freshness=freshness, limitations=limitations,
-            filter_sql=order_filter_sql, extra_params=comparison_params)
+            filter_sql=order_filter_sql, extra_params=comparison_params, timezone=timezone)
         comparison_items.extend(previous_products)
         if previous_product_error:
             warnings.append(f"comparison_{previous_product_error}")
+    order_year_over_year = None
+    if year_over_year:
+        tz = _safe_zoneinfo(timezone) or datetime_timezone.utc
+        def shift_year(value):
+            local = value.astimezone(tz)
+            try:
+                shifted = local.replace(year=local.year - 1)
+            except ValueError:
+                shifted = local.replace(year=local.year - 1, day=28)
+            return shifted.astimezone(datetime_timezone.utc)
+        year_start, year_end = shift_year(start), shift_year(end)
+        previous_year = retrieve_order_evidence(organization_id, db, start=year_start, end=year_end,
+            now=now, financial_status=financial_status, fulfillment_status=fulfillment_status,
+            cancelled=cancelled, timezone=timezone)
+        year_items = [item for item in previous_year.get("items", []) if item.get("domain") == "orders"]
+        order_year_over_year = {"period": period(year_start, year_end, timezone_label=timezone),
+                                "overall_status": previous_year.get("overall_status"), "items": year_items}
     return {"items": items, "warnings": warnings + revenue.get("warnings", []),
             "limitations": limitations, "coverage": coverage,
             "overall_status": availability_of(items), "comparison": revenue.get("comparison"),
-            "revenue_items": revenue.get("items", []), "comparison_items": comparison_items}
+            "revenue_items": revenue.get("items", []), "comparison_items": comparison_items,
+            "year_over_year": {"revenue": revenue.get("year_over_year"), "orders": order_year_over_year}}

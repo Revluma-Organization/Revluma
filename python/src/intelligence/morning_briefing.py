@@ -37,6 +37,20 @@ logger = logging.getLogger("rev.morning_briefing")
 STABLE_DELTA_THRESHOLD_PCT = 5.0
 
 
+def _revenue_money(state: BusinessState, value: Any, *, places: int = 2) -> str:
+    """Format a scalar revenue amount with its real currency, never assumed.
+
+    The scalar revenue metrics only exist for single-currency organizations
+    (see BusinessState.revenue_currency); when the currency is unknown the
+    amount is shown without a symbol instead of being labelled USD.
+    """
+    if value is None:
+        return "0"
+    amount = f"{float(value):,.{places}f}"
+    currency = getattr(state, "revenue_currency", None)
+    return f"{currency} {amount}" if currency else amount
+
+
 # ── Data classes ──────────────────────────────────────────────────────────────
 
 @dataclass
@@ -309,19 +323,19 @@ def _build_greeting(merchant_name: str, state: BusinessState) -> str:
     if state.cart_anomaly and state.abandoned_cart_value:
         val = float(state.abandoned_cart_value)
         return (
-            f"Good morning {name} — ${val:,.0f} in carts abandoned overnight "
+            f"Good morning {name} — {val:,.0f} in carts abandoned overnight "
             f"and one recovery action is ready to launch."
         )
 
     if state.revenue_today is not None:
-        rev = float(state.revenue_today)
+        rev = _revenue_money(state, state.revenue_today, places=0)
         if state.revenue_delta_pct is not None and abs(state.revenue_delta_pct) >= STABLE_DELTA_THRESHOLD_PCT:
             direction = "up" if state.revenue_delta_pct > 0 else "down"
             return (
                 f"Good morning {name} — revenue is {direction} "
-                f"{abs(state.revenue_delta_pct):.0f}% today at ${rev:,.0f}."
+                f"{abs(state.revenue_delta_pct):.0f}% today at {rev}."
             )
-        return f"Good morning {name} — revenue is ${rev:,.0f} today, stable vs yesterday."
+        return f"Good morning {name} — revenue is {rev} today, stable vs yesterday."
 
     if state.churn_risk_count and state.churn_risk_count > 0:
         return (
@@ -356,7 +370,7 @@ def _build_yesterday_in_numbers(state: BusinessState) -> list[dict]:
             "value":           float(state.revenue_today) if state.revenue_today else 0,
             "delta":           state.revenue_delta_pct,
             "direction":       "up" if state.revenue_delta_pct > 0 else "down",
-            "formatted_value": f"${float(state.revenue_today):,.2f}" if state.revenue_today else "$0",
+            "formatted_value": _revenue_money(state, state.revenue_today) if state.revenue_today else _revenue_money(state, 0),
             "formatted_delta": f"{state.revenue_delta_pct:+.1f}% vs yesterday",
         })
 
@@ -454,8 +468,8 @@ def _build_todays_priority(state: BusinessState) -> dict:
     if state.abandoned_cart_count and state.abandoned_cart_count > 0:
         val = float(state.abandoned_cart_value or 0)
         return {
-            "description":      f"Launch a recovery sequence for {state.abandoned_cart_count} abandoned carts worth ${val:,.0f}. The sooner the recovery fires, the higher the conversion rate.",
-            "estimated_impact": f"At-risk cart value: ${val:,.0f}",
+            "description":      f"Launch a recovery sequence for {state.abandoned_cart_count} abandoned carts worth {val:,.0f}. The sooner the recovery fires, the higher the conversion rate.",
+            "estimated_impact": f"At-risk cart value: {val:,.0f}",
             "action_label":     "Review abandoned carts",
             "action_tool":      "view_carts",
         }
@@ -480,7 +494,7 @@ def _build_todays_priority(state: BusinessState) -> dict:
         opp = state.opportunities[0]
         return {
             "description":      opp.get("description", "No critical actions required today."),
-            "estimated_impact": f"${opp['estimated_value']:,.0f} estimated value" if opp.get("estimated_value") else "Positive impact expected",
+            "estimated_impact": f"{opp['estimated_value']:,.0f} estimated value" if opp.get("estimated_value") else "Positive impact expected",
             "action_label":     opp.get("action", "View details"),
             "action_tool":      _opp_tool(opp.get("category", "")) or "view_analytics",
         }
