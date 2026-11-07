@@ -79,8 +79,8 @@ Local, isolated tests on 2026-11-07:
 
 Required subsequent gates, to be filled only from observed results:
 
-- GitHub CI, including real Prisma/PostgreSQL checks: pending at time of writing.
-- Merge commit: pending.
+- GitHub CI on rebased implementation `c8ec71552da8a18fa348102abeed5e0620375d36`: **all four workflows passed** — Backend tests run `42374264023`, Backend refresh regression `42374264000`, Rev Python regressions `42374264027`, and release-candidate verification `42374264035`. Release verification included real Prisma/PostgreSQL bootstrap, financial/security regressions, dashboard tests, and production build.
+- Final documentation/CI commit and merge commit: pending.
 - Node and Python production revision identity: pending.
 - Authenticated production JSON/SSE conversations on `revluma-test-store-v1.myshopify.com`: pending; no merchant session is available in this environment.
 
