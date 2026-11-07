@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 
 import { useIntegrationStates } from "@/hooks/useIntegrationStates";
 import { IntegrationStatusBadge } from "@/components/IntegrationStatus";
+import { SyncProgressCard } from "@/components/SyncProgress";
 import {
   platformStatusFromStates,
   normalizeIntegrationState,
@@ -475,7 +476,9 @@ export default function Integrations() {
       : "not_connected";
 
   return (
-    <div className="mx-auto max-w-[1480px] space-y-6">
+    // Task 215 mobile guard: w-full + overflow-x-clip ensure no horizontal
+    // page scroll at 320–430px; individual cards use min-w-0/break-words.
+    <div className="mx-auto w-full max-w-[1480px] space-y-6 overflow-x-clip">
       {/* Page header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -695,6 +698,14 @@ export default function Integrations() {
                               {isRetrying ? "Setup running" : "Retry setup"}
                             </button>
                           )}
+                          {/* Task 215 — authoritative sync-progress + idempotent
+                              retry. A pure consumer of the backend contract;
+                              mobile-first (no overflow, stacked, touch targets). */}
+                          <SyncProgressCard
+                            storeId={store.id}
+                            onReconnect={() => void handleReconnect(store)}
+                            className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-900/30"
+                          />
                         </div>
                         {webhookDetailsStoreId === store.id && createPortal(
                           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Shopify setup details">

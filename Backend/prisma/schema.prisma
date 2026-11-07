@@ -266,6 +266,7 @@ model stores {
   sync_attempt_count                Int                                 @default(0)
   recovery_status                   String                              @default("not_required") @db.VarChar(32)
   integration_lifecycle_events      integration_lifecycle_events[]
+  sync_retry_requests               sync_retry_requests[]
   abandoned_carts                   abandoned_carts[]
   coupons                           coupons[]
   customers                         customers[]
@@ -1854,6 +1855,30 @@ model integration_lifecycle_events {
 
   @@unique([store_id, source, event_reference])
   @@index([store_id, observed_at(sort: Desc)], map: "idx_integration_lifecycle_store_observed")
+}
+
+/// Task 215 — idempotent, tenant-scoped manual sync-retry requests.
+/// The (store_id, scope, request_key) uniqueness is the idempotency guarantee:
+/// replaying the same client request returns the same row (never a duplicate
+/// job). An in-flight request for the same scope is returned as-is so a
+/// retry can never double-start a job. No credentials or provider payloads are
+/// stored here — only the safe, closed status machine + reason code.
+model sync_retry_requests {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  store_id      String    @db.Uuid
+  scope         String    @default("all") @db.VarChar(48)
+  request_key   String    @db.VarChar(160)
+  status        String    @default("requested") @db.VarChar(32)
+  job_id        String?   @db.Uuid
+  reason_code   String?   @db.VarChar(80)
+  attempt       Int       @default(1)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @db.Timestamptz(6)
+  completed_at  DateTime? @db.Timestamptz(6)
+  stores        stores    @relation(fields: [store_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([store_id, scope, request_key], map: "uq_sync_retry_requests_idempotency")
+  @@index([store_id, status, created_at(sort: Desc)], map: "idx_sync_retry_requests_store_status")
 }
 
 model churn_training_observations {
