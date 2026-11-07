@@ -124,8 +124,22 @@ exports.getEvidence = async (req, res, next) => {
     req.once('aborted', cancel);
     res.once('close', cancel);
     if (evidenceId) {
-      const item = await service.retrieveEvidenceById({ organizationId: org.id, storeId, evidenceId, signal: abort.signal });
-      return res.status(200).json({ success: true, read_only: true, evidence: item });
+      try {
+        const item = await service.retrieveEvidenceById({ organizationId: org.id, storeId, evidenceId, signal: abort.signal });
+        return res.status(200).json({ success: true, read_only: true, evidence: item });
+      } catch (lookupError) {
+        // Task 201 — integration evidence items live in the canonical
+        // integration collection; fall back to it before reporting 404.
+        if (lookupError.code !== 'EVIDENCE_NOT_FOUND') throw lookupError;
+        const item = await require('../services/revIntegrationEvidenceService')
+          .retrieveIntegrationEvidenceById({ organizationId: org.id, storeId, evidenceId, signal: abort.signal });
+        return res.status(200).json({ success: true, read_only: true, evidence: item });
+      }
+    }
+    if (resourceId === require('../services/revIntegrationEvidenceService').INTEGRATION_RESOURCE_ID) {
+      const integrationService = require('../services/revIntegrationEvidenceService');
+      const result = await integrationService.retrieveIntegrationEvidence({ organizationId: org.id, storeId, signal: abort.signal });
+      return res.status(200).json({ success: true, read_only: true, ...result });
     }
     const result = await service.retrieveEvidence({ organizationId: org.id, storeId, resourceId, limit: req.query?.limit, period, signal: abort.signal });
     return res.status(200).json({ success: true, read_only: true, ...result });
