@@ -100,7 +100,7 @@ class Provenance(StrictModel):
 class Measurement(StrictModel):
     amount: str | None = Field(pattern=r"^-?\d+(?:\.\d+)?$")
     currency: str | None = Field(pattern=r"^[A-Z]{3}$")
-    interpretation: Literal["gross", "net", "affected", "estimated_opportunity", "recoverable", "not_applicable"]
+    interpretation: Literal["gross", "net", "affected", "recorded_observed", "recorded_aggregate", "observed_difference", "estimated_opportunity", "recoverable", "verified_recovered", "not_applicable"]
     tax: Literal["included", "excluded", "unknown", "not_applicable"]
     shipping: Literal["included", "excluded", "unknown", "not_applicable"]
     discounts: Literal["included", "excluded", "deducted", "unknown", "not_applicable"]
@@ -115,6 +115,17 @@ class Confidence(StrictModel):
     level: Literal["high", "medium", "low", "none"]
     score: float = Field(ge=0, le=1)
     basis: str = Field(min_length=1, max_length=800)
+
+
+class FinancialImpact(StrictModel):
+    methodology_id: str = Field(min_length=1, max_length=160)
+    methodology_version: str = Field(min_length=1, max_length=120)
+    inputs: dict
+    coverage: dict
+    assumptions: list[str] = Field(min_length=1, max_length=30)
+    limitations: list[str] = Field(min_length=1, max_length=30)
+    eligible: bool
+    independent_attribution_verified: bool
 
 
 class EvidenceItem(StrictModel):
@@ -141,6 +152,7 @@ class EvidenceItem(StrictModel):
     freshness: Freshness
     provenance: Provenance
     measurement: Measurement | None
+    financial_impact: FinancialImpact | None = None
     confidence: Confidence
     store_scope: Literal["store", "organization"]
     limitations: list[str] = Field(max_length=30)

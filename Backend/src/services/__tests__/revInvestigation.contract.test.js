@@ -43,7 +43,7 @@ function validResult() {
     facts: [],
     hypotheses: [],
     unknowns: [],
-    recommendations: [{ label: 'Compare periods', executed: false }],
+    recommendations: [{ label: 'Compare periods', executed: false, action_state: 'recommended', execution_status: 'not_requested', merchant_confirmation: 'not_confirmed', independent_verification: 'unverified' }],
   };
 }
 

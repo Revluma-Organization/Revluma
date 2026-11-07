@@ -23,6 +23,7 @@ const { prisma }        = require('../configs/database');
 const mlService         = require('../services/mlService');
 const logger            = require('../utils/logger');
 const { formatSseFrame } = require('../services/revStream');
+const { safePersistedNarrative } = require('../services/revClaimGuardrails');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -522,11 +523,16 @@ exports.getConversation = async (req, res, next) => {
       LIMIT ${limit} OFFSET ${offset}
     `;
 
+    const safeMessages = messages.map((message) => ({
+      ...message,
+      content: message.role === 'rev' ? safePersistedNarrative(message.content) : message.content,
+    }));
+
     return res.status(200).json({
       success: true,
       data: {
         conversation: conv,
-        messages,
+        messages: safeMessages,
         pagination: { limit, offset },
       },
     });

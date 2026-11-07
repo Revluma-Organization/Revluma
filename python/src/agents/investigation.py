@@ -57,6 +57,12 @@ from ..intelligence.epistemics import (
     validate_claim,
 )
 from ..intelligence.query import release_read_transaction, safe_query
+from ..intelligence.claim_guardrails import (
+    direct_action_or_recovery_answer,
+    initialise_action_states,
+    narrative_guardrail_errors,
+    validate_response_guardrails,
+)
 from ..intelligence.revenue_evidence import retrieve_revenue_evidence
 from .base_agent import AgentResult, normalize_specialist_status
 from .tools import ToolAuthorizationError, catalog, run_tool
@@ -1612,6 +1618,7 @@ def _money_text(value: Any, currency: str | None) -> str:
 def _item_fact(item: dict, text: str) -> dict:
     return {
         "text": text,
+        "causal_status": "observed",
         "evidence_ids": [item["id"]],
         "metric": item.get("metric"),
         "currency": item.get("currency"),
@@ -1862,7 +1869,8 @@ def _facts_from_items(items: list[dict], intent: str) -> list[dict]:
     deduped: list[dict] = []
     position: dict[str, int] = {}
     for fact in facts:
-        key = fact["text"]
+        fact_period = fact.get("period") or {}
+        key = (fact["text"], fact_period.get("start"), fact_period.get("end"), fact.get("currency"))
         if key in position:
             target = deduped[position[key]]
             for evidence_id in fact["evidence_ids"]:
@@ -1926,6 +1934,7 @@ def _comparison_facts(comparison: dict | None,
             continue
         facts.append({
             "text": text,
+            "causal_status": "observed_difference",
             "evidence_ids": change_ids,
             "metric": change["metric"],
             "currency": currency,
@@ -2017,6 +2026,7 @@ def _hypotheses(items: list[dict], intent: str) -> list[dict]:
         return []
     return [{
         "statement": statement,
+        "causal_status": "hypothesis",
         "status": "hypothesis",
         "verified": False,
         "confidence": 0.2,
@@ -2036,7 +2046,7 @@ def _recommendations(intent: str, items: list[dict]) -> list[dict]:
     mapping = {
         INTENT_REVENUE: [
             {"label": "Compare the same currencies period by period before changing anything",
-             "why": "A currency-matched comparison avoids a false decline caused by mixed currency totals.",
+             "why": "A currency-matched comparison avoids aggregating mixed currencies into a false decline.",
              "measure": "Recorded order value and order count per currency for both periods."},
             {"label": "Investigate order volume and average order value separately",
              "why": "The arithmetic driver of the change narrows where to look next.",
@@ -2454,6 +2464,10 @@ def _validate_narrative(text_value: str, facts: list[dict], items: list[dict]) -
     if not text_value or len(text_value.strip()) < 40:
         return False, "empty"
     lowered = text_value.lower()
+    guardrail_errors = narrative_guardrail_errors(text_value)
+    if guardrail_errors:
+        reason = guardrail_errors[0]
+        return False, "claimed_execution" if reason == "generated_action_or_outcome_claim" else reason
     for phrase in ("i have changed", "i updated", "i've updated", "i cancelled", "i refunded",
                    "i have applied", "i sent the", "i launched", "i created the discount"):
         if phrase in lowered:
@@ -3286,6 +3300,18 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         _emit({"event": "final", "data": result})
         return result
 
+    guardrail_answer = direct_action_or_recovery_answer(message)
+    if guardrail_answer:
+        result = _conversation_result(
+            message, {**classification, "intent": INTENT_GENERAL},
+            investigation_id=investigation_id, store_context=store_context,
+            user_id=user_id, window=window, routed=routed)
+        result["text"] = guardrail_answer
+        result["response_type"] = "recommendation"
+        result["mode_reason"] = "action reports and financial recovery require independent authority"
+        _emit({"event": "final", "data": result})
+        return result
+
     if CORRECTION_PATTERN.search(message):
         invalidate_investigation_memory(organization_id, db)
         result = _clarification_result(message, classification,
@@ -3670,6 +3696,11 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         hypotheses=hypotheses)
     result["response_mode"] = mode
     result["mode_reason"] = mode_reason
+
+    # Generation is not action authority. Initialise the complete lifecycle
+    # contract, then fail closed before persistence or either response transport.
+    initialise_action_states(recommendations)
+    validate_response_guardrails(result)
 
     if persist and conversation_id:
         persist_investigation_context(

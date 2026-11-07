@@ -96,7 +96,7 @@ const investigationFinal = {
   },
   evidence: { schema_version: 'rev-evidence-v2', items: [revenueEvidence] },
   facts: [{ text: 'Recorded order value USD 1571.90', evidence_ids: [revenueEvidence.id] }],
-  recommendations: [{ label: 'Review checkout', why: 'x', measure: 'y', executed: false }],
+  recommendations: [{ label: 'Review checkout', why: 'x', measure: 'y', executed: false, action_state: 'recommended', execution_status: 'not_requested', merchant_confirmation: 'not_confirmed', independent_verification: 'unverified' }],
   response_mode: 'investigation',
   mode_reason: 'the answer combines several store checks',
   understanding: { intent: 'revenue', gate: 'tools', source: 'fast_path', confidence: 1.0 },

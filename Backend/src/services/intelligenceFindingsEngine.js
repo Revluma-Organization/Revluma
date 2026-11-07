@@ -5,6 +5,7 @@
  * Inputs MUST be computed from verified, organization-scoped source records.
  * No finding is emitted for missing, stale, or insufficient evidence.
  */
+const { narrativeGuardrailErrors } = require('./revClaimGuardrails');
 const TYPES = Object.freeze({
   INTEGRATION_FAILURE: 'integration_failure',
   REVENUE_CHANGE: 'revenue_change',
@@ -26,11 +27,18 @@ const evidenceReady = (evidence, minCount = 1) =>
   new Date(evidence.previousEnd) <= new Date(evidence.currentStart) &&
   (new Date(evidence.currentEnd) - new Date(evidence.currentStart)) ===
     (new Date(evidence.previousEnd) - new Date(evidence.previousStart));
-const finding = (type, scope, severity, title, description, evidence, action) => ({
-  type, scope, severity, title, description, evidence,
-  action, lifecycle: 'open', detected_at: new Date().toISOString(),
-  dedupe_key: [type, scope.storeId, scope.segment || 'all', evidence.currentStart || 'current', evidence.currentEnd || 'current'].join(':'),
-});
+const finding = (type, scope, severity, title, description, evidence, action) => {
+  const unsafe = narrativeGuardrailErrors(`${title} ${description} ${action?.guidance || ''}`);
+  if (unsafe.length) throw new Error(`Unsafe finding language: ${unsafe.join(', ')}`);
+  return {
+    type, scope, severity, title, description, evidence,
+    action: action ? { ...action, action_state: 'recommended', executed: false,
+      execution_status: 'not_requested', merchant_confirmation: 'not_confirmed',
+      independent_verification: 'unverified' } : action,
+    lifecycle: 'open', detected_at: new Date().toISOString(),
+    dedupe_key: [type, scope.storeId, scope.segment || 'all', evidence.currentStart || 'current', evidence.currentEnd || 'current'].join(':'),
+  };
+};
 function detectIntegrationFailure({ scope, store, now = new Date(), maxSyncAgeMinutes = 120 }) {
   if (!scope?.organizationId || !scope?.storeId || !store || store.id !== scope.storeId) return null;
   const setupFailed = store.setup_status === 'failed' || store.sync_status === 'failed';
