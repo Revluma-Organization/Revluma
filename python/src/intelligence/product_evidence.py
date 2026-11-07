@@ -12,14 +12,14 @@ SELECT p.id, p.store_id, p.external_id, p.name, p.type, p.status, p.vendor,
  p.sku, p.created_at, p.updated_at, p.created_at_auto, p.updated_at_auto,
  p.manage_stock, p.stock_quantity, p.stock_status
 FROM products p JOIN stores s ON s.id = p.store_id
-WHERE s.organization_id = :org_id AND s.status IN ('active','connected','syncing')
+WHERE s.organization_id = :org_id::uuid AND s.status IN ('active','connected','syncing')
 """
 _VARIANT_SQL = """
 SELECT v.store_id, v.product_external_id, v.external_id, v.title, v.sku, v.barcode,
  v.inventory_item_external_id, v.price, v.compare_at_price, v.selected_options,
  v.position, v.tracked, v.available_for_sale, v.created_at, v.updated_at, v.synced_at
 FROM product_variants v JOIN stores s ON s.id = v.store_id
-WHERE s.organization_id = :org_id AND s.status IN ('active','connected','syncing')
+WHERE s.organization_id = :org_id::uuid AND s.status IN ('active','connected','syncing')
  AND v.product_external_id = ANY(:product_ids::text[])
 ORDER BY v.product_external_id, v.position, v.external_id LIMIT 1000
 """
@@ -32,14 +32,14 @@ JOIN inventory_items i ON i.store_id=v.store_id AND i.external_id=v.inventory_it
 LEFT JOIN inventory_levels il ON il.store_id=i.store_id AND il.inventory_item_external_id=i.external_id
 LEFT JOIN locations l ON l.store_id=il.store_id AND l.external_id=il.location_external_id
 JOIN stores s ON s.id=v.store_id
-WHERE s.organization_id=:org_id AND s.status IN ('active','connected','syncing')
+WHERE s.organization_id=:org_id::uuid AND s.status IN ('active','connected','syncing')
  AND v.product_external_id=ANY(:product_ids::text[])
 ORDER BY v.product_external_id,v.external_id,l.external_id LIMIT 2000
 """
 _LEDGER_SQL = """
 SELECT d.store_id,d.domain,d.status,d.pagination_complete,d.last_succeeded_at,d.error_code
 FROM store_sync_domain_states d JOIN stores s ON s.id=d.store_id
-WHERE s.organization_id=:org_id AND s.status IN ('active','connected','syncing')
+WHERE s.organization_id=:org_id::uuid AND s.status IN ('active','connected','syncing')
  AND d.domain IN ('products','inventory_items','inventory_levels','locations')
 """
 _PERFORMANCE_SQL = """
@@ -48,7 +48,7 @@ SELECT oi.store_id, oi.external_product_id, oi.external_variant_id, o.currency,
  COUNT(DISTINCT o.id) AS order_count
 FROM order_items oi JOIN orders o ON o.id=oi.order_id AND o.store_id=oi.store_id
 JOIN stores s ON s.id=oi.store_id
-WHERE s.organization_id=:org_id AND s.status IN ('active','connected','syncing')
+WHERE s.organization_id=:org_id::uuid AND s.status IN ('active','connected','syncing')
  AND oi.external_product_id=ANY(:product_ids::text[])
  AND oi.ordered_at>=:start AND oi.ordered_at<:end
  AND (o.recovery_status IS NULL OR o.recovery_status NOT IN ('cancelled','canceled','voided','deleted'))
@@ -59,7 +59,7 @@ _LINE_SQL = """
 SELECT oi.product_name,o.currency,SUM(oi.quantity) AS units,SUM(oi.line_total) AS line_value
 FROM order_items oi JOIN orders o ON o.id=oi.order_id AND o.store_id=oi.store_id
 JOIN stores s ON s.id=oi.store_id
-WHERE s.organization_id=:org_id AND s.status IN ('active','connected','syncing')
+WHERE s.organization_id=:org_id::uuid AND s.status IN ('active','connected','syncing')
  AND oi.ordered_at>=:start AND oi.ordered_at<:end
  AND (o.recovery_status IS NULL OR o.recovery_status NOT IN ('cancelled','canceled','voided','deleted'))
 GROUP BY oi.product_name,o.currency ORDER BY line_value DESC NULLS LAST,oi.product_name LIMIT 6
@@ -69,7 +69,7 @@ SELECT f.id,f.store_id,f.type,f.severity,f.status,f.title,f.detected_at,f.update
  p.external_id AS product_id,p.store_id AS product_store_id
 FROM intelligence_findings f JOIN products p ON p.store_id=f.store_id
 JOIN stores s ON s.id=f.store_id
-WHERE s.organization_id=:org_id AND f.organization_id=:org_id
+WHERE s.organization_id=:org_id::uuid AND f.organization_id=:org_id::uuid
  AND s.status IN ('active','connected','syncing') AND p.external_id=ANY(:product_ids::text[])
  AND (f.evidence->>'productId'=p.external_id OR f.evidence->>'product_id'=p.external_id)
 ORDER BY f.detected_at DESC LIMIT 100
