@@ -487,10 +487,12 @@ async function authorizedStores(db, organizationId, storeId) {
     select: { id: true, organization_id: true, platform: true, status: true, shop_domain: true, granted_scopes: true, last_synced_at: true, installed_at: true },
   });
   // has_token via a raw boolean probe: the token value itself is never
-  // selected, returned or logged by this service. Scalar-bound IN list
-  // (no array-literal rendering) so the SQL is explicit and parameterised.
+  // selected, returned or logged by this service. Prisma's tag-function
+  // $queryRaw cannot express a variable-length IN list, so the probe uses
+  // the parameterised string form ($queryRawUnsafe: values are bound as
+  // $n parameters, never interpolated).
   let withToken = [];
-  if (rows.length && typeof db.$queryRaw === 'function') {
+  if (rows.length && typeof db.$queryRawUnsafe === 'function') {
     const params = [];
     let clause = 'SELECT s.id::text AS store_id, (s.access_token IS NOT NULL) AS has_token FROM stores s WHERE s.id IN (';
     for (const row of rows) {
@@ -499,7 +501,7 @@ async function authorizedStores(db, organizationId, storeId) {
       params.push(String(row.id));
     }
     clause += ')';
-    withToken = await db.$queryRaw(clause, ...params);
+    withToken = await db.$queryRawUnsafe(clause, ...params);
   }
   const tokenById = new Map((withToken || []).map(row => [String(row.store_id), row.has_token === true]));
   return rows.map(row => ({ ...row, has_token: tokenById.get(row.id) === true }));

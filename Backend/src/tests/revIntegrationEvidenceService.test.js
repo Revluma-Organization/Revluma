@@ -54,7 +54,7 @@ function db({ stores = [store()], ledgerRows = ledgers(), regRows = regs(), deli
           && (!args.where.id || row.id === args.where.id));
       },
     },
-    $queryRaw: async (sql, ...values) => {
+    $queryRawUnsafe: async (sql, ...values) => {
       calls.push(['raw', String(sql)]);
       const ids = values.map(String);
       return ids.map(id => ({ store_id: id, has_token: hasToken[id] !== false }));
