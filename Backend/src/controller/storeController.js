@@ -6,6 +6,12 @@ const { REQUIRED_SUBSCRIPTIONS } = require('../services/shopifyWebhookService');
 const { buildIntegrationDiagnostics } = require('../services/integrationDiagnostics');
 const { diagnosticFor } = require('../services/integrationLifecycle');
 const { INTEGRATION_STATE_CONTRACT_VERSION, retrieveIntegrationStates, validateIntegrationState } = require('../services/revIntegrationState');
+const {
+  PROGRESS_CONTRACT_VERSION,
+  buildSyncProgress,
+  validateSyncProgress,
+} = require('../services/integrationProgress');
+const { requestSyncRetry, loadStoreForRetry } = require('../services/integrationRetry');
 
 async function optionalRows(model, args) {
   if (!model?.findMany) return [];
@@ -194,6 +200,61 @@ exports.getIntegrationState = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+// Task 215 — authoritative sync-progress contract (rev-sync-progress-v1).
+// Tenant-scoped, fail-closed: a malformed contract is a 500, never emitted.
+exports.getSyncProgress = async (req, res, next) => {
+  try {
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
+    const organizationId = membership.organization_id;
+    const store = await loadStoreForRetry(prisma, organizationId, req.params.storeId);
+    if (!store) {
+      return res.status(404).json({ success: false, error: 'Shopify store not found.' });
+    }
+    const domainRows = await prisma.store_sync_domain_states
+      .findMany({ where: { store_id: store.id } })
+      .catch(() => []);
+    const progress = buildSyncProgress({ store, domainRows });
+    const problems = validateSyncProgress(progress);
+    if (problems.length > 0) {
+      console.warn('sync_progress_contract_invalid', { store_id: store.id, problems });
+      return res.status(500).json({ success: false, error: 'Sync progress contract validation failed.' });
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.status(200).json({ success: true, data: progress });
+  } catch (error) { next(error); }
+};
+
+// Task 215 — idempotent, tenant-scoped manual sync-retry. The service enforces
+// ownership, deterministic eligibility, and DB-level dedup/idempotency. The
+// actual sync is started fire-and-forget AFTER the service returns (202).
+exports.requestSyncRetry = async (req, res, next) => {
+  try {
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
+    const organizationId = membership.organization_id;
+    const scope = req.body?.scope === undefined ? 'all' : req.body.scope;
+    const requestKey = req.body?.request_key ?? req.headers['idempotency-key'] ?? null;
+    const result = await requestSyncRetry({
+      db: prisma, organizationId, storeId: req.params.storeId, scope, requestKey,
+    });
+    if (!result.ok) {
+      return res.status(result.httpStatus).json({ success: false, error: result.error, data: result.data || null });
+    }
+    if (result.data.started) {
+      // Start the sync AFTER the transaction committed. Never await it (the
+      // client polls sync-progress); never let a sync failure 500 the accepted
+      // request. The engine's own distributed lock guards a live run.
+      const { syncShopifyStore } = require('../services/shopifySync');
+      const store = await loadStoreForRetry(prisma, organizationId, req.params.storeId).catch(() => null);
+      if (store) {
+        syncShopifyStore(store, { reconcileWebhooks: false }).catch((error) => {
+          console.warn('sync_retry_execution_failed', { store_id: store.id, error_type: error?.code || error?.name });
+        });
+      }
+    }
+    return res.status(202).json({ success: true, data: result.data });
+  } catch (error) { next(error); }
 };
 
 exports._private = { responseStore, REQUIRED_SUBSCRIPTIONS };

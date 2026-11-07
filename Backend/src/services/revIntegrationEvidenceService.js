@@ -268,6 +268,12 @@ function webhookEvidence(registrations, deliveries, now) {
     topicStatuses[topic].push(String(row.status || 'unknown'));
   }
   const registrationFailed = Object.entries(topicStatuses).filter(([, s]) => s.some(v => ['failed', 'error'].includes(v))).map(([t]) => t);
+  // Task 213 canonical-state contract (golden arbiter): registration "active"
+  // is delivery/status based, NOT provider-verification based. Task 214's
+  // provider-verified webhook health is preserved in buildWebhookDiagnostics
+  // (/shopify/diagnostics) and in the connection badge (connectionState); it
+  // must not silently change this shared canonical-state surface (213/214
+  // merge defect fix — see implementation-decisions REV-DEC-0022 addendum).
   const registrationActive = Object.entries(topicStatuses).filter(([, s]) => s.some(v => ['active', 'pending', 'created'].includes(v))).map(([t]) => t);
 
   const recent = new Date(now.getTime() - 7 * 24 * 3600 * 1000);

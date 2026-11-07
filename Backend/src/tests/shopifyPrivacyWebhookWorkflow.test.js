@@ -387,6 +387,9 @@ test('controller routes privacy webhooks through the durable workflow and acknow
   const databaseModule = require.cache[require.resolve('../configs/database')];
   databaseModule.exports.prisma.webhook_deliveries = {
     create: async () => ({ id: 'delivery-1' }),
+    // Task 214 added read-before-update to markDelivery (processing_latency_ms
+    // from received_at). The fake must expose findUnique for that path.
+    findUnique: async () => ({ id: 'delivery-1', received_at: new Date() }),
     update: async ({ where, data }) => { state.audit_logs.push({ action: 'delivery_state', context: { deliveryId: where.id, ...data } }); return { id: where.id, ...data }; },
   };
   const cryptoLocal = crypto;

@@ -716,6 +716,18 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
       logger.warn('shopify_stale_sync_completion_ignored', { store_id: store.id, job_id: syncJobId });
       return { success: false, stale: true, jobId: syncJobId };
     }
+    // Task 215 — finalize any in-flight manual retry request for this store so
+    // the request's status machine is truthful (never left dangling as running).
+    // Best-effort: a finalize failure must never break an otherwise successful sync.
+    try {
+      const { finalizeSyncRetry } = require('./integrationRetry');
+      await finalizeSyncRetry({
+        db: prisma, storeId: store.id, status: partialSync ? 'partial' : 'completed',
+        reasonCode: productsError?.code || (customerSyncLimited ? 'SHOPIFY_CUSTOMERS_ACCESS_DENIED' : null),
+      });
+    } catch (finalizeError) {
+      logger.warn('shopify_sync_retry_finalize_failed', { store_id: store.id, error_type: finalizeError?.code || finalizeError?.name });
+    }
     // Certification is best-effort and strictly fail-closed. A failed proof
     // must never block routine order reconciliation or fabricate findings.
     try {
@@ -768,6 +780,17 @@ async function syncShopifyStore(store, { reconcileWebhooks = true } = {}) {
         store_id: store.id,
         error_type: stateError.code || stateError.name || 'store_state_update_error',
       });
+    }
+    // Task 215 — finalize any in-flight manual retry request as failed so the
+    // request's status machine reflects the authoritative outcome.
+    try {
+      const { finalizeSyncRetry } = require('./integrationRetry');
+      await finalizeSyncRetry({
+        db: prisma, storeId: store.id, status: 'failed',
+        reasonCode: String(error.code || error.name || 'sync_error').slice(0, 80),
+      });
+    } catch (finalizeError) {
+      logger.warn('shopify_sync_retry_finalize_failed', { store_id: store.id, error_type: finalizeError?.code || finalizeError?.name });
     }
     try {
       const failedStage = error.setupStage || error.sync_stage || setupStage;
