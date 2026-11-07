@@ -37,6 +37,7 @@ jobs:
       - name: Run complete backend test suite
         run: |
           set -o pipefail
+          set +e
           npm test 2>&1 | tee /tmp/revluma-backend-tests.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
