@@ -58,3 +58,7 @@ The user supplied the earlier report export and explicitly authorized publishing
 ## 2026-11-07 Task 202 follow-up
 
 Task 202 consolidates the authorized original Tasks 202–206 without starting later work. Its [diagnosis](diagnostics/TASK-202-FINDING-PRODUCT-TEMPORAL-EVIDENCE.md), [implementation record](implementation/TASK-202-FINDING-PRODUCT-TEMPORAL-EVIDENCE.md) and [validation record](validation/TASK-202-FINDING-PRODUCT-TEMPORAL-EVIDENCE.md) cover lifecycle-aware finding evidence, product/variant/inventory/order-line identity and deterministic merchant-calendar comparisons. Local tests do not establish production behavior; deployment identity and authenticated read-only verification on the active test store remain required before a production-complete status.
+
+## 2026-11-07 Task 207
+
+Task 207 consolidates original Tasks 224–226. Its [diagnosis](diagnostics/TASK-207-INVESTIGATION-OUTCOMES.md), [implementation](implementation/TASK-207-INVESTIGATION-OUTCOMES.md) and [validation](validation/TASK-207-INVESTIGATION-OUTCOMES.md) record the versioned investigation outcome contract, integration/retry distinctions, certified history/comparison eligibility, unsupported-question policy, JSON/SSE/Node parity and continuity. Production acceptance is not inferred from local tests or a merge; deployed revisions and authenticated active-store behavior must be verified separately.

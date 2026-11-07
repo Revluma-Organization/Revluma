@@ -349,8 +349,21 @@ def _coverage(stores: list, coverage_rows: list | None, start: datetime,
         else:
             incomplete.append(str(store_id))
     total = len(stores)
+    certified_windows = [
+        (ensure_utc(_row_value(row, "coverage_start")), ensure_utc(_row_value(row, "coverage_end")))
+        for row in (coverage_rows or [])
+        if isinstance(_row_value(row, "coverage_start"), datetime)
+        and isinstance(_row_value(row, "coverage_end"), datetime)
+    ]
+    # Task 207: history is the certified observation window, never the OAuth
+    # installation date or the earliest row that happened to be retrieved.
+    history_start = min((pair[0] for pair in certified_windows), default=None)
+    history_end = max((pair[1] for pair in certified_windows), default=None)
     return {
-        "status": "complete" if total and len(certified) == total else "partial",
+        "coverage_start": history_start.isoformat() if history_start else None,
+        "coverage_end": history_end.isoformat() if history_end else None,
+        "history_basis": "certified_observation_window",
+        "status": "complete" if total and len(certified) == total else "unknown" if not certified_windows else "partial",
         "period_status": "covered" if total and len(certified) == total else "partial",
         "store_count": total,
         "certified_store_count": len(certified),

@@ -52,6 +52,13 @@ const conversationalFinal = {
   read_only: true,
   response_type: 'chat',
   text: 'Doing well, thank you for asking! Anything on your mind about the store?',
+  investigation_outcome: {
+    contract_version: 'rev-investigation-outcome-v1', outcome: 'success',
+    tenant: { organization_id: '11111111-1111-4111-8111-111111111111', store_ids: [] },
+    required_domains: [], available_domains: [], unavailable_domains: [],
+    answerability: { can_answer: [], cannot_establish: [] }, retry: { eligible: false },
+    history: {}, coverage: {}, diagnostic_reference: 'REV-0123456789ABCDEF',
+  },
   response: null,
   investigation: {
     id: 'inv-conv-1', question: 'How are you doing?', intent: 'social',
@@ -88,6 +95,13 @@ const investigationFinal = {
   read_only: true,
   response_type: 'analysis',
   text: 'Recorded order value fell 12.0% against the prior period.',
+  investigation_outcome: {
+    contract_version: 'rev-investigation-outcome-v1', outcome: 'success',
+    tenant: { organization_id: '11111111-1111-4111-8111-111111111111', store_ids: [] },
+    required_domains: [], available_domains: [], unavailable_domains: [],
+    answerability: { can_answer: [], cannot_establish: [] }, retry: { eligible: false },
+    history: {}, coverage: {}, diagnostic_reference: 'REV-0123456789ABCDEF',
+  },
   investigation: {
     id: 'inv-1', question: 'How is revenue this week?', intent: 'revenue',
     label: 'Revenue', status: 'complete', period,

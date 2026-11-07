@@ -64,6 +64,10 @@ class ToolResult:
     comparison: dict | None = None
     year_over_year: dict | None = None
     store_ids: list[str] = field(default_factory=list)
+    # Bounded, privacy-safe operational diagnostics used by the Task 207
+    # investigation-outcome composer. This is not merchant narrative and never
+    # contains credentials or raw infrastructure exceptions.
+    diagnostics: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -77,6 +81,7 @@ class ToolResult:
             "comparison": self.comparison,
             "year_over_year": self.year_over_year,
             "store_ids": self.store_ids,
+            "diagnostics": self.diagnostics,
             "read_only": READ_ONLY,
             "schema_version": EVIDENCE_SCHEMA_VERSION,
         }
@@ -257,6 +262,11 @@ def _integration(org_id: str, db, params: dict, window: dict) -> ToolResult:
         data_sources=["stores", "store_sync_domain_states", "webhook_registrations",
                       "webhook_deliveries", "intelligence_order_coverage"],
         row_count=len(evidence.get("items", [])),
+        diagnostics={"integration": {
+            "overall_status": evidence.get("overall_status"),
+            "components": evidence.get("components"),
+            "stores": evidence.get("stores", []),
+        }},
     )
 
 

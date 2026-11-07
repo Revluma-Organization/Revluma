@@ -28,6 +28,13 @@ function response(overrides = {}) {
   return {
     success: true, read_only: true, text: 'Recorded order value was USD 12.50.', response_type: 'analysis',
     investigation: { id: 'investigation-1', intent: 'revenue', status: 'completed', period: {} },
+    investigation_outcome: {
+      contract_version: 'rev-investigation-outcome-v1', outcome: 'success',
+      tenant: { organization_id: ORG, store_ids: [STORE] },
+      required_domains: [], available_domains: [], unavailable_domains: [],
+      answerability: { can_answer: [], cannot_establish: [] }, retry: { eligible: false },
+      history: {}, coverage: {}, diagnostic_reference: 'REV-0123456789ABCDEF',
+    },
     evidence: { schema_version: 'rev-evidence-v2', items: [evidence] },
     facts: [{ text: 'Recorded order value was USD 12.50.', evidence_ids: [evidence.id] }],
     hypotheses: [], unknowns: [], recommendations: [], ...overrides,

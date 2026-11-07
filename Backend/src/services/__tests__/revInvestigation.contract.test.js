@@ -21,6 +21,13 @@ function validResult() {
       period: { start: '2026-10-25T12:00:00Z', end: '2026-11-01T12:00:00Z' },
       steps: [],
     },
+    investigation_outcome: {
+      contract_version: 'rev-investigation-outcome-v1', outcome: 'success',
+      tenant: { organization_id: '11111111-1111-4111-8111-111111111111', store_ids: [] },
+      required_domains: [], available_domains: [], unavailable_domains: [],
+      answerability: { can_answer: [], cannot_establish: [] },
+      retry: { eligible: false }, history: {}, coverage: {}, diagnostic_reference: 'REV-0123456789ABCDEF',
+    },
     evidence: {
       schema_version: 'rev-evidence-v2',
       items: [createEvidence({
