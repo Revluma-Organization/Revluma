@@ -233,3 +233,80 @@ foundation that this task extends — it does not start from scratch:
   live-store end-to-end acceptance (sign-in, ask Rev about a capability,
   inspect Integrations/Command Center) is the human runbook step, consistent
   with Tasks 201–212. The retired store is never touched.
+
+## 5. Implementation status (completed 2026-11-07)
+
+**Decision:** REV-DEC-0021 (docs/mvp-execution/implementation-decisions.md).
+
+- **Python keystone** `src/intelligence/integration_state.py` — 12-state
+  machine with the documented precedence, `normalize_store_record`
+  (token-dropping), `validate_integration_state`-equivalent contract,
+  `canonical_state_summary` (compact bounded-context projection),
+  `worst_state`. **57 tests** (`tests/test_rev_integration_state.py`),
+  including the 35-scenario matrix, precedence invariants, the credential
+  non-leakage assertions, and the golden-summary pin.
+- **Golden** `python/scripts/gen_integration_state_golden.py` →
+  `Backend/src/services/__tests__/revIntegrationState.golden.json` (29 cases
+  incl. all 12 states + 6 rollups; now includes `expected_summary` per case,
+  so both runtimes are pinned to the same compact projection).
+- **Node keystone** `Backend/src/services/revIntegrationState.js` —
+  `evaluateIntegrationState`, `normalizeStoreRecord`,
+  `canonicalStateSummary`, `validateIntegrationState` (fail-closed,
+  regex-guards credential material in the serialized output),
+  `retrieveIntegrationStates` (single-store → one state or null; list →
+  array), lazy DB resolution. **42 parity tests** against the golden.
+- **API** (`storeController.js` + `storeRoute.js`):
+  `GET /api/v1/stores/integration-states` →
+  `{contract_version, states[]}`; `GET /api/v1/stores/:storeId/
+  integration-state` → one state (404 cross-tenant, no existence leak);
+  `GET /api/v1/stores` gains additive per-store `integration_state`.
+  Membership-gated (403 without active membership); any invalid contract →
+  500 fail-closed. **8 boundary tests**
+  (`Backend/src/tests/revIntegrationStateApi.test.js`).
+- **Evidence surfaces** (Python `integration_evidence.py` + Node
+  `revIntegrationEvidenceService.js`): each store entry carries the compact
+  `integration_state` (bounded for the Rev context; the full contract stays
+  on the product API). Python store SQL selects `updated_at` additively for
+  the syncing-heartbeat stall rule; the Node select matches. **3 + 2 new
+  evidence tests** per runtime.
+- **Rev tool** (`python/src/agents/tools.py` `_integration`): availability
+  governed by the canonical worst state via `_CANONICAL_STATUS_BY_STATE`
+  (connected→available; synchronizing/limited/needs_attention/sync
+  partial/failure→partial; disconnected/authorization states/unsupported/
+  unknown→unavailable); diagnostics carry `canonical_states` per store.
+- **Frontend** (all fail-closed; green ONLY for `connected`):
+  - `src/lib/integrationState.ts` — contract types,
+    `normalizeIntegrationState` (rejects unknown versions, out-of-set
+    statuses, missing store identity, malformed sub-blocks, and any block
+    containing credential material), labels/styles (green accent reserved
+    for `connected`, asserted in tests), `worstIntegrationState` rollup,
+    `platformStatusFromStates`, `integrationStateCopy` (capability-aware
+    page copy). **15 unit tests.**
+  - `src/hooks/useIntegrationStates.ts` — polls
+    `GET /stores/integration-states`; 15s while any store is
+    `synchronizing`/`needs_attention`, else 60s (first tick scheduled after
+    the initial fetch so it already reflects activity); refetch on window
+    focus and via `refetch` (called on OAuth callback return and during the
+    2s setup-poll); **no sessionStorage**. **7 unit tests.**
+  - `src/components/IntegrationStatus.tsx` — shared badge.
+  - `src/pages/Integrations.tsx` — platform badge + per-store badge driven
+    by canonical states (store list's additive block as fallback); the
+    `sessionStorage` cache, `ConnectionStatus`/`statusesFromStores`/
+    `StatusBadge` local derivation are deleted; header pill green only when
+    the worst canonical state is `connected`; store records exist but no
+    valid canonical state → `unknown`, never `connected`. Setup checklist +
+    retry flow unchanged (they operate on webhook_details).
+  - `src/pages/Overview.tsx` — headline copy, Operational health tiles
+    (connection = canonical label; Synchronization = sync phase; Webhook
+    health = webhook state; Data completeness = certified coverage), CTA
+    routing ("Investigate with Rev" only when the canonical state has
+    usable data: connected/synchronizing/limited_access), findings panel
+    gate — all driven by the canonical worst state.
+- **Verification (this branch):** Python `test_rev_integration_state.py`
+  57/57; Python `test_rev_integration_evidence.py` 48/48; full Python suite
+  2328 passed (4 pre-existing `test_db_diagnostics` failures also fail on
+  clean `e465a6d` — unrelated, environment-dependent); Node
+  `revIntegrationState.test.js` 42/42; Node
+  `revIntegrationEvidenceService.test.js` 19/19; Node
+  `revIntegrationStateApi.test.js` 8/8; frontend full suite 539/539;
+  `tsc --noEmit` clean; eslint clean on all touched files.

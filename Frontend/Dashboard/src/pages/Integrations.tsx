@@ -15,8 +15,12 @@ import magentoLogo from "@/assets/magento-logo.png";
 import GlassmorphismCard from "@/components/GlassmorphismCard";
 import { createPortal } from "react-dom";
 
-// Types
-type ConnectionStatus = "not_connected" | "connecting" | "connected" | "error" | "syncing";
+import { useIntegrationStates } from "@/hooks/useIntegrationStates";
+import { IntegrationStatusBadge } from "@/components/IntegrationStatus";
+import {
+  platformStatusFromStates,
+  normalizeIntegrationState,
+} from "@/lib/integrationState";
 
 interface Platform {
   id: "shopify" | "woocommerce";
@@ -63,19 +67,10 @@ interface ConnectedStore {
   last_synced_at: string | null;
   sync_status?: "pending" | "in_progress" | "complete" | "failed";
   monitoring_mode?: "disconnected" | "webhook_and_sync" | "sync_only_limited" | "awaiting_verified_sync";
-}
-
-const STORE_STATUS_CACHE_KEY = "revluma:integration-store-status:v1";
-
-function readCachedStores(): ConnectedStore[] {
-  try {
-    const cached = sessionStorage.getItem(STORE_STATUS_CACHE_KEY);
-    if (!cached) return [];
-    const parsed: unknown = JSON.parse(cached);
-    return Array.isArray(parsed) ? parsed as ConnectedStore[] : [];
-  } catch {
-    return [];
-  }
+  // Task 213 — canonical rev-integration-state-v1 block (additive) from the
+  // product API. The UI normalizes it fail-closed; a missing/invalid block
+  // renders as `unknown`, never as connected.
+  integration_state?: unknown;
 }
 
 function isStoreSetupComplete(store: ConnectedStore): boolean {
@@ -86,25 +81,6 @@ function isStoreSetupComplete(store: ConnectedStore): boolean {
     webhooksRequired > 0 &&
     webhooksRegistered >= webhooksRequired &&
     Boolean(store.last_synced_at);
-}
-
-function statusesFromStores(stores: ConnectedStore[]): Record<Platform["id"], ConnectionStatus> {
-  const statuses: Record<Platform["id"], ConnectionStatus> = {
-    shopify: "not_connected",
-    woocommerce: "not_connected",
-  };
-  const priority: Record<ConnectionStatus, number> = { not_connected: 0, connecting: 1, connected: 2, syncing: 3, error: 4 };
-  stores.forEach((store) => {
-    let status: ConnectionStatus = 'not_connected';
-    if (store.connection_status === "connected") {
-      status = store.setup_status === 'failed' || store.sync_status === 'failed' || store.status === 'error'
-        ? 'error' : isStoreSetupComplete(store) ? 'connected' : 'syncing';
-    } else if (store.platform === "shopify" && store.installed_at) {
-      status = "error";
-    }
-    if (priority[status] > priority[statuses[store.platform]]) statuses[store.platform] = status;
-  });
-  return statuses;
 }
 
 // Platform config
@@ -155,39 +131,6 @@ const COMING_SOON: ComingSoonPlatform[] = [
   { name: "Custom API", tagline: "Bring your own stack", icon: Code2, accentColor: "#4C8DFF" },
 ];
 
-// Status badge
-const STATUS_LABEL: Record<ConnectionStatus, string> = {
-  not_connected: "Not Connected",
-  connecting: "Connecting…",
-  connected: "Connected",
-  error: "Needs attention",
-  syncing: "Syncing / setup pending",
-};
-
-const STATUS_STYLE: Record<ConnectionStatus, { color: string; bg: string }> = {
-  not_connected: { color: "hsl(var(--t3))", bg: "hsl(var(--bg-4))" },
-  connecting: { color: "hsl(var(--amber))", bg: "hsl(var(--amber) / 0.12)" },
-  connected: { color: "hsl(var(--accent))", bg: "hsl(var(--accent) / 0.12)" },
-  syncing: { color: "hsl(var(--amber))", bg: "hsl(var(--amber) / 0.12)" },
-  error: { color: "hsl(var(--red))", bg: "hsl(var(--red) / 0.12)" },
-};
-
-function StatusBadge({ status }: { status: ConnectionStatus }) {
-  const { color, bg } = STATUS_STYLE[status];
-  return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold"
-      style={{ color, background: bg }}
-    >
-      <span
-        className={cn("h-1.5 w-1.5 rounded-full", status === "connecting" && "animate-pulse")}
-        style={{ background: color }}
-      />
-      {STATUS_LABEL[status]}
-    </span>
-  );
-}
-
 function FieldInfo({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Popover>
@@ -233,9 +176,11 @@ export default function Integrations() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const initialCachedStores = readCachedStores();
-  const [stores, setStores] = useState<ConnectedStore[]>(initialCachedStores);
-  const [statuses, setStatuses] = useState<Record<Platform["id"], ConnectionStatus>>(() => statusesFromStores(initialCachedStores));
+  // Task 213 — the canonical integration states (server-evaluated, polled
+  // adaptively, never cached in sessionStorage) are the source of truth for
+  // the connection status shown to the merchant.
+  const { states, byStoreId, refetch: refetchStates } = useIntegrationStates();
+  const [stores, setStores] = useState<ConnectedStore[]>([]);
   const [loading, setLoading] = useState(true);
   const [storeLoadError, setStoreLoadError] = useState(false);
   const [retryingStoreIds, setRetryingStoreIds] = useState<string[]>([]);
@@ -284,13 +229,7 @@ export default function Integrations() {
       if (res.data?.success !== true || !Array.isArray(stores)) {
         throw new Error("The store list response was invalid.");
       }
-      setStatuses(statusesFromStores(stores));
       setStores(stores);
-      try {
-        sessionStorage.setItem(STORE_STATUS_CACHE_KEY, JSON.stringify(stores));
-      } catch {
-        // The page still works when browser storage is unavailable.
-      }
       setStoreLoadError(false);
       return stores;
     } catch (e) {
@@ -313,6 +252,7 @@ export default function Integrations() {
       next.delete("reference");
       setSearchParams(next, { replace: true });
       void fetchStatuses();
+      void refetchStates();
       return;
     }
     const connectionAttempt = callbackStatus === "connected" ||
@@ -367,19 +307,21 @@ export default function Integrations() {
       next.delete("stage");
       next.delete("reference");
       setSearchParams(next, { replace: true });
+      void refetchStates();
     } else {
       void fetchStatuses();
     }
-  }, [fetchStatuses, searchParams, setSearchParams, showStatusCard]);
+  }, [fetchStatuses, refetchStates, searchParams, setSearchParams, showStatusCard]);
 
   const shopifySetupInProgress = stores.some((store) => store.platform === "shopify" && store.connection_status === "connected" && (store.setup_status === "in_progress" || store.setup_status === "webhooks_pending" || store.setup_status === "pending"));
   useEffect(() => {
     if (!shopifySetupInProgress) return;
     const intervalId = window.setInterval(() => {
       void fetchStatuses();
+      void refetchStates();
     }, 2000);
     return () => window.clearInterval(intervalId);
-  }, [shopifySetupInProgress, fetchStatuses]);
+  }, [shopifySetupInProgress, fetchStatuses, refetchStates]);
 
   async function handleRetryStoreSetup(storeId: string) {
     if (retryingStoreIds.includes(storeId)) return;
@@ -475,6 +417,15 @@ export default function Integrations() {
   const fullySetupStores = stores.filter(isStoreSetupComplete);
   const anyFullySetup = fullySetupStores.length > 0;
   const allConnectedStoresReady = stores.filter((store) => store.connection_status === "connected").every(isStoreSetupComplete);
+  // Canonical status for the page: green ONLY when the worst server-evaluated
+  // state is `connected`. Store records exist but no valid canonical state
+  // was served (still loading, request failed, or invalid contract) →
+  // fail-closed to `unknown`, never a green "connected".
+  const shopifyStatus = states.length
+    ? platformStatusFromStates(states, "shopify")
+    : anyConnected || stores.length
+      ? "unknown"
+      : "not_connected";
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
@@ -491,7 +442,7 @@ export default function Integrations() {
         <div className="flex items-center gap-2 self-start rounded-full border border-border bg-bg-2 px-3 py-1.5 text-[0.72rem] font-semibold text-t2 sm:self-auto">
           <span
             className="h-1.5 w-1.5 rounded-full"
-            style={{ background: anyConnected ? "hsl(var(--accent))" : "hsl(var(--t4))" }}
+            style={{ background: shopifyStatus === "connected" ? "hsl(var(--accent))" : "hsl(var(--t4))" }}
           />
           {loading ? "Checking connections…" : storeLoadError ? "Connection status unavailable" : `${connectedCount} Shopify store${connectedCount === 1 ? "" : "s"} connected`}
         </div>
@@ -557,7 +508,9 @@ export default function Integrations() {
       {/* Platform cards — side by side */}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2" aria-label="Platform integrations">
         {PLATFORMS.filter(platform => platform.id === "shopify").map((platform) => {
-          const status = statuses[platform.id];
+          // Canonical, server-evaluated status (worst of the platform's
+          // stores); fail-closed to `unknown`. Green only for `connected`.
+          const status = shopifyStatus;
           const isConnected = stores.some(store => store.platform === platform.id && store.connection_status === "connected");
 
           return (
@@ -592,7 +545,7 @@ export default function Integrations() {
                   </div>
                   {loading ? (
                     <span className="inline-flex items-center gap-2 rounded-full border border-border bg-bg-3 px-3 py-1.5 text-xs font-medium text-t2"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking status</span>
-                   ) : storeLoadError ? <span className="text-xs font-semibold text-t2">Status unavailable</span> : <StatusBadge status={status} />}
+                   ) : storeLoadError ? <span className="text-xs font-semibold text-t2">Status unavailable</span> : <IntegrationStatusBadge status={status} />}
                 </div>
 
                 {/* Description & Features */}
@@ -634,6 +587,12 @@ export default function Integrations() {
                   .map((store) => {
                     const isRetrying = retryingStoreIds.includes(store.id) || store.setup_status === "in_progress";
                     const setupDone = isStoreSetupComplete(store);
+                    // Canonical per-store state (worst case: polled states, then
+                    // the store list's additive block). Fail-closed to `unknown`.
+                    const storeState =
+                      byStoreId.get(store.id)?.overall_status ??
+                      normalizeIntegrationState(store.integration_state)?.overall_status ??
+                      "unknown";
                     const details = store.webhook_details ?? [];
                     const topics = [
                       ["APP_UNINSTALLED", "App uninstalled"],
@@ -657,7 +616,10 @@ export default function Integrations() {
                     return (
                       <Fragment key={store.id}>
                         <div key={store.id} className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-5 text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 sm:px-6">
-                          <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{store.shop_domain}</p>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{store.shop_domain}</p>
+                            <IntegrationStatusBadge status={storeState} size="sm" />
+                          </div>
                           <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{heading}</h3>
                           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{setupDone ? "Your store is connected, all required webhooks are registered, and initial synchronization is complete." : isRetrying ? "Connecting your store and configuring its webhook subscriptions." : store.setup_status === "failed" || failedCount > 0 ? "Webhook registration or initial synchronization needs attention." : "Store setup is in progress or awaiting verification."}</p>
                           {!setupDone && store.connection_status === "connected" && (
