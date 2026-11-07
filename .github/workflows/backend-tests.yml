@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://revluma:revluma@localhost:5432/revluma
+          DIRECT_URL: postgresql://revluma:revluma@localhost:5432/revluma
         run: npm run prisma -- validate
       - name: Run complete backend test suite
         run: |

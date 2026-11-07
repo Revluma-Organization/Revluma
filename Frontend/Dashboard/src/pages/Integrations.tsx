@@ -209,10 +209,7 @@ export default function Integrations() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Task 213 — the canonical integration states (server-evaluated, polled
-  // adaptively, never cached in sessionStorage) are the source of truth for
-  // the connection status shown to the merchant. Task 214's reconnect /
-  // retry / diagnostics workspace consumes the same authoritative store rows.
+  // Task 213 canonical states remain authoritative for per-store presentation.
   const { states, byStoreId, refetch: refetchStates } = useIntegrationStates();
   const [stores, setStores] = useState<ConnectedStore[]>([]);
   const [loading, setLoading] = useState(true);

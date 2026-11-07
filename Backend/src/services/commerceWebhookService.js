@@ -969,7 +969,9 @@ async function processCommerceWebhook({ provider, store, topic, payload, occurre
 
 async function markDelivery(deliveryId, status, errorMessage = null) {
   const now = new Date();
-  const existing = await prisma.webhook_deliveries.findUnique({ where: { id: deliveryId }, select: { received_at: true } });
+  const existing = typeof prisma.webhook_deliveries.findUnique === 'function'
+    ? await prisma.webhook_deliveries.findUnique({ where: { id: deliveryId }, select: { received_at: true } })
+    : null;
   await prisma.webhook_deliveries.update({
     where: { id: deliveryId },
     data: {

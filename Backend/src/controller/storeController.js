@@ -3,12 +3,9 @@
 const { requireMembership } = require('../utils/organizationContext');
 const prisma = require('../configs/database').prisma;
 const { REQUIRED_SUBSCRIPTIONS } = require('../services/shopifyWebhookService');
-const {
-  INTEGRATION_STATE_CONTRACT_VERSION,
-  retrieveIntegrationStates,
-  validateIntegrationState,
-} = require('../services/revIntegrationState');
 const { buildIntegrationDiagnostics } = require('../services/integrationDiagnostics');
+const { diagnosticFor } = require('../services/integrationLifecycle');
+const { INTEGRATION_STATE_CONTRACT_VERSION, retrieveIntegrationStates, validateIntegrationState } = require('../services/revIntegrationState');
 const {
   PROGRESS_CONTRACT_VERSION,
   buildSyncProgress,
@@ -16,21 +13,9 @@ const {
 } = require('../services/integrationProgress');
 const { requestSyncRetry, loadStoreForRetry } = require('../services/integrationRetry');
 
-// The store-list contract is "return the stores": auxiliary evidence (webhook
-// registrations/deliveries, sync-domain ledger, lifecycle events) is additive.
-// If any of it is unavailable (absent model in a partial mock, or a transient
-// ledger error) the list degrades to empty rows for that source rather than
-// failing the whole request. The canonical block degrades to
-// `integration_state: null` (see attachCanonicalStates); the dedicated
-// /integration-states endpoints remain strict and fail closed. (213/214 merge
-// defect fix — Task 214's direct sync-ledger query must not 500 the list.)
 async function optionalRows(model, args) {
   if (!model?.findMany) return [];
-  try {
-    return await model.findMany(args);
-  } catch {
-    return [];
-  }
+  return model.findMany(args);
 }
 
 function responseStore(store, registrations, deliveries, syncRows, events) {
@@ -81,9 +66,8 @@ function responseStore(store, registrations, deliveries, syncRows, events) {
 exports.getStores = async (req, res, next) => {
   try {
     const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
-    const organizationId = membership.organization_id;
     const stores = await prisma.stores.findMany({
-      where: { organization_id: organizationId },
+      where: { organization_id: membership.organization_id },
       select: {
         id: true, platform: true, shop_domain: true, status: true, access_token: true,
         installed_at: true, last_synced_at: true, updated_at: true,
@@ -94,36 +78,69 @@ exports.getStores = async (req, res, next) => {
       },
     });
     const ids = stores.filter(store => store.platform === 'shopify').map(store => store.id);
-    const [registrations, deliveries, syncRows, events] = await Promise.all([
-      optionalRows(prisma.webhook_registrations, { where: { store_id: { in: ids } } }),
-      optionalRows(prisma.webhook_deliveries, { where: { store_id: { in: ids } }, orderBy: { received_at: 'desc' }, take: 2000 }),
-      optionalRows(prisma.store_sync_domain_states, { where: { store_id: { in: ids } } }),
-      optionalRows(prisma.integration_lifecycle_events, { where: { store_id: { in: ids } }, orderBy: { observed_at: 'desc' }, take: 100 }),
-    ]);
-    const responseStores = stores.map(store => responseStore(
-      store,
-      registrations.filter(row => row.store_id === store.id),
-      deliveries.filter(row => row.store_id === store.id),
-      syncRows.filter(row => row.store_id === store.id),
-      events.filter(row => row.store_id === store.id),
-    ));
-    // Task 213 — attach the backend-authoritative canonical contract to every
-    // store. This is ADDITIVE and fail-safe: the list's contract is to return
-    // the stores, so a canonical-evaluation failure degrades to
-    // `integration_state: null` (UI renders `unknown` — never connected)
-    // instead of failing the whole list. The dedicated /integration-states
-    // endpoints stay strict (fail-closed 500) as the authoritative source.
-    await attachCanonicalStates(responseStores, organizationId);
-    return res.status(200).json({
-      success: true,
-      data: {
-        schema_version: 'store-integration-list-v2',
-        stores: responseStores,
-      },
-    });
+    let responseStores;
+    try {
+      const [registrations, deliveries, syncRows, events] = await Promise.all([
+        optionalRows(prisma.webhook_registrations, { where: { store_id: { in: ids } } }),
+        optionalRows(prisma.webhook_deliveries, { where: { store_id: { in: ids } }, orderBy: { received_at: 'desc' }, take: 2000 }),
+        optionalRows(prisma.store_sync_domain_states, { where: { store_id: { in: ids } } }),
+        optionalRows(prisma.integration_lifecycle_events, { where: { store_id: { in: ids } }, orderBy: { observed_at: 'desc' }, take: 100 }),
+      ]);
+      responseStores = stores.map(store => responseStore(
+        store,
+        registrations.filter(row => row.store_id === store.id),
+        deliveries.filter(row => row.store_id === store.id),
+        syncRows.filter(row => row.store_id === store.id),
+        events.filter(row => row.store_id === store.id),
+      ));
+    } catch {
+      responseStores = stores.map(store => {
+        const safeStore = { ...store };
+        delete safeStore.access_token;
+        return {
+          ...safeStore,
+          connection_status: 'unknown', connection_state: 'unknown', setup_status: 'unknown', sync_status: 'unknown',
+          diagnostic: diagnosticFor('BACKEND_FAILURE'),
+          diagnostics: { evidence_status: 'unavailable', note: 'Integration evidence could not be loaded; no connection, webhook, or sync health is inferred.' },
+        };
+      });
+    }
+    await attachCanonicalStates(responseStores, membership.organization_id);
+    return res.status(200).json({ success: true, data: { schema_version: 'store-integration-list-v2', stores: responseStores } });
   } catch (error) { next(error); }
 };
 
+exports.getShopifyDiagnostics = async (req, res, next) => {
+  try {
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
+    const storeId = req.query.store_id;
+    if (typeof storeId !== 'string' || !/^[0-9a-f-]{36}$/i.test(storeId)) {
+      return res.status(400).json({ success: false, error: 'A valid store_id is required.' });
+    }
+    const store = await prisma.stores.findFirst({ where: { id: storeId, organization_id: membership.organization_id, platform: 'shopify' } });
+    if (!store) return res.status(404).json({ success: false, error: 'Shopify store not found.' });
+    const [registrations, deliveries, syncRows, events] = await Promise.all([
+      prisma.webhook_registrations.findMany({ where: { store_id: store.id } }),
+      prisma.webhook_deliveries.findMany({ where: { store_id: store.id }, orderBy: { received_at: 'desc' }, take: 2000 }),
+      prisma.store_sync_domain_states.findMany({ where: { store_id: store.id } }),
+      prisma.integration_lifecycle_events.findMany({ where: { store_id: store.id }, orderBy: { observed_at: 'desc' }, take: 10 }),
+    ]);
+    res.set('Cache-Control', 'no-store');
+    return res.status(200).json({ success: true, data: buildIntegrationDiagnostics({ store, registrations, deliveries, syncRows, recentEvents: events }) });
+  } catch (error) { next(error); }
+};
+
+// Attach the canonical rev-integration-state-v1 contract to each store, by
+// id. The shallow connection_status/sync_status fields remain for backward
+// compatibility, but the frontend must consume `integration_state` (the
+// backend-authoritative model) and never re-derive status locally.
+//
+// This is ADDITIVE on the store-list endpoint: the list's contract is to
+// return the stores, so a failure evaluating the canonical state degrades to
+// `integration_state: null` (the UI renders that as `unknown` — fail-closed,
+// never connected) instead of failing the whole list. The dedicated
+// /integration-states endpoints stay strict (fail-closed 500) because they
+// exist to be the authoritative state source.
 async function attachCanonicalStates(responseStores, organizationId, now) {
   let byId = new Map();
   try {
@@ -141,6 +158,7 @@ async function attachCanonicalStates(responseStores, organizationId, now) {
     store.integration_state = byId.get(store.id) || null;
   }
 }
+
 
 exports.getIntegrationStates = async (req, res, next) => {
   try {
@@ -182,26 +200,6 @@ exports.getIntegrationState = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
-
-exports.getShopifyDiagnostics = async (req, res, next) => {
-  try {
-    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
-    const storeId = req.query.store_id;
-    if (typeof storeId !== 'string' || !/^[0-9a-f-]{36}$/i.test(storeId)) {
-      return res.status(400).json({ success: false, error: 'A valid store_id is required.' });
-    }
-    const store = await prisma.stores.findFirst({ where: { id: storeId, organization_id: membership.organization_id, platform: 'shopify' } });
-    if (!store) return res.status(404).json({ success: false, error: 'Shopify store not found.' });
-    const [registrations, deliveries, syncRows, events] = await Promise.all([
-      prisma.webhook_registrations.findMany({ where: { store_id: store.id } }),
-      prisma.webhook_deliveries.findMany({ where: { store_id: store.id }, orderBy: { received_at: 'desc' }, take: 2000 }),
-      prisma.store_sync_domain_states.findMany({ where: { store_id: store.id } }),
-      prisma.integration_lifecycle_events.findMany({ where: { store_id: store.id }, orderBy: { observed_at: 'desc' }, take: 10 }),
-    ]);
-    res.set('Cache-Control', 'no-store');
-    return res.status(200).json({ success: true, data: buildIntegrationDiagnostics({ store, registrations, deliveries, syncRows, recentEvents: events }) });
-  } catch (error) { next(error); }
 };
 
 // Task 215 — authoritative sync-progress contract (rev-sync-progress-v1).
@@ -248,8 +246,7 @@ exports.requestSyncRetry = async (req, res, next) => {
       // client polls sync-progress); never let a sync failure 500 the accepted
       // request. The engine's own distributed lock guards a live run.
       const { syncShopifyStore } = require('../services/shopifySync');
-      const { loadStoreForRetry: _l } = require('../services/integrationRetry');
-      const store = await _l(prisma, organizationId, req.params.storeId).catch(() => null);
+      const store = await loadStoreForRetry(prisma, organizationId, req.params.storeId).catch(() => null);
       if (store) {
         syncShopifyStore(store, { reconcileWebhooks: false }).catch((error) => {
           console.warn('sync_retry_execution_failed', { store_id: store.id, error_type: error?.code || error?.name });
@@ -260,4 +257,4 @@ exports.requestSyncRetry = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
-exports._private = { responseStore, attachCanonicalStates, REQUIRED_SUBSCRIPTIONS };
+exports._private = { responseStore, REQUIRED_SUBSCRIPTIONS };

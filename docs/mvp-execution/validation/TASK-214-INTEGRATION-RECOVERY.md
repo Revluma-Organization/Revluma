@@ -7,8 +7,9 @@ Status: **local/focused evidence green; full CI, deployment and production accep
 - `Backend/src/services/__tests__/task214IntegrationRecovery.test.js`: exactly 75 named scenarios, **75/75 passed**. Covers lifecycle precedence, delayed events, registration versus delivery, resource completion, safe diagnostics, OAuth/reconnect, idempotency, shared surfaces and tenant isolation.
 - Focused callback/webhook/delivery/sync run: **12/12 passed** before the final OAuth lock-owner refinement.
 - Final combined callback/webhook/delivery/sync/matrix run: **77/77 passed**.
-- Integrations UI: **14/14 passed**; full Dashboard **36 files / 522 tests passed**, TypeScript and production build passed., including reconnect identity, duplicate-click prevention, failed-callback cache handling and partial resource diagnostics.
+- Integrations UI: **12/12 passed after the Task 213 rebase**; inherited Integration/Command Center checks **14/14 passed**; full Dashboard **38 files / 542 tests passed**, TypeScript and production build passed., including reconnect identity, duplicate-click prevention, failed-callback cache handling and partial resource diagnostics.
 - Dashboard `npx tsc --noEmit`: **passed**.
+- Inherited Task 213 canonical-state/API suite after rebase: **52/52 passed**.
 - `git diff --check`: **passed**.
 - Local full Backend and Prisma validation are blocked by unavailable Prisma engine downloads from `binaries.prisma.sh`; this is not treated as passing evidence. Real CI is authoritative.
 
@@ -27,3 +28,7 @@ Registration rows show the older nine topics, historical active/succeeded duplic
 5. Confirm no duplicate jobs, data deletion, checkpoint regression or cross-tenant effect.
 
 No production-complete claim is made by this document.
+
+## CI result — 2026-11-07
+
+PR #361 head `40ed6bb` passed all checks: Backend tests run `42424637513`; Backend refresh `42424637596`; release-candidate Prisma/PostgreSQL/security `42424637488`; Dashboard authentication `42424637485`; Dashboard suite/build `42424637488`; Vercel preview; and isolated Tasks 025–032. Prisma generation, schema validation, bootstrap, candidate migration application, zero-drift checks, real PostgreSQL Backend/financial/security/integration evidence suites and Python acceptance all passed. A privacy-workflow mock compatibility defect discovered by the full suite was fixed and rerun; focused Backend including privacy is 83/83. Status: **CI GREEN — DEPLOYMENT AND PRODUCTION ACCEPTANCE PENDING**.
