@@ -104,7 +104,14 @@ exports.receive = async (req, res, next) => {
         discount_code_field_names: arrayShape(payload?.discount_codes),
       });
     }
-    const result = await processCommerceWebhook({ provider, store, topic: headers.topic, payload });
+    const result = await processCommerceWebhook({
+      provider,
+      store,
+      topic: headers.topic,
+      payload,
+      occurredAt: req.headers['x-shopify-triggered-at'] || new Date(),
+      eventReference: delivery.delivery_id,
+    });
     await markDelivery(delivery.id, 'processed');
     logger.info('commerce_webhook_processed', { provider, store_id: store.id, topic: headers.topic, action: result.action });
     return res.status(200).json({ success: true, data: result });

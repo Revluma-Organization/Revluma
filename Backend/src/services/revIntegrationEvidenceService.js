@@ -166,6 +166,12 @@ function normalizeDomainStates(rows, now) {
 
 function connectionState(store, domains) {
   if (!store) return { state: 'not_installed', notes: ['No Shopify installation record exists for this organization.'] };
+  if (store.integration_state && !['unknown', 'connected'].includes(store.integration_state)) {
+    return { state: store.integration_state, reason_code: store.integration_reason_code || 'UNKNOWN', notes: [`Canonical integration lifecycle state: ${store.integration_state} (${store.integration_reason_code || 'UNKNOWN'}).`] };
+  }
+  if (store.integration_state === 'connected') {
+    return { state: 'authenticated', reason_code: store.integration_reason_code || 'CONNECTED', authorization_verified_at: iso(store.authorization_verified_at), notes: [store.authorization_verified_at ? 'Authorization was verified by Shopify at the recorded timestamp; webhook and resource evidence remain independent.' : 'The integration is recorded as connected, but no live authorization verification timestamp is available.'] };
+  }
   const status = String(store.status || 'unknown');
   if (status === 'disconnected' || status === 'revoked') return { state: status, notes: [`The integration is recorded as ${status}.`] };
   if (DISCONNECTED_STORE_STATUSES.includes(status)) return { state: 'disconnected', notes: [`The store record is in state '${status}'.`] };
@@ -262,7 +268,7 @@ function webhookEvidence(registrations, deliveries, now) {
     topicStatuses[topic].push(String(row.status || 'unknown'));
   }
   const registrationFailed = Object.entries(topicStatuses).filter(([, s]) => s.some(v => ['failed', 'error'].includes(v))).map(([t]) => t);
-  const registrationActive = Object.entries(topicStatuses).filter(([, s]) => s.some(v => ['active', 'pending', 'created'].includes(v))).map(([t]) => t);
+  const registrationActive = [...new Set((registrations || []).filter(row => ['active', 'succeeded'].includes(row.status) && row.last_verified_at && row.remediation_required !== true).map(row => String(row.topic || 'unknown')))];
 
   const recent = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
   const asDate = value => (value instanceof Date ? value : value ? new Date(value) : null);
@@ -288,9 +294,9 @@ function webhookEvidence(registrations, deliveries, now) {
   } else if (failed.length && !processedRecent.length) {
     state = 'failed';
     note = 'Webhook deliveries are failing and no recent event was processed successfully.';
-  } else if (processedRecent.length && !failed.length) {
+  } else if (processedRecent.length && !failed.length && !registrationFailed.length && registrationActive.length) {
     state = 'healthy';
-    note = 'Recent webhook events were delivered and processed successfully.';
+    note = 'Required subscriptions were provider-verified and recent webhook events were delivered and processed successfully.';
   } else if (processedRecent.length) {
     state = 'degraded';
     note = 'Recent events were processed, but some deliveries failed; check the failing topics and their affected resources.';
@@ -490,7 +496,7 @@ async function authorizedStores(db, organizationId, storeId) {
   };
   const rows = await db.stores.findMany({
     where, orderBy: { id: 'asc' }, take: MAX_STORES,
-    select: { id: true, organization_id: true, platform: true, status: true, shop_domain: true, granted_scopes: true, last_synced_at: true, installed_at: true },
+    select: { id: true, organization_id: true, platform: true, status: true, shop_domain: true, granted_scopes: true, last_synced_at: true, installed_at: true, integration_state: true, integration_reason_code: true, authorization_verified_at: true, initial_sync_status: true },
   });
   // has_token via a raw boolean probe: the token value itself is never
   // selected, returned or logged by this service. Prisma's tag-function
@@ -535,7 +541,7 @@ async function runRetrieveIntegrationEvidence({ organizationId, storeId = null, 
     }),
     db.webhook_registrations.findMany({
       where: { store_id: { in: storeIds } },
-      select: { store_id: true, topic: true, status: true, last_error: true, attempt_count: true },
+      select: { store_id: true, topic: true, status: true, last_error: true, attempt_count: true, last_verified_at: true, remediation_required: true },
     }),
     db.webhook_deliveries.findMany({
       where: { store_id: { in: storeIds }, received_at: { gte: new Date(now.getTime() - 7 * 24 * 3600 * 1000) } },

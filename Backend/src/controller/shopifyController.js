@@ -47,8 +47,28 @@ exports.installShopify = async (req, res, next) => {
       });
     }
     const normalizedShop = shop.toLowerCase();
+    const reconnectAttemptId = crypto.randomUUID();
     const organization = await getOrganizationByUser(userId, req.user.tenantId);
     if (!organization) return res.status(403).json({ success: false, error: "Active organisation membership required." });
+
+    const reconnectStoreId = req.query.store_id;
+    let reconnectStore = null;
+    if (req.query.mode === 'reconnect' || reconnectStoreId !== undefined) {
+      if (typeof reconnectStoreId !== 'string' || !/^[0-9a-f-]{36}$/i.test(reconnectStoreId)) {
+        return res.status(400).json({ success: false, error: 'A valid store_id is required to reconnect.' });
+      }
+      reconnectStore = await prisma.stores.findFirst({
+        where: { id: reconnectStoreId, organization_id: organization.id, platform: 'shopify', shop_domain: normalizedShop, status: { not: 'deleted' } },
+      });
+      if (!reconnectStore) return res.status(403).json({ success: false, error: 'You cannot reconnect this Shopify store.' });
+      if (!isRedisReady()) return res.status(503).json({ success: false, error: 'Reconnect is temporarily unavailable.' });
+      const reconnectKey = `shopify:oauth:reconnect:${reconnectStore.id}`;
+      const claimed = await getRedisClient().set(reconnectKey, reconnectAttemptId, 'EX', 600, 'NX');
+      if (claimed !== 'OK') return res.status(409).json({ success: false, error: 'A reconnect session is already in progress.' });
+      const { recordIntegrationEvent } = require('../services/integrationLifecycleStore');
+      const transition = await recordIntegrationEvent({ storeId: reconnectStore.id, type: 'reconnect_started', source: 'merchant_oauth', eventReference: `reconnect:${userId}:${Date.now()}` });
+      if (!transition.accepted) return res.status(409).json({ success: false, error: 'Reconnect state could not be started safely.' });
+    }
 
     const state = generateState(userId);
     const cookieOptions = {
@@ -64,6 +84,10 @@ exports.installShopify = async (req, res, next) => {
     res.cookie("shopify_user", userId, cookieOptions);
     res.cookie("shopify_organization", organization.id, cookieOptions);
     res.cookie("shopify_shop", normalizedShop, cookieOptions);
+    if (reconnectStore) {
+      res.cookie('shopify_reconnect_store', reconnectStore.id, cookieOptions);
+      res.cookie('shopify_reconnect_attempt', reconnectAttemptId, cookieOptions);
+    }
     
     const installUrl = buildInstallUrl({
       shop: normalizedShop,
@@ -147,6 +171,23 @@ exports.retryShopifySetup = async (req, res, next) => {
   }
 };
 
+exports.disconnectShopify = async (req, res, next) => {
+  try {
+    const storeId = req.body?.store_id;
+    if (typeof storeId !== 'string' || !/^[0-9a-f-]{36}$/i.test(storeId)) {
+      return res.status(400).json({ success: false, error: 'A valid store_id is required.' });
+    }
+    const organization = await getOrganizationByUser(req.user.id, req.user.tenantId);
+    if (!organization) return res.status(403).json({ success: false, error: 'Active organisation membership required.' });
+    const store = await prisma.stores.findFirst({ where: { id: storeId, organization_id: organization.id, platform: 'shopify' } });
+    if (!store) return res.status(404).json({ success: false, error: 'Shopify store not found.' });
+    const { recordIntegrationEvent } = require('../services/integrationLifecycleStore');
+    const result = await recordIntegrationEvent({ storeId, type: 'merchant_disconnected', reasonCode: 'MERCHANT_DISCONNECTED', source: 'merchant_api', eventReference: `disconnect:${req.user.id}:${Date.now()}` });
+    if (!result.accepted) return res.status(409).json({ success: false, error: 'The integration state changed; refresh before disconnecting.' });
+    return res.status(200).json({ success: true, data: { store_id: storeId, connection_state: 'disconnected', reason_code: 'MERCHANT_DISCONNECTED' } });
+  } catch (error) { next(error); }
+};
+
 /**GET /api/v1/shopify/callback, Handle Shopify OAuth callback.*/
 exports.shopifyCallback = async (req, res, next) => {
   const requestId = crypto.randomUUID();
@@ -182,7 +223,12 @@ exports.shopifyCallback = async (req, res, next) => {
     } = req.query;
 
     if (authorizationError === 'access_denied') {
-      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user', 'shopify_organization']) {
+      const reconnectStoreId = req.signedCookies?.shopify_reconnect_store;
+      if (reconnectStoreId) {
+        const { recordIntegrationEvent } = require('../services/integrationLifecycleStore');
+        await recordIntegrationEvent({ storeId: reconnectStoreId, type: 'reconnect_failed', reasonCode: 'OAUTH_CANCELLED', source: 'merchant_oauth' }).catch(() => null);
+      }
+      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user', 'shopify_organization', 'shopify_reconnect_store', 'shopify_reconnect_attempt']) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations?shopify=cancelled', configuredFrontendUrl);
@@ -316,10 +362,43 @@ exports.shopifyCallback = async (req, res, next) => {
     });
     logStage('completed', { store_id: store.id });
 
-    stage = 'initial_setup';
+    stage = 'authorization_verification';
+    const { verifyShopifyAuthorization } = require('../services/shopifyAuthorization');
+    const { recordIntegrationEvent } = require('../services/integrationLifecycleStore');
+    const authorization = await verifyShopifyAuthorization(store);
+    if (!authorization.verified) {
+      const eventType = authorization.reasonCode === 'PERMISSIONS_MISSING' ? 'permissions_missing'
+        : authorization.reasonCode === 'AUTHORIZATION_EXPIRED' ? 'authorization_expired'
+          : authorization.reasonCode === 'AUTHORIZATION_REQUIRED' ? 'authorization_required' : 'reconnect_failed';
+      await recordIntegrationEvent({ storeId: store.id, type: eventType, reasonCode: authorization.reasonCode, source: 'shopify_oauth', eventReference: `oauth:${requestId}:authorization` });
+      const frontendUrl = new URL('/dashboard/integrations', configuredFrontendUrl);
+      frontendUrl.searchParams.set('shopify', 'reconnect_failed');
+      frontendUrl.searchParams.set('reason', authorization.reasonCode);
+      frontendUrl.searchParams.set('shop', normalizedShop);
+      return res.redirect(frontendUrl.toString());
+    }
+    await prisma.stores.update({
+      where: { id: store.id },
+      data: { granted_scopes: authorization.grantedScopes.join(','), authorization_verified_at: authorization.verifiedAt },
+    });
+    await recordIntegrationEvent({ storeId: store.id, type: 'authorization_verified', reasonCode: 'CONNECTED', observedAt: authorization.verifiedAt, source: 'shopify_oauth', eventReference: `oauth:${requestId}:verified` });
+
+    stage = 'webhook_reconciliation';
+    let webhookSetupComplete = false;
+    try {
+      const { reconcileShopifyWebhooks } = require('../services/shopifyWebhookService');
+      await reconcileShopifyWebhooks(store);
+      webhookSetupComplete = true;
+    } catch (webhookError) {
+      logger.warn('shopify_reconnect_webhooks_incomplete', { store_id: store.id, error_type: webhookError.code || webhookError.name || 'webhook_error' });
+      await recordIntegrationEvent({ storeId: store.id, type: 'webhook_failed', reasonCode: 'WEBHOOK_REGISTRATION_FAILED', source: 'shopify_oauth', eventReference: `oauth:${requestId}:webhooks` });
+    }
+
+    stage = 'sync_recovery';
     logStage('started', { store_id: store.id });
-    logStage('deferred', { reason: 'setup_runs_after_oauth_response', store_id: store.id });
-    syncShopifyStore(store).catch((error) => {
+    // The response reports authorization/recovery progress, never initial-sync
+    // completion. The sync owns its distributed lock and durable lifecycle.
+    syncShopifyStore(store, { reconcileWebhooks: false }).catch((error) => {
       logger.error('shopify_sync_failed', {
         store_id: store?.id,
         error_type: error?.code || error?.name || 'sync_error',
@@ -352,7 +431,7 @@ exports.shopifyCallback = async (req, res, next) => {
     stage = 'frontend_redirect';
     logStage('started', { frontend_url_configured: Boolean(process.env.FRONTEND_URL) });
     const frontendUrl = new URL('/dashboard/integrations', configuredFrontendUrl);
-    frontendUrl.searchParams.set('shopify', 'connected');
+    frontendUrl.searchParams.set('shopify', webhookSetupComplete ? 'authorized' : 'recovery_pending');
     frontendUrl.searchParams.set('shop', normalizedShop);
     if (!['http:', 'https:'].includes(frontendUrl.protocol)) {
       const error = new Error('Frontend URL must use HTTP or HTTPS.');
@@ -362,6 +441,11 @@ exports.shopifyCallback = async (req, res, next) => {
     logStage('completed', { redirect_host: frontendUrl.host });
     return res.redirect(frontendUrl.toString());
   } catch (error) {
+    const reconnectStoreId = req.signedCookies?.shopify_reconnect_store;
+    if (reconnectStoreId) {
+      const { recordIntegrationEvent } = require('../services/integrationLifecycleStore');
+      await recordIntegrationEvent({ storeId: reconnectStoreId, type: 'reconnect_failed', reasonCode: stage === 'store_persistence' ? 'BACKEND_FAILURE' : 'TOKEN_EXCHANGE_FAILED', source: 'shopify_oauth', eventReference: `oauth:${requestId}:failed` }).catch(() => null);
+    }
     const errorType = error.code || error.name || 'shopify_callback_error';
     logStage('failed', { error_type: errorType });
     logger.error('shopify_callback_failed', {
@@ -381,7 +465,7 @@ exports.shopifyCallback = async (req, res, next) => {
       configured_api_version: error.configuredApiVersion || undefined,
     });
     if (frontendOrigin) {
-      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user', 'shopify_organization']) {
+      for (const name of ['shopify_state', 'shopify_user', 'shopify_shop', 'oauth_user', 'shopify_organization', 'shopify_reconnect_store', 'shopify_reconnect_attempt']) {
         res.clearCookie(name, { ...buildCookieOptions(req), path: '/' });
       }
       const frontendUrl = new URL('/dashboard/integrations', frontendOrigin);
@@ -399,5 +483,20 @@ exports.shopifyCallback = async (req, res, next) => {
       stage,
       reference: requestId,
     });
+  } finally {
+    const reconnectStoreId = req.signedCookies?.shopify_reconnect_store;
+    const reconnectAttemptId = req.signedCookies?.shopify_reconnect_attempt;
+    if (reconnectStoreId && reconnectAttemptId && isRedisReady()) {
+      try {
+        await getRedisClient().eval(
+          "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+          1,
+          `shopify:oauth:reconnect:${reconnectStoreId}`,
+          reconnectAttemptId,
+        );
+      } catch (lockError) {
+        logger.warn('shopify_reconnect_lock_release_failed', { store_id: reconnectStoreId, error_type: lockError.code || lockError.name });
+      }
+    }
   }
 };
