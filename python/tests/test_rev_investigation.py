@@ -529,6 +529,9 @@ def test_stream_cancellation_stops_before_the_next_expensive_step():
     assert "final" not in names
     assert "error" not in names
     assert names[0] == "accepted"
+    cancelled = next(event["data"] for event in events if event["event"] == "cancelled")
+    assert cancelled["orchestration"]["state"] == "cancelled"
+    assert cancelled["orchestration"]["state_history"][-1]["state"] == "cancelled"
 
 
 def test_closing_the_generator_signals_cancellation_to_the_worker():

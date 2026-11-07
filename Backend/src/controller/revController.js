@@ -375,6 +375,8 @@ exports.chat = async (req, res, next) => {
         response_mode:  mlResult.data?.response_mode || null,
         mode_reason:    mlResult.data?.mode_reason   || null,
         understanding:  mlResult.data?.understanding || null,
+        question_understanding: mlResult.data?.question_understanding || null,
+        orchestration: mlResult.data?.orchestration || null,
       };
     }
 
@@ -436,6 +438,8 @@ exports.chat = async (req, res, next) => {
       investigation:   mlResult.data?.investigation || null,
       investigation_outcome: mlResult.data?.investigation_outcome || null,
       specialists:     mlResult.data?.specialists    || [],
+      question_understanding: mlResult.data?.question_understanding || null,
+      orchestration: mlResult.data?.orchestration || null,
       read_only:       mlResult.data?.read_only ?? true,
       meta: {
         correlation_id:             correlationId,
@@ -981,6 +985,8 @@ function _boundedResultForPersistence(data) {
     investigation: data?.investigation || null,
     investigation_outcome: data?.investigation_outcome || null,
     specialists: Array.isArray(data?.specialists) ? data.specialists : [],
+    question_understanding: data?.question_understanding || null,
+    orchestration: data?.orchestration || null,
     read_only: data?.read_only !== false,
     warnings: Array.isArray(data?.warnings) ? data.warnings.slice(0, 12) : [],
     // The mode decides how the answer is presented (quiet chat vs verified
