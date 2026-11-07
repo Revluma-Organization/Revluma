@@ -177,7 +177,13 @@ function createEvidence(input) {
     EVIDENCE_SCHEMA_VERSION, input.organization_id, input.store_ids, input.metric,
     input.period, input.source, input.provenance, input.value, input.status,
   ]);
-  return assertEvidence({ ...input, id, schema_version: EVIDENCE_SCHEMA_VERSION });
+  const item = { ...input, id, schema_version: EVIDENCE_SCHEMA_VERSION };
+  // Task 203: attach the six-dimension evidence-quality assessment so the
+  // metadata is born with the item and survives every service boundary.
+  // Lazy require: revEvidenceQuality requires this module at top level.
+  const { qualityOf } = require('./revEvidenceQuality');
+  item.quality = qualityOf(item);
+  return assertEvidence(item);
 }
 
 module.exports = {
