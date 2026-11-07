@@ -228,6 +228,9 @@ findingChatResolution/revPersistence) with the single Prisma-load
 engine-download restriction; 7 real payloads pass both validators; frontend
 516 passed with `tsc` clean.
 
-Remaining steps: CI on merge, post-deploy revision verification (Render
-`/ready` SHA probe + Vercel), and live-store end-to-end acceptance on
+Production: merged to main as `9bf9a9b` (PR #358, CI green on all checks).
+Post-merge revision verification done: Vercel production live and serving;
+Render `/ready` reports `python_build` + `node_build` = `9bf9a9b` with
+database/python/redis ready and a clean business-state scheduler run on the
+new build. Remaining: live-store end-to-end acceptance on
 `revluma-test-store-v1.myshopify.com` (human runbook, spec §11).

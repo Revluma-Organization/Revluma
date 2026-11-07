@@ -254,6 +254,7 @@ pre-existing env failures); Node rev* suite 212 passed across 20 files incl.
 the 18 adaptation/mirror/golden/boundary tests; 7 real Python-generated
 payloads pass both the new adaptation validator and the full investigation
 validator with production store scope; frontend full suite 516 passed (10 new
-Task 210 tests) with `tsc --noEmit` clean. Remaining: CI on merge,
-post-deploy revision verification (Render `/ready` SHA probe + Vercel
-revision), live-store end-to-end acceptance (spec §11, human runbook).
+Task 210 tests) with `tsc --noEmit` clean. Production: merged to main as
+`9bf9a9b` (PR #358, CI green); Vercel production live; Render `/ready`
+reports `python_build` + `node_build` = `9bf9a9b` with database/python/redis
+ready. Remaining: live-store end-to-end acceptance (spec §11, human runbook).

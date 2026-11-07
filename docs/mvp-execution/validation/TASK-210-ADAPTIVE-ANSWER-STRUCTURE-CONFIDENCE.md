@@ -115,8 +115,16 @@ Diagnosis: `diagnostics/TASK-210-adaptive-answer-structure-confidence-diagnostic
 
 ## Production evidence
 
-- Deployment (Render Node API + Python, Vercel frontend) happens on merge.
-  Post-deploy revision verification (Render `/ready` SHA probe + Vercel
-  revision) and live-store end-to-end acceptance on
+- Merged to main as `9bf9a9b` (PR #358). CI green on all checks: Backend
+  test suite, python-regressions, Prisma bootstrap / financial / security
+  regressions, Dashboard suite + production build, Vercel.
+- Post-merge revision verification: Vercel production is live and serving
+  (`revluma.vercel.app`, probed post-merge). Render `/ready` SHA probe at
+  ~19:04 UTC reports `python_build` and `node_build` = `9bf9a9b` (the merge
+  commit) with `status: ready`, database / python / redis all ready, and the
+  business-state scheduler completing a clean run on the new build against
+  production data (no errors).
+- Remaining: live-store end-to-end acceptance on
   `revluma-test-store-v1.myshopify.com` (spec §11, human runbook, consistent
-  with Tasks 201/203/204) are the remaining steps for this record.
+  with Tasks 201/203/204) — merchant sign-in and a spot check of the
+  adaptive answer structure + natural-language confidence communication.
