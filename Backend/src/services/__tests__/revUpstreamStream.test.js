@@ -45,7 +45,7 @@ const finalPayload = {
   },
   evidence: { schema_version: 'rev-evidence-v2', items: [evidence] },
   facts: [{ text: 'Recorded order value USD 1571.90', evidence_ids: [evidence.id] }],
-  recommendations: [{ label: 'Review checkout', why: 'x', measure: 'y', executed: false }],
+  recommendations: [{ label: 'Review checkout', why: 'x', measure: 'y', executed: false, action_state: 'recommended', execution_status: 'not_requested', merchant_confirmation: 'not_confirmed', independent_verification: 'unverified' }],
 };
 
 function sseResponse(chunks, status = 200) {

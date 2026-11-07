@@ -1,5 +1,7 @@
 # TASK 203 — Evidence quality, currency and uncertainty states (implementation report)
 
+Successor control: consolidated Task 205 (`TASK-205-CAUSAL-ACTION-RECOVERY-CITATION-GUARDRAILS.md`) builds on this quality model. It requires quality-eligible, relevant, period/currency-matched evidence for material claims; it does not replace the six-dimension model.
+
 Date: 2026-11-07. Branch: `arena/6257081e-revluma`. Baseline: `5196c67` (main,
 includes Tasks 197–202). Consolidates original Tasks 207 (currency-safe
 calculation), 208 (zero vs missing), 209 (incomplete-evidence fallback), 210

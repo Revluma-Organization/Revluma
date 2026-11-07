@@ -27,6 +27,7 @@ const {
   CLAIM_CONTRACT_VERSION,
   validateClaim: validateRevClaim,
 } = require('./revEpistemics');
+const { assertResponseGuardrails } = require('./revClaimGuardrails');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
 const ML_INTERNAL_KEY = process.env.ML_INTERNAL_KEY;
@@ -1431,6 +1432,12 @@ function validateInvestigationResponse(data, organizationId = null, storeIds = n
     // superseded claim must be flagged as such - never a silent drop.
     if (superseded.superseded !== true) return false;
     if (correction.corrects_claim_id !== superseded.claim_id) return false;
+  }
+  try {
+    assertResponseGuardrails(data);
+  } catch (error) {
+    logger.warn('rev_advisor_guardrail_rejected', { codes: error.guardrailErrors || ['unsafe_advisor_response'] });
+    return false;
   }
   return true;
 }

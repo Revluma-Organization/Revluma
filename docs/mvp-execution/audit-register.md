@@ -222,10 +222,11 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 214 | Phase 3 | Label hypotheses in reasoning output. | NOT STARTED | — | — | — |
 | 215 | Phase 3 | Label unknowns in reasoning output. | NOT STARTED | — | — | — |
 | 216 | Phase 3 | Prevent fabricated numeric claims. | NOT STARTED | — | — | — |
-| 217 | Phase 3 | Prevent fabricated causal explanations. | NOT STARTED | — | — | — |
-| 218 | Phase 3 | Prevent fabricated merchant actions. | NOT STARTED | — | — | — |
-| 219 | Phase 3 | Prevent unsupported recoverable-revenue claims. | NOT STARTED | — | — | — |
-| 220 | Phase 3 | Verify evidence citations or references. | NOT STARTED | — | — | — |
+| 205 (consolidated 217–220) | Phase 3 | Enforce causal, action, recoverable-revenue and source-reference guardrails. | IMPLEMENTATION CI GREEN — FINAL COMMIT/MERGE/DEPLOYMENT/AUTHENTICATED PRODUCTION PENDING | [Implementation](implementation/TASK-205-CAUSAL-ACTION-RECOVERY-CITATION-GUARDRAILS.md) | Branch `arena/f2900fc8-revluma`; rebased onto Task 204; Python 1827 passed/11 skipped; Backend 85 files | 2026-11-07 local only |
+| 217 | Phase 3 | Prevent fabricated causal explanations. | CONSOLIDATED INTO TASK 205 | See consolidated Task 205 row. | — | 2026-11-07 |
+| 218 | Phase 3 | Prevent fabricated merchant actions. | CONSOLIDATED INTO TASK 205 | See consolidated Task 205 row. | — | 2026-11-07 |
+| 219 | Phase 3 | Prevent unsupported recoverable-revenue claims. | CONSOLIDATED INTO TASK 205 | See consolidated Task 205 row. | — | 2026-11-07 |
+| 220 | Phase 3 | Verify evidence citations or references. | CONSOLIDATED INTO TASK 205 | See consolidated Task 205 row. | — | 2026-11-07 |
 | 221 | Phase 3 | Test revenue drop investigation. | NOT STARTED | — | — | — |
 | 222 | Phase 3 | Test checkout abandonment investigation. | NOT STARTED | — | — | — |
 | 223 | Phase 3 | Test priority recommendation question. | NOT STARTED | — | — | — |

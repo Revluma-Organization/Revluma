@@ -256,10 +256,11 @@
 - [x] **TASK 214** — Label hypotheses in reasoning output. *(consolidated into TASK 204 — reasoning epistemics)*
 - [x] **TASK 215** — Label unknowns in reasoning output. *(consolidated into TASK 204 — reasoning epistemics)*
 - [x] **TASK 216** — Prevent fabricated numeric claims. *(consolidated into TASK 204 — reasoning epistemics)*
-- [ ] **TASK 217** — Prevent fabricated causal explanations.
-- [ ] **TASK 218** — Prevent fabricated merchant actions.
-- [ ] **TASK 219** — Prevent unsupported recoverable-revenue claims.
-- [ ] **TASK 220** — Verify evidence citations or references.
+- [ ] **TASK 205 (consolidated 217–220)** — Causal, action, recoverable-revenue and source-reference guardrails. **Implementation CI green; final commit/merge/deployment/authenticated production pending.** See `implementation/TASK-205-CAUSAL-ACTION-RECOVERY-CITATION-GUARDRAILS.md`.
+- [ ] **TASK 217** — Consolidated into Task 205.
+- [ ] **TASK 218** — Consolidated into Task 205.
+- [ ] **TASK 219** — Consolidated into Task 205.
+- [ ] **TASK 220** — Consolidated into Task 205.
 - [ ] **TASK 221** — Test revenue drop investigation.
 - [ ] **TASK 222** — Test checkout abandonment investigation.
 - [ ] **TASK 223** — Test priority recommendation question.
