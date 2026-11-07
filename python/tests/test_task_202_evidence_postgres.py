@@ -106,8 +106,8 @@ def test_postgres_task202_direct_identity_and_cross_tenant_isolation(task202_pos
     db.execute(text("INSERT INTO locations VALUES (:id,:store,'shared-location','Main',true)"),
                {"id": location_id, "store": store_a})
     db.execute(text("""INSERT INTO inventory_levels VALUES
-      (:id,:store,'shared-item','shared-location','{"available":3}'::jsonb,:synced)"""),
-      {"id": str(uuid.uuid4()), "store": store_a, "synced": NOW})
+      (:id,:store,'shared-item','shared-location',CAST(:quantities AS jsonb),:synced)"""),
+      {"id": str(uuid.uuid4()), "store": store_a, "quantities": json.dumps({"available": 3}), "synced": NOW})
     for domain in ("products", "inventory_items", "inventory_levels", "locations"):
         db.execute(text("""INSERT INTO store_sync_domain_states VALUES
           (:id,:store,:domain,'ok',true,:synced,NULL)"""),
