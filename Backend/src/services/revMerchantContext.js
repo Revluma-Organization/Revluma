@@ -128,7 +128,8 @@ async function buildMerchantContext(prisma, organizationId) {
   // are never silently collapsed: the context says UTC and says why, so
   // periods resolve on an asserted calendar.
   let reportingTimezone = 'UTC';
-  let reportingTimezoneSource = 'default_utc';
+  let reportingTimezoneSource = 'unverified_missing';
+  let reportingTimezoneVerified = false;
   const configuredCurrencies = new Set();
   const perStoreTimezones = [];
   if (allowedStores.size) {
@@ -161,12 +162,15 @@ async function buildMerchantContext(prisma, organizationId) {
       perStoreTimezones.push(settingsTimezone || profileTimezone);
     }
     const distinct = [...new Set(perStoreTimezones.filter(Boolean))];
-    if (distinct.length === 1) {
+    if (distinct.length === 1 && perStoreTimezones.every(Boolean)) {
       reportingTimezone = distinct[0];
       reportingTimezoneSource = 'store_settings_or_profile';
+      reportingTimezoneVerified = true;
     } else if (distinct.length > 1) {
       reportingTimezoneSource = 'utc_conflicting_stores';
-      limitations.push(`Connected stores use different configured timezones (${distinct.join(', ')}); reporting periods use UTC.`);
+      limitations.push(`Connected stores use different configured timezones (${distinct.join(', ')}); reporting uses an explicit UTC fallback.`);
+    } else {
+      limitations.push('A verified merchant IANA timezone is unavailable; reporting uses an explicit UTC fallback.');
     }
   }
 
@@ -177,6 +181,7 @@ async function buildMerchantContext(prisma, organizationId) {
     store_ids: [...allowedStores],
     reporting_timezone: reportingTimezone,
     reporting_timezone_source: reportingTimezoneSource,
+    reporting_timezone_verified: reportingTimezoneVerified,
     configured_currencies: [...configuredCurrencies].sort(),
     evidence,
     evidence_errors: evidenceErrors,
