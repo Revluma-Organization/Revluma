@@ -28,6 +28,7 @@ const {
   validateClaim: validateRevClaim,
 } = require('./revEpistemics');
 const { assertResponseGuardrails } = require('./revClaimGuardrails');
+const { validateInvestigationOutcome } = require('./revInvestigationOutcomes');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
 const ML_INTERNAL_KEY = process.env.ML_INTERNAL_KEY;
@@ -1381,6 +1382,10 @@ function validateInvestigationResponse(data, organizationId = null, storeIds = n
   if (typeof investigation.intent !== 'string' || !investigation.intent.trim()) return false;
   if (typeof investigation.status !== 'string' || !investigation.status.trim()) return false;
   if (!isPlainObject(investigation.period)) return false;
+  // Task 207: every investigation response carries a typed outcome. Node
+  // independently verifies its contract and authenticated tenant before the
+  // payload can reach JSON, SSE, persistence or history.
+  if (validateInvestigationOutcome(data.investigation_outcome, organizationId).length > 0) return false;
   const evidence = data.evidence;
   if (!isPlainObject(evidence) || !Array.isArray(evidence.items)) return false;
   if (evidence.schema_version !== EVIDENCE_SCHEMA_VERSION) return false;

@@ -37,6 +37,13 @@ const finalPayload = {
   read_only: true,
   response_type: 'analysis',
   text: 'Recorded order value fell 12.0%.',
+  investigation_outcome: {
+    contract_version: 'rev-investigation-outcome-v1', outcome: 'success',
+    tenant: { organization_id: '11111111-1111-4111-8111-111111111111', store_ids: [] },
+    required_domains: [], available_domains: [], unavailable_domains: [],
+    answerability: { can_answer: [], cannot_establish: [] }, retry: { eligible: false },
+    history: {}, coverage: {}, diagnostic_reference: 'REV-0123456789ABCDEF',
+  },
   investigation: {
     id: 'inv-1',
     intent: 'revenue',

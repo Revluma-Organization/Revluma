@@ -24,6 +24,7 @@ const mlService         = require('../services/mlService');
 const logger            = require('../utils/logger');
 const { formatSseFrame } = require('../services/revStream');
 const { safePersistedNarrative } = require('../services/revClaimGuardrails');
+const { retryabilityForError, investigationOutcomeFromTransportError } = require('../services/revInvestigationOutcomes');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -271,7 +272,11 @@ exports.chat = async (req, res, next) => {
     const conversationContext = await _loadConversationContext(activeConvId, org.id);
 
     // 6. Call Python via mlService
-    const mlResult = await mlService.orchestrate({
+    // Task 207: JSON and SSE use the same canonical investigation runtime.
+    // The legacy /orchestrate conversational path cannot carry investigation
+    // outcomes, integration diagnostics or coverage eligibility.
+    const invokeInvestigation = imageBase64 ? mlService.orchestrate : mlService.investigate;
+    const mlResult = await invokeInvestigation({
       organizationId: org.id,
       userId:         req.user.id,
       message: intelligenceMessage,
@@ -282,8 +287,7 @@ exports.chat = async (req, res, next) => {
       },
       conversationId: activeConvId,
       correlationId,
-      imageBase64,
-      imageMediaType,
+      ...(imageBase64 ? { imageBase64, imageMediaType } : {}),
     });
 
     // 7. Handle Python failure — persist failed Rev message so history is intact
@@ -317,6 +321,10 @@ exports.chat = async (req, res, next) => {
         success: false,
         conversation_id: activeConvId,
         error: mlResult.error,
+        retryable: retryabilityForError(mlResult.error.code),
+        investigation_outcome: investigationOutcomeFromTransportError({
+          code: mlResult.error.code, organizationId: org.id,
+        }),
       });
     }
 
@@ -337,6 +345,7 @@ exports.chat = async (req, res, next) => {
         text: revData.text || '',
         response_mode: revData.response_mode || null,
         mode_reason: revData.mode_reason || null,
+        investigation_outcome: revData.investigation_outcome || null,
       };
     } else {
       // Full 6-part analysis
@@ -360,6 +369,7 @@ exports.chat = async (req, res, next) => {
         unknowns:       mlResult.data?.unknowns       || [],
         recommendations: mlResult.data?.recommendations || [],
         investigation:  mlResult.data?.investigation || null,
+        investigation_outcome: mlResult.data?.investigation_outcome || null,
         specialists:    mlResult.data?.specialists    || [],
         read_only:      mlResult.data?.read_only     ?? true,
         response_mode:  mlResult.data?.response_mode || null,
@@ -424,6 +434,7 @@ exports.chat = async (req, res, next) => {
       unknowns:        mlResult.data?.unknowns      || [],
       recommendations: mlResult.data?.recommendations || [],
       investigation:   mlResult.data?.investigation || null,
+      investigation_outcome: mlResult.data?.investigation_outcome || null,
       specialists:     mlResult.data?.specialists    || [],
       read_only:       mlResult.data?.read_only ?? true,
       meta: {
@@ -956,6 +967,7 @@ function _boundedResultForPersistence(data) {
     unknowns: Array.isArray(data?.unknowns) ? data.unknowns.slice(0, 12) : [],
     recommendations: Array.isArray(data?.recommendations) ? data.recommendations.slice(0, 12) : [],
     investigation: data?.investigation || null,
+    investigation_outcome: data?.investigation_outcome || null,
     specialists: Array.isArray(data?.specialists) ? data.specialists : [],
     read_only: data?.read_only !== false,
     warnings: Array.isArray(data?.warnings) ? data.warnings.slice(0, 12) : [],
@@ -1269,7 +1281,10 @@ exports.chatStream = async (req, res, next) => {
       conversation_id: activeConvId,
       code: error.code,
       message: error.message,
-      retryable: true,
+      retryable: retryabilityForError(error.code),
+      investigation_outcome: investigationOutcomeFromTransportError({
+        code: error.code, organizationId: org.id,
+      }),
     });
     sse.end();
     logger.warn('rev_stream_failed', {
@@ -1342,6 +1357,24 @@ exports.retryConversation = async (req, res, next) => {
     const text = typeof content === 'object' && content !== null ? content.text : null;
     if (!text) {
       return res.status(409).json({ success: false, error: { code: 'NOTHING_TO_RETRY' } });
+    }
+    const latestRev = await prisma.$queryRaw`
+      SELECT has_error, error_code
+      FROM conversation_messages
+      WHERE conversation_id = ${id}::uuid
+        AND organization_id = ${org.id}::uuid
+        AND role = 'rev' AND sequence_number > ${lastUser[0].sequence_number}
+      ORDER BY sequence_number DESC LIMIT 1
+    `;
+    if (latestRev.length && latestRev[0].has_error !== true) {
+      return res.status(409).json({ success: false, error: { code: 'RETRY_ALREADY_COMPLETED' } });
+    }
+    if (latestRev.length && !retryabilityForError(latestRev[0].error_code)) {
+      return res.status(409).json({
+        success: false,
+        error: { code: 'RETRY_NOT_ELIGIBLE', message: 'This failure needs a configuration, authorization or request change before retrying.' },
+        retryable: false,
+      });
     }
     // Remove failed assistant attempts after the user message so a retry does
     // not leave duplicate error turns in the merchant's history.

@@ -64,6 +64,15 @@ from ..intelligence.claim_guardrails import (
     validate_response_guardrails,
 )
 from ..intelligence.revenue_evidence import retrieve_revenue_evidence
+from ..intelligence.investigation_outcomes import (
+    OUTCOME_CONTRACT_VERSION,
+    base_outcome,
+    capability_decision,
+    derive_outcome,
+    outcome_text,
+    unsupported_outcome,
+    validate_outcome,
+)
 from .base_agent import AgentResult, normalize_specialist_status
 from .tools import ToolAuthorizationError, catalog, run_tool
 
@@ -156,6 +165,7 @@ INTENT_GREETING = "greeting"
 INTENT_SOCIAL = "social"
 INTENT_KNOWLEDGE = "knowledge"
 INTENT_CLARIFY = "clarify"
+INTENT_UNSUPPORTED = "unsupported_question"
 
 # Whole-message acknowledgements and topic-change cues (conversation-experience
 # directive §4.1 B/K). Supports for the routing layer, not the intelligence.
@@ -211,6 +221,7 @@ INTENT_LABELS = {
     INTENT_CLARIFY: "Conversation",
     INTENT_IDENTITY: "Identity",
     INTENT_GENERAL: "General guidance",
+    INTENT_UNSUPPORTED: "Unsupported question",
 }
 
 STORE_INTENTS = {
@@ -263,8 +274,10 @@ INTENT_DOMAINS = {
 # Explicit merchant requests to mutate the store. Rev explains and recommends,
 # but never executes these in this release.
 PROHIBITED_ACTIONS = [
-    ("price", re.compile(r"\b(?:change|update|set|lower|raise|edit)\b[^.?!]{0,40}\bprice", re.I),
+    ("price", re.compile(r"\b(?:change|update|set|lower|raise|edit|fix)\b[^.?!]{0,40}\bpric(?:e|es|ing)\b", re.I),
      "changing product prices"),
+    ("inventory", re.compile(r"\b(?:change|update|set|adjust|increase|decrease|edit)\b[^.?!]{0,40}\b(?:inventory|stock(?:\s+levels?)?)\b", re.I),
+     "changing inventory"),
     ("product", re.compile(r"\b(?:edit|delete|remove|create|publish|unpublish)\b[^.?!]{0,40}\b(?:product|variant|listing)", re.I),
      "editing products"),
     ("theme", re.compile(r"\b(?:edit|change|update|publish)\b[^.?!]{0,30}\btheme\b", re.I),
@@ -273,7 +286,7 @@ PROHIBITED_ACTIONS = [
      "modifying or refunding orders"),
     ("discount", re.compile(r"\b(?:create|launch|add|change|apply)\b[^.?!]{0,30}\bdiscount", re.I),
      "creating or changing discounts"),
-    ("campaign", re.compile(r"\b(?:launch|create|start|send|pause)\b[^.?!]{0,30}\b(?:campaign|sequence|email|sms|newsletter)\b", re.I),
+    ("campaign", re.compile(r"\b(?:launch|create|start|send|pause)\b[^.?!]{0,30}\b(?:campaign|sequence|emails?|sms|newsletter)\b", re.I),
      "launching campaigns or sending messages"),
     ("customer_action", re.compile(r"\b(?:email|sms|message|contact)\b[^.?!]{0,30}\b(?:customer|shopper|list)(?:s)?\b", re.I),
      "contacting customers"),
@@ -1213,13 +1226,19 @@ def route_message(message: str, context: dict | None, store_context: dict | None
     if CAPABILITY_PATTERN.search(text):
         return done({"intent": INTENT_CAPABILITY, "segment": None, "followup": False},
                     "fast_path")
+    continuing_investigation = bool(re.search(
+        r"\b(?:continue|resume|retry)(?:\s+(?:the\s+)?(?:previous\s+)?investigation)?\b", lower))
     if re.search(r"\b(?:sync(?:s|ed|ing)?|connected|connection|integration|webhooks?)\b", lower) \
+            and not continuing_investigation \
             and ("?" in text or re.search(r"\b(?:is|are|was|were|did|does|has|have|when|check)\b", lower)):
         return done({"intent": INTENT_COVERAGE, "segment": None, "followup": False},
                     "fast_path")
 
     inherited = (context or {}).get("last_investigation") or {}
     inherited_intent = inherited.get("intent")
+    if continuing_investigation and inherited_intent in STORE_INTENTS:
+        return done({"intent": inherited_intent, "segment": None, "followup": True,
+                     "inherited_intent": inherited_intent}, "fast_path")
     is_followup = (bool(FOLLOWUP_PATTERN.match(lower)) or lower in FOLLOWUP_ELLIPSIS) \
         and not ADVICE_QUESTION_PATTERN.search(text)
     keyword_intent = None
@@ -1441,6 +1460,7 @@ def resolve_store_context(organization_id: str, db) -> dict:
         ORDER BY s.id
     """, {"org_id": organization_id})
     context = {
+        "organization_id": organization_id,
         "store_count": 0,
         "platforms": [],
         "currencies": [],
@@ -2641,6 +2661,11 @@ def persist_investigation_context(organization_id: str, user_id: str,
             # exactly as order follow-ups do; without this the query is read
             # back but never written.
             "checkout_query": result["investigation"].get("checkout_query") or {},
+            # Task 207: preserve the failed/limited investigation itself, not
+            # only successful evidence. A retry re-evaluates live state; the
+            # old conclusion is context, never authority.
+            "question": result["investigation"].get("question"),
+            "outcome": result.get("investigation_outcome"),
         },
         "unresolved": result.get("unknowns", [])[:5],
         # Task 204: the recorded claims of this investigation. Follow-ups that
@@ -2723,7 +2748,11 @@ def persist_investigation_context(organization_id: str, user_id: str,
                     updated_at = NOW()
             """),
             {"org_id": organization_id, "user_id": user_id,
-             "value": json.dumps(context_window["last_investigation"]),
+             # Long-term memory stays minimal. Failure diagnostics and the raw
+             # merchant question belong only to the bounded conversation
+             # context, not to the 30-day derived memory record.
+             "value": json.dumps({key: value for key, value in context_window["last_investigation"].items()
+                                  if key not in {"question", "outcome"}}),
              "conversation_id": conversation_id},
         )
         db.commit()
@@ -3041,6 +3070,10 @@ def _base_result(*, message: str, intent: str, window: dict, investigation_id: s
             "narrative_model": False,
             "user_id": user_id,
         },
+        "investigation_outcome": base_outcome(
+            outcome="success", investigation_id=investigation_id, question=message,
+            intent=intent, organization_id=store_context.get("organization_id") or "authenticated",
+            store_ids=store_context.get("store_ids") or [], period=window),
     }
 
 
@@ -3129,6 +3162,30 @@ def select_response_mode(*, intent: str, status: str, tool_names: list,
     return "investigation", "the answer combines several store checks"
 
 
+def _unsupported_result(message: str, decision: dict, *, investigation_id: str,
+                        store_context: dict, user_id: str, window: dict) -> dict:
+    result = _base_result(message=message, intent=INTENT_UNSUPPORTED, window=window,
+                          investigation_id=investigation_id, store_context=store_context,
+                          user_id=user_id)
+    result["text"] = outcome_text(decision)
+    result["response_type"] = "clarification" if decision["category"] == "ambiguous_question" else "capability"
+    result["response_mode"] = "insufficient_evidence" if decision["category"] == "ambiguous_question" else RESPONSE_MODE_CONVERSATIONAL
+    result["mode_reason"] = decision["category"]
+    result["investigation"]["status"] = "insufficient_data" if decision["category"] == "ambiguous_question" else "unsupported"
+    result["unknowns"] = [decision["unavailable"]]
+    result["claims"] = []
+    result["epistemics"] = {
+        "contract_version": CLAIM_CONTRACT_VERSION, "valid": True,
+        "validation_errors": [], "rollup": epistemic_rollup([]),
+    }
+    result["investigation_outcome"] = unsupported_outcome(
+        decision, investigation_id=investigation_id, question=message,
+        intent=INTENT_UNSUPPORTED, organization_id=store_context["organization_id"],
+        store_ids=store_context.get("store_ids") or [], period=window)
+    result["executed_actions"] = []
+    return result
+
+
 def _read_only_result(message: str, classification: dict, *, investigation_id: str,
                       store_context: dict, user_id: str, window: dict) -> dict:
     result = _conversation_result(message, {**classification, "intent": INTENT_READ_ONLY},
@@ -3153,6 +3210,19 @@ def _read_only_result(message: str, classification: dict, *, investigation_id: s
     result["investigation"]["status"] = "complete"
     result["response_mode"] = RESPONSE_MODE_CONVERSATIONAL
     result["mode_reason"] = "the answer explains Rev's read-only boundary"
+    result["investigation_outcome"] = base_outcome(
+        outcome="unsupported_capability", investigation_id=investigation_id,
+        question=message, intent=INTENT_READ_ONLY,
+        organization_id=store_context.get("organization_id") or "authenticated", period=window)
+    result["investigation_outcome"]["capability"] = {
+        "code": "read_only_mvp", "category": "unsupported_action", "supported": False,
+        "requested_actions": requested,
+    }
+    result["investigation_outcome"]["answerability"] = {
+        "can_answer": ["Explain evidence and recommend a manual next step."],
+        "cannot_establish": ["Rev cannot execute Shopify writes, refunds, discounts or merchant messaging."],
+    }
+    result["investigation_outcome"]["next_step"] = "Apply the recommended change yourself in Shopify, then ask Rev to investigate the recorded result."
     return result
 
 
@@ -3262,6 +3332,27 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     window["timezone_source"] = (store_context or {}).get("timezone_source") or "unverified_missing"
     window["timezone_verified"] = bool((store_context or {}).get("timezone_verified"))
 
+    # Task 207: deterministic capability and ambiguity safeguards run before
+    # model-authored answers. Re-evaluated on every turn, so a later supported
+    # question or newly available capability is not trapped by old context.
+    capability = capability_decision(
+        message, has_conversation_context=bool(
+            conversation_context.get("last_investigation") or conversation_context.get("recent_turns")))
+    if capability is not None and intent != INTENT_READ_ONLY:
+        result = _unsupported_result(
+            message, capability, investigation_id=investigation_id,
+            store_context=store_context, user_id=user_id, window=window)
+        logger.info("rev_investigation_outcome", extra={
+            "investigation_id": investigation_id,
+            "correlation_id": (context_payload or {}).get("correlation_id"),
+            "intent": INTENT_UNSUPPORTED, "outcome": result["investigation_outcome"]["outcome"],
+            "capability_decision": capability["code"], "retry_eligible": False,
+            "diagnostic_reference": result["investigation_outcome"]["diagnostic_reference"],
+        })
+        validate_response_guardrails(result)
+        _emit({"event": "final", "data": result})
+        return result
+
     if PROVENANCE_PATTERN.search(message) and conversation_context.get("last_claims"):
         # Task 204: provenance follow-ups are answered from the recorded claim
         # set of the previous investigation - no fresh retrieval, no memory
@@ -3290,6 +3381,10 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             "confidence": (routed["understanding"] or {}).get("confidence"),
         }
         if intent == INTENT_CLARIFY:
+            result["investigation_outcome"] = base_outcome(
+                outcome="ambiguous_question", investigation_id=investigation_id,
+                question=message, intent=intent, organization_id=organization_id, period=window)
+            result["investigation_outcome"]["next_step"] = result["text"]
             _persist_conversation_state(
                 organization_id, conversation_id, db,
                 _conversation_state(conversation_context.get("conversation_state"),
@@ -3384,6 +3479,23 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             store_context=store_context, user_id=user_id, window=window, reason="no_store")
         clarification["investigation"]["steps"] = result["investigation"]["steps"]
         clarification["meta"] = result["meta"]
+        blocked = "retrieval_failed" if store_health.status == STATUS_UNAVAILABLE and any(
+            item.get("metric") == "connected_store_count" for item in store_health.items) is False else "integration_disconnected"
+        clarification["investigation_outcome"] = base_outcome(
+            outcome=blocked, investigation_id=investigation_id, question=message,
+            intent=intent, organization_id=organization_id, period=window,
+            required_domains=["orders"])
+        clarification["investigation_outcome"]["answerability"] = {
+            "can_answer": [], "cannot_establish": ["Store-level evidence cannot be established until the connection or retrieval issue is resolved."],
+        }
+        clarification["investigation_outcome"]["retry"] = {
+            "eligible": blocked == "retrieval_failed", "status": "not_requested",
+            "preserves_question": True, "preserves_period": True,
+        }
+        clarification["investigation_outcome"]["next_step"] = (
+            "Retry the investigation; if it still fails, contact support with the diagnostic reference."
+            if blocked == "retrieval_failed" else
+            "Connect Shopify and complete one synchronization, then ask to continue this investigation.")
         _emit({"event": "step", "data": clarification["investigation"]["steps"][0]})
         validate_response_guardrails(clarification)
         _emit({"event": "final", "data": clarification})
@@ -3430,6 +3542,7 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     _emit({"event": "step", "data": step_by_tool["store_health"]})
 
     skipped: list[str] = []
+    tool_failures: dict[str, dict] = {}
     for tool in tools:
         if tool == "store_health":
             continue
@@ -3479,12 +3592,19 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         except ToolAuthorizationError as exc:
             logger.error("rev_tool_authorization_failed tool=%s", tool)
             tool_result = None
+            tool_failures[tool] = {"outcome": "permission_insufficient", "error_class": "authorization", "retry_eligible": False}
             step["status"] = "failed"
-            step["detail"] = str(exc)
+            step["detail"] = "The authenticated organization is not authorised for this evidence source."
             skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: not authorised.")
         except Exception as exc:  # defensive: partial results must survive
             logger.warning("rev_tool_exception tool=%s error_type=%s", tool, type(exc).__name__)
             tool_result = None
+            error_name = type(exc).__name__.lower()
+            transient = any(token in error_name for token in ("timeout", "connection", "temporary", "operational"))
+            tool_failures[tool] = {
+                "outcome": "retrieval_failed", "error_class": type(exc).__name__,
+                "retry_eligible": transient,
+            }
             step["status"] = "failed"
             step["detail"] = "The read-only query failed; this evidence is unavailable."
             skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: query failed.")
@@ -3493,7 +3613,15 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
             tool_results_by_name[tool] = tool_result
             step["status"] = "completed" if tool_result.status in (STATUS_AVAILABLE, STATUS_PARTIAL) else "failed"
             step["detail"] = (f"{len(tool_result.items)} evidence item(s), status {tool_result.status}.")
-            if tool_result.status in (STATUS_UNAVAILABLE, STATUS_UNSUPPORTED):
+            if tool_result.status in (STATUS_UNAVAILABLE, STATUS_UNSUPPORTED, "unauthorized"):
+                warning_text = " ".join(tool_result.warnings).lower()
+                transient = any(token in warning_text for token in ("timeout", "throttl", "temporar", "unavailable"))
+                tool_failures.setdefault(tool, {
+                    "outcome": "permission_insufficient" if tool_result.status == "unauthorized"
+                    else "unsupported_capability" if tool_result.status == STATUS_UNSUPPORTED
+                    else "retrieval_failed",
+                    "error_class": "source_status", "retry_eligible": transient,
+                })
                 skipped.append(f"{TOOL_STEP_LABELS.get(tool, tool)}: {tool_result.status}.")
         _emit({"event": "step", "data": step})
 
@@ -3701,6 +3829,31 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         ),
         "tools_used": [name for name in tool_results_by_name],
         "evidence_count": len(items),
+    })
+
+    result["investigation_outcome"] = derive_outcome(
+        investigation_id=investigation_id, question=message, intent=intent,
+        organization_id=organization_id, store_ids=sorted(allowed_store_ids), tools=tools,
+        tool_results=tool_results_by_name, tool_failures=tool_failures, items=items,
+        period=window, comparison=comparison, overall_status=overall)
+    outcome_errors = validate_outcome(result["investigation_outcome"], organization_id=organization_id)
+    if outcome_errors:
+        raise ValueError("Invalid investigation outcome: " + ", ".join(outcome_errors))
+    if result["investigation_outcome"]["outcome"] not in ("success", "partial_success"):
+        next_step = result["investigation_outcome"].get("next_step")
+        if next_step and next_step not in result["text"]:
+            result["text"] += f"\n\n## What you can do next\n{next_step}"
+    logger.info("rev_investigation_outcome", extra={
+        "investigation_id": investigation_id,
+        "correlation_id": (context_payload or {}).get("correlation_id"),
+        "intent": intent, "outcome": result["investigation_outcome"]["outcome"],
+        "required_domains": result["investigation_outcome"]["required_domains"],
+        "unavailable_domains": result["investigation_outcome"]["unavailable_domains"],
+        "integration_state": result["investigation_outcome"]["integration"]["state"],
+        "sync_state": result["investigation_outcome"]["sync"]["state"],
+        "history_state": result["investigation_outcome"]["history"]["state"],
+        "retry_eligible": result["investigation_outcome"]["retry"]["eligible"],
+        "diagnostic_reference": result["investigation_outcome"]["diagnostic_reference"],
     })
 
     mode, mode_reason = select_response_mode(
