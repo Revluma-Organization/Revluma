@@ -36,7 +36,9 @@ test('authorized finding resolution selects and passes the exact UUID to Python 
   };
   const resolved = await resolveFindingChatContext(prisma, ORG, ID, 'Why high priority?');
   assert.equal(resolved.status, 'ok');
-  assert.match(resolved.context, new RegExp(`Finding ID: ${ID}`));
+  assert.equal(resolved.selected_finding.finding_id, ID);
+  assert.equal(resolved.selected_finding.selection_source, 'explicit_selection');
+  assert.equal(resolved.context, undefined);
   assert.equal(calls.length, 2);
 });
 
@@ -46,7 +48,7 @@ test('both JSON and streaming chat controllers use the authorized resolver', () 
   assert.equal(source.includes('buildFindingContext(message, finding)'), false);
 });
 
-test('invalid, cross-store and uncertified references fail closed without a fallback finding', async () => {
+test('invalid and cross-store references fail closed; unverified evidence remains qualified context', async () => {
   let findingCalls = 0;
   const prisma = {
     intelligence_findings: { findFirst: async () => { findingCalls += 1; return certifiedFinding(); } },
@@ -57,5 +59,8 @@ test('invalid, cross-store and uncertified references fail closed without a fall
   assert.deepEqual(await resolveFindingChatContext(prisma, ORG, ID, 'Explain'), { status: 'not_found' });
   prisma.stores.findFirst = async () => ({ id: 'store-a' });
   prisma.intelligence_findings.findFirst = async () => ({ ...certifiedFinding(), evidence: { verified: false } });
-  assert.deepEqual(await resolveFindingChatContext(prisma, ORG, ID, 'Explain'), { status: 'unverified' });
+  const partial = await resolveFindingChatContext(prisma, ORG, ID, 'Explain');
+  assert.equal(partial.status, 'ok');
+  assert.equal(partial.selected_finding.finding_id, ID);
+  assert.equal(partial.selected_finding.evidence, undefined);
 });

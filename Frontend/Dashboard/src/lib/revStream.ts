@@ -60,6 +60,11 @@ export interface RevFact {
 }
 
 export interface RevRecommendation {
+  recommendation_id?: string;
+  finding_id?: string | null;
+  lifecycle_state?: "proposed" | "presented" | "acknowledged" | "dismissed" | "superseded" | "invalidated" | "resolved";
+  actionability?: string;
+  prerequisites?: string[];
   label: string;
   why: string;
   measure: string;
@@ -90,6 +95,19 @@ export interface RevInvestigationMeta {
   follow_ups: string[];
   tools_used?: string[];
   context_used?: Record<string, unknown>;
+}
+
+export interface SelectedFindingContext {
+  contract_version: "rev-selected-finding-v1";
+  finding_id: string;
+  finding_version?: string | null;
+  title: string;
+  type?: string;
+  lifecycle_state: string;
+  current_validity: string;
+  evidence_quality: string;
+  limitations?: string[];
+  selection_source?: string;
 }
 
 export interface RevAnswerPayload {
@@ -142,6 +160,7 @@ export interface RevAnswerPayload {
   hypotheses?: RevHypothesis[];
   unknowns?: string[];
   recommendations?: RevRecommendation[];
+  selected_finding?: SelectedFindingContext | null;
   specialists?: SpecialistsSummary[];
   warnings?: string[];
   conversation_id?: string;

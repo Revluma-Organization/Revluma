@@ -193,7 +193,11 @@ def retrieve_finding_evidence(organization_id: str, db, *, now: datetime | None 
             coverage=coverage, freshness=freshness,
             limitations=["Existence of a finding row does not prove current validity.", "Underlying order retrieval is capped at 200 records; truncation is disclosed."],
             domain="findings", discriminator=finding_id,
-            classification="verified_fact" if verified else "unknown",
+            # The authorized row/lifecycle is itself a verified record even
+            # when its source business evidence is partial or stale. Preserving
+            # that record lets Task 211 invalidate old advice; it never promotes
+            # the underlying finding to a current verified problem.
+            classification="verified_fact",
             source_references=([{"source_id": str(evidence["coverage_run_id"]), "resource": str(evidence.get("coverage_source") or "order_coverage"), "sync_run_id": str(evidence["coverage_run_id"])}] if evidence.get("coverage_run_id") else []),
             provenance={"retrieval": "direct", "transformation": "Tenant/store join, source evidence allowlist, lifecycle evaluation and measurement-window order lookup.",
                         "calculation_version": "finding-evidence-v1", "lineage": [f"finding:{finding_id}"], "reproducible": True}))

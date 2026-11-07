@@ -224,6 +224,7 @@ export function RevAnswerView({
   const hypotheses = recordList<RevHypothesis>(payload.hypotheses).map(item => textValue(item.statement)).filter(text => text && !coveredBy(shown, text));
   const unknowns = stringList(payload.unknowns).filter(text => !coveredBy(shown, text));
   const recommendations = recordList<RevRecommendation>(payload.recommendations).filter(item => {
+    if (["invalidated", "superseded", "resolved", "dismissed"].includes(item.lifecycle_state || "")) return false;
     const parts = [item.label, item.why, item.measure].map(textValue).filter(Boolean);
     return parts.length > 0 && !parts.every(text => coveredBy(shown, text));
   });
@@ -436,7 +437,7 @@ export function RevAnswerView({
           </p>
           <p className="text-xs" style={{ color: muted }}>Recommendations only — nothing was changed or sent.</p>
           {recommendations.map((recommendation, index) => (
-            <div key={index} className="flex gap-2">
+            <div key={recommendation.recommendation_id || index} className="flex gap-2">
               <Check size={13} color="#1F06AC" style={{ marginTop: 3, flexShrink: 0 }} />
               <div>
                 <p style={{ margin: 0, fontSize: "0.8rem", fontWeight: 600, color: strong }}>
@@ -445,6 +446,7 @@ export function RevAnswerView({
                 <p style={{ margin: "1px 0 0", fontSize: "0.72rem", color: muted, lineHeight: 1.5 }}>
                   {textValue(recommendation.why)}
                   {textValue(recommendation.measure) ? ` Measure: ${recommendation.measure}` : ""}
+                  {recommendation.prerequisites?.length ? ` Prerequisite: ${recommendation.prerequisites[0]}` : ""}
                 </p>
               </div>
             </div>

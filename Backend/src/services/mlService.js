@@ -31,6 +31,7 @@ const { assertResponseGuardrails } = require('./revClaimGuardrails');
 const { validateInvestigationOutcome } = require('./revInvestigationOutcomes');
 const { validateSpecialistExecution } = require('./revSpecialists');
 const { validateQuestionOrchestration } = require('./revQuestionOrchestration');
+const { validateRecommendationBoundary } = require('./revRecommendations');
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL;
 const ML_INTERNAL_KEY = process.env.ML_INTERNAL_KEY;
@@ -1407,6 +1408,9 @@ function validateInvestigationResponse(data, organizationId = null, storeIds = n
       }).length > 0) return false;
     }
   }
+  if (validateRecommendationBoundary(data.selected_finding, data.recommendations || [], {
+    organizationId, evidenceIds: authorizedEvidenceIds,
+  }).length > 0) return false;
   if (data.facts !== undefined && !Array.isArray(data.facts)) return false;
   if ((data.facts || []).some(fact => !(fact?.evidence_ids || []).length || fact.evidence_ids.some(id => !knownIds.has(id)))) return false;
   if (data.hypotheses !== undefined && !Array.isArray(data.hypotheses)) return false;
