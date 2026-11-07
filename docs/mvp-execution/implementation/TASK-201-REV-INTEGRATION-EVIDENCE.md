@@ -197,11 +197,42 @@ query were also validated against the real schema; the probe is a scalar-bound
 `IN ($1, ...)` list so the SQL is explicit and parameterised (no array-literal
 rendering), and the token value is never selected.
 
+## Merge and deployment evidence (2026-11-07)
+
+Status: **MERGED; DASHBOARD DEPLOYED TO PRODUCTION; LIVE-STORE DATA SHAPE
+CONFIRMED; AUTHENTICATED END-TO-END PRODUCTION ACCEPTANCE PENDING**.
+
+- PR #339 passed every GitHub check on `main` (merge commit `4e28f2e`),
+  including the `release-candidate-verification.yml` gate. That gate ran both
+  new real-PostgreSQL acceptance tests (the Python transactional script and the
+  Node two-organization fixture) on a disposable `pgvector/pg16` instance,
+  confirming against a *real* database: the `_STORE_SQL` fix, the
+  `$queryRawUnsafe`/`::text` credential probe, the unrecorded-scopes semantics
+  (a `granted_scopes = NULL` store with fresh syncs is `healthy` with a visible
+  warning, never `unauthorized`), the 21-item contract, tenant isolation and
+  secret protection.
+- No database migration was required — retrieval is read-only over five
+  existing tables.
+- Vercel production deployment `dpl_CNQk44NpRBZj77wyUihzfqnte2Eu` is
+  `READY`/`PROMOTED` at the merge SHA and aliases `revluma.vercel.app`
+  (the Dashboard frontend).
+- A read-only production check of the live store
+  (`revluma-test-store.myshopify.com`) confirmed the exact data shape the fix
+  targets: `granted_scopes` is `NULL`, a token is present, and both live rows
+  (two organizations) were actively synchronizing (`last_synced_at`
+  2026-11-07 09:48 and 09:52). Under the pre-fix logic this store would have
+  been reported `unauthorized` for every resource; under the fix it is
+  `healthy` with the scope-recording gap surfaced as a warning.
+
 ## Not verified here
 
-- Full behavioural RC acceptance on a *disposable* PostgreSQL (seed + retrieve
-  + assert) runs in CI (`release-candidate-verification.yml`, pgvector/pg16) —
-  the sandbox has no local PostgreSQL and the production database is never
-  seeded. Local SQL validation above is read-only.
-- Live production acceptance on the test store is the remaining human runbook
-  step (see audit register).
+- Authenticated end-to-end production acceptance: a Rev answer against the
+  live store in an authenticated merchant session is the remaining human
+  runbook step. The full behavioural RC acceptance did run — but on a
+  disposable PostgreSQL in CI (the sandbox has no local PostgreSQL and the
+  production database is never seeded); the local SQL validation above is
+  read-only.
+- The Python/Rev backend (Render) deployment identity could not be established
+  from the available connections, and no Render credential or merchant access
+  token was available or requested. Fixtures, mocked transports, the migrated
+  schema and the dashboard build are not live Rev evidence.
