@@ -34,8 +34,8 @@ The full Backend command was attempted after restoring dependencies and stops at
 
 ## Required release and production gates
 
-- [ ] Full Backend suite and real Prisma/PostgreSQL CI on the exact PR revision.
-- [ ] Full Dashboard suite, type/build and applicable security checks on the exact PR revision.
+- [x] Full Backend suite and real Prisma/PostgreSQL CI on code revision `874fff6`: Backend tests run `42413907939`, Backend refresh `42413907966`, and release-candidate Prisma/bootstrap/financial/security run `42413907937` all passed. This supersedes the local Prisma-engine limitation.
+- [x] Full Dashboard suite, type/build and applicable security checks: Dashboard runs `42413907972` and `42413907937` passed; local TypeScript and changed-file ESLint also passed as recorded above. Python run `42413907987` passed with disposable PostgreSQL. Vercel preview check passed.
 - [ ] PR review/merge identity recorded.
 - [ ] Render `/ready` Node/Python exact deployed revisions and dependency state recorded; readiness alone is not behavior acceptance.
 - [ ] Vercel production deployment identity and state recorded.
