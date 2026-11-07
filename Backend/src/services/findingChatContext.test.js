@@ -9,6 +9,7 @@ assert.equal(validFindingId({ id }), false);
 assert.equal(buildFindingContext('Why?', null), null);
 assert.equal(buildFindingContext('Why?', { evidence: { verified: false } }), null);
 const finding = {
+  id,
   store_id: 'store-a', type: 'revenue_change', title: 'Verified revenue decreased 30%',
   description: 'Compared with the prior equal-length period.',
   evidence: { verified: true, complete: true, coverage_source: TRUSTED_SOURCE, coverage_run_id: 'sync-123',

@@ -206,25 +206,18 @@ exports.chat = async (req, res, next) => {
     // Finding context is always resolved server-side under the authenticated organization.
     let intelligenceMessage = message;
     if (req.body?.finding_id != null) {
-      const { validFindingId, buildFindingContext } = require('../services/findingChatContext');
-      const findingId = req.body.finding_id;
-      if (!validFindingId(findingId)) {
+      const { resolveFindingChatContext } = require('../services/findingChatContext');
+      const findingContext = await resolveFindingChatContext(prisma, org.id, req.body.finding_id, message);
+      if (findingContext.status === 'invalid') {
         return res.status(400).json({ success: false, error: { code: 'INVALID_FINDING_ID' } });
       }
-      const finding = await prisma.intelligence_findings.findFirst({
-        where: { id: findingId, organization_id: org.id },
-        select: { store_id: true, type: true, title: true, description: true, evidence: true, detected_at: true },
-      });
-      if (!finding) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
-      // Verify the referenced store is still owned by this organization.
-      const ownedStore = await prisma.stores.findFirst({
-        where: { id: finding.store_id, organization_id: org.id }, select: { id: true },
-      });
-      if (!ownedStore) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
-      intelligenceMessage = buildFindingContext(message, finding);
-      if (!intelligenceMessage) return res.status(409).json({
+      if (findingContext.status === 'not_found') {
+        return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
+      }
+      if (findingContext.status !== 'ok') return res.status(409).json({
         success: false, error: { code: 'FINDING_EVIDENCE_UNVERIFIED' },
       });
+      intelligenceMessage = findingContext.context;
     }
 
     logger.info('rev_chat_request', {
@@ -1081,21 +1074,12 @@ function _validateChatPayload(body) {
 
 async function _resolveFindingMessage(req, org, message) {
   if (req.body?.finding_id == null) return { message };
-  const { validFindingId, buildFindingContext } = require('../services/findingChatContext');
-  const findingId = req.body.finding_id;
-  if (!validFindingId(findingId)) return { error: { status: 400, code: 'INVALID_FINDING_ID' } };
-  const finding = await prisma.intelligence_findings.findFirst({
-    where: { id: findingId, organization_id: org.id },
-    select: { store_id: true, type: true, title: true, description: true, evidence: true, detected_at: true },
-  });
-  if (!finding) return { error: { status: 404, code: 'FINDING_NOT_FOUND' } };
-  const ownedStore = await prisma.stores.findFirst({
-    where: { id: finding.store_id, organization_id: org.id }, select: { id: true },
-  });
-  if (!ownedStore) return { error: { status: 404, code: 'FINDING_NOT_FOUND' } };
-  const contextual = buildFindingContext(message, finding);
-  if (!contextual) return { error: { status: 409, code: 'FINDING_EVIDENCE_UNVERIFIED' } };
-  return { message: contextual };
+  const { resolveFindingChatContext } = require('../services/findingChatContext');
+  const resolved = await resolveFindingChatContext(prisma, org.id, req.body.finding_id, message);
+  if (resolved.status === 'invalid') return { error: { status: 400, code: 'INVALID_FINDING_ID' } };
+  if (resolved.status === 'not_found') return { error: { status: 404, code: 'FINDING_NOT_FOUND' } };
+  if (resolved.status !== 'ok') return { error: { status: 409, code: 'FINDING_EVIDENCE_UNVERIFIED' } };
+  return { message: resolved.context };
 }
 
 // ── POST /api/v1/rev/stream ───────────────────────────────────────────────────

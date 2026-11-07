@@ -24,11 +24,13 @@ const { toPythonEvent, FEATURE_FIELDS } = require('../featureWorkerService');
       models_ready: true,
       models_missing: [],
       model_channels: { abandonment: 'beta' },
+      build: '6f37978f620ab55814f3bf319a27296a72c8df99',
     },
   });
   const health = await mlService.checkPythonHealth();
   assert.strictEqual(health.healthy, true, 'beta-ready Python health should be accepted when allowlisted');
   assert.strictEqual(health.modelStatus, 'beta_ready');
+  assert.strictEqual(health.build, '6f37978f620ab55814f3bf319a27296a72c8df99');
 
   axios.get = async () => ({
     status: 200,
