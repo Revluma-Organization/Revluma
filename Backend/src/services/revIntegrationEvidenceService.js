@@ -494,7 +494,9 @@ async function authorizedStores(db, organizationId, storeId) {
   let withToken = [];
   if (rows.length && typeof db.$queryRawUnsafe === 'function') {
     const params = [];
-    let clause = 'SELECT s.id::text AS store_id, (s.access_token IS NOT NULL) AS has_token FROM stores s WHERE s.id IN (';
+    // Compare as text (s.id::text) because the bound parameters are text;
+    // a uuid = text comparison has no operator and needs an explicit cast.
+    let clause = 'SELECT s.id::text AS store_id, (s.access_token IS NOT NULL) AS has_token FROM stores s WHERE s.id::text IN (';
     for (const row of rows) {
       if (params.length) clause += ', ';
       clause += `$${params.length + 1}`;

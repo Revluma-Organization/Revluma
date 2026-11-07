@@ -91,7 +91,7 @@ test('healthy store: explicit states, valid contract items, no credentials', asy
   // The credential probe must stay a scalar-bound IN list (no token column selected).
   const rawCall = fakeDb.calls.find(entry => entry[0] === 'raw');
   assert.ok(rawCall, 'credential probe must run');
-  assert.match(rawCall[1], /s\.id IN \(\$1/);
+  assert.match(rawCall[1], /s\.id::text IN \(\$1/);
   // The token column may appear only inside the IS NOT NULL boolean probe.
   assert.equal(rawCall[1].split('access_token').length - 1, 1);
   assert.match(rawCall[1], /access_token IS NOT NULL/);
