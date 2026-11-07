@@ -76,18 +76,56 @@ what could and could not be verified in this environment.
   postgres-gated file): **121 passed, 2 skipped** (the skips are the disposable-
   PostgreSQL integration tests, which run only in CI where `TASK198_DATABASE_URL` is
   supplied).
-- Full Python suite: **1595 passed, 9 skipped** (4 further tests deselected locally
-  because they require a live `DATABASE_URL`; they run in CI).
+- Full Python suite, no database: **1595 passed, 9 skipped** (4 further tests
+  deselected locally because they require a live `DATABASE_URL`; they run in CI).
+- Full Python suite **against real PostgreSQL** (embedded PostgreSQL 18.6 running
+  in the sandbox, `TASK198_DATABASE_URL` + placeholder `DATABASE_URL`, exactly the
+  `rev-python-tests.yml` environment): **1607 passed, 1 skipped** — the single skip
+  is the opt-in live-LLM-judge benchmark. This runs the previously CI-only
+  `tests/test_revenue_evidence_postgres.py` and the persistence-atomicity suite.
+- Staging revenue acceptance script against real PostgreSQL
+  (`python scripts/staging_revenue_acceptance.py`, the RC workflow's
+  "Revenue evidence acceptance on real PostgreSQL" step): **PASS**, two phases —
+  uncertified ledger (gaps visible, reconciliation flags 4 unreconciled orders,
+  `overall_status=partial`) and certified ledger (refunds netted exactly once,
+  `verified_zero` reconciliation, `overall_status=available`), then rolled back.
 - Node full backend suite: **79 test files passed** (`npm test`), including the new
   revenue-resource and reporting-timezone tests (17 in `revEvidenceService.test.js`,
   11 in `revMerchantContext.test.js`).
 
+## CI failure remediation (first push)
+
+The first CI run of this PR failed both real-PostgreSQL paths; both were reproduced
+locally against embedded PostgreSQL and fixed:
+
+- `rev-python-tests.yml` ("Run all Python tests"): `tests/
+  test_business_state_persistence_atomicity.py` failed 5 tests because its fixture
+  `orders` table lacked the `currency` column that `DAILY_REVENUE_SQL` now reads.
+  The production Prisma schema has `orders.currency` (`String? @default("USD")`), so
+  the implementation was correct and the fixture DDL was updated to mirror it.
+- `release-candidate-verification.yml` ("Revenue evidence acceptance on real
+  PostgreSQL"): `python/scripts/staging_revenue_acceptance.py` still asserted the
+  pre-Task-198 contract (a `refund_adjustment` metric that no longer exists) and its
+  seed left the itemised refund ledger empty, so the reconciliation check (a new,
+  deliberate invariant) correctly refused certification. The script now runs two
+  phases on the same transaction: with the ledger uncertified it asserts the gaps
+  are *visible* (`partial`, 4 reconciliation discrepancies, `not_synchronized`
+  money); after seeding `order_refunds` rows that match each order's recorded
+  `refunded_total` and fully paginated refunds/transactions domain runs, it asserts
+  the certified contract (net `{"USD": "120.00", "EUR": "25.00"}`, gross = net +
+  refunded per currency, refund-date attribution, `verified_zero` reconciliation,
+  no cancelled/gross leakage, `overall_status=available`). It rolls everything back
+  in `finally` as before.
+
 ## Not verified here (honest limits)
 
-- The disposable-PostgreSQL integration test (`tests/test_revenue_evidence_postgres.py`)
-  was not executed locally (no PostgreSQL in this sandbox); it is wired into
-  `.github/workflows/rev-python-tests.yml`, which provisions `postgres:16` and sets
-  `TASK198_DATABASE_URL`. CI is the verification surface for the real-database path.
+- The real-database path was verified against embedded PostgreSQL **18.6** in the
+  sandbox; CI verifies it against **postgres:16** (`rev-python-tests.yml`) and the
+  pgvector RC bootstrap (`release-candidate-verification.yml`). The acceptance
+  script's local run used a hand-written stand-in for `prisma db push` of the
+  tables the revenue path touches (the Prisma schema-engine binary is not
+  downloadable from the sandbox); column names and types mirror
+  `Backend/prisma/schema.prisma`, and the CI run bootstraps the full schema.
 - No production deployment, migration or live-store run was performed in this task;
   live acceptance remains the human runbook (`docs/production-recovery/
   REV-LIVE-ACCEPTANCE-RUNBOOK.md`).
