@@ -1,0 +1,6061 @@
+{
+  "cases": [
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_count",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "integer_count",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "count",
+        "unknown": null,
+        "value": 4
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "count_claim_valid",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "money_claim_valid",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.315"
+      },
+      "errors": [
+        "currency_claim_false_precision"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "money_false_precision",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": null,
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [
+        "currency_claim_missing_rounding"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "money_missing_rounding",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [
+        "currency_claim_without_currency"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "money_without_currency",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "thirty"
+      },
+      "errors": [
+        "currency_claim_not_numeric"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "money_not_numeric",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": 4
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "count_value_on_currency_claim",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_count",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "integer_count",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "count",
+        "unknown": null,
+        "value": 4.5
+      },
+      "errors": [
+        "count_claim_not_integer"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "count_fractional",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_count",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "integer_count",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "count",
+        "unknown": null,
+        "value": 4
+      },
+      "errors": [
+        "verified_fact_cites_unknown_evidence"
+      ],
+      "known_evidence": {},
+      "name": "fact_cites_unknown_evidence",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-unavailable"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_count",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "integer_count",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "count",
+        "unknown": null,
+        "value": 4
+      },
+      "errors": [
+        "verified_fact_cites_unavailable_evidence"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "fact_cites_unavailable_evidence",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-unavailable"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [
+        "verified_fact_currency_mismatch"
+      ],
+      "known_evidence": {
+        "ev-unavailable": {
+          "currency": "NGN",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        }
+      },
+      "name": "fact_currency_mismatch",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_count",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "integer_count",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "count",
+        "unknown": null,
+        "value": 4
+      },
+      "errors": [
+        "cross_tenant_claim"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "cross_tenant",
+      "organization_id": "99999999-9999-4999-8999-999999999999",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_count",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "integer_count",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "count",
+        "unknown": null,
+        "value": 4
+      },
+      "errors": [
+        "cross_store_claim"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "cross_store",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-b2"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_count",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "integer_count",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "count",
+        "unknown": null,
+        "value": null
+      },
+      "errors": [
+        "established_claim_without_value"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "established_claim_without_value",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v0",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_count",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "integer_count",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "count",
+        "unknown": null,
+        "value": 4
+      },
+      "errors": [
+        "unknown_claim_contract_version"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "unknown_contract_version",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "maybe",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_count",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "integer_count",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "count",
+        "unknown": null,
+        "value": 4
+      },
+      "errors": [
+        "invalid_claim_grade"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "invalid_grade",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "USD",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": "20.00"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_claim_valid",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculated_observation_without_calculation"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_missing_block",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "USD",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": "20.00"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculation_without_formula"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_missing_formula",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "USD",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": "20.00"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": ""
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculation_without_version"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_missing_version",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "USD",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": "20.00"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculation_without_rounding"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_missing_rounding",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculation_without_inputs"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_no_inputs",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "USD",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": null
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculation_input_missing_value",
+        "calculation_zero_or_missing_denominator"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_input_missing_value",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "USD",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": 0
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculation_zero_or_missing_denominator"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_zero_denominator",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "NGN",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": "1000.00"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculation_mixes_currencies"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_mixed_currencies",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-ghost",
+              "role": "current",
+              "value": "30.31"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculation_input_cites_unknown_evidence"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_input_unknown_evidence",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": null,
+              "role": "current",
+              "value": "30.31"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [
+        "calculation_input_without_evidence"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_input_no_evidence_id",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "USD",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": "20.00"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.55"
+      },
+      "errors": [
+        "percent_claim_false_precision"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "calculation_percent_false_precision",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-cd03d1c33005891a351fe8f5",
+        "classification": "hypothesis",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [],
+        "financial_impact": null,
+        "hypothesis": {
+          "alternatives": [],
+          "confidence": 0.2,
+          "missing_evidence": [
+            "Not a finding."
+          ],
+          "supports": [
+            "ev-aaaa"
+          ],
+          "verification_step": "Run a dedicated investigation for each candidate cause.",
+          "verified": false
+        },
+        "limitations": [],
+        "metric": null,
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": null,
+        "period_timezone": null,
+        "quality": null,
+        "retrieved_at": null,
+        "rounding": null,
+        "source": null,
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Possible contributor, not established.",
+        "unit": null,
+        "unknown": null,
+        "value": null
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "hypothesis_valid",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-cd03d1c33005891a351fe8f5",
+        "classification": "hypothesis",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [],
+        "financial_impact": null,
+        "hypothesis": {
+          "alternatives": [],
+          "confidence": 0.2,
+          "missing_evidence": [
+            "Not a finding."
+          ],
+          "supports": [
+            "ev-aaaa"
+          ],
+          "verification_step": "Run a dedicated investigation for each candidate cause.",
+          "verified": true
+        },
+        "limitations": [],
+        "metric": null,
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": null,
+        "period_timezone": null,
+        "quality": null,
+        "retrieved_at": null,
+        "rounding": null,
+        "source": null,
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Possible contributor, not established.",
+        "unit": null,
+        "unknown": null,
+        "value": null
+      },
+      "errors": [
+        "hypothesis_claimed_verified"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "hypothesis_claimed_verified",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-cd03d1c33005891a351fe8f5",
+        "classification": "hypothesis",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [],
+        "financial_impact": null,
+        "hypothesis": {
+          "alternatives": [],
+          "confidence": 0.2,
+          "missing_evidence": [],
+          "supports": [
+            "ev-aaaa"
+          ],
+          "verification_step": "Run a dedicated investigation for each candidate cause.",
+          "verified": false
+        },
+        "limitations": [],
+        "metric": null,
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": null,
+        "period_timezone": null,
+        "quality": null,
+        "retrieved_at": null,
+        "rounding": null,
+        "source": null,
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Possible contributor, not established.",
+        "unit": null,
+        "unknown": null,
+        "value": null
+      },
+      "errors": [
+        "hypothesis_without_missing_evidence"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "hypothesis_without_missing_evidence",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-cd03d1c33005891a351fe8f5",
+        "classification": "hypothesis",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [],
+        "financial_impact": "lost",
+        "hypothesis": {
+          "alternatives": [],
+          "confidence": 0.2,
+          "missing_evidence": [
+            "Not a finding."
+          ],
+          "supports": [
+            "ev-aaaa"
+          ],
+          "verification_step": "Run a dedicated investigation for each candidate cause.",
+          "verified": false
+        },
+        "limitations": [],
+        "metric": null,
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": null,
+        "period_timezone": null,
+        "quality": null,
+        "retrieved_at": null,
+        "rounding": null,
+        "source": null,
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Possible contributor, not established.",
+        "unit": null,
+        "unknown": null,
+        "value": null
+      },
+      "errors": [
+        "hypothesis_carries_financial_impact"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "hypothesis_carries_impact",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-cd03d1c33005891a351fe8f5",
+        "classification": "hypothesis",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": null,
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": null,
+        "period_timezone": null,
+        "quality": null,
+        "retrieved_at": null,
+        "rounding": null,
+        "source": null,
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Possible contributor, not established.",
+        "unit": null,
+        "unknown": null,
+        "value": null
+      },
+      "errors": [
+        "hypothesis_without_block"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "hypothesis_without_block",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-786102dba5fca0ff951c22a4",
+        "classification": "unknown",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": null,
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": null,
+        "period_timezone": null,
+        "quality": null,
+        "retrieved_at": null,
+        "rounding": null,
+        "source": null,
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Abandonment reason not recorded.",
+        "unit": null,
+        "unknown": {
+          "attempts": [
+            "checkout_observations"
+          ],
+          "missing_capability": null,
+          "needed_to_establish": "Authorized source evidence for this question.",
+          "reason": "Abandonment reason not recorded."
+        },
+        "value": null
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "unknown_valid",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-786102dba5fca0ff951c22a4",
+        "classification": "unknown",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": null,
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": null,
+        "period_timezone": null,
+        "quality": null,
+        "retrieved_at": null,
+        "rounding": null,
+        "source": null,
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Abandonment reason not recorded.",
+        "unit": null,
+        "unknown": {
+          "attempts": [
+            "checkout_observations"
+          ],
+          "missing_capability": null,
+          "needed_to_establish": "Authorized source evidence for this question.",
+          "reason": "Abandonment reason not recorded."
+        },
+        "value": 0
+      },
+      "errors": [
+        "unknown_claim_carries_value"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "unknown_carries_value",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-786102dba5fca0ff951c22a4",
+        "classification": "unknown",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": null,
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": null,
+        "period_timezone": null,
+        "quality": null,
+        "retrieved_at": null,
+        "rounding": null,
+        "source": null,
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Abandonment reason not recorded.",
+        "unit": null,
+        "unknown": null,
+        "value": null
+      },
+      "errors": [
+        "unknown_without_block"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "unknown_without_block",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-786102dba5fca0ff951c22a4",
+        "classification": "unknown",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": null,
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": null,
+        "period_timezone": null,
+        "quality": null,
+        "retrieved_at": null,
+        "rounding": null,
+        "source": null,
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Abandonment reason not recorded.",
+        "unit": null,
+        "unknown": {
+          "attempts": [
+            "checkout_observations"
+          ],
+          "missing_capability": null,
+          "needed_to_establish": "Authorized source evidence for this question.",
+          "reason": "  "
+        },
+        "value": null
+      },
+      "errors": [
+        "unknown_without_reason"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "unknown_without_reason",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": "lost",
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [
+        "asserted_impact_without_method"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "asserted_impact_without_method",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": "potential",
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "potential_impact_on_fact",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": "observed",
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "observed_impact_on_fact",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": "windfall",
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [
+        "unknown_impact_kind:windfall"
+      ],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "unknown_impact_kind",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "USD",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": "20.00"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": "recoverable",
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "recoverable_impact_on_calculation",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "restated": true,
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "source_investigation": "inv-0",
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [],
+      "known_evidence": {},
+      "name": "restated_claim_valid",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "restated": true,
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [
+        "restated_claim_without_source_investigation"
+      ],
+      "known_evidence": {},
+      "name": "restated_claim_without_source",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "x",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "restated": true,
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "source_investigation": "inv-0",
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "errors": [
+        "restated_claim_without_claim_id"
+      ],
+      "known_evidence": {},
+      "name": "restated_claim_without_id",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    },
+    {
+      "claim": {
+        "calculation": null,
+        "claim_id": "clm-3e6685da541d7f212ae10abd",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": null,
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "observed_checkout_completion_rate",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": null,
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "ratio",
+        "unknown": null,
+        "value": 0.42
+      },
+      "errors": [],
+      "known_evidence": {
+        "ev-aaaa": {
+          "currency": "USD",
+          "id": "ev-aaaa",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-bbbb": {
+          "currency": "USD",
+          "id": "ev-bbbb",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "available"
+        },
+        "ev-unavailable": {
+          "currency": "USD",
+          "id": "ev-unavailable",
+          "limitations": [],
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "status": "unavailable"
+        }
+      },
+      "name": "percent_ratio_claim_valid",
+      "organization_id": "11111111-1111-4111-8111-111111111111",
+      "store_ids": [
+        "store-a1"
+      ]
+    }
+  ],
+  "contract_version": "rev-claim-v1",
+  "generated_by": "python/scripts/gen_epistemic_golden.py",
+  "rollup_cases": [
+    {
+      "claims": [
+        {
+          "calculation": null,
+          "claim_id": "clm-3e6685da541d7f212ae10abd",
+          "classification": "verified_fact",
+          "computed_at": null,
+          "contract_version": "rev-claim-v1",
+          "currency": null,
+          "evidence_ids": [
+            "ev-aaaa"
+          ],
+          "financial_impact": null,
+          "hypothesis": null,
+          "limitations": [],
+          "metric": "recorded_order_count",
+          "observed_at": "2026-11-07T12:00:00Z",
+          "organization_id": "11111111-1111-4111-8111-111111111111",
+          "period": {
+            "end": "2026-11-07T12:00:00Z",
+            "label": "the last 24 hours",
+            "start": "2026-11-06T12:00:00Z",
+            "timezone": "UTC"
+          },
+          "period_timezone": "UTC",
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "rounding": "integer_count",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "store_ids": [
+            "store-a1"
+          ],
+          "text": "4 non-cancelled orders recorded",
+          "unit": "count",
+          "unknown": null,
+          "value": 4
+        },
+        {
+          "calculation": {
+            "assumptions": [
+              "previous period is the equal-length immediately preceding window"
+            ],
+            "exclusions": [],
+            "formula": "percent = (current - previous) / previous * 100",
+            "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+            "inputs": [
+              {
+                "currency": "USD",
+                "evidence_id": "ev-aaaa",
+                "role": "current",
+                "value": "30.31"
+              },
+              {
+                "currency": "USD",
+                "evidence_id": "ev-bbbb",
+                "role": "previous",
+                "value": "20.00"
+              }
+            ],
+            "method": "percent_change",
+            "qualifier": "versus the previous period",
+            "rounding": "1dp_percent",
+            "version": "percent-change-v1"
+          },
+          "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+          "classification": "calculated_observation",
+          "computed_at": "2026-11-07T12:00:00Z",
+          "contract_version": "rev-claim-v1",
+          "currency": "USD",
+          "evidence_ids": [
+            "ev-aaaa",
+            "ev-bbbb"
+          ],
+          "financial_impact": null,
+          "hypothesis": null,
+          "limitations": [],
+          "metric": "recorded_order_value",
+          "observed_at": null,
+          "organization_id": "11111111-1111-4111-8111-111111111111",
+          "period": {
+            "end": "2026-11-07T12:00:00Z",
+            "label": "the last 24 hours",
+            "start": "2026-11-06T12:00:00Z",
+            "timezone": "UTC"
+          },
+          "period_timezone": "UTC",
+          "quality": {
+            "availability": "available",
+            "consistency": "consistent",
+            "coverage": "complete",
+            "currency_integrity": "single_verified_currency",
+            "freshness": "fresh",
+            "reasons": [],
+            "schema_version": "rev-evidence-quality-v1",
+            "sufficiency": "sufficient",
+            "value_state": "observed_nonzero"
+          },
+          "retrieved_at": "2026-11-07T12:00:00Z",
+          "rounding": "1dp_percent",
+          "source": {
+            "resource": "orders",
+            "system": "shopify"
+          },
+          "store_ids": [
+            "store-a1"
+          ],
+          "text": "4 non-cancelled orders recorded",
+          "unit": "percent",
+          "unknown": null,
+          "value": "51.6"
+        },
+        {
+          "calculation": null,
+          "claim_id": "clm-cd03d1c33005891a351fe8f5",
+          "classification": "hypothesis",
+          "computed_at": null,
+          "contract_version": "rev-claim-v1",
+          "currency": null,
+          "evidence_ids": [],
+          "financial_impact": null,
+          "hypothesis": {
+            "alternatives": [],
+            "confidence": 0.2,
+            "missing_evidence": [
+              "Not a finding."
+            ],
+            "supports": [
+              "ev-aaaa"
+            ],
+            "verification_step": "Run a dedicated investigation for each candidate cause.",
+            "verified": false
+          },
+          "limitations": [],
+          "metric": null,
+          "observed_at": null,
+          "organization_id": "11111111-1111-4111-8111-111111111111",
+          "period": null,
+          "period_timezone": null,
+          "quality": null,
+          "retrieved_at": null,
+          "rounding": null,
+          "source": null,
+          "store_ids": [
+            "store-a1"
+          ],
+          "text": "Possible contributor, not established.",
+          "unit": null,
+          "unknown": null,
+          "value": null
+        },
+        {
+          "calculation": null,
+          "claim_id": "clm-786102dba5fca0ff951c22a4",
+          "classification": "unknown",
+          "computed_at": null,
+          "contract_version": "rev-claim-v1",
+          "currency": null,
+          "evidence_ids": [],
+          "financial_impact": null,
+          "hypothesis": null,
+          "limitations": [],
+          "metric": null,
+          "observed_at": null,
+          "organization_id": "11111111-1111-4111-8111-111111111111",
+          "period": null,
+          "period_timezone": null,
+          "quality": null,
+          "retrieved_at": null,
+          "rounding": null,
+          "source": null,
+          "store_ids": [
+            "store-a1"
+          ],
+          "text": "Abandonment reason not recorded.",
+          "unit": null,
+          "unknown": {
+            "attempts": [
+              "checkout_observations"
+            ],
+            "missing_capability": null,
+            "needed_to_establish": "Authorized source evidence for this question.",
+            "reason": "Abandonment reason not recorded."
+          },
+          "value": null
+        }
+      ],
+      "name": "mixed_set",
+      "rollup": {
+        "contract_version": "rev-claim-v1",
+        "counts": {
+          "calculated_observation": 1,
+          "hypothesis": 1,
+          "unknown": 1,
+          "verified_fact": 1
+        },
+        "metrics": {
+          "recorded_order_count": [
+            "verified_fact"
+          ],
+          "recorded_order_value": [
+            "calculated_observation"
+          ]
+        },
+        "total": 4
+      }
+    },
+    {
+      "claims": [],
+      "name": "empty",
+      "rollup": {
+        "contract_version": "rev-claim-v1",
+        "counts": {
+          "calculated_observation": 0,
+          "hypothesis": 0,
+          "unknown": 0,
+          "verified_fact": 0
+        },
+        "metrics": {},
+        "total": 0
+      }
+    }
+  ],
+  "set_case": {
+    "claims": [
+      {
+        "calculation": {
+          "assumptions": [
+            "previous period is the equal-length immediately preceding window"
+          ],
+          "exclusions": [],
+          "formula": "percent = (current - previous) / previous * 100",
+          "id": "percent-change:recorded_order_value:2026-11-06T12:00:00Z:2026-11-07T12:00:00Z",
+          "inputs": [
+            {
+              "currency": "USD",
+              "evidence_id": "ev-aaaa",
+              "role": "current",
+              "value": "30.31"
+            },
+            {
+              "currency": "USD",
+              "evidence_id": "ev-bbbb",
+              "role": "previous",
+              "value": "20.00"
+            }
+          ],
+          "method": "percent_change",
+          "qualifier": "versus the previous period",
+          "rounding": "1dp_percent",
+          "version": "percent-change-v1"
+        },
+        "claim_id": "clm-3dddfe5a8b6f90ff39e32599",
+        "classification": "calculated_observation",
+        "computed_at": "2026-11-07T12:00:00Z",
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa",
+          "ev-bbbb"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": null,
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "1dp_percent",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "4 non-cancelled orders recorded",
+        "unit": "percent",
+        "unknown": null,
+        "value": "51.6"
+      },
+      {
+        "calculation": null,
+        "claim_id": "clm-a5cef2ebf91e1fe760eadf72",
+        "classification": "verified_fact",
+        "computed_at": null,
+        "contract_version": "rev-claim-v1",
+        "currency": "USD",
+        "evidence_ids": [
+          "ev-aaaa"
+        ],
+        "financial_impact": null,
+        "hypothesis": null,
+        "limitations": [],
+        "metric": "recorded_order_value",
+        "observed_at": "2026-11-07T12:00:00Z",
+        "organization_id": "11111111-1111-4111-8111-111111111111",
+        "period": {
+          "end": "2026-11-07T12:00:00Z",
+          "label": "the last 24 hours",
+          "start": "2026-11-06T12:00:00Z",
+          "timezone": "UTC"
+        },
+        "period_timezone": "UTC",
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "rounding": "2dp_money",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "store_ids": [
+          "store-a1"
+        ],
+        "text": "Recorded order value USD 30.31",
+        "unit": "currency",
+        "unknown": null,
+        "value": "30.31"
+      },
+      "not-a-dict"
+    ],
+    "errors": [
+      "claim_not_an_object"
+    ],
+    "items": [
+      {
+        "currency": "USD",
+        "id": "ev-aaaa",
+        "limitations": [],
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "status": "available"
+      },
+      {
+        "currency": "USD",
+        "id": "ev-bbbb",
+        "limitations": [],
+        "quality": {
+          "availability": "available",
+          "consistency": "consistent",
+          "coverage": "complete",
+          "currency_integrity": "single_verified_currency",
+          "freshness": "fresh",
+          "reasons": [],
+          "schema_version": "rev-evidence-quality-v1",
+          "sufficiency": "sufficient",
+          "value_state": "observed_nonzero"
+        },
+        "retrieved_at": "2026-11-07T12:00:00Z",
+        "source": {
+          "resource": "orders",
+          "system": "shopify"
+        },
+        "status": "available"
+      }
+    ],
+    "organization_id": "11111111-1111-4111-8111-111111111111",
+    "store_ids": [
+      "store-a1"
+    ]
+  }
+}

@@ -322,5 +322,41 @@ class TestPersistedContextIsBounded:
         assert value["intent"] == "revenue_investigation"
         assert value["status"] == "complete"
         assert set(value) <= {
-            "id", "intent", "status", "period", "evidence_ids", "currencies", "segment", "order_query",
+            "id", "intent", "status", "period", "evidence_ids", "currencies", "segment",
+            "order_query", "checkout_query",
         }
+
+    def test_recorded_claims_are_persisted_and_capped(self):
+        db = FakeDB()
+        result = _result()
+        result["claims"] = [
+            {"contract_version": "rev-claim-v1", "claim_id": f"clm-{index}",
+             "classification": "verified_fact"}
+            for index in range(20)
+        ]
+        result["investigation"]["checkout_query"] = {"abandoned_only": True}
+
+        persist_investigation_context(ORG, USER, CONVERSATION, db, result)
+
+        window = _context(db)
+        # The recorded claims are the follow-up record: bounded, well-formed
+        # objects only, in the order they were presented.
+        claims = window["last_claims"]
+        assert len(claims) == 10
+        assert all(claim["contract_version"] == "rev-claim-v1" for claim in claims)
+        assert claims[0]["claim_id"] == "clm-0"
+        # The checkout drill-down travels with the investigation so a
+        # follow-up ("what about those?") inherits it.
+        assert window["last_investigation"]["checkout_query"] == {"abandoned_only": True}
+
+    def test_non_claim_objects_never_become_recorded_claims(self):
+        db = FakeDB()
+        result = _result()
+        result["claims"] = ["not-a-dict", {"no_contract": True},
+                            {"contract_version": "rev-claim-v1", "claim_id": "clm-ok"}]
+
+        persist_investigation_context(ORG, USER, CONVERSATION, db, result)
+
+        assert _context(db)["last_claims"] == [
+            {"contract_version": "rev-claim-v1", "claim_id": "clm-ok"}
+        ]

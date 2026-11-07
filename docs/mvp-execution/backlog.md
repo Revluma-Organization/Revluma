@@ -242,7 +242,8 @@
 - [x] **TASK 201** — Verify integration evidence retrieval. *(code complete; see `implementation/TASK-201-REV-INTEGRATION-EVIDENCE.md` — fail-closed current-state integration evidence, tenant- and secret-safe, Python tool + Node endpoint parity; CI + live acceptance outstanding)*
 - [ ] **TASK 202** — Verify finding evidence retrieval.
 - [ ] **TASK 203** — Verify product evidence retrieval where available.
-- [ ] **TASK 204** — Verify relative date interpretation.
+- [x] **TASK 204** — Verify relative date interpretation. *(subject delivered by TASK 198 merchant-calendar reporting periods, REV-DEC-0012 — calendar-week/month relative periods in the merchant timezone; the number was reused for the consolidated reasoning-epistemics task, see the TASK 204 line below)*
+- [x] **TASK 204** — Productionize reasoning epistemics and numeric integrity (consolidates original TASK 212–216). *(see `implementation/TASK-204-REASONING-EPISTEMICS.md` and `validation/TASK-204-REASONING-EPISTEMICS.md`; numbering collision with the line above documented there)*
 - [ ] **TASK 205** — Verify comparison period calculation.
 - [ ] **TASK 206** — Verify merchant timezone interpretation.
 - [ ] **TASK 207** — Verify currency-aware response calculation.
@@ -250,11 +251,11 @@
 - [ ] **TASK 209** — Verify incomplete evidence fallback.
 - [ ] **TASK 210** — Verify stale evidence warning.
 - [ ] **TASK 211** — Verify contradictory evidence handling.
-- [ ] **TASK 212** — Label verified facts in reasoning output.
-- [ ] **TASK 213** — Label calculated findings in reasoning output.
-- [ ] **TASK 214** — Label hypotheses in reasoning output.
-- [ ] **TASK 215** — Label unknowns in reasoning output.
-- [ ] **TASK 216** — Prevent fabricated numeric claims.
+- [x] **TASK 212** — Label verified facts in reasoning output. *(consolidated into TASK 204 — reasoning epistemics; see `implementation/TASK-204-REASONING-EPISTEMICS.md`)*
+- [x] **TASK 213** — Label calculated findings in reasoning output. *(consolidated into TASK 204 — reasoning epistemics)*
+- [x] **TASK 214** — Label hypotheses in reasoning output. *(consolidated into TASK 204 — reasoning epistemics)*
+- [x] **TASK 215** — Label unknowns in reasoning output. *(consolidated into TASK 204 — reasoning epistemics)*
+- [x] **TASK 216** — Prevent fabricated numeric claims. *(consolidated into TASK 204 — reasoning epistemics)*
 - [ ] **TASK 217** — Prevent fabricated causal explanations.
 - [ ] **TASK 218** — Prevent fabricated merchant actions.
 - [ ] **TASK 219** — Prevent unsupported recoverable-revenue claims.

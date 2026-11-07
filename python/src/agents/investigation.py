@@ -44,6 +44,18 @@ from ..intelligence.evidence import (
     validate_attribution,
     validate_collection,
 )
+from ..intelligence.epistemics import (
+    CLAIM_CONTRACT_VERSION,
+    build_calculation_claim,
+    build_fact_claim,
+    build_hypothesis_claim,
+    build_unknown_claim,
+    can_promote,
+    claim_reference,
+    correct_claim,
+    epistemic_rollup,
+    validate_claim,
+)
 from ..intelligence.query import release_read_transaction, safe_query
 from ..intelligence.revenue_evidence import retrieve_revenue_evidence
 from .base_agent import AgentResult, normalize_specialist_status
@@ -582,6 +594,36 @@ INTENT_PATTERNS = (
 CORRECTION_PATTERN = re.compile(
     r"\b(?:that(?:'s| is) (?:wrong|incorrect|not right)|you(?:'re| are) wrong"
     r"|that doesn(?:'t|t) match|not true|incorrect figure|wrong number)\b", re.I)
+
+# Task 204: a provenance follow-up ("where did that number come from?") must be
+# answered from the RECORDED claim of the previous investigation, not from a
+# fresh retrieval and not from reconstructed memory.
+PROVENANCE_PATTERN = re.compile(
+    r"\b(?:where did (?:that|this|your|the|a)\b[^?]{0,60}?come from|"
+    r"where does (?:that|this|your|the)\b[^?]{0,60}?come from|"
+    r"what(?:'s| is| was)? the source (?:of|for)|source of that|"
+    r"how do you know|show me the evidence|show your work|what evidence|"
+    r"evidence for that|prove that|prove it|on what basis)\b", re.I)
+
+
+# Task 204: the answer text must never affirmatively claim a financial
+# CONSEQUENCE (recovered / saved / prevented / avoided money, lost revenue,
+# counterfactual savings, quantified opportunity) - this release records no
+# calculation that would support such a figure, so any affirmative outcome
+# claim adjacent to a number is rejected and the deterministic composition is
+# used instead. Negated or unquantified mentions ("not lost or recoverable
+# revenue", "did not prevent the decline") are allowed.
+OUTCOME_CLAIM_PATTERNS = (
+    re.compile(r"\b(?:recovered|recouped|saved|prevented|avoided)\s+"
+               r"(?:up\s+to\s+|about\s+|approximately\s+|around\s+|nearly\s+|over\s+|under\s+|"
+               r"at\s+least\s+)?(?:of\s+)?[\$\u20ac\u00a3]?\s?\d[\d,]*(?:\.\d+)?%?", re.I),
+    re.compile(r"\blost\s+[\$\u20ac\u00a3]?\s?\d", re.I),
+    re.compile(r"\bwould(?:'’|['’]?ve| have)\s+"
+               r"(?:lost|saved|recovered|recouped|prevented|avoided)\b", re.I),
+    re.compile(r"\b(?:revenue\s+)?leakage\s+(?:of|worth|is)\b[^.\n]{0,24}?\d", re.I),
+    re.compile(r"\bopportunity\w*\b[^.\n]{0,32}?[\$\u20ac\u00a3]\s?\d", re.I),
+)
+
 
 
 # ── Period resolution ─────────────────────────────────────────────────────────
@@ -1260,7 +1302,7 @@ def load_conversation_context(organization_id: str, user_id: str,
                               conversation_id: str | None, db,
                               context_payload: dict | None = None) -> dict:
     context = {"summary": None, "last_investigation": None, "recent_turns": [],
-               "unresolved": [], "conversation_state": None}
+               "unresolved": [], "conversation_state": None, "last_claims": []}
     if not conversation_id:
         return context
 
@@ -1280,6 +1322,7 @@ def load_conversation_context(organization_id: str, user_id: str,
         if isinstance(raw, dict):
             context["last_investigation"] = raw.get("last_investigation")
             context["unresolved"] = raw.get("unresolved") or []
+            context["last_claims"] = _claims_from_window(raw)
 
     rows, error = safe_query(db, """
         SELECT summary, context_window
@@ -1297,6 +1340,8 @@ def load_conversation_context(organization_id: str, user_id: str,
                 context["last_investigation"] = raw.get("last_investigation")
             if not context["unresolved"]:
                 context["unresolved"] = raw.get("unresolved") or []
+            if not context["last_claims"]:
+                context["last_claims"] = _claims_from_window(raw)
             state = raw.get("conversation_state")
             if isinstance(state, dict):
                 context["conversation_state"] = _fresh_state(state)
@@ -1317,6 +1362,20 @@ def load_conversation_context(organization_id: str, user_id: str,
                 turns.append({"role": _get(row, "role"), "text": text[:600]})
         context["recent_turns"] = turns
     return context
+
+
+def _claims_from_window(raw: dict) -> list[dict]:
+    """Bounded list of recorded epistemic claims from a context window.
+
+    Only well-formed claim objects survive: a follow-up may answer from a
+    recorded claim, but it must never inherit a corrupt or foreign one.
+    """
+    raw_claims = raw.get("last_claims")
+    if not isinstance(raw_claims, list):
+        return []
+    claims = [claim for claim in raw_claims
+              if isinstance(claim, dict) and claim.get("contract_version") == CLAIM_CONTRACT_VERSION]
+    return claims[:10]
 
 
 def _fresh_state(state: dict) -> dict | None:
@@ -2399,6 +2458,13 @@ def _validate_narrative(text_value: str, facts: list[dict], items: list[dict]) -
                    "i have applied", "i sent the", "i launched", "i created the discount"):
         if phrase in lowered:
             return False, "claimed_execution"
+    # Task 204: an affirmative financial-outcome claim (recovered/saved/
+    # prevented/avoided money, lost revenue, counterfactual savings, quantified
+    # opportunity) with no supporting calculation is a fabricated figure; fall
+    # back to the deterministic composition instead of presenting it.
+    for pattern in OUTCOME_CLAIM_PATTERNS:
+        if pattern.search(text_value):
+            return False, "outcome_claim_without_calculation"
     # A narrative that followed an injection inside store content typically
     # discloses its own instructions or configuration, or reaches for another
     # tenant. Reject it and fall back to the deterministic composition.
@@ -2556,8 +2622,21 @@ def persist_investigation_context(organization_id: str, user_id: str,
             "currencies": sorted(group_by_currency(result["evidence"]["items"]).keys()),
             "segment": result["investigation"].get("segment"),
             "order_query": result["investigation"].get("order_query") or {},
+            # Task 204: follow-ups that reference earlier checkout findings
+            # ("what about those checkouts?") inherit the recorded drill-down
+            # exactly as order follow-ups do; without this the query is read
+            # back but never written.
+            "checkout_query": result["investigation"].get("checkout_query") or {},
         },
         "unresolved": result.get("unknowns", [])[:5],
+        # Task 204: the recorded claims of this investigation. Follow-ups that
+        # reference a previous figure ("where did that number come from?") are
+        # answered from THIS record - the claim keeps its value,
+        # classification, evidence refs and calculation inputs intact, so the
+        # answer is never reconstructed from memory.
+        "last_claims": [claim for claim in (result.get("claims") or [])
+                        if isinstance(claim, dict)
+                        and claim.get("contract_version") == CLAIM_CONTRACT_VERSION][:10],
     }
     if conversation_state:
         context_window["conversation_state"] = conversation_state
@@ -2673,6 +2752,225 @@ def invalidate_investigation_memory(organization_id: str, db) -> bool:
 def _text(statement: str):
     from sqlalchemy import text
     return text(statement)
+
+
+# ---------------------------------------------------------------------------
+# Task 204: canonical epistemic claims + provenance/correction follow-ups
+# ---------------------------------------------------------------------------
+
+def _build_claims(*, facts: list, comparison_facts: list, year_over_year_facts: list,
+                  comparison: dict | None, year_over_year: dict | None,
+                  hypotheses: list, unknowns: list, items_by_id: dict,
+                  tools_used: list, organization_id: str, store_ids: list,
+                  investigation_id: str) -> tuple[list, list]:
+    """Build rev-claim-v1 claims from the deterministic result, fail-closed.
+
+    Returns ``(valid_claims, error_codes)``. A claim that fails the contract
+    is dropped, never presented as established; the error codes stay visible
+    in ``result["epistemics"]`` so the boundary never fails silently.
+    """
+    claims: list = []
+    for fact in facts or []:
+        evidence_ids = [e for e in (fact.get("evidence_ids") or []) if e]
+        item = items_by_id.get(evidence_ids[0]) if evidence_ids else None
+        impact = ("potential" if fact.get("metric") == "abandoned_checkout_recorded_value"
+                  else None)
+        claims.append(build_fact_claim(
+            fact, organization_id=organization_id, store_ids=store_ids,
+            investigation_id=investigation_id, item=item, financial_impact=impact))
+    for source, source_facts, qualifier in (
+            (comparison, comparison_facts, "versus the previous period"),
+            (year_over_year, year_over_year_facts, "versus the same period last year")):
+        if not source or not source_facts:
+            continue
+        available = [change for change in (source.get("changes") or [])
+                     if change.get("status") == STATUS_AVAILABLE]
+        for fact, change in zip(source_facts, available):
+            claim = build_calculation_claim(
+                change=change, fact=fact, organization_id=organization_id,
+                store_ids=store_ids, investigation_id=investigation_id,
+                items_by_id=items_by_id, qualifier=qualifier)
+            if change.get("metric") == "abandoned_checkout_recorded_value":
+                # The recorded value of abandoned checkouts is POTENTIAL value
+                # only; it is never asserted as lost or recoverable revenue.
+                claim["financial_impact"] = "potential"
+            claims.append(claim)
+    for hypothesis in hypotheses or []:
+        claims.append(build_hypothesis_claim(
+            hypothesis, organization_id=organization_id, store_ids=store_ids,
+            investigation_id=investigation_id))
+    for text in unknowns or []:
+        claims.append(build_unknown_claim(
+            text, organization_id=organization_id, store_ids=store_ids,
+            investigation_id=investigation_id, attempts=tools_used))
+    valid: list = []
+    errors: set = set()
+    for claim in claims:
+        claim_errors = validate_claim(
+            claim, known_evidence=items_by_id, organization_id=organization_id,
+            store_ids=store_ids)
+        if claim_errors:
+            errors.update(claim_errors)
+        else:
+            valid.append(claim)
+    return valid, sorted(errors)
+
+
+def _when_text(stamp: Any) -> str | None:
+    """Merchant-readable timestamp; raw ISO strings never reach answer text."""
+    if not isinstance(stamp, str):
+        return None
+    try:
+        at = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    return at.astimezone(timezone.utc).strftime("%d %b %Y, %H:%M UTC")
+
+
+def _claim_provenance_lines(claim: dict) -> list:
+    """Deterministic provenance prose for one recorded claim."""
+    lines = []
+    grade = claim.get("classification")
+    text = (claim.get("text") or "").strip()
+    if text:
+        lines.append(f"The recorded claim: \u201c{text}\u201d")
+    grade_label = {
+        "verified_fact": "a verified fact",
+        "calculated_observation": "a calculated observation",
+        "hypothesis": "a hypothesis (not established)",
+        "unknown": "an acknowledged unknown",
+    }.get(grade, "a recorded claim")
+    lines.append(f"It is recorded as {grade_label}, and I do not upgrade that here.")
+    source = claim.get("source") or {}
+    system = source.get("system") or "the store's records"
+    resource = source.get("resource") or "recorded store data"
+    retrieved = claim.get("retrieved_at") or claim.get("computed_at")
+    if grade == "calculated_observation":
+        calculation = claim.get("calculation") or {}
+        inputs = calculation.get("inputs") or []
+        input_bits = "; ".join(
+            f"{entry.get('role')}: {entry.get('value')} ({entry.get('evidence_id')})"
+            for entry in inputs) or "inputs not recorded"
+        lines.append(
+            f"It is computed, not estimated: {calculation.get('method') or 'a recorded method'} "
+            f"(\u201c{calculation.get('formula') or ''}\u201d) on {input_bits}. "
+            f"Inputs: {system} {resource}.")
+    elif grade == "verified_fact":
+        when = _when_text(retrieved)
+        lines.append(f"Source: {system} {resource}"
+                     + (f", retrieved {when}." if when else "."))
+    elif grade == "hypothesis":
+        hypothesis = claim.get("hypothesis") or {}
+        missing = "; ".join(str(m) for m in (hypothesis.get("missing_evidence") or [])) \
+            or "the records do not establish this"
+        lines.append(f"It is not supported as a finding because: {missing}.")
+    else:
+        unknown = claim.get("unknown") or {}
+        lines.append("The available records cannot establish it: "
+                     f"{unknown.get('needed_to_establish') or 'no authorized source was available.'}")
+    quality = claim.get("quality") or {}
+    reasons = quality.get("reasons") or []
+    if reasons:
+        lines.append("Evidence quality notes: " + "; ".join(str(r) for r in reasons[:4]) + ".")
+    return lines
+
+
+def _provenance_result(message: str, classification: dict, *, organization_id: str,
+                       investigation_id: str, store_context: dict, user_id: str,
+                       window: dict, conversation_context: dict) -> dict:
+    """Answer a provenance follow-up from the RECORDED claims only.
+
+    The answer is composed deterministically from the stored claim objects of
+    the previous investigation (its value, classification, evidence source and
+    calculation inputs). Nothing is re-derived, retrieved or reconstructed;
+    if no claim is recorded, that is said directly instead of guessing.
+    """
+    result = _base_result(message=message, intent=INTENT_OVERVIEW, window=window,
+                          investigation_id=investigation_id,
+                          store_context=store_context, user_id=user_id)
+    last = conversation_context.get("last_investigation") or {}
+    claims = [claim for claim in (conversation_context.get("last_claims") or [])
+              if isinstance(claim, dict) and claim.get("organization_id") == organization_id]
+    result["investigation"]["label"] = "Provenance of a previous answer"
+    result["investigation"]["status"] = "complete"
+    result["investigation"]["context_used"] = {
+        "followup": True,
+        "inherited_intent": (last or {}).get("intent"),
+        "previous_investigation": bool(last),
+        "conversation_summary_used": bool(conversation_context.get("summary")),
+        "segment": None,
+    }
+    result["investigation"]["tools_used"] = []
+    result["evidence"]["generated_at"] = iso(utc_now())
+    mentioned = _numbers_in(message)
+    target = claim_reference(claims, mentioned_values=mentioned)
+    lines = ["## Where the figure comes from"]
+    if not claims:
+        lines.append(
+            "I don't have a recorded claim from this conversation to cite, so I won't "
+            "reconstruct a number from memory. Run the investigation again and I'll "
+            "record the figure with its source.")
+        unknown_claim = build_unknown_claim(
+            "No recorded claim is available in this conversation to cite.",
+            organization_id=organization_id, store_ids=[],
+            investigation_id=investigation_id,
+            needed_to_establish="A previous investigation recorded in this conversation.")
+        result["claims"] = [unknown_claim]
+        result["text"] = "\n\n".join(lines)
+        result["response_type"] = "analysis"
+        result["response_mode"] = "insufficient_evidence"
+        result["mode_reason"] = "no recorded claim to cite"
+        result["epistemics"] = {
+            "contract_version": CLAIM_CONTRACT_VERSION, "valid": True,
+            "validation_errors": [], "rollup": epistemic_rollup([unknown_claim]),
+        }
+        return result
+    presented = []
+    if target is not None:
+        for line in _claim_provenance_lines(target):
+            lines.append("- " + line)
+        lines.append(
+            "That is the complete provenance I recorded; I have not re-estimated or "
+            "adjusted the figure.")
+        presented = [target]
+    else:
+        quantitative = [claim for claim in claims if claim.get("value") is not None][:3]
+        if quantitative:
+            lines.append(
+                "You're referring to figures from my last investigation "
+                f"({INTENT_LABELS.get((last or {}).get('intent'), 'the previous check')}, "
+                f"{(last.get('period') or {}).get('label') or 'the recorded period'}). "
+                "Here is what is recorded for each:")
+            for claim in quantitative:
+                lines.extend("- " + line for line in _claim_provenance_lines(claim))
+            presented = quantitative
+        else:
+            lines.append(
+                "My last investigation recorded no quantitative figure to cite; "
+                "here is what it did record:")
+            for claim in claims[:3]:
+                lines.extend("- " + line for line in _claim_provenance_lines(claim))
+            presented = claims[:3]
+    restated = []
+    for claim in presented:
+        record = dict(claim)
+        record["restated"] = True
+        record["source_investigation"] = (last or {}).get("id")
+        if validate_claim(record, known_evidence={}, organization_id=organization_id,
+                          store_ids=claim.get("store_ids")) == []:
+            restated.append(record)
+    result["claims"] = restated
+    result["text"] = "\n\n".join(lines)
+    result["response_type"] = "analysis"
+    result["response_mode"] = "insight"
+    result["mode_reason"] = "answered from the recorded claim, not fresh retrieval"
+    result["epistemics"] = {
+        "contract_version": CLAIM_CONTRACT_VERSION, "valid": True,
+        "validation_errors": [], "rollup": epistemic_rollup(restated),
+    }
+    return result
 
 
 # ── Public runtime ────────────────────────────────────────────────────────────
@@ -2943,6 +3241,20 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
     window["timezone_source"] = (store_context or {}).get("timezone_source") or "unverified_missing"
     window["timezone_verified"] = bool((store_context or {}).get("timezone_verified"))
 
+    if PROVENANCE_PATTERN.search(message) and conversation_context.get("last_claims"):
+        # Task 204: provenance follow-ups are answered from the recorded claim
+        # set of the previous investigation - no fresh retrieval, no memory
+        # reconstruction. This branch runs before intent early-returns because
+        # a question like "where did that number come from?" may route to a
+        # conversational intent even though it is about the recorded figure.
+        result = _provenance_result(
+            message, classification, organization_id=organization_id,
+            investigation_id=investigation_id,
+            store_context=store_context, user_id=user_id, window=window,
+            conversation_context=conversation_context)
+        _emit({"event": "final", "data": result})
+        return result
+
     if intent in (INTENT_GREETING, INTENT_IDENTITY, INTENT_CAPABILITY, INTENT_GENERAL,
                   INTENT_SOCIAL, INTENT_KNOWLEDGE, INTENT_CLARIFY):
         result = _conversation_result(message, classification,
@@ -2980,6 +3292,29 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
                                        investigation_id=investigation_id,
                                        store_context=store_context, user_id=user_id,
                                        window=window, reason="correction")
+        # Task 204: a challenged answer is corrected EXPLICITLY against the
+        # specific recorded claim, never defended and never silently dropped.
+        prior_claims = [claim for claim in (conversation_context.get("last_claims") or [])
+                        if isinstance(claim, dict)
+                        and claim.get("organization_id") == organization_id]
+        if prior_claims:
+            target = claim_reference(prior_claims, mentioned_values=_numbers_in(message)) \
+                or prior_claims[-1]
+            superseded, correction = correct_claim(
+                target, reason="The merchant challenged this figure; it is "
+                               "retracted pending a re-investigation against the store records.")
+            result["corrections"] = {"superseded": superseded, "correction": correction}
+            result["claims"] = [correction]
+            result["epistemics"] = {
+                "contract_version": CLAIM_CONTRACT_VERSION, "valid": True,
+                "validation_errors": [], "rollup": epistemic_rollup([correction]),
+            }
+            result["text"] += (
+                "\n\n## Correction\n"
+                f"I'm retracting my earlier recorded figure - \"{(target.get('text') or '')[:300]}\" "
+                f"(claim {target.get('claim_id')}). I will not repeat it as established. "
+                "Tell me the correct figure or period and I'll re-run the check against "
+                "the store records; until then it is marked superseded.")
         _emit({"event": "final", "data": result})
         return result
 
@@ -3182,6 +3517,25 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         recommendations = []
         overall = "insufficient_data"
 
+    # Task 204: the canonical, versioned epistemic claims. They are derived
+    # from the (possibly cleared) deterministic result and validated
+    # fail-closed: a claim that fails the contract is not presented as
+    # established, and the error codes stay visible at the boundary.
+    # Claim validation sees the same evidence the attribution validator sees:
+    # current items plus the comparison window's items (a calculated
+    # observation cites one evidence record per period).
+    items_by_id = {item["id"]: item for item in items + comparison_items
+                   if isinstance(item, dict) and item.get("id")}
+    claims, claim_errors = _build_claims(
+        facts=facts, comparison_facts=comparison_facts,
+        year_over_year_facts=year_over_year_facts,
+        comparison=comparison, year_over_year=year_over_year,
+        hypotheses=hypotheses, unknowns=unknowns, items_by_id=items_by_id,
+        tools_used=list(tool_results_by_name), organization_id=organization_id,
+        store_ids=sorted(allowed_store_ids), investigation_id=investigation_id)
+    if claim_errors:
+        warnings.append("Claim contract validation reported: " + ", ".join(claim_errors))
+
     if _cancelled():
         raise InvestigationCancelled(investigation_id)
 
@@ -3213,6 +3567,8 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         comparison_facts = []
         hypotheses = []
         unknowns = []
+        claims = []  # the direct verification answer presents no claims
+        claim_errors = []
     else:
         all_comparison_facts = comparison_facts + year_over_year_facts
         deterministic = _compose_text(
@@ -3272,6 +3628,16 @@ def run_investigation(organization_id: str, user_id: str, message: str, *,
         "comparison_facts": comparison_facts,
         "year_over_year": year_over_year,
         "year_over_year_facts": year_over_year_facts,
+        # Task 204: the versioned epistemic claim set (rev-claim-v1) and its
+        # rollup. Facts/comparison_facts above are kept for backward
+        # compatibility; claims are the canonical, validated classification.
+        "claims": claims,
+        "epistemics": {
+            "contract_version": CLAIM_CONTRACT_VERSION,
+            "valid": not claim_errors,
+            "validation_errors": claim_errors,
+            "rollup": epistemic_rollup(claims),
+        },
         "hypotheses": hypotheses,
         "unknowns": unknowns,
         "recommendations": recommendations,
