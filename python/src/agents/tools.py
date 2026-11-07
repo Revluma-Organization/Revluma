@@ -473,14 +473,26 @@ def _customers(org_id: str, db, params: dict, window: dict) -> ToolResult:
 
 def _products(org_id: str, db: Any, params: dict, window: dict) -> ToolResult:
     from src.intelligence.product_evidence import retrieve_product_evidence
+    comparison_start = params.get("comparison_start")
+    comparison_end = params.get("comparison_end")
     result = retrieve_product_evidence(org_id, db, start=datetime.fromisoformat(window["start"].replace("Z", "+00:00")),
         end=datetime.fromisoformat(window["end"].replace("Z", "+00:00")), now=params.get("_now"),
         timezone_name=params.get("timezone") or window.get("timezone") or "UTC",
-        product_reference=params.get("product_reference"), latest=bool(params.get("latest")))
-    return ToolResult("product_observations", result["overall_status"], items=result["items"],
+        product_reference=params.get("product_reference"), latest=bool(params.get("latest")),
+        compare=bool(params.get("compare")),
+        comparison_start=(datetime.fromisoformat(str(comparison_start).replace("Z", "+00:00"))
+                          if comparison_start else None),
+        comparison_end=(datetime.fromisoformat(str(comparison_end).replace("Z", "+00:00"))
+                        if comparison_end else None))
+    # Task 206: the comparison window's line items are part of the evidence so
+    # a contribution answer cites both sides, exactly like the revenue tool.
+    comparison = result.get("comparison")
+    comparison_items = ([item for item in comparison.get("items", [])] if comparison else [])
+    return ToolResult("product_observations", result["overall_status"],
+        items=result["items"] + comparison_items,
         warnings=result["warnings"], limitations=result["limitations"],
         data_sources=["products", "product_variants", "inventory_items", "inventory_levels", "locations", "order_items", "intelligence_findings"],
-        row_count=len(result["items"]))
+        row_count=len(result["items"]) + len(comparison_items), comparison=comparison)
 
 
 def _inventory(org_id: str, db: Any, params: dict, window: dict) -> ToolResult:

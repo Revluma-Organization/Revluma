@@ -1,7 +1,7 @@
 """Authorized finding lifecycle and supporting-evidence retrieval (Task 202)."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .evidence import EVIDENCE_SCHEMA_VERSION, STATUS_PARTIAL, STATUS_UNAVAILABLE, availability_of, ensure_utc, evidence_item, iso, period, utc_now
@@ -163,11 +163,20 @@ def retrieve_finding_evidence(organization_id: str, db, *, now: datetime | None 
                     })
         elif _get(row, "type") != "integration_failure":
             warnings.append(f"finding_measurement_period_unavailable:{finding_id}")
-        window = period(previous_start if valid_period else (detected or now - __import__("datetime").timedelta(seconds=1)), current_end_value if valid_period else (detected or now),
+        # An invalid recorded period must degrade, not crash: the fallback
+        # is a minimal one-second window ending at the detection time (or
+        # now) — never a zero-length period, which period() refuses.
+        fallback_end = detected or now
+        window = period(previous_start if valid_period else fallback_end - timedelta(seconds=1),
+                        current_end_value if valid_period else fallback_end,
                         timezone_label=timezone_name)
         value = {
             "finding_id": finding_id, "store_id": str(_get(row, "store_id")),
             "type": _get(row, "type"), "title": _get(row, "title"),
+            # The producer's recorded dedupe signal: findings sharing one
+            # store-scoped dedupe key are the same issue re-detected, not two
+            # issues. Absent key means "no dedupe signal", never "duplicate".
+            "dedupe_key": _get(row, "dedupe_key"),
             "description": _get(row, "description"), "severity": _get(row, "severity"),
             "lifecycle_status": status, "current_validity": validity,
             "detected_at": iso(detected), "updated_at": iso(updated),

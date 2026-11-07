@@ -58,16 +58,28 @@ function financialEvidenceErrors(item) {
   return [...new Set(errors)];
 }
 
+// A calculated_observation claim may reference each of its declared
+// calculation inputs, in any window, under the input's own metric. The
+// epistemic contract already requires a complete calculation block (formula,
+// version, rounding, valued inputs) whose inputs the value must be
+// re-derivable from, so a calculation cannot cite arbitrary evidence;
+// eligibility (quality_eligible / status / currency) is still enforced here.
+function declaredCalculationInput(claim, item) {
+  if (claim.classification !== 'calculated_observation') return false;
+  if (!String(claim.calculation?.method || '').trim()) return false;
+  return (claim.calculation?.inputs || []).some((entry) => entry && entry.evidence_id === item.id);
+}
+
 function relevant(claim, item) {
   const eligibleStatus = ['available', 'verified_zero'].includes(item.status) || (item.status === 'partial' && claim.status === 'partial');
   if (item.quality_eligible === false || !eligibleStatus) return false;
   const currentReference = (claim.value && typeof claim.value === 'object' && item.id === claim.value.current_evidence_id) ||
     (claim.calculation?.inputs || []).some((entry) => entry?.role === 'current' && entry?.evidence_id === item.id);
-  if (claim.period && item.period && JSON.stringify(claim.period) !== JSON.stringify(item.period) && !currentReference) return false;
+  if (claim.period && item.period && JSON.stringify(claim.period) !== JSON.stringify(item.period) && !currentReference && !declaredCalculationInput(claim, item)) return false;
   if (claim.currency && item.currency && claim.currency !== item.currency) return false;
   const text = String(claim.text || claim.statement || '').toLowerCase();
   const metric = String(item.metric || '').toLowerCase();
-  if (claim.metric) return String(claim.metric).toLowerCase() === metric;
+  if (claim.metric) return String(claim.metric).toLowerCase() === metric || declaredCalculationInput(claim, item);
   for (const [textTerms, metricTerms] of METRIC_TERMS) {
     if (textTerms.some((term) => new RegExp(`\\b${term}\\w*\\b`, 'i').test(text))) {
       return metricTerms.some((term) => metric.includes(term));

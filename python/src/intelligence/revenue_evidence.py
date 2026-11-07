@@ -25,7 +25,7 @@ when the certified coverage contains the whole window.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 from .evidence import (
@@ -1089,6 +1089,104 @@ def _changes(previous_items: list[dict], current_items: list[dict]) -> list[dict
                 "previous_evidence_id": previous[currency]["id"],
             })
     return changes
+
+
+VALUE_DECOMPOSITION_VERSION = "value-decomposition-v1"
+
+
+def decompose_value_change(result: dict) -> list[dict]:
+    """Split a recorded order-value change into an order-count (volume)
+    effect and an order-value (average order value) effect, per currency.
+
+    Method (``value-decomposition-v1``), computed only from recorded
+    comparison evidence — no invented inputs:
+
+        aov_previous = previous_value / previous_count
+        count_effect = (current_count - previous_count) * aov_previous
+        value_effect = value_change - count_effect        (exact remainder)
+
+    The two effects sum exactly to the recorded value change. Guards:
+    missing inputs or a previous order count that is not positive yield an
+    unsupported entry with a reason; a zero denominator is disclosed, never
+    divided. The effect display is quantized to 2dp with the value effect
+    taken as the exact remainder of the quantized count effect, so the
+    reported figures always reconcile.
+    """
+    comparison = (result or {}).get("comparison") or {}
+    changes = comparison.get("changes") or []
+    by_key: dict[tuple, dict] = {}
+    for change in changes:
+        if change.get("metric") in ("recorded_order_value", "recorded_order_count"):
+            by_key[(change["metric"], change.get("currency"))] = change
+    value_changes = [c for c in changes if c.get("metric") == "recorded_order_value"]
+    out: list[dict] = []
+    for value_change in sorted(value_changes, key=lambda c: str(c.get("currency") or "")):
+        currency = value_change.get("currency")
+        count_change = by_key.get(("recorded_order_count", currency))
+        entry: dict = {
+            "method_version": VALUE_DECOMPOSITION_VERSION,
+            "currency": currency,
+            "status": STATUS_UNSUPPORTED,
+            "reason": None,
+            "definition": "Recorded order-value change split into the order-count effect "
+                          "(the count change valued at the previous average order value) "
+                          "and the order-value effect (the exact remainder). This explains "
+                          "the size of the recorded change; it does not establish its cause.",
+            "current_evidence_ids": {
+                "order_value": value_change.get("current_evidence_id")},
+            "previous_evidence_ids": {
+                "order_value": value_change.get("previous_evidence_id")},
+        }
+        if count_change is None:
+            entry["reason"] = "order_count_change_missing"
+            out.append(entry)
+            continue
+        entry["current_evidence_ids"]["order_count"] = count_change.get("current_evidence_id")
+        entry["previous_evidence_ids"]["order_count"] = count_change.get("previous_evidence_id")
+        previous_count = decimal_value(count_change.get("previous"))
+        current_count = decimal_value(count_change.get("current"))
+        previous_value = decimal_value(value_change.get("previous"))
+        current_value = decimal_value(value_change.get("current"))
+        if None in (previous_count, current_count, previous_value, current_value):
+            entry["reason"] = "inputs_not_recorded"
+            out.append(entry)
+            continue
+        if previous_count <= 0:
+            entry["reason"] = "previous_order_count_not_positive"
+            out.append(entry)
+            continue
+        aov_previous = previous_value / previous_count
+        value_change_amount = current_value - previous_value
+        count_effect = (current_count - previous_count) * aov_previous
+        count_effect_q = count_effect.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        value_effect = value_change_amount - count_effect_q
+        entry.update({
+            "status": STATUS_AVAILABLE,
+            "previous_order_count": str(previous_count),
+            "current_order_count": str(current_count),
+            "previous_order_value": str(previous_value.quantize(Decimal("0.01"))),
+            "current_order_value": str(current_value.quantize(Decimal("0.01"))),
+            "value_change": str(value_change_amount.quantize(Decimal("0.01"))),
+            "average_order_value_previous": str(aov_previous.quantize(Decimal("0.01"))),
+            "order_count_effect": str(count_effect_q),
+            "order_value_effect": str(value_effect.quantize(Decimal("0.01"))),
+            "driver": _decomposition_driver(count_effect_q, value_effect),
+        })
+        out.append(entry)
+    return out
+
+
+def _decomposition_driver(count_effect: Decimal, value_effect: Decimal) -> str:
+    """Documented driver labels — no composite score, no threshold fudging."""
+    if count_effect == 0 and value_effect == 0:
+        return "no_change"
+    if count_effect * value_effect < 0:
+        return "mixed-offsetting"
+    if abs(count_effect) > abs(value_effect):
+        return "volume-driven"
+    if abs(count_effect) < abs(value_effect):
+        return "value-driven"
+    return "equally-split"
 
 
 def _percent(current: Any, previous: Any) -> dict:

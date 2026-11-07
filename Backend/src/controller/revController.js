@@ -963,6 +963,18 @@ function _boundedResultForPersistence(data) {
       ? data.epistemics : null,
     corrections: data?.corrections && typeof data.corrections === 'object'
       ? data.corrections : null,
+    // Task 206: the recorded priority state, the challenge comparison
+    // ("why is that more important than X?") and the volume/value
+    // decomposition travel with the answer so persisted history and the UI
+    // keep the same ranking, basis and calculation the live answer showed.
+    priority: data?.priority && typeof data.priority === 'object'
+      ? data.priority : null,
+    priority_comparison: data?.priority_comparison && typeof data.priority_comparison === 'object'
+      ? data.priority_comparison : null,
+    priority_change: data?.priority_change && typeof data.priority_change === 'object'
+      ? data.priority_change : null,
+    contributor_analysis: Array.isArray(data?.contributor_analysis)
+      ? data.contributor_analysis.slice(0, 8) : [],
     hypotheses: Array.isArray(data?.hypotheses) ? data.hypotheses.slice(0, 10) : [],
     unknowns: Array.isArray(data?.unknowns) ? data.unknowns.slice(0, 12) : [],
     recommendations: Array.isArray(data?.recommendations) ? data.recommendations.slice(0, 12) : [],
