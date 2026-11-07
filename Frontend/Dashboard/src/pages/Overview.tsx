@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
+import { useIntegrationStates } from "@/hooks/useIntegrationStates";
+import {
+  INTEGRATION_STATE_LABELS,
+  integrationStateCopy,
+  worstIntegrationState,
+  NOT_CONNECTED,
+  type UiIntegrationStatus,
+} from "@/lib/integrationState";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import MorningBriefing from "@/components/dashboard/MorningBriefing";
 import IntelligenceFindingsPanel from "@/components/dashboard/IntelligenceFindingsPanel";
@@ -15,6 +23,34 @@ type RecoveryResponse = { success: boolean; data: { stats: CheckoutStats; carts:
 const card = "rounded-2xl border border-[#e7ebf2] dark:border-[#292929] bg-white dark:bg-[#111111] shadow-[0_3px_18px_rgba(15,23,42,0.035)] dark:shadow-none";
 const iconBox = "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#eaf2ff] dark:bg-[#202020] text-[#0868ed]";
 const money = (value: number, currency = "USD") => { try { return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(value); } catch { return String(value); } };
+
+// Task 213 — merchant-facing labels for the canonical sync phase and webhook
+// state (closed sets from rev-integration-state-v1). Anything unrecognized
+// renders as "Not verified" — never a fabricated positive.
+const SYNC_PHASE_LABEL: Record<string, string> = {
+  queued: "Queued",
+  scheduled: "Scheduled",
+  running: "In progress",
+  waiting_retrying: "Retrying",
+  partially_completed: "Partially completed",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  stalled: "Stalled",
+  unknown: "Not verified",
+};
+const WEBHOOK_STATE_LABEL: Record<string, string> = {
+  healthy: "Events flowing",
+  degraded: "Degraded",
+  not_registered: "Not registered",
+  unknown: "Not verified",
+};
+const COVERAGE_STATUS_LABEL: Record<string, string> = {
+  complete: "Certified complete",
+  partial: "Partial",
+  unavailable: "Not certified",
+  unknown: "Not certified",
+};
 
 // Preserve the previous workspace row for potential post-MVP reuse.
 const SHOW_LEGACY_WORKSPACES = false;
@@ -63,7 +99,37 @@ export default function Overview() {
     return () => { active = false; };
   }, []);
   const connected = stores.find(s => s.connection_status === "connected");
-  const needsAttention = Boolean(connected && (connected.setup_status === "failed" || connected.sync_status === "failed"));
+  // Task 213 — the canonical, server-evaluated integration state drives the
+  // overview copy. It is polled adaptively and never inferred from cached
+  // setup flags; a missing/invalid block is fail-closed to `unknown`.
+  const { states } = useIntegrationStates();
+  const canonical = worstIntegrationState(states);
+  const canonicalStatus: UiIntegrationStatus = canonical
+    ? canonical.overall_status
+    : connected
+      ? "unknown"
+      : NOT_CONNECTED;
+  const needsAttention = Boolean(canonical && (
+    canonical.overall_status === "needs_attention" ||
+    canonical.overall_status === "sync_failed" ||
+    canonical.overall_status === "sync_partial" ||
+    canonical.overall_status === "authorization_expired" ||
+    canonical.overall_status === "authorization_revoked" ||
+    canonical.overall_status === "disconnected" ||
+    canonical.overall_status === "unknown"
+  ));
+  // The canonical contract's optional blocks (indexed, typed generically).
+  const webhookState = (canonical?.webhooks as { state?: string } | null | undefined)?.state;
+  const coverageStatus = (canonical?.coverage as { status?: string } | null | undefined)?.status;
+  // `connected` with usable data (green only for the fully verified state,
+  // amber for in-progress/limited) is the only time we point at Rev.
+  const canInvestigate = Boolean(
+    connected && !storeLoadFailed && (
+      canonicalStatus === "connected" ||
+      canonicalStatus === "synchronizing" ||
+      canonicalStatus === "limited_access"
+    ),
+  );
   const carts = recovery?.carts || [];
   const abandoned = Number(recovery?.stats?.total_abandoned ?? 0);
   const recovered = Number(recovery?.stats?.total_recovered ?? 0);
@@ -87,7 +153,7 @@ export default function Overview() {
         <div>
           <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#687992] dark:text-[#a6b8d4]">Command Center</p>
           <h1 className="text-[clamp(1.7rem,2.6vw,2.3rem)] font-extrabold tracking-[-0.045em] text-[#0b1426] dark:text-[#f3f7ff]">{greeting}{firstName ? `, ${firstName}` : ""}</h1>
-          <p className="mt-1.5 max-w-3xl text-[13px] leading-6 text-[#69758b] dark:text-[#a6b8d4]">{storeLoadFailed ? "Store connection status could not be verified. Review Integrations." : !connected ? "Connect your store to begin monitoring business activity." : needsAttention ? "Your store connection needs attention. Review its setup before relying on new data." : "Here's your store's current operational picture. Explore the evidence behind each reported figure."}</p>
+          <p className="mt-1.5 max-w-3xl text-[13px] leading-6 text-[#69758b] dark:text-[#a6b8d4]">{storeLoadFailed ? "Store connection status could not be verified. Review Integrations." : !connected ? integrationStateCopy(NOT_CONNECTED).body : integrationStateCopy(canonicalStatus).body}</p>
         </div>
         <button onClick={() => navigate("/dashboard/rev-intell")} className="inline-flex items-center gap-2 rounded-xl bg-[#071225] px-4 py-3 text-xs font-semibold text-white transition hover:bg-[#17365d]"><BrainCircuit className="h-4 w-4 text-[#57a5ff]" /> Ask Rev Intell <ArrowUpRight className="h-3.5 w-3.5" /></button>
       </div>
@@ -120,19 +186,20 @@ export default function Overview() {
           {[
             {
               label: "Shopify connection",
-              value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : connected ? "Connected" : "Not connected",
+              // Canonical overall status (green only when it is `connected`).
+              value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : connected ? INTEGRATION_STATE_LABELS[canonicalStatus] : "Not connected",
             },
             {
               label: "Synchronization",
-              value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : connected?.sync_status === "failed" ? "Needs attention" : connected?.sync_status ? `Reported: ${connected.sync_status.replace(/_/g, " ")}` : "Not verified",
+              value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : canonical ? (SYNC_PHASE_LABEL[canonical.synchronization.state] || "Not verified") : "Not verified",
             },
             {
               label: "Webhook health",
-              value: "Not verified",
+              value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : canonical ? (WEBHOOK_STATE_LABEL[webhookState || ""] || "Not verified") : "Not verified",
             },
             {
               label: "Data completeness",
-              value: "Not verified",
+              value: loading ? "Checking…" : storeLoadFailed ? "Unavailable" : canonical ? (COVERAGE_STATUS_LABEL[coverageStatus || ""] || "Not certified") : "Not certified",
             },
           ].map(item => (
             <div key={item.label} className="rounded-xl border border-[#e7ebf2] bg-[#f8faff] p-4 dark:border-[#303030] dark:bg-[#1b1b1b]">
@@ -157,10 +224,8 @@ export default function Overview() {
                 : storeLoadFailed
                   ? "Store status is unavailable"
                   : !connected
-                    ? "Connect your store to get started"
-                    : needsAttention
-                      ? "Your Shopify integration needs attention"
-                      : "Your Shopify store is connected"}
+                    ? integrationStateCopy(NOT_CONNECTED).title
+                    : integrationStateCopy(canonicalStatus).title}
             </h2>
             <p className="mt-3 max-w-xl text-sm leading-6 text-[#60728d] dark:text-[#b2c4de]">
               {loading
@@ -169,22 +234,16 @@ export default function Overview() {
                   ? "Revluma could not verify your store connection. This does not mean your store is disconnected."
                   : !connected
                     ? "Connect your Shopify store to begin receiving evidence-backed operational findings."
-                    : needsAttention
-                      ? "Review the integration before relying on newly synchronized information."
-                      : "Review available verified findings below. A connected store does not necessarily mean every intelligence check has sufficient evidence."}
+                    : integrationStateCopy(canonicalStatus).body}
             </p>
           </div>
           <div>
             <button
               type="button"
-              onClick={() => navigate(
-                connected && !needsAttention && !storeLoadFailed
-                  ? "/dashboard/rev-intell"
-                  : "/dashboard/integrations"
-              )}
+              onClick={() => navigate(canInvestigate ? "/dashboard/rev-intell" : "/dashboard/integrations")}
               className="inline-flex items-center gap-2 rounded-xl bg-[#0868ed] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#0059cf]"
             >
-              {connected && !needsAttention && !storeLoadFailed
+              {canInvestigate
                 ? "Investigate with Rev"
                 : storeLoadFailed
                   ? "Open Integrations"
@@ -245,7 +304,7 @@ export default function Overview() {
       </div>
       )}
       {!loading && (
-        connected && !storeLoadFailed ? (
+        canInvestigate ? (
           <IntelligenceFindingsPanel />
         ) : (
           <section aria-label="Priority findings" className={`${card} p-5 sm:p-6`}>
@@ -256,7 +315,9 @@ export default function Overview() {
             <p className="mt-2 text-sm leading-6 text-[#69758b] dark:text-[#a5b7d1]">
               {storeLoadFailed
                 ? "Findings cannot be assessed because store connection information is unavailable."
-                : "Connect your Shopify store to begin evaluating verified operational findings."}
+                : !connected
+                  ? "Connect your Shopify store to begin evaluating verified operational findings."
+                  : "The integration needs attention before verified findings can be assessed. Review it to see the current state."}
             </p>
           </section>
         )

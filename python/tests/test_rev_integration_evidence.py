@@ -607,3 +607,47 @@ def test_state_window_anchored_to_last_sync_not_wall_clock():
     assert first["items"][0]["period"]["end"] == ie.iso(_t(10))
     assert later["items"][0]["period"]["end"] == ie.iso(_t(10))
     assert first["items"][0]["period"]["start"] == ie.iso(_t(10) - timedelta(seconds=1))
+
+
+# ── Task 213 — canonical integration_state block in the evidence surface ────
+
+def test_canonical_state_block_present_and_compact():
+    from src.intelligence.integration_state import (
+        INTEGRATION_STATE_CONTRACT_VERSION, OVERALL_STATES,
+    )
+    store = only_store(retrieve(healthy_db()))
+    assert "integration_state" in store
+    st = store["integration_state"]
+    assert st["contract_version"] == INTEGRATION_STATE_CONTRACT_VERSION
+    assert st["overall_status"] in OVERALL_STATES
+    assert st["overall_status"] == "connected"
+    assert st["status_reason"] == "all_verified"
+    # Compact projection: bounded fields for the Rev context, never the full
+    # capability list, and never any credential material.
+    assert "capabilities" not in st
+    assert set(st) == {
+        "contract_version", "overall_status", "status_reason",
+        "status_explanation", "authorization", "synchronization",
+        "limited_capabilities", "merchant_action_required",
+        "recommended_next_step",
+    }
+    blob = json.dumps(st)
+    assert "shpat" not in blob and "access_token" not in blob
+
+
+def test_canonical_state_block_tracks_authorization_revocation():
+    db = healthy_db(stores=[store_row(status="revoked")])
+    st = only_store(retrieve(db))["integration_state"]
+    assert st["overall_status"] == "authorization_revoked"
+    assert st["merchant_action_required"] is True
+
+
+def test_canonical_state_block_tracks_stale_sync():
+    stale = NOW - timedelta(days=3)
+    db = healthy_db(ledgers={"s1": ledger_rows(succeeded=stale)})
+    st = only_store(retrieve(db))["integration_state"]
+    # Stale data is not a failure: the last run completed, but the store is
+    # limited (data older than the freshness policy) and never "connected".
+    assert st["overall_status"] == "limited_access"
+    assert st["synchronization"]["state"] == "completed"
+    assert st["status_reason"] == "limited_capabilities"

@@ -254,10 +254,11 @@
 - [x] **TASK 210** — Adaptive answer structure & confidence communication (spec lines 1–10; consolidates original TASK 235–240). *(see `implementation/TASK-210-ADAPTIVE-ANSWER-STRUCTURE-CONFIDENCE.md` and `validation/TASK-210-ADAPTIVE-ANSWER-STRUCTURE-CONFIDENCE.md`; decision REV-DEC-0019; numbering collision with the line above documented there)*
 - [ ] **TASK 211** — Verify contradictory evidence handling.
 - [x] **TASK 212** — Label verified facts in reasoning output. *(consolidated into TASK 204 — reasoning epistemics; see `implementation/TASK-204-REASONING-EPISTEMICS.md`)*
-- [x] **TASK 213** — Label calculated findings in reasoning output. *(consolidated into TASK 204 — reasoning epistemics)*
+- [x] **TASK 213** — Label calculated findings in reasoning output. *(consolidated into TASK 204 — reasoning epistemics; the number was reused for the consolidated integration-state task — see the TASK 213 line below)*
 - [x] **TASK 214** — Label hypotheses in reasoning output. *(consolidated into TASK 204 — reasoning epistemics)*
 - [x] **TASK 215** — Label unknowns in reasoning output. *(consolidated into TASK 204 — reasoning epistemics)*
 - [x] **TASK 216** — Prevent fabricated numeric claims. *(consolidated into TASK 204 — reasoning epistemics)*
+- [x] **TASK 213** — Integration state model and backend-truthful UI (consolidates original TASK 252–256; canonical `rev-integration-state-v1` contract, server-evaluated, shared by Rev and the product surfaces; sessionStorage status cache removed). *(see `diagnostics/TASK-213-INTEGRATION-STATE-MODEL-BACKEND-TRUTHFUL-UI.md`; decision REV-DEC-0021; numbering collision with the line above documented there)*
 - [ ] **TASK 205 (consolidated 217–220)** — Causal, action, recoverable-revenue and source-reference guardrails. **Implementation CI green; final commit/merge/deployment/authenticated production pending.** See `implementation/TASK-205-CAUSAL-ACTION-RECOVERY-CITATION-GUARDRAILS.md`.
 - [ ] **TASK 217** — Consolidated into Task 205.
 - [ ] **TASK 218** — Consolidated into Task 205.
@@ -302,11 +303,11 @@
 
 ### 4A. Integration UI
 
-- [ ] **TASK 252** — Audit integration screen against MVP states.
-- [ ] **TASK 253** — Show connected state from backend.
-- [ ] **TASK 254** — Show synchronizing state from backend.
-- [ ] **TASK 255** — Show limited-access state from backend.
-- [ ] **TASK 256** — Show needs-attention state from backend.
+- [x] **TASK 252** — Audit integration screen against MVP states. *(consolidated into TASK 213 — the diagnosis/design doc is that audit; see `diagnostics/TASK-213-INTEGRATION-STATE-MODEL-BACKEND-TRUTHFUL-UI.md`)*
+- [x] **TASK 253** — Show connected state from backend. *(consolidated into TASK 213 — canonical `connected` badge, server-evaluated; green reserved for this state)*
+- [x] **TASK 254** — Show synchronizing state from backend. *(consolidated into TASK 213 — canonical `synchronizing` badge with pulse, 15s polling)*
+- [x] **TASK 255** — Show limited-access state from backend. *(consolidated into TASK 213 — canonical `limited_access` badge, never rendered as connected)*
+- [x] **TASK 256** — Show needs-attention state from backend. *(consolidated into TASK 213 — canonical `needs_attention` badge + merchant next step)*
 - [ ] **TASK 257** — Show disconnected state from backend.
 - [ ] **TASK 258** — Show actual webhook status.
 - [ ] **TASK 259** — Show actual initial sync status.

@@ -309,3 +309,41 @@ test('state window is anchored to the last sync, not the wall clock', async () =
   assert.equal(later.items[0].period.end, FIVE_MIN.toISOString());
   assert.equal(first.items[0].period.start, new Date(FIVE_MIN.getTime() - 1000).toISOString());
 });
+
+// ── Task 213 — canonical integration_state block in the evidence surface ──
+
+const {
+  INTEGRATION_STATE_CONTRACT_VERSION,
+  OVERALL_STATES,
+} = require('../services/revIntegrationState');
+
+test('canonical integration_state block is present, compact and credential-free', async () => {
+  const result = await retrieveIntegrationEvidence(query(), { db: db(), now: NOW });
+  const store = only(result);
+  assert.ok('integration_state' in store, 'store must carry the canonical state');
+  const st = store.integration_state;
+  assert.equal(st.contract_version, INTEGRATION_STATE_CONTRACT_VERSION);
+  assert.ok(OVERALL_STATES.includes(st.overall_status));
+  assert.equal(st.overall_status, 'connected');
+  assert.equal(st.status_reason, 'all_verified');
+  // Compact projection for the bounded Rev context: no full capability list,
+  // and no credential material of any kind.
+  assert.ok(!('capabilities' in st));
+  assert.deepEqual(Object.keys(st).sort(), [
+    'authorization', 'contract_version', 'limited_capabilities',
+    'merchant_action_required', 'overall_status', 'recommended_next_step',
+    'status_explanation', 'status_reason', 'synchronization',
+  ]);
+  const blob = JSON.stringify(st);
+  assert.ok(!blob.includes('shpat'));
+  assert.ok(!blob.includes('access_token'));
+});
+
+test('canonical integration_state tracks authorization revocation', async () => {
+  const result = await retrieveIntegrationEvidence(query(), {
+    db: db({ stores: [store({ status: 'revoked' })] }), now: NOW,
+  });
+  const st = only(result).integration_state;
+  assert.equal(st.overall_status, 'authorization_revoked');
+  assert.equal(st.merchant_action_required, true);
+});

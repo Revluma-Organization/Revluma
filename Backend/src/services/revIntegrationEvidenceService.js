@@ -490,7 +490,7 @@ async function authorizedStores(db, organizationId, storeId) {
   };
   const rows = await db.stores.findMany({
     where, orderBy: { id: 'asc' }, take: MAX_STORES,
-    select: { id: true, organization_id: true, platform: true, status: true, shop_domain: true, granted_scopes: true, last_synced_at: true, installed_at: true },
+    select: { id: true, organization_id: true, platform: true, status: true, shop_domain: true, granted_scopes: true, last_synced_at: true, installed_at: true, updated_at: true },
   });
   // has_token via a raw boolean probe: the token value itself is never
   // selected, returned or logged by this service. Prisma's tag-function
@@ -557,6 +557,25 @@ async function runRetrieveIntegrationEvidence({ organizationId, storeId = null, 
       .map(resource => resourceCapability(resource, granted, resource.domain ? domains[resource.domain] : null, now));
     const webhooks = webhookEvidence(registrations.filter(row => row.store_id === store.id), deliveries.filter(row => row.store_id === store.id), now);
     const coverage = orderCoverage(coverageRows.filter(row => row.store_id === store.id));
+    // Task 213 — canonical rev-integration-state-v1 contract for this store,
+    // evaluated from the same persisted records (mirrors the Python keystone;
+    // the full contract is also served by the product API). Lazy require:
+    // revIntegrationState requires this module at load time.
+    const { evaluateIntegrationState, canonicalStateSummary } = require('./revIntegrationState');
+    const covRows = coverageRows.filter(row => row.store_id === store.id);
+    const covStarts = covRows.map(row => row.coverage_start).filter(Boolean);
+    const covEnds = covRows.map(row => row.coverage_end).filter(Boolean);
+    const canonicalCoverage = { status: coverage.status };
+    if (covStarts.length) canonicalCoverage.start = iso(new Date(Math.max(...covStarts.map(d => new Date(d).getTime()))));
+    if (covEnds.length) canonicalCoverage.end = iso(new Date(Math.max(...covEnds.map(d => new Date(d).getTime()))));
+    const canonicalState = evaluateIntegrationState({
+      organization_id: organizationId,
+      store,
+      domain_states: ledgerRows.filter(row => row.store_id === store.id),
+      webhook_registrations: registrations.filter(row => row.store_id === store.id),
+      webhook_deliveries: deliveries.filter(row => row.store_id === store.id),
+      order_coverage: canonicalCoverage,
+    }, now);
     const connection = connectionState(store, domains);
     const health = evaluateHealth(store, connection, capabilities, domains, webhooks, coverage, now);
     const period = currentPeriod(store, now);
@@ -648,6 +667,10 @@ async function runRetrieveIntegrationEvidence({ organizationId, storeId = null, 
       webhooks,
       order_coverage: coverage,
       health,
+      // Compact projection only (the full rev-integration-state-v1 contract
+      // is served by the product API; the Rev merchant context has a hard
+      // size budget).
+      integration_state: canonicalStateSummary(canonicalState),
     });
   }
 
@@ -705,4 +728,8 @@ module.exports = {
   retrieveIntegrationEvidence, retrieveIntegrationEvidenceById,
   INTEGRATION_RESOURCE_ID, INTEGRATION_RESOURCES, RESOURCE_BY_ID, SYNC_DOMAINS,
   DOMAIN_FRESH_SECONDS, classifyFailure,
+  // Task 213 — primitives reused by the canonical state keystone
+  // (revIntegrationState.js): two implementations, one contract.
+  normalizeDomainStates, resourceCapability, webhookEvidence, orderCoverage,
+  freshnessFor, scopeSatisfied,
 };
