@@ -39,7 +39,7 @@ Four axe runs report no detectable structural violations for legacy-fallback hea
 
 ## CI, merge and deployment
 
-PR **#374** was opened. Seven checks passed on the pre-Task-220 head `2ac29cb3`, but those results do not certify the integrated tree. Both Task 218 and Task 220 rebase conflicts have been resolved locally; the integrated head must be force-pushed with lease and receive fresh successful checks before merge. Merge commit and production deployment identity remain unrecorded. Do not interpret local tests, fixtures or earlier previews as production certification.
+PR **#374** was opened. Seven checks passed on the pre-Task-220 head `2ac29cb3`, but those results do not certify the integrated tree. Both Task 218 and Task 220 rebase conflicts were resolved and the integrated head `dece2c56` was force-pushed with lease. Its Vercel preview and preview comments passed. GitHub Actions did not start on that synchronization event, and manual workflow dispatch was denied by the integration, so fresh Actions results remain required before merge. Merge commit and production deployment identity remain unrecorded. Do not interpret local tests, fixtures or previews as production certification.
 
 ## Status
 
