@@ -672,7 +672,7 @@ export default function Integrations() {
                             <IntegrationStatusBadge status={storeState} size="sm" />
                           </div>
                           <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{heading}</h3>
-                          {store.diagnostic && store.diagnostic.reason_code !== "CONNECTED" && (
+                          {store.diagnostic && store.diagnostic.reason_code !== "CONNECTED" && !(setupDone && store.diagnostic.reason_code === "UNKNOWN") && (
                             <div role={store.diagnostic.severity === "error" ? "alert" : "status"} className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
                               <p>{store.diagnostic.explanation}</p>
                               <p className="mt-1 text-xs opacity-80">Reason: {store.diagnostic.reason_code}. {store.diagnostic.reconnect_eligible ? "Merchant reconnect is available." : store.diagnostic.retry_eligible ? "A bounded retry is available." : "No automatic recovery is claimed."}</p>

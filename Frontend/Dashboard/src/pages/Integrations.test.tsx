@@ -56,6 +56,25 @@ describe('Task 213 — canonical integration state on the integrations page', ()
     expect(screen.queryAllByText('Connected', { exact: true })).toHaveLength(0);
   });
 
+  it('does not contradict completed setup with a legacy UNKNOWN warning', async () => {
+    mockApi({
+      stores: [{
+        ...connectedStore,
+        diagnostic: {
+          reason_code: 'UNKNOWN', severity: 'warning',
+          explanation: 'We could not verify the integration state. Refresh diagnostics before taking action.',
+          merchant_action_required: false, recommended_action: 'retry_diagnostics',
+          retry_eligible: true, reconnect_eligible: false,
+        },
+      }],
+      states: [canonicalState('limited_access')],
+    });
+    render(<MemoryRouter><Integrations /></MemoryRouter>);
+    expect(await screen.findByText('Your store is ready!')).toBeInTheDocument();
+    expect((await screen.findAllByText('Limited access', { exact: true })).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('We could not verify the integration state. Refresh diagnostics before taking action.')).not.toBeInTheDocument();
+  });
+
   it('aggregates the worst canonical state across stores', async () => {
     mockApi({
       stores: [connectedStore, { ...connectedStore, id: 'bad', shop_domain: 'bad.myshopify.com' }],
