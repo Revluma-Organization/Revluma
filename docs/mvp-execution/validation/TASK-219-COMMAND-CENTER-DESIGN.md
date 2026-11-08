@@ -2,13 +2,14 @@
 
 ## Final rebased local gates
 
-Tasks 218 and 220 merged into main while Task 219 was under review. The branch was first rebased onto Task 218 and its two contracts were consolidated into the Command Center. It was then rebased onto Task 220 main at `7f40e70c`; Task 220's runtime failure, retained-snapshot, responsive drawer, keyboard, account-menu and theme contracts were preserved in the consolidated Task 219 view. The integrated tree was revalidated rather than carrying forward pre-rebase results.
+Tasks 218, 220 and 222 merged into main while Task 219 was under review. The branch was first rebased onto Task 218 and its two contracts were consolidated into the Command Center. It was then rebased onto Task 220; its runtime failure, retained-snapshot, responsive drawer, keyboard, account-menu and theme contracts were preserved in the consolidated Task 219 view. Finally it was rebased onto Task 222 main at `79ca8745`, retaining Task 222 as REV-DEC-0028 and assigning Task 219 REV-DEC-0029. The integrated tree was revalidated rather than carrying forward pre-rebase results.
 
 | Gate | Result |
 |---|---|
 | Full Dashboard `npm test` after Task 220 integration | PASS — 49 files, **796 tests**, 0 failures |
 | New Task 219 scenarios | PASS — **89**: 71 design/canonical-contract/data/state/viewport/axe + 14 shell + 4 route-level E2E |
 | Task 220 Overview runtime/viewport and Sidebar regressions | PASS — **62/62** focused; all included in the full suite |
+| Task 222 integration focused matrix | PASS — **301/301** across RevIntell, Overview, Command Center and Sidebar suites |
 | Tasks 216–217 Overview regressions | PASS — 35 tests, included above |
 | Task 218 consolidation page scenarios | PASS — included above; one initial authoritative fetch, no duplicate panels |
 | Focused backend pure/composition/priority | PASS — **174/174** before Task 220 integration; integration changed no backend files |
@@ -39,8 +40,8 @@ Four axe runs report no detectable structural violations for legacy-fallback hea
 
 ## CI, merge and deployment
 
-PR **#374** was opened. Seven checks passed on the pre-Task-220 head `2ac29cb3`, but those results do not certify the integrated tree. Both Task 218 and Task 220 rebase conflicts were resolved and the integrated head `dece2c56` was force-pushed with lease. Its Vercel preview and preview comments passed. GitHub Actions did not start on that synchronization event, and manual workflow dispatch was denied by the integration, so fresh Actions results remain required before merge. Merge commit and production deployment identity remain unrecorded. Do not interpret local tests, fixtures or previews as production certification.
+PR **#374** was opened. Seven checks passed on the pre-Task-220 head `2ac29cb3`, but those results did not certify later trees. After all three concurrent integrations, head `3c174ae6` received fresh successful results for all seven checks: Backend test suite; backend refresh regression; Dashboard authentication regression; Dashboard suite and production build; Prisma bootstrap, financial and security regressions; Vercel; and Vercel Preview Comments. The full backend and Dashboard suites therefore passed in CI despite the local Prisma-download limitation. Merge commit and production deployment identity remain unrecorded. Do not interpret local tests, fixtures or previews as production certification.
 
 ## Status
 
-**LOCAL IMPLEMENTATION AND AUTOMATED GATES VERIFIED ON THE REBASED TREE — FINAL CI/MERGE/DEPLOYMENT AND AUTHENTICATED ACTIVE-STORE BROWSER ACCEPTANCE PENDING.** Full Task 219 completion is not claimed.
+**LOCAL IMPLEMENTATION AND ALL SEVEN PR CHECKS VERIFIED ON THE FULLY INTEGRATED TREE — MERGE/DEPLOYMENT AND AUTHENTICATED ACTIVE-STORE BROWSER ACCEPTANCE PENDING.** Full Task 219 production completion is not claimed.
