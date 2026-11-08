@@ -191,8 +191,10 @@ test('POST /stores/:id/sync-retry refuses a permanent authorization failure (409
 });
 
 test('POST /stores/:id/sync-retry is 409 already_in_progress when a job is running (no duplicate)', async () => {
-  state.stores[0] = storeRow(STORE_A, ORG_A, { initial_sync_status: 'running', sync_started_at: ISO(10), updated_at: ISO(5) });
-  state.domainRows = [domainRow('products', { status: 'running', last_attempted_at: ISO(5) })];
+  // Independent gate case: do not replay the earlier test's idempotent request.
+  state.retryRequests = [];
+  state.stores[0] = storeRow(STORE_A, ORG_A, { initial_sync_status: 'running', sync_started_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+  state.domainRows = [domainRow('products', { status: 'running', last_attempted_at: new Date().toISOString() })];
   const before = state.startedSyncs;
   const { res } = await call(storeController.requestSyncRetry,
     { user: userA(), params: { storeId: STORE_A }, body: { request_key: 'api-run' } }, {});
