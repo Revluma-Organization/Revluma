@@ -29,4 +29,8 @@ Read-only production Supabase verification found current snapshot `5b7166fe-ca1e
 
 ## Deployment record
 
-Pending at implementation time. See validation record for final commit/PR/deployment and live acceptance. Authenticated merchant-browser verification remains required and cannot be inferred from tests or a successful deployment.
+PR **#368** passed all required checks (both backend jobs, Prisma/financial/security regressions, both Dashboard jobs and Vercel), then merged on 2026-11-08 at **11:26:23 UTC** as **`6ac522449c91bb59bdd6a1b53fe81342b83db1be`**.
+
+The post-merge backend suite passed and GitHub's Vercel status reached **success** for that exact merge revision. The Vercel connector token no longer had deployment-read permission, so deployment success was verified through GitHub commit status rather than connector metadata.
+
+The production API host returned **“This service has been suspended by its owner.”** No authenticated Command Center API acceptance or visual merchant session was possible. No infrastructure restart or configuration mutation was attempted. Authenticated merchant-browser verification remains required and cannot be inferred from tests or a successful deployment.
