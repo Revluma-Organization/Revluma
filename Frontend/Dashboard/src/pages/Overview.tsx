@@ -7,9 +7,17 @@ import {
   OperationalBriefing,
   PriorityFindings,
 } from "@/components/command-center/CommandCenterSections";
+import BusinessHealthPanel from "@/components/dashboard/BusinessHealthPanel";
+import OperationalActivityPanel from "@/components/dashboard/OperationalActivityPanel";
 
 export default function Overview() {
   const { data, loading, refreshing, error, refetch } = useCommandCenter();
+  // Task 218 — store-scoped business health indicators and operational
+  // history. The store context is the Command Center's primary store (the
+  // same store the briefing is bound to), so both sections and the briefing
+  // always describe one store. With no store context these sections render
+  // nothing rather than fabricating a subject.
+  const store = data?.context.store ?? null;
   return <main className="mx-auto w-full min-w-0 max-w-[1440px] space-y-5 overflow-x-clip pb-10 text-[#101828] dark:text-[#e7eefc]">
     <CommandCenterHeader data={data} refreshing={refreshing} onRefresh={() => void refetch(true)} />
     {error && <div role="alert" className="flex flex-col gap-3 rounded-xl border border-[#fecaca] bg-[#fff7f7] p-4 text-xs text-[#991b1b] dark:border-[#7f1d1d] dark:bg-[#241414] dark:text-[#fecaca] sm:flex-row sm:items-center sm:justify-between">
@@ -23,8 +31,10 @@ export default function Overview() {
     </div> : data ? <>
       <OperationalBriefing data={data} />
       <BusinessOverview data={data} />
+      {store && <BusinessHealthPanel storeId={store.id} storeDomain={store.name} canInvestigate={data.integration?.overall_status === "connected"} />}
       <PriorityFindings data={data} />
       <div className="grid min-w-0 gap-5 xl:grid-cols-2"><OperationalActivity data={data} /><EvidenceFreshness data={data} /></div>
+      {store && <OperationalActivityPanel storeId={store.id} />}
     </> : !error ? <section className="rounded-xl border border-[#e2e8f0] bg-white p-6 dark:border-[#2c2c2c] dark:bg-[#111111]"><h2 className="text-sm font-bold">No operational briefing is available</h2><p className="mt-2 text-xs text-[#64748b]">No business information is asserted.</p></section> : null}
   </main>;
 }

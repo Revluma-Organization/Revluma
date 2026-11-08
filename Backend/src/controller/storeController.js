@@ -12,6 +12,12 @@ const {
   validateSyncProgress,
 } = require('../services/integrationProgress');
 const { requestSyncRetry, loadStoreForRetry } = require('../services/integrationRetry');
+// Task 218 — canonical business health (rev-business-health-v1) and the
+// operational activity feed (rev-operational-activity-v1).
+const { buildBusinessHealth, validateBusinessHealth } = require('../services/businessHealth');
+const { fetchBusinessHealthBundle } = require('../services/businessHealthRepository');
+const { buildOperationalActivity, validateOperationalActivity, LIMIT_DEFAULT, LIMIT_MAX } = require('../services/operationalActivity');
+const { fetchOperationalActivityBundle } = require('../services/operationalActivityRepository');
 
 async function optionalRows(model, args) {
   if (!model?.findMany) return [];
@@ -254,6 +260,56 @@ exports.requestSyncRetry = async (req, res, next) => {
       }
     }
     return res.status(202).json({ success: true, data: result.data });
+  } catch (error) { next(error); }
+};
+
+// Task 218 — canonical business health (rev-business-health-v1). Tenant- and
+// store-scoped, read-only, fail-closed: a malformed contract is a 500, never
+// emitted. Business severity is independent of data quality; a failing sync is
+// reflected in the affected indicators' data_quality, not by erasing history.
+exports.getBusinessHealth = async (req, res, next) => {
+  try {
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
+    const organizationId = membership.organization_id;
+    const storeId = req.params.storeId;
+    const bundle = await fetchBusinessHealthBundle(prisma, organizationId, storeId);
+    if (!bundle) {
+      return res.status(404).json({ success: false, error: 'Store not found.' });
+    }
+    const health = buildBusinessHealth(bundle);
+    const problems = validateBusinessHealth(health);
+    if (problems.length > 0) {
+      console.warn('business_health_contract_invalid', { store_id: bundle.store.id, problems });
+      return res.status(500).json({ success: false, error: 'Business health contract validation failed.' });
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.status(200).json({ success: true, data: health });
+  } catch (error) { next(error); }
+};
+
+// Task 218 — operational activity feed (rev-operational-activity-v1).
+// Tenant- and store-scoped, read-only, persisted + deduped + occurrence-ordered,
+// keyset-paginated, fail-closed.
+exports.getOperationalActivity = async (req, res, next) => {
+  try {
+    const membership = await requireMembership(prisma, req.user.id, req.user.tenantId);
+    const organizationId = membership.organization_id;
+    const storeId = req.params.storeId;
+    const bundle = await fetchOperationalActivityBundle(prisma, organizationId, storeId);
+    if (!bundle) {
+      return res.status(404).json({ success: false, error: 'Store not found.' });
+    }
+    const parsedLimit = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(LIMIT_MAX, parsedLimit)) : LIMIT_DEFAULT;
+    const cursor = typeof req.query.cursor === 'string' && req.query.cursor ? req.query.cursor : null;
+    const activity = buildOperationalActivity(bundle, new Date(), { limit, cursor });
+    const problems = validateOperationalActivity(activity);
+    if (problems.length > 0) {
+      console.warn('operational_activity_contract_invalid', { store_id: bundle.store.id, problems });
+      return res.status(500).json({ success: false, error: 'Operational activity contract validation failed.' });
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.status(200).json({ success: true, data: activity });
   } catch (error) { next(error); }
 };
 

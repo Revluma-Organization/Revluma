@@ -11,5 +11,9 @@ router.get('/:storeId/integration-state', authenticateToken, storeController.get
 // the idempotent, tenant-scoped manual sync-retry.
 router.get('/:storeId/sync-progress', authenticateToken, storeController.getSyncProgress);
 router.post('/:storeId/sync-retry', authenticateToken, storeController.requestSyncRetry);
+// Task 218 — canonical business health (rev-business-health-v1) and the
+// operational activity feed (rev-operational-activity-v1).
+router.get('/:storeId/business-health', authenticateToken, storeController.getBusinessHealth);
+router.get('/:storeId/business-activity', authenticateToken, storeController.getOperationalActivity);
 
 module.exports = router;
