@@ -75,6 +75,9 @@ const feedbackLimiter = rateLimit({
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
+// Command Center — authoritative, read-only operational briefing
+router.get('/command-center',             authenticateToken,               revController.getCommandCenter);
+
 // Chat — the primary Rev Intelligence endpoint (non-streaming fallback)
 router.post('/chat',                      authenticateToken, chatLimiter,   revController.chat);
 

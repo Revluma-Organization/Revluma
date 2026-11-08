@@ -47,6 +47,8 @@ export interface RequestOptions {
   body?: unknown;
   /** When true, 401 does not purge session / redirect (used by logout + refresh). */
   skipAuthRedirect?: boolean;
+  /** Allows page/store changes to cancel obsolete read requests. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -228,6 +230,7 @@ async function request<T>(
       method,
       headers,
       credentials: "include",
+      signal: options.signal,
       // Pass FormData directly so fetch can auto-generate the multipart boundary!
       body: isFormData 
         ? (options.body as FormData) 
