@@ -101,6 +101,10 @@ interface FindingContext {
   lifecycleState?: string;
   currentValidity?: string;
   evidenceQuality?: string;
+  reportingPeriod?: { start: string | null; end: string | null; timezone: string } | null;
+  confidence?: string;
+  limitations?: string[];
+  evidenceReferences?: string[];
 }
 
 const FINDING_ERRORS = ["INVALID_FINDING_ID", "FINDING_NOT_FOUND", "FINDING_EVIDENCE_UNVERIFIED"];
@@ -749,15 +753,22 @@ export default function RevIntell() {
     }
     setFindingLoading(true);
     try {
-      const result = await api.get<{ success: boolean; data: { finding: FindingContext } }>(`/rev/findings/${encodeURIComponent(id)}`);
+      const result = await api.get<{ success: boolean; data: { finding: any; priority_finding?: any } }>(`/rev/findings/${encodeURIComponent(id)}`);
       if (request !== findingRequestRef.current) return;
       const finding = result.data.data?.finding;
+      const priority = result.data.data?.priority_finding;
       if (!result.data.success || !finding || typeof finding.id !== "string" || finding.id.toLowerCase() !== id.toLowerCase() || typeof finding.title !== "string" || !finding.title.trim()) {
         throw new Error("Finding details are unavailable.");
       }
       setFindingContext({ id, title: finding.title, description: typeof finding.description === "string" ? finding.description : "",
-        lifecycleState: typeof (finding as any).status === "string" ? (finding as any).status : undefined,
-        currentValidity: (finding as any).evidence?.verified === true ? "recorded_source_verified" : "evidence_unverified" });
+        lifecycleState: typeof finding.status === "string" ? finding.status : undefined,
+        currentValidity: typeof finding.current_validity === "string" ? finding.current_validity : finding.evidence?.verified === true ? "recorded_source_verified" : "evidence_unverified",
+        evidenceQuality: priority?.confidence?.classification,
+        reportingPeriod: priority?.reporting_period || null,
+        confidence: priority?.confidence?.classification,
+        limitations: Array.isArray(priority?.limitations) ? priority.limitations : [],
+        evidenceReferences: Array.isArray(priority?.evidence?.references) ? priority.evidence.references.map((ref: any) => ref.id).filter((ref: unknown) => typeof ref === "string") : [],
+      });
       if (!inputEditedRef.current) setInput(`Help me investigate this finding: ${finding.title}. Explain the observed change, limitations and supported next steps.`);
     } catch (error) {
       if (request !== findingRequestRef.current) return;
@@ -1546,7 +1557,12 @@ export default function RevIntell() {
           <p className="mb-1 text-xs font-semibold" style={{ color: t2 }}>Finding to investigate</p>
           <h2 className="text-sm font-semibold">{findingContext.title}</h2>
           {findingContext.description && <p className="mt-1 line-clamp-2 text-xs" style={{ color: t2 }}>{findingContext.description}</p>}
-          {(findingContext.currentValidity === "stale_unreverified" || findingContext.currentValidity?.startsWith("historical_") || findingContext.lifecycleState === "resolved" || findingContext.lifecycleState === "dismissed") &&
+          {(findingContext.confidence || findingContext.reportingPeriod) && <p className="mt-1 text-xs" style={{ color: t2 }}>
+            {findingContext.confidence ? `${findingContext.confidence.replaceAll("_", " ")} confidence` : "Confidence unavailable"}
+            {findingContext.reportingPeriod?.start && findingContext.reportingPeriod?.end ? ` · ${findingContext.reportingPeriod.start} to ${findingContext.reportingPeriod.end} (${findingContext.reportingPeriod.timezone})` : " · Reporting period unavailable"}
+          </p>}
+          {findingContext.limitations?.[0] && <p className="mt-1 text-xs" style={{ color: t2 }}>Limit: {findingContext.limitations[0]}</p>}
+          {(findingContext.currentValidity !== "current_evidence_verified" && findingContext.currentValidity !== "recorded_source_verified" || ["resolved", "dismissed", "invalidated", "superseded"].includes(findingContext.lifecycleState || "")) &&
             <p role="status" className="mt-2 rounded-lg border px-2 py-1 text-xs" style={{ borderColor: bdr, color: t2 }}>
               {findingContext.lifecycleState === "resolved" ? "Resolved finding — historical context, not a current priority." :
                 findingContext.lifecycleState === "dismissed" ? "Dismissed finding — historical context, not a current priority." :

@@ -943,11 +943,34 @@ exports.getIntelligenceFinding = async (req, res, next) => {
     }
     const finding = await prisma.intelligence_findings.findFirst({
       where: { id: req.params.id, organization_id: org.id },
-      select: { id: true, type: true, severity: true, status: true, title: true,
-        description: true, evidence: true, action: true, detected_at: true },
+      select: { id: true, store_id: true, type: true, severity: true, status: true, title: true,
+        description: true, evidence: true, action: true, detected_at: true,
+        dedupe_key: true, updated_at: true, acknowledged_at: true, resolved_at: true, dismissed_at: true },
     });
     if (!finding) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
-    return res.status(200).json({ success: true, data: { finding } });
+    const ownedStore = await prisma.stores.findFirst({ where: { id: finding.store_id, organization_id: org.id }, select: { id: true } });
+    if (!ownedStore) return res.status(404).json({ success: false, error: { code: 'FINDING_NOT_FOUND' } });
+    let resource = null;
+    if (finding.type !== 'integration_failure') {
+      const sync = await prisma.store_sync_domain_states.findFirst({
+        where: { store_id: finding.store_id, domain: finding.type === 'refund_increase' ? 'refunds' : 'orders' },
+        select: { status: true, last_succeeded_at: true, error_code: true },
+      });
+      const age = sync?.last_succeeded_at ? Date.now() - new Date(sync.last_succeeded_at).getTime() : Number.POSITIVE_INFINITY;
+      resource = {
+        availability: sync?.status === 'ok' && sync.last_succeeded_at ? 'available' : 'retrieval_failed',
+        freshness: age > 3600_000 ? 'stale' : 'fresh',
+        reason: sync?.status === 'ok' ? null : 'The latest source synchronization does not support a current claim.',
+      };
+    }
+    const { assessFinding, presentPriorityFinding } = require('../services/priorityFindingService');
+    const assessment = assessFinding(finding, { resource });
+    const presented = presentPriorityFinding({ finding, assessment, duplicates: [] }, org.id);
+    return res.status(200).json({ success: true, data: { finding: {
+      ...finding, current_validity: assessment.current_validity,
+      confidence: assessment.confidence, evidence_freshness: assessment.freshness,
+      limitations: assessment.limitations,
+    }, priority_finding: presented } });
   } catch (error) { next(error); }
 };
 

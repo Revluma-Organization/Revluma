@@ -8,27 +8,19 @@
 const { retrieveIntegrationStates } = require('./revIntegrationState');
 const { RESOURCE_BY_ID } = require('./revIntegrationEvidenceService');
 const { listFindings } = require('./intelligenceFindingsRepository');
+const priorityFinding = require('./priorityFindingService');
 
 const CONTRACT_VERSION = 'command-center-v1';
-const SEVERITY = { critical: 0, high: 1, medium: 2, low: 3 };
-const FINDING_STATES = new Set(['revenue_change', 'order_volume_change', 'returning_customer_change', 'integration_failure']);
 const iso = value => value instanceof Date ? value.toISOString() : (typeof value === 'string' ? value : null);
 const finite = value => value === null || value === undefined ? null : (Number.isFinite(Number(value)) ? Number(value) : null);
 const object = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 
-function findingIsVerified(finding) {
-  return finding && typeof finding.id === 'string' && FINDING_STATES.has(finding.type) &&
-    object(finding.evidence).verified === true && SEVERITY[finding.severity] !== undefined;
-}
-
-function prioritizedFindings(findings) {
-  const seen = new Set();
-  return findings.filter(findingIsVerified).filter(finding => {
-    if (seen.has(finding.id)) return false;
-    seen.add(finding.id);
-    return true;
-  }).sort((a, b) => SEVERITY[a.severity] - SEVERITY[b.severity] ||
-    new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime());
+function prioritizedFindings(findings, options = {}) {
+  return priorityFinding.prioritizedFindings(findings, options).candidates.map(candidate => ({
+    ...candidate.finding,
+    priority_assessment: candidate.assessment,
+    duplicate_finding_ids: candidate.duplicates,
+  }));
 }
 
 function snapshotStatus(snapshot, now) {
@@ -194,7 +186,7 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
   const [snapshot, states, rawFindings, stores] = await Promise.all([
     prisma.business_states.findFirst({ where: { organization_id: organizationId, is_current: true } }),
     retrieveIntegrationStates({ prisma, organizationId, now }),
-    listFindings(prisma, organizationId, { status: 'open', limit: 25 }),
+    listFindings(prisma, organizationId, { status: 'active', limit: 100 }),
     prisma.stores.findMany({ where: { organization_id: organizationId }, select: { id: true, shop_domain: true, platform: true, last_synced_at: true, sync_completed_at: true }, orderBy: { last_synced_at: 'desc' } }),
   ]);
   const storeIds = stores.map(store => store.id);
@@ -202,7 +194,18 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
   const status = snapshotStatus(snapshot, now);
   const primaryStore = stores[0] || null;
   const state = states.find(item => item.store.id === primaryStore?.id) || null;
-  const findings = prioritizedFindings(rawFindings);
+  const resourcesByStore = new Map(states.map(item => [item.store.id, item]));
+  const priority = priorityFinding.prioritizedFindings(rawFindings, { now, resourcesByStore });
+  const findings = priority.candidates.map(candidate => ({
+    ...candidate.finding,
+    priority_assessment: candidate.assessment,
+    duplicate_finding_ids: candidate.duplicates,
+  }));
+  const presentedFindings = priority.candidates.slice(0, 8).map(candidate => {
+    const presented = priorityFinding.presentPriorityFinding(candidate, organizationId);
+    return { ...presented, next_step: { label: 'Investigate with Rev', route: presented.investigation.route } };
+  });
+  if (presentedFindings[0] && priority.tie) presentedFindings[0].priority.tie = priority.tie;
   const warnings = Array.isArray(object(snapshot?.metadata).warnings) ? object(snapshot.metadata).warnings.filter(item => typeof item === 'string') : [];
   return {
     contract_version: CONTRACT_VERSION,
@@ -225,12 +228,16 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
     integration: state,
     briefing: composeBriefing({ snapshot, status, state, findings, warnings }),
     metrics: buildMetrics(snapshot, state, status),
-    findings: findings.slice(0, 8).map(finding => ({
-      id: finding.id, store_id: finding.store_id, type: finding.type, severity: finding.severity,
-      title: finding.title, description: finding.description, detected_at: iso(finding.detected_at),
-      evidence_quality: 'verified', evidence: finding.evidence, action: finding.action || null,
-      next_step: { label: 'Investigate with Rev', route: `/dashboard/rev-intell?finding=${encodeURIComponent(finding.id)}` },
-    })),
+    priority_finding: presentedFindings[0] || null,
+    priority_selection: {
+      method_version: priorityFinding.PRIORITY_METHOD_VERSION,
+      eligible_count: priority.candidates.length,
+      tie: priority.tie,
+      exclusions: priority.excluded.slice(0, 12),
+      no_defensible_priority: priority.candidates.length === 0,
+      reason: priority.candidates.length ? null : rawFindings.length ? 'No open finding currently satisfies validity, evidence, freshness and coverage requirements.' : 'No open verified findings are recorded; this does not establish that no business problem exists.',
+    },
+    findings: presentedFindings,
     activity: [
       ...stores.filter(store => store.sync_completed_at).map(store => ({ id: `sync-${store.id}-${iso(store.sync_completed_at)}`, kind: 'system', type: 'synchronization_completed', label: 'Shopify synchronization completed', store_id: store.id, occurred_at: iso(store.sync_completed_at), note: 'System activity; not a merchant action or business event.' })),
       ...findings.slice(0, 4).map(finding => ({ id: `finding-${finding.id}`, kind: 'business', type: finding.type, label: finding.title, store_id: finding.store_id, occurred_at: iso(finding.detected_at), note: 'Verified intelligence finding; not a claimed merchant action.' })),

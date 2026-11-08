@@ -21,7 +21,11 @@ const integration = (extra = {}) => ({
   store: { id: 'store-1' }, coverage: { status: 'complete' },
   capabilities: [capability('orders'), capability('abandoned-checkouts'), capability('inventory.levels')], ...extra,
 });
-const finding = (extra = {}) => ({ id: 'finding-1', store_id: 'store-1', type: 'revenue_change', severity: 'high', title: 'Net sales declined', description: 'Recorded net sales declined between comparable periods.', detected_at: NOW, evidence: { verified: true }, ...extra });
+const finding = (extra = {}) => ({ id: 'finding-1', store_id: 'store-1', type: 'revenue_change', severity: 'high', status: 'open', dedupe_key: null, title: 'Net sales declined', description: 'Recorded net sales declined between comparable periods.', detected_at: NOW, updated_at: NOW, evidence: {
+  verified: true, complete: true, source: 'orders', coverage_source: 'shopify_verified_history_v1', coverage_run_id: 'coverage-run-1', currency: 'USD',
+  previousStart: '2026-10-25T00:00:00Z', previousEnd: '2026-11-01T00:00:00Z', currentStart: '2026-11-01T00:00:00Z', currentEnd: '2026-11-08T00:00:00Z',
+  currentCount: 20, previousCount: 20, currentRevenue: 650, previousRevenue: 1000,
+}, ...extra });
 
 const scenarios = [
   ['healthy sufficient evidence stays calm', {}, integration(), [], 'Your latest synchronized business picture'],
@@ -87,7 +91,7 @@ test('weak hypotheses and invalidated evidence never enter priority findings', (
   const valid = finding();
   const result = prioritizedFindings([
     finding({ id: 'hypothesis', severity: 'critical', evidence: { verified: false } }),
-    finding({ id: 'duplicate', evidence: { verified: true } }),
+    finding({ id: 'duplicate' }),
     valid,
   ]);
   assert.deepEqual(result.map(item => item.id), ['duplicate', 'finding-1']);

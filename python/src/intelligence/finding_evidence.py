@@ -26,9 +26,20 @@ WHERE f.id = CAST(:finding_id AS uuid) AND f.organization_id = CAST(:org_id AS u
 ORDER BY o.ordered_at, o.id LIMIT 201
 """
 
+_REFUND_SQL = """
+SELECT t.external_id, t.external_order_id, t.processed_at, t.amount, t.currency, t.status
+FROM order_transactions t JOIN intelligence_findings f ON f.store_id = t.store_id
+JOIN stores s ON s.id = f.store_id
+WHERE f.id = CAST(:finding_id AS uuid) AND f.organization_id = CAST(:org_id AS uuid)
+ AND s.organization_id = CAST(:org_id AS uuid) AND t.kind = 'refund'
+ AND t.status IN ('success','succeeded') AND t.processed_at >= :previous_start AND t.processed_at < :current_end
+ORDER BY t.processed_at, t.external_id LIMIT 201
+"""
+
 _SCALAR_KEYS = {
     "verified", "complete", "currency", "currentCount", "previousCount",
-    "currentRevenue", "previousRevenue", "currentReturning", "previousReturning",
+    "currentRevenue", "previousRevenue", "currentRefundTotal", "previousRefundTotal",
+    "refund_coverage_complete", "refund_sync_run_id", "currentReturning", "previousReturning",
     "currentStart", "currentEnd", "previousStart", "previousEnd",
     "coverage_source", "coverage_run_id", "failed_webhook_registrations",
 }
@@ -138,29 +149,40 @@ def retrieve_finding_evidence(organization_id: str, db, *, now: datetime | None 
                      "as_of": iso(updated), "age_seconds": age, "policy": "finding-reverification-48h"}
         finding_id = str(_get(row, "id"))
         order_records = []
+        refund_records = []
         previous_start, current_end_value = _date(evidence.get("previousStart")), current_end
         valid_period = bool(previous_start and current_end_value and previous_start < current_end_value)
         if previous_start and current_end_value and not valid_period:
             warnings.append(f"finding_measurement_period_invalid:{finding_id}")
         if valid_period:
-            order_rows, order_error = safe_query(db, _ORDER_SQL, {
+            is_refund = _get(row, "type") == "refund_increase"
+            record_rows, record_error = safe_query(db, _REFUND_SQL if is_refund else _ORDER_SQL, {
                 "org_id": organization_id, "finding_id": finding_id,
                 "previous_start": previous_start, "current_end": current_end_value,
             })
-            if order_error:
-                warnings.append(f"finding_order_evidence_unavailable:{finding_id}")
+            if record_error:
+                warnings.append(f"finding_{'refund' if is_refund else 'order'}_evidence_unavailable:{finding_id}")
             else:
-                if len(order_rows) > 200:
-                    warnings.append(f"finding_order_evidence_truncated:{finding_id}")
-                for order in order_rows[:200]:
-                    order_records.append({
-                        "external_order_id": _get(order, "external_order_id"),
-                        "order_name": _get(order, "external_order_name"),
-                        "ordered_at": iso(_get(order, "ordered_at")),
-                        "total": str(_get(order, "total")) if _get(order, "total") is not None else None,
-                        "refunded_total": str(_get(order, "refunded_total")) if _get(order, "refunded_total") is not None else None,
-                        "currency": _get(order, "currency"), "lifecycle": _get(order, "recovery_status"),
-                    })
+                if len(record_rows) > 200:
+                    warnings.append(f"finding_{'refund' if is_refund else 'order'}_evidence_truncated:{finding_id}")
+                for record in record_rows[:200]:
+                    if is_refund:
+                        refund_records.append({
+                            "external_refund_id": _get(record, "external_id"),
+                            "external_order_id": _get(record, "external_order_id"),
+                            "processed_at": iso(_get(record, "processed_at")),
+                            "amount": str(_get(record, "amount")) if _get(record, "amount") is not None else None,
+                            "currency": _get(record, "currency"), "status": _get(record, "status"),
+                        })
+                    else:
+                        order_records.append({
+                            "external_order_id": _get(record, "external_order_id"),
+                            "order_name": _get(record, "external_order_name"),
+                            "ordered_at": iso(_get(record, "ordered_at")),
+                            "total": str(_get(record, "total")) if _get(record, "total") is not None else None,
+                            "refunded_total": str(_get(record, "refunded_total")) if _get(record, "refunded_total") is not None else None,
+                            "currency": _get(record, "currency"), "lifecycle": _get(record, "recovery_status"),
+                        })
         elif _get(row, "type") != "integration_failure":
             warnings.append(f"finding_measurement_period_unavailable:{finding_id}")
         # An invalid recorded period must degrade, not crash: the fallback
@@ -184,6 +206,7 @@ def retrieve_finding_evidence(organization_id: str, db, *, now: datetime | None 
             "resolved_at": iso(_get(row, "resolved_at")), "dismissed_at": iso(_get(row, "dismissed_at")),
             "supporting_evidence": evidence, "recommendation_context": action,
             "underlying_order_records": order_records,
+            "underlying_refund_records": refund_records,
             "evidence_relationship": "organization/store-scoped finding plus bounded order records inside its source measurement windows",
         }
         items.append(evidence_item("finding_evidence", label=_get(row, "title") or f"Finding {finding_id}",

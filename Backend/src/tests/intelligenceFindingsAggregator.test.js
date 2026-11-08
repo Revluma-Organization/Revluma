@@ -83,3 +83,35 @@ test('revenue detection excludes cancelled orders and subtracts refunds', async 
   assert.equal(revenue.evidence.previousRevenue, 2000);
   assert.equal(revenue.evidence.currentCount, 11);
 });
+
+test('refund detector aggregates successful transactions by refund date with complete refund sync', async () => {
+  const db = fakeDb();
+  db.intelligence_order_coverage.findFirst = async () => ({ source: 'shopify_verified_history_v1', source_run_id: 'run-1', customer_lifetime_verified: false });
+  db.store_sync_domain_states = { findFirst: async args => {
+    assert.equal(args.where.domain, 'refunds');
+    assert.equal(args.where.pagination_complete, true);
+    return { id: 'refund-sync-1', last_succeeded_at: new Date('2026-10-27T10:00:00Z') };
+  } };
+  db.order_transactions = { findMany: async () => [
+    { external_id: 'r1', amount: 100, currency: 'USD', processed_at: new Date('2026-10-15T12:00:00Z') },
+    { external_id: 'r2', amount: 100, currency: 'USD', processed_at: new Date('2026-10-16T12:00:00Z') },
+    { external_id: 'r3', amount: 200, currency: 'USD', processed_at: new Date('2026-10-24T12:00:00Z') },
+    { external_id: 'r4', amount: 200, currency: 'USD', processed_at: new Date('2026-10-25T12:00:00Z') },
+  ] };
+  const result = await evaluateOrganizationFindings(db, 'org-1', { now: '2026-10-27T11:00:00Z', periodDays: 7 });
+  const refund = result.findings.find(f => f.type === 'refund_increase');
+  assert.equal(refund.evidence.currentRefundTotal, 400);
+  assert.equal(refund.evidence.previousRefundTotal, 200);
+  assert.equal(refund.evidence.refund_sync_run_id, 'refund-sync-1');
+  assert.equal(refund.evidence.coverage_run_id, 'run-1');
+});
+
+test('refund finding is withheld when refund synchronization is not certified complete', async () => {
+  const db = fakeDb();
+  db.intelligence_order_coverage.findFirst = async () => ({ source: 'shopify_verified_history_v1', source_run_id: 'run-1', customer_lifetime_verified: false });
+  db.store_sync_domain_states = { findFirst: async () => null };
+  db.order_transactions = { findMany: async () => { throw new Error('Transactions must not be queried without refund coverage'); } };
+  const result = await evaluateOrganizationFindings(db, 'org-1', { now: '2026-10-27T11:00:00Z' });
+  assert.equal(result.findings.some(f => f.type === 'refund_increase'), false);
+  assert.ok(result.diagnostics.some(item => item.status === 'refund_history_completeness_unverified'));
+});
