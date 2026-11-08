@@ -30,4 +30,4 @@ There is no numeric confidence percentage, estimated recoverable revenue, causal
 
 ## Delivery and acceptance
 
-Commit, PR, CI, deployment identity and authenticated active-store results are recorded in the validation report as they occur. Local tests and a merge do not certify production behavior. No active-store fixture was inserted and no write action was added.
+PR #371 merged as `4ac2a3386bf1d05e58e375afe429f67ea502688a` after all required CI passed. A minimal Task 215 test-isolation correction was required: its running-job fixture had become stalled relative to wall time and also reused an earlier idempotency key; production code was unchanged. Deployment identity and authenticated active-store results are recorded in the validation report as they occur. Local tests and a merge do not certify production behavior. No active-store fixture was inserted and no write action was added.

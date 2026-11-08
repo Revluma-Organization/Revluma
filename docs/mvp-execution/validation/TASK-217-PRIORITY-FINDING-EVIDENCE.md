@@ -1,7 +1,7 @@
 # TASK 217 validation — Priority Finding Evidence and Recommended Next Step
 
 - Date: 2026-11-06
-- Current verdict: **PARTIALLY VERIFIED — LOCAL IMPLEMENTATION GREEN; DELIVERY/AUTHENTICATED PRODUCTION PENDING**
+- Current verdict: **CI VERIFIED AND MERGED; EXACT RENDER REVISION/AUTHENTICATED PRODUCTION ACCEPTANCE PENDING**
 
 ## Executed checks
 
@@ -21,11 +21,17 @@ The priority suite contains 71 scenarios, including A–H, deterministic ties/in
 
 Tenant/auth/context coverage includes organization-scoped Command Center queries, exact store ownership in finding detail, Python store/organization predicates, encoded IDs, invalidated-before-investigation behavior, and no raw payload/token/source-record fabrication. Existing Rev tenant and chat suites are included in the broader focused/Dashboard runs. No schema or RLS policy changed.
 
+## CI and merge evidence
+
+PR [#371](https://github.com/Revluma-Organization/Revluma/pull/371) passed all required checks on head `7c34a58`: Backend test suite (run `42492689640`), release-candidate backend/Dashboard/Python/Prisma-PostgreSQL-security jobs (run `42492689488`), isolated backend/Dashboard jobs (runs `42492689740`, `42492689634`), Python regressions (`42492689661`) and Vercel preview. It merged as `4ac2a3386bf1d05e58e375afe429f67ea502688a` on 2026-11-08. An initial red run exposed a pre-existing Task 215 fixture whose hard-coded heartbeat had aged into `stalled`; the independent gate test now clears the earlier idempotent request and uses a current heartbeat. Production retry behavior did not change; the corrected test passes 7/7 locally and full Backend CI is green.
+
 ## Production evidence and blockers
 
 - Authoritative Node service: `https://revluma-backend-vrsd.onrender.com` (`/ready`).
 - Authoritative Python service: `https://revluma-python-p7j2.onrender.com` (`/health`).
 - Pre-Task-217 deployed baseline: `58defb605c05cbb4b5ab61c5794b0a05674f1593`.
+- Merged Task 217 revision awaiting Render observation: `4ac2a3386bf1d05e58e375afe429f67ea502688a`. Repeated cache-busted health checks through 2026-11-08 15:14 UTC still reported the baseline revision on both services, so Task 217 Render deployment is not claimed. No Render deployment credential/connector is available in this session.
+- Vercel reports a successful production deployment status for merge `4ac2a3386bf1d05e58e375afe429f67ea502688a` (deployment `J4UYET3msWaFYmmpsSzjnX4JRo88`, updated 2026-11-08 15:06 UTC). This does not establish authenticated Command Center behavior.
 - Active organization: `1dc6aa19-9737-4770-a340-ff812a8b139a`; active store: `3ed79446-cb6d-4a1c-b174-9ec1ab91fe15`.
 - Read-only preflight found no active-store trusted finding/coverage supporting a current priority. The expected truthful production state is therefore no defensible priority. No demo row was inserted.
 

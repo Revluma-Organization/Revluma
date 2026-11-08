@@ -77,7 +77,7 @@ Task 216 consolidates original Tasks 265–269 and begins Phase 4 without starti
 
 ## 2026-11-06 Task 217
 
-Task 217 consolidates original Tasks 270–274 without starting Task 218. Its [diagnosis](diagnostics/TASK-217-PRIORITY-FINDING-EVIDENCE.md), [implementation](implementation/TASK-217-PRIORITY-FINDING-EVIDENCE.md) and [validation](validation/TASK-217-PRIORITY-FINDING-EVIDENCE.md) record deterministic fail-closed priority selection, progressive evidence disclosure, certified refund-transaction deterioration, read-only next steps and exact Rev revalidation. Local focused Node, full Python, Dashboard tests/build and TypeScript are green; CI, deployed revision and authenticated active-store acceptance remain separate evidence and are not inferred from local tests or a merge.
+Task 217 consolidates original Tasks 270–274 without starting Task 218. Its [diagnosis](diagnostics/TASK-217-PRIORITY-FINDING-EVIDENCE.md), [implementation](implementation/TASK-217-PRIORITY-FINDING-EVIDENCE.md) and [validation](validation/TASK-217-PRIORITY-FINDING-EVIDENCE.md) record deterministic fail-closed priority selection, progressive evidence disclosure, certified refund-transaction deterioration, read-only next steps and exact Rev revalidation. Local focused Node, full Python, Dashboard tests/build and TypeScript are green. PR #371 passed all required CI and merged as `4ac2a338`; Vercel production deployment succeeded. Repeated Node/Python health checks still report the prior Render revision, and authenticated active-store acceptance is unavailable, so full production completion is not claimed.
 
 ## 2026-11-07 Task 214
 
