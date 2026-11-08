@@ -105,8 +105,12 @@ untyped for vitest). Local evidence (tree on `d9150d6`): 110 new frontend tests 
 pre-existing, none in touched files; the jest-dom typing fix took it from 749), production build
 green. No browser/production access in this environment, so the 9-width device matrix is executed on
 Vitest + jsdom for the JS-driven behavior + a CSS-contract audit, and the pixel-level checks are a
-production-acceptance checklist. Decision: REV-DEC-0027. Local evidence is green; CI, exact deployed
-revisions and authenticated active-store/browser acceptance at each width remain separate and pending.
+production-acceptance checklist. Decision: REV-DEC-0027. CI green (PR #375: `dashboard`
+suite+build, `Vercel`, `Vercel Preview Comments`); merged to main as `7f40e70`; Vercel
+production deployment `dpl_ED5HgrLxLgNVS5RVt83hdvotVwpo` READY/PROMOTED to `revluma.vercel.app`
+from the exact merge commit. The 9-width authenticated
+browser/active-store acceptance remains open (no real browser / merchant session / production
+egress in this environment).
 
 ## 2026-11-08 Task 218
 
