@@ -9,6 +9,10 @@ const { retrieveIntegrationStates } = require('./revIntegrationState');
 const { RESOURCE_BY_ID } = require('./revIntegrationEvidenceService');
 const { listFindings } = require('./intelligenceFindingsRepository');
 const priorityFinding = require('./priorityFindingService');
+const { buildBusinessHealth, validateBusinessHealth } = require('./businessHealth');
+const { fetchBusinessHealthBundle } = require('./businessHealthRepository');
+const { buildOperationalActivity: buildOperationalActivityFeed, validateOperationalActivity } = require('./operationalActivity');
+const { fetchOperationalActivityBundle } = require('./operationalActivityRepository');
 
 const CONTRACT_VERSION = 'command-center-v1';
 const iso = value => value instanceof Date ? value.toISOString() : (typeof value === 'string' ? value : null);
@@ -207,6 +211,14 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
   });
   if (presentedFindings[0] && priority.tie) presentedFindings[0].priority.tie = priority.tie;
   const warnings = Array.isArray(object(snapshot?.metadata).warnings) ? object(snapshot.metadata).warnings.filter(item => typeof item === 'string') : [];
+  const [healthBundle, activityBundle] = primaryStore ? await Promise.all([
+    fetchBusinessHealthBundle(prisma, organizationId, primaryStore.id, now, state),
+    fetchOperationalActivityBundle(prisma, organizationId, primaryStore.id, now),
+  ]) : [null, null];
+  const businessHealth = healthBundle ? buildBusinessHealth(healthBundle, now) : null;
+  const operationalActivity = activityBundle ? buildOperationalActivityFeed(activityBundle, now, 20, null) : null;
+  if (businessHealth && !validateBusinessHealth(businessHealth)) throw new Error('Business health contract validation failed.');
+  if (operationalActivity && !validateOperationalActivity(operationalActivity)) throw new Error('Operational activity contract validation failed.');
   return {
     contract_version: CONTRACT_VERSION,
     read_only: true,
@@ -238,9 +250,11 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
       reason: priority.candidates.length ? null : rawFindings.length ? 'No open finding currently satisfies validity, evidence, freshness and coverage requirements.' : 'No open verified findings are recorded; this does not establish that no business problem exists.',
     },
     findings: presentedFindings,
+    business_health: businessHealth,
+    operational_activity: operationalActivity,
     activity: [
       ...stores.filter(store => store.sync_completed_at).map(store => ({ id: `sync-${store.id}-${iso(store.sync_completed_at)}`, kind: 'system', type: 'synchronization_completed', label: 'Shopify synchronization completed', store_id: store.id, occurred_at: iso(store.sync_completed_at), note: 'System activity; not a merchant action or business event.' })),
-      ...findings.slice(0, 4).map(finding => ({ id: `finding-${finding.id}`, kind: 'business', type: finding.type, label: finding.title, store_id: finding.store_id, occurred_at: iso(finding.detected_at), note: 'Verified intelligence finding; not a claimed merchant action.' })),
+      ...findings.slice(0, 4).map(finding => ({ id: `finding-${finding.id}`, kind: 'business', type: finding.type, finding_id: finding.id, label: finding.title, store_id: finding.store_id, occurred_at: iso(finding.detected_at), note: 'Verified intelligence finding; not a claimed merchant action.' })),
     ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()).slice(0, 8),
     evidence: {
       overall: status,

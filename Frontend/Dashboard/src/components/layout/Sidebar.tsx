@@ -1,597 +1,189 @@
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useEffect, useRef, useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
-  ChevronLeft, ChevronRight, Sun, Moon, X, Rocket,
-  ChevronDown, LogOut, Settings, CreditCard, Users as UsersIcon, HelpCircle,
-} from 'lucide-react';
-import { useUI } from '@/store/ui';
-import { useThemeStore } from '@/store';
-import { MVP_NAV } from '@/data/nav';
-import { cn } from '@/lib/utils';
-import { useAuth } from '@/context/AuthContext';
-import { useEffect, useRef, useState } from 'react';
-import revlumaIcon from '@/assets/brand/revluma-icon.png';
-import revIntellLogo from '@/assets/images/rev-intell-logo.png';
+  ChevronDown, ChevronLeft, ChevronRight, CreditCard, HelpCircle, LogOut,
+  Moon, Settings, Sun, Users as UsersIcon, X,
+} from "lucide-react";
+import { useUI } from "@/store/ui";
+import { useThemeStore } from "@/store";
+import { MVP_NAV } from "@/data/nav";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
+import revlumaIcon from "@/assets/brand/revluma-icon.png";
+import revIntellLogo from "@/assets/images/rev-intell-logo.png";
+import { shell } from "@/components/command-center/tokens";
 
-const SHOW_DEFERRED_AUTOMATION_UPSELL = false;
-
-// Derive initials from a full name string
-function getInitials(fullName: string | undefined | null): string {
-  if (!fullName) return '--';
-  return fullName
-    .split(' ')
-    .filter(Boolean)
-    .map((p) => p[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+function initials(name: string | null | undefined) {
+  return name?.split(" ").filter(Boolean).map(part => part[0]).join("").slice(0, 2).toUpperCase() || "--";
 }
 
 export function Sidebar() {
   const { sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen } = useUI();
-  // Task 220 — decorative motion honors prefers-reduced-motion.
-  const reduceMotion = useReducedMotion();
-  const theme = useThemeStore((s) => s.theme);
-  const toggleTheme = useThemeStore((s) => s.toggleTheme);
+  const theme = useThemeStore(state => state.theme);
+  const toggleTheme = useThemeStore(state => state.toggleTheme);
   const { user, logout } = useAuth();
-  const location = useLocation();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
   const [userOpen, setUserOpen] = useState(false);
-  // Task 220 — the mobile drawer is an accessible dialog: it only exists
-  // below md (the hamburger is the only opener), so its open state also means
-  // "mobile overlay mode".
-  const isMobileDrawer = mobileSidebarOpen;
   const asideRef = useRef<HTMLElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const isMobileDrawer = mobileSidebarOpen;
 
-  useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname, setMobileSidebarOpen]);
-
+  useEffect(() => { setMobileSidebarOpen(false); setUserOpen(false); }, [pathname, setMobileSidebarOpen]);
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 768) {
-        setSidebarCollapsed(false);
-      } else {
-        // Grown past the mobile breakpoint: the overlay drawer no longer
-        // applies — close it so no dialog semantics survive on desktop.
-        setMobileSidebarOpen(false);
-      }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMobileSidebarOpen(false); setUserOpen(false); }
     };
-    window.addEventListener('resize', handleResize);
-    handleResize(); // Initial check
-    return () => window.removeEventListener('resize', handleResize);
-  }, [setSidebarCollapsed, setMobileSidebarOpen]);
+    const onResize = () => {
+      if (window.innerWidth < 768) setSidebarCollapsed(false);
+      else setMobileSidebarOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("resize", onResize); };
+  }, [setMobileSidebarOpen, setSidebarCollapsed]);
 
-  // Task 220 — Escape dismissal, focus move/restore, focus containment and
-  // background scroll lock while the mobile drawer is open.
   useEffect(() => {
     if (!isMobileDrawer) return;
     const aside = asideRef.current;
     const previousFocus = document.activeElement as HTMLElement | null;
-    const focusables = () => Array.from(
-      aside ? aside.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])') : [],
-    ).filter(el => el.offsetParent !== null || el === document.activeElement);
-    const first = focusables()[0];
-    first?.focus();
-    document.documentElement.classList.add('cc-drawer-open');
-
+    const focusables = () => Array.from(aside?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])') || []).filter(element => element.offsetParent !== null || element === document.activeElement);
+    focusables()[0]?.focus();
+    document.documentElement.classList.add("cc-drawer-open");
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        setMobileSidebarOpen(false);
-        return;
-      }
-      if (event.key !== 'Tab' || !aside) return;
+      if (event.key !== "Tab" || !aside) return;
       const list = focusables();
-      if (list.length === 0) return;
-      const firstEl = list[0];
-      const lastEl = list[list.length - 1];
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
       const active = document.activeElement;
-      if (event.shiftKey && (active === firstEl || !aside.contains(active))) {
-        event.preventDefault();
-        lastEl.focus();
-      } else if (!event.shiftKey && (active === lastEl || !aside.contains(active))) {
-        event.preventDefault();
-        firstEl.focus();
-      }
+      if (event.shiftKey && (active === first || !aside.contains(active))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (active === last || !aside.contains(active))) { event.preventDefault(); first.focus(); }
     };
-    document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
-      document.removeEventListener('keydown', onKeyDown, true);
-      document.documentElement.classList.remove('cc-drawer-open');
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.documentElement.classList.remove("cc-drawer-open");
       previousFocus?.focus();
     };
-  }, [isMobileDrawer, setMobileSidebarOpen]);
+  }, [isMobileDrawer]);
 
-  // Task 220 — user menu: Escape + outside-click dismissal.
   useEffect(() => {
     if (!userOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setUserOpen(false);
-    };
     const onPointerDown = (event: MouseEvent) => {
       if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) setUserOpen(false);
     };
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('mousedown', onPointerDown);
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('mousedown', onPointerDown);
-    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
   }, [userOpen]);
 
-  const groups = MVP_NAV.reduce<Record<string, typeof MVP_NAV>>((acc, item) => {
-    (acc[item.group] ||= []).push(item);
-    return acc;
+  const groups = MVP_NAV.reduce<Record<string, typeof MVP_NAV>>((result, item) => {
+    (result[item.group] ||= []).push(item);
+    return result;
   }, {});
+  const displayName = user?.full_name || "Account";
+  const displayEmail = user?.email || "No email available";
 
-  const initials = getInitials(user?.full_name);
-  const displayName = user?.full_name ?? '--';
-  const displayEmail = user?.email ?? '--';
-
-  return (
-    <>
-      <div
-        className={cn(
-          'fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity md:hidden',
-          mobileSidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
-        )}
-        onClick={() => setMobileSidebarOpen(false)}
-        aria-hidden
-      />
-
-      {/* Task 220 — at <md the sidebar is a fixed overlay drawer (role=dialog)
-          that never squeezes the workspace; at >=md it is the in-flow sidebar
-          with the existing collapse behavior. */}
-      <motion.aside
-  ref={asideRef}
-  id="sidebar-drawer"
-  role={isMobileDrawer ? 'dialog' : undefined}
-  aria-modal={isMobileDrawer ? true : undefined}
-  aria-label={isMobileDrawer ? 'Navigation' : undefined}
-  data-tour="sidebar"
-  initial={{ x: -32, opacity: 0 }}
-  animate={{ x: 0, opacity: 1 }}
-  transition={{ type: 'spring', stiffness: 220, damping: 28 }}
-  className={cn(
-  'z-50 flex flex-col border-r transition-[width,transform,background-color] duration-300 ease-out overflow-hidden',
-  'md:relative md:shrink-0',
-  'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[var(--sidebar-w)] max-md:max-w-[85vw]',
-  theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
-  sidebarCollapsed ? 'md:w-[var(--sidebar-w-collapsed)]' : 'md:w-[var(--sidebar-w)]',
-  !mobileSidebarOpen && 'max-md:hidden'
-)}
->
-        {/* Ambient drifting orbs — makes the glass actually feel glassy */}
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full blur-3xl opacity-40"
-          style={{ background: 'radial-gradient(circle, hsl(var(--glass-surface-border) / 0.20), transparent 70%)' }}
-          animate={reduceMotion ? undefined : { x: [0, 40, 0], y: [0, 30, 0] }}
-          transition={reduceMotion ? { duration: 0 } : { duration: 16, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-24 -right-16 h-64 w-64 rounded-full blur-3xl opacity-30"
-          style={{ background: 'radial-gradient(circle, hsl(var(--glass-surface-border) / 0.18), transparent 70%)' }}
-          animate={{ x: [0, -30, 0], y: [0, -20, 0] }}
-          transition={{ duration: 20, repeat: Infinity, ease: 'easeInOut' }}
-        />
-
-        {/* Logo + controls */}
-        <div className={cn(
-          'relative z-[1] flex shrink-0 items-center justify-between px-4 pb-3.5 pt-4',
-          sidebarCollapsed && 'md:flex-col md:px-2 md:gap-4 md:items-center'
-        )}>
-          <div className="flex items-center gap-2.5">
-            <motion.img
-              src={revlumaIcon}
-              alt="Revluma"
-              whileHover={{ scale: 1.12, rotate: -6 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 14 }}
-              className="h-8 w-8 shrink-0 object-contain md:h-10 md:w-10 drop-shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
-            />
-            <AnimatePresence>
-              {!sidebarCollapsed && (
-                <motion.span
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -8 }}
-                  transition={{ duration: 0.2 }}
-                  className="display text-[1.18rem] font-extrabold text-t1"
-                >
-                  Revluma
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </div>
-
-          <div className={cn('flex items-center gap-1 pr-[38px] md:pr-[30px]', sidebarCollapsed && 'md:hidden')}>
-            {/* Task 220 — the visual pill stays 22×42, but the hit area is a
-                full 40px row so the control is usable on touch devices. */}
-            <button
-              type="button"
-              onClick={toggleTheme}
-              role="switch"
-              aria-checked={theme === 'dark'}
-              className="relative flex h-10 w-[52px] items-center justify-center"
-              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-            >
-              <span className="relative block h-[22px] w-[42px] rounded-full border border-border-md bg-bg-4 transition-colors">
-              <motion.span
-                layout
-                transition={{ type: 'spring', stiffness: 500, damping: 32 }}
-                className={cn(
-                  'absolute top-[2px] flex h-[16px] w-[16px] items-center justify-center rounded-full',
-                  'left-[2px]',
-                  theme === 'light' && 'translate-x-[20px]',
-                )}
-                style={{ background: 'hsl(var(--t1))' }}
-              >
-                {theme === 'dark'
-                  ? <Moon className="h-2 w-2" style={{ color: 'hsl(var(--sidebar-bg))' }} />
-                  : <Sun className="h-2 w-2" style={{ color: 'hsl(var(--sidebar-bg))' }} />}
-              </motion.span>
-              </span>
-            </button>
-            <button
-  type="button"
-  onClick={(e) => {
-    e.stopPropagation();
-    setSidebarCollapsed(!sidebarCollapsed);
-    if (window.innerWidth < 768) {
-       setMobileSidebarOpen(false);
-    }
-  }}
-  className={cn(
-    "absolute z-[100000] pointer-events-auto flex items-center justify-center cursor-pointer rounded-md transition-colors touch-manipulation",
-    "top-[18px] md:top-[22px] right-3 md:right-4",
-    "h-9 w-9 bg-slate-500/10 active:bg-slate-500/30 md:h-[26px] md:w-[26px] md:border md:border-border md:bg-bg-3 md:text-t2 md:hover:bg-glass/[0.065]"
-  )}
-  aria-label={sidebarCollapsed ? "Expand sidebar" : "Close sidebar"}
->
-  {sidebarCollapsed ? <ChevronRight className="h-5 w-5 md:h-3 md:w-3" /> : <ChevronLeft className="h-5 w-5 md:h-3 md:w-3" />}
-         </button>
-          </div>
-          
-          {sidebarCollapsed && (
-            <motion.button
-              whileHover={{ scale: 1.08, rotate: 4 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setSidebarCollapsed(false)}
-              className="hidden h-[26px] w-[26px] items-center justify-center rounded-md border border-border bg-bg-3 text-t2 transition-colors hover:bg-glass/[0.065] md:flex"
-              aria-label="Expand sidebar"
-            >
-              <ChevronRight className="h-3 w-3" />
-            </motion.button>
-          )}
-        </div>
-
-        {/* Nav */}
-        <nav className="relative z-[1] flex-1 overflow-y-auto px-2.5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {Object.entries(groups).map(([group, items], groupIdx) => (
-            <div key={group}>
-              {!sidebarCollapsed && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.05 + groupIdx * 0.04 }}
-                  className="mb-1 mt-3.5 px-2 text-[0.62rem] font-bold uppercase tracking-[0.11em] text-t4 first:mt-1"
-                >
-                  {group}
-                </motion.div>
-              )}
-              {items.map((item, itemIdx) => {
-                const Icon = item.icon;
-                return (
-                  <motion.div
-                    key={item.to}
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{
-                      delay: 0.04 * (groupIdx * 4 + itemIdx),
-                      type: 'spring',
-                      stiffness: 300,
-                      damping: 26,
-                    }}
-                  >
-                    <NavLink
-  to={item.to}
-  end={item.to === '/'}
-  onClick={() => setMobileSidebarOpen(false)}
-  className="group relative my-px flex items-center gap-2.5 rounded-lg px-2.5 py-2"
->
-                      {({ isActive }) => (
-                        <motion.div
-                          whileHover={!isActive ? { x: 3 } : undefined}
-                          whileTap={{ scale: 0.97 }}
-                          className={cn(
-                            'glass-row relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2',
-                            sidebarCollapsed && 'md:justify-center md:px-2.5 md:py-2.5',
-                          )}
-                        >
-                          {isActive && (
-                         <motion.span
-                     layoutId="sidebar-active-pill"
-                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                      className="absolute inset-0 rounded-md bg-[#0066cc]"
-                       >
-                       <span className="nav-active-rail absolute inset-y-1.5 left-0 w-[3px] rounded-full" />
-                          </motion.span>
-                        )}
-                          <span
-                            className={cn(
-                              'relative z-[1] flex shrink-0 items-center justify-center rounded-lg',
-                              sidebarCollapsed ? 'md:h-[38px] md:w-[38px] h-[30px] w-[30px]' : 'h-[30px] w-[30px]',
-                            )}
-                          >
-                            <motion.span
-                              animate={isActive ? { rotate: [0, -10, 8, 0], scale: [1, 1.15, 1] } : { rotate: 0, scale: 1 }}
-                              transition={{ duration: 0.55, ease: 'easeOut' }}
-                              className="flex items-center justify-center"
-                            >
-                              {item.useCustomIcon ? (
-                                <RevIntellOrb size={sidebarCollapsed ? 34 : 28} isActive={isActive} />
-                              ) : (
-                                <Icon
-                                  className={cn('h-4 w-4 transition-colors', isActive ? 'nav-blue-icon' : 'text-t3 group-hover:text-t1')}
-                                  strokeWidth={1.8}
-                                />
-                              )}
-                            </motion.span>
-                          </span>
-                          {!sidebarCollapsed && (
-                            <>
-                              <span className={cn('relative z-[1] flex-1 truncate text-[0.82rem] transition-colors', isActive ? 'nav-blue-text font-semibold' : 'font-normal text-t2 group-hover:text-t1')}>
-                                {item.label}
-                              </span>
-                              {item.badge && <span className="relative z-[1]"><NavBadge tone={item.badge.tone} text={item.badge.text} isActive={isActive} /></span>}
-                            </>
-                          )}
-                        </motion.div>
-                      )}
-                    </NavLink>
-                  </motion.div>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
-
-        {/* Upgrade banner */}
-<AnimatePresence>
-  {SHOW_DEFERRED_AUTOMATION_UPSELL && !sidebarCollapsed && (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 12 }}
-      transition={{ type: 'spring', stiffness: 260, damping: 24 }}
-      className="relative z-[1] mx-2.5 mb-4 overflow-hidden rounded-xl bg-[#007FFF]/10 border border-[#007FFF]/20 p-4"
-    >
-      <motion.div
-        className="mb-2.5 flex justify-center"
-        animate={{ y: [0, -3, 0] }}
-        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        <Rocket className="h-9 w-9 text-[#007FFF]" />
-      </motion.div>
-      <div className={cn("mb-1 text-center text-[0.8rem] font-semibold", theme === 'light' ? 'text-slate-900' : 'text-white')}>
-  Unlock full automation
-</div>
-<div className={cn("mb-3 text-center text-[0.7rem]", theme === 'light' ? 'text-slate-600' : 'text-slate-400')}>
-  Advanced recovery &amp; AI intelligence
-</div>
-      <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => navigate('/dashboard/settings/subscription')}
-        className="w-full rounded-md bg-[#007FFF] px-0 py-1.5 text-xs font-medium text-white transition hover:bg-[#007FFF]/90"
-      >
-        Upgrade to Pro →
-      </motion.button>
-    </motion.div>
-  )}
-</AnimatePresence>
-        
-        {/* User panel — real auth data. Task 220: proper menu semantics +
-            Escape/outside-click dismissal (effect above). */}
-        <div ref={userMenuRef} className={cn('relative z-[1] shrink-0 border-t border-border p-2.5', sidebarCollapsed && 'md:flex md:justify-center')}>
-          <AnimatePresence>
-            {userOpen && !sidebarCollapsed && (
-              <motion.div
-                initial={{ opacity: 0, y: 8, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                id="sidebar-user-menu"
-                role="menu"
-                aria-label="Account"
-                className="glass-card-soft absolute bottom-[calc(100%+6px)] left-2.5 right-2.5 z-[200] overflow-hidden rounded-xl shadow-elegant"
-              >
-                <DDItem icon={Settings} label="Account Settings" onClick={() => { navigate('/dashboard/settings/profile'); setUserOpen(false); }} />
-                <DDItem icon={CreditCard} label="Billing & Plans" onClick={() => { navigate('/dashboard/settings/billing'); setUserOpen(false); }} />
-                <DDItem icon={UsersIcon} label="Team Members" onClick={() => { navigate('/dashboard/settings/team'); setUserOpen(false); }} />
-                <DDItem icon={HelpCircle} label="Help & Support" onClick={() => { setUserOpen(false); }} />
-                <div className="my-1 h-px bg-border" />
-                <DDItem icon={LogOut} label="Log out" danger onClick={() => { void logout(); }} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-          <motion.button
-            type="button"
-            whileHover={{ scale: 1.015 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setUserOpen((v) => !v)}
-            aria-haspopup="menu"
-            aria-expanded={userOpen}
-            aria-controls="sidebar-user-menu"
-            className={cn(
-              'glass-row flex w-full items-center gap-2.5 rounded-md p-2',
-              sidebarCollapsed && 'md:w-[42px] md:justify-center md:rounded-full md:p-1.5',
-            )}
-          >
-            <div
-              className={cn(
-                'flex shrink-0 items-center justify-center rounded-full text-[0.72rem] font-bold border border-border bg-black/5 dark:bg-white/5 text-t1 overflow-hidden',
-                sidebarCollapsed ? 'md:h-[34px] md:w-[34px] h-[30px] w-[30px]' : 'h-[30px] w-[30px]',
-              )}
-            >
-              {user?.profile_picture_url ? (
-                <img src={user.profile_picture_url} alt={displayName} className="h-full w-full object-cover" />
-              ) : (
-                initials
-              )}
-            </div>
-            {!sidebarCollapsed && (
-              <>
-                <div className="min-w-0 flex-1 text-left">
-                  <div className="truncate text-[0.79rem] font-semibold text-t1">{displayName}</div>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <div className="truncate text-[0.66rem] text-t3">{displayEmail}</div>
-                    {user?.role && (
-                      <span className={cn(
-                        "shrink-0 whitespace-nowrap rounded px-1 py-px text-[0.55rem] font-bold uppercase tracking-wider border",
-                        user.role === "owner"
-                          ? "bg-amber-500/15 text-amber-400 border-amber-500/25"
-                          : user.role === "admin"
-                            ? "bg-blue-500/15 text-blue-400 border-blue-500/25"
-                            : "bg-slate-500/15 text-slate-400 border-slate-500/25",
-                      )}>
-                        {user.role}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <motion.span animate={{ rotate: userOpen ? 180 : 0 }} transition={{ type: 'spring', stiffness: 400, damping: 26 }}>
-                  <ChevronDown className="h-3 w-3 text-t3" />
-                </motion.span>
-              </>
-            )}
-          </motion.button>
-        </div>
-      </motion.aside>
-    </>
-  );
-}
-
-// ── Rev Intell Orb — permanent orbit animation (no card wrapper) ──────────────
-function RevIntellOrb({ size = 28, isActive = false }: { size?: number; isActive?: boolean }) {
-  return (
-    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
-      {/* Core orb image */}
-      <motion.img
-        src={revIntellLogo}
-        alt="Rev Intell"
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'contain',
-          position: 'relative',
-          zIndex: 2,
-          filter: isActive
-            ? 'drop-shadow(0 0 8px rgba(100,160,255,0.9)) drop-shadow(0 0 16px rgba(88,101,242,0.6))'
-            : 'drop-shadow(0 0 5px rgba(100,160,255,0.6)) drop-shadow(0 0 10px rgba(88,101,242,0.3))',
-        }}
-        animate={{ scale: [1, 1.06, 1] }}
-        transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-      />
-
-      {/* Orbit ring 1 — fast */}
-      <motion.div
-        style={{
-          position: 'absolute',
-          inset: -size * 0.28,
-          borderRadius: '50%',
-          border: `1px solid rgba(100,160,255,${isActive ? 0.55 : 0.28})`,
-          zIndex: 1,
-        }}
-        animate={{ rotate: 360 }}
-        transition={{ duration: 3.5, repeat: Infinity, ease: 'linear' }}
-      >
-        {/* Orbit dot 1 */}
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          right: -3,
-          width: 5,
-          height: 5,
-          borderRadius: '50%',
-          background: isActive ? '#7eb8ff' : 'rgba(100,160,255,0.7)',
-          transform: 'translateY(-50%)',
-          boxShadow: `0 0 6px rgba(100,160,255,${isActive ? 1 : 0.6})`,
-        }} />
-      </motion.div>
-
-      {/* Orbit ring 2 — slow, tilted */}
-      <motion.div
-        style={{
-          position: 'absolute',
-          inset: -size * 0.18,
-          borderRadius: '50%',
-          border: `1px solid rgba(138,110,255,${isActive ? 0.45 : 0.2})`,
-          zIndex: 1,
-          transform: 'rotate3d(1, 0.3, 0, 55deg)',
-        }}
-        animate={{ rotate: -360 }}
-        transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
-      >
-        {/* Orbit dot 2 */}
-        <div style={{
-          position: 'absolute',
-          top: -3,
-          left: '50%',
-          width: 4,
-          height: 4,
-          borderRadius: '50%',
-          background: isActive ? '#b89fff' : 'rgba(138,110,255,0.65)',
-          transform: 'translateX(-50%)',
-          boxShadow: `0 0 5px rgba(138,110,255,${isActive ? 1 : 0.5})`,
-        }} />
-      </motion.div>
-    </div>
-  );
-}
-
-
-function NavBadge({ tone, text, isActive }: { tone: 'new' | 'beta' | 'count'; text: string; isActive?: boolean }) {
-  // When the row is active (inverse glass), flip badge to match inverse theme
-  if (isActive) {
-    return (
-      <span
-        className="shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[0.58rem] font-bold uppercase tracking-[0.04em]"
-        style={{
-          background: 'hsl(var(--nav-active-fg) / 0.15)',
-          color: 'hsl(var(--nav-active-fg))',
-          border: '1px solid hsl(var(--nav-active-fg) / 0.25)',
-        }}
-      >
-        {text}
-      </span>
-    );
-  }
-  const styles =
-    tone === 'new' ? { background: 'hsl(var(--nav-blue))', color: '#fff' }
-      : tone === 'beta' ? { background: 'hsl(var(--purple))', color: '#fff' }
-        : { background: 'hsl(var(--t1))', color: 'hsl(var(--sidebar-bg))' };
-  return (
-    <span className="shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[0.58rem] font-bold uppercase tracking-[0.04em]" style={styles}>
-      {text}
-    </span>
-  );
-}
-
-function DDItem({ icon: Icon, label, danger, onClick }: { icon: React.ElementType; label: string; danger?: boolean; onClick?: () => void }) {
-  return (
-    <motion.button
-      whileHover={{ x: 3 }}
-      onClick={onClick}
-      type="button"
+  return <>
+    <div
+      aria-hidden
+      className={cn("fixed inset-0 z-40 bg-black/60 md:hidden", mobileSidebarOpen ? "block" : "hidden")}
+      onClick={() => setMobileSidebarOpen(false)}
+    />
+    <aside
+      ref={asideRef}
+      id="sidebar-drawer"
+      data-tour="sidebar"
+      role={isMobileDrawer ? "dialog" : undefined}
+      aria-modal={isMobileDrawer ? true : undefined}
+      aria-label={isMobileDrawer ? "Navigation" : "Primary navigation"}
       className={cn(
-        'flex w-full items-center gap-2.5 px-3.5 py-2.5 text-[0.8rem] font-medium text-t2 transition-colors hover:bg-glass/[0.065] hover:text-t1',
-        danger && 'hover:!text-red'
+        "fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-hidden border-r transition-[width,transform] duration-200 motion-reduce:transition-none md:relative md:translate-x-0",
+        shell.sidebar,
+        sidebarCollapsed ? "md:w-[var(--sidebar-w-collapsed)]" : "md:w-[var(--sidebar-w)]",
+        "w-[min(84vw,280px)]",
+        mobileSidebarOpen ? "translate-x-0 max-md:visible" : "-translate-x-full max-md:invisible",
       )}
     >
-      <Icon className="h-3.5 w-3.5" />
-      {label}
-    </motion.button>
-  );
+      <div className={cn("flex h-16 shrink-0 items-center justify-between border-b border-[#292d36] px-4", sidebarCollapsed && "md:px-3")}>
+        <div className="flex min-w-0 items-center gap-2.5">
+          <img src={revlumaIcon} alt="" className="h-8 w-8 shrink-0 object-contain" />
+          {!sidebarCollapsed && <span className="display truncate text-lg font-bold">Revluma</span>}
+        </div>
+        <button
+          type="button"
+          onClick={() => setMobileSidebarOpen(false)}
+          className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white md:hidden", shell.focus)}
+          aria-label="Close sidebar"
+        ><X className="h-5 w-5" /></button>
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className={cn("hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white md:flex", shell.focus)}
+          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >{sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}</button>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Workspace">
+        {Object.entries(groups).map(([group, items]) => <div key={group}>
+          {!sidebarCollapsed && <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#8992a3]">{group}</p>}
+          <ul className="space-y-1">{items.map(item => {
+            const Icon = item.icon;
+            return <li key={item.to}><NavLink
+              to={item.to}
+              end={item.to === "/"}
+              title={sidebarCollapsed ? item.label : undefined}
+              onClick={() => setMobileSidebarOpen(false)}
+              className={({ isActive }) => cn(
+                "group flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-[#c6ccd8] transition-colors",
+                shell.sidebarHover, shell.focus,
+                sidebarCollapsed && "md:justify-center md:px-2",
+                isActive && shell.sidebarActive,
+              )}
+            >{({ isActive }) => <>
+              {item.useCustomIcon
+                ? <img src={revIntellLogo} alt="" className="h-6 w-6 shrink-0 object-contain" />
+                : <Icon aria-hidden="true" className={cn("h-[18px] w-[18px] shrink-0", isActive ? "text-white" : "text-[#aeb5c2] group-hover:text-white")} strokeWidth={1.8} />}
+              {!sidebarCollapsed && <><span className="min-w-0 flex-1 truncate">{item.label}</span>{item.badge && <span className={cn("rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", isActive ? "bg-white/15 text-white" : "bg-white/[0.08] text-[#c6ccd8]")}>{item.badge.text}</span>}</>}
+            </>}</NavLink></li>;
+          })}</ul>
+        </div>)}
+      </nav>
+
+      <div className="shrink-0 border-t border-[#292d36] p-3">
+        <div className="relative" ref={userMenuRef}>
+          {userOpen && !sidebarCollapsed && <div id="sidebar-user-menu" role="menu" className="absolute bottom-[calc(100%+8px)] left-0 right-0 z-20 overflow-hidden rounded-lg border border-[#353a45] bg-[#1b1e24] py-1 shadow-xl">
+            <AccountAction icon={Settings} label="Account settings" onClick={() => navigate("/dashboard/settings/profile")} />
+            <AccountAction icon={CreditCard} label="Billing & plans" onClick={() => navigate("/dashboard/settings/billing")} />
+            <AccountAction icon={UsersIcon} label="Team members" onClick={() => navigate("/dashboard/settings/team")} />
+            <AccountAction icon={HelpCircle} label="Help & support" onClick={() => setUserOpen(false)} />
+            <div className="my-1 border-t border-[#353a45]" />
+            <AccountAction icon={LogOut} label="Log out" onClick={() => void logout()} />
+          </div>}
+          <button
+            type="button"
+            aria-label="Open account menu"
+            aria-haspopup="menu"
+            aria-controls="sidebar-user-menu"
+            aria-expanded={userOpen}
+            onClick={() => setUserOpen(open => !open)}
+            className={cn("flex min-h-12 w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-white/[0.07]", shell.focus, sidebarCollapsed && "md:justify-center")}
+          >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10 text-[11px] font-semibold text-white">
+              {user?.profile_picture_url ? <img src={user.profile_picture_url} alt="" className="h-full w-full object-cover" /> : initials(user?.full_name)}
+            </span>
+            {!sidebarCollapsed && <><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-white">{displayName}</span><span className="mt-0.5 block truncate text-[10px] text-[#aeb5c2]">{displayEmail}</span></span><ChevronDown className={cn("h-3.5 w-3.5 text-[#aeb5c2] transition-transform", userOpen && "rotate-180")} /></>}
+          </button>
+        </div>
+        {!sidebarCollapsed && <button type="button" role="switch" aria-checked={theme === "dark"} onClick={toggleTheme} className={cn("mt-1 flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-xs text-[#aeb5c2] hover:bg-white/[0.07] hover:text-white", shell.focus)} aria-label={`Use ${theme === "light" ? "dark" : "light"} workspace theme`}>
+          {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}Use {theme === "light" ? "dark" : "light"} workspace theme
+        </button>}
+      </div>
+    </aside>
+  </>;
+}
+
+function AccountAction({ icon: Icon, label, onClick }: { icon: React.ElementType; label: string; onClick: () => void }) {
+  return <button type="button" role="menuitem" onClick={onClick} className={cn("flex min-h-10 w-full items-center gap-2.5 px-3 text-left text-xs text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white", shell.focus)}><Icon className="h-4 w-4" />{label}</button>;
 }

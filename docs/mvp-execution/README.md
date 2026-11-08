@@ -143,3 +143,6 @@ in this environment, so the live in-browser acceptance at `revluma-test-store-v1
 remains a documented production-acceptance step (covered by the Vitest + jsdom + Testing Library
 suite and the CSS/responsive audit); the deployed production revision is verified via the Vercel
 connector after merge.
+## Task 219 — Command Center content hierarchy and visual system
+
+Task 219 records: [diagnosis](diagnostics/TASK-219-COMMAND-CENTER-DESIGN.md), [implementation](implementation/TASK-219-COMMAND-CENTER-DESIGN.md), [validation](validation/TASK-219-COMMAND-CENTER-DESIGN.md), decision REV-DEC-0029. Scope is original Tasks 281–285 only. The evidence-first hierarchy, five-domain health presentation, shared visual tokens and dark/light shell preserve the authoritative read-only intelligence path. Integrated local evidence is 796 Dashboard tests, 174 focused backend tests before the frontend-only Task 220 integration, TypeScript, build and changed-file ESLint green. This is not authenticated active-store production certification; consult the validation report for CI/deployment and remaining browser-acceptance evidence.

@@ -11,7 +11,7 @@ import type { CommandCenterData } from "@/components/command-center/types";
 // tests do NOT measure pixel layout. They verify the two width-dependent
 // contracts the *application* controls programmatically:
 //   1. Content preservation — the full Command Center DOM (briefing, business,
-//      priority finding, evidence, both store-scoped sections) is present at
+//      priority finding, evidence, the consolidated health/activity sections) is present at
 //      every width, i.e. nothing is conditionally removed for mobile.
 //   2. The 768px navigation breakpoint — the real resize handler in Sidebar
 //      keeps the overlay drawer on mobile widths and closes it (and drops the
@@ -29,8 +29,6 @@ const hookState = vi.hoisted(() => ({
   refetch: vi.fn(),
 }));
 vi.mock("@/hooks/useCommandCenter", () => ({ useCommandCenter: () => hookState }));
-vi.mock("@/components/dashboard/BusinessHealthPanel", () => ({ default: () => <div data-testid="bhp-stub" /> }));
-vi.mock("@/components/dashboard/OperationalActivityPanel", () => ({ default: () => <div data-testid="oap-stub" /> }));
 const authState = vi.hoisted(() => ({
   user: { id: "u1", full_name: "Test User", email: "test@revluma.app", role: "owner", profile_picture_url: null, status: "pro", tenant_id: "merchant-a" },
   logout: vi.fn(),
@@ -84,9 +82,9 @@ describe("Viewport matrix (Task 220) — JS-driven contract; CSS layout verified
     window.innerWidth = width;
     renderShell();
     expect(screen.getByRole("heading", { name: "Your latest synchronized business picture" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Business situation" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Priority finding" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Evidence & data readiness" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Top priority" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Data readiness & limitations" })).toBeInTheDocument();
     expect(screen.getByText("revluma-test-store-v1.myshopify.com")).toBeInTheDocument();
   });
 

@@ -13,6 +13,7 @@ import { useRegisterCommands } from "@/store/commandRegistryStore";
 import type { PaletteCommand } from "@/lib/commandPalette/types";
 import { OnboardingPaywallModal } from "./OnboardingPaywallModal";
 import { useAuth } from "@/context/AuthContext";
+import { shell } from "@/components/command-center/tokens";
 
 const SECTION_TITLES: Record<string, string> = {
   "/dashboard/overview": "Overview",
@@ -93,14 +94,13 @@ export function DashboardLayout() {
     return () => window.clearTimeout(t);
   }, [pathname, startTour]);
 
+  const commandCenter = basePath === "/dashboard/overview";
   return (
-    // Task 220 — app-h tracks mobile dynamic toolbars (100dvh); cc-scroll
-    // lets the mobile drawer lock background scroll while open.
     <div className="app-h flex w-full overflow-hidden bg-bg">
       <Sidebar />
-      <main className="cc-scroll flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-bg">
-        <Topbar section={SECTION_TITLES[basePath] ?? "Overview"} />
-        <div className="px-4 py-5 sm:px-6 sm:py-6">
+      <main className={`cc-scroll flex min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden ${commandCenter ? shell.workspace : "bg-bg"}`}>
+        <Topbar section={commandCenter ? "Command Center" : SECTION_TITLES[basePath] ?? "Overview"} lightWorkspace={commandCenter} />
+        <div className="px-3 py-5 sm:px-6 sm:py-6 lg:px-8">
           <AnimatePresence mode="wait">
             <motion.div
               key={basePath}

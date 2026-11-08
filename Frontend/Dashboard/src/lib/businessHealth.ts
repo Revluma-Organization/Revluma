@@ -95,6 +95,7 @@ export interface ActivityItem {
   occurred_at: string;
   received_at: string;
   source: string;
+  finding_id?: string | null;
   link: string | null;
 }
 

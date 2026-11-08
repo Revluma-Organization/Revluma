@@ -98,6 +98,13 @@ test('product snapshot: in-stock / out-of-stock / total', async () => {
   assert.equal(snap.snapshot_only, true);
 });
 
+test('Command Center reuses its already-evaluated canonical integration state', async () => {
+  const { prisma } = makePrisma();
+  const canonical = { contract_version: 'rev-integration-state-v1', overall_status: 'connected' };
+  const bundle = await fetchBusinessHealthBundle(prisma, 'org-owned', 'store-owned', NOW, canonical);
+  assert.equal(bundle.integration, canonical);
+});
+
 test('integration state is the canonical contract (composed, not re-derived)', async () => {
   const { prisma } = makePrisma();
   const bundle = await fetchBusinessHealthBundle(prisma, 'org-owned', 'store-owned', NOW);
