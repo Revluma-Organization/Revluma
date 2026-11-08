@@ -8,7 +8,7 @@ import { WorkspaceSelection } from '../WorkspaceSelection';
 import { cn } from '@/lib/utils';
 
 export function Topbar({ section = 'Overview', lightWorkspace = false }: { section?: string; lightWorkspace?: boolean }) {
-  const { setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, startTour } = useUI();
+  const { mobileSidebarOpen, setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, startTour } = useUI();
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -25,9 +25,11 @@ export function Topbar({ section = 'Overview', lightWorkspace = false }: { secti
       {/* Left Side: Breadcrumbs & Mobile Menu */}
       <div className="flex items-center gap-3.5">
         <button
-          onClick={() => setMobileSidebarOpen(true)}
+          onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           className="flex h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-glass/[0.035] md:hidden"
-          aria-label="Open menu"
+          aria-label={mobileSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
+          aria-expanded={mobileSidebarOpen}
+          aria-controls="sidebar-drawer"
         >
           <Menu className="h-4 w-4 text-t1" />
         </button>

@@ -3,7 +3,7 @@ import {
   PackageCheck, PlugZap, RefreshCw, ShoppingBag, ShoppingCart, Store,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { INTEGRATION_STATE_LABELS } from "@/lib/integrationState";
 import { api } from "@/lib/api";
 import { type ActivityItem, type BusinessIndicator, BUSINESS_STATUS_LABEL, DATA_QUALITY_LABEL, isValidOperationalActivity } from "@/lib/businessHealth";
@@ -43,7 +43,7 @@ function Availability({ value }: { value: string }) {
   return <span className={cn("inline-flex items-center gap-1.5 text-[11px] font-medium", positive ? cc.positive : negative ? cc.negative : ["stale", "partial", "attention", "deteriorating"].includes(value) ? cc.warning : cc.muted)}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{availabilityLabel[value] || value.replaceAll("_", " ")}</span>;
 }
 
-export function CommandCenterHeader({ data, refreshing, onRefresh }: { data: CommandCenterData | null; refreshing: boolean; onRefresh: () => void }) {
+export function CommandCenterHeader({ data, refreshing, lastSuccessfulAt, onRefresh }: { data: CommandCenterData | null; refreshing: boolean; lastSuccessfulAt?: string | null; onRefresh: () => void }) {
   return <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
     <div className="min-w-0">
       <h1 className={cc.title}>Command Center</h1>
@@ -51,7 +51,7 @@ export function CommandCenterHeader({ data, refreshing, onRefresh }: { data: Com
       <div className={cn("mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs", cc.muted)}>
         <span className="inline-flex min-w-0 items-center gap-1.5 font-medium"><Store className="h-3.5 w-3.5 shrink-0" /><span className="break-all">{data?.context.store?.name || "No Shopify store selected"}</span></span>
         <span>Today & yesterday · UTC</span>
-        {data?.business_state.generated_at && <span title={dateTime(data.business_state.generated_at)}>Snapshot {relative(data.business_state.generated_at)}</span>}
+        {(lastSuccessfulAt || data?.business_state.generated_at) && <span title={`Last successful refresh: ${dateTime(lastSuccessfulAt || data?.business_state.generated_at || null)}`}>{refreshing ? "refreshing" : `Snapshot ${relative(lastSuccessfulAt || data?.business_state.generated_at || null)}`}</span>}
       </div>
     </div>
     <button type="button" onClick={onRefresh} disabled={refreshing} className={cc.secondary}>
@@ -231,18 +231,31 @@ function CanonicalOperationalActivity({ data }: { data: CommandCenterData }) {
   const [total, setTotal] = useState(contract.total);
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
-  useEffect(() => { setExtra([]); setCursor(contract.next_cursor); setHasMore(contract.has_more); setTotal(contract.total); setFailed(false); }, [contract.generated_at, contract.next_cursor, contract.has_more, contract.total]);
+  const abortRef = useRef<AbortController | null>(null);
+  const generationRef = useRef(0);
+  useEffect(() => {
+    generationRef.current += 1;
+    abortRef.current?.abort();
+    setExtra([]); setCursor(contract.next_cursor); setHasMore(contract.has_more); setTotal(contract.total); setFailed(false);
+    return () => { generationRef.current += 1; abortRef.current?.abort(); };
+  }, [contract.generated_at, contract.next_cursor, contract.has_more, contract.total, data.context.store?.id]);
   const items = [...contract.items, ...extra].filter((item, index, all) => all.findIndex(other => other.event_id === item.event_id) === index);
   const loadMore = async () => {
     if (!cursor || pending || !data.context.store) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const generation = ++generationRef.current;
     setPending(true); setFailed(false);
     try {
-      const response = await api.get<{ success?: boolean; data?: unknown }>(`/stores/${data.context.store.id}/business-activity`, { cursor, limit: 20 });
+      const response = await api.get<{ success?: boolean; data?: unknown }>(`/stores/${data.context.store.id}/business-activity`, { cursor, limit: 20, signal: controller.signal });
+      if (generation !== generationRef.current || controller.signal.aborted) return;
       const body = response.data;
       const next = body?.success === true ? body.data : null;
       if (!isValidOperationalActivity(next)) throw new Error("Invalid activity contract");
       setExtra(previous => [...previous, ...next.items]); setCursor(next.next_cursor); setHasMore(next.has_more); setTotal(next.total);
-    } catch { setFailed(true); } finally { setPending(false); }
+    } catch { if (generation === generationRef.current && !controller.signal.aborted) setFailed(true); }
+    finally { if (generation === generationRef.current) setPending(false); }
   };
   return <section aria-labelledby="operational-activity-heading" className={cc.surface}>
     <SectionHeader id="operational-activity-heading" title="Operational activity" description={`Recorded findings, integration, webhook and sync events · last ${contract.window_days} days`} aside={<span className={cc.metadata}>{total} recorded</span>} />

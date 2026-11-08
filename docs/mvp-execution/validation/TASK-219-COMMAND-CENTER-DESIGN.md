@@ -2,16 +2,17 @@
 
 ## Final rebased local gates
 
-Task 218 merged into main while Task 219 was under review. The branch was rebased onto `d9150d65`, its two new contracts were consolidated into the Command Center, and the final tree was revalidated rather than carrying forward pre-rebase results.
+Tasks 218 and 220 merged into main while Task 219 was under review. The branch was first rebased onto Task 218 and its two contracts were consolidated into the Command Center. It was then rebased onto Task 220 main at `7f40e70c`; Task 220's runtime failure, retained-snapshot, responsive drawer, keyboard, account-menu and theme contracts were preserved in the consolidated Task 219 view. The integrated tree was revalidated rather than carrying forward pre-rebase results.
 
 | Gate | Result |
 |---|---|
-| Full Dashboard `npm test` | PASS — 44 files, **706 tests**, 0 failures |
+| Full Dashboard `npm test` after Task 220 integration | PASS — 49 files, **796 tests**, 0 failures |
 | New Task 219 scenarios | PASS — **89**: 71 design/canonical-contract/data/state/viewport/axe + 14 shell + 4 route-level E2E |
-| Tasks 216–217 Overview regressions | PASS — 32 tests, included above |
-| Task 218 consolidation page scenarios | PASS — 3 tests, included above; one initial authoritative fetch, no duplicate panels |
-| Focused backend pure/composition/priority | PASS — **174/174** |
-| Task 218 repository suites | PENDING LOCALLY — Prisma engine download blocked by sandbox network allowlist; CI is authoritative |
+| Task 220 Overview runtime/viewport and Sidebar regressions | PASS — **62/62** focused; all included in the full suite |
+| Tasks 216–217 Overview regressions | PASS — 35 tests, included above |
+| Task 218 consolidation page scenarios | PASS — included above; one initial authoritative fetch, no duplicate panels |
+| Focused backend pure/composition/priority | PASS — **174/174** before Task 220 integration; integration changed no backend files |
+| Full backend suite | BLOCKED LOCALLY — Prisma engine download from `binaries.prisma.sh` is outside the sandbox allowlist; fresh CI is authoritative |
 | TypeScript `npx tsc --noEmit` | PASS |
 | Production Dashboard build | PASS — Vite; existing large-chunk warning remains |
 | ESLint on every changed/new frontend file | PASS — 0 errors/warnings |
@@ -38,7 +39,7 @@ Four axe runs report no detectable structural violations for legacy-fallback hea
 
 ## CI, merge and deployment
 
-PR **#374** was opened. Its first pre-rebase Vercel preview passed, but the PR then reported conflicts after Task 218 merged. Those conflicts have been resolved locally and the complete final checks must run on the force-pushed rebased head before merge. Merge commit and production deployment identity remain unrecorded. Do not interpret local tests or the earlier preview as production certification.
+PR **#374** was opened. Seven checks passed on the pre-Task-220 head `2ac29cb3`, but those results do not certify the integrated tree. Both Task 218 and Task 220 rebase conflicts have been resolved locally; the integrated head must be force-pushed with lease and receive fresh successful checks before merge. Merge commit and production deployment identity remain unrecorded. Do not interpret local tests, fixtures or earlier previews as production certification.
 
 ## Status
 

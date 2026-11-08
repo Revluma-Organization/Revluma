@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown, ChevronLeft, ChevronRight, CreditCard, HelpCircle, LogOut,
@@ -25,18 +25,58 @@ export function Sidebar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [userOpen, setUserOpen] = useState(false);
+  const asideRef = useRef<HTMLElement | null>(null);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const isMobileDrawer = mobileSidebarOpen;
 
   useEffect(() => { setMobileSidebarOpen(false); setUserOpen(false); }, [pathname, setMobileSidebarOpen]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") { setMobileSidebarOpen(false); setUserOpen(false); }
     };
-    const onResize = () => { if (window.innerWidth < 768) setSidebarCollapsed(false); };
+    const onResize = () => {
+      if (window.innerWidth < 768) setSidebarCollapsed(false);
+      else setMobileSidebarOpen(false);
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("resize", onResize);
     onResize();
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("resize", onResize); };
   }, [setMobileSidebarOpen, setSidebarCollapsed]);
+
+  useEffect(() => {
+    if (!isMobileDrawer) return;
+    const aside = asideRef.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const focusables = () => Array.from(aside?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])') || []).filter(element => element.offsetParent !== null || element === document.activeElement);
+    focusables()[0]?.focus();
+    document.documentElement.classList.add("cc-drawer-open");
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !aside) return;
+      const list = focusables();
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !aside.contains(active))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (active === last || !aside.contains(active))) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.documentElement.classList.remove("cc-drawer-open");
+      previousFocus?.focus();
+    };
+  }, [isMobileDrawer]);
+
+  useEffect(() => {
+    if (!userOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) setUserOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [userOpen]);
 
   const groups = MVP_NAV.reduce<Record<string, typeof MVP_NAV>>((result, item) => {
     (result[item.group] ||= []).push(item);
@@ -46,22 +86,24 @@ export function Sidebar() {
   const displayEmail = user?.email || "No email available";
 
   return <>
-    <button
-      type="button"
-      aria-label="Close navigation"
-      tabIndex={mobileSidebarOpen ? 0 : -1}
+    <div
+      aria-hidden
       className={cn("fixed inset-0 z-40 bg-black/60 md:hidden", mobileSidebarOpen ? "block" : "hidden")}
       onClick={() => setMobileSidebarOpen(false)}
     />
     <aside
+      ref={asideRef}
+      id="sidebar-drawer"
       data-tour="sidebar"
-      aria-label="Primary navigation"
+      role={isMobileDrawer ? "dialog" : undefined}
+      aria-modal={isMobileDrawer ? true : undefined}
+      aria-label={isMobileDrawer ? "Navigation" : "Primary navigation"}
       className={cn(
         "fixed inset-y-0 left-0 z-50 flex shrink-0 flex-col overflow-hidden border-r transition-[width,transform] duration-200 motion-reduce:transition-none md:relative md:translate-x-0",
         shell.sidebar,
         sidebarCollapsed ? "md:w-[var(--sidebar-w-collapsed)]" : "md:w-[var(--sidebar-w)]",
         "w-[min(84vw,280px)]",
-        mobileSidebarOpen ? "translate-x-0" : "-translate-x-full",
+        mobileSidebarOpen ? "translate-x-0 max-md:visible" : "-translate-x-full max-md:invisible",
       )}
     >
       <div className={cn("flex h-16 shrink-0 items-center justify-between border-b border-[#292d36] px-4", sidebarCollapsed && "md:px-3")}>
@@ -71,10 +113,16 @@ export function Sidebar() {
         </div>
         <button
           type="button"
-          onClick={() => sidebarCollapsed ? setSidebarCollapsed(false) : window.innerWidth < 768 ? setMobileSidebarOpen(false) : setSidebarCollapsed(true)}
-          className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white md:h-9 md:w-9", shell.focus)}
+          onClick={() => setMobileSidebarOpen(false)}
+          className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white md:hidden", shell.focus)}
+          aria-label="Close sidebar"
+        ><X className="h-5 w-5" /></button>
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className={cn("hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white md:flex", shell.focus)}
           aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >{sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : window.innerWidth < 768 ? <X className="h-5 w-5" /> : <ChevronLeft className="h-4 w-4" />}</button>
+        >{sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}</button>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Workspace">
@@ -104,8 +152,8 @@ export function Sidebar() {
       </nav>
 
       <div className="shrink-0 border-t border-[#292d36] p-3">
-        <div className="relative">
-          {userOpen && !sidebarCollapsed && <div className="absolute bottom-[calc(100%+8px)] left-0 right-0 z-20 overflow-hidden rounded-lg border border-[#353a45] bg-[#1b1e24] py-1 shadow-xl">
+        <div className="relative" ref={userMenuRef}>
+          {userOpen && !sidebarCollapsed && <div id="sidebar-user-menu" role="menu" className="absolute bottom-[calc(100%+8px)] left-0 right-0 z-20 overflow-hidden rounded-lg border border-[#353a45] bg-[#1b1e24] py-1 shadow-xl">
             <AccountAction icon={Settings} label="Account settings" onClick={() => navigate("/dashboard/settings/profile")} />
             <AccountAction icon={CreditCard} label="Billing & plans" onClick={() => navigate("/dashboard/settings/billing")} />
             <AccountAction icon={UsersIcon} label="Team members" onClick={() => navigate("/dashboard/settings/team")} />
@@ -116,6 +164,8 @@ export function Sidebar() {
           <button
             type="button"
             aria-label="Open account menu"
+            aria-haspopup="menu"
+            aria-controls="sidebar-user-menu"
             aria-expanded={userOpen}
             onClick={() => setUserOpen(open => !open)}
             className={cn("flex min-h-12 w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-white/[0.07]", shell.focus, sidebarCollapsed && "md:justify-center")}
@@ -126,7 +176,7 @@ export function Sidebar() {
             {!sidebarCollapsed && <><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-white">{displayName}</span><span className="mt-0.5 block truncate text-[10px] text-[#aeb5c2]">{displayEmail}</span></span><ChevronDown className={cn("h-3.5 w-3.5 text-[#aeb5c2] transition-transform", userOpen && "rotate-180")} /></>}
           </button>
         </div>
-        {!sidebarCollapsed && <button type="button" onClick={toggleTheme} className={cn("mt-1 flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-xs text-[#aeb5c2] hover:bg-white/[0.07] hover:text-white", shell.focus)} aria-label={`Use ${theme === "light" ? "dark" : "light"} workspace theme`}>
+        {!sidebarCollapsed && <button type="button" role="switch" aria-checked={theme === "dark"} onClick={toggleTheme} className={cn("mt-1 flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-xs text-[#aeb5c2] hover:bg-white/[0.07] hover:text-white", shell.focus)} aria-label={`Use ${theme === "light" ? "dark" : "light"} workspace theme`}>
           {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}Use {theme === "light" ? "dark" : "light"} workspace theme
         </button>}
       </div>
@@ -135,5 +185,5 @@ export function Sidebar() {
 }
 
 function AccountAction({ icon: Icon, label, onClick }: { icon: React.ElementType; label: string; onClick: () => void }) {
-  return <button type="button" onClick={onClick} className={cn("flex min-h-10 w-full items-center gap-2.5 px-3 text-left text-xs text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white", shell.focus)}><Icon className="h-4 w-4" />{label}</button>;
+  return <button type="button" role="menuitem" onClick={onClick} className={cn("flex min-h-10 w-full items-center gap-2.5 px-3 text-left text-xs text-[#c6ccd8] hover:bg-white/[0.07] hover:text-white", shell.focus)}><Icon className="h-4 w-4" />{label}</button>;
 }

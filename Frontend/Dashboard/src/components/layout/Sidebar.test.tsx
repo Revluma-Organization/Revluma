@@ -44,10 +44,10 @@ describe("Task 219 dark sidebar and responsive navigation", () => {
     expect(document.querySelector("aside")?.className).toContain("translate-x-0");
     expect(document.querySelector("aside")?.className).toContain("w-[min(84vw,280px)]");
   });
-  it("closes mobile navigation through an explicitly labelled overlay", () => {
+  it("closes mobile navigation through the backdrop", () => {
     useUI.setState({ mobileSidebarOpen: true });
-    renderSidebar();
-    fireEvent.click(screen.getByRole("button", { name: "Close navigation" }));
+    const { container } = renderSidebar();
+    fireEvent.click(container.querySelector("div.fixed[aria-hidden]")!);
     expect(useUI.getState().mobileSidebarOpen).toBe(false);
   });
   it("collapses desktop navigation while retaining accessible icon titles", () => {
@@ -72,14 +72,14 @@ describe("Task 219 dark sidebar and responsive navigation", () => {
   it("account menu preserves settings, billing, team and logout actions", () => {
     renderSidebar();
     fireEvent.click(screen.getByRole("button", { name: "Open account menu" }));
-    expect(screen.getByRole("button", { name: "Account settings" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Billing & plans" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Team members" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Account settings" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Billing & plans" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Team members" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Log out" })).toBeInTheDocument();
   });
   it("theme control describes the action instead of an unlabelled icon", () => {
     renderSidebar();
-    expect(screen.getByRole("button", { name: /Use .* workspace theme/ })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: /Use .* workspace theme/ })).toBeInTheDocument();
   });
   it("brand imagery does not add redundant screen-reader text", () => {
     renderSidebar();

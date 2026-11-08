@@ -20,11 +20,6 @@ const hookState = vi.hoisted(() => ({
 }));
 
 vi.mock("@/hooks/useCommandCenter", () => ({ useCommandCenter: () => hookState }));
-// The Task 218 panels perform their own store-scoped requests; they are
-// covered by their own retry test files. Stub them here so the banner/
-// skeleton/live-region behaviour is tested in isolation.
-vi.mock("@/components/dashboard/BusinessHealthPanel", () => ({ default: () => <div data-testid="bhp-stub" /> }));
-vi.mock("@/components/dashboard/OperationalActivityPanel", () => ({ default: () => <div data-testid="oap-stub" /> }));
 
 import Overview from "./Overview";
 import { commandCenterFixture } from "@/components/command-center/testFixtures";
@@ -56,7 +51,7 @@ describe("Command Center runtime states (Task 220)", () => {
     expect(screen.getByRole("status", { name: /loading operational briefing/i })).toBeInTheDocument();
     expect(screen.queryByText(/No operational briefing is available/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Business situation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Business health" })).not.toBeInTheDocument();
   });
 
   it("SC-RUN-02: an initial network failure shows the closed message and offers a foreground retry", () => {
@@ -68,7 +63,7 @@ describe("Command Center runtime states (Task 220)", () => {
     retry.click();
     expect(hookState.refetch).toHaveBeenCalledWith(false);
     // No fabricated content: sections are not rendered.
-    expect(screen.queryByRole("heading", { name: "Business situation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Business health" })).not.toBeInTheDocument();
   });
 
   it("SC-RUN-03: an initial 404 gives workspace guidance and no retry", () => {
@@ -118,9 +113,9 @@ describe("Command Center runtime states (Task 220)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("The briefing service had a problem");
     // ...but every unaffected section remains accessible.
     expect(screen.getByRole("heading", { name: "Your latest synchronized business picture" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Business situation" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Priority finding" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Evidence & data readiness" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Top priority" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Data readiness & limitations" })).toBeInTheDocument();
   });
 
   it("SC-RUN-08: a background refresh outcome is announced once in a polite live region", () => {
@@ -150,7 +145,7 @@ describe("Command Center runtime states (Task 220)", () => {
     expect(screen.getByText("refreshing")).toBeInTheDocument();
     const refresh = screen.getByRole("button", { name: /refreshing/i });
     expect(refresh).toBeDisabled();
-    expect(screen.getByRole("heading", { name: "Business situation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: /loading operational briefing/i })).not.toBeInTheDocument();
   });
 

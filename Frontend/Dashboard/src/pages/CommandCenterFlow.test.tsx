@@ -56,7 +56,7 @@ describe("Task 219 route-level end-to-end intelligence handoffs", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Load more (1 remaining)" }));
     expect(await screen.findByText("Products synchronized")).toBeInTheDocument();
     expect(screen.getByText("Orders synchronized")).toBeInTheDocument();
-    expect(api.get).toHaveBeenCalledWith("/stores/store-1/business-activity", { cursor: "next-page", limit: 20 });
+    expect(api.get).toHaveBeenCalledWith("/stores/store-1/business-activity", { cursor: "next-page", limit: 20, signal: expect.any(AbortSignal) });
     expect(screen.queryByRole("button", { name: /Load more/ })).not.toBeInTheDocument();
   });
 
