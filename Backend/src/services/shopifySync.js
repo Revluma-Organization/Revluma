@@ -342,7 +342,8 @@ async function syncOrders(store) {
     const error = new Error('Shopify order ingestion was incomplete');
     error.code = 'SHOPIFY_ORDER_INGESTION_INCOMPLETE';
     error.failed_orders = failures.length;
-    error.failure_codes = [...new Set(failures.map(failure => String(failure.code || 'ORDER_INGESTION_FAILED').slice(0, 120)))].slice(0, 10);
+    error.failure_codes = [...new Set(failures.map(failure => String(failure.code || 'ORDER_INGESTION_FAILED').replace(/[^A-Za-z0-9_:-]/g, '').slice(0, 120)))].slice(0, 10);
+    error.message = `Shopify order ingestion was incomplete (${error.failure_codes.join(', ')})`;
     throw error;
   }
   // Base order persistence is complete for this run. Enrichment queries capture
