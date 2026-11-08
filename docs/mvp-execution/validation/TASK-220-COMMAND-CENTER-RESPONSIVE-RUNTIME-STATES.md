@@ -231,8 +231,23 @@ PR #375 (head `f78ac46`, frontend-only) — **all required checks passed**:
 
 The `dashboard` check is authoritative for this frontend-only change (a clean install
 reproduces the local 737/737 result and a clean production build); the backend / Prisma /
-security jobs are not in scope for a change that touches no backend file. Vercel reports the
-deployment for the merge; exact deployed revision ids and the authenticated active-store/browser
-checks above remain the open production-acceptance step.
+security jobs are not in scope for a change that touches no backend file.
 
-Status: **IMPLEMENTED, CI VERIFIED, MERGED — AUTHENTICATED ACTIVE-STORE / BROWSER ACCEPTANCE PENDING.**
+## Deployment verification (2026-11-08)
+
+- Merged to main as **`7f40e70`** (PR #375, `--merge`, 2026-11-08T16:18:40Z).
+- Vercel **production** deployment **`dpl_ED5HgrLxLgNVS5RVt83hdvotVwpo`** — target
+  `production`, built from the exact merge commit **`7f40e70c3372dd15ba5be72fe0c4e0f1871856dd`**
+  (build `cd Frontend/Dashboard && npm install --include=dev && npm run build`), reached
+  **READY / PROMOTED** (time-to-ready ≈ 93s) and promoted to the production alias
+  **`revluma.vercel.app`** (also `revluma-splendor-dev01s-projects.vercel.app`,
+  `revluma-git-main-splendor-dev01s-projects.vercel.app`). Verified via the Vercel API
+  (`get_deployment`), which is reachable from this environment even though the deployment URL
+  itself is not (egress is restricted to GitHub/NPM/PyPI).
+
+Remaining (genuinely not doable from this sandbox): the **authenticated active-store/browser
+acceptance at the 9 widths** above (steps 1–5) requires a real browser and a merchant session
+against the live backend; the Vercel deployment record above proves the revision is live, not the
+rendered per-width behavior.
+
+Status: **IMPLEMENTED, CI VERIFIED, MERGED AND VERCEL-DEPLOYED — AUTHENTICATED ACTIVE-STORE / BROWSER ACCEPTANCE PENDING.**
