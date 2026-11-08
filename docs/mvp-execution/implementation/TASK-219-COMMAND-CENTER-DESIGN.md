@@ -21,13 +21,13 @@ There is no second client analytics model, overall health score, promotional/set
 
 ## Evidence and API behavior
 
-The page continues to use only tenant-scoped `/rev/command-center` and `command-center-v1`; request abort/refresh and tenant-scoped clearing are unchanged. The additive optional activity `finding_id` connects verified business activity to `/rev/findings/:id` through the existing Rev route. `buildOperationalActivity` centralizes authoritative ordering/capping and its two activity sources. System sync events remain distinct from business findings and merchant actions.
+Initial page load continues to use tenant-scoped `/rev/command-center` and `command-center-v1`; request abort/refresh and tenant-scoped clearing are unchanged. During the concurrent Task 218 rebase, its canonical `rev-business-health-v1` and `rev-operational-activity-v1` projections were composed into that response instead of retaining separate initial panel fetches. The Command Center reuses the already evaluated integration state for health coverage. Activity pagination alone calls the existing store-scoped `/stores/:storeId/business-activity` endpoint. Persisted finding activity carries `finding_id` for exact `/rev/findings/:id` revalidation; integration/webhook/sync activity routes only to Integrations.
 
-Revenue retains ISO currency and UTC definitions. Orders communicates coverage, not a nonexistent count. Checkouts retain their 48-hour definition. Inventory availability never becomes stock quantity. Integration retains canonical state. Missing values/currency are em dash/unavailable, never zero; verified zero remains zero. Stale values remain explicitly historical. No schema migration is needed.
+The canonical health presentation uses rolling seven-day current/comparison windows and preserves revenue currency, actual order counts, abandoned checkouts, product availability, canonical integration state, categorical business severity and independent data quality. The legacy day-snapshot metrics remain in `command-center-v1` for briefing compatibility and fallback coverage, not a duplicate production view. Missing values/currency are em dash/unavailable, never zero; verified zero remains zero. Empty activity says that no activity could be confirmed and allows either no matching records or unavailable source evidence; it never claims that nothing happened. No schema migration is needed.
 
 ## Removed duplication
 
-Orphaned legacy `components/dashboard/*` presentation components and `data/mockOverview.ts` were removed after an import audit. Test fixtures live only in `src/test/commandCenterFixtures.ts`; production modules do not import them. `BusinessOverview` remains only an alias of `HealthIndicators` for compatibility, not a second view.
+Orphaned legacy `components/dashboard/*` presentation components and `data/mockOverview.ts` were removed after an import audit. Task 218’s then-new duplicate standalone panels were also superseded by the consolidated sections while preserving their unique data, pagination, failure and routing behavior. Test fixtures live only under `src/test/`; production modules do not import them. `BusinessOverview` remains only an alias of `HealthIndicators` for compatibility, not a second view.
 
 ## State and responsive behavior
 
@@ -35,7 +35,7 @@ Loading/refresh, empty activity, no priority, new synchronization, partial/stale
 
 ## Regression preservation
 
-Tasks 216–217 Overview suites remain and pass. The full Dashboard suite includes Rev evidence, selected-finding revalidation, integrations, auth/theme and stream behavior. Backend priority/composition tests remain green. Authentication, tenant scoping, integration authorization and read-only contracts were not relaxed.
+Tasks 216–217 Overview suites remain and pass, alongside three revised Task 218 consolidation scenarios. The full Dashboard suite includes Rev evidence, selected-finding revalidation, integrations, auth/theme and stream behavior. Backend priority/composition tests remain green. Authentication, tenant scoping, integration authorization and read-only contracts were not relaxed.
 
 ## Remaining acceptance boundary
 

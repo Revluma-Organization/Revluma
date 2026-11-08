@@ -9,6 +9,7 @@ import {
 import { cc } from "@/components/command-center/tokens";
 import { ccFixture, ccMetric, ccPriorityFixture, ccResource } from "@/test/commandCenterFixtures";
 import type { CommandCenterData } from "@/components/command-center/types";
+import { businessHealthFixture, operationalActivityFixture } from "@/test/businessHealthFixtures";
 
 const navigate = vi.hoisted(() => vi.fn());
 vi.mock("react-router-dom", async original => ({ ...await original<typeof import("react-router-dom")>(), useNavigate: () => navigate }));
@@ -73,6 +74,33 @@ describe("Task 219 scenarios A–J and authoritative hierarchy", () => {
     expect(cc.primary).toContain("min-h-11");
     expect(cc.primary).toContain("focus-visible:ring-2");
     expect(cc.secondary).toContain("min-h-11");
+  });
+});
+
+describe("Task 219 consolidated Task 218 contracts", () => {
+  it("binds the canonical five indicators, order counts and independent data quality without duplicate panels", () => {
+    const { container } = health(ccFixture({ business_health: businessHealthFixture() }));
+    expect(container.querySelectorAll("[data-health-domain]")).toHaveLength(5);
+    expect(screen.getByText("312 orders")).toBeInTheDocument();
+    expect(screen.getAllByText("Complete data")).toHaveLength(5);
+    expect(screen.getAllByText("Healthy")).toHaveLength(5);
+    expect(screen.getByText(/Business severity and data quality are independent/)).toBeInTheDocument();
+  });
+  it("withholds a monetary scalar when canonical currency is absent", () => {
+    const fixture = businessHealthFixture();
+    fixture.indicators[0] = { ...fixture.indicators[0], value: 100, currency: null, status: "insufficient_history", data_quality: "unknown" };
+    health(ccFixture({ business_health: fixture }));
+    expect(screen.queryByText("$100.00")).not.toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  });
+  it("canonical activity retains exact finding IDs and only working integration destinations", () => {
+    render(router(<OperationalActivity data={ccFixture({ operational_activity: operationalActivityFixture({ items: [{ event_id: "finding:abc", type: "finding", category: "finding", severity: "warning", title: "Recorded change", detail: "finding type: revenue_change", status: "open", occurred_at: "2026-11-08T10:00:00Z", received_at: "2026-11-08T10:00:01Z", source: "intelligence_findings", finding_id: "a/b", link: "/findings" }], total: 1, returned: 1 }) })} />));
+    fireEvent.click(screen.getByRole("button", { name: /Investigate event/ }));
+    expect(navigate).toHaveBeenCalledWith("/dashboard/rev-intell?finding=a%2Fb");
+  });
+  it("an empty canonical window is not a claim that nothing happened", () => {
+    render(<OperationalActivity data={ccFixture({ operational_activity: operationalActivityFixture({ items: [], total: 0, returned: 0 }) })} />);
+    expect(screen.getByText(/unavailable source evidence; it does not prove that nothing happened/)).toBeInTheDocument();
   });
 });
 
@@ -273,6 +301,11 @@ describe("Task 219 automated accessibility checks", () => {
   }
   it("populated health and activity have no detectable structural axe violations", async () => {
     const { container } = render(<><HealthIndicators data={ccFixture()} /><OperationalActivity data={ccFixture()} /></>);
+    await expectAccessible(container);
+  });
+  it("canonical Task 218 health and activity have no detectable structural axe violations", async () => {
+    const data = ccFixture({ business_health: businessHealthFixture(), operational_activity: operationalActivityFixture() });
+    const { container } = render(<><HealthIndicators data={data} /><OperationalActivity data={data} /></>);
     await expectAccessible(container);
   });
   it("priority finding has no detectable structural axe violations", async () => {

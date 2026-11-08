@@ -3,7 +3,10 @@ import {
   PackageCheck, PlugZap, RefreshCw, ShoppingBag, ShoppingCart, Store,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { INTEGRATION_STATE_LABELS } from "@/lib/integrationState";
+import { api } from "@/lib/api";
+import { type ActivityItem, type BusinessIndicator, BUSINESS_STATUS_LABEL, DATA_QUALITY_LABEL, isValidOperationalActivity } from "@/lib/businessHealth";
 import { cn } from "@/lib/utils";
 import { cc } from "./tokens";
 import type { BusinessMetric, CommandCenterData, EvidenceResource } from "./types";
@@ -24,7 +27,7 @@ const relative = (value: string | null) => {
 const availabilityLabel: Record<string, string> = {
   available: "Available", stale: "Stale", partial: "Partial", unknown: "Unknown",
   not_synchronized: "Not yet synchronized", unauthorized: "Limited access",
-  unsupported: "Unsupported", retrieval_failed: "Retrieval failed",
+  unsupported: "Unsupported", retrieval_failed: "Retrieval failed", ...BUSINESS_STATUS_LABEL,
 };
 
 function SectionHeader({ id, title, description, aside }: { id: string; title: string; description: string; aside?: React.ReactNode }) {
@@ -34,10 +37,10 @@ function SectionHeader({ id, title, description, aside }: { id: string; title: s
 }
 
 function Availability({ value }: { value: string }) {
-  const positive = value === "available" || value === "fresh" || value === "connected";
-  const negative = value === "retrieval_failed" || value === "failed";
+  const positive = value === "available" || value === "fresh" || value === "connected" || value === "healthy";
+  const negative = value === "retrieval_failed" || value === "failed" || value === "critical";
   const Icon = positive ? CheckCircle2 : AlertCircle;
-  return <span className={cn("inline-flex items-center gap-1.5 text-[11px] font-medium", positive ? cc.positive : negative ? cc.negative : value === "stale" || value === "partial" ? cc.warning : cc.muted)}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{availabilityLabel[value] || value.replaceAll("_", " ")}</span>;
+  return <span className={cn("inline-flex items-center gap-1.5 text-[11px] font-medium", positive ? cc.positive : negative ? cc.negative : ["stale", "partial", "attention", "deteriorating"].includes(value) ? cc.warning : cc.muted)}><Icon className="h-3.5 w-3.5" aria-hidden="true" />{availabilityLabel[value] || value.replaceAll("_", " ")}</span>;
 }
 
 export function CommandCenterHeader({ data, refreshing, onRefresh }: { data: CommandCenterData | null; refreshing: boolean; onRefresh: () => void }) {
@@ -158,7 +161,36 @@ export function PriorityFindings({ data }: { data: CommandCenterData }) {
 type HealthItem = { id: string; label: string; value: React.ReactNode; availability: string; detail: string; freshness: string; icon: React.ElementType };
 function resourceFor(data: CommandCenterData, id: string) { return data.evidence.resources.find(item => item.resource === id) || null; }
 
+const canonicalIcons = { revenue: CircleDollarSign, orders: ShoppingBag, checkouts: ShoppingCart, product_availability: PackageCheck, integration: PlugZap };
+function canonicalValue(indicator: BusinessIndicator) {
+  if (indicator.value === null) return "—";
+  if (indicator.category === "revenue") return indicator.currency && typeof indicator.value === "number" ? money(indicator.value, indicator.currency) : "—";
+  if (indicator.category === "orders") return `${indicator.value.toLocaleString()} orders`;
+  if (indicator.category === "checkouts") return `${indicator.value.toLocaleString()} abandoned`;
+  if (indicator.category === "product_availability") return `${indicator.value.toLocaleString()} available`;
+  return INTEGRATION_STATE_LABELS[indicator.value as keyof typeof INTEGRATION_STATE_LABELS] || String(indicator.value).replaceAll("_", " ");
+}
+function CanonicalHealthIndicators({ data }: { data: CommandCenterData }) {
+  const health = data.business_health!;
+  return <section aria-labelledby="business-health-heading" className={cc.surface}>
+    <SectionHeader id="business-health-heading" title="Business health" description={`Five operational domains · ${health.reporting_period.current.label.replaceAll("_", " ")} · ${health.reporting_period.timezone}`} />
+    <p className={cn("border-b px-5 py-3", cc.divider, cc.metadata)}>{health.business_status_explanation} Business severity and data quality are independent.</p>
+    <dl className={cn("grid divide-y sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5", cc.divider)}>{health.indicators.map(indicator => {
+      const Icon = canonicalIcons[indicator.category];
+      return <div key={indicator.id} data-health-domain={indicator.category === "product_availability" ? "product-availability" : indicator.category} className={cn("min-w-0 border-b p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0", cc.divider)}>
+        <dt className="flex items-center gap-2 text-xs font-medium text-[#475467]"><Icon className="h-4 w-4 shrink-0 text-[#667085]" aria-hidden="true" />{indicator.title}</dt>
+        <dd className="mt-3 break-words text-lg font-semibold leading-6 tracking-[-0.02em] text-[#172033]">{canonicalValue(indicator)}</dd>
+        <dd className="mt-2 flex flex-wrap items-center gap-2"><Availability value={indicator.status} /><span className={cc.metadata}>{DATA_QUALITY_LABEL[indicator.data_quality]}</span></dd>
+        {indicator.change_pct !== null && <dd className={cn("mt-2", cc.metadata)}>{indicator.change_pct > 0 ? "+" : ""}{indicator.change_pct}% vs previous period</dd>}
+        <dd className={cn("mt-2", cc.metadata)}>{indicator.explanation}</dd>
+        <dd className="mt-3"><details><summary className={cc.disclosure}>Metric & coverage</summary><div className={cn("mt-2 space-y-2", cc.metadata)}><p>{indicator.metric_definition || "Metric definition unavailable."}</p><p>{indicator.coverage.reason}</p>{indicator.limitations.map(item => <p key={item}>• {item}</p>)}{indicator.next_step && <p><span className="font-semibold">Next step: </span>{indicator.next_step}</p>}<p>Last verified {dateTime(indicator.last_verified_at)}</p></div></details></dd>
+      </div>;
+    })}</dl>
+  </section>;
+}
+
 export function HealthIndicators({ data }: { data: CommandCenterData }) {
+  if (data.business_health) return <CanonicalHealthIndicators data={data} />;
   const revenue = data.metrics.find(item => item.id === "net_sales_today") || null;
   const change = data.metrics.find(item => item.id === "revenue_change") || null;
   const checkout = data.metrics.find(item => item.id === "abandoned_checkouts") || null;
@@ -190,8 +222,43 @@ export function HealthIndicators({ data }: { data: CommandCenterData }) {
 // Backwards-compatible export name; there is only one business-health presentation.
 export const BusinessOverview = HealthIndicators;
 
+function CanonicalOperationalActivity({ data }: { data: CommandCenterData }) {
+  const navigate = useNavigate();
+  const contract = data.operational_activity!;
+  const [extra, setExtra] = useState<ActivityItem[]>([]);
+  const [cursor, setCursor] = useState(contract.next_cursor);
+  const [hasMore, setHasMore] = useState(contract.has_more);
+  const [total, setTotal] = useState(contract.total);
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setExtra([]); setCursor(contract.next_cursor); setHasMore(contract.has_more); setTotal(contract.total); setFailed(false); }, [contract.generated_at, contract.next_cursor, contract.has_more, contract.total]);
+  const items = [...contract.items, ...extra].filter((item, index, all) => all.findIndex(other => other.event_id === item.event_id) === index);
+  const loadMore = async () => {
+    if (!cursor || pending || !data.context.store) return;
+    setPending(true); setFailed(false);
+    try {
+      const response = await api.get<{ success?: boolean; data?: unknown }>(`/stores/${data.context.store.id}/business-activity`, { cursor, limit: 20 });
+      const body = response.data;
+      const next = body?.success === true ? body.data : null;
+      if (!isValidOperationalActivity(next)) throw new Error("Invalid activity contract");
+      setExtra(previous => [...previous, ...next.items]); setCursor(next.next_cursor); setHasMore(next.has_more); setTotal(next.total);
+    } catch { setFailed(true); } finally { setPending(false); }
+  };
+  return <section aria-labelledby="operational-activity-heading" className={cc.surface}>
+    <SectionHeader id="operational-activity-heading" title="Operational activity" description={`Recorded findings, integration, webhook and sync events · last ${contract.window_days} days`} aside={<span className={cc.metadata}>{total} recorded</span>} />
+    {items.length ? <ul className={cn("divide-y", cc.divider)}>{items.map(item => {
+      const investigate = item.type === "finding" && item.finding_id;
+      const integrations = item.link === "/integrations";
+      return <li key={item.event_id} className="flex gap-3 p-5"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.severity === "critical" ? "bg-[#b42318]" : item.severity === "warning" || item.severity === "attention" ? "bg-[#b54708]" : item.type === "finding" ? "bg-[#1F06AC]" : "bg-[#98a2b3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold">{item.title}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.type.replaceAll("_", " ")} · {item.severity}</span></div>{item.detail && <p className={cn("mt-1 break-words", cc.metadata)}>{item.detail}</p>}<p className={cn("mt-1", cc.metadata)}>Occurred {dateTime(item.occurred_at)}{new Date(item.received_at).getTime() - new Date(item.occurred_at).getTime() > 300_000 ? ` · recorded ${relative(item.received_at)}` : ""}</p>{investigate && <button type="button" onClick={() => navigate(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}{integrations && <button type="button" onClick={() => navigate("/dashboard/integrations")} className={cn("mt-2 min-h-9", cc.disclosure)}>Review integration <ArrowRight className="inline h-3 w-3" /></button>}</div></li>;
+    })}</ul> : <div className="p-5"><p className="text-xs font-semibold">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No activity could be confirmed for this {contract.window_days}-day window. An empty feed may mean no matching records or unavailable source evidence; it does not prove that nothing happened.</p></div>}
+    {failed && <p role="alert" className={cn("px-5 pb-3", cc.warning)}>More activity could not be loaded. The events already shown are unchanged.</p>}
+    {hasMore && cursor && <div className="p-5 pt-0"><button type="button" onClick={() => void loadMore()} disabled={pending} className={cc.secondary}>{pending ? "Loading…" : `Load more (${Math.max(0, total - items.length)} remaining)`}</button></div>}
+  </section>;
+}
+
 export function OperationalActivity({ data }: { data: CommandCenterData }) {
   const navigate = useNavigate();
+  if (data.operational_activity) return <CanonicalOperationalActivity data={data} />;
   return <section aria-labelledby="operational-activity-heading" className={cc.surface}>
     <SectionHeader id="operational-activity-heading" title="Operational activity" description="Verified findings and system events, in chronological order" />
     {data.activity.length ? <ul className={cn("divide-y", cc.divider)}>{data.activity.map(item => <li key={item.id} className="flex gap-3 p-5"><span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", item.kind === "business" ? "bg-[#1F06AC]" : "bg-[#98a2b3]")} aria-hidden="true" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-xs font-semibold">{item.label}</p><span className={cn("text-[10px] font-medium uppercase tracking-wide", cc.muted)}>{item.kind}</span></div><p className={cn("mt-1", cc.metadata)}>{dateTime(item.occurred_at)} · {item.note}</p>{item.kind === "business" && item.finding_id && <button type="button" onClick={() => navigate(`/dashboard/rev-intell?finding=${encodeURIComponent(item.finding_id!)}`)} className={cn("mt-2 min-h-9", cc.disclosure)}>Investigate event <ArrowRight className="inline h-3 w-3" /></button>}</div></li>)}</ul> : <div className="p-5"><p className="text-xs font-semibold">No operational activity to show</p><p className={cn("mt-1", cc.metadata)}>No verified operational activity is recorded for this view. No placeholder events are inserted.</p></div>}

@@ -178,7 +178,7 @@ async function fetchProductSnapshot(prisma, storeId) {
  * Returns null when the store id does not belong to the organization
  * (cross-tenant / unknown -> 404, no existence leak).
  */
-async function fetchBusinessHealthBundle(prisma, organizationId, storeId, now = new Date()) {
+async function fetchBusinessHealthBundle(prisma, organizationId, storeId, now = new Date(), canonicalIntegration = null) {
   if (!organizationId) throw new Error('Authenticated organization is required');
   const nowD = now instanceof Date ? now : new Date(now);
 
@@ -195,7 +195,7 @@ async function fetchBusinessHealthBundle(prisma, organizationId, storeId, now = 
       where: { store_id: store.id },
       select: { iana_timezone: true, currency_code: true },
     }), null),
-    safe(retrieveIntegrationStates({ prisma, organizationId, storeId: store.id, now: nowD }), null),
+    canonicalIntegration ? canonicalIntegration : safe(retrieveIntegrationStates({ prisma, organizationId, storeId: store.id, now: nowD }), null),
     safe(fetchOrderData(prisma, store.id, nowD), null),
     safe(fetchCheckoutData(prisma, store.id, nowD), null),
     safe(fetchProductSnapshot(prisma, store.id), null),

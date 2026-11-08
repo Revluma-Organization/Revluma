@@ -1,41 +1,45 @@
 # TASK 219 validation — Command Center content hierarchy and visual system
 
-## Local gates
+## Final rebased local gates
+
+Task 218 merged into main while Task 219 was under review. The branch was rebased onto `d9150d65`, its two new contracts were consolidated into the Command Center, and the final tree was revalidated rather than carrying forward pre-rebase results.
 
 | Gate | Result |
 |---|---|
-| Full Dashboard `npm test` | PASS — 44 files, **696 tests**, 0 failures |
-| New Task 219 scenarios | PASS — **82**: 66 design/data/state/viewport/axe + 14 shell + 2 route-level E2E |
-| Existing Tasks 216–217 Overview regressions | PASS — 32 tests, included above |
-| Focused backend composition/priority | PASS — **96/96** |
-| Operational activity API composition | PASS — authoritative chronological order/cap, exact finding ID, system/business separation and no fabricated merchant event |
+| Full Dashboard `npm test` | PASS — 44 files, **706 tests**, 0 failures |
+| New Task 219 scenarios | PASS — **89**: 71 design/canonical-contract/data/state/viewport/axe + 14 shell + 4 route-level E2E |
+| Tasks 216–217 Overview regressions | PASS — 32 tests, included above |
+| Task 218 consolidation page scenarios | PASS — 3 tests, included above; one initial authoritative fetch, no duplicate panels |
+| Focused backend pure/composition/priority | PASS — **174/174** |
+| Task 218 repository suites | PENDING LOCALLY — Prisma engine download blocked by sandbox network allowlist; CI is authoritative |
 | TypeScript `npx tsc --noEmit` | PASS |
 | Production Dashboard build | PASS — Vite; existing large-chunk warning remains |
 | ESLint on every changed/new frontend file | PASS — 0 errors/warnings |
-| Repository-wide Dashboard lint | NOT CLEAN — pre-existing 31 errors/17 warnings in unrelated files; none reported for Task 219 files |
+| Repository-wide Dashboard lint | NOT CLEAN — pre-existing unrelated errors/warnings; no Task 219 changed-file errors |
 | `git diff --check` | PASS |
+
+The 174 focused tests cover Command Center composition, primary-store tenant arguments, one health/activity composition, exact activity finding IDs, canonical health thresholds/coverage/currency/zero semantics, operational event sources/deduplication/window/pagination/sensitive-data exclusions, and deterministic priority. A separate composition test proves `business_health` and `operational_activity` are attached to `command-center-v1` for the same primary store.
 
 ## Scenario coverage
 
-The 82 new tests cover A–J hierarchy, all five health domains exactly once, recorded API binding, revenue currency/percent, order coverage without invented counts, 48-hour checkouts, categorical inventory, canonical integration state, missing versus verified zero, stale and missing currency, one priority, evidence/confidence/limitations/provenance, read-only next steps, exact Rev investigation, historical exclusions, activity chronology/empty states, readiness, tokens/control behavior, eight width contracts (320/375/430/768/1024/1280/1440/1920), structural accessibility, dark shell routes/targets/collapse/mobile/account/theme/reduced motion, and two real Overview→Rev router flows.
+The 89 new frontend scenarios cover A–J hierarchy; all five canonical health domains exactly once; actual seven-day order counts and currency-aware revenue; independent business severity/data quality; missing versus verified zero; stale and missing currency; one priority; evidence/confidence/limitations/provenance; read-only next steps; exact Rev investigation; historical exclusions; persisted activity, empty-window limits, pagination success/failure and working integration routes; readiness; tokens/control behavior; eight width contracts (320/375/430/768/1024/1280/1440/1920); structural accessibility; dark shell routes/targets/collapse/mobile/account/theme/reduced motion; and two real Overview→Rev router flows. Two additional route-level scenarios prove later activity pages append without duplicate initial fetches and preserve existing events when a later page fails.
 
-Fixtures are deterministic test-only data. No production module imports the fixture file and no production merchant record was inserted. Tests explicitly check that private raw finding evidence is not rendered by the handoff.
+Fixtures are deterministic test-only data under `src/test/`. No production module imports them and no production merchant record was inserted. Tests explicitly check that private raw finding evidence is not rendered by the handoff. The superseded standalone Task 218 panel tests were replaced by canonical Command Center contract/route scenarios, not retained against removed duplicate UI.
 
 ## Accessibility and responsive evidence
 
-Three axe runs report no detectable structural violations for populated health/activity, priority and readiness. Native controls/disclosures, labelled sections, heading order, text-plus-icon statuses and focus classes are asserted. The eight viewport tests verify DOM/class/layout contracts, not actual browser overflow measurements. There is no real-browser screenshot, screen-reader run or physical-device result in this environment; those remain acceptance limitations, not passes.
+Four axe runs report no detectable structural violations for legacy-fallback health/activity, canonical health/activity, priority and readiness. Color contrast and region rules are disabled in these structural jsdom runs, so this is not visual-contrast or assistive-technology certification. Native controls/disclosures, labelled sections, heading order, text-plus-icon statuses and focus classes are asserted. The eight viewport tests verify DOM/class/layout contracts, not actual browser overflow measurements. There is no real-browser screenshot, screen-reader run or physical-device result in this environment.
 
 ## Production pre-merge observations
 
-- Node `/ready`: ready; database, Python, models and Redis ready; baseline main build `1786b4da117e` observed after the user confirmed both backend services deployed.
-- Python `/health`: ok; same baseline main build `1786b4da…`; beta models loaded. This is service health, not Task 219 verification.
-- Public Vercel `/dashboard/overview`: redirects unauthenticated users to sign-in. Authentication remains enforced.
+- Earlier Node `/ready` and Python `/health` checks were healthy on baseline `1786b4d`; this does not establish Task 218/219 deployment or current production identity.
+- Public Vercel `/dashboard/overview` redirected unauthenticated users to sign-in. Authentication remains enforced.
 - Active store: `revluma-test-store-v1.myshopify.com`. No authorized production browser session was available, so real desktop/mobile/current/partial/stale/error/empty activity/priority states were not observed. No synthetic state was introduced to manufacture that evidence.
 
 ## CI, merge and deployment
 
-Pending at implementation-PR creation. Record the PR/check URLs, merge commit and deployment identity after they occur. Do not interpret local tests as production certification.
+PR **#374** was opened. Its first pre-rebase Vercel preview passed, but the PR then reported conflicts after Task 218 merged. Those conflicts have been resolved locally and the complete final checks must run on the force-pushed rebased head before merge. Merge commit and production deployment identity remain unrecorded. Do not interpret local tests or the earlier preview as production certification.
 
 ## Status
 
-**LOCAL IMPLEMENTATION AND AUTOMATED GATES VERIFIED — CI/MERGE/DEPLOYMENT AND AUTHENTICATED ACTIVE-STORE BROWSER ACCEPTANCE PENDING.** Full Task 219 completion is not claimed.
+**LOCAL IMPLEMENTATION AND AUTOMATED GATES VERIFIED ON THE REBASED TREE — FINAL CI/MERGE/DEPLOYMENT AND AUTHENTICATED ACTIVE-STORE BROWSER ACCEPTANCE PENDING.** Full Task 219 completion is not claimed.

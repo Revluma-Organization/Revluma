@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { api } from "@/lib/api";
 import Overview from "./Overview";
 import type { CommandCenterData } from "@/components/command-center/types";
-import { businessHealthFixture, operationalActivityFixture } from "@/components/dashboard/businessHealthFixtures";
+import { businessHealthFixture, operationalActivityFixture } from "@/test/businessHealthFixtures";
 
 const navigate = vi.hoisted(() => vi.fn());
 vi.mock("react-router-dom", async importOriginal => ({ ...await importOriginal<typeof import("react-router-dom")>(), useNavigate: () => navigate }));
@@ -42,15 +42,10 @@ const fixture = (extra: Partial<CommandCenterData> = {}): CommandCenterData => (
   evidence: { overall: "current", snapshot_generated_at: "2026-11-08T11:55:00Z", source_data_at: "2026-11-08T11:50:00Z", last_successful_sync_at: "2026-11-08T11:50:00Z", resources: [resource() as CommandCenterData["evidence"]["resources"][number]], limitations: [], unknown_semantics: "Null is never zero." },
   ...extra,
 });
-// Task 218 — the page-level mock must answer the store-scoped Task 218 routes
-// with contract-shaped payloads; every other route (the authoritative
-// /rev/command-center) keeps returning the briefing fixture.
+// Task 219 composes the Task 218 contracts into the same authoritative response;
+// the page does not create duplicate panels or independent initial fetches.
 function mockApi(data: CommandCenterData) {
-  vi.spyOn(api, "get").mockImplementation(((path: string) => {
-    if (path.endsWith("/business-health")) return Promise.resolve({ ok: true, status: 200, data: { success: true, data: businessHealthFixture() } });
-    if (path.endsWith("/business-activity")) return Promise.resolve({ ok: true, status: 200, data: { success: true, data: operationalActivityFixture() } });
-    return Promise.resolve({ ok: true, status: 200, data: { success: true, data } });
-  }) as typeof api.get);
+  vi.spyOn(api, "get").mockImplementation((() => Promise.resolve({ ok: true, status: 200, data: { success: true, data } })) as typeof api.get);
 }
 async function renderPage(data: CommandCenterData) { mockApi(data); render(<MemoryRouter><Overview /></MemoryRouter>); await screen.findByText("Operational briefing"); }
 
@@ -284,24 +279,27 @@ describe("Task 217 priority finding evidence and next step", () => {
   });
 });
 
-describe("Task 218 Command Center — business health and operational history", () => {
+describe("Task 218 contracts consolidated by Task 219", () => {
   afterEach(() => { vi.restoreAllMocks(); navigate.mockReset(); });
 
-  it("renders the Task 218 sections bound to the briefing's store", async () => {
-    await renderPage(fixture());
-    await screen.findByText("$42,510.50"); // Task 218 store-scoped fetch
+  it("renders one store-bound health and activity presentation from the authoritative response", async () => {
+    await renderPage(fixture({ business_health: businessHealthFixture(), operational_activity: operationalActivityFixture() }));
     expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Operational history" })).toBeInTheDocument();
-    // Indicator values come from the store-scoped contract, not the briefing.
+    expect(screen.getByRole("heading", { name: "Operational activity" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Operational history" })).not.toBeInTheDocument();
     expect(screen.getByText("$42,510.50")).toBeInTheDocument();
     expect(screen.getByText("312 orders")).toBeInTheDocument();
     expect(screen.getByText("2 recorded")).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledTimes(1);
+    expect(api.get).toHaveBeenCalledWith("/rev/command-center", expect.any(Object));
   });
 
-  it("renders the Task 218 sections only when a store context exists", async () => {
+  it("keeps unknown health domains visible without inventing a store-scoped contract", async () => {
     await renderPage(fixture({ context: { ...fixture().context, store: null } }));
-    expect(screen.queryByRole("heading", { name: "Business health" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Operational history" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Business health" })).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-health-domain]")).toHaveLength(5);
+    expect(screen.getByText("No Shopify store selected")).toBeInTheDocument();
+    expect(api.get).toHaveBeenCalledTimes(1);
   });
 
   it("never shows an investigate action unless the integration is connected", async () => {

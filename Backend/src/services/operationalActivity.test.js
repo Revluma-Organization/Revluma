@@ -57,6 +57,8 @@ test('J: finding appears with lifecycle status + closed severity', () => {
   assert.equal(item.status, 'acknowledged');
   assert.equal(item.severity, 'critical');
   assert.equal(item.source, 'intelligence_findings');
+  assert.equal(item.finding_id, 'f1');
+  assert.equal(item.link, '/findings');
 });
 test('J: finding occurrence is detected_at, processing is updated_at', () => {
   const c = build({ findings: [findingRow({ detected_at: iso(-2 * DAY), updated_at: iso(-1 * DAY) })] });

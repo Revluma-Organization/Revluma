@@ -2,7 +2,7 @@
 
 ## Scope and evidence boundary
 
-Task 219 maps original Tasks 281–285. It covers `/dashboard/overview`, its `command-center-v1` response and the shared navigation/workspace chrome. Rev investigation, integrations, authentication, tenant authorization and existing routes remain dependencies, not redesign targets. Task 218 in the current execution ledger is consolidated into Task 205; its listed changes were not assumed to exist. No Task 220 work is included.
+Task 219 maps original Tasks 281–285. It covers `/dashboard/overview`, its `command-center-v1` response and the shared navigation/workspace chrome. Rev investigation, integrations, authentication, tenant authorization and existing routes remain dependencies, not redesign targets. Task 218 initially appeared consolidated into Task 205, but its separate implementation merged into main during Task 219 (PRs #370/#373, main `d9150d65`). The branch was rebased and its `rev-business-health-v1` and `rev-operational-activity-v1` behavior audited and consolidated rather than discarded. No Task 220 work is included.
 
 Before editing, the active Overview, authoritative hook/contracts/components, backend composition, priority investigation handoff, Tasks 216–217 tests, shell/theme/typography, mock analytics, responsive styles and docs were inspected. Public production `/dashboard/overview` redirects unauthenticated visitors to sign-in; the supplied Rev Intelligence screenshot is not Command Center proof. No production merchant values are reproduced in this audit.
 

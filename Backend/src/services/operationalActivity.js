@@ -108,6 +108,7 @@ function findingItem(row) {
     occurred_at: occurredAt,
     received_at: iso(row.updated_at) || occurredAt,
     source: 'intelligence_findings',
+    finding_id: isStr(row.id) ? row.id : null,
     link: '/findings',
   };
 }
