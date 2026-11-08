@@ -152,6 +152,21 @@ exports.getEvidence = async (req, res, next) => {
   }
 };
 
+// ── GET /api/v1/rev/command-center ───────────────────────────────────────────
+// Task 216: one authenticated, read-only operational briefing. Organization
+// identity is resolved from the verified session; no tenant or metric input is
+// accepted from the browser. The response is never shared or cached across
+// merchants.
+exports.getCommandCenter = async (req, res, next) => {
+  try {
+    const org = await getAuthenticatedOrg(req.user.id, req.user.tenantId);
+    const { getCommandCenter } = require('../services/commandCenterService');
+    const data = await getCommandCenter({ prisma, organizationId: org.id });
+    res.set('Cache-Control', 'private, no-store');
+    return res.status(200).json({ success: true, data });
+  } catch (error) { return next(error); }
+};
+
 // ── POST /api/v1/rev/chat ─────────────────────────────────────────────────────
 
 exports.chat = async (req, res, next) => {
