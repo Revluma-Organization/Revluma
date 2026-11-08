@@ -117,5 +117,16 @@ Until 1–5 complete, this task's status is
 
 ## CI result
 
-Pending — recorded after the PR's required checks complete (Backend, Backend refresh,
-Python, Dashboard, release-candidate Prisma/PostgreSQL/security, Vercel).
+PR #370 (head `3dc0cae`, final rebased tree) — **all 7 required checks passed**:
+
+| Check | Result |
+| --- | --- |
+| Backend test suite | pass (24s) |
+| Dashboard suite and production build | pass (2m8s) |
+| Prisma bootstrap, financial and security regressions | pass (2m6s) |
+| backend | pass (36s) |
+| dashboard | pass (2m21s) |
+| Vercel | pass |
+| Vercel Preview Comments | pass |
+
+Merged to main as `9e2cca4` (2026-11-08).
