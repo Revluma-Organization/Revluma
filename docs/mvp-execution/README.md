@@ -115,3 +115,31 @@ egress in this environment).
 ## 2026-11-08 Task 218
 
 User-assigned Task 218 (business health indicators + operational activity; distinct from the older backlog line 218 consolidated into Task 205). Its [implementation](implementation/TASK-218-BUSINESS-HEALTH-INDICATORS-OPERATIONAL-ACTIVITY.md), [diagnostics](diagnostics/TASK-218-business-health-operational-activity-diagnostics.md) and [validation](validation/TASK-218-BUSINESS-HEALTH-INDICATORS-OPERATIONAL-ACTIVITY.md) cover two read-only versioned contracts — `rev-business-health-v1` (five indicators; business severity asserted only on complete canonical-domain coverage; absent ≠ zero; frozen documented thresholds; currency-verified money) and `rev-operational-activity-v1` (bounded 14-day, deduplicated, cursor-paginated projection of findings/lifecycle/sync outcomes; closed-code detail only) — composed as two store-scoped sections into the Task 216 Command Center as now layered by Task 217 (Business health between Business situation and Priority findings; Operational history after the activity/evidence grid; both bound to the briefing's primary store; fail-closed contract guards; no fabricated interactivity). Local evidence (final tree rebased onto `4ac2a33`): 94/94 new backend tests, full backend run 105/105 (the `task215SyncProgressApi` test 7 failure seen on intermediate rebases was a pre-existing test bug, fixed upstream by Task 217's #371), Dashboard TypeScript clean, 627/627 tests across 43 files, production build green. Decision: REV-DEC-0026. Local evidence is green; CI, exact deployed revisions and authenticated active-store acceptance remain separate and pending.
+
+## 2026-11-08 Task 222
+
+User-assigned Task 222 (original Tasks 295–299: verify the new-conversation control, the conversation
+history list, conversation switching, conversation title display, and question-input behavior — i.e.
+productionize the Rev Intelligence conversation lifecycle). Its [diagnostics](diagnostics/TASK-222-REV-CONVERSATION-CONTROLS-HISTORY-INPUT-diagnostics.md),
+[implementation](implementation/TASK-222-REV-CONVERSATION-CONTROLS-HISTORY-INPUT.md) and
+[validation](validation/TASK-222-REV-CONVERSATION-CONTROLS-HISTORY-INPUT.md) record that the
+lifecycle is already implemented and production-grade (server-authoritative `uuidv4()` conversation
+ids created on the first accepted message, org-scoped metadata-only `GET /conversations` in
+activity order, URL-scoped switching with `isCurrent()`/`conversationRequestRef`/server-
+`sequence_number` stale-response protection, deterministic `COALESCE(title, …)` titles, and
+tenant-isolated 404/403 with ids-only logging), and fix the two genuine defects the audit found —
+**frontend-only, no backend source / data model / migration / read-only boundary changed**:
+**F-1** the question field was unbounded on the client while the backend silently truncated to 2000,
+so a >2000-char question rendered full-length in the UI but persisted truncated (now a shared
+`MAX_QUESTION_LENGTH=2000` with `maxLength`, a `send()` guard, an `aria-live` counter, and a backend
+contract test asserting the client and server bounds are **equal**); and **F-2** the send control was
+32px, now 44px (`h-11 w-11`) matching the adjacent controls. Local evidence (tree on `aecd054`):
+6 new frontend scenarios + a new backend contract test, full suite 743/743 (129 in `RevIntell.test.tsx`),
+`tsc` project error count 29 (unchanged; none in `RevIntell.tsx`), production build green, backend
+contract tests pass. Decision: REV-DEC-0028. PR #377 CI all green (`Dashboard suite and production
+build`, `Prisma bootstrap, financial and security regressions`, `Backend test suite`, `backend`,
+`dashboard`, `Vercel` preview). No real browser / production egress / authenticated merchant session
+in this environment, so the live in-browser acceptance at `revluma-test-store-v1.myshopify.com`
+remains a documented production-acceptance step (covered by the Vitest + jsdom + Testing Library
+suite and the CSS/responsive audit); the deployed production revision is verified via the Vercel
+connector after merge.
