@@ -111,6 +111,11 @@ const FINDING_ERRORS = ["INVALID_FINDING_ID", "FINDING_NOT_FOUND", "FINDING_EVID
 const EXPLICIT_FINDING_TOPIC_CHANGE = /\b(?:instead|new topic|different topic|leave (?:this|the) finding|unrelated question|forget (?:this|the) finding)\b/i;
 const HISTORY_PAGE_SIZE = 20;
 const MESSAGE_PAGE_SIZE = 50;
+// Authoritative question-length bound. The backend `sanitiseMessage` caps a
+// message at 2000 chars; the client enforces the SAME bound so a question is
+// never submitted longer than it will be persisted (no silent truncation, no
+// UI/DB inconsistency). A backend contract test asserts the two stay equal.
+const MAX_QUESTION_LENGTH = 2000;
 
 // Suggested opening questions for an empty conversation.
 //
@@ -476,21 +481,33 @@ function AttachMenu({ onFile, t1 }: {
 // ── Input toolbar ─────────────────────────────────────────────────────────────
 
 function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disabled, sendDisabled,
-  onSend, onFile, onStop, thinking, card, border, t1, t2, isDark }: {
+  onSend, onFile, onStop, thinking, card, border, t1, t2, isDark, maxLength = MAX_QUESTION_LENGTH }: {
   inputRef: React.RefObject<HTMLTextAreaElement>;
   value: string; onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
   onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement>;
-  placeholder: string; disabled?: boolean; sendDisabled?: boolean;
+  placeholder: string; disabled?: boolean; sendDisabled?: boolean; maxLength?: number;
   onSend: () => void; onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onStop?: () => void; thinking: boolean;
   card: string; border: string; t1: string; t2: string; isDark: boolean;
 }) {
+  // `over` is strictly beyond the bound (the textarea maxLength normally makes
+  // this unreachable; it guards the programmatic/paste edge). Exactly at the
+  // bound a question is still valid, so no "shorten" warning is shown there.
+  const over = value.length > maxLength;
+  const nearCap = value.length > maxLength - 120;
   return (
-    <div className="rounded-2xl shadow-sm overflow-visible" style={{ background: card, border: `1px solid ${border}` }}>
+    <div className="rounded-2xl shadow-sm overflow-visible" style={{ background: card, border: `1px solid ${over ? "#dc2626" : border}` }}>
       <textarea ref={inputRef} value={value} onChange={onChange} onKeyDown={onKeyDown}
         placeholder={placeholder} aria-label="Message Rev" rows={2} disabled={disabled}
+        maxLength={maxLength}
         className="w-full bg-transparent text-[0.9rem] outline-none resize-none px-5 pt-4 pb-2 max-h-36 [scrollbar-width:none] leading-relaxed"
         style={{ color: t1, minHeight: 26 }} />
+      {nearCap && (
+        <p className="m-0 px-5 pb-1 text-[0.68rem] tabular-nums" aria-live="polite"
+          style={{ color: over ? "#dc2626" : t2 }}>
+          {value.length} / {maxLength}{over ? " — shorten to send" : ""}
+        </p>
+      )}
       <div className="flex items-center justify-between px-3 pb-3">
         <AttachMenu onFile={onFile} t1={t1} />
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -513,7 +530,7 @@ function InputToolbar({ inputRef, value, onChange, onKeyDown, placeholder, disab
             <motion.button whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.9 }}
               onClick={onSend} disabled={!value.trim() || thinking || disabled || sendDisabled}
               aria-label="Send message"
-              className="w-8 h-8 rounded-xl flex items-center justify-center transition-all ml-1"
+              className="h-11 w-11 rounded-xl flex items-center justify-center transition-all ml-1"
               style={{ background: value.trim() && !thinking ? "#1F06AC" : (isDark ? "#1f1f1f" : "#e5e7eb"),
                 color: value.trim() && !thinking ? "white" : t2 }}>
               <Send size={14} />
@@ -1134,7 +1151,8 @@ export default function RevIntell() {
   // Image turns fall back to the non-streaming endpoint, which is the only
   // path that carries attachments — never silently drop an attachment.
   const send = useCallback(async (text: string) => {
-    if (!text.trim() || turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || messagesMore || messagesPagePending.current || (findingId !== null && !findingContext)) return;
+    const trimmedLen = text.trim().length;
+    if (!trimmedLen || trimmedLen > MAX_QUESTION_LENGTH || turnPendingRef.current || convLoading || convError || convNotFound || findingLoading || findingError || messagesMore || messagesPagePending.current || (findingId !== null && !findingContext)) return;
     if ((findingRetryDraft?.requiresImage || findingRetryDraft?.attachmentUnknown) && !imageAttachment) return;
     const turn = ++turnRequestRef.current;
     turnPendingRef.current = true;
