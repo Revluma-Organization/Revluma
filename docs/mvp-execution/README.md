@@ -75,6 +75,10 @@ User-assigned Task 212 consolidates original Tasks 246–251 without starting Ta
 
 Task 216 consolidates original Tasks 265–269 and begins Phase 4 without starting Task 217. Its [diagnosis and UI/reference study](diagnostics/TASK-216-COMMAND-CENTER-OPERATIONAL-BRIEFING.md), [implementation](implementation/TASK-216-COMMAND-CENTER-OPERATIONAL-BRIEFING.md) and [validation](validation/TASK-216-COMMAND-CENTER-OPERATIONAL-BRIEFING.md) record the authenticated business-state briefing, supported UTC-day metrics, verified finding navigation, per-resource freshness and explicit unknown/stale/partial states. Local tests and production snapshot preflight are green; deployed revisions and authenticated active-store/browser acceptance are tracked separately and are not inferred from implementation.
 
+## 2026-11-06 Task 217
+
+Task 217 consolidates original Tasks 270–274 without starting Task 218. Its [diagnosis](diagnostics/TASK-217-PRIORITY-FINDING-EVIDENCE.md), [implementation](implementation/TASK-217-PRIORITY-FINDING-EVIDENCE.md) and [validation](validation/TASK-217-PRIORITY-FINDING-EVIDENCE.md) record deterministic fail-closed priority selection, progressive evidence disclosure, certified refund-transaction deterioration, read-only next steps and exact Rev revalidation. Local focused Node, full Python, Dashboard tests/build and TypeScript are green; CI, deployed revision and authenticated active-store acceptance remain separate evidence and are not inferred from local tests or a merge.
+
 ## 2026-11-07 Task 214
 
 Task 214 consolidates original Tasks 257–261 without starting Task 215. Its [implementation](implementation/TASK-214-INTEGRATION-RECOVERY.md), [diagnostic contract](diagnostics/TASK-214-integration-recovery-diagnostics.md) and [validation](validation/TASK-214-INTEGRATION-RECOVERY.md) cover deterministic lifecycle, independent registration/delivery evidence, required-resource sync, secure reconnect and shared truthful capability. Local evidence is green; CI, exact deployed revisions and authenticated active-store acceptance remain separate and pending.

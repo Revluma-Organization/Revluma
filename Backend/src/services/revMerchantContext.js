@@ -10,7 +10,7 @@ function validIanaTimezone(value) {
   try { new Intl.DateTimeFormat('en', { timeZone: candidate }); return candidate; }
   catch { return null; }
 }
-const FINANCIAL_FINDING_TYPES = new Set(['revenue_change', 'order_volume_change', 'returning_customer_change']);
+const FINANCIAL_FINDING_TYPES = new Set(['revenue_change', 'order_volume_change', 'returning_customer_change', 'refund_increase']);
 const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
 function certifiedFinding(finding) {
   const evidence = finding?.evidence;
@@ -30,11 +30,15 @@ function certifiedFinding(finding) {
       ![evidence.currentRevenue, evidence.previousRevenue].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) return false;
   if (finding.type === 'returning_customer_change' &&
       ![evidence.currentReturning, evidence.previousReturning].every(n => Number.isInteger(n) && n >= 0)) return false;
+  if (finding.type === 'refund_increase' &&
+      (![evidence.currentRefundTotal, evidence.previousRefundTotal].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0) ||
+       evidence.source !== 'order_transactions' || evidence.refund_coverage_complete !== true)) return false;
   return true;
 }
 const EVIDENCE_KEYS = new Set([
   'verified', 'complete', 'currency', 'currentCount', 'previousCount',
-  'currentRevenue', 'previousRevenue', 'currentStart', 'currentEnd',
+  'currentRevenue', 'previousRevenue', 'currentRefundTotal', 'previousRefundTotal',
+  'refund_coverage_complete', 'refund_sync_run_id', 'currentStart', 'currentEnd',
   'previousStart', 'previousEnd', 'failed_webhook_registrations',
   'coverage_source', 'coverage_run_id',
 ]);

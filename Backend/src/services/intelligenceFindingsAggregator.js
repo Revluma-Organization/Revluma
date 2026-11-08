@@ -1,5 +1,5 @@
 'use strict';
-const { detectIntegrationFailure, detectRevenueChange, detectOrderVolumeChange, detectReturningCustomerChange, prioritizeFindings } = require('./intelligenceFindingsEngine');
+const { detectIntegrationFailure, detectRevenueChange, detectOrderVolumeChange, detectReturningCustomerChange, detectRefundIncrease, prioritizeFindings } = require('./intelligenceFindingsEngine');
 
 const { TRUSTED_SOURCE } = require('./intelligenceOrderCoverage');
 const DAY = 86400000;
@@ -65,6 +65,37 @@ async function evaluateOrganizationFindings(prisma, organizationId, options = {}
       available_source: 'abandoned_carts',
       missing_evidence: ['complete_checkout_starts', 'consistent_checkout_completions', 'checkout_event_coverage'],
     });
+    // Refund movement is attributed to successful refund transaction dates,
+    // not an order's lifetime refunded_total. It requires its own complete
+    // refund synchronization in addition to certified order history.
+    if (prisma.order_transactions && prisma.store_sync_domain_states) {
+      const refundSync = await prisma.store_sync_domain_states.findFirst({
+        where: { store_id: store.id, domain: 'refunds', status: 'ok', pagination_complete: true,
+          last_succeeded_at: { gte: new Date(currentEnd) } },
+        select: { id: true, last_succeeded_at: true },
+      });
+      if (refundSync) {
+        const transactions = await prisma.order_transactions.findMany({
+          where: { store_id: store.id, kind: 'refund', status: { in: ['success', 'succeeded'] },
+            processed_at: { gte: new Date(previousStart), lt: new Date(currentEnd) } },
+          select: { external_id: true, external_order_id: true, amount: true, currency: true, processed_at: true },
+        });
+        const refundCurrencies = sameCurrency(transactions);
+        if (transactions.length && refundCurrencies.length === 1) {
+          const currentRefunds = transactions.filter(row => row.processed_at.getTime() >= currentStart);
+          const previousRefunds = transactions.filter(row => row.processed_at.getTime() < currentStart);
+          const refundValue = rows => rows.reduce((sum, row) => sum + Math.abs(safeNumber(row.amount)), 0);
+          candidates.push(detectRefundIncrease({ scope, evidence: {
+            verified: true, complete: true, source: 'order_transactions', refund_coverage_complete: true,
+            refund_sync_run_id: refundSync.id, coverage_source: coverage.source, coverage_run_id: coverage.source_run_id,
+            currency: refundCurrencies[0], currentStart: windowIso(currentStart), currentEnd: windowIso(currentEnd),
+            previousStart: windowIso(previousStart), previousEnd: windowIso(currentStart),
+            currentCount: currentRefunds.length, previousCount: previousRefunds.length,
+            currentRefundTotal: refundValue(currentRefunds), previousRefundTotal: refundValue(previousRefunds),
+          } }));
+        } else if (transactions.length) diagnostics.push({ storeId: store.id, status: 'refund_currency_not_comparable' });
+      } else diagnostics.push({ storeId: store.id, status: 'refund_history_completeness_unverified' });
+    }
     const orders = await prisma.orders.findMany({
       where: { store_id: store.id, ordered_at: { gte: new Date(previousStart), lt: new Date(currentEnd) } },
       select: { customer_id: true, total: true, currency: true, ordered_at: true, recovery_status: true, refunded_total: true },

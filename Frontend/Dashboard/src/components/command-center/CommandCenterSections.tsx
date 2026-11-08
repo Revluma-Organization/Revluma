@@ -88,19 +88,67 @@ export function BusinessOverview({ data }: { data: CommandCenterData }) {
   </section>;
 }
 
+function observationText(item: CommandCenterData["findings"][number]["evidence"]["observations"][number]) {
+  if (item.value === null || item.availability !== "available") return "Unavailable";
+  if (item.unit === "money" && typeof item.value === "number" && item.currency) return money(item.value, item.currency);
+  return `${item.value}${item.unit === "count" ? "" : ` ${item.unit}`}`;
+}
+
 export function PriorityFindings({ data }: { data: CommandCenterData }) {
   const navigate = useNavigate();
+  const finding = data.priority_finding;
+  const lower = data.findings.filter(item => item.id !== finding?.id);
   return <section aria-labelledby="priority-findings-heading" className={section}>
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e8edf3] px-5 py-4 dark:border-[#2c2c2c]">
-      <div><h2 id="priority-findings-heading" className="text-sm font-bold">Priority findings</h2><p className={`mt-1 text-xs ${muted}`}>Verified intelligence only, ordered by severity and recency.</p></div>
-      <span className="text-xs font-medium text-[#64748b] dark:text-[#a6b8d4]">{data.findings.length} open</span>
+      <div><h2 id="priority-findings-heading" className="text-sm font-bold">Priority finding</h2><p className={`mt-1 text-xs ${muted}`}>Deterministic selection from current, verified evidence · {data.priority_selection.method_version}</p></div>
+      <span className="text-xs font-medium text-[#64748b] dark:text-[#a6b8d4]">{data.priority_selection.eligible_count} eligible</span>
     </div>
-    {data.findings.length ? <div className="divide-y divide-[#edf1f5] dark:divide-[#2c2c2c]">{data.findings.map(finding => <article key={finding.id} className="p-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`text-[11px] font-bold uppercase tracking-wide ${["critical", "high"].includes(finding.severity) ? "text-[#b42318]" : "text-[#64748b]"}`}>{finding.severity} priority</span><span className="text-[11px] text-[#64748b]">Verified evidence · {relative(finding.detected_at)}</span></div><h3 className="mt-2 text-sm font-bold">{finding.title}</h3><p className={`mt-1.5 text-xs leading-5 ${muted}`}>{finding.description}</p></div>
-        <button type="button" onClick={() => navigate(finding.next_step.route)} className="inline-flex min-h-9 shrink-0 items-center gap-1.5 self-start rounded-lg border border-[#bfd7ff] px-3 text-xs font-semibold text-[#0868ed] hover:bg-[#eff6ff] dark:hover:bg-[#1d2a3b]">Investigate <ArrowRight className="h-3.5 w-3.5" /></button>
+    {finding ? <article className="p-5 sm:p-6" aria-labelledby="current-priority-title">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold uppercase tracking-wide">
+        <span className={["critical", "high"].includes(finding.severity) ? "text-[#b42318]" : "text-[#475569]"}>{finding.priority.classification} priority</span>
+        <span className="text-[#475569] dark:text-[#bdc9da]">{finding.confidence.classification.replaceAll("_", " ")} confidence</span>
+        <span className="text-[#64748b] dark:text-[#a6b8d4]">{finding.evidence_freshness.state} evidence</span>
       </div>
-    </article>)}</div> : <div className="p-5"><p className="text-sm font-semibold">No open verified priority findings</p><p className={`mt-1.5 text-xs leading-5 ${muted}`}>This does not establish that no issue exists outside the configured checks and available evidence.</p></div>}
+      <h3 id="current-priority-title" className="mt-3 text-lg font-bold tracking-[-0.015em]">{finding.title}</h3>
+      <p className={`mt-2 max-w-4xl text-sm leading-6 ${muted}`}>{finding.description}</p>
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <div>
+          <h4 className="text-xs font-bold">Why this is the priority</h4>
+          <ul className={`mt-2 space-y-1.5 text-xs leading-5 ${muted}`}>{finding.priority.rationale.map(reason => <li key={reason}>• {reason}</li>)}</ul>
+          <h4 className="mt-4 text-xs font-bold">Confidence</h4>
+          <ul className={`mt-2 space-y-1.5 text-xs leading-5 ${muted}`}>{finding.confidence.rationale.map(reason => <li key={reason}>• {reason}</li>)}</ul>
+          {finding.priority.tie && <p className={`mt-3 text-xs leading-5 ${muted}`}>{finding.priority.tie.statement}</p>}
+        </div>
+        <div>
+          <h4 className="text-xs font-bold">Supporting observations</h4>
+          <dl className="mt-2 grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">{finding.evidence.observations.map(item => <div key={`${item.period}-${item.label}`} className="min-w-0 border-l-2 border-[#dbe7f5] pl-3 dark:border-[#334155]">
+            <dt className={`text-[11px] leading-4 ${muted}`}>{item.label}</dt><dd className="mt-1 break-words text-sm font-bold">{observationText(item)}</dd>
+          </div>)}</dl>
+          <p className={`mt-3 text-[11px] leading-5 ${muted}`}>{finding.reporting_period.kind.replaceAll("_", " ")} · {finding.reporting_period.timezone}<br />Last verified {dateTime(finding.last_verified_at)} · Coverage {finding.coverage.state}</p>
+        </div>
+      </div>
+      {finding.limitations.length > 0 && <div className="mt-5 border-t border-[#e8edf3] pt-4 dark:border-[#2c2c2c]"><h4 className="text-xs font-bold">Limits of this conclusion</h4><ul className={`mt-2 space-y-1.5 text-xs leading-5 ${muted}`}>{finding.limitations.map(limit => <li key={limit}>• {limit}</li>)}</ul></div>}
+      <div className="mt-5 border-t border-[#e8edf3] pt-4 dark:border-[#2c2c2c]">
+        <h4 className="text-xs font-bold">Recommended next step — merchant action, not executed by Revluma</h4>
+        {finding.recommendation.available ? <>
+          <p className="mt-2 text-sm leading-6 text-[#334155] dark:text-[#d8e2ef]">{finding.recommendation.step}</p>
+          <p className={`mt-2 text-xs leading-5 ${muted}`}><span className="font-semibold">Why: </span>{finding.recommendation.rationale}</p>
+          <p className={`mt-1 text-xs leading-5 ${muted}`}><span className="font-semibold">Look for: </span>{finding.recommendation.expected_result}</p>
+        </> : <p className={`mt-2 text-xs leading-5 ${muted}`}>{finding.recommendation.prerequisites.join(" ")}</p>}
+      </div>
+      <details className="mt-5 rounded-lg border border-[#e2e8f0] p-4 dark:border-[#2c2c2c]">
+        <summary className="cursor-pointer text-xs font-semibold text-[#0868ed] focus-visible:outline-2 focus-visible:outline-offset-4">Inspect evidence, provenance and uncertainty</summary>
+        <div className="mt-4 grid gap-5 sm:grid-cols-2">
+          <div><h4 className="text-xs font-bold">Authoritative references</h4><ul className={`mt-2 space-y-2 break-all text-[11px] leading-5 ${muted}`}>{finding.evidence.references.map(ref => <li key={ref.id}><span className="font-semibold">{ref.source_type}</span><br />{ref.source_record_id}</li>)}</ul></div>
+          <div><h4 className="text-xs font-bold">Lifecycle and unknowns</h4><p className={`mt-2 text-[11px] leading-5 ${muted}`}>{finding.lifecycle.state} · {finding.lifecycle.current_validity.replaceAll("_", " ")}<br />Detected {dateTime(finding.detected_at)}</p><ul className={`mt-2 space-y-1 text-[11px] leading-5 ${muted}`}>{finding.unknowns.map(item => <li key={item}>• {item}</li>)}</ul>{finding.evidence.duplicate_finding_ids.length > 0 && <p className={`mt-2 text-[11px] ${muted}`}>Deduplicated records retained: {finding.evidence.duplicate_finding_ids.join(", ")}</p>}</div>
+        </div>
+      </details>
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className={`text-xs leading-5 ${muted}`}>{finding.recommendation.validation_method || "Further evidence is required before a current recommendation."}</p>
+        <button type="button" onClick={() => navigate(finding.investigation.route)} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#0868ed] px-4 text-xs font-bold text-white hover:bg-[#0059cf]">Investigate in Rev Intelligence <ArrowRight className="h-3.5 w-3.5" /></button>
+      </div>
+    </article> : <div className="p-5"><p className="text-sm font-semibold">No sufficiently supported priority is currently available</p><p className={`mt-1.5 max-w-3xl text-xs leading-5 ${muted}`}>{data.priority_selection.reason || "No current finding meets the validity and evidence requirements."} This is not proof that the store has no problems.</p>{data.priority_selection.exclusions.length > 0 && <ul className={`mt-3 space-y-1 text-xs leading-5 ${muted}`} aria-label="Findings excluded from current priority">{data.priority_selection.exclusions.map(item => <li key={item.finding_id}><span className="font-semibold">{item.title}</span> — not current: {item.reason.replaceAll("_", " ")}. Historical evidence is not presented as a current condition.</li>)}</ul>}</div>}
+    {lower.length > 0 && <div className="border-t border-[#e8edf3] p-5 dark:border-[#2c2c2c]"><h3 className="text-xs font-bold">Other eligible findings</h3><div className="mt-3 divide-y divide-[#edf1f5] dark:divide-[#2c2c2c]">{lower.map(item => <article key={item.id} className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="text-xs font-semibold">{item.title}</h4><p className={`mt-1 text-[11px] ${muted}`}>{item.severity} · {item.confidence.classification.replaceAll("_", " ")} confidence · {item.evidence_freshness.state}</p></div><button type="button" onClick={() => navigate(item.investigation.route)} className="inline-flex min-h-9 shrink-0 items-center gap-1 self-start rounded-lg border border-[#bfd7ff] px-3 text-xs font-semibold text-[#0868ed]">Investigate <ArrowRight className="h-3.5 w-3.5" /></button></article>)}</div></div>}
   </section>;
 }
 

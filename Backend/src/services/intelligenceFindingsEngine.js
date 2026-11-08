@@ -11,6 +11,7 @@ const TYPES = Object.freeze({
   REVENUE_CHANGE: 'revenue_change',
   ORDER_VOLUME_CHANGE: 'order_volume_change',
   RETURNING_CUSTOMER_CHANGE: 'returning_customer_change',
+  REFUND_INCREASE: 'refund_increase',
 });
 const SEVERITIES = Object.freeze({ critical: 4, high: 3, medium: 2, low: 1 });
 const validNumber = value => typeof value === 'number' && Number.isFinite(value);
@@ -103,10 +104,25 @@ function detectReturningCustomerChange({ scope, evidence, minimumCustomers = 20,
       change_percentage_points: Number(pointChange.toFixed(2)), source: 'orders' },
     { label: 'Investigate in Command Center', route: '/dashboard', guidance: 'Compare returning-buyer counts and prior purchase history for both periods. Do not infer why buyers did not return.', measurement: 'Compare verified returning-buyer purchase share over the next equivalent period.' });
 }
+function detectRefundIncrease({ scope, evidence, minimumTransactions = 1, minimumRelativeChange = 0.25 }) {
+  if (!scope?.organizationId || !scope?.storeId || !evidenceReady(evidence, minimumTransactions) ||
+      evidence.source !== 'order_transactions' || evidence.refund_coverage_complete !== true) return null;
+  if (!validNumber(evidence.currentRefundTotal) || !validNumber(evidence.previousRefundTotal) ||
+      evidence.currentRefundTotal < 0 || evidence.previousRefundTotal <= 0) return null;
+  const delta = (evidence.currentRefundTotal - evidence.previousRefundTotal) / evidence.previousRefundTotal;
+  if (delta < minimumRelativeChange) return null;
+  return finding(TYPES.REFUND_INCREASE, scope, 'high',
+    `Verified refund value increased ${Math.round(delta * 100)}%`,
+    'Successful refund transactions increased between equal-length periods in the same currency, using refund transaction dates. This observation does not establish why refunds increased.',
+    { ...evidence, delta_pct: Number((delta * 100).toFixed(2)) },
+    { label: 'Investigate refund evidence', route: '/dashboard',
+      guidance: "Review the refund transactions in the current period. Compare affected orders, products and recorded refund reasons with the previous period to determine whether the increase is concentrated in a particular product or issue.",
+      measurement: 'Compare successful refund transaction value using the same transaction-date attribution and currency in the next equivalent period.' });
+}
 function prioritizeFindings(findings) {
   return findings.filter(Boolean).sort((a, b) =>
     (SEVERITIES[b.severity] || 0) - (SEVERITIES[a.severity] || 0) ||
     a.dedupe_key.localeCompare(b.dedupe_key));
 }
 module.exports = { TYPES, detectIntegrationFailure, detectRevenueChange,
-  detectReturningCustomerChange, detectOrderVolumeChange, prioritizeFindings };
+  detectReturningCustomerChange, detectOrderVolumeChange, detectRefundIncrease, prioritizeFindings };

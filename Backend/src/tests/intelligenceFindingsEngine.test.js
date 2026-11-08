@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { detectIntegrationFailure, detectRevenueChange, detectOrderVolumeChange, detectReturningCustomerChange, prioritizeFindings } = require('../services/intelligenceFindingsEngine');
+const { detectIntegrationFailure, detectRevenueChange, detectOrderVolumeChange, detectReturningCustomerChange, detectRefundIncrease, prioritizeFindings } = require('../services/intelligenceFindingsEngine');
 const scope = { organizationId: 'org-1', storeId: 'store-1' };
 const period = {
   verified: true, complete: true, currency: 'USD',
@@ -57,4 +57,37 @@ test('order-volume findings require verified comparable complete periods', () =>
   assert.equal(detectOrderVolumeChange({ scope, evidence: { ...evidence, currentCount: 2 } }), null);
   assert.equal(detectOrderVolumeChange({ scope, evidence: { ...evidence, currentCount: 20.5 } }), null);
   assert.equal(detectOrderVolumeChange({ scope, evidence: { ...evidence, previousEnd: '2026-10-07T00:00:00Z' } }), null);
+});
+
+const refundEvidence = (extra = {}) => ({ ...period, source: 'order_transactions', refund_coverage_complete: true,
+  previousRefundTotal: 200, currentRefundTotal: 400, ...extra });
+test('refund increase uses successful transaction-window evidence and exact percentage', () => {
+  const result = detectRefundIncrease({ scope, evidence: refundEvidence() });
+  assert.equal(result.type, 'refund_increase');
+  assert.equal(result.severity, 'high');
+  assert.equal(result.evidence.delta_pct, 100);
+  assert.match(result.action.guidance, /affected orders, products and recorded refund reasons/);
+});
+test('refund increase requires complete refund transaction coverage', () => {
+  assert.equal(detectRefundIncrease({ scope, evidence: refundEvidence({ refund_coverage_complete: false }) }), null);
+  assert.equal(detectRefundIncrease({ scope, evidence: refundEvidence({ source: 'orders' }) }), null);
+});
+test('refund increase rejects incomplete or unverified windows', () => {
+  assert.equal(detectRefundIncrease({ scope, evidence: refundEvidence({ verified: false }) }), null);
+  assert.equal(detectRefundIncrease({ scope, evidence: refundEvidence({ complete: false }) }), null);
+});
+test('refund increase rejects missing or nonpositive comparison baseline', () => {
+  assert.equal(detectRefundIncrease({ scope, evidence: refundEvidence({ previousRefundTotal: 0 }) }), null);
+  assert.equal(detectRefundIncrease({ scope, evidence: refundEvidence({ previousRefundTotal: null }) }), null);
+});
+test('refund increase rejects immaterial change and insufficient samples', () => {
+  assert.equal(detectRefundIncrease({ scope, evidence: refundEvidence({ currentRefundTotal: 220 }) }), null);
+  assert.equal(detectRefundIncrease({ scope, evidence: refundEvidence({ currentCount: 0 }) }), null);
+});
+test('refund finding preserves currency, transaction source and deterministic dedupe key', () => {
+  const result = detectRefundIncrease({ scope, evidence: refundEvidence() });
+  assert.equal(result.evidence.currency, 'USD');
+  assert.equal(result.evidence.source, 'order_transactions');
+  assert.match(result.dedupe_key, /^refund_increase:store-1:/);
+  assert.equal(result.action.executed, false);
 });
