@@ -568,6 +568,12 @@ async function upsertOrder(store, provider, payload) {
     }
     await recalculateCustomerTotals(tx, dbCustomer.id);
     return order;
+  }, {
+    // Remote PostgreSQL plus line-item/reconciliation writes can exceed
+    // Prisma's 5s default. Keep the financial operation atomic with an
+    // explicit bounded budget instead of repeatedly rolling back at P2028.
+    maxWait: 10000,
+    timeout: 30000,
   });
 }
 
