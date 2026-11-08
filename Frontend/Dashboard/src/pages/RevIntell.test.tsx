@@ -1349,3 +1349,76 @@ describe('landing continuity (REV-RESUME-001)', () => {
     expect(screen.getByLabelText('Current path')).toHaveTextContent(/^\/dashboard\/rev-intell$/);
   });
 });
+
+// Task 222 (original 295–299) — question-input lifecycle, submission control,
+// no-store conversation, and title fallback. These extend the existing suite
+// (which already covers history/switching/stale-response/pagination) with the
+// scenarios the audit found under-covered or newly fixed (oversized input).
+describe('Task 222 — question input lifecycle and submission control', () => {
+  it('declares the authoritative maxLength on the question field', () => {
+    renderPage();
+    expect(screen.getByPlaceholderText(/Ask (me|Rev)/)).toHaveAttribute('maxlength', '2000');
+  });
+
+  it('lets a question reach the 2000-char bound and submit it unchanged (no silent truncation)', async () => {
+    noHistoryToResume();
+    renderPage();
+    const atBound = 'x'.repeat(2000);
+    fireEvent.change(screen.getByPlaceholderText(/Ask (me|Rev)/), { target: { value: atBound } });
+    // Exactly at the bound the question is still valid: a live count, no "shorten" warning.
+    expect(screen.getByText(/^2000 \/ 2000$/)).toBeInTheDocument();
+    expect(screen.queryByText(/shorten to send/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+    expect(streamRevAnswer).toHaveBeenCalledWith(expect.objectContaining({ message: atBound }));
+  });
+
+  it('refuses to submit an over-length question and preserves the input (nothing fabricated)', async () => {
+    noHistoryToResume();
+    renderPage();
+    const over = 'x'.repeat(2500);
+    const field = screen.getByPlaceholderText(/Ask (me|Rev)/);
+    fireEvent.change(field, { target: { value: over } });
+    expect(screen.getByText(/2500 \/ 2000 — shorten to send/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await act(async () => {});
+    // The guard rejects it: no request is issued and no placeholder/message is added.
+    expect(streamRevAnswer).not.toHaveBeenCalled();
+    // The over-length input is preserved (not cleared), still flagged over the bound.
+    expect(screen.getByText(/shorten to send/)).toBeInTheDocument();
+  });
+
+  it('exposes a 44px accessible send control and submits on Enter', async () => {
+    noHistoryToResume();
+    renderPage();
+    const sendButton = screen.getByRole('button', { name: 'Send message' });
+    // Touch-target contract: the send control meets the 44px floor (was 32px) the
+    // codebase applies to its other conversation controls.
+    expect(sendButton.className).toMatch(/h-11 w-11/);
+    expect(sendButton).toBeDisabled();
+    const field = screen.getByPlaceholderText(/Ask (me|Rev)/);
+    fireEvent.change(field, { target: { value: 'Check my refund trend' } });
+    expect(sendButton).toBeEnabled();
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+  });
+
+  it('lets a merchant with no connected store start a conversation without fabricating store context', async () => {
+    noHistoryToResume();
+    replies.set('/stores', Promise.resolve(reply({ stores: [] })));
+    renderPage();
+    send('Why did revenue dip last week?');
+    await waitFor(() => expect(streamRevAnswer).toHaveBeenCalledTimes(1));
+    const request = streams[0].request;
+    expect(request.message).toBe('Why did revenue dip last week?');
+    expect(request.findingId).toBeUndefined();
+    expect(request.conversationId).toBeFalsy();
+  });
+
+  it('shows an "Untitled conversation" fallback for a conversation with no persisted title', async () => {
+    replies.set('/rev/conversations', Promise.resolve(reply([{ id: 'A', title: null, message_count: 1, last_activity_at: '2026-11-02T12:00:00Z' }])));
+    renderPage();
+    openHistory();
+    expect(await screen.findByRole('button', { name: /Untitled conversation/ })).toBeInTheDocument();
+  });
+});
