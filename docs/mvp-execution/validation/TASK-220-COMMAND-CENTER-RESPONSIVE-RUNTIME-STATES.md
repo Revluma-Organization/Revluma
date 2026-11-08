@@ -221,4 +221,18 @@ Until 1–5 complete, this task's status is **IMPLEMENTED LOCALLY — NOT PRODUC
 
 ## CI result
 
-_Filled after the PR's required checks run (see README lifecycle)._
+PR #375 (head `f78ac46`, frontend-only) — **all required checks passed**:
+
+| Check | Result |
+| --- | --- |
+| dashboard (`npm ci` + full `vitest run` suite + production `vite build`) | pass (1m46s) |
+| Vercel | pass |
+| Vercel Preview Comments | pass |
+
+The `dashboard` check is authoritative for this frontend-only change (a clean install
+reproduces the local 737/737 result and a clean production build); the backend / Prisma /
+security jobs are not in scope for a change that touches no backend file. Vercel reports the
+deployment for the merge; exact deployed revision ids and the authenticated active-store/browser
+checks above remain the open production-acceptance step.
+
+Status: **IMPLEMENTED, CI VERIFIED, MERGED — AUTHENTICATED ACTIVE-STORE / BROWSER ACCEPTANCE PENDING.**
