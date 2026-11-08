@@ -1,5 +1,5 @@
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, Sun, Moon, X, Rocket,
   ChevronDown, LogOut, Settings, CreditCard, Users as UsersIcon, HelpCircle,
@@ -9,7 +9,7 @@ import { useThemeStore } from '@/store';
 import { MVP_NAV } from '@/data/nav';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import revlumaIcon from '@/assets/brand/revluma-icon.png';
 import revIntellLogo from '@/assets/images/rev-intell-logo.png';
 
@@ -29,12 +29,20 @@ function getInitials(fullName: string | undefined | null): string {
 
 export function Sidebar() {
   const { sidebarCollapsed, setSidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen } = useUI();
+  // Task 220 — decorative motion honors prefers-reduced-motion.
+  const reduceMotion = useReducedMotion();
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [userOpen, setUserOpen] = useState(false);
+  // Task 220 — the mobile drawer is an accessible dialog: it only exists
+  // below md (the hamburger is the only opener), so its open state also means
+  // "mobile overlay mode".
+  const isMobileDrawer = mobileSidebarOpen;
+  const asideRef = useRef<HTMLElement | null>(null);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname, setMobileSidebarOpen]);
 
@@ -42,12 +50,74 @@ export function Sidebar() {
     const handleResize = () => {
       if (window.innerWidth < 768) {
         setSidebarCollapsed(false);
+      } else {
+        // Grown past the mobile breakpoint: the overlay drawer no longer
+        // applies — close it so no dialog semantics survive on desktop.
+        setMobileSidebarOpen(false);
       }
     };
     window.addEventListener('resize', handleResize);
     handleResize(); // Initial check
     return () => window.removeEventListener('resize', handleResize);
-  }, [setSidebarCollapsed]);
+  }, [setSidebarCollapsed, setMobileSidebarOpen]);
+
+  // Task 220 — Escape dismissal, focus move/restore, focus containment and
+  // background scroll lock while the mobile drawer is open.
+  useEffect(() => {
+    if (!isMobileDrawer) return;
+    const aside = asideRef.current;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const focusables = () => Array.from(
+      aside ? aside.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])') : [],
+    ).filter(el => el.offsetParent !== null || el === document.activeElement);
+    const first = focusables()[0];
+    first?.focus();
+    document.documentElement.classList.add('cc-drawer-open');
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setMobileSidebarOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !aside) return;
+      const list = focusables();
+      if (list.length === 0) return;
+      const firstEl = list[0];
+      const lastEl = list[list.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === firstEl || !aside.contains(active))) {
+        event.preventDefault();
+        lastEl.focus();
+      } else if (!event.shiftKey && (active === lastEl || !aside.contains(active))) {
+        event.preventDefault();
+        firstEl.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.documentElement.classList.remove('cc-drawer-open');
+      previousFocus?.focus();
+    };
+  }, [isMobileDrawer, setMobileSidebarOpen]);
+
+  // Task 220 — user menu: Escape + outside-click dismissal.
+  useEffect(() => {
+    if (!userOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setUserOpen(false);
+    };
+    const onPointerDown = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) setUserOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('mousedown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('mousedown', onPointerDown);
+    };
+  }, [userOpen]);
 
   const groups = MVP_NAV.reduce<Record<string, typeof MVP_NAV>>((acc, item) => {
     (acc[item.group] ||= []).push(item);
@@ -69,16 +139,26 @@ export function Sidebar() {
         aria-hidden
       />
 
+      {/* Task 220 — at <md the sidebar is a fixed overlay drawer (role=dialog)
+          that never squeezes the workspace; at >=md it is the in-flow sidebar
+          with the existing collapse behavior. */}
       <motion.aside
+  ref={asideRef}
+  id="sidebar-drawer"
+  role={isMobileDrawer ? 'dialog' : undefined}
+  aria-modal={isMobileDrawer ? true : undefined}
+  aria-label={isMobileDrawer ? 'Navigation' : undefined}
   data-tour="sidebar"
   initial={{ x: -32, opacity: 0 }}
   animate={{ x: 0, opacity: 1 }}
   transition={{ type: 'spring', stiffness: 220, damping: 28 }}
   className={cn(
-  'relative z-50 flex shrink-0 flex-col border-r transition-[width,transform,background-color] duration-300 ease-out overflow-hidden',
+  'z-50 flex flex-col border-r transition-[width,transform,background-color] duration-300 ease-out overflow-hidden',
+  'md:relative md:shrink-0',
+  'max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[var(--sidebar-w)] max-md:max-w-[85vw]',
   theme === 'light' ? 'bg-white text-slate-900 border-slate-200' : 'bg-black text-white border-slate-800',
-  sidebarCollapsed ? 'w-[var(--sidebar-w-collapsed)]' : 'w-[var(--sidebar-w)]',
-  !mobileSidebarOpen && 'max-md:w-0 max-md:border-none max-md:-translate-x-full'
+  sidebarCollapsed ? 'md:w-[var(--sidebar-w-collapsed)]' : 'md:w-[var(--sidebar-w)]',
+  !mobileSidebarOpen && 'max-md:hidden'
 )}
 >
         {/* Ambient drifting orbs — makes the glass actually feel glassy */}
@@ -86,8 +166,8 @@ export function Sidebar() {
           aria-hidden
           className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full blur-3xl opacity-40"
           style={{ background: 'radial-gradient(circle, hsl(var(--glass-surface-border) / 0.20), transparent 70%)' }}
-          animate={{ x: [0, 40, 0], y: [0, 30, 0] }}
-          transition={{ duration: 16, repeat: Infinity, ease: 'easeInOut' }}
+          animate={reduceMotion ? undefined : { x: [0, 40, 0], y: [0, 30, 0] }}
+          transition={reduceMotion ? { duration: 0 } : { duration: 16, repeat: Infinity, ease: 'easeInOut' }}
         />
         <motion.div
           aria-hidden
@@ -126,11 +206,17 @@ export function Sidebar() {
           </div>
 
           <div className={cn('flex items-center gap-1 pr-[38px] md:pr-[30px]', sidebarCollapsed && 'md:hidden')}>
+            {/* Task 220 — the visual pill stays 22×42, but the hit area is a
+                full 40px row so the control is usable on touch devices. */}
             <button
+              type="button"
               onClick={toggleTheme}
-              className="relative h-[22px] w-[42px] rounded-full border border-border-md bg-bg-4 transition-colors"
-              aria-label="Toggle theme"
+              role="switch"
+              aria-checked={theme === 'dark'}
+              className="relative flex h-10 w-[52px] items-center justify-center"
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
             >
+              <span className="relative block h-[22px] w-[42px] rounded-full border border-border-md bg-bg-4 transition-colors">
               <motion.span
                 layout
                 transition={{ type: 'spring', stiffness: 500, damping: 32 }}
@@ -145,6 +231,7 @@ export function Sidebar() {
                   ? <Moon className="h-2 w-2" style={{ color: 'hsl(var(--sidebar-bg))' }} />
                   : <Sun className="h-2 w-2" style={{ color: 'hsl(var(--sidebar-bg))' }} />}
               </motion.span>
+              </span>
             </button>
             <button
   type="button"
@@ -305,8 +392,9 @@ export function Sidebar() {
   )}
 </AnimatePresence>
         
-        {/* User panel — real auth data */}
-        <div className={cn('relative z-[1] shrink-0 border-t border-border p-2.5', sidebarCollapsed && 'md:flex md:justify-center')}>
+        {/* User panel — real auth data. Task 220: proper menu semantics +
+            Escape/outside-click dismissal (effect above). */}
+        <div ref={userMenuRef} className={cn('relative z-[1] shrink-0 border-t border-border p-2.5', sidebarCollapsed && 'md:flex md:justify-center')}>
           <AnimatePresence>
             {userOpen && !sidebarCollapsed && (
               <motion.div
@@ -314,6 +402,9 @@ export function Sidebar() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 8, scale: 0.98 }}
                 transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                id="sidebar-user-menu"
+                role="menu"
+                aria-label="Account"
                 className="glass-card-soft absolute bottom-[calc(100%+6px)] left-2.5 right-2.5 z-[200] overflow-hidden rounded-xl shadow-elegant"
               >
                 <DDItem icon={Settings} label="Account Settings" onClick={() => { navigate('/dashboard/settings/profile'); setUserOpen(false); }} />
@@ -326,9 +417,13 @@ export function Sidebar() {
             )}
           </AnimatePresence>
           <motion.button
+            type="button"
             whileHover={{ scale: 1.015 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setUserOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={userOpen}
+            aria-controls="sidebar-user-menu"
             className={cn(
               'glass-row flex w-full items-center gap-2.5 rounded-md p-2',
               sidebarCollapsed && 'md:w-[42px] md:justify-center md:rounded-full md:p-1.5',

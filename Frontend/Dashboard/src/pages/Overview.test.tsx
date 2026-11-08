@@ -140,9 +140,13 @@ describe("Task 216 Command Center", () => {
   });
 
   it("failed API response shows recovery and no fabricated disconnected store", async () => {
+    // Task 220 — a plain network-level failure classifies as "network": the
+    // classified merchant-facing message plus a retry, and no fabricated
+    // disconnected-store state.
     vi.spyOn(api, "get").mockRejectedValue(new Error("unavailable"));
     render(<MemoryRouter><Overview /></MemoryRouter>);
-    expect(await screen.findByRole("alert")).toHaveTextContent("operational briefing is unavailable");
+    expect(await screen.findByRole("alert")).toHaveTextContent("The briefing could not be reached");
+    expect(screen.getByRole("alert")).toHaveTextContent("A connection problem stopped this request");
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });

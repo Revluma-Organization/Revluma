@@ -4,7 +4,6 @@ import { api } from "@/lib/api";
 import {
   type BusinessHealthContract,
   type BusinessIndicator,
-  type BusinessStatus,
   BUSINESS_STATUS_LABEL,
   BUSINESS_STATUS_TONE,
   DATA_QUALITY_LABEL,
@@ -12,6 +11,12 @@ import {
   CATEGORY_LABEL,
   isValidBusinessHealth,
 } from "@/lib/businessHealth";
+import {
+  COMMAND_CENTER_TIMEOUT_MS,
+  classifyCommandCenterFailure,
+  createTimedAbortController,
+  type CommandCenterFailure,
+} from "@/lib/commandCenterError";
 import { BrainCircuit, ChevronDown, ChevronRight, CircleHelp, Info } from "lucide-react";
 
 const money = (value: number, currency = "USD") => {
@@ -30,6 +35,22 @@ const INTEGRATION_STATE_LABEL: Record<string, string> = {
   authorization_revoked: "Authorization revoked",
   unsupported: "Unsupported",
   unknown: "Not verified",
+};
+
+// Task 220 — closed, section-scoped phrases for the failure box. No backend
+// text is interpolated; the kind comes from the shared classifier.
+const KIND_PHRASE: Record<CommandCenterFailure["kind"], string> = {
+  network: "A connection problem stopped the request. This is temporary in most cases.",
+  timeout: "The request was cancelled after 30 seconds. Nothing is shown rather than an incomplete answer.",
+  bad_request: "The server rejected the request.",
+  unauthorized: "Sign in again to view this section.",
+  forbidden: "Your role cannot view this section.",
+  not_found: "This store has no business health data.",
+  conflict: "Another operation is in progress. Try again in a moment.",
+  rate_limited: "The server asked us to slow down. Retry shortly.",
+  server_error: "A server error interrupted the request. This is temporary in most cases.",
+  service_unavailable: "A supporting service is not answering right now.",
+  invalid_contract: "The response did not match the expected contract, so nothing is displayed rather than a wrong answer.",
 };
 
 function indicatorValueText(ind: BusinessIndicator): string {
@@ -65,9 +86,9 @@ function IndicatorCard({ ind, onInvestigate }: { ind: BusinessIndicator; onInves
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-[#69758b] dark:text-[#a5b7d1]">{CATEGORY_LABEL[ind.category]}</p>
-          <div className="mt-1 flex items-baseline gap-2">
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span className="break-words text-lg font-extrabold tracking-tight text-[#0b1426] dark:text-[#f3f7ff]">{indicatorValueText(ind)}</span>
-            {change && <span className="whitespace-nowrap text-[11px] font-semibold text-[#8190a4] dark:text-[#a5b7d1]">{change.text}</span>}
+            {change && <span className="text-[11px] font-semibold text-[#8190a4] dark:text-[#a5b7d1]">{change.text}</span>}
           </div>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${tone.badge}`}>{BUSINESS_STATUS_LABEL[ind.status]}</span>
@@ -88,10 +109,11 @@ function IndicatorCard({ ind, onInvestigate }: { ind: BusinessIndicator; onInves
         </dl>
       )}
       {ind.category === "checkouts" && typeof ind.conversion_rate === "number" && (
-        <p className="mt-2 text-[10px] text-[#8190a4] dark:text-[#a5b7d1]">Conversion <span className="font-semibold text-[#5c6b81] dark:text-[#cbd7eb]">{ind.conversion_rate}%</span> (only with a valid denominator)</p>
+        <p className="mt-2 text-[10px] text-[#8190a4] dark:text-[#8a97ab]">Conversion <span className="font-semibold text-[#5c6b81] dark:text-[#cbd7eb]">{ind.conversion_rate}%</span> (only with a valid denominator)</p>
       )}
 
-      <button type="button" onClick={() => setExpanded(e => !e)} className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold text-[#0868ed] dark:text-[#86b5ff]">
+      {/* Task 220 — usable touch target (min 40px). */}
+      <button type="button" onClick={() => setExpanded(e => !e)} aria-expanded={expanded} className="mt-3 inline-flex min-h-10 items-center gap-1 text-[11px] font-bold text-[#0868ed] dark:text-[#86b5ff]">
         {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />} {expanded ? "Hide details" : "Details"}
       </button>
 
@@ -116,16 +138,18 @@ export default function BusinessHealthPanel({ storeId, storeDomain, canInvestiga
   const navigate = useNavigate();
   const [contract, setContract] = useState<BusinessHealthContract | null>(null);
   const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<CommandCenterFailure | null>(null);
+  // Task 220 — retry increments this; the effect re-runs the same request.
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    let active = true;
-    if (!storeId) { setContract(null); setLoading(false); return; }
+    if (!storeId) { setContract(null); setFailure(null); setLoading(false); return; }
+    const { controller, clear, timedOut } = createTimedAbortController(COMMAND_CENTER_TIMEOUT_MS);
     setLoading(true);
-    setFailed(false);
-    api.get<{ success?: boolean; data?: unknown }>(`/stores/${storeId}/business-health`)
+    setFailure(null);
+    api.get<{ success?: boolean; data?: unknown }>(`/stores/${storeId}/business-health`, undefined, { signal: controller.signal })
       .then(res => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         // Fail-closed: only a response matching the closed contract is
         // rendered; anything else is an honest "unavailable" state.
         // api.get resolves to ApiResponse<T> = { data: T, status, ok }; the
@@ -135,15 +159,29 @@ export default function BusinessHealthPanel({ storeId, storeDomain, canInvestiga
         const data = ok ? (body as { data?: unknown }).data : null;
         if (isValidBusinessHealth(data)) {
           setContract(data);
+          setFailure(null);
         } else {
           setContract(null);
-          setFailed(true);
+          setFailure({ kind: "invalid_contract", retryAfterSeconds: null, backendMessage: null });
         }
       })
-      .catch(() => { if (active) setFailed(true); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [storeId]);
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted && !timedOut()) return; // superseded/unmount
+        // api.ts converts aborted fetches to ApiError(0); the timedOut flag
+        // tells the timer abort (a real timeout) from a supersede abort.
+        const classified = timedOut()
+          ? { kind: "timeout" as const, retryAfterSeconds: null, backendMessage: null }
+          : classifyCommandCenterFailure(reason);
+        setFailure(classified);
+      })
+      .finally(() => {
+        clear();
+        if (!controller.signal.aborted || timedOut()) setLoading(false);
+      });
+    // Task 220 — cancel the in-flight request on unmount/store change; a
+    // late response can never land on a different store's UI.
+    return () => { clear(); controller.abort(); };
+  }, [storeId, reload]);
 
   if (!storeId) return null;
 
@@ -164,25 +202,33 @@ export default function BusinessHealthPanel({ storeId, storeDomain, canInvestiga
           </p>
         </div>
         {canInvestigate && (
-          <button type="button" onClick={() => navigate("/dashboard/rev-intell")} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0868ed] dark:text-[#86b5ff]">
+          <button type="button" onClick={() => navigate("/dashboard/rev-intell")} className="inline-flex min-h-10 items-center gap-1.5 px-1 text-xs font-bold text-[#0868ed] dark:text-[#86b5ff]">
             <BrainCircuit className="h-4 w-4" /> Investigate with Rev
           </button>
         )}
       </div>
 
       {loading && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div aria-label="Loading business health" role="status" className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-40 animate-pulse rounded-xl bg-[#f1f4f8] dark:bg-[#1b1b1b]" />)}
         </div>
       )}
 
-      {!loading && failed && (
-        <div className="mt-4 flex items-center gap-2 rounded-xl border border-[#e7ebf2] bg-[#f8faff] p-4 text-xs text-[#5c6b81] dark:border-[#333] dark:bg-[#1b1b1b] dark:text-[#a5b7d1]">
-          <CircleHelp className="h-4 w-4 shrink-0" /> Business health is unavailable right now. This does not change your store's connection status.
+      {!loading && failure && (
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-[#e7ebf2] bg-[#f8faff] p-4 text-xs text-[#5c6b81] dark:border-[#333] dark:bg-[#1b1b1b] dark:text-[#a5b7d1] sm:flex-row sm:items-center sm:justify-between" role="alert">
+          <div className="flex min-w-0 items-start gap-2">
+            <CircleHelp className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-semibold">Business health is unavailable right now. This does not change your store's connection status.</p>
+              <p className="mt-1 leading-5">{KIND_PHRASE[failure.kind]}</p>
+            </div>
+          </div>
+          {/* Task 220 — resource-scoped retry: re-requests only this section. */}
+          <button type="button" onClick={() => setReload(r => r + 1)} className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg border border-current px-3 font-semibold">Retry</button>
         </div>
       )}
 
-      {!loading && !failed && contract && (
+      {!loading && !failure && contract && (
         <>
           <p className="mt-3 text-xs leading-5 text-[#5c6b81] dark:text-[#a5b7d1]">{contract.business_status_explanation}</p>
           {contract.affected_indicators_note && contract.affected_indicators_note.length > 0 && (

@@ -94,9 +94,11 @@ export function DashboardLayout() {
   }, [pathname, startTour]);
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-bg">
+    // Task 220 — app-h tracks mobile dynamic toolbars (100dvh); cc-scroll
+    // lets the mobile drawer lock background scroll while open.
+    <div className="app-h flex w-full overflow-hidden bg-bg">
       <Sidebar />
-      <main className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-bg">
+      <main className="cc-scroll flex flex-1 flex-col overflow-y-auto overflow-x-hidden bg-bg">
         <Topbar section={SECTION_TITLES[basePath] ?? "Overview"} />
         <div className="px-4 py-5 sm:px-6 sm:py-6">
           <AnimatePresence mode="wait">
