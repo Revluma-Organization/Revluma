@@ -222,6 +222,7 @@ tables).
   tests in `Overview.test.tsx`; its refresh assertion stays tightened to its own
   endpoint and all of Task 216's and Task 217's assertions are unchanged.
 
-Status: **IMPLEMENTED LOCALLY — NOT PRODUCTION VERIFIED**. Production acceptance
-(deployed revision, authenticated active-store read of both endpoints, browser check on
-the live store) is recorded separately in the validation report.
+Status: **IMPLEMENTED, CI VERIFIED AND MERGED — PRODUCTION ACCEPTANCE PENDING**
+(merged to main as `9e2cca4` via PR #370, all 7 required checks passed). Production
+acceptance (deployed revision, authenticated active-store read of both endpoints,
+browser check on the live store) is recorded separately in the validation report.
