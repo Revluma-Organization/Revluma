@@ -7,8 +7,8 @@ import { useState, useEffect } from 'react';
 import { WorkspaceSelection } from '../WorkspaceSelection';
 import { cn } from '@/lib/utils';
 
-export function Topbar({ section = 'Overview' }: { section?: string }) {
-  const { mobileSidebarOpen, setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, startTour } = useUI();
+export function Topbar({ section = 'Overview', lightWorkspace = false }: { section?: string; lightWorkspace?: boolean }) {
+  const { setMobileSidebarOpen, setCmdOpen, setNotifOpen, notifOpen, startTour } = useUI();
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -20,20 +20,16 @@ export function Topbar({ section = 'Overview' }: { section?: string }) {
   const hasUnread = unreadCount !== null && unreadCount > 0;
 
   return (
-    <header className="sticky top-0 z-40 flex h-[var(--topbar-h)] shrink-0 items-center justify-between border-b border-border bg-bg px-4 sm:px-6">
+    <header className={`sticky top-0 z-40 flex h-[var(--topbar-h)] shrink-0 items-center justify-between border-b px-4 sm:px-6 ${lightWorkspace ? "border-[#dfe4ec] bg-white text-[#172033] [&_.text-t1]:text-[#172033] [&_.text-t2]:text-[#475467] [&_.text-t3]:text-[#667085] [&_.text-t4]:text-[#667085] [&_.border-border]:border-[#dfe4ec] [&_.bg-bg-3]:bg-[#f5f6f8]" : "border-border bg-bg"}`}>
       
       {/* Left Side: Breadcrumbs & Mobile Menu */}
       <div className="flex items-center gap-3.5">
-        {/* Task 220 — exposes drawer state to assistive tech; >=40px hit target. */}
         <button
-          type="button"
           onClick={() => setMobileSidebarOpen(true)}
-          className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-glass/[0.035] md:hidden"
-          aria-label={mobileSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
-          aria-expanded={mobileSidebarOpen}
-          aria-controls="sidebar-drawer"
+          className="flex h-[34px] w-[34px] items-center justify-center rounded-md border border-border bg-glass/[0.035] md:hidden"
+          aria-label="Open menu"
         >
-          <Menu className="h-5 w-5 text-t1" />
+          <Menu className="h-4 w-4 text-t1" />
         </button>
         <nav data-tour="topbar-breadcrumb" className="flex items-center gap-1.5" aria-label="Breadcrumb">
           <Link to="/dashboard/overview" className="text-[0.76rem] text-t3 hover:text-t1 transition-colors">Dashboard</Link>

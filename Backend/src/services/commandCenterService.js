@@ -182,6 +182,13 @@ function resourceEvidence(states, domainRows) {
   }));
 }
 
+function buildOperationalActivity(stores, findings) {
+  return [
+    ...stores.filter(store => store.sync_completed_at).map(store => ({ id: `sync-${store.id}-${iso(store.sync_completed_at)}`, kind: 'system', type: 'synchronization_completed', label: 'Shopify synchronization completed', store_id: store.id, occurred_at: iso(store.sync_completed_at), note: 'System activity; not a merchant action or business event.' })),
+    ...findings.slice(0, 4).map(finding => ({ id: `finding-${finding.id}`, kind: 'business', type: finding.type, finding_id: finding.id, label: finding.title, store_id: finding.store_id, occurred_at: iso(finding.detected_at), note: 'Verified intelligence finding; not a claimed merchant action.' })),
+  ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()).slice(0, 8);
+}
+
 async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
   const [snapshot, states, rawFindings, stores] = await Promise.all([
     prisma.business_states.findFirst({ where: { organization_id: organizationId, is_current: true } }),
@@ -238,10 +245,7 @@ async function getCommandCenter({ prisma, organizationId, now = new Date() }) {
       reason: priority.candidates.length ? null : rawFindings.length ? 'No open finding currently satisfies validity, evidence, freshness and coverage requirements.' : 'No open verified findings are recorded; this does not establish that no business problem exists.',
     },
     findings: presentedFindings,
-    activity: [
-      ...stores.filter(store => store.sync_completed_at).map(store => ({ id: `sync-${store.id}-${iso(store.sync_completed_at)}`, kind: 'system', type: 'synchronization_completed', label: 'Shopify synchronization completed', store_id: store.id, occurred_at: iso(store.sync_completed_at), note: 'System activity; not a merchant action or business event.' })),
-      ...findings.slice(0, 4).map(finding => ({ id: `finding-${finding.id}`, kind: 'business', type: finding.type, label: finding.title, store_id: finding.store_id, occurred_at: iso(finding.detected_at), note: 'Verified intelligence finding; not a claimed merchant action.' })),
-    ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()).slice(0, 8),
+    activity: buildOperationalActivity(stores, findings),
     evidence: {
       overall: status,
       snapshot_generated_at: iso(snapshot?.generated_at),

@@ -63,7 +63,7 @@ export type CommandCenterData = {
   priority_selection: { method_version: "finding-priority-v1"; eligible_count: number;
     tie: Finding["priority"]["tie"]; exclusions: { finding_id: string; title: string; reason: string }[];
     no_defensible_priority: boolean; reason: string | null };
-  activity: { id: string; kind: "system" | "business"; type: string; label: string; occurred_at: string; note: string }[];
+  activity: { id: string; kind: "system" | "business"; type: string; label: string; occurred_at: string; note: string; finding_id?: string }[];
   evidence: {
     overall: string; snapshot_generated_at: string | null; source_data_at: string | null;
     last_successful_sync_at: string | null; resources: EvidenceResource[];

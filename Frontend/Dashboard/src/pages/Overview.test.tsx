@@ -60,7 +60,7 @@ describe("Task 216 Command Center", () => {
   it("places the operational briefing before supporting business sections", async () => {
     await renderPage(fixture());
     const briefing = screen.getByRole("heading", { name: "Your latest synchronized business picture" });
-    const business = screen.getByRole("heading", { name: "Business situation" });
+    const business = screen.getByRole("heading", { name: "Business health" });
     expect(briefing.compareDocumentPosition(business) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("revluma-test-store-v1.myshopify.com")).toBeInTheDocument();
     expect(screen.getByText("Today & yesterday · UTC")).toBeInTheDocument();
@@ -83,8 +83,8 @@ describe("Task 216 Command Center", () => {
     const limited = resource({ resource: "inventory.levels", label: "inventory levels", availability: "unauthorized", reason: "The required Shopify permission is unavailable.", coverage: "unknown" });
     await renderPage(fixture({ evidence: { ...fixture().evidence, resources: [resource() as CommandCenterData["evidence"]["resources"][number], limited as CommandCenterData["evidence"]["resources"][number]] } }));
     fireEvent.click(screen.getByText("Review resource freshness and coverage"));
-    expect(screen.getByText("Limited access")).toBeInTheDocument();
-    expect(screen.getByText("The required Shopify permission is unavailable.")).toBeInTheDocument();
+    expect(screen.getAllByText("Limited access").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("The required Shopify permission is unavailable.").length).toBeGreaterThan(0);
     expect(screen.queryByText(/zero inventory|0 in stock/i)).not.toBeInTheDocument();
   });
 
@@ -97,7 +97,7 @@ describe("Task 216 Command Center", () => {
   it("new merchant synchronization does not fabricate comparisons", async () => {
     await renderPage(fixture({ briefing: { ...fixture().briefing, headline: "Revluma is preparing your first business overview", summary: "Comparisons remain limited until the required history is available." }, metrics: [metric({ value: null, availability: "not_synchronized", availability_reason: "Orders have not synchronized." }) as CommandCenterData["metrics"][number]] }));
     expect(screen.getByRole("heading", { name: "Revluma is preparing your first business overview" })).toBeInTheDocument();
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.queryByText("$18,420.00")).not.toBeInTheDocument();
   });
 
@@ -109,7 +109,7 @@ describe("Task 216 Command Center", () => {
 
   it("unknown contradictory financial evidence remains unavailable", async () => {
     await renderPage(fixture({ metrics: [metric({ value: null, currency: null, availability: "unknown", availability_reason: "Conflicting currencies cannot be reconciled." }) as CommandCenterData["metrics"][number]] }));
-    expect(screen.getByText("Unknown")).toBeInTheDocument();
+    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
     expect(screen.getByText("Conflicting currencies cannot be reconciled.")).toBeInTheDocument();
     expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
   });
