@@ -60,7 +60,7 @@ function classifyShopifyError(error) {
   const code = String(error?.code || error?.networkCode || '').toUpperCase();
   const status = Number(error?.status || error?.providerStatus || error?.response?.status || 0);
   if (/EXPIRED/.test(code)) return 'AUTHORIZATION_EXPIRED';
-  if (status === 401 || /TOKEN_INVALID|UNAUTHORIZED|ACCESS_TOKEN_MISSING/.test(code)) return 'AUTHORIZATION_REQUIRED';
+  if (status === 401 || /TOKEN_INVALID|UNAUTHORIZED|ACCESS_TOKEN_MISSING|CREDENTIAL_UNUSABLE|ENCRYPTION_FORMAT_UNKNOWN/.test(code)) return 'AUTHORIZATION_REQUIRED';
   if (status === 403 || /ACCESS_DENIED|PERMISSION|SCOPE|NOT_GRANTED/.test(code)) return 'PERMISSIONS_MISSING';
   if (status === 429 || /THROTTLED|RATE_LIMIT/.test(code)) return 'PROVIDER_THROTTLED';
   if (status >= 500 || /ETIMEDOUT|ECONNRESET|ECONNABORTED|EAI_AGAIN|HTTP_ERROR|UNAVAILABLE/.test(code)) return 'PROVIDER_UNAVAILABLE';

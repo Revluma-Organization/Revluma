@@ -14,8 +14,19 @@ function safeGraphqlErrors(errors) {
 }
 
 function accessToken(store) {
-  if (!store?.access_token) throw new Error('shopify_access_token_missing');
-  return decrypt(store.access_token);
+  if (!store?.access_token) {
+    throw Object.assign(new Error('Shopify access token is missing'), { code: 'SHOPIFY_ACCESS_TOKEN_MISSING' });
+  }
+  try {
+    return decrypt(store.access_token);
+  } catch {
+    // Credential/decryption failures are local authorization failures, not
+    // Shopify HTTP outages. Never retry them or expose cryptographic details.
+    throw Object.assign(new Error('Shopify credential is unusable; merchant reauthorization is required'), {
+      code: 'SHOPIFY_CREDENTIAL_UNUSABLE',
+      retryable: false,
+    });
+  }
 }
 
 function retryDelay(cause, attempt) {
@@ -35,6 +46,7 @@ function throttled(errors) {
 
 async function shopifyGraphql(store, query, variables = {}) {
   const apiVersion = getShopifyApiVersion();
+  const token = accessToken(store);
   let lastError;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     let response;
@@ -44,7 +56,7 @@ async function shopifyGraphql(store, query, variables = {}) {
         { query, variables },
         {
           headers: {
-            'X-Shopify-Access-Token': accessToken(store),
+            'X-Shopify-Access-Token': token,
             'Content-Type': 'application/json',
           },
           timeout: 30000,
