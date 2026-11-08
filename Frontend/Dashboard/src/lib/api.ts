@@ -31,12 +31,15 @@ export interface ApiResponse<T = unknown> {
 export class ApiError extends Error {
   status: number;
   body: unknown;
+  /** Raw Retry-After header (delta-seconds or HTTP-date), when the server sent one. */
+  retryAfter: string | null;
 
   constructor(status: number, message: string, body?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
+    this.retryAfter = null;
   }
 }
 
@@ -281,11 +284,15 @@ async function request<T>(
       ? errorBody.errors.map((item) => typeof item === "string" ? item : item?.msg || item?.message).find(Boolean)
       : undefined;
     const safeMessage = errorBody?.error || errorBody?.message || firstValidationError;
-    throw new ApiError(
+    const apiError = new ApiError(
       response.status,
       safeMessage || `Request failed (${response.status}). Please try again.`,
       data,
     );
+    // Task 220 — surface rate-limit / service retry guidance so the UI can
+    // honor it (disabled retry + countdown) instead of inviting a loop.
+    apiError.retryAfter = response.headers.get("retry-after");
+    throw apiError;
   }
 
   return { data, status: response.status, ok: response.ok };

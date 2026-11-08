@@ -83,6 +83,31 @@ Task 217 consolidates original Tasks 270–274 without starting Task 218. Its [d
 
 Task 214 consolidates original Tasks 257–261 without starting Task 215. Its [implementation](implementation/TASK-214-INTEGRATION-RECOVERY.md), [diagnostic contract](diagnostics/TASK-214-integration-recovery-diagnostics.md) and [validation](validation/TASK-214-INTEGRATION-RECOVERY.md) cover deterministic lifecycle, independent registration/delivery evidence, required-resource sync, secure reconnect and shared truthful capability. Local evidence is green; CI, exact deployed revisions and authenticated active-store acceptance remain separate and pending.
 
+## 2026-11-08 Task 220
+
+User-assigned Task 220 (Tasks 286–290: mobile navigation and responsive drawer; responsive layouts
+320–1920; Command Center loading/error/partial/stale; performance and observability; documentation).
+Its [diagnostics](diagnostics/TASK-220-command-center-responsive-runtime-states-diagnostics.md),
+[implementation](implementation/TASK-220-COMMAND-CENTER-RESPONSIVE-RUNTIME-STATES.md) and
+[validation](validation/TASK-220-COMMAND-CENTER-RESPONSIVE-RUNTIME-STATES.md) make the Command Center
+fail-closed and honest across every width and runtime state, frontend-only (no backend change): one
+closed 11-kind failure classifier (`lib/commandCenterError.ts`) with retry only where appropriate
+(`not_found` → guidance, `unauthorized` → session copy, `rate_limited` → a real `Retry-After`
+countdown, no auto-retry loop); a 30s hard timeout; stale-as-last-successful-snapshot retention with
+a real timestamp and a polite live region; per-panel retry + `AbortSignal` cancellation on
+unmount/store change (fixing a cleanup that never aborted); a mobile drawer that overlays (not
+crushes) the content and is a real accessible dialog (focus, Escape, scroll lock) below 768;
+`100dvh`, global `:focus-visible`, and `prefers-reduced-motion` support. Three further defects found
+during implementation are recorded in the diagnostics (F-17 a negative `Retry-After` read as "retry
+now"; F-18 the Operational History panel never aborted its in-flight request; F-19 jest-dom matchers
+untyped for vitest). Local evidence (tree on `d9150d6`): 110 new frontend tests (7 files) with a
+≥100-row scenario-to-test mapping, full suite 737/737, `tsc` project error count 29 (all
+pre-existing, none in touched files; the jest-dom typing fix took it from 749), production build
+green. No browser/production access in this environment, so the 9-width device matrix is executed on
+Vitest + jsdom for the JS-driven behavior + a CSS-contract audit, and the pixel-level checks are a
+production-acceptance checklist. Decision: REV-DEC-0027. Local evidence is green; CI, exact deployed
+revisions and authenticated active-store/browser acceptance at each width remain separate and pending.
+
 ## 2026-11-08 Task 218
 
 User-assigned Task 218 (business health indicators + operational activity; distinct from the older backlog line 218 consolidated into Task 205). Its [implementation](implementation/TASK-218-BUSINESS-HEALTH-INDICATORS-OPERATIONAL-ACTIVITY.md), [diagnostics](diagnostics/TASK-218-business-health-operational-activity-diagnostics.md) and [validation](validation/TASK-218-BUSINESS-HEALTH-INDICATORS-OPERATIONAL-ACTIVITY.md) cover two read-only versioned contracts — `rev-business-health-v1` (five indicators; business severity asserted only on complete canonical-domain coverage; absent ≠ zero; frozen documented thresholds; currency-verified money) and `rev-operational-activity-v1` (bounded 14-day, deduplicated, cursor-paginated projection of findings/lifecycle/sync outcomes; closed-code detail only) — composed as two store-scoped sections into the Task 216 Command Center as now layered by Task 217 (Business health between Business situation and Priority findings; Operational history after the activity/evidence grid; both bound to the briefing's primary store; fail-closed contract guards; no fabricated interactivity). Local evidence (final tree rebased onto `4ac2a33`): 94/94 new backend tests, full backend run 105/105 (the `task215SyncProgressApi` test 7 failure seen on intermediate rebases was a pre-existing test bug, fixed upstream by Task 217's #371), Dashboard TypeScript clean, 627/627 tests across 43 files, production build green. Decision: REV-DEC-0026. Local evidence is green; CI, exact deployed revisions and authenticated active-store acceptance remain separate and pending.

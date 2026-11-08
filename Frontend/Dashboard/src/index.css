@@ -313,3 +313,46 @@
   20% { transform: rotate(-8deg); }
 }
 .wave-emoji { display:inline-block; transform-origin: 70% 70%; animation: wave 2.4s ease-in-out infinite; }
+
+/* ──────────────────────────────────────────────
+   Task 220 — accessibility and runtime-state globals
+   ────────────────────────────────────────────── */
+
+/* F-6 — one global keyboard focus ring that survives the glass surfaces. */
+:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+::selection {
+  background: hsl(var(--accent) / 0.3);
+}
+
+/* F-8 — full-height layout that tracks mobile dynamic toolbars (100dvh with
+   a 100vh fallback). Used on the dashboard shell root. */
+.app-h { height: 100vh; }
+@supports (height: 100dvh) {
+  .app-h { height: 100dvh; }
+}
+
+/* Task 220 — while the mobile navigation drawer is open, lock background
+   scroll (the drawer is an overlay, so the workspace must not scroll under
+   it). The class is toggled on <html> by the Sidebar effect. */
+@media (max-width: 767px) {
+  html.cc-drawer-open body,
+  html.cc-drawer-open { overflow: hidden; }
+  html.cc-drawer-open .cc-scroll { overflow: hidden !important; }
+}
+
+/* F-7 — respect prefers-reduced-motion for CSS-driven animation.
+   framer-motion is covered separately by <MotionConfig reducedMotion="user">. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -24,7 +24,11 @@ const availabilityLabel: Record<string, string> = {
   unsupported: "Unsupported", retrieval_failed: "Retrieval failed",
 };
 
-export function CommandCenterHeader({ data, refreshing, onRefresh }: { data: CommandCenterData | null; refreshing: boolean; onRefresh: () => void }) {
+export function CommandCenterHeader({ data, refreshing, lastSuccessfulAt, onRefresh }: { data: CommandCenterData | null; refreshing: boolean; lastSuccessfulAt: string | null; onRefresh: () => void }) {
+  // Task 220 — while a background refresh is in flight, the snapshot chip
+  // says so explicitly; the displayed data is the last successful snapshot,
+  // never a guess.
+  const snapshotChip = data?.business_state.generated_at ? relative(data.business_state.generated_at) : null;
   return <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
     <div className="min-w-0">
       <h1 className="text-[1.75rem] font-bold tracking-[-0.035em] text-[#0f172a] dark:text-[#f3f7ff]">Command Center</h1>
@@ -32,7 +36,15 @@ export function CommandCenterHeader({ data, refreshing, onRefresh }: { data: Com
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#475569] dark:text-[#bdc9da]">
         <span className="inline-flex min-w-0 items-center gap-1.5 font-semibold"><Store className="h-3.5 w-3.5 shrink-0 text-[#64748b]" /><span className="break-all">{data?.context.store?.name || "No Shopify store selected"}</span></span>
         <span>Today & yesterday · UTC</span>
-        {data?.business_state.generated_at && <span title={dateTime(data.business_state.generated_at)}>Snapshot {relative(data.business_state.generated_at)}</span>}
+        {snapshotChip && (
+          <span className="inline-flex min-w-0 items-center gap-1.5" title={lastSuccessfulAt ? `Last successful refresh ${dateTime(lastSuccessfulAt)}` : undefined}>
+            Snapshot {snapshotChip}
+            {refreshing && <span className="inline-flex items-center gap-1 rounded-full bg-[#eef4ff] px-2 py-0.5 font-semibold text-[#0868ed] dark:bg-[#12233b] dark:text-[#86b5ff]" aria-label="Refreshing">
+              <RefreshCw className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />refreshing
+            </span>}
+          </span>
+        )}
+        {!data && refreshing && <span className="inline-flex items-center gap-1 font-semibold"><RefreshCw className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />Loading briefing…</span>}
       </div>
     </div>
     <button type="button" onClick={onRefresh} disabled={refreshing} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#cbd5e1] bg-white px-3.5 text-xs font-semibold text-[#334155] hover:bg-[#f8fafc] disabled:opacity-60 dark:border-[#3b3b3b] dark:bg-[#171717] dark:text-[#d8e2ef] dark:hover:bg-[#222]">
@@ -78,7 +90,7 @@ export function BusinessOverview({ data }: { data: CommandCenterData }) {
       <h2 id="business-situation-heading" className="text-sm font-bold">Business situation</h2>
       <p className={`mt-1 text-xs ${muted}`}>Current and previous UTC day · {data.context.currency || "Currency not verified"} · Snapshot {relative(data.business_state.generated_at)}</p>
     </div>
-    {data.metrics.length ? <dl className="grid sm:grid-cols-2 xl:grid-cols-4">{data.metrics.map(metric => <div key={metric.id} className="min-w-0 border-b border-[#edf1f5] p-5 last:border-b-0 sm:border-r xl:border-b-0 xl:last:border-r-0 dark:border-[#2c2c2c]">
+    {data.metrics.length ? <dl className="grid grid-cols-1 gap-px bg-[#edf1f5] sm:grid-cols-2 xl:grid-cols-4 dark:bg-[#2c2c2c]">{data.metrics.map(metric => <div key={metric.id} className="min-w-0 bg-white p-5 dark:bg-[#111111]">
       <dt className="text-xs font-medium text-[#475569] dark:text-[#bdc9da]">{metric.label}</dt>
       <dd className="mt-2 break-words text-2xl font-bold tracking-[-0.025em] text-[#0f172a] dark:text-white"><MetricValue metric={metric} /></dd>
       <dd className="mt-2 text-[11px] font-medium text-[#64748b] dark:text-[#a6b8d4]">{availabilityLabel[metric.availability] || "Unknown"}</dd>

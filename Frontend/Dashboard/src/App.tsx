@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
+import { MotionConfig } from 'framer-motion';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useThemeStore } from './store';
 import { useAuthStore } from './store/authStore';
@@ -49,6 +50,10 @@ function App() {
   }
 
   return (
+    // Task 220 — honor the OS reduced-motion preference for every
+    // framer-motion animation in the app (orbs, wiggles, orbit rings,
+    // page transitions) without disabling functional state changes.
+    <MotionConfig reducedMotion="user">
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <AuthSync />
@@ -99,6 +104,7 @@ function App() {
         </TooltipProvider>
       </AuthProvider>
     </QueryClientProvider>
+    </MotionConfig>
   );
 }
 
