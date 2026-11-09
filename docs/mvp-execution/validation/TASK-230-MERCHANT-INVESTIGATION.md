@@ -20,3 +20,7 @@
 ## Acceptance blockers
 
 No authenticated browser session or authorized production merchant investigation has been available. No fresh production answers, comparison periods, checkout records, operational priorities, accessibility/viewport or multi-tab acceptance are claimed. No deployment or deployed revision for Task 230 exists. Full tenant/store switch, selected-finding topic change, concurrent cross-workspace tests, production DB evidence, required scenario matrix, CI and release gates remain open. Task 228 is also unfinished and uncommitted; Task 229 PR #387 was open at inspection.
+
+## CI follow-up
+
+Draft PR #388 at commit `c69c0c6`: Dashboard suite/build, dashboard workflow, Python regressions, Prisma/bootstrap financial/security checks and Vercel preview checks passed. These checks certify that commit only, not the production journey or the outstanding Task 230 scenario matrix.
