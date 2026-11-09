@@ -318,11 +318,11 @@ Execution-history index; code/tests/deployment evidence remain authoritative for
 | 309 | Phase 4 | Verify desktop conversation layout. | NOT STARTED | — | — | — |
 | 310 | Phase 4 | Verify accessible keyboard interaction. | NOT STARTED | — | — | — |
 | 311 | Phase 4 | Verify accessible status announcements. | NOT STARTED | — | — | — |
-| 312 | Phase 4 | Verify first-time onboarding route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
-| 313 | Phase 4 | Verify Shopify authorization return route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
-| 314 | Phase 4 | Verify first briefing entry route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
-| 315 | Phase 4 | Verify finding-to-Rev navigation. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
-| 316 | Phase 4 | Verify conversation return to Command Center. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; CI/deployment/authenticated production journey pending |
+| 312 | Phase 4 | Verify first-time onboarding route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; frontend deployed; authenticated production journey pending |
+| 313 | Phase 4 | Verify Shopify authorization return route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; frontend deployed; authenticated production journey pending |
+| 314 | Phase 4 | Verify first briefing entry route. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; frontend deployed; authenticated production journey pending |
+| 315 | Phase 4 | Verify finding-to-Rev navigation. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; frontend deployed; authenticated production journey pending |
+| 316 | Phase 4 | Verify conversation return to Command Center. | PARTIALLY VERIFIED | Task 225 implementation/validation | 177 new scenarios; frontend deployed; authenticated production journey pending |
 | 317 | Phase 4 | Verify design consistency across three workspaces. | NOT STARTED | — | — | — |
 | 318 | Phase 4 | Verify error copy uses plain language. | NOT STARTED | — | — | — |
 | 319 | Phase 4 | Verify responsive navigation. | NOT STARTED | — | — | — |
@@ -711,4 +711,4 @@ User-assigned Task 223 consolidates original Tasks 300–304 on branch `arena/1a
 
 ## Task 225 — Onboarding and cross-workspace journey
 
-Branch `arena/88b8098a-revluma`; original Tasks 312–316. Reports: [diagnostics](diagnostics/TASK-225-ONBOARDING-CROSS-WORKSPACE-JOURNEY-diagnostics.md), [implementation](implementation/TASK-225-ONBOARDING-CROSS-WORKSPACE-JOURNEY.md), [validation](validation/TASK-225-ONBOARDING-CROSS-WORKSPACE-JOURNEY.md). Decision REV-DEC-0031. Adds `rev-merchant-journey-v1` over canonical Task 213 truth, explicit multi-store onboarding/readiness, and safe finding/return navigation without changing OAuth/tenant/read-only protections. 177 new scenarios; final CI/deployed revisions and authenticated active-store acceptance are separate gates. Status PARTIALLY VERIFIED pending those gates.
+Branch `arena/88b8098a-revluma`; original Tasks 312–316. Reports: [diagnostics](diagnostics/TASK-225-ONBOARDING-CROSS-WORKSPACE-JOURNEY-diagnostics.md), [implementation](implementation/TASK-225-ONBOARDING-CROSS-WORKSPACE-JOURNEY.md), [validation](validation/TASK-225-ONBOARDING-CROSS-WORKSPACE-JOURNEY.md). Decision REV-DEC-0031. Adds `rev-merchant-journey-v1` over canonical Task 213 truth, explicit multi-store onboarding/readiness, and safe finding/return navigation without changing OAuth/tenant/read-only protections. 177 new scenarios; all final PR checks and post-merge Backend run 42583455546 passed. PR #381 merged as `1371597be8d55cb0815a1d5337fec5a5d3734541`; Vercel `dpl_DPLfVzRyfD8uJNBNghgvQ23Re3Wo` is READY/PROMOTED from that exact SHA. Production backend revision and authenticated active-store acceptance remain unverified. Status PARTIALLY VERIFIED.
