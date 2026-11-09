@@ -106,6 +106,38 @@ async function findInFlightStores(db, { limit = 20 } = {}) {
   });
 }
 
+// Bounded finder for the D4 honesty refinement: stores that the completion path
+// marked a clean `completed` even though their resource ledger has a
+// terminally-failed or partial (degraded) domain. Those must read as
+// initial_completed_with_limitations (or failed), never a bare "completed".
+// Idempotent + convergent: once a store is refined to a with-limitations status
+// it no longer matches `initial_sync_status = completed`, so it is not re-worked.
+async function findMisreportedTerminalStores(db, { limit = 20 } = {}) {
+  const cap = Math.max(1, Math.trunc(limit) || 20);
+  const withFailures = await db.store_sync_domain_states.findMany({
+    where: { status: { in: ['failed', 'degraded'] } },
+    select: { store_id: true },
+    distinct: ['store_id'],
+    orderBy: { store_id: 'asc' },
+    take: 1000,
+  });
+  const storeIds = [...new Set(withFailures.map(r => r.store_id))].slice(0, cap * 3);
+  if (storeIds.length === 0) return [];
+  return db.stores.findMany({
+    where: {
+      id: { in: storeIds },
+      platform: 'shopify',
+      // Match BOTH the legacy spelling ("completed", written by the pre-contract
+      // completion path) and the canonical one ("initial_completed", written by
+      // the reaper): a "clean completed" store regardless of how it was spelled.
+      initial_sync_status: { in: ['completed', C.SYNC_STATUS.INITIAL_COMPLETED] },
+      status: { in: ['active', 'syncing', 'error'] },
+    },
+    orderBy: { updated_at: 'asc' },
+    take: cap,
+  });
+}
+
 // Reconcile ONE store: reap stale-running domains, then drive to a terminal
 // state if the ledger now supports one. Returns an audit-friendly result.
 async function reconcileStore(db, store, rows, { now, staleMs = DEFAULT_STALE_MS } = {}) {
@@ -135,26 +167,32 @@ async function reconcileStore(db, store, rows, { now, staleMs = DEFAULT_STALE_MS
   //     and it differs from what is stored. Never regress a terminal store.
   const isTerminal = C.SYNC_TERMINAL.includes(derived.status);
   const current = result.previous_status;
+  const wasTerminal = C.SYNC_TERMINAL.includes(current);
   if (isTerminal && derived.status !== current) {
     const hasAuth = (derived.limitations || []).some(l => l.coverage === C.COVERAGE.UNAUTHORIZED);
     const data = {
       initial_sync_status: derived.status,
-      sync_completed_at: new Date(nowMs),
       current_sync_job_id: null,
       recovery_status: derived.status === C.SYNC_STATUS.FAILED ? (hasAuth ? 'required' : 'completed') : 'completed',
       sync_error_code: derived.status === C.SYNC_STATUS.FAILED ? 'INITIAL_SYNC_FAILED' : null,
     };
+    // Only stamp completion time on a FRESH transition into a terminal state. A
+    // refinement of an already-terminal store (e.g. completed -> completed with
+    // limitations) preserves the real completion timestamp, not "now".
+    if (!wasTerminal) data.sync_completed_at = new Date(nowMs);
     // Promote a stuck 'syncing' store back to 'active'; never demote.
     if (store.status === 'syncing') data.status = 'active';
     await db.stores.update({ where: { id: store.id }, data });
     result.changed = true;
+    result.refined = wasTerminal;
     result.limitations = derived.limitations || [];
   }
   return result;
 }
 
-// Scheduler entry: reconcile a bounded batch of in-flight stores.
-async function runReaper(db, { now, staleMs = DEFAULT_STALE_MS, limit = 20 } = {}) {
+// Scheduler entry: reconcile a bounded batch of in-flight stores, then a bounded
+// batch of misreported terminal stores (D4 honesty refinement).
+async function runReaper(db, { now, staleMs = DEFAULT_STALE_MS, limit = 20, refine = true } = {}) {
   const stores = await findInFlightStores(db, { limit });
   const results = [];
   let reapedTotal = 0;
@@ -170,10 +208,33 @@ async function runReaper(db, { now, staleMs = DEFAULT_STALE_MS, limit = 20 } = {
       results.push({ store_id: store.id, error: error?.code || error?.name || 'reaper_error' });
     }
   }
+
+  // Bounded, idempotent refinement of already-terminal stores that the completion
+  // path overstated (marked "completed" despite a failed/partial domain). Reuses
+  // reconcileStore: no running domains to reap, so it simply re-derives and
+  // refines the canonical status (preserving the real completion timestamp).
+  let refined = 0;
+  if (refine) {
+    const terminalStores = await findMisreportedTerminalStores(db, { limit });
+    for (const store of terminalStores) {
+      try {
+        const rows = await snapshot(store.id, db);
+        const res = await reconcileStore(db, store, rows, { now, staleMs });
+        if (res.changed) {
+          results.push(res);
+          if (res.refined) refined++;
+        }
+      } catch (error) {
+        results.push({ store_id: store.id, error: error?.code || error?.name || 'refiner_error' });
+      }
+    }
+  }
+
   return {
     considered: stores.length,
     reaped_domains: reapedTotal,
     terminalized_stores: terminalized,
+    refined_stores: refined,
     results,
   };
 }
@@ -185,6 +246,7 @@ module.exports = {
   reapStaleDomain,
   inFlightWhere,
   findInFlightStores,
+  findMisreportedTerminalStores,
   reconcileStore,
   runReaper,
 };

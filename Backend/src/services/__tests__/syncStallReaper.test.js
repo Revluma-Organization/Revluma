@@ -212,3 +212,66 @@ test('inFlightWhere: only selects in-flight shopify stores', () => {
   assert.deepEqual(w.initial_sync_status.in, ['queued', 'starting', 'running']);
   assert.ok(w.status.in.includes('syncing'));
 });
+
+// ===========================================================================
+// D4 honesty refinement: an already-terminal "completed" store that has a
+// terminally-failed/partial domain must read as completed_with_limitations.
+// ===========================================================================
+test('reconcileStore refines a misreported "completed" store (all required ok + optional failed) to completed_with_limitations, preserving completion time (D4)', async () => {
+  const stores = [{ id: S1, platform: 'shopify', shop_domain: 't.myshopify.com', status: 'active', initial_sync_status: 'completed', recovery_status: 'completed', current_sync_job_id: 'stale-job', sync_completed_at: STALE, updated_at: STALE }];
+  const domains = [
+    okRow(S1, 'products'), okRow(S1, 'orders'), okRow(S1, 'abandoned_checkouts'),
+    { store_id: S1, domain: 'refunds', status: 'failed', records_discovered: 0, records_inserted: 0, records_updated: 0, records_deleted: 0, pagination_complete: false, last_succeeded_at: null, last_attempted_at: STALE, last_checked_at: STALE, retry_count: 1, error_code: 'SHOPIFY_GRAPHQL_ERROR', error_details: null },
+  ];
+  const { db } = makeDb({ stores, domains });
+  const res = await R.reconcileStore(db, stores[0], domains, { now: NOW });
+  assert.equal(res.changed, true);
+  assert.equal(res.refined, true, 'a refinement of an already-terminal store');
+  assert.equal(res.derived_status, 'initial_completed_with_limitations');
+  assert.equal(stores[0].initial_sync_status, 'initial_completed_with_limitations');
+  assert.equal(stores[0].current_sync_job_id, null, 'stale job id cleared');
+  assert.equal(new Date(stores[0].sync_completed_at).getTime(), STALE.getTime(), 'real completion timestamp preserved (not reset to now)');
+});
+
+test('findMisreportedTerminalStores: only "completed" stores with a failed/partial domain (idempotent + convergent)', async () => {
+  const domains = [
+    { store_id: 's1', domain: 'refunds', status: 'failed' },
+    { store_id: 's1', domain: 'orders', status: 'ok' },
+    { store_id: 's2', domain: 'fulfillments', status: 'degraded' },
+    { store_id: 's3', domain: 'products', status: 'ok' }, // s3: no failed/partial domain
+    { store_id: 's4', domain: 'variants', status: 'failed' },
+  ];
+  const stores = [
+    { id: 's1', platform: 'shopify', status: 'active', initial_sync_status: 'completed', updated_at: STALE }, // legacy "completed" spelling
+    { id: 's2', platform: 'shopify', status: 'active', initial_sync_status: 'initial_completed_with_limitations', updated_at: STALE }, // already honest -> excluded
+    { id: 's3', platform: 'shopify', status: 'active', initial_sync_status: 'completed', updated_at: STALE }, // no failure -> excluded
+    { id: 's4', platform: 'shopify', status: 'active', initial_sync_status: 'initial_completed', updated_at: STALE }, // canonical spelling
+  ];
+  const db = {
+    store_sync_domain_states: {
+      async findMany({ where, select, distinct, take } = {}) {
+        let rows = domains.filter(d => !where || !where.status || !where.status.in || where.status.in.includes(d.status));
+        if (distinct && distinct.length) { const seen = new Set(); rows = rows.filter(r => (seen.has(r[distinct[0]]) ? false : (seen.add(r[distinct[0]]), true))); }
+        rows = rows.slice(0, take);
+        return rows.map(r => (select ? Object.fromEntries(Object.keys(select).map(k => [k, r[k]])) : { ...r }));
+      },
+    },
+    stores: {
+      async findMany({ where, take } = {}) {
+        let list = stores.filter(s => where.id.in.includes(s.id));
+        if (where.platform) list = list.filter(s => s.platform === where.platform);
+        if (where.initial_sync_status) {
+          if (where.initial_sync_status.in) list = list.filter(s => where.initial_sync_status.in.includes(s.initial_sync_status));
+          else if (typeof where.initial_sync_status === 'string') list = list.filter(s => s.initial_sync_status === where.initial_sync_status);
+        }
+        if (where.status && where.status.in) list = list.filter(s => where.status.in.includes(s.status));
+        return list.slice(0, take);
+      },
+    },
+  };
+  const res = await R.findMisreportedTerminalStores(db, { limit: 5 });
+  // Both the legacy "completed" (s1) and canonical "initial_completed" (s4)
+  // spellings with a failed domain are matched; s2 (already honest) and s3 (no
+  // failure) are excluded.
+  assert.deepEqual(res.map(s => s.id), ['s1', 's4']);
+});
